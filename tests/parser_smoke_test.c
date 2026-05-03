@@ -6595,6 +6595,115 @@ static int expect_select_statement_view(void) {
   }
 
   {
+    const char *sql = "SELECT 1 WHERE 1 ORDER BY 1 LIMIT 1 FOR UPDATE";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "basic SELECT query block parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+
+    const MyliteAstSelectStatement *view =
+        mylite_ast_select_statement_view(ast, 0);
+    const MyliteAstSelectQueryBlock *query_block0 =
+        view == NULL ? NULL
+                     : mylite_ast_select_statement_view_query_block_at(view, 0);
+    const MyliteAstExpression *block_where_expression =
+        mylite_ast_select_query_block_view_where_expression(query_block0);
+    if (view == NULL ||
+        mylite_ast_select_statement_view_query_block_count(view) != 1 ||
+        query_block0 == NULL ||
+        mylite_ast_select_query_block_view_from_start(query_block0) != 0 ||
+        mylite_ast_select_query_block_view_from_end(query_block0) != 0 ||
+        !span_matches(sql, mylite_ast_select_query_block_view_where_start(
+                               query_block0),
+                      mylite_ast_select_query_block_view_where_end(
+                          query_block0),
+                      "WHERE 1") ||
+        !span_matches(sql, mylite_ast_select_query_block_view_order_by_start(
+                               query_block0),
+                      mylite_ast_select_query_block_view_order_by_end(
+                          query_block0),
+                      "ORDER BY 1") ||
+        !span_matches(sql, mylite_ast_select_query_block_view_limit_start(
+                               query_block0),
+                      mylite_ast_select_query_block_view_limit_end(
+                          query_block0),
+                      "LIMIT 1") ||
+        !span_matches(sql, mylite_ast_select_query_block_view_lock_start(
+                               query_block0),
+                      mylite_ast_select_query_block_view_lock_end(query_block0),
+                      "FOR UPDATE") ||
+        block_where_expression == NULL ||
+        mylite_ast_expression_view_kind(block_where_expression) !=
+            MYLITE_EXPRESSION_LITERAL) {
+      fprintf(stderr, "basic SELECT query block view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql =
+        "SELECT 1 FROM DUAL WHERE 1 ORDER BY 1 LIMIT 1 FOR UPDATE";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "FROM DUAL SELECT query block parse failed: status=%s "
+              "offset=%zu token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+
+    const MyliteAstSelectStatement *view =
+        mylite_ast_select_statement_view(ast, 0);
+    const MyliteAstSelectQueryBlock *query_block0 =
+        view == NULL ? NULL
+                     : mylite_ast_select_statement_view_query_block_at(view, 0);
+    const MyliteAstExpression *block_where_expression =
+        mylite_ast_select_query_block_view_where_expression(query_block0);
+    if (view == NULL ||
+        mylite_ast_select_statement_view_query_block_count(view) != 1 ||
+        query_block0 == NULL ||
+        mylite_ast_select_query_block_view_from_start(query_block0) != 0 ||
+        mylite_ast_select_query_block_view_from_end(query_block0) != 0 ||
+        !span_matches(sql, mylite_ast_select_query_block_view_where_start(
+                               query_block0),
+                      mylite_ast_select_query_block_view_where_end(
+                          query_block0),
+                      "WHERE 1") ||
+        !span_matches(sql, mylite_ast_select_query_block_view_order_by_start(
+                               query_block0),
+                      mylite_ast_select_query_block_view_order_by_end(
+                          query_block0),
+                      "ORDER BY 1") ||
+        !span_matches(sql, mylite_ast_select_query_block_view_limit_start(
+                               query_block0),
+                      mylite_ast_select_query_block_view_limit_end(
+                          query_block0),
+                      "LIMIT 1") ||
+        !span_matches(sql, mylite_ast_select_query_block_view_lock_start(
+                               query_block0),
+                      mylite_ast_select_query_block_view_lock_end(query_block0),
+                      "FOR UPDATE") ||
+        block_where_expression == NULL ||
+        mylite_ast_expression_view_kind(block_where_expression) !=
+            MYLITE_EXPRESSION_LITERAL) {
+      fprintf(stderr, "FROM DUAL SELECT query block view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
     const char *sql =
         "(SELECT 1 AS a) UNION SELECT 2 AS a ORDER BY a LIMIT 1";
     MyliteParseResult result;

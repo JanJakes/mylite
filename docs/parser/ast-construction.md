@@ -786,13 +786,14 @@ large benchmark coverage walk. `ast` keeps the historical public-view coverage
 counters. `semantic` parses through the parser AST, materializes the first
 semantic graph, frees the parser AST, and then counts the semantic graph.
 
-Latest semantic-AST construction run on May 3, 2026:
+Latest semantic-AST construction run on May 3, 2026, after direct SELECT
+query-block clause collection:
 
 ```text
-mode=syntax queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=2.682638 qps=518452 mbps=39.43 avg_us=1.929
-mode=ast-only queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=9.251686 qps=150332 mbps=11.43 avg_us=6.652 avg_nodes=74.5 avg_ast_bytes=11213.9 avg_statements=1.00
-mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=9.632182 qps=144393 mbps=10.98 avg_us=6.926 avg_nodes=74.5 avg_ast_bytes=11213.9
-mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=9.929257 qps=140073 mbps=10.65 avg_us=7.139 avg_semantic_nodes=10.1 avg_semantic_bytes=4689.8 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_queries=0.25 avg_semantic_query_blocks=0.28 avg_semantic_table_references=0.20 avg_semantic_sources=0.19 avg_semantic_rows=0.58 avg_semantic_descriptors=2.58 avg_semantic_clauses=0.37 avg_semantic_structural_clauses=0.06 avg_semantic_data_types=0.31 avg_semantic_data_type_numeric_parameters=0.12 avg_semantic_data_type_elements=0.05 avg_semantic_data_type_attributes=0.03 avg_semantic_expressions=2.69 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.04 avg_semantic_descriptor_expressions=1.81 avg_semantic_clause_expressions=0.11 avg_semantic_statement_expressions=0.00
+mode=syntax queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=2.669374 qps=521029 mbps=39.62 avg_us=1.919
+mode=ast-only queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.961692 qps=174689 mbps=13.29 avg_us=5.724 avg_nodes=74.5 avg_ast_bytes=11213.9 avg_statements=1.00
+mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=8.174165 qps=170148 mbps=12.94 avg_us=5.877 avg_nodes=74.5 avg_ast_bytes=11213.9
+mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=8.582059 qps=162061 mbps=12.32 avg_us=6.171 avg_semantic_nodes=10.1 avg_semantic_bytes=4689.6 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_queries=0.25 avg_semantic_query_blocks=0.28 avg_semantic_table_references=0.20 avg_semantic_sources=0.19 avg_semantic_rows=0.58 avg_semantic_descriptors=2.58 avg_semantic_clauses=0.37 avg_semantic_structural_clauses=0.06 avg_semantic_data_types=0.31 avg_semantic_data_type_numeric_parameters=0.12 avg_semantic_data_type_elements=0.05 avg_semantic_data_type_attributes=0.03 avg_semantic_expressions=2.69 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.04 avg_semantic_descriptor_expressions=1.81 avg_semantic_clause_expressions=0.11 avg_semantic_statement_expressions=0.00
 ```
 
 Latest EXPLAIN/DESCRIBE parser-view run on May 3, 2026:
@@ -992,7 +993,7 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,876 lines, 5,639,543 bytes
 generated parser object: 997K on disk, 905,630 bytes text/data/other
-parser support object: 413K on disk, 237,844 bytes text/data/other
+parser support object: 416K on disk, 239,813 bytes text/data/other
 semantic AST object: 69K on disk, 32,535 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.6M on disk

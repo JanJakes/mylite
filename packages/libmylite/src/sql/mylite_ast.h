@@ -307,12 +307,67 @@ enum mylite_sql_ast_alter_table_action {
     MYLITE_SQL_AST_ALTER_TABLE_ACTION_RENAME_COLUMN = 3,
     MYLITE_SQL_AST_ALTER_TABLE_ACTION_CHANGE_COLUMN = 4,
     MYLITE_SQL_AST_ALTER_TABLE_ACTION_MODIFY_COLUMN = 5,
+    MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_PRIMARY_KEY = 6,
+    MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_PRIMARY_KEY = 7,
+    MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_UNIQUE_INDEX = 8,
+    MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_SECONDARY_INDEX = 9,
+    MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_FULLTEXT_INDEX = 10,
+    MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_SPATIAL_INDEX = 11,
+    MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_INDEX = 12,
+    MYLITE_SQL_AST_ALTER_TABLE_ACTION_RENAME_INDEX = 13,
+    MYLITE_SQL_AST_ALTER_TABLE_ACTION_ALTER_INDEX_VISIBILITY = 14,
+    MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_CHECK = 15,
+    MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_CHECK_OR_CONSTRAINT = 16,
+    MYLITE_SQL_AST_ALTER_TABLE_ACTION_ALTER_CHECK_OR_CONSTRAINT = 17,
+    MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_FOREIGN_KEY = 18,
+    MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_FOREIGN_KEY = 19,
 };
 
 enum mylite_sql_ast_alter_table_column_position {
     MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION_NONE = 0,
     MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION_FIRST = 1,
     MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION_AFTER = 2,
+};
+
+enum mylite_sql_ast_alter_table_index_spelling {
+    MYLITE_SQL_AST_ALTER_TABLE_INDEX_SPELLING_NONE = 0,
+    MYLITE_SQL_AST_ALTER_TABLE_INDEX_SPELLING_INDEX = 1,
+    MYLITE_SQL_AST_ALTER_TABLE_INDEX_SPELLING_KEY = 2,
+};
+
+enum mylite_sql_ast_alter_table_constraint_spelling {
+    MYLITE_SQL_AST_ALTER_TABLE_CONSTRAINT_SPELLING_NONE = 0,
+    MYLITE_SQL_AST_ALTER_TABLE_CONSTRAINT_SPELLING_CHECK = 1,
+    MYLITE_SQL_AST_ALTER_TABLE_CONSTRAINT_SPELLING_CONSTRAINT = 2,
+};
+
+enum mylite_sql_ast_constraint_enforcement {
+    MYLITE_SQL_AST_CONSTRAINT_ENFORCEMENT_DEFAULT = 0,
+    MYLITE_SQL_AST_CONSTRAINT_ENFORCEMENT_ENFORCED = 1,
+    MYLITE_SQL_AST_CONSTRAINT_ENFORCEMENT_NOT_ENFORCED = 2,
+};
+
+enum mylite_sql_ast_reference_option {
+    MYLITE_SQL_AST_REFERENCE_OPTION_NONE = 0,
+    MYLITE_SQL_AST_REFERENCE_OPTION_ON_DELETE = 1,
+    MYLITE_SQL_AST_REFERENCE_OPTION_ON_UPDATE = 2,
+    MYLITE_SQL_AST_REFERENCE_OPTION_MATCH = 3,
+};
+
+enum mylite_sql_ast_reference_action {
+    MYLITE_SQL_AST_REFERENCE_ACTION_NONE = 0,
+    MYLITE_SQL_AST_REFERENCE_ACTION_RESTRICT = 1,
+    MYLITE_SQL_AST_REFERENCE_ACTION_CASCADE = 2,
+    MYLITE_SQL_AST_REFERENCE_ACTION_SET_NULL = 3,
+    MYLITE_SQL_AST_REFERENCE_ACTION_NO_ACTION = 4,
+    MYLITE_SQL_AST_REFERENCE_ACTION_SET_DEFAULT = 5,
+};
+
+enum mylite_sql_ast_reference_match {
+    MYLITE_SQL_AST_REFERENCE_MATCH_NONE = 0,
+    MYLITE_SQL_AST_REFERENCE_MATCH_SIMPLE = 1,
+    MYLITE_SQL_AST_REFERENCE_MATCH_FULL = 2,
+    MYLITE_SQL_AST_REFERENCE_MATCH_PARTIAL = 3,
 };
 
 enum mylite_sql_ast_transaction_access_mode {
@@ -419,6 +474,12 @@ struct mylite_sql_ast_node {
     enum mylite_sql_ast_table_option table_option;
     enum mylite_sql_ast_alter_table_action alter_table_action;
     enum mylite_sql_ast_alter_table_column_position alter_table_column_position;
+    enum mylite_sql_ast_alter_table_index_spelling alter_table_index_spelling;
+    enum mylite_sql_ast_alter_table_constraint_spelling alter_table_constraint_spelling;
+    enum mylite_sql_ast_constraint_enforcement constraint_enforcement;
+    enum mylite_sql_ast_reference_option reference_option;
+    enum mylite_sql_ast_reference_action reference_action;
+    enum mylite_sql_ast_reference_match reference_match;
     enum mylite_sql_ast_transaction_access_mode transaction_access_mode;
     enum mylite_sql_ast_transaction_chain transaction_chain;
     enum mylite_sql_ast_transaction_release transaction_release;
@@ -518,6 +579,18 @@ void mylite_sql_ast_node_set_alter_table_action(struct mylite_sql_ast_node *node
                                                 bool column_keyword);
 void mylite_sql_ast_node_set_alter_table_column_position(
     struct mylite_sql_ast_node *node, enum mylite_sql_ast_alter_table_column_position position);
+void mylite_sql_ast_node_set_alter_table_index_spelling(
+    struct mylite_sql_ast_node *node, enum mylite_sql_ast_alter_table_index_spelling spelling);
+void mylite_sql_ast_node_set_alter_table_constraint_spelling(
+    struct mylite_sql_ast_node *node, enum mylite_sql_ast_alter_table_constraint_spelling spelling);
+void mylite_sql_ast_node_set_constraint_enforcement(
+    struct mylite_sql_ast_node *node, enum mylite_sql_ast_constraint_enforcement enforcement);
+void mylite_sql_ast_node_set_reference_option(struct mylite_sql_ast_node *node,
+                                              enum mylite_sql_ast_reference_option option);
+void mylite_sql_ast_node_set_reference_action(struct mylite_sql_ast_node *node,
+                                              enum mylite_sql_ast_reference_action action);
+void mylite_sql_ast_node_set_reference_match(struct mylite_sql_ast_node *node,
+                                             enum mylite_sql_ast_reference_match match);
 void mylite_sql_ast_node_set_drop_table_temporary(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_drop_table_restrict(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_drop_table_cascade(struct mylite_sql_ast_node *node);
@@ -566,6 +639,15 @@ const char *mylite_sql_ast_ddl_table_option_name(enum mylite_sql_ast_ddl_table_o
 const char *mylite_sql_ast_alter_table_action_name(enum mylite_sql_ast_alter_table_action action);
 const char *mylite_sql_ast_alter_table_column_position_name(
     enum mylite_sql_ast_alter_table_column_position position);
+const char *mylite_sql_ast_alter_table_index_spelling_name(
+    enum mylite_sql_ast_alter_table_index_spelling spelling);
+const char *mylite_sql_ast_alter_table_constraint_spelling_name(
+    enum mylite_sql_ast_alter_table_constraint_spelling spelling);
+const char *
+mylite_sql_ast_constraint_enforcement_name(enum mylite_sql_ast_constraint_enforcement enforcement);
+const char *mylite_sql_ast_reference_option_name(enum mylite_sql_ast_reference_option option);
+const char *mylite_sql_ast_reference_action_name(enum mylite_sql_ast_reference_action action);
+const char *mylite_sql_ast_reference_match_name(enum mylite_sql_ast_reference_match match);
 const char *mylite_sql_ast_aggregate_kind_name(enum mylite_sql_ast_aggregate_kind aggregate_kind);
 const char *
 mylite_sql_ast_aggregate_argument_name(enum mylite_sql_ast_aggregate_argument aggregate_argument);

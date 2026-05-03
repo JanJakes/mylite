@@ -72,6 +72,9 @@ enum {
     mysql_warning_ambiguous_column = 1052,
     mysql_warning_unknown_column = 1054,
     mysql_warning_duplicate_entry = 1062,
+    mysql_warning_multiple_primary = 1068,
+    mysql_warning_key_column_missing = 1072,
+    mysql_warning_invalid_null = 1138,
     mysql_warning_wrong_field_with_group = 1055,
     mysql_warning_nonunique_table = 1066,
     mysql_warning_invalid_group_function = 1111,
@@ -93,6 +96,7 @@ enum {
     mysql_warning_legacy_syntax_converted = 3005,
     mysql_warning_field_in_order_not_select = 3065,
     mysql_warning_using_other_handler = 3502,
+    mysql_warning_primary_invisible = 3522,
 };
 
 struct expected_schemata_row {
@@ -189,6 +193,7 @@ static int test_create_table_prepare_has_no_side_effects(void);
 static int test_drop_table_base_execution(void);
 static int test_create_drop_index_execution(void);
 static int test_alter_table_column_operations_execution(void);
+static int test_alter_table_key_operations_execution(void);
 static int test_insert_values_execution(void);
 static int test_insert_set_execution(void);
 static int test_replace_execution(void);
@@ -321,6 +326,7 @@ int main(void)
     failures += test_drop_table_base_execution();
     failures += test_create_drop_index_execution();
     failures += test_alter_table_column_operations_execution();
+    failures += test_alter_table_key_operations_execution();
     failures += test_insert_values_execution();
     failures += test_insert_set_execution();
     failures += test_replace_execution();
@@ -3677,6 +3683,464 @@ static int test_alter_table_column_operations_execution(void)
     stmt = NULL;
 
     mylite_close(database);
+    return failures;
+}
+
+static int test_alter_table_key_operations_execution(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const char *const alter_key_columns[] = {"a", "b", "c", "d", "e", "body"};
+    static const char *const alter_key_nullable_values[] = {"3", "30", "abe", "300", NULL, "null"};
+    static const char *const alter_key_duplicate_a_values[] = {"2", "2"};
+    static const char *const pk_duplicate_columns[] = {"a"};
+    static const char *const pk_duplicate_values[] = {"1", "1"};
+    static const char *const mixed_unique_columns[] = {"id", "marker", "u2"};
+    static const char *const mixed_unique_values[] = {"1", "10", "7",  "2", "20",
+                                                      "7", "4",  "10", "8"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open alter key database");
+    failures += execute_sql(database, "CREATE DATABASE mylite_alter_key", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_alter_key", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE alter_key_base ("
+                            "a INT NOT NULL, b INT, c VARCHAR(20), d INT NOT NULL, "
+                            "e INT, body TEXT)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO alter_key_base VALUES "
+                            "(1,10,'abc',100,NULL,'one'),"
+                            "(2,20,'abd',200,NULL,'two')",
+                            MYLITE_DONE);
+
+    failures +=
+        execute_sql_expect_done_affected(database, "ALTER TABLE alter_key_base ADD PRIMARY KEY (a)",
+                                         0, "alter add primary key affected rows");
+    failures +=
+        expect_information_schema_statistics_row(database, &(const struct expected_statistics_row){
+                                                               .table_name = "alter_key_base",
+                                                               .index_name = "PRIMARY",
+                                                               .seq_in_index = 1,
+                                                               .column_name = "a",
+                                                               .non_unique = 0,
+                                                               .collation = "A",
+                                                               .sub_part = NULL,
+                                                               .index_comment = "",
+                                                               .visible = "YES",
+                                                           });
+    failures += expect_information_schema_column_row(database, &(const struct expected_columns_row){
+                                                                   .table_name = "alter_key_base",
+                                                                   .column_name = "a",
+                                                                   .ordinal_position = 1,
+                                                                   .column_default = NULL,
+                                                                   .is_nullable = "NO",
+                                                                   .data_type = "int",
+                                                                   .column_type = "int",
+                                                                   .column_key = "PRI",
+                                                                   .extra = "",
+                                                               });
+    failures += prepare_sql(database,
+                            "INSERT INTO alter_key_base VALUES "
+                            "(5,50,'new',500,NULL,'primary check')",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_DONE, "insert after alter primary key succeeds");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database,
+                            "INSERT INTO alter_key_base VALUES "
+                            "(1,60,'dup',600,NULL,'primary dup')",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Duplicate entry",
+                                  "alter primary key rejects insert duplicate");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql_expect_done_affected(
+        database, "ALTER TABLE alter_key_base ADD UNIQUE uq_c (c(3)) INVISIBLE", 0,
+        "alter add invisible prefix unique affected rows");
+    failures +=
+        expect_information_schema_statistics_row(database, &(const struct expected_statistics_row){
+                                                               .table_name = "alter_key_base",
+                                                               .index_name = "uq_c",
+                                                               .seq_in_index = 1,
+                                                               .column_name = "c",
+                                                               .non_unique = 0,
+                                                               .collation = "A",
+                                                               .sub_part = "3",
+                                                               .index_comment = "",
+                                                               .visible = "NO",
+                                                           });
+    failures += execute_sql_expect_done_affected(
+        database, "ALTER TABLE alter_key_base ADD UNIQUE KEY uq_e (e)", 0,
+        "alter add nullable unique affected rows");
+    failures += execute_sql(
+        database, "INSERT INTO alter_key_base VALUES (3,30,'abe',300,NULL,'null')", MYLITE_DONE);
+    failures += expect_select_rows(
+        database, "SELECT a, b, c, d, e, body FROM alter_key_base WHERE a = 3", alter_key_columns,
+        6, alter_key_nullable_values, 1, "nullable unique accepts multiple nulls");
+    failures += prepare_sql(database,
+                            "INSERT INTO alter_key_base VALUES "
+                            "(4,40,'abcx',400,NULL,'prefix dup')",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Duplicate entry",
+                                  "alter prefix unique rejects duplicate prefix");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql_expect_done_affected(
+        database, "ALTER TABLE alter_key_base ADD INDEX idx_b (b DESC) COMMENT 'idx' INVISIBLE", 0,
+        "alter add secondary index affected rows");
+    failures +=
+        expect_information_schema_statistics_row(database, &(const struct expected_statistics_row){
+                                                               .table_name = "alter_key_base",
+                                                               .index_name = "idx_b",
+                                                               .seq_in_index = 1,
+                                                               .column_name = "b",
+                                                               .non_unique = 1,
+                                                               .collation = "D",
+                                                               .sub_part = NULL,
+                                                               .index_comment = "idx",
+                                                               .visible = "NO",
+                                                           });
+    failures +=
+        execute_sql_expect_done_affected(database, "ALTER TABLE alter_key_base ADD INDEX (b)", 0,
+                                         "alter generated secondary index name affected rows");
+    failures +=
+        expect_information_schema_statistics_row(database, &(const struct expected_statistics_row){
+                                                               .table_name = "alter_key_base",
+                                                               .index_name = "b",
+                                                               .seq_in_index = 1,
+                                                               .column_name = "b",
+                                                               .non_unique = 1,
+                                                               .collation = "A",
+                                                               .sub_part = NULL,
+                                                               .index_comment = "",
+                                                               .visible = "YES",
+                                                           });
+    failures += execute_sql_expect_done_affected(
+        database, "ALTER TABLE alter_key_base ADD KEY idx_hash USING HASH (d)", 0,
+        "alter hash fallback index affected rows");
+    failures += expect_int(mylite_warning_count(database), 1, "alter hash fallback warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_using_other_handler,
+                           "alter hash fallback warning code");
+    failures += execute_sql_expect_done_affected(
+        database, "ALTER TABLE alter_key_base ADD KEY idx_b_dup (b DESC)", 0,
+        "alter duplicate index warning affected rows");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "alter duplicate index warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_duplicate_index,
+                           "alter duplicate index warning code");
+
+    failures += execute_sql_expect_done_affected(
+        database, "ALTER TABLE alter_key_base RENAME INDEX idx_b TO idx_b_new", 0,
+        "alter rename index affected rows");
+    failures +=
+        expect_no_information_schema_statistics_index_row(database, "alter_key_base", "idx_b");
+    failures +=
+        expect_information_schema_statistics_row(database, &(const struct expected_statistics_row){
+                                                               .table_name = "alter_key_base",
+                                                               .index_name = "idx_b_new",
+                                                               .seq_in_index = 1,
+                                                               .column_name = "b",
+                                                               .non_unique = 1,
+                                                               .collation = "D",
+                                                               .sub_part = NULL,
+                                                               .index_comment = "idx",
+                                                               .visible = "NO",
+                                                           });
+    failures += execute_sql_expect_done_affected(
+        database, "ALTER TABLE alter_key_base ALTER INDEX idx_b_new VISIBLE", 0,
+        "alter index visible affected rows");
+    failures +=
+        expect_information_schema_statistics_row(database, &(const struct expected_statistics_row){
+                                                               .table_name = "alter_key_base",
+                                                               .index_name = "idx_b_new",
+                                                               .seq_in_index = 1,
+                                                               .column_name = "b",
+                                                               .non_unique = 1,
+                                                               .collation = "D",
+                                                               .sub_part = NULL,
+                                                               .index_comment = "idx",
+                                                               .visible = "YES",
+                                                           });
+    failures +=
+        execute_sql_expect_done_affected(database, "ALTER TABLE alter_key_base DROP KEY idx_b_new",
+                                         0, "alter drop key affected rows");
+    failures +=
+        expect_no_information_schema_statistics_index_row(database, "alter_key_base", "idx_b_new");
+    failures +=
+        execute_sql_expect_done_affected(database, "ALTER TABLE alter_key_base DROP INDEX uq_c", 0,
+                                         "alter drop unique affected rows");
+    failures +=
+        expect_no_information_schema_statistics_index_row(database, "alter_key_base", "uq_c");
+    failures += execute_sql(
+        database, "INSERT INTO alter_key_base VALUES (4,40,'abcx',400,NULL,'prefix allowed')",
+        MYLITE_DONE);
+
+    failures +=
+        execute_sql_expect_done_affected(database, "ALTER TABLE alter_key_base DROP PRIMARY KEY", 0,
+                                         "alter drop primary key affected rows");
+    failures +=
+        expect_no_information_schema_statistics_index_row(database, "alter_key_base", "PRIMARY");
+    failures += expect_information_schema_column_row(database, &(const struct expected_columns_row){
+                                                                   .table_name = "alter_key_base",
+                                                                   .column_name = "a",
+                                                                   .ordinal_position = 1,
+                                                                   .column_default = NULL,
+                                                                   .is_nullable = "NO",
+                                                                   .data_type = "int",
+                                                                   .column_type = "int",
+                                                                   .column_key = "",
+                                                                   .extra = "",
+                                                               });
+    failures += execute_sql(
+        database, "INSERT INTO alter_key_base VALUES (2,50,'z',500,NULL,'duplicate a allowed')",
+        MYLITE_DONE);
+    failures += expect_select_rows(
+        database, "SELECT a FROM alter_key_base WHERE a = 2 ORDER BY body", pk_duplicate_columns, 1,
+        alter_key_duplicate_a_values, 2, "dropped primary key permits duplicate values");
+
+    failures +=
+        execute_sql(database, "CREATE TABLE mixed_unique (id INT, marker INT)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO mixed_unique VALUES (1,10),(2,20)", MYLITE_DONE);
+    failures += prepare_sql(database,
+                            "ALTER TABLE mixed_unique ADD COLUMN u INT NOT NULL DEFAULT 7, "
+                            "ADD UNIQUE KEY uq_u (u)",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Duplicate entry",
+                                  "alter added column unique validates default backfill");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_column_row(database, "mixed_unique", "u");
+    failures += expect_no_information_schema_statistics_index_row(database, "mixed_unique", "uq_u");
+
+    failures += prepare_sql(database,
+                            "ALTER TABLE mixed_unique ADD COLUMN pk INT NOT NULL DEFAULT 1, "
+                            "ADD PRIMARY KEY (pk)",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Duplicate entry",
+                                  "alter added column primary validates default backfill");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_column_row(database, "mixed_unique", "pk");
+    failures +=
+        expect_no_information_schema_statistics_index_row(database, "mixed_unique", "PRIMARY");
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE mixed_unique ADD COLUMN u2 INT NOT NULL DEFAULT 7, "
+        "ADD UNIQUE KEY uq_marker_u2 (marker, u2)",
+        0, "alter added column composite unique affected rows");
+    failures += prepare_sql(database, "INSERT INTO mixed_unique (id, marker, u2) VALUES (3,10,7)",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Duplicate entry",
+                                  "alter added column composite unique rejects duplicates");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "INSERT INTO mixed_unique (id, marker, u2) VALUES (4,10,8)",
+                            MYLITE_DONE);
+    failures += expect_select_rows(database, "SELECT id, marker, u2 FROM mixed_unique ORDER BY id",
+                                   mixed_unique_columns, 3, mixed_unique_values, 3,
+                                   "alter added column composite unique preserves rows");
+
+    failures += execute_sql(database, "CREATE TABLE pk_dup (a INT NOT NULL)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO pk_dup VALUES (1),(1)", MYLITE_DONE);
+    failures += prepare_sql(database, "ALTER TABLE pk_dup ADD PRIMARY KEY (a)", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Duplicate entry",
+                                  "alter add primary validates duplicate existing rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_statistics_index_row(database, "pk_dup", "PRIMARY");
+    failures += expect_select_rows(database, "SELECT a FROM pk_dup ORDER BY a",
+                                   pk_duplicate_columns, 1, pk_duplicate_values, 2,
+                                   "failed primary add leaves duplicate table unchanged");
+
+    failures += execute_sql(database, "CREATE TABLE pk_null (a INT)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO pk_null VALUES (NULL)", MYLITE_DONE);
+    failures += prepare_sql(database, "ALTER TABLE pk_null ADD PRIMARY KEY (a)", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Invalid use of NULL",
+                                  "alter add primary rejects null existing rows");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_invalid_null,
+                           "alter primary null warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "CREATE TABLE pk_added_null (a INT)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO pk_added_null VALUES (1),(2)", MYLITE_DONE);
+    failures +=
+        prepare_sql(database, "ALTER TABLE pk_added_null ADD COLUMN k INT, ADD PRIMARY KEY (k)",
+                    MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Invalid use of NULL",
+                                  "mixed alter primary key rejects added nullable column");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_invalid_null,
+                           "mixed alter primary null warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_column_row(database, "pk_added_null", "k");
+    failures +=
+        expect_no_information_schema_statistics_index_row(database, "pk_added_null", "PRIMARY");
+    failures += execute_sql(database, "CREATE TABLE uq_added_dup (a INT)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO uq_added_dup VALUES (1),(2)", MYLITE_DONE);
+    failures += prepare_sql(database,
+                            "ALTER TABLE uq_added_dup ADD COLUMN k INT NOT NULL DEFAULT 0, "
+                            "ADD UNIQUE uq_k (k)",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Duplicate entry",
+                                  "mixed alter unique validates added default values");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_column_row(database, "uq_added_dup", "k");
+    failures += expect_no_information_schema_statistics_index_row(database, "uq_added_dup", "uq_k");
+
+    failures +=
+        execute_sql(database, "CREATE TABLE pk_second (a INT PRIMARY KEY, b INT)", MYLITE_DONE);
+    failures +=
+        prepare_sql(database, "ALTER TABLE pk_second ADD PRIMARY KEY (b)", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Multiple primary",
+                                  "alter add primary rejects existing primary key");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_multiple_primary,
+                           "alter multiple primary warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "ALTER TABLE pk_second ADD INDEX idx_missing (missing)",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Key column",
+                                  "alter add index rejects missing key column");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_key_column_missing,
+                           "alter missing key warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "ALTER TABLE pk_second ALTER INDEX `PRIMARY` INVISIBLE",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "primary key index cannot be invisible",
+                                  "alter primary index invisible rejected");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_primary_invisible,
+                           "alter primary invisible warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE TABLE pk_ai (id INT AUTO_INCREMENT PRIMARY KEY)",
+                            MYLITE_DONE);
+    failures += prepare_sql(database, "ALTER TABLE pk_ai DROP PRIMARY KEY", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Incorrect table definition",
+                                  "alter drop primary rejects auto increment dependency");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_information_schema_statistics_row(database, &(const struct expected_statistics_row){
+                                                               .table_name = "pk_ai",
+                                                               .index_name = "PRIMARY",
+                                                               .seq_in_index = 1,
+                                                               .column_name = "id",
+                                                               .non_unique = 0,
+                                                               .collation = "A",
+                                                               .sub_part = NULL,
+                                                               .index_comment = "",
+                                                               .visible = "YES",
+                                                           });
+
+    failures +=
+        execute_sql(database, "CREATE TABLE implicit_pk (u INT NOT NULL UNIQUE)", MYLITE_DONE);
+    failures +=
+        prepare_sql(database, "ALTER TABLE implicit_pk ALTER INDEX u INVISIBLE", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "primary key index cannot be invisible",
+                                  "alter implicit primary index invisible rejected");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "ALTER TABLE alter_key_base ADD INDEX idx_hash (d)",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Duplicate key name",
+                                  "alter add index rejects duplicate key name");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "ALTER TABLE alter_key_base DROP INDEX missing_idx",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_exec_error(stmt, database, "Can't DROP", "alter drop index rejects missing index");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "ALTER TABLE alter_key_base RENAME INDEX idx_b_dup TO b",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Duplicate key name",
+                                  "alter rename index rejects duplicate target");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_information_schema_statistics_row(database, &(const struct expected_statistics_row){
+                                                               .table_name = "alter_key_base",
+                                                               .index_name = "idx_b_dup",
+                                                               .seq_in_index = 1,
+                                                               .column_name = "b",
+                                                               .non_unique = 1,
+                                                               .collation = "D",
+                                                               .sub_part = NULL,
+                                                               .index_comment = "",
+                                                               .visible = "YES",
+                                                           });
+
+    failures += prepare_sql(database,
+                            "ALTER TABLE alter_key_base ADD INDEX idx_algo (d), "
+                            "ALGORITHM=INPLACE",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_UNSUPPORTED,
+                              "alter key rejects non-default algorithm");
+    failures += expect_int64(mylite_affected_rows(stmt), -1,
+                             "alter key unsupported algorithm affected rows");
+    failures += expect_contains(mylite_error_message(database), "ALGORITHM",
+                                "alter key unsupported algorithm error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_no_information_schema_statistics_index_row(database, "alter_key_base", "idx_algo");
+
+    failures += prepare_sql(
+        database, "ALTER TABLE alter_key_base ADD FULLTEXT INDEX ft_body (body)", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_UNSUPPORTED, "alter fulltext placeholder rejected");
+    failures += expect_int64(mylite_affected_rows(stmt), -1, "alter fulltext affected rows");
+    failures += expect_contains(mylite_error_message(database), "FULLTEXT",
+                                "alter fulltext unsupported error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_no_information_schema_statistics_index_row(database, "alter_key_base", "ft_body");
+
+    failures += prepare_sql(database, "ALTER TABLE alter_key_base ADD SPATIAL INDEX sp_body (body)",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_UNSUPPORTED, "alter spatial placeholder rejected");
+    failures += expect_contains(mylite_error_message(database), "SPATIAL",
+                                "alter spatial unsupported error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_no_information_schema_statistics_index_row(database, "alter_key_base", "sp_body");
+
+    failures +=
+        prepare_sql(database, "ALTER TABLE alter_key_base ADD CHECK (d > 0)", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_UNSUPPORTED, "alter check placeholder rejected");
+    failures +=
+        expect_contains(mylite_error_message(database), "CHECK", "alter check unsupported error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "ALTER TABLE alter_key_base ADD CONSTRAINT fk_base FOREIGN KEY (d) "
+                            "REFERENCES missing_parent(id) ON DELETE CASCADE",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_UNSUPPORTED,
+                              "alter foreign key placeholder rejected");
+    failures += expect_contains(mylite_error_message(database), "FOREIGN KEY",
+                                "alter foreign key unsupported error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
     return failures;
 }
 

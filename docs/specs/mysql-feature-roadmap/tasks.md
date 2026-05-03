@@ -121,7 +121,17 @@ level application surfaces.
        MySQL conversion fidelity remain deferred. Spec:
        [ALTER TABLE column operations](../alter-table-column-operations/specs.md).
 36. [ ] `ALTER TABLE` key and constraint operations: primary, unique, index,
-       check, and foreign-key add/drop/rename/toggle behavior. Started; spec:
+       check, and foreign-key add/drop/rename/toggle behavior. First
+       executable slice is implemented for metadata-backed `ADD PRIMARY KEY`,
+       `DROP PRIMARY KEY`, `ADD UNIQUE`, `ADD INDEX` / `ADD KEY`,
+       `DROP INDEX` / `DROP KEY`, `RENAME INDEX` / `RENAME KEY`, and
+       `ALTER INDEX` visibility on supported MyLite base tables, including
+       parser coverage, duplicate validation, write-path conflict effects,
+       statistics metadata, warnings, and Task 35 mixed-action atomicity.
+       FULLTEXT, SPATIAL, CHECK, and FOREIGN KEY ALTER actions parse and return
+       deterministic unsupported diagnostics before mutation. Full constraint
+       catalogs, full-text/spatial runtime, optimizer use, and implicit-commit
+       behavior remain. Spec:
        [ALTER TABLE key and constraint operations](../alter-table-key-constraint-operations/specs.md).
 37. [ ] `RENAME TABLE` and `ALTER TABLE ... RENAME TO`: atomic multi-table
        rename, metadata rewrite, temporary table handling, and errors.

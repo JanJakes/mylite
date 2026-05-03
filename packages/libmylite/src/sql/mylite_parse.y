@@ -14,6 +14,7 @@
 %type opt_savepoint_keyword { struct mylite_sql_token }
 %type ddl_algorithm { struct mylite_sql_token }
 %type ddl_lock { struct mylite_sql_token }
+%type opt_index_or_key { struct mylite_sql_token }
 %type nonreserved_identifier_keyword { struct mylite_sql_token }
 %type select_duplicate_mode { struct mylite_sql_parser_select_duplicate_mode }
 %type select_duplicate_mode_list { struct mylite_sql_parser_select_duplicate_mode }
@@ -25,6 +26,13 @@
 %type quantified_comparison_operator { struct mylite_sql_parser_comparison_operator }
 %type subquery_quantifier { enum mylite_sql_ast_subquery_quantifier }
 %type index_class { enum mylite_sql_ast_index_class }
+%type fulltext_or_spatial { struct mylite_sql_parser_index_class_token }
+%type index_or_key { struct mylite_sql_parser_alter_table_index_spelling_token }
+%type check_or_constraint { struct mylite_sql_parser_alter_table_constraint_spelling_token }
+%type opt_check_enforcement { struct mylite_sql_parser_constraint_enforcement }
+%type check_enforcement { struct mylite_sql_parser_constraint_enforcement }
+%type reference_action { struct mylite_sql_parser_reference_action }
+%type reference_match_kind { struct mylite_sql_parser_reference_match }
 %type fulltext_index_option_list { struct mylite_sql_ast_node * }
 %type fulltext_index_option { struct mylite_sql_ast_node * }
 %type opt_like_escape { struct mylite_sql_ast_node * }
@@ -237,6 +245,50 @@ alter_table_item(A) ::= ddl_table_option(B). {
     A = B;
 }
 
+alter_table_action(A) ::= ADD(T) opt_constraint_symbol(C) PRIMARY KEY opt_index_type(I) LPAREN key_part_list(K) RPAREN index_option_list(O). {
+    A = mylite_sql_parser_make_alter_table_add_primary_key_action(state, T, C, I, K, O);
+}
+alter_table_action(A) ::= DROP(T) PRIMARY KEY(K). {
+    A = mylite_sql_parser_make_alter_table_drop_primary_key_action(state, T, K);
+}
+alter_table_action(A) ::= ADD(T) opt_constraint_symbol(C) UNIQUE opt_index_or_key opt_index_name(N) opt_index_type(I) LPAREN key_part_list(K) RPAREN index_option_list(O). {
+    A = mylite_sql_parser_make_alter_table_add_unique_index_action(state, T, C, N, I, K, O);
+}
+alter_table_action(A) ::= ADD(T) index_or_key opt_index_name(N) opt_index_type(I) LPAREN key_part_list(K) RPAREN index_option_list(O). {
+    A = mylite_sql_parser_make_alter_table_add_secondary_index_action(state, T, N, I, K, O);
+}
+alter_table_action(A) ::= ADD fulltext_or_spatial(C) opt_index_or_key opt_index_name(N) LPAREN key_part_list(K) RPAREN fulltext_index_option_list(O). {
+    A = mylite_sql_parser_make_alter_table_add_special_index_action(state, C, N, K, O);
+}
+alter_table_action(A) ::= DROP(T) index_or_key(K) identifier(N). {
+    A = mylite_sql_parser_make_alter_table_drop_index_action(state, T, K, N);
+}
+alter_table_action(A) ::= RENAME(T) index_or_key(K) identifier(O) TO(X) identifier(N). {
+    A = mylite_sql_parser_make_alter_table_rename_index_action(state, T, K, O, X, N);
+}
+alter_table_action(A) ::= ALTER(T) INDEX identifier(N) VISIBLE(V). {
+    A = mylite_sql_parser_make_alter_table_alter_index_visibility_action(
+        state, T, N, V, MYLITE_SQL_AST_INDEX_OPTION_VISIBLE);
+}
+alter_table_action(A) ::= ALTER(T) INDEX identifier(N) INVISIBLE(V). {
+    A = mylite_sql_parser_make_alter_table_alter_index_visibility_action(
+        state, T, N, V, MYLITE_SQL_AST_INDEX_OPTION_INVISIBLE);
+}
+alter_table_action(A) ::= ADD(T) opt_constraint_symbol(C) CHECK LPAREN expression(E) RPAREN opt_check_enforcement(N). {
+    A = mylite_sql_parser_make_alter_table_add_check_action(state, T, C, E, N);
+}
+alter_table_action(A) ::= DROP(T) check_or_constraint(K) identifier(N). {
+    A = mylite_sql_parser_make_alter_table_drop_check_or_constraint_action(state, T, K, N);
+}
+alter_table_action(A) ::= ALTER(T) check_or_constraint(K) identifier(N) check_enforcement(E). {
+    A = mylite_sql_parser_make_alter_table_alter_check_or_constraint_action(state, T, K, N, E);
+}
+alter_table_action(A) ::= ADD(T) opt_constraint_symbol(C) FOREIGN KEY opt_index_name(N) LPAREN identifier_list(I) RPAREN reference_definition(R). {
+    A = mylite_sql_parser_make_alter_table_add_foreign_key_action(state, T, C, N, I, R);
+}
+alter_table_action(A) ::= DROP(T) FOREIGN KEY(K) identifier(N). {
+    A = mylite_sql_parser_make_alter_table_drop_foreign_key_action(state, T, K, N);
+}
 alter_table_action(A) ::= ADD(T) opt_column(C) column_definition(D) opt_column_position(P). {
     A = mylite_sql_parser_make_alter_table_add_column_action(
         state,
@@ -263,6 +315,174 @@ alter_table_action(A) ::= MODIFY(T) opt_column(C) column_definition(D) opt_colum
         state,
         (struct mylite_sql_parser_alter_table_action_tokens){.action = T, .column = C},
         D, P);
+}
+
+opt_index_or_key(A) ::= . {
+    A = (struct mylite_sql_token){0};
+}
+opt_index_or_key(A) ::= INDEX(T). {
+    A = T;
+}
+opt_index_or_key(A) ::= KEY(T). {
+    A = T;
+}
+
+opt_constraint_symbol(A) ::= . {
+    A = NULL;
+}
+opt_constraint_symbol(A) ::= CONSTRAINT. {
+    A = NULL;
+}
+opt_constraint_symbol(A) ::= CONSTRAINT identifier(B). {
+    A = B;
+}
+
+index_or_key(A) ::= INDEX(T). {
+    A = (struct mylite_sql_parser_alter_table_index_spelling_token){
+        .token = T,
+        .spelling = MYLITE_SQL_AST_ALTER_TABLE_INDEX_SPELLING_INDEX,
+    };
+}
+index_or_key(A) ::= KEY(T). {
+    A = (struct mylite_sql_parser_alter_table_index_spelling_token){
+        .token = T,
+        .spelling = MYLITE_SQL_AST_ALTER_TABLE_INDEX_SPELLING_KEY,
+    };
+}
+
+fulltext_or_spatial(A) ::= FULLTEXT(T). {
+    A = (struct mylite_sql_parser_index_class_token){
+        .token = T,
+        .index_class = MYLITE_SQL_AST_INDEX_CLASS_FULLTEXT,
+    };
+}
+fulltext_or_spatial(A) ::= SPATIAL(T). {
+    A = (struct mylite_sql_parser_index_class_token){
+        .token = T,
+        .index_class = MYLITE_SQL_AST_INDEX_CLASS_SPATIAL,
+    };
+}
+
+check_or_constraint(A) ::= CHECK(T). {
+    A = (struct mylite_sql_parser_alter_table_constraint_spelling_token){
+        .token = T,
+        .spelling = MYLITE_SQL_AST_ALTER_TABLE_CONSTRAINT_SPELLING_CHECK,
+    };
+}
+check_or_constraint(A) ::= CONSTRAINT(T). {
+    A = (struct mylite_sql_parser_alter_table_constraint_spelling_token){
+        .token = T,
+        .spelling = MYLITE_SQL_AST_ALTER_TABLE_CONSTRAINT_SPELLING_CONSTRAINT,
+    };
+}
+
+opt_check_enforcement(A) ::= . {
+    A = (struct mylite_sql_parser_constraint_enforcement){
+        .enforcement = MYLITE_SQL_AST_CONSTRAINT_ENFORCEMENT_DEFAULT,
+    };
+}
+opt_check_enforcement(A) ::= check_enforcement(B). {
+    A = B;
+}
+
+check_enforcement(A) ::= ENFORCED(T). {
+    A = (struct mylite_sql_parser_constraint_enforcement){
+        .start = T,
+        .end = T,
+        .enforcement = MYLITE_SQL_AST_CONSTRAINT_ENFORCEMENT_ENFORCED,
+    };
+}
+check_enforcement(A) ::= NOT(T) ENFORCED(E). {
+    A = (struct mylite_sql_parser_constraint_enforcement){
+        .start = T,
+        .end = E,
+        .enforcement = MYLITE_SQL_AST_CONSTRAINT_ENFORCEMENT_NOT_ENFORCED,
+    };
+}
+
+identifier_list(A) ::= identifier(B). {
+    A = mylite_sql_parser_make_identifier_list(state, B);
+}
+identifier_list(A) ::= identifier_list(B) COMMA identifier(C). {
+    A = mylite_sql_parser_append_identifier(state, B, C);
+}
+
+reference_definition(A) ::= REFERENCES(T) table_name(B) LPAREN identifier_list(C) RPAREN reference_option_list(O). {
+    A = mylite_sql_parser_make_reference_definition(state, T, B, C, O);
+}
+
+reference_option_list(A) ::= . {
+    A = mylite_sql_parser_make_reference_option_list(state);
+}
+reference_option_list(A) ::= reference_option_list(B) reference_option(C). {
+    A = mylite_sql_parser_append_reference_option(state, B, C);
+}
+
+reference_option(A) ::= ON(T) DELETE reference_action(R). {
+    A = mylite_sql_parser_make_reference_action_option(
+        state, T, MYLITE_SQL_AST_REFERENCE_OPTION_ON_DELETE, R);
+}
+reference_option(A) ::= ON(T) UPDATE reference_action(R). {
+    A = mylite_sql_parser_make_reference_action_option(
+        state, T, MYLITE_SQL_AST_REFERENCE_OPTION_ON_UPDATE, R);
+}
+reference_option(A) ::= MATCH(T) reference_match_kind(M). {
+    A = mylite_sql_parser_make_reference_match_option(state, T, M);
+}
+
+reference_action(A) ::= RESTRICT(T). {
+    A = (struct mylite_sql_parser_reference_action){
+        .start = T,
+        .end = T,
+        .action = MYLITE_SQL_AST_REFERENCE_ACTION_RESTRICT,
+    };
+}
+reference_action(A) ::= CASCADE(T). {
+    A = (struct mylite_sql_parser_reference_action){
+        .start = T,
+        .end = T,
+        .action = MYLITE_SQL_AST_REFERENCE_ACTION_CASCADE,
+    };
+}
+reference_action(A) ::= SET(T) NULL(N). {
+    A = (struct mylite_sql_parser_reference_action){
+        .start = T,
+        .end = N,
+        .action = MYLITE_SQL_AST_REFERENCE_ACTION_SET_NULL,
+    };
+}
+reference_action(A) ::= NO(T) ACTION(N). {
+    A = (struct mylite_sql_parser_reference_action){
+        .start = T,
+        .end = N,
+        .action = MYLITE_SQL_AST_REFERENCE_ACTION_NO_ACTION,
+    };
+}
+reference_action(A) ::= SET(T) DEFAULT(D). {
+    A = (struct mylite_sql_parser_reference_action){
+        .start = T,
+        .end = D,
+        .action = MYLITE_SQL_AST_REFERENCE_ACTION_SET_DEFAULT,
+    };
+}
+
+reference_match_kind(A) ::= SIMPLE(T). {
+    A = (struct mylite_sql_parser_reference_match){
+        .token = T,
+        .match = MYLITE_SQL_AST_REFERENCE_MATCH_SIMPLE,
+    };
+}
+reference_match_kind(A) ::= FULL(T). {
+    A = (struct mylite_sql_parser_reference_match){
+        .token = T,
+        .match = MYLITE_SQL_AST_REFERENCE_MATCH_FULL,
+    };
+}
+reference_match_kind(A) ::= PARTIAL(T). {
+    A = (struct mylite_sql_parser_reference_match){
+        .token = T,
+        .match = MYLITE_SQL_AST_REFERENCE_MATCH_PARTIAL,
+    };
 }
 
 opt_column(A) ::= . {

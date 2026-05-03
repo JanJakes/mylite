@@ -18,6 +18,7 @@ static int test_create_table_unique_secondary_indexes(void);
 static int test_create_table_base_execution_syntax(void);
 static int test_create_drop_index_syntax(void);
 static int test_alter_table_column_operations_syntax(void);
+static int test_alter_table_key_constraint_operations_syntax(void);
 static int test_drop_table_syntax(void);
 static int test_insert_values_syntax(void);
 static int test_insert_set_syntax(void);
@@ -152,6 +153,7 @@ int main(void)
     failures += test_create_table_base_execution_syntax();
     failures += test_create_drop_index_syntax();
     failures += test_alter_table_column_operations_syntax();
+    failures += test_alter_table_key_constraint_operations_syntax();
     failures += test_drop_table_syntax();
     failures += test_insert_values_syntax();
     failures += test_insert_set_syntax();
@@ -2449,6 +2451,234 @@ static int test_alter_table_column_operations_syntax(void)
     failures += parse_sql("ALTER TABLE t ADD c VARCHAR;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
+    return failures;
+}
+
+static int test_alter_table_key_constraint_operations_syntax(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *items = NULL;
+    const struct mylite_sql_ast_node *action = NULL;
+    const struct mylite_sql_ast_node *index = NULL;
+    const struct mylite_sql_ast_node *key_parts = NULL;
+    const struct mylite_sql_ast_node *options = NULL;
+    const struct mylite_sql_ast_node *reference = NULL;
+    int failures = 0;
+
+    failures += parse_sql("ALTER TABLE t ADD PRIMARY KEY USING BTREE (id, v(8) DESC) "
+                          "COMMENT 'pk' INVISIBLE, "
+                          "ADD CONSTRAINT uq_sym UNIQUE KEY uq_name USING HASH (email ASC) "
+                          "VISIBLE, ADD INDEX idx_a (a), ADD KEY (b DESC) KEY_BLOCK_SIZE=8, "
+                          "ADD FULLTEXT INDEX ft_body (body) WITH PARSER ngram COMMENT 'ft', "
+                          "ADD SPATIAL KEY sp_g (g);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    items = child_at(statement, 1U);
+    failures += expect_child_count(items, 6U, "alter key add action count");
+
+    action = child_at(items, 0U);
+    failures += expect_alter_table_action(action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_PRIMARY_KEY,
+                                          false, "alter add primary key action");
+    index = child_at(action, 0U);
+    failures +=
+        expect_node(index, MYLITE_SQL_AST_PRIMARY_KEY_CONSTRAINT, "alter add primary key node");
+    key_parts = child_at(index, 1U);
+    failures += expect_child_count(key_parts, 2U, "alter add primary key part count");
+    failures += expect_key_part_order(child_at(key_parts, 1U), MYLITE_SQL_AST_KEY_PART_ORDER_DESC,
+                                      "alter add primary desc part");
+    options = child_at(index, 2U);
+    failures += expect_index_option(child_at(options, 0U), MYLITE_SQL_AST_INDEX_OPTION_COMMENT,
+                                    "alter add primary comment");
+    failures += expect_index_option(child_at(options, 1U), MYLITE_SQL_AST_INDEX_OPTION_INVISIBLE,
+                                    "alter add primary invisible");
+
+    action = child_at(items, 1U);
+    failures +=
+        expect_alter_table_action(action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_UNIQUE_INDEX, false,
+                                  "alter add unique action");
+    index = child_at(action, 0U);
+    failures += expect_node(index, MYLITE_SQL_AST_UNIQUE_INDEX, "alter add unique node");
+    failures += expect_span_text(child_at(index, 0U), "uq_sym", "alter add unique constraint");
+    failures += expect_span_text(child_at(index, 1U), "uq_name", "alter add unique index name");
+    failures += expect_index_algorithm(child_at(index, 2U), MYLITE_SQL_AST_INDEX_ALGORITHM_HASH,
+                                       "alter add unique index type");
+
+    action = child_at(items, 2U);
+    failures +=
+        expect_alter_table_action(action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_SECONDARY_INDEX,
+                                  false, "alter add index action");
+    failures +=
+        expect_span_text(child_at(child_at(action, 0U), 0U), "idx_a", "alter add index name");
+
+    action = child_at(items, 3U);
+    failures +=
+        expect_alter_table_action(action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_SECONDARY_INDEX,
+                                  false, "alter add key action");
+    index = child_at(action, 0U);
+    failures += expect_node(child_at(index, 0U), MYLITE_SQL_AST_KEY_PART_LIST,
+                            "alter add unnamed key parts");
+    failures +=
+        expect_key_part_order(child_at(child_at(index, 0U), 0U), MYLITE_SQL_AST_KEY_PART_ORDER_DESC,
+                              "alter add unnamed key desc");
+
+    action = child_at(items, 4U);
+    failures +=
+        expect_alter_table_action(action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_FULLTEXT_INDEX,
+                                  false, "alter add fulltext action");
+    if (action != NULL && action->index_class != MYLITE_SQL_AST_INDEX_CLASS_FULLTEXT) {
+        fprintf(stderr, "alter add fulltext index class was not recorded\n");
+        failures = 1;
+    }
+    options = child_at(child_at(action, 0U), 2U);
+    failures += expect_index_option(child_at(options, 0U), MYLITE_SQL_AST_INDEX_OPTION_WITH_PARSER,
+                                    "alter fulltext parser option");
+
+    action = child_at(items, 5U);
+    failures +=
+        expect_alter_table_action(action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_SPATIAL_INDEX,
+                                  false, "alter add spatial action");
+    if (action != NULL && action->index_class != MYLITE_SQL_AST_INDEX_CLASS_SPATIAL) {
+        fprintf(stderr, "alter add spatial index class was not recorded\n");
+        failures = 1;
+    }
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ALTER TABLE t DROP PRIMARY KEY, DROP INDEX idx, DROP KEY old_k, "
+                          "RENAME INDEX old_idx TO new_idx, RENAME KEY old_key TO new_key, "
+                          "ALTER INDEX idx INVISIBLE, ALTER INDEX idx2 VISIBLE;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    items = child_at(child_at(result.root, 0U), 1U);
+    failures += expect_child_count(items, 7U, "alter key maintenance action count");
+    failures += expect_alter_table_action(child_at(items, 0U),
+                                          MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_PRIMARY_KEY, false,
+                                          "alter drop primary action");
+    action = child_at(items, 1U);
+    failures += expect_alter_table_action(action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_INDEX,
+                                          false, "alter drop index action");
+    if (action != NULL &&
+        action->alter_table_index_spelling != MYLITE_SQL_AST_ALTER_TABLE_INDEX_SPELLING_INDEX) {
+        fprintf(stderr, "alter DROP INDEX spelling was not recorded\n");
+        failures = 1;
+    }
+    action = child_at(items, 2U);
+    if (action != NULL &&
+        action->alter_table_index_spelling != MYLITE_SQL_AST_ALTER_TABLE_INDEX_SPELLING_KEY) {
+        fprintf(stderr, "alter DROP KEY spelling was not recorded\n");
+        failures = 1;
+    }
+    failures += expect_alter_table_action(child_at(items, 3U),
+                                          MYLITE_SQL_AST_ALTER_TABLE_ACTION_RENAME_INDEX, false,
+                                          "alter rename index action");
+    failures += expect_alter_table_action(child_at(items, 4U),
+                                          MYLITE_SQL_AST_ALTER_TABLE_ACTION_RENAME_INDEX, false,
+                                          "alter rename key action");
+    action = child_at(items, 5U);
+    failures +=
+        expect_alter_table_action(action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_ALTER_INDEX_VISIBILITY,
+                                  false, "alter index invisible action");
+    if (action != NULL && action->index_option != MYLITE_SQL_AST_INDEX_OPTION_INVISIBLE) {
+        fprintf(stderr, "alter index invisible option was not recorded\n");
+        failures = 1;
+    }
+    action = child_at(items, 6U);
+    if (action != NULL && action->index_option != MYLITE_SQL_AST_INDEX_OPTION_VISIBLE) {
+        fprintf(stderr, "alter index visible option was not recorded\n");
+        failures = 1;
+    }
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ALTER TABLE child ADD CHECK (a > 0) NOT ENFORCED, "
+                          "ADD CONSTRAINT chk_a CHECK (a <> 0) ENFORCED, "
+                          "DROP CHECK chk_a, DROP CONSTRAINT chk_b, "
+                          "ALTER CHECK chk_c NOT ENFORCED, ALTER CONSTRAINT chk_d ENFORCED, "
+                          "ADD CONSTRAINT fk_pid FOREIGN KEY fk_pid_idx (pid, other_id) "
+                          "REFERENCES parent (id, other_id) MATCH SIMPLE ON DELETE CASCADE "
+                          "ON UPDATE SET NULL, DROP FOREIGN KEY fk_pid;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    items = child_at(child_at(result.root, 0U), 1U);
+    failures += expect_child_count(items, 8U, "alter constraint action count");
+    action = child_at(items, 0U);
+    failures += expect_alter_table_action(action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_CHECK,
+                                          false, "alter add check action");
+    if (action != NULL &&
+        action->constraint_enforcement != MYLITE_SQL_AST_CONSTRAINT_ENFORCEMENT_NOT_ENFORCED) {
+        fprintf(stderr, "alter add check NOT ENFORCED was not recorded\n");
+        failures = 1;
+    }
+    action = child_at(items, 1U);
+    if (action != NULL &&
+        action->constraint_enforcement != MYLITE_SQL_AST_CONSTRAINT_ENFORCEMENT_ENFORCED) {
+        fprintf(stderr, "alter add check ENFORCED was not recorded\n");
+        failures = 1;
+    }
+    failures += expect_alter_table_action(
+        child_at(items, 2U), MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_CHECK_OR_CONSTRAINT, false,
+        "alter drop check action");
+    failures += expect_alter_table_action(
+        child_at(items, 3U), MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_CHECK_OR_CONSTRAINT, false,
+        "alter drop constraint action");
+    failures += expect_alter_table_action(
+        child_at(items, 4U), MYLITE_SQL_AST_ALTER_TABLE_ACTION_ALTER_CHECK_OR_CONSTRAINT, false,
+        "alter check enforcement action");
+    failures += expect_alter_table_action(
+        child_at(items, 5U), MYLITE_SQL_AST_ALTER_TABLE_ACTION_ALTER_CHECK_OR_CONSTRAINT, false,
+        "alter constraint enforcement action");
+    action = child_at(items, 6U);
+    failures += expect_alter_table_action(action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_FOREIGN_KEY,
+                                          false, "alter add foreign key action");
+    failures += expect_span_text(child_at(action, 0U), "fk_pid", "alter foreign constraint");
+    failures += expect_span_text(child_at(action, 1U), "fk_pid_idx", "alter foreign index");
+    failures += expect_child_count(child_at(action, 2U), 2U, "alter foreign child columns");
+    reference = child_at(action, 3U);
+    failures += expect_child_count(child_at(reference, 1U), 2U, "alter foreign parent columns");
+    options = child_at(reference, 2U);
+    failures += expect_child_count(options, 3U, "alter foreign reference option count");
+    if (child_at(options, 0U) != NULL &&
+        child_at(options, 0U)->reference_match != MYLITE_SQL_AST_REFERENCE_MATCH_SIMPLE) {
+        fprintf(stderr, "alter foreign MATCH SIMPLE was not recorded\n");
+        failures = 1;
+    }
+    if (child_at(options, 1U) != NULL &&
+        child_at(options, 1U)->reference_action != MYLITE_SQL_AST_REFERENCE_ACTION_CASCADE) {
+        fprintf(stderr, "alter foreign ON DELETE CASCADE was not recorded\n");
+        failures = 1;
+    }
+    if (child_at(options, 2U) != NULL &&
+        child_at(options, 2U)->reference_action != MYLITE_SQL_AST_REFERENCE_ACTION_SET_NULL) {
+        fprintf(stderr, "alter foreign ON UPDATE SET NULL was not recorded\n");
+        failures = 1;
+    }
+    failures += expect_alter_table_action(child_at(items, 7U),
+                                          MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_FOREIGN_KEY, false,
+                                          "alter drop foreign key action");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("ALTER TABLE t ADD PRIMARY KEY ();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("ALTER TABLE t ADD INDEX idx (a,);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ALTER TABLE t RENAME INDEX old_idx new_idx;",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("ALTER TABLE t ALTER CHECK chk_a;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ALTER TABLE t ADD FOREIGN KEY fk (pid) REFERENCES parent ();",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DROP KEY idx ON t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    // NOLINTEND(readability-magic-numbers)
     return failures;
 }
 

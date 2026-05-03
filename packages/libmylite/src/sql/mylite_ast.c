@@ -355,6 +355,66 @@ void mylite_sql_ast_node_set_alter_table_column_position(
     node->alter_table_column_position = position;
 }
 
+void mylite_sql_ast_node_set_alter_table_index_spelling(
+    struct mylite_sql_ast_node *node, enum mylite_sql_ast_alter_table_index_spelling spelling)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->alter_table_index_spelling = spelling;
+}
+
+void mylite_sql_ast_node_set_alter_table_constraint_spelling(
+    struct mylite_sql_ast_node *node, enum mylite_sql_ast_alter_table_constraint_spelling spelling)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->alter_table_constraint_spelling = spelling;
+}
+
+void mylite_sql_ast_node_set_constraint_enforcement(
+    struct mylite_sql_ast_node *node, enum mylite_sql_ast_constraint_enforcement enforcement)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->constraint_enforcement = enforcement;
+}
+
+void mylite_sql_ast_node_set_reference_option(struct mylite_sql_ast_node *node,
+                                              enum mylite_sql_ast_reference_option option)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->reference_option = option;
+}
+
+void mylite_sql_ast_node_set_reference_action(struct mylite_sql_ast_node *node,
+                                              enum mylite_sql_ast_reference_action action)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->reference_action = action;
+}
+
+void mylite_sql_ast_node_set_reference_match(struct mylite_sql_ast_node *node,
+                                             enum mylite_sql_ast_reference_match match)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->reference_match = match;
+}
+
 void mylite_sql_ast_node_set_drop_table_temporary(struct mylite_sql_ast_node *node)
 {
     if (node == NULL) {
@@ -1028,6 +1088,131 @@ const char *mylite_sql_ast_alter_table_action_name(enum mylite_sql_ast_alter_tab
         return "change_column";
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION_MODIFY_COLUMN:
         return "modify_column";
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_PRIMARY_KEY:
+        return "add_primary_key";
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_PRIMARY_KEY:
+        return "drop_primary_key";
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_UNIQUE_INDEX:
+        return "add_unique_index";
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_SECONDARY_INDEX:
+        return "add_secondary_index";
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_FULLTEXT_INDEX:
+        return "add_fulltext_index";
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_SPATIAL_INDEX:
+        return "add_spatial_index";
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_INDEX:
+        return "drop_index";
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_RENAME_INDEX:
+        return "rename_index";
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_ALTER_INDEX_VISIBILITY:
+        return "alter_index_visibility";
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_CHECK:
+        return "add_check";
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_CHECK_OR_CONSTRAINT:
+        return "drop_check_or_constraint";
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_ALTER_CHECK_OR_CONSTRAINT:
+        return "alter_check_or_constraint";
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_FOREIGN_KEY:
+        return "add_foreign_key";
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_FOREIGN_KEY:
+        return "drop_foreign_key";
+    }
+
+    return "unknown";
+}
+
+const char *mylite_sql_ast_alter_table_index_spelling_name(
+    enum mylite_sql_ast_alter_table_index_spelling spelling)
+{
+    switch (spelling) {
+    case MYLITE_SQL_AST_ALTER_TABLE_INDEX_SPELLING_NONE:
+        return "none";
+    case MYLITE_SQL_AST_ALTER_TABLE_INDEX_SPELLING_INDEX:
+        return "index";
+    case MYLITE_SQL_AST_ALTER_TABLE_INDEX_SPELLING_KEY:
+        return "key";
+    }
+
+    return "unknown";
+}
+
+const char *mylite_sql_ast_alter_table_constraint_spelling_name(
+    enum mylite_sql_ast_alter_table_constraint_spelling spelling)
+{
+    switch (spelling) {
+    case MYLITE_SQL_AST_ALTER_TABLE_CONSTRAINT_SPELLING_NONE:
+        return "none";
+    case MYLITE_SQL_AST_ALTER_TABLE_CONSTRAINT_SPELLING_CHECK:
+        return "check";
+    case MYLITE_SQL_AST_ALTER_TABLE_CONSTRAINT_SPELLING_CONSTRAINT:
+        return "constraint";
+    }
+
+    return "unknown";
+}
+
+const char *
+mylite_sql_ast_constraint_enforcement_name(enum mylite_sql_ast_constraint_enforcement enforcement)
+{
+    switch (enforcement) {
+    case MYLITE_SQL_AST_CONSTRAINT_ENFORCEMENT_DEFAULT:
+        return "default";
+    case MYLITE_SQL_AST_CONSTRAINT_ENFORCEMENT_ENFORCED:
+        return "enforced";
+    case MYLITE_SQL_AST_CONSTRAINT_ENFORCEMENT_NOT_ENFORCED:
+        return "not_enforced";
+    }
+
+    return "unknown";
+}
+
+const char *mylite_sql_ast_reference_option_name(enum mylite_sql_ast_reference_option option)
+{
+    switch (option) {
+    case MYLITE_SQL_AST_REFERENCE_OPTION_NONE:
+        return "none";
+    case MYLITE_SQL_AST_REFERENCE_OPTION_ON_DELETE:
+        return "on_delete";
+    case MYLITE_SQL_AST_REFERENCE_OPTION_ON_UPDATE:
+        return "on_update";
+    case MYLITE_SQL_AST_REFERENCE_OPTION_MATCH:
+        return "match";
+    }
+
+    return "unknown";
+}
+
+const char *mylite_sql_ast_reference_action_name(enum mylite_sql_ast_reference_action action)
+{
+    switch (action) {
+    case MYLITE_SQL_AST_REFERENCE_ACTION_NONE:
+        return "none";
+    case MYLITE_SQL_AST_REFERENCE_ACTION_RESTRICT:
+        return "restrict";
+    case MYLITE_SQL_AST_REFERENCE_ACTION_CASCADE:
+        return "cascade";
+    case MYLITE_SQL_AST_REFERENCE_ACTION_SET_NULL:
+        return "set_null";
+    case MYLITE_SQL_AST_REFERENCE_ACTION_NO_ACTION:
+        return "no_action";
+    case MYLITE_SQL_AST_REFERENCE_ACTION_SET_DEFAULT:
+        return "set_default";
+    }
+
+    return "unknown";
+}
+
+const char *mylite_sql_ast_reference_match_name(enum mylite_sql_ast_reference_match match)
+{
+    switch (match) {
+    case MYLITE_SQL_AST_REFERENCE_MATCH_NONE:
+        return "none";
+    case MYLITE_SQL_AST_REFERENCE_MATCH_SIMPLE:
+        return "simple";
+    case MYLITE_SQL_AST_REFERENCE_MATCH_FULL:
+        return "full";
+    case MYLITE_SQL_AST_REFERENCE_MATCH_PARTIAL:
+        return "partial";
     }
 
     return "unknown";

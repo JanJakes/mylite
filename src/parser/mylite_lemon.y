@@ -2723,12 +2723,13 @@ change_source_option ::= IGNORE_SERVER_IDS diagnostics_equals change_ignore_serv
 change_source_option ::= PRIVILEGE_CHECKS_USER diagnostics_equals change_privilege_checks_user_value.
 change_source_option ::= REQUIRE_TABLE_PRIMARY_KEY_CHECK diagnostics_equals change_primary_key_check_value.
 change_source_option ::= RELAY_LOG_POS diagnostics_equals replication_relay_log_position_value.
-change_source_option ::= change_shared_boolean_option_name diagnostics_equals change_option_boolean_value.
+change_source_option ::= change_shared_numeric_boolean_option_name diagnostics_equals change_option_number_value.
+change_source_option ::= change_shared_strict_boolean_option_name diagnostics_equals change_option_strict_boolean_value.
 change_source_option ::= change_source_string_option_name diagnostics_equals change_option_string_value.
 change_source_option ::= SOURCE_LOG_POS diagnostics_equals replication_source_log_position_value.
 change_source_option ::= SOURCE_HEARTBEAT_PERIOD diagnostics_equals unsigned_decimal_value.
 change_source_option ::= change_source_number_option_name diagnostics_equals change_option_number_value.
-change_source_option ::= change_source_boolean_option_name diagnostics_equals change_option_boolean_value.
+change_source_option ::= change_source_numeric_boolean_option_name diagnostics_equals change_option_number_value.
 
 change_source_string_option_name ::= SOURCE_BIND.
 change_source_string_option_name ::= SOURCE_HOST.
@@ -2753,10 +2754,10 @@ change_source_number_option_name ::= SOURCE_RETRY_COUNT.
 change_source_number_option_name ::= SOURCE_DELAY.
 change_source_number_option_name ::= SOURCE_ZSTD_COMPRESSION_LEVEL.
 
-change_source_boolean_option_name ::= SOURCE_AUTO_POSITION.
-change_source_boolean_option_name ::= SOURCE_SSL.
-change_source_boolean_option_name ::= SOURCE_SSL_VERIFY_SERVER_CERT.
-change_source_boolean_option_name ::= GET_SOURCE_PUBLIC_KEY.
+change_source_numeric_boolean_option_name ::= SOURCE_AUTO_POSITION.
+change_source_numeric_boolean_option_name ::= SOURCE_SSL.
+change_source_numeric_boolean_option_name ::= SOURCE_SSL_VERIFY_SERVER_CERT.
+change_source_numeric_boolean_option_name ::= GET_SOURCE_PUBLIC_KEY.
 
 change_master_options ::= change_master_option.
 change_master_options ::= change_master_options import_comma change_master_option.
@@ -2767,12 +2768,13 @@ change_master_option ::= IGNORE_SERVER_IDS diagnostics_equals change_ignore_serv
 change_master_option ::= PRIVILEGE_CHECKS_USER diagnostics_equals change_privilege_checks_user_value.
 change_master_option ::= REQUIRE_TABLE_PRIMARY_KEY_CHECK diagnostics_equals change_primary_key_check_value.
 change_master_option ::= RELAY_LOG_POS diagnostics_equals replication_relay_log_position_value.
-change_master_option ::= change_shared_boolean_option_name diagnostics_equals change_option_boolean_value.
+change_master_option ::= change_shared_numeric_boolean_option_name diagnostics_equals change_option_number_value.
+change_master_option ::= change_shared_strict_boolean_option_name diagnostics_equals change_option_strict_boolean_value.
 change_master_option ::= change_master_string_option_name diagnostics_equals change_option_string_value.
 change_master_option ::= MASTER_LOG_POS diagnostics_equals replication_source_log_position_value.
 change_master_option ::= MASTER_HEARTBEAT_PERIOD diagnostics_equals unsigned_decimal_value.
 change_master_option ::= change_master_number_option_name diagnostics_equals change_option_number_value.
-change_master_option ::= change_master_boolean_option_name diagnostics_equals change_option_boolean_value.
+change_master_option ::= change_master_numeric_boolean_option_name diagnostics_equals change_option_number_value.
 
 change_master_string_option_name ::= MASTER_BIND.
 change_master_string_option_name ::= MASTER_HOST.
@@ -2797,24 +2799,36 @@ change_master_number_option_name ::= MASTER_RETRY_COUNT.
 change_master_number_option_name ::= MASTER_DELAY.
 change_master_number_option_name ::= MASTER_ZSTD_COMPRESSION_LEVEL.
 
-change_master_boolean_option_name ::= MASTER_AUTO_POSITION.
-change_master_boolean_option_name ::= MASTER_SSL.
-change_master_boolean_option_name ::= MASTER_SSL_VERIFY_SERVER_CERT.
-change_master_boolean_option_name ::= GET_MASTER_PUBLIC_KEY.
+change_master_numeric_boolean_option_name ::= MASTER_AUTO_POSITION.
+change_master_numeric_boolean_option_name ::= MASTER_SSL.
+change_master_numeric_boolean_option_name ::= MASTER_SSL_VERIFY_SERVER_CERT.
+change_master_numeric_boolean_option_name ::= GET_MASTER_PUBLIC_KEY.
 
 change_shared_string_option_name ::= NETWORK_NAMESPACE.
 change_shared_string_option_name ::= RELAY_LOG_FILE.
 
-change_shared_boolean_option_name ::= GTID_ONLY.
-change_shared_boolean_option_name ::= REQUIRE_ROW_FORMAT.
-change_shared_boolean_option_name ::= SOURCE_CONNECTION_AUTO_FAILOVER.
+change_shared_numeric_boolean_option_name ::= REQUIRE_ROW_FORMAT.
+
+change_shared_strict_boolean_option_name ::= GTID_ONLY.
+change_shared_strict_boolean_option_name ::= SOURCE_CONNECTION_AUTO_FAILOVER.
 
 change_option_number_value ::= unsigned_decimal_or_lower_hex_value.
 change_option_number_value ::= STRING_LITERAL(A). {
   mylite_parser_require_quoted_hex_literal(ctx, A);
 }
 
-change_option_boolean_value ::= BOOLEAN_NUMBER.
+change_option_strict_boolean_value ::= BOOLEAN_NUMBER(A). {
+  mylite_parser_require_integer_or_hex_boolean_literal(ctx, A);
+}
+change_option_strict_boolean_value ::= FACTOR_NUMBER(A). {
+  mylite_parser_require_integer_or_hex_boolean_literal(ctx, A);
+}
+change_option_strict_boolean_value ::= NUMBER_LITERAL(A). {
+  mylite_parser_require_integer_or_hex_boolean_literal(ctx, A);
+}
+change_option_strict_boolean_value ::= STRING_LITERAL(A). {
+  mylite_parser_require_integer_or_hex_boolean_literal(ctx, A);
+}
 
 change_option_string_value ::= text_string_literal.
 change_option_string_value ::= NULL.

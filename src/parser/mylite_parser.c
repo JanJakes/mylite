@@ -349,6 +349,7 @@ static int create_table_tail_option_storage_token(int token_id,
 static int token_is_unsigned_decimal_literal(MyliteToken token);
 static int token_is_table_option_boolean_number_literal(MyliteToken token);
 static int token_is_table_option_default_boolean_literal(MyliteToken token);
+static int token_is_integer_or_hex_boolean_literal(MyliteToken token);
 static int token_is_table_option_stats_sample_pages_literal(MyliteToken token);
 static int token_is_unsigned_size_literal(MyliteToken token);
 static int token_is_plain_unsigned_integer(MyliteToken token,
@@ -11421,6 +11422,15 @@ void mylite_parser_require_table_option_default_boolean_literal(
   mylite_parser_reject(ctx, token, "invalid boolean option literal");
 }
 
+void mylite_parser_require_integer_or_hex_boolean_literal(
+    MyliteParseContext *ctx, MyliteToken token) {
+  if (token_is_integer_or_hex_boolean_literal(token)) {
+    return;
+  }
+
+  mylite_parser_reject(ctx, token, "invalid boolean option literal");
+}
+
 void mylite_parser_require_table_option_stats_sample_pages_literal(
     MyliteParseContext *ctx, MyliteToken token) {
   if (token_is_table_option_stats_sample_pages_literal(token)) {
@@ -13328,6 +13338,18 @@ static int token_is_table_option_default_boolean_literal(MyliteToken token) {
   }
 
   return value <= 1;
+}
+
+static int token_is_integer_or_hex_boolean_literal(MyliteToken token) {
+  unsigned long value;
+
+  if (token_is_plain_unsigned_integer(token, &value) ||
+      token_lower_hex_literal_value(token, &value) ||
+      token_quoted_hex_literal_value(token, &value)) {
+    return value <= 1;
+  }
+
+  return 0;
 }
 
 static int token_is_table_option_stats_sample_pages_literal(

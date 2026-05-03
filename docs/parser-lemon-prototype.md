@@ -433,9 +433,11 @@ token sink:
 - `CHANGE REPLICATION FILTER` recognizes the MySQL 8.4 replication filter names,
   parenthesized rule lists, rewrite-db pairs, and optional channel clauses.
 - `CHANGE REPLICATION SOURCE TO` recognizes documented MySQL 8.4 source option
-  names, typed numeric/boolean option values, including decimal-only heartbeat
+  names, typed numeric and boolean-like option values, including decimal-only heartbeat
   periods and decimal/lowercase-hex/quoted-hex retry, delay, port,
-  compression-level, and `IGNORE_SERVER_IDS` values, string-or-`NULL` values,
+  compression-level, source SSL/public-key/auto-position, `REQUIRE_ROW_FORMAT`,
+  and `IGNORE_SERVER_IDS` values, strict integer-or-hex `GTID_ONLY` and
+  `SOURCE_CONNECTION_AUTO_FAILOVER` booleans, string-or-`NULL` values,
   privilege-check users, fixed primary-key-check enums, GTID assignment values,
   unsigned decimal source log positions, MySQL's unsigned decimal plus
   lowercase-hex relay log-position forms, and optional channel clauses,

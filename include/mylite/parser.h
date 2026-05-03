@@ -83,6 +83,7 @@ typedef struct MyliteAstReplaceStatement MyliteAstReplaceStatement;
 typedef struct MyliteAstReplaceValue MyliteAstReplaceValue;
 typedef struct MyliteAstRenameTable MyliteAstRenameTable;
 typedef struct MyliteAstSelectProjection MyliteAstSelectProjection;
+typedef struct MyliteAstSelectQueryBlock MyliteAstSelectQueryBlock;
 typedef struct MyliteAstSelectStatement MyliteAstSelectStatement;
 typedef struct MyliteAstShowStatement MyliteAstShowStatement;
 typedef struct MyliteAstSetAssignment MyliteAstSetAssignment;
@@ -122,7 +123,8 @@ typedef enum MyliteSemanticNodeKind {
   MYLITE_SEMANTIC_NODE_QUERY = 10,
   MYLITE_SEMANTIC_NODE_TABLE_REFERENCE = 11,
   MYLITE_SEMANTIC_NODE_SOURCE = 12,
-  MYLITE_SEMANTIC_NODE_ROW = 13
+  MYLITE_SEMANTIC_NODE_ROW = 13,
+  MYLITE_SEMANTIC_NODE_QUERY_BLOCK = 14
 } MyliteSemanticNodeKind;
 
 typedef enum MyliteSemanticSourceKind {
@@ -1186,6 +1188,8 @@ MyliteStatementTargetRole mylite_semantic_ast_node_target_role(
     const MyliteSemanticAstNode *node);
 size_t mylite_semantic_ast_node_query_block_count(
     const MyliteSemanticAstNode *node);
+size_t mylite_semantic_ast_node_query_block_index(
+    const MyliteSemanticAstNode *node);
 int mylite_semantic_ast_node_query_has_with_clause(
     const MyliteSemanticAstNode *node);
 int mylite_semantic_ast_node_query_has_set_operation(
@@ -1795,6 +1799,9 @@ int mylite_ast_select_statement_view_has_set_operation(
     const MyliteAstSelectStatement *select_statement);
 size_t mylite_ast_select_statement_view_query_block_count(
     const MyliteAstSelectStatement *select_statement);
+const MyliteAstSelectQueryBlock *
+mylite_ast_select_statement_view_query_block_at(
+    const MyliteAstSelectStatement *select_statement, size_t query_block_index);
 size_t mylite_ast_select_statement_view_projection_count(
     const MyliteAstSelectStatement *select_statement);
 const MyliteAstSelectProjection *
@@ -1836,6 +1843,52 @@ size_t mylite_ast_select_statement_view_lock_start(
     const MyliteAstSelectStatement *select_statement);
 size_t mylite_ast_select_statement_view_lock_end(
     const MyliteAstSelectStatement *select_statement);
+const MyliteAstNode *mylite_ast_select_query_block_view_node(
+    const MyliteAstSelectQueryBlock *query_block);
+size_t mylite_ast_select_query_block_view_start(
+    const MyliteAstSelectQueryBlock *query_block);
+size_t mylite_ast_select_query_block_view_end(
+    const MyliteAstSelectQueryBlock *query_block);
+size_t mylite_ast_select_query_block_view_projection_index(
+    const MyliteAstSelectQueryBlock *query_block);
+size_t mylite_ast_select_query_block_view_projection_count(
+    const MyliteAstSelectQueryBlock *query_block);
+size_t mylite_ast_select_query_block_view_from_start(
+    const MyliteAstSelectQueryBlock *query_block);
+size_t mylite_ast_select_query_block_view_from_end(
+    const MyliteAstSelectQueryBlock *query_block);
+size_t mylite_ast_select_query_block_view_where_start(
+    const MyliteAstSelectQueryBlock *query_block);
+size_t mylite_ast_select_query_block_view_where_end(
+    const MyliteAstSelectQueryBlock *query_block);
+const MyliteAstExpression *mylite_ast_select_query_block_view_where_expression(
+    const MyliteAstSelectQueryBlock *query_block);
+size_t mylite_ast_select_query_block_view_group_by_start(
+    const MyliteAstSelectQueryBlock *query_block);
+size_t mylite_ast_select_query_block_view_group_by_end(
+    const MyliteAstSelectQueryBlock *query_block);
+size_t mylite_ast_select_query_block_view_having_start(
+    const MyliteAstSelectQueryBlock *query_block);
+size_t mylite_ast_select_query_block_view_having_end(
+    const MyliteAstSelectQueryBlock *query_block);
+const MyliteAstExpression *mylite_ast_select_query_block_view_having_expression(
+    const MyliteAstSelectQueryBlock *query_block);
+size_t mylite_ast_select_query_block_view_order_by_start(
+    const MyliteAstSelectQueryBlock *query_block);
+size_t mylite_ast_select_query_block_view_order_by_end(
+    const MyliteAstSelectQueryBlock *query_block);
+size_t mylite_ast_select_query_block_view_limit_start(
+    const MyliteAstSelectQueryBlock *query_block);
+size_t mylite_ast_select_query_block_view_limit_end(
+    const MyliteAstSelectQueryBlock *query_block);
+size_t mylite_ast_select_query_block_view_into_start(
+    const MyliteAstSelectQueryBlock *query_block);
+size_t mylite_ast_select_query_block_view_into_end(
+    const MyliteAstSelectQueryBlock *query_block);
+size_t mylite_ast_select_query_block_view_lock_start(
+    const MyliteAstSelectQueryBlock *query_block);
+size_t mylite_ast_select_query_block_view_lock_end(
+    const MyliteAstSelectQueryBlock *query_block);
 const MyliteAstNode *mylite_ast_select_projection_view_node(
     const MyliteAstSelectProjection *projection);
 MyliteSelectProjectionKind mylite_ast_select_projection_view_kind(

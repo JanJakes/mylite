@@ -60,6 +60,8 @@ def main() -> int:
         "statement_kind=select",
         "semantic kind=query",
         "query_blocks=1",
+        "semantic kind=query_block",
+        "query_block_index=0",
         "semantic kind=table_reference",
         "semantic kind=clause",
         "clause_kind=from",

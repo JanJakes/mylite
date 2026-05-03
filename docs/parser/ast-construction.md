@@ -67,9 +67,10 @@ expression nodes.
   decoded identifier, target, key-part, key-option, table-option, and
   database-option infrastructure.
 - `SELECT` statements expose parser-level query views with CTE/set-operation
-  markers, query-block counts, projection descriptors, common clause spans, and
-  recursive expression views for projection, `WHERE`, and `HAVING`
-  expressions.
+  markers, query-block handles, projection descriptors, common clause spans,
+  and recursive expression views for projection, `WHERE`, and `HAVING`
+  expressions. Query-block handles preserve block spans, projection ranges, and
+  block-local clause anchors.
 - Standalone `VALUES` query forms expose parser-level row/value descriptors,
   `DEFAULT` markers, recursive value expression views, and `ORDER BY` /
   `LIMIT` anchors.
@@ -227,9 +228,13 @@ expression nodes.
   algorithm, SQL security, check-option kind, optional definer span, explicit
   column handles, and a CST anchor/span for the view query
 - typed `SELECT` descriptors with CTE and set-operation markers, query-block
-  counts, projection handles, `FROM`, `WHERE`, `GROUP BY`, `HAVING`, `ORDER
+  handles, projection handles, `FROM`, `WHERE`, `GROUP BY`, `HAVING`, `ORDER
   BY`, `LIMIT`, `INTO`, and locking clause spans, plus expression-view handles
   for projection, `WHERE`, and `HAVING` expressions
+- typed `SELECT` query-block descriptors with block spans, projection ranges,
+  block-local `FROM`, `WHERE`, `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`,
+  `INTO`, and locking clause spans, plus block-local `WHERE` and `HAVING`
+  expression handles
 - typed `SELECT` projection descriptors with expression/wildcard/table-wildcard
   kind, source spans, expression spans, decoded aliases, table-wildcard
   qualifier spans, and recursive expression views where present
@@ -367,20 +372,22 @@ descriptor layers suitable for measuring cost and for guiding typed-node work.
 
 `mylite_parse_sql_semantic_ast()` now returns the first separate semantic graph
 as an opaque `MyliteSemanticAst`. This graph materializes program -> statement
--> query/source/row/target/descriptor/clause/data-type/data-type-element/
-data-type-attribute/expression nodes, copies decoded target, descriptor, clause
-expression, data-type names, data-type element/attribute values, and expression
-values into its own arena, and frees the parser CST. Callers can inspect
-semantic node kind, statement kind, query block count/`WITH`/set-operation
-markers, source kind, row index, target kind/role, descriptor kind, clause kind,
-data-type family/kind/storage/flags/numeric parameters, data-type attribute
-kind, expression kind/literal/operator, spans, copied values, children, node
-count, statement count, and allocated bytes. `SELECT` statements now own one
-semantic query node; the query node owns projection descriptors plus `FROM`,
-`WHERE`, `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`, `INTO`, and locking clause
-nodes. Standalone `VALUES` query forms also own one semantic query node; it owns
-row nodes followed by `ORDER BY`, `LIMIT`, `INTO`, and locking clause nodes.
-Each row node preserves the row index and owns the row's value descriptors.
+-> query/query-block/source/row/target/descriptor/clause/data-type/
+data-type-element/data-type-attribute/expression nodes, copies decoded target,
+descriptor, clause expression, data-type names, data-type element/attribute
+values, and expression values into its own arena, and frees the parser CST.
+Callers can inspect semantic node kind, statement kind, query block count,
+`WITH`/set-operation markers, query-block index, source kind, row index, target
+kind/role, descriptor kind, clause kind, data-type
+family/kind/storage/flags/numeric parameters, data-type attribute kind,
+expression kind/literal/operator, spans, copied values, children, node count,
+statement count, and allocated bytes. `SELECT` statements now own one semantic
+query node; the query node owns query-block nodes. Each query-block node owns
+its projection descriptors plus `FROM`, `WHERE`, `GROUP BY`, `HAVING`,
+`ORDER BY`, `LIMIT`, `INTO`, and locking clause nodes for that block.
+Standalone `VALUES` query forms also own one semantic query node; it owns row
+nodes followed by `ORDER BY`, `LIMIT`, `INTO`, and locking clause nodes. Each
+row node preserves the row index and owns the row's value descriptors.
 `FROM` clauses and DML table-reference clauses own a table-reference span node
 for the parser-level table reference anchor. `INSERT` and `REPLACE` statements
 now own one semantic source node with `VALUES`, `SET`, or `SELECT` source kind;
@@ -782,10 +789,10 @@ semantic graph, frees the parser AST, and then counts the semantic graph.
 Latest semantic-AST construction run on May 3, 2026:
 
 ```text
-mode=syntax queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=2.619198 qps=531010 mbps=40.38 avg_us=1.883
-mode=ast-only queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=6.769124 qps=205465 mbps=15.63 avg_us=4.867 avg_nodes=74.5 avg_ast_bytes=11091.3 avg_statements=1.00
-mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=6.974531 qps=199414 mbps=15.17 avg_us=5.015 avg_nodes=74.5 avg_ast_bytes=11091.3
-mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.430184 qps=187185 mbps=14.24 avg_us=5.342 avg_semantic_nodes=9.8 avg_semantic_bytes=4637.8 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_queries=0.25 avg_semantic_table_references=0.18 avg_semantic_sources=0.19 avg_semantic_rows=0.58 avg_semantic_descriptors=2.57 avg_semantic_clauses=0.35 avg_semantic_structural_clauses=0.06 avg_semantic_data_types=0.31 avg_semantic_data_type_numeric_parameters=0.12 avg_semantic_data_type_elements=0.05 avg_semantic_data_type_attributes=0.03 avg_semantic_expressions=2.68 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.04 avg_semantic_descriptor_expressions=1.81 avg_semantic_clause_expressions=0.11 avg_semantic_statement_expressions=0.00
+mode=syntax queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=2.682638 qps=518452 mbps=39.43 avg_us=1.929
+mode=ast-only queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=9.251686 qps=150332 mbps=11.43 avg_us=6.652 avg_nodes=74.5 avg_ast_bytes=11213.9 avg_statements=1.00
+mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=9.632182 qps=144393 mbps=10.98 avg_us=6.926 avg_nodes=74.5 avg_ast_bytes=11213.9
+mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=9.929257 qps=140073 mbps=10.65 avg_us=7.139 avg_semantic_nodes=10.1 avg_semantic_bytes=4689.8 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_queries=0.25 avg_semantic_query_blocks=0.28 avg_semantic_table_references=0.20 avg_semantic_sources=0.19 avg_semantic_rows=0.58 avg_semantic_descriptors=2.58 avg_semantic_clauses=0.37 avg_semantic_structural_clauses=0.06 avg_semantic_data_types=0.31 avg_semantic_data_type_numeric_parameters=0.12 avg_semantic_data_type_elements=0.05 avg_semantic_data_type_attributes=0.03 avg_semantic_expressions=2.69 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.04 avg_semantic_descriptor_expressions=1.81 avg_semantic_clause_expressions=0.11 avg_semantic_statement_expressions=0.00
 ```
 
 Latest EXPLAIN/DESCRIBE parser-view run on May 3, 2026:
@@ -985,8 +992,8 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,876 lines, 5,639,543 bytes
 generated parser object: 997K on disk, 905,630 bytes text/data/other
-parser support object: 408K on disk, 235,023 bytes text/data/other
-semantic AST object: 68K on disk, 31,551 bytes text/data/other
+parser support object: 413K on disk, 237,844 bytes text/data/other
+semantic AST object: 69K on disk, 32,535 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.6M on disk
 mylite-parse: 1.3M on disk
@@ -1008,9 +1015,12 @@ mylite-parser-bench: 1.3M on disk
   clauses, and final metadata operations.
 - Add typed AST nodes for the next analyzer statement families underneath the
   statement classification and indexed target descriptor layer.
-- Split the parser-level `SELECT` view beyond the current semantic query
-  container into semantic query-expression, per-query-block, detailed
-  table-reference, and projection objects with scoped name resolution.
+- Extend the current `SELECT` query-block structure into semantic
+  query-expression, set-operation, CTE, detailed table-reference, and scoped
+  name-resolution objects.
+- Tighten and optimize query-block projection range construction for unusual
+  nested SELECT forms, replacing repeated bounded subtree scans with a single
+  block-local collection pass.
 - Extend executable-statement parser views into the next high-value DML and
   utility statements, reusing the expression-view infrastructure where
   statement payloads carry targets, assignments, predicates, ordering, and

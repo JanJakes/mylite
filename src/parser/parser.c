@@ -735,6 +735,34 @@ struct MyliteAstSelectProjection {
   size_t qualifier_value_length;
 };
 
+struct MyliteAstSelectQueryBlock {
+  const MyliteAstNode *node;
+  const MyliteAstNode *where_expression_node;
+  const MyliteAstNode *having_expression_node;
+  MyliteAstExpression where_expression;
+  MyliteAstExpression having_expression;
+  size_t projection_index;
+  size_t projection_count;
+  size_t start;
+  size_t end;
+  size_t from_start;
+  size_t from_end;
+  size_t where_start;
+  size_t where_end;
+  size_t group_by_start;
+  size_t group_by_end;
+  size_t having_start;
+  size_t having_end;
+  size_t order_by_start;
+  size_t order_by_end;
+  size_t limit_start;
+  size_t limit_end;
+  size_t into_start;
+  size_t into_end;
+  size_t lock_start;
+  size_t lock_end;
+};
+
 struct MyliteAstSelectStatement {
   const MyliteAstNode *node;
   const MyliteAstNode *with_node;
@@ -743,6 +771,7 @@ struct MyliteAstSelectStatement {
   MyliteAstExpression where_expression;
   MyliteAstExpression having_expression;
   MyliteAstSelectProjection *projections;
+  MyliteAstSelectQueryBlock *query_blocks;
   size_t projection_count;
   size_t query_block_count;
   size_t start;
@@ -1761,7 +1790,24 @@ static int mylite_ast_set_select_clause_expression_views(
 static int mylite_ast_set_select_projections(
     MyliteAst *ast, MyliteAstSelectStatement *select_statement,
     const MyliteAstNode *payload);
+static int mylite_ast_set_select_query_blocks(
+    MyliteAst *ast, MyliteAstSelectStatement *select_statement,
+    const MyliteAstNode *payload);
 static size_t mylite_ast_count_select_query_blocks(const MyliteAstNode *node);
+static void mylite_ast_fill_select_query_blocks(
+    MyliteAst *ast, MyliteAstSelectQueryBlock *query_blocks,
+    const MyliteAstNode *node, size_t *query_block_index,
+    size_t *projection_index, int *ok);
+static int mylite_ast_fill_select_query_block(
+    MyliteAst *ast, MyliteAstSelectQueryBlock *query_block,
+    const MyliteAstNode *node, size_t *projection_index);
+static void mylite_ast_set_select_query_block_clause_spans(
+    MyliteAstSelectQueryBlock *query_block, const MyliteAstNode *node);
+static int mylite_ast_set_select_query_block_clause_expression_views(
+    MyliteAst *ast, MyliteAstSelectQueryBlock *query_block);
+static size_t
+mylite_ast_count_select_query_block_projections(const MyliteAstNode *node,
+                                                int is_root);
 static size_t mylite_ast_count_select_projections(const MyliteAstNode *node);
 static void mylite_ast_fill_select_projections(
     MyliteAst *ast, MyliteAstSelectProjection *projections,
@@ -1777,6 +1823,10 @@ static int mylite_ast_set_select_projection_alias(
 static int mylite_ast_set_select_projection_qualifier(
     MyliteAst *ast, MyliteAstSelectProjection *projection,
     const MyliteAstNode *node);
+static const MyliteAstNode *
+mylite_ast_find_first_spanned_symbol_in_select_query_block(
+    const MyliteAstNode *node, const char *symbol_name, int is_root);
+static int mylite_ast_is_select_query_block(const MyliteAstNode *node);
 static int mylite_ast_set_values_statement_view(MyliteAst *ast,
                                                 MyliteAstStatement *statement,
                                                 const MyliteAstNode *payload);
@@ -6115,6 +6165,16 @@ size_t mylite_ast_select_statement_view_query_block_count(
   return select_statement == NULL ? 0 : select_statement->query_block_count;
 }
 
+const MyliteAstSelectQueryBlock *
+mylite_ast_select_statement_view_query_block_at(
+    const MyliteAstSelectStatement *select_statement, size_t query_block_index) {
+  if (select_statement == NULL ||
+      query_block_index >= select_statement->query_block_count) {
+    return NULL;
+  }
+  return &select_statement->query_blocks[query_block_index];
+}
+
 size_t mylite_ast_select_statement_view_projection_count(
     const MyliteAstSelectStatement *select_statement) {
   return select_statement == NULL ? 0 : select_statement->projection_count;
@@ -6224,6 +6284,125 @@ size_t mylite_ast_select_statement_view_lock_start(
 size_t mylite_ast_select_statement_view_lock_end(
     const MyliteAstSelectStatement *select_statement) {
   return select_statement == NULL ? 0 : select_statement->lock_end;
+}
+
+const MyliteAstNode *mylite_ast_select_query_block_view_node(
+    const MyliteAstSelectQueryBlock *query_block) {
+  return query_block == NULL ? NULL : query_block->node;
+}
+
+size_t mylite_ast_select_query_block_view_start(
+    const MyliteAstSelectQueryBlock *query_block) {
+  return query_block == NULL ? 0 : query_block->start;
+}
+
+size_t mylite_ast_select_query_block_view_end(
+    const MyliteAstSelectQueryBlock *query_block) {
+  return query_block == NULL ? 0 : query_block->end;
+}
+
+size_t mylite_ast_select_query_block_view_projection_index(
+    const MyliteAstSelectQueryBlock *query_block) {
+  return query_block == NULL ? 0 : query_block->projection_index;
+}
+
+size_t mylite_ast_select_query_block_view_projection_count(
+    const MyliteAstSelectQueryBlock *query_block) {
+  return query_block == NULL ? 0 : query_block->projection_count;
+}
+
+size_t mylite_ast_select_query_block_view_from_start(
+    const MyliteAstSelectQueryBlock *query_block) {
+  return query_block == NULL ? 0 : query_block->from_start;
+}
+
+size_t mylite_ast_select_query_block_view_from_end(
+    const MyliteAstSelectQueryBlock *query_block) {
+  return query_block == NULL ? 0 : query_block->from_end;
+}
+
+size_t mylite_ast_select_query_block_view_where_start(
+    const MyliteAstSelectQueryBlock *query_block) {
+  return query_block == NULL ? 0 : query_block->where_start;
+}
+
+size_t mylite_ast_select_query_block_view_where_end(
+    const MyliteAstSelectQueryBlock *query_block) {
+  return query_block == NULL ? 0 : query_block->where_end;
+}
+
+const MyliteAstExpression *mylite_ast_select_query_block_view_where_expression(
+    const MyliteAstSelectQueryBlock *query_block) {
+  return query_block == NULL || query_block->where_expression_node == NULL
+             ? NULL
+             : &query_block->where_expression;
+}
+
+size_t mylite_ast_select_query_block_view_group_by_start(
+    const MyliteAstSelectQueryBlock *query_block) {
+  return query_block == NULL ? 0 : query_block->group_by_start;
+}
+
+size_t mylite_ast_select_query_block_view_group_by_end(
+    const MyliteAstSelectQueryBlock *query_block) {
+  return query_block == NULL ? 0 : query_block->group_by_end;
+}
+
+size_t mylite_ast_select_query_block_view_having_start(
+    const MyliteAstSelectQueryBlock *query_block) {
+  return query_block == NULL ? 0 : query_block->having_start;
+}
+
+size_t mylite_ast_select_query_block_view_having_end(
+    const MyliteAstSelectQueryBlock *query_block) {
+  return query_block == NULL ? 0 : query_block->having_end;
+}
+
+const MyliteAstExpression *mylite_ast_select_query_block_view_having_expression(
+    const MyliteAstSelectQueryBlock *query_block) {
+  return query_block == NULL || query_block->having_expression_node == NULL
+             ? NULL
+             : &query_block->having_expression;
+}
+
+size_t mylite_ast_select_query_block_view_order_by_start(
+    const MyliteAstSelectQueryBlock *query_block) {
+  return query_block == NULL ? 0 : query_block->order_by_start;
+}
+
+size_t mylite_ast_select_query_block_view_order_by_end(
+    const MyliteAstSelectQueryBlock *query_block) {
+  return query_block == NULL ? 0 : query_block->order_by_end;
+}
+
+size_t mylite_ast_select_query_block_view_limit_start(
+    const MyliteAstSelectQueryBlock *query_block) {
+  return query_block == NULL ? 0 : query_block->limit_start;
+}
+
+size_t mylite_ast_select_query_block_view_limit_end(
+    const MyliteAstSelectQueryBlock *query_block) {
+  return query_block == NULL ? 0 : query_block->limit_end;
+}
+
+size_t mylite_ast_select_query_block_view_into_start(
+    const MyliteAstSelectQueryBlock *query_block) {
+  return query_block == NULL ? 0 : query_block->into_start;
+}
+
+size_t mylite_ast_select_query_block_view_into_end(
+    const MyliteAstSelectQueryBlock *query_block) {
+  return query_block == NULL ? 0 : query_block->into_end;
+}
+
+size_t mylite_ast_select_query_block_view_lock_start(
+    const MyliteAstSelectQueryBlock *query_block) {
+  return query_block == NULL ? 0 : query_block->lock_start;
+}
+
+size_t mylite_ast_select_query_block_view_lock_end(
+    const MyliteAstSelectQueryBlock *query_block) {
+  return query_block == NULL ? 0 : query_block->lock_end;
 }
 
 const MyliteAstNode *mylite_ast_select_projection_view_node(
@@ -15229,6 +15408,7 @@ static int mylite_ast_set_select_statement_view(MyliteAst *ast,
       mylite_ast_count_select_query_blocks(payload);
   mylite_ast_set_select_clause_spans(select_statement, payload);
   if (!mylite_ast_set_select_projections(ast, select_statement, payload) ||
+      !mylite_ast_set_select_query_blocks(ast, select_statement, payload) ||
       !mylite_ast_set_select_clause_expression_views(ast, select_statement)) {
     return 0;
   }
@@ -15341,16 +15521,190 @@ static int mylite_ast_set_select_projections(
   return ok && index == select_statement->projection_count;
 }
 
+static int mylite_ast_set_select_query_blocks(
+    MyliteAst *ast, MyliteAstSelectStatement *select_statement,
+    const MyliteAstNode *payload) {
+  if (ast == NULL || select_statement == NULL || payload == NULL ||
+      select_statement->query_block_count == 0) {
+    return 1;
+  }
+  select_statement->query_blocks =
+      mylite_ast_alloc(ast, select_statement->query_block_count *
+                                sizeof(*select_statement->query_blocks));
+  if (select_statement->query_blocks == NULL) {
+    return 0;
+  }
+
+  size_t query_block_index = 0;
+  size_t projection_index = 0;
+  int ok = 1;
+  mylite_ast_fill_select_query_blocks(
+      ast, select_statement->query_blocks, payload, &query_block_index,
+      &projection_index, &ok);
+  return ok && query_block_index == select_statement->query_block_count &&
+         projection_index <= select_statement->projection_count;
+}
+
 static size_t mylite_ast_count_select_query_blocks(const MyliteAstNode *node) {
   if (node == NULL) {
     return 0;
   }
-  if (mylite_ast_expression_is_symbol(node, "nt_select_stmt_basic")) {
+  size_t count = mylite_ast_is_select_query_block(node) ? 1 : 0;
+  for (size_t i = 0; i < node->child_count; i++) {
+    count += mylite_ast_count_select_query_blocks(node->children[i]);
+  }
+  return count;
+}
+
+static void mylite_ast_fill_select_query_blocks(
+    MyliteAst *ast, MyliteAstSelectQueryBlock *query_blocks,
+    const MyliteAstNode *node, size_t *query_block_index,
+    size_t *projection_index, int *ok) {
+  if (node == NULL || ok == NULL || !*ok) {
+    return;
+  }
+  if (mylite_ast_is_select_query_block(node)) {
+    if (query_block_index == NULL ||
+        !mylite_ast_fill_select_query_block(
+            ast, &query_blocks[*query_block_index], node, projection_index)) {
+      *ok = 0;
+      return;
+    }
+    (*query_block_index)++;
+  }
+  for (size_t i = 0; i < node->child_count; i++) {
+    mylite_ast_fill_select_query_blocks(ast, query_blocks, node->children[i],
+                                        query_block_index, projection_index,
+                                        ok);
+  }
+}
+
+static int mylite_ast_fill_select_query_block(
+    MyliteAst *ast, MyliteAstSelectQueryBlock *query_block,
+    const MyliteAstNode *node, size_t *projection_index) {
+  if (ast == NULL || query_block == NULL || node == NULL ||
+      projection_index == NULL) {
+    return 1;
+  }
+  query_block->node = node;
+  query_block->start = mylite_ast_node_start(node);
+  query_block->end = mylite_ast_node_end(node);
+  query_block->projection_index = *projection_index;
+  query_block->projection_count =
+      mylite_ast_count_select_query_block_projections(node, 1);
+  *projection_index += query_block->projection_count;
+  mylite_ast_set_select_query_block_clause_spans(query_block, node);
+  return mylite_ast_set_select_query_block_clause_expression_views(ast,
+                                                                   query_block);
+}
+
+static void mylite_ast_set_select_query_block_clause_spans(
+    MyliteAstSelectQueryBlock *query_block, const MyliteAstNode *node) {
+  if (query_block == NULL || node == NULL) {
+    return;
+  }
+
+  const MyliteAstNode *clause =
+      mylite_ast_find_first_spanned_symbol_in_select_query_block(
+          node, "nt_table_refs_clause", 1);
+  if (clause != NULL) {
+    query_block->from_start = mylite_ast_node_start(clause);
+    query_block->from_end = mylite_ast_node_end(clause);
+  }
+
+  clause = mylite_ast_find_first_spanned_symbol_in_select_query_block(
+      node, "nt_where_clause", 1);
+  if (clause != NULL) {
+    query_block->where_start = mylite_ast_node_start(clause);
+    query_block->where_end = mylite_ast_node_end(clause);
+    query_block->where_expression_node =
+        mylite_ast_find_first_spanned_symbol(clause, "nt_expression");
+  }
+
+  clause = mylite_ast_find_first_spanned_symbol_in_select_query_block(
+      node, "nt_group_by_clause", 1);
+  if (clause != NULL) {
+    query_block->group_by_start = mylite_ast_node_start(clause);
+    query_block->group_by_end = mylite_ast_node_end(clause);
+  }
+
+  clause = mylite_ast_find_first_spanned_symbol_in_select_query_block(
+      node, "nt_having_clause", 1);
+  if (clause != NULL) {
+    query_block->having_start = mylite_ast_node_start(clause);
+    query_block->having_end = mylite_ast_node_end(clause);
+    query_block->having_expression_node =
+        mylite_ast_find_first_spanned_symbol(clause, "nt_expression");
+  }
+
+  clause = mylite_ast_find_first_spanned_symbol_in_select_query_block(
+      node, "nt_order_by", 1);
+  if (clause != NULL) {
+    query_block->order_by_start = mylite_ast_node_start(clause);
+    query_block->order_by_end = mylite_ast_node_end(clause);
+  }
+
+  clause = mylite_ast_find_first_spanned_symbol_in_select_query_block(
+      node, "nt_select_stmt_limit", 1);
+  if (clause != NULL) {
+    query_block->limit_start = mylite_ast_node_start(clause);
+    query_block->limit_end = mylite_ast_node_end(clause);
+  }
+
+  clause = mylite_ast_find_first_spanned_symbol_in_select_query_block(
+      node, "nt_select_lock_opt", 1);
+  if (clause != NULL) {
+    query_block->lock_start = mylite_ast_node_start(clause);
+    query_block->lock_end = mylite_ast_node_end(clause);
+  }
+
+  clause = mylite_ast_find_first_spanned_symbol_in_select_query_block(
+      node, "nt_mysql_select_into_target_list", 1);
+  if (clause == NULL) {
+    clause = mylite_ast_find_first_spanned_symbol_in_select_query_block(
+        node, "nt_select_stmt_into_option", 1);
+  }
+  if (clause != NULL) {
+    query_block->into_start = mylite_ast_node_start(clause);
+    query_block->into_end = mylite_ast_node_end(clause);
+  }
+}
+
+static int mylite_ast_set_select_query_block_clause_expression_views(
+    MyliteAst *ast, MyliteAstSelectQueryBlock *query_block) {
+  if (ast == NULL || query_block == NULL) {
+    return 1;
+  }
+  if (query_block->where_expression_node != NULL &&
+      !mylite_ast_set_expression_summary(ast, &query_block->where_expression,
+                                         query_block->where_expression_node)) {
+    return 0;
+  }
+  if (query_block->having_expression_node != NULL &&
+      !mylite_ast_set_expression_summary(
+          ast, &query_block->having_expression,
+          query_block->having_expression_node)) {
+    return 0;
+  }
+  return 1;
+}
+
+static size_t
+mylite_ast_count_select_query_block_projections(const MyliteAstNode *node,
+                                                int is_root) {
+  if (node == NULL) {
+    return 0;
+  }
+  if (!is_root && mylite_ast_is_select_query_block(node)) {
+    return 0;
+  }
+  if (mylite_ast_expression_is_symbol(node, "nt_field")) {
     return 1;
   }
   size_t count = 0;
   for (size_t i = 0; i < node->child_count; i++) {
-    count += mylite_ast_count_select_query_blocks(node->children[i]);
+    count +=
+        mylite_ast_count_select_query_block_projections(node->children[i], 0);
   }
   return count;
 }
@@ -15359,10 +15713,7 @@ static size_t mylite_ast_count_select_projections(const MyliteAstNode *node) {
   if (node == NULL) {
     return 0;
   }
-  if (mylite_ast_expression_is_symbol(node, "nt_field")) {
-    return 1;
-  }
-  size_t count = 0;
+  size_t count = mylite_ast_expression_is_symbol(node, "nt_field") ? 1 : 0;
   for (size_t i = 0; i < node->child_count; i++) {
     count += mylite_ast_count_select_projections(node->children[i]);
   }
@@ -15384,7 +15735,6 @@ static void mylite_ast_fill_select_projections(
       return;
     }
     (*index)++;
-    return;
   }
   for (size_t i = 0; i < node->child_count; i++) {
     mylite_ast_fill_select_projections(ast, projections, node->children[i],
@@ -15488,6 +15838,48 @@ static int mylite_ast_set_select_projection_qualifier(
                                      projection->qualifier_end,
                                      &projection->qualifier_value,
                                      &projection->qualifier_value_length);
+}
+
+static const MyliteAstNode *
+mylite_ast_find_first_spanned_symbol_in_select_query_block(
+    const MyliteAstNode *node, const char *symbol_name, int is_root) {
+  if (node == NULL || symbol_name == NULL) {
+    return NULL;
+  }
+  if (!is_root && mylite_ast_is_select_query_block(node)) {
+    return NULL;
+  }
+  if (mylite_ast_expression_is_symbol(node, symbol_name) && node->has_span) {
+    return node;
+  }
+  for (size_t i = 0; i < node->child_count; i++) {
+    const MyliteAstNode *found =
+        mylite_ast_find_first_spanned_symbol_in_select_query_block(
+            node->children[i], symbol_name, 0);
+    if (found != NULL) {
+      return found;
+    }
+  }
+  return NULL;
+}
+
+static int mylite_ast_is_select_query_block(const MyliteAstNode *node) {
+  if (!mylite_ast_expression_is_symbol(node, "nt_select_stmt") ||
+      node->child_count == 0) {
+    return 0;
+  }
+  if (mylite_ast_direct_child_symbol(node, 0, "nt_select_stmt_basic") !=
+      NULL) {
+    return 1;
+  }
+  const MyliteAstNode *body =
+      mylite_ast_direct_child_symbol(node, 0, "nt_select_stmt_from_table");
+  if (body == NULL) {
+    body =
+        mylite_ast_direct_child_symbol(node, 0, "nt_select_stmt_from_dual_table");
+  }
+  return mylite_ast_direct_child_symbol(body, 0, "nt_select_stmt_basic") !=
+         NULL;
 }
 
 static const MyliteAstNode *mylite_ast_find_first_spanned_symbol(

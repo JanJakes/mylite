@@ -155,6 +155,7 @@ typedef struct ExpectedCreateTableOption {
 typedef struct SemanticCounts {
   size_t targets;
   size_t queries;
+  size_t query_blocks;
   size_t table_references;
   size_t sources;
   size_t rows;
@@ -6481,6 +6482,9 @@ static int expect_select_statement_view(void) {
 
     const MyliteAstSelectStatement *view =
         mylite_ast_select_statement_view(ast, 0);
+    const MyliteAstSelectQueryBlock *query_block0 =
+        view == NULL ? NULL
+                     : mylite_ast_select_statement_view_query_block_at(view, 0);
     const MyliteAstSelectProjection *projection0 =
         view == NULL ? NULL
                      : mylite_ast_select_statement_view_projection_at(view, 0);
@@ -6493,9 +6497,49 @@ static int expect_select_statement_view(void) {
         mylite_ast_select_statement_view_where_expression(view);
     const MyliteAstExpression *having_expression =
         mylite_ast_select_statement_view_having_expression(view);
+    const MyliteAstExpression *block_where_expression =
+        mylite_ast_select_query_block_view_where_expression(query_block0);
+    const MyliteAstExpression *block_having_expression =
+        mylite_ast_select_query_block_view_having_expression(query_block0);
     if (view == NULL ||
         mylite_ast_select_statement_view_query_block_count(view) != 1 ||
+        query_block0 == NULL ||
+        mylite_ast_select_query_block_view_projection_index(query_block0) !=
+            0 ||
+        mylite_ast_select_query_block_view_projection_count(query_block0) !=
+            2 ||
         mylite_ast_select_statement_view_projection_count(view) != 2 ||
+        !span_matches(sql, mylite_ast_select_query_block_view_start(
+                               query_block0),
+                      mylite_ast_select_query_block_view_end(query_block0),
+                      sql) ||
+        !span_matches(sql, mylite_ast_select_query_block_view_from_start(
+                               query_block0),
+                      mylite_ast_select_query_block_view_from_end(query_block0),
+                      "db1.t AS t") ||
+        !span_matches(sql, mylite_ast_select_query_block_view_where_start(
+                               query_block0),
+                      mylite_ast_select_query_block_view_where_end(query_block0),
+                      "WHERE a > 0") ||
+        !span_matches(sql, mylite_ast_select_query_block_view_group_by_start(
+                               query_block0),
+                      mylite_ast_select_query_block_view_group_by_end(
+                          query_block0),
+                      "GROUP BY t.b") ||
+        !span_matches(sql, mylite_ast_select_query_block_view_having_start(
+                               query_block0),
+                      mylite_ast_select_query_block_view_having_end(
+                          query_block0),
+                      "HAVING COUNT(*) > 1") ||
+        !span_matches(sql, mylite_ast_select_query_block_view_order_by_start(
+                               query_block0),
+                      mylite_ast_select_query_block_view_order_by_end(
+                          query_block0),
+                      "ORDER BY x DESC") ||
+        !span_matches(sql, mylite_ast_select_query_block_view_limit_start(
+                               query_block0),
+                      mylite_ast_select_query_block_view_limit_end(query_block0),
+                      "LIMIT 10") ||
         !span_matches(sql, mylite_ast_select_statement_view_from_start(view),
                       mylite_ast_select_statement_view_from_end(view),
                       "db1.t AS t") ||
@@ -6537,6 +6581,12 @@ static int expect_select_statement_view(void) {
             MYLITE_EXPRESSION_OPERATOR_GT ||
         having_expression == NULL ||
         mylite_ast_expression_view_operator_kind(having_expression) !=
+            MYLITE_EXPRESSION_OPERATOR_GT ||
+        block_where_expression == NULL ||
+        mylite_ast_expression_view_operator_kind(block_where_expression) !=
+            MYLITE_EXPRESSION_OPERATOR_GT ||
+        block_having_expression == NULL ||
+        mylite_ast_expression_view_operator_kind(block_having_expression) !=
             MYLITE_EXPRESSION_OPERATOR_GT) {
       fprintf(stderr, "SELECT statement view failed: %s\n", sql);
       failed = 1;
@@ -6561,9 +6611,41 @@ static int expect_select_statement_view(void) {
 
     const MyliteAstSelectStatement *view =
         mylite_ast_select_statement_view(ast, 0);
+    const MyliteAstSelectQueryBlock *query_block0 =
+        view == NULL ? NULL
+                     : mylite_ast_select_statement_view_query_block_at(view, 0);
+    const MyliteAstSelectQueryBlock *query_block1 =
+        view == NULL ? NULL
+                     : mylite_ast_select_statement_view_query_block_at(view, 1);
     if (view == NULL ||
         !mylite_ast_select_statement_view_has_set_operation(view) ||
         mylite_ast_select_statement_view_query_block_count(view) != 2 ||
+        query_block0 == NULL || query_block1 == NULL ||
+        mylite_ast_select_query_block_view_projection_index(query_block0) !=
+            0 ||
+        mylite_ast_select_query_block_view_projection_count(query_block0) !=
+            1 ||
+        mylite_ast_select_query_block_view_projection_index(query_block1) !=
+            1 ||
+        mylite_ast_select_query_block_view_projection_count(query_block1) !=
+            1 ||
+        !span_matches(sql, mylite_ast_select_query_block_view_start(
+                               query_block0),
+                      mylite_ast_select_query_block_view_end(query_block0),
+                      "SELECT 1 AS a") ||
+        !span_matches(sql, mylite_ast_select_query_block_view_start(
+                               query_block1),
+                      mylite_ast_select_query_block_view_end(query_block1),
+                      "SELECT 2 AS a ORDER BY a LIMIT 1") ||
+        !span_matches(sql, mylite_ast_select_query_block_view_order_by_start(
+                               query_block1),
+                      mylite_ast_select_query_block_view_order_by_end(
+                          query_block1),
+                      "ORDER BY a") ||
+        !span_matches(sql, mylite_ast_select_query_block_view_limit_start(
+                               query_block1),
+                      mylite_ast_select_query_block_view_limit_end(query_block1),
+                      "LIMIT 1") ||
         mylite_ast_select_statement_view_projection_count(view) != 2 ||
         !span_matches(sql, mylite_ast_select_statement_view_order_by_start(view),
                       mylite_ast_select_statement_view_order_by_end(view),
@@ -6594,16 +6676,53 @@ static int expect_select_statement_view(void) {
 
     const MyliteAstSelectStatement *view =
         mylite_ast_select_statement_view(ast, 0);
+    const MyliteAstSelectQueryBlock *query_block0 =
+        view == NULL ? NULL
+                     : mylite_ast_select_statement_view_query_block_at(view, 0);
+    const MyliteAstSelectQueryBlock *query_block1 =
+        view == NULL ? NULL
+                     : mylite_ast_select_statement_view_query_block_at(view, 1);
     const MyliteAstExpression *where_expression =
         mylite_ast_select_statement_view_where_expression(view);
+    const MyliteAstExpression *block_where_expression =
+        mylite_ast_select_query_block_view_where_expression(query_block1);
     if (view == NULL ||
         !mylite_ast_select_statement_view_has_with_clause(view) ||
         mylite_ast_select_statement_view_query_block_count(view) != 2 ||
+        query_block0 == NULL || query_block1 == NULL ||
+        mylite_ast_select_query_block_view_projection_index(query_block0) !=
+            0 ||
+        mylite_ast_select_query_block_view_projection_count(query_block0) !=
+            1 ||
+        mylite_ast_select_query_block_view_projection_index(query_block1) !=
+            1 ||
+        mylite_ast_select_query_block_view_projection_count(query_block1) !=
+            1 ||
+        !span_matches(sql, mylite_ast_select_query_block_view_start(
+                               query_block0),
+                      mylite_ast_select_query_block_view_end(query_block0),
+                      "SELECT 1 AS a") ||
+        !span_matches(sql, mylite_ast_select_query_block_view_start(
+                               query_block1),
+                      mylite_ast_select_query_block_view_end(query_block1),
+                      "SELECT a FROM cte WHERE a = 1") ||
+        !span_matches(sql, mylite_ast_select_query_block_view_from_start(
+                               query_block1),
+                      mylite_ast_select_query_block_view_from_end(query_block1),
+                      "cte") ||
+        !span_matches(sql, mylite_ast_select_query_block_view_where_start(
+                               query_block1),
+                      mylite_ast_select_query_block_view_where_end(
+                          query_block1),
+                      "WHERE a = 1") ||
         mylite_ast_select_statement_view_projection_count(view) != 2 ||
         !span_matches(sql, mylite_ast_select_statement_view_from_start(view),
                       mylite_ast_select_statement_view_from_end(view), "cte") ||
         where_expression == NULL ||
+        block_where_expression == NULL ||
         mylite_ast_expression_view_operator_kind(where_expression) !=
+            MYLITE_EXPRESSION_OPERATOR_EQ ||
+        mylite_ast_expression_view_operator_kind(block_where_expression) !=
             MYLITE_EXPRESSION_OPERATOR_EQ) {
       fprintf(stderr, "WITH SELECT statement view failed: %s\n", sql);
       failed = 1;
@@ -7672,33 +7791,41 @@ static int expect_semantic_ast_materialization(void) {
   statement = mylite_semantic_ast_node_child_at(root, 0);
   const MyliteSemanticAstNode *query =
       first_semantic_child_with_kind(statement, MYLITE_SEMANTIC_NODE_QUERY);
+  const MyliteSemanticAstNode *query_block =
+      first_semantic_child_with_kind(query, MYLITE_SEMANTIC_NODE_QUERY_BLOCK);
   const MyliteSemanticAstNode *query_projection =
       first_semantic_child_with_descriptor_kind(
-          query, MYLITE_SEMANTIC_DESCRIPTOR_PROJECTION);
+          query_block, MYLITE_SEMANTIC_DESCRIPTOR_PROJECTION);
   const MyliteSemanticAstNode *direct_projection =
       first_semantic_child_with_descriptor_kind(
           statement, MYLITE_SEMANTIC_DESCRIPTOR_PROJECTION);
+  const MyliteSemanticAstNode *direct_query_projection =
+      first_semantic_child_with_descriptor_kind(
+          query, MYLITE_SEMANTIC_DESCRIPTOR_PROJECTION);
   const MyliteSemanticAstNode *direct_clause =
       first_semantic_child_with_kind(statement, MYLITE_SEMANTIC_NODE_CLAUSE);
   const MyliteSemanticAstNode *from_clause =
-      first_semantic_child_with_clause_kind(query, MYLITE_SEMANTIC_CLAUSE_FROM);
+      first_semantic_child_with_clause_kind(query_block,
+                                           MYLITE_SEMANTIC_CLAUSE_FROM);
   const MyliteSemanticAstNode *table_reference =
       mylite_semantic_ast_node_child_at(from_clause, 0);
   const MyliteSemanticAstNode *where_clause =
-      first_semantic_child_with_clause_kind(query, MYLITE_SEMANTIC_CLAUSE_WHERE);
+      first_semantic_child_with_clause_kind(query_block,
+                                           MYLITE_SEMANTIC_CLAUSE_WHERE);
   const MyliteSemanticAstNode *group_by_clause =
-      first_semantic_child_with_clause_kind(query,
+      first_semantic_child_with_clause_kind(query_block,
                                            MYLITE_SEMANTIC_CLAUSE_GROUP_BY);
   const MyliteSemanticAstNode *having_clause =
-      first_semantic_child_with_clause_kind(query,
+      first_semantic_child_with_clause_kind(query_block,
                                            MYLITE_SEMANTIC_CLAUSE_HAVING);
   const MyliteSemanticAstNode *order_by_clause =
-      first_semantic_child_with_clause_kind(query,
+      first_semantic_child_with_clause_kind(query_block,
                                            MYLITE_SEMANTIC_CLAUSE_ORDER_BY);
   const MyliteSemanticAstNode *limit_clause =
-      first_semantic_child_with_clause_kind(query, MYLITE_SEMANTIC_CLAUSE_LIMIT);
+      first_semantic_child_with_clause_kind(query_block,
+                                           MYLITE_SEMANTIC_CLAUSE_LIMIT);
   const MyliteSemanticAstNode *locking_clause =
-      first_semantic_child_with_clause_kind(query,
+      first_semantic_child_with_clause_kind(query_block,
                                            MYLITE_SEMANTIC_CLAUSE_LOCKING);
   SemanticCounts query_counts = {0};
   count_semantic_nodes(root, &query_counts);
@@ -7709,11 +7836,16 @@ static int expect_semantic_ast_materialization(void) {
       mylite_semantic_ast_node_query_block_count(query) != 1 ||
       mylite_semantic_ast_node_query_has_with_clause(query) != 0 ||
       mylite_semantic_ast_node_query_has_set_operation(query) != 0 ||
+      mylite_semantic_ast_node_child_count(query) != 1 ||
+      query_block == NULL ||
+      mylite_semantic_ast_node_query_block_index(query_block) != 0 ||
+      mylite_semantic_ast_node_child_count(query_block) != 8 ||
       query_projection == NULL ||
       !value_matches_when_expected(
           mylite_semantic_ast_node_value(query_projection),
           mylite_semantic_ast_node_value_length(query_projection), "aa") ||
-      direct_projection != NULL || direct_clause != NULL ||
+      direct_projection != NULL || direct_query_projection != NULL ||
+      direct_clause != NULL ||
       from_clause == NULL ||
       mylite_semantic_ast_node_child_count(from_clause) != 1 ||
       table_reference == NULL ||
@@ -7728,17 +7860,19 @@ static int expect_semantic_ast_materialization(void) {
       mylite_semantic_ast_node_child_count(having_clause) != 1 ||
       order_by_clause == NULL || limit_clause == NULL ||
       locking_clause == NULL || query_counts.queries != 1 ||
+      query_counts.query_blocks != 1 ||
       query_counts.table_references != 1 || query_counts.descriptors != 1 ||
       query_counts.clauses != 7 || query_counts.expressions < 5 ||
       query_counts.operators < 2 || query_counts.leaf_values < 5) {
     fprintf(stderr,
             "semantic AST query shape mismatch: nodes=%zu queries=%zu "
-            "table_refs=%zu descriptors=%zu clauses=%zu expressions=%zu "
-            "operators=%zu leaf_values=%zu\n",
+            "query_blocks=%zu table_refs=%zu descriptors=%zu clauses=%zu "
+            "expressions=%zu operators=%zu leaf_values=%zu\n",
             mylite_semantic_ast_node_count(semantic_ast),
-            query_counts.queries, query_counts.table_references,
-            query_counts.descriptors, query_counts.clauses,
-            query_counts.expressions, query_counts.operators,
+            query_counts.queries, query_counts.query_blocks,
+            query_counts.table_references, query_counts.descriptors,
+            query_counts.clauses, query_counts.expressions,
+            query_counts.operators,
             query_counts.leaf_values);
     failed = 1;
   }
@@ -8101,7 +8235,10 @@ static int expect_semantic_clauses(const char *label, const char *sql,
       first_semantic_child_with_kind(statement, MYLITE_SEMANTIC_NODE_EXPRESSION);
   const MyliteSemanticAstNode *query =
       first_semantic_child_with_kind(statement, MYLITE_SEMANTIC_NODE_QUERY);
-  const MyliteSemanticAstNode *clause_parent = query == NULL ? statement : query;
+  const MyliteSemanticAstNode *query_block =
+      first_semantic_child_with_kind(query, MYLITE_SEMANTIC_NODE_QUERY_BLOCK);
+  const MyliteSemanticAstNode *clause_parent =
+      query_block != NULL ? query_block : (query == NULL ? statement : query);
   SemanticCounts counts = {0};
   count_semantic_nodes(root, &counts);
 
@@ -8163,6 +8300,10 @@ static void count_semantic_nodes(const MyliteSemanticAstNode *node,
   }
   if (mylite_semantic_ast_node_kind(node) == MYLITE_SEMANTIC_NODE_QUERY) {
     counts->queries++;
+  }
+  if (mylite_semantic_ast_node_kind(node) ==
+      MYLITE_SEMANTIC_NODE_QUERY_BLOCK) {
+    counts->query_blocks++;
   }
   if (mylite_semantic_ast_node_kind(node) ==
       MYLITE_SEMANTIC_NODE_TABLE_REFERENCE) {

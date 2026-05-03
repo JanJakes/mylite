@@ -325,12 +325,16 @@ static void validate_create_table_partition_key_list_from(
     MyliteParseContext *ctx, MyliteToken start);
 static void validate_create_table_partition_definitions_from(
     MyliteParseContext *ctx, MyliteToken start, int values_required);
+static void validate_create_table_subpartition_definitions_from(
+    MyliteParseContext *ctx, MyliteToken start);
 static int create_table_partition_key_name_token(int token_id,
                                                  MyliteToken token);
 static int create_table_partition_key_algorithm_value_token(int token_id,
                                                             MyliteToken token);
 static int create_table_partition_option_engine_value_token(int token_id,
                                                             MyliteToken token);
+static int create_table_partition_option_name_value_token(int token_id,
+                                                          MyliteToken token);
 static int create_table_partition_option_number_token(int token_id,
                                                       MyliteToken token);
 static void validate_alter_table_option_values(MyliteParseContext *ctx,
@@ -13601,7 +13605,7 @@ static void validate_create_table_partition_definitions_from(
         continue;
       }
       if (option_state == CREATE_TABLE_PARTITION_OPTION_EXPECT_NAME &&
-          create_table_partition_key_name_token(token_id, token)) {
+          create_table_partition_option_name_value_token(token_id, token)) {
         option_state = CREATE_TABLE_PARTITION_OPTION_NONE;
         option_saw_equals = 0;
         continue;
@@ -13661,9 +13665,12 @@ static void validate_create_table_partition_definitions_from(
         }
         values_state = CREATE_TABLE_PARTITION_VALUES_NONE;
         partition_values_seen = 1;
+        depth++;
+        continue;
       } else if (values_allow_maxvalue && token_ascii_equal(token, "maxvalue")) {
         values_state = CREATE_TABLE_PARTITION_VALUES_NONE;
         partition_values_seen = 1;
+        continue;
       } else {
         mylite_parser_reject(ctx, pending_token,
                              "malformed CREATE TABLE partition definitions");
@@ -13728,6 +13735,13 @@ static void validate_create_table_partition_definitions_from(
       }
     }
 
+    if (depth == 1 && token_id == ML_LP) {
+      validate_create_table_subpartition_definitions_from(ctx, token);
+      if (ctx->failed) {
+        return;
+      }
+    }
+
     if (token_opens_nested_expression(token_id)) {
       depth++;
       continue;
@@ -13747,6 +13761,235 @@ static void validate_create_table_partition_definitions_from(
        list_state != CREATE_TABLE_PARTITION_DEFS_IN_PARTITION)) {
     mylite_parser_reject(ctx, pending_token,
                          "malformed CREATE TABLE partition definitions");
+  }
+}
+
+static void validate_create_table_subpartition_definitions_from(
+    MyliteParseContext *ctx, MyliteToken start) {
+  enum {
+    CREATE_TABLE_SUBPARTITION_DEFS_NEED_SUBPARTITION_OR_END,
+    CREATE_TABLE_SUBPARTITION_DEFS_NEED_SUBPARTITION,
+    CREATE_TABLE_SUBPARTITION_DEFS_NEED_NAME,
+    CREATE_TABLE_SUBPARTITION_DEFS_IN_SUBPARTITION
+  };
+  enum {
+    CREATE_TABLE_SUBPARTITION_OPTION_NONE,
+    CREATE_TABLE_SUBPARTITION_OPTION_AFTER_DATA,
+    CREATE_TABLE_SUBPARTITION_OPTION_AFTER_INDEX,
+    CREATE_TABLE_SUBPARTITION_OPTION_AFTER_STORAGE,
+    CREATE_TABLE_SUBPARTITION_OPTION_EXPECT_ENGINE,
+    CREATE_TABLE_SUBPARTITION_OPTION_EXPECT_NAME,
+    CREATE_TABLE_SUBPARTITION_OPTION_EXPECT_NUMBER,
+    CREATE_TABLE_SUBPARTITION_OPTION_EXPECT_STRING
+  };
+  MyliteLexer lexer;
+  MyliteToken token;
+  MyliteToken pending_token = start;
+  int token_id;
+  int saw_list = 0;
+  int depth = 0;
+  int list_state = CREATE_TABLE_SUBPARTITION_DEFS_NEED_SUBPARTITION_OR_END;
+  int option_state = CREATE_TABLE_SUBPARTITION_OPTION_NONE;
+  int option_saw_equals = 0;
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_list) {
+      if (token.offset == start.offset) {
+        saw_list = 1;
+        if (token_id != ML_LP) {
+          return;
+        }
+        depth = 1;
+        pending_token = token;
+      }
+      continue;
+    }
+
+    if (depth <= 0) {
+      break;
+    }
+
+    if (depth == 1 && token_id == ML_RP) {
+      if (option_state != CREATE_TABLE_SUBPARTITION_OPTION_NONE ||
+          list_state != CREATE_TABLE_SUBPARTITION_DEFS_IN_SUBPARTITION) {
+        mylite_parser_reject(ctx, pending_token,
+                             "malformed CREATE TABLE subpartition definitions");
+      }
+      return;
+    }
+
+    if (depth == 1 && token_id == ML_COMMA) {
+      if (option_state != CREATE_TABLE_SUBPARTITION_OPTION_NONE ||
+          list_state != CREATE_TABLE_SUBPARTITION_DEFS_IN_SUBPARTITION) {
+        mylite_parser_reject(ctx, token,
+                             "malformed CREATE TABLE subpartition definitions");
+        return;
+      }
+      list_state = CREATE_TABLE_SUBPARTITION_DEFS_NEED_SUBPARTITION;
+      option_state = CREATE_TABLE_SUBPARTITION_OPTION_NONE;
+      option_saw_equals = 0;
+      pending_token = token;
+      continue;
+    }
+
+    if (depth == 1 &&
+        option_state != CREATE_TABLE_SUBPARTITION_OPTION_NONE) {
+      if (option_state == CREATE_TABLE_SUBPARTITION_OPTION_AFTER_DATA ||
+          option_state == CREATE_TABLE_SUBPARTITION_OPTION_AFTER_INDEX) {
+        if (token_id != ML_DIRECTORY) {
+          mylite_parser_reject(
+              ctx, pending_token,
+              "malformed CREATE TABLE subpartition definitions");
+          return;
+        }
+        option_state = CREATE_TABLE_SUBPARTITION_OPTION_EXPECT_STRING;
+        option_saw_equals = 0;
+        continue;
+      }
+      if (option_state == CREATE_TABLE_SUBPARTITION_OPTION_AFTER_STORAGE) {
+        if (token_id != ML_ENGINE) {
+          mylite_parser_reject(
+              ctx, pending_token,
+              "malformed CREATE TABLE subpartition definitions");
+          return;
+        }
+        option_state = CREATE_TABLE_SUBPARTITION_OPTION_EXPECT_ENGINE;
+        option_saw_equals = 0;
+        continue;
+      }
+      if (token_id == ML_EQUALS && !option_saw_equals) {
+        option_saw_equals = 1;
+        continue;
+      }
+      if (option_state == CREATE_TABLE_SUBPARTITION_OPTION_EXPECT_ENGINE &&
+          create_table_partition_option_engine_value_token(token_id, token)) {
+        option_state = CREATE_TABLE_SUBPARTITION_OPTION_NONE;
+        option_saw_equals = 0;
+        continue;
+      }
+      if (option_state == CREATE_TABLE_SUBPARTITION_OPTION_EXPECT_NAME &&
+          create_table_partition_option_name_value_token(token_id, token)) {
+        option_state = CREATE_TABLE_SUBPARTITION_OPTION_NONE;
+        option_saw_equals = 0;
+        continue;
+      }
+      if (option_state == CREATE_TABLE_SUBPARTITION_OPTION_EXPECT_NUMBER &&
+          create_table_partition_option_number_token(token_id, token)) {
+        option_state = CREATE_TABLE_SUBPARTITION_OPTION_NONE;
+        option_saw_equals = 0;
+        continue;
+      }
+      if (option_state == CREATE_TABLE_SUBPARTITION_OPTION_EXPECT_STRING &&
+          create_table_tail_option_string_token(token_id, token)) {
+        option_state = CREATE_TABLE_SUBPARTITION_OPTION_NONE;
+        option_saw_equals = 0;
+        continue;
+      }
+      mylite_parser_reject(ctx, pending_token,
+                           "malformed CREATE TABLE subpartition definitions");
+      return;
+    }
+
+    if (depth == 1 &&
+        (list_state ==
+             CREATE_TABLE_SUBPARTITION_DEFS_NEED_SUBPARTITION_OR_END ||
+         list_state == CREATE_TABLE_SUBPARTITION_DEFS_NEED_SUBPARTITION)) {
+      if (!token_ascii_equal(token, "subpartition")) {
+        mylite_parser_reject(ctx, token,
+                             "malformed CREATE TABLE subpartition definitions");
+        return;
+      }
+      list_state = CREATE_TABLE_SUBPARTITION_DEFS_NEED_NAME;
+      pending_token = token;
+      continue;
+    }
+
+    if (depth == 1 &&
+        list_state == CREATE_TABLE_SUBPARTITION_DEFS_NEED_NAME) {
+      if (!create_table_partition_key_name_token(token_id, token)) {
+        mylite_parser_reject(ctx, pending_token,
+                             "malformed CREATE TABLE subpartition definitions");
+        return;
+      }
+      list_state = CREATE_TABLE_SUBPARTITION_DEFS_IN_SUBPARTITION;
+      continue;
+    }
+
+    if (depth == 1 &&
+        list_state == CREATE_TABLE_SUBPARTITION_DEFS_IN_SUBPARTITION) {
+      if (token_ascii_equal(token, "subpartition")) {
+        mylite_parser_reject(ctx, token,
+                             "malformed CREATE TABLE subpartition definitions");
+        return;
+      }
+      if (token_id == ML_DATA) {
+        option_state = CREATE_TABLE_SUBPARTITION_OPTION_AFTER_DATA;
+        option_saw_equals = 0;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_INDEX) {
+        option_state = CREATE_TABLE_SUBPARTITION_OPTION_AFTER_INDEX;
+        option_saw_equals = 0;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_STORAGE) {
+        option_state = CREATE_TABLE_SUBPARTITION_OPTION_AFTER_STORAGE;
+        option_saw_equals = 0;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_ENGINE) {
+        option_state = CREATE_TABLE_SUBPARTITION_OPTION_EXPECT_ENGINE;
+        option_saw_equals = 0;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_TABLESPACE) {
+        option_state = CREATE_TABLE_SUBPARTITION_OPTION_EXPECT_NAME;
+        option_saw_equals = 0;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_MAX_ROWS || token_id == ML_MIN_ROWS ||
+          token_id == ML_NODEGROUP) {
+        option_state = CREATE_TABLE_SUBPARTITION_OPTION_EXPECT_NUMBER;
+        option_saw_equals = 0;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_COMMENT) {
+        option_state = CREATE_TABLE_SUBPARTITION_OPTION_EXPECT_STRING;
+        option_saw_equals = 0;
+        pending_token = token;
+        continue;
+      }
+    }
+
+    if (token_opens_nested_expression(token_id)) {
+      mylite_parser_reject(ctx, token,
+                           "malformed CREATE TABLE subpartition definitions");
+      return;
+    }
+
+    if (token_closes_nested_expression(token_id)) {
+      depth--;
+      continue;
+    }
+
+    mylite_parser_reject(ctx, token,
+                         "malformed CREATE TABLE subpartition definitions");
+    return;
+  }
+
+  if (saw_list &&
+      (depth > 0 ||
+       option_state != CREATE_TABLE_SUBPARTITION_OPTION_NONE ||
+       list_state != CREATE_TABLE_SUBPARTITION_DEFS_IN_SUBPARTITION)) {
+    mylite_parser_reject(ctx, pending_token,
+                         "malformed CREATE TABLE subpartition definitions");
   }
 }
 
@@ -13783,6 +14026,12 @@ static int create_table_partition_option_engine_value_token(
     int token_id, MyliteToken token) {
   return create_table_tail_option_value_token(CREATE_TABLE_OPTION_VALUE_NAME,
                                               token_id, token);
+}
+
+static int create_table_partition_option_name_value_token(int token_id,
+                                                          MyliteToken token) {
+  return create_table_partition_key_name_token(token_id, token) ||
+         token_id == ML_DOUBLE_QUOTED_STRING;
 }
 
 static int create_table_partition_option_number_token(int token_id,

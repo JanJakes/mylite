@@ -148,6 +148,7 @@ static const uint64_t mylite_mysql_length_function_display_length = 10U;
 static const uint64_t mylite_mysql_ascii_function_display_length = 3U;
 static const uint64_t mylite_mysql_search_function_display_length = 11U;
 static const uint64_t mylite_mysql_list_index_function_display_length = 3U;
+static const uint64_t mylite_mysql_hex_numeric_result_chars = 16U;
 static const uint64_t mylite_mysql_integer_function_display_length = 21U;
 static const uint64_t mylite_mysql_ord_function_display_length = 21U;
 static const uint64_t mylite_mysql_schema_function_display_length = 256U;
@@ -2041,6 +2042,10 @@ static int infer_function_expression_descriptor(mylite_db *database,
                                                 const struct mylite_sql_ast_node *expression,
                                                 const struct mylite_expression_value *value,
                                                 struct mylite_field_descriptor *out_descriptor);
+static bool function_result_nullable(bool arguments_nullable,
+                                     const struct mylite_expression_value *value);
+static uint64_t text_function_result_length(mylite_db *database,
+                                            const struct mylite_expression_value *value);
 static bool infer_session_function_descriptor(mylite_db *database,
                                               const struct mylite_sql_ast_node *name,
                                               struct mylite_field_descriptor *out_descriptor);
@@ -2052,6 +2057,21 @@ static int infer_make_set_function_descriptor(mylite_db *database,
                                               const struct mylite_select_plan *plan,
                                               const struct mylite_sql_ast_node *expression,
                                               struct mylite_field_descriptor *out_descriptor);
+// NOLINTNEXTLINE(misc-no-recursion)
+static int infer_hex_unhex_function_descriptor(mylite_db *database,
+                                               const struct mylite_select_plan *plan,
+                                               const struct mylite_sql_ast_node *expression,
+                                               struct mylite_field_descriptor *out_descriptor,
+                                               bool *out_matched);
+// NOLINTNEXTLINE(misc-no-recursion)
+static int infer_hex_function_descriptor(mylite_db *database, const struct mylite_select_plan *plan,
+                                         const struct mylite_sql_ast_node *expression,
+                                         struct mylite_field_descriptor *out_descriptor);
+// NOLINTNEXTLINE(misc-no-recursion)
+static int infer_unhex_function_descriptor(mylite_db *database,
+                                           const struct mylite_select_plan *plan,
+                                           const struct mylite_sql_ast_node *expression,
+                                           struct mylite_field_descriptor *out_descriptor);
 // NOLINTNEXTLINE(misc-no-recursion)
 static uint64_t quote_function_result_length(mylite_db *database,
                                              const struct mylite_select_plan *plan,
@@ -2106,6 +2126,8 @@ static bool function_name_is_make_set(const struct mylite_sql_ast_node *name);
 static bool function_name_is_elt(const struct mylite_sql_ast_node *name);
 static bool function_name_is_quote(const struct mylite_sql_ast_node *name);
 static bool function_name_is_insert(const struct mylite_sql_ast_node *name);
+static bool function_name_is_hex(const struct mylite_sql_ast_node *name);
+static bool function_name_is_unhex(const struct mylite_sql_ast_node *name);
 static bool function_name_is_concat_ws(const struct mylite_sql_ast_node *name);
 static bool function_name_uses_trim_source_length(const struct mylite_sql_ast_node *name);
 static int infer_aggregate_expression_descriptor(mylite_db *database,
@@ -2145,6 +2167,7 @@ static struct mylite_field_descriptor
 finalize_case_descriptor(mylite_db *database,
                          const struct mylite_case_descriptor_aggregate *aggregate);
 static bool field_descriptor_has_text_result(const struct mylite_field_descriptor *descriptor);
+static bool field_descriptor_has_numeric_result(const struct mylite_field_descriptor *descriptor);
 static bool field_descriptor_has_decimal_result(const struct mylite_field_descriptor *descriptor);
 static bool field_descriptor_has_double_result(const struct mylite_field_descriptor *descriptor);
 static struct mylite_field_descriptor null_expression_descriptor(void);
@@ -3384,8 +3407,12 @@ static int compare_table_select_distinct_values(const struct mylite_expression_v
                                                 const struct mylite_field_descriptor *descriptor);
 static int compare_table_select_values(const struct mylite_expression_value *left,
                                        const struct mylite_expression_value *right);
-static int compare_table_select_text_values(const char *left, const char *right);
-static int compare_table_select_binary_text_values(const char *left, const char *right);
+static int compare_table_select_text_values(const char *left, size_t left_length, const char *right,
+                                            size_t right_length);
+static int compare_table_select_binary_text_values(const char *left, size_t left_length,
+                                                   const char *right, size_t right_length);
+static size_t expression_value_text_length(const struct mylite_expression_value *value);
+static size_t nullable_text_length(const char *text);
 static bool
 table_select_text_descriptor_is_binary(const struct mylite_field_descriptor *descriptor);
 static int apply_table_select_limit(mylite_stmt *stmt);
@@ -10328,6 +10355,7 @@ static int infer_function_expression_descriptor(mylite_db *database,
     const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
     bool nullable = false;
     bool result_nullable = false;
+    bool matched_hex_unhex = false;
     bool matched_slice_string = false;
     int status = MYLITE_OK;
 
@@ -10338,13 +10366,15 @@ static int infer_function_expression_descriptor(mylite_db *database,
     if (status != MYLITE_OK) {
         return status;
     }
-    result_nullable = nullable;
-    if (value != NULL) {
-        result_nullable = value->kind == MYLITE_EXPRESSION_VALUE_NULL;
-    }
+    result_nullable = function_result_nullable(nullable, value);
 
     if (infer_session_function_descriptor(database, name, out_descriptor)) {
         return MYLITE_OK;
+    }
+    status = infer_hex_unhex_function_descriptor(database, plan, expression, out_descriptor,
+                                                 &matched_hex_unhex);
+    if (status != MYLITE_OK || matched_hex_unhex) {
+        return status;
     }
     status = infer_slice_string_function_descriptor(database, plan, expression, value, nullable,
                                                     out_descriptor, &matched_slice_string);
@@ -10355,9 +10385,7 @@ static int infer_function_expression_descriptor(mylite_db *database,
         *out_descriptor = (struct mylite_field_descriptor){
             .type = MYLITE_FIELD_TYPE_VAR_STRING,
             .flags = 0U,
-            .length = value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_TEXT
-                          ? expression_string_length(database, value, NULL)
-                          : mylite_mysql_text_length,
+            .length = text_function_result_length(database, value),
             .decimals = mylite_mysql_not_fixed_decimals,
             .charset_id = field_descriptor_connection_charset_id(database),
             .nullable = result_nullable,
@@ -10413,6 +10441,24 @@ static int infer_function_expression_descriptor(mylite_db *database,
 
     *out_descriptor = expression_value_descriptor(value);
     return MYLITE_OK;
+}
+
+static bool function_result_nullable(bool arguments_nullable,
+                                     const struct mylite_expression_value *value)
+{
+    if (value != NULL) {
+        return value->kind == MYLITE_EXPRESSION_VALUE_NULL;
+    }
+    return arguments_nullable;
+}
+
+static uint64_t text_function_result_length(mylite_db *database,
+                                            const struct mylite_expression_value *value)
+{
+    if (value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+        return expression_string_length(database, value, NULL);
+    }
+    return mylite_mysql_text_length;
 }
 
 static bool infer_session_function_descriptor(mylite_db *database,
@@ -10524,6 +10570,101 @@ static int infer_make_set_function_descriptor(mylite_db *database,
         .nullable = nullable,
     };
     field_descriptor_set_nullable(out_descriptor, nullable);
+    return MYLITE_OK;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int infer_hex_unhex_function_descriptor(mylite_db *database,
+                                               const struct mylite_select_plan *plan,
+                                               const struct mylite_sql_ast_node *expression,
+                                               struct mylite_field_descriptor *out_descriptor,
+                                               bool *out_matched)
+{
+    const struct mylite_sql_ast_node *name = child_at(expression, 0U);
+
+    *out_matched = true;
+    if (function_name_is_hex(name)) {
+        return infer_hex_function_descriptor(database, plan, expression, out_descriptor);
+    }
+    if (function_name_is_unhex(name)) {
+        return infer_unhex_function_descriptor(database, plan, expression, out_descriptor);
+    }
+    *out_matched = false;
+    return MYLITE_OK;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int infer_hex_function_descriptor(mylite_db *database, const struct mylite_select_plan *plan,
+                                         const struct mylite_sql_ast_node *expression,
+                                         struct mylite_field_descriptor *out_descriptor)
+{
+    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *source = child_at(arguments, 0U);
+    struct mylite_field_descriptor source_descriptor = field_descriptor_defaults();
+    uint64_t max_bytes_per_character = connection_character_max_length(database);
+    uint64_t length = 0U;
+    int status = infer_expression_descriptor(database, plan, source, NULL, &source_descriptor);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (source_descriptor.type == MYLITE_FIELD_TYPE_NULL) {
+        length = 0U;
+    } else if (field_descriptor_has_numeric_result(&source_descriptor)) {
+        length = max_bytes_per_character > UINT64_MAX / mylite_mysql_hex_numeric_result_chars
+                     ? mylite_mysql_long_text_length
+                     : mylite_mysql_hex_numeric_result_chars * max_bytes_per_character;
+    } else if (source_descriptor.length > UINT64_MAX / 2U ||
+               (source_descriptor.length * 2U) > UINT64_MAX / max_bytes_per_character) {
+        length = mylite_mysql_long_text_length;
+    } else {
+        length = source_descriptor.length * 2U * max_bytes_per_character;
+    }
+
+    *out_descriptor = (struct mylite_field_descriptor){
+        .type = MYLITE_FIELD_TYPE_VAR_STRING,
+        .flags = 0U,
+        .length = length,
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = field_descriptor_connection_charset_id(database),
+        .nullable = true,
+    };
+    field_descriptor_set_nullable(out_descriptor, true);
+    return MYLITE_OK;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int infer_unhex_function_descriptor(mylite_db *database,
+                                           const struct mylite_select_plan *plan,
+                                           const struct mylite_sql_ast_node *expression,
+                                           struct mylite_field_descriptor *out_descriptor)
+{
+    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *source = child_at(arguments, 0U);
+    struct mylite_field_descriptor source_descriptor = field_descriptor_defaults();
+    uint64_t length = 0U;
+    int status = infer_expression_descriptor(database, plan, source, NULL, &source_descriptor);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (source_descriptor.type == MYLITE_FIELD_TYPE_NULL) {
+        length = 0U;
+    } else if (source_descriptor.length == UINT64_MAX) {
+        length = mylite_mysql_long_text_length;
+    } else {
+        length = (source_descriptor.length + 1U) / 2U;
+    }
+
+    *out_descriptor = (struct mylite_field_descriptor){
+        .type = MYLITE_FIELD_TYPE_VAR_STRING,
+        .flags = MYLITE_FIELD_FLAG_BINARY,
+        .length = length,
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = mylite_mysql_binary_charset_id,
+        .nullable = true,
+    };
+    field_descriptor_set_nullable(out_descriptor, true);
     return MYLITE_OK;
 }
 
@@ -11087,6 +11228,14 @@ static bool field_descriptor_has_text_result(const struct mylite_field_descripto
     return false;
 }
 
+static bool field_descriptor_has_numeric_result(const struct mylite_field_descriptor *descriptor)
+{
+    if (descriptor == NULL || descriptor->type == MYLITE_FIELD_TYPE_NULL) {
+        return false;
+    }
+    return (descriptor->flags & MYLITE_FIELD_FLAG_NUM) != 0U;
+}
+
 static bool field_descriptor_has_decimal_result(const struct mylite_field_descriptor *descriptor)
 {
     if (descriptor == NULL) {
@@ -11423,7 +11572,7 @@ static uint64_t cast_character_length(mylite_db *database, const struct mylite_s
         return target->column_length * (uint64_t)max_length;
     }
     if (value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
-        return (uint64_t)(value->text_value == NULL ? 0U : strlen(value->text_value)) *
+        return (uint64_t)(value->text_value == NULL ? 0U : value->text_length) *
                (uint64_t)max_length;
     }
     if (source != NULL && source->length != 0U) {
@@ -11575,6 +11724,20 @@ static bool function_name_is_insert(const struct mylite_sql_ast_node *name)
     return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }
 
+static bool function_name_is_hex(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"HEX"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_is_unhex(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"UNHEX"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
 static bool function_name_is_field(const struct mylite_sql_ast_node *name)
 {
     static const char *const names[] = {"FIELD"};
@@ -11685,7 +11848,7 @@ expression_value_descriptor(const struct mylite_expression_value *value)
         return (struct mylite_field_descriptor){
             .type = MYLITE_FIELD_TYPE_VAR_STRING,
             .flags = MYLITE_FIELD_FLAG_NOT_NULL,
-            .length = value->text_value == NULL ? 0U : strlen(value->text_value),
+            .length = value->text_value == NULL ? 0U : value->text_length,
             .decimals = mylite_mysql_not_fixed_decimals,
             .charset_id = mylite_mysql_utf8mb4_0900_ai_ci_charset_id,
             .nullable = false,
@@ -12366,7 +12529,7 @@ static uint64_t expression_string_length(const mylite_db *database,
     uint64_t max_bytes_per_character = connection_character_max_length(database);
 
     if (value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_TEXT && value->text_value != NULL) {
-        byte_length = strlen(value->text_value);
+        byte_length = value->text_length;
     } else if (expression != NULL && expression->span.length >= 2U) {
         byte_length = expression->span.length - 2U;
     }
@@ -23735,7 +23898,8 @@ static int copy_update_sqlite_column_value(sqlite3_stmt *scan, int column,
         int bytes = sqlite3_column_bytes(scan, column);
 
         out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
-        out_value->text_value = copy_span_text((const char *)text, bytes < 0 ? 0U : (size_t)bytes);
+        out_value->text_length = bytes < 0 ? 0U : (size_t)bytes;
+        out_value->text_value = copy_span_text((const char *)text, out_value->text_length);
         return out_value->text_value == NULL ? -1 : 0;
     }
     default:
@@ -24227,6 +24391,7 @@ static int resolve_update_default_value(mylite_stmt *stmt,
         *out_value = (struct mylite_expression_value){
             .kind = MYLITE_EXPRESSION_VALUE_TEXT,
             .text_value = timestamp,
+            .text_length = strlen(timestamp),
         };
         return MYLITE_OK;
     }
@@ -24265,8 +24430,8 @@ static int copy_insert_bound_value_to_expression(const struct mylite_insert_boun
         };
         return MYLITE_OK;
     case MYLITE_INSERT_BOUND_TEXT:
-        out_value->text_value = copy_span_text(
-            value->text_value, value->text_value == NULL ? 0U : strlen(value->text_value));
+        out_value->text_length = value->text_value == NULL ? 0U : strlen(value->text_value);
+        out_value->text_value = copy_span_text(value->text_value, out_value->text_length);
         if (out_value->text_value == NULL) {
             return MYLITE_NOMEM;
         }
@@ -24461,7 +24626,8 @@ static int bind_update_value(sqlite3_stmt *stmt, int index,
     case MYLITE_EXPRESSION_VALUE_REAL:
         return sqlite3_bind_double(stmt, index, value->real_value);
     case MYLITE_EXPRESSION_VALUE_TEXT:
-        return sqlite3_bind_text(stmt, index, value->text_value, -1, sqlite_transient_destructor());
+        return sqlite3_bind_text(stmt, index, value->text_value, (int)value->text_length,
+                                 sqlite_transient_destructor());
     }
     return SQLITE_MISUSE;
 }
@@ -24536,7 +24702,8 @@ static bool update_values_equal(const struct mylite_expression_value *left,
         if (left->text_value == NULL || right->text_value == NULL) {
             return left->text_value == right->text_value;
         }
-        return strcmp(left->text_value, right->text_value) == 0;
+        return (left->text_length == right->text_length &&
+                memcmp(left->text_value, right->text_value, left->text_length) == 0) != 0;
     }
     return false;
 }
@@ -24695,7 +24862,7 @@ static char *copy_update_duplicate_entry_value(const struct mylite_insert_unique
             break;
         case MYLITE_EXPRESSION_VALUE_TEXT:
             sqlite3_str_append(text, value->text_value == NULL ? "" : value->text_value,
-                               value->text_value == NULL ? 0 : (int)strlen(value->text_value));
+                               value->text_value == NULL ? 0 : (int)value->text_length);
             break;
         }
     }
@@ -25453,9 +25620,11 @@ static int evaluate_statement_session_function(
             *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
             return 0;
         }
+        size_t schema_length = strlen(database->selected_schema);
+
         out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
-        out_value->text_value =
-            copy_span_text(database->selected_schema, strlen(database->selected_schema));
+        out_value->text_value = copy_span_text(database->selected_schema, schema_length);
+        out_value->text_length = schema_length;
         if (out_value->text_value == NULL) {
             (void)set_error_message(database, "out of memory");
             return MYLITE_NOMEM;
@@ -25464,9 +25633,11 @@ static int evaluate_statement_session_function(
     }
     if (ascii_span_equal_ci(name->span, "VERSION")) {
         const char *version = mylite_version();
+        size_t version_length = strlen(version);
 
         out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
-        out_value->text_value = copy_span_text(version, strlen(version));
+        out_value->text_value = copy_span_text(version, version_length);
+        out_value->text_length = version_length;
         if (out_value->text_value == NULL) {
             (void)set_error_message(database, "out of memory");
             return MYLITE_NOMEM;
@@ -28042,7 +28213,8 @@ static int copy_sqlite_column_value(sqlite3_stmt *sqlite_stmt, size_t column_ind
         int bytes = sqlite3_column_bytes(sqlite_stmt, (int)column_index);
 
         out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
-        out_value->text_value = copy_span_text((const char *)text, bytes < 0 ? 0U : (size_t)bytes);
+        out_value->text_length = bytes < 0 ? 0U : (size_t)bytes;
+        out_value->text_value = copy_span_text((const char *)text, out_value->text_length);
         return out_value->text_value == NULL ? -1 : 0;
     }
     default:
@@ -28525,7 +28697,7 @@ static int aggregate_value_to_double(struct mylite_expression_warnings *warnings
     }
 
     copy = copy_span_text(value->text_value == NULL ? "" : value->text_value,
-                          value->text_value == NULL ? 0U : strlen(value->text_value));
+                          value->text_value == NULL ? 0U : value->text_length);
     if (copy == NULL) {
         return MYLITE_NOMEM;
     }
@@ -28562,6 +28734,7 @@ static int aggregate_format_double(double value, struct mylite_expression_value 
     }
     out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
     out_value->text_value = copy_span_text(buffer, (size_t)length);
+    out_value->text_length = (size_t)length;
     return out_value->text_value == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
 
@@ -28789,7 +28962,9 @@ static int compare_table_select_distinct_values(const struct mylite_expression_v
     }
     if (left->kind == MYLITE_EXPRESSION_VALUE_TEXT && right->kind == MYLITE_EXPRESSION_VALUE_TEXT &&
         table_select_text_descriptor_is_binary(descriptor)) {
-        return compare_table_select_binary_text_values(left->text_value, right->text_value);
+        return compare_table_select_binary_text_values(
+            left->text_value, expression_value_text_length(left), right->text_value,
+            expression_value_text_length(right));
     }
     return compare_table_select_values(left, right);
 }
@@ -28810,7 +28985,9 @@ static int compare_table_select_values(const struct mylite_expression_value *lef
         return 1;
     }
     if (left->kind == MYLITE_EXPRESSION_VALUE_TEXT && right->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
-        return compare_table_select_text_values(left->text_value, right->text_value);
+        return compare_table_select_text_values(
+            left->text_value, expression_value_text_length(left), right->text_value,
+            expression_value_text_length(right));
     }
     if (left->kind == MYLITE_EXPRESSION_VALUE_REAL || right->kind == MYLITE_EXPRESSION_VALUE_REAL) {
         double left_value = left->kind == MYLITE_EXPRESSION_VALUE_REAL
@@ -28836,7 +29013,9 @@ static int compare_table_select_values(const struct mylite_expression_value *lef
     if (left->kind == MYLITE_EXPRESSION_VALUE_TEXT || right->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
         char *left_text = mylite_expression_value_to_text(left);
         char *right_text = mylite_expression_value_to_text(right);
-        int comparison = compare_table_select_text_values(left_text, right_text);
+        int comparison =
+            compare_table_select_text_values(left_text, nullable_text_length(left_text), right_text,
+                                             nullable_text_length(right_text));
 
         free(left_text);
         free(right_text);
@@ -28845,9 +29024,11 @@ static int compare_table_select_values(const struct mylite_expression_value *lef
     return (left->int64_value > right->int64_value) - (left->int64_value < right->int64_value);
 }
 
-static int compare_table_select_text_values(const char *left, const char *right)
+static int compare_table_select_text_values(const char *left, size_t left_length, const char *right,
+                                            size_t right_length)
 {
     size_t index = 0U;
+    size_t compare_length = left_length < right_length ? left_length : right_length;
 
     if (left == NULL) {
         left = "";
@@ -28855,7 +29036,7 @@ static int compare_table_select_text_values(const char *left, const char *right)
     if (right == NULL) {
         right = "";
     }
-    while (left[index] != '\0' && right[index] != '\0') {
+    while (index < compare_length) {
         unsigned char left_byte = (unsigned char)left[index];
         unsigned char right_byte = (unsigned char)right[index];
 
@@ -28870,19 +29051,39 @@ static int compare_table_select_text_values(const char *left, const char *right)
         }
         ++index;
     }
-    return ((unsigned char)left[index] > (unsigned char)right[index]) -
-           ((unsigned char)left[index] < (unsigned char)right[index]);
+    return (left_length > right_length) - (left_length < right_length);
 }
 
-static int compare_table_select_binary_text_values(const char *left, const char *right)
+static int compare_table_select_binary_text_values(const char *left, size_t left_length,
+                                                   const char *right, size_t right_length)
 {
+    size_t compare_length = left_length < right_length ? left_length : right_length;
+    int comparison = 0;
+
     if (left == NULL) {
         left = "";
     }
     if (right == NULL) {
         right = "";
     }
-    return strcmp(left, right);
+    comparison = compare_length == 0U ? 0 : memcmp(left, right, compare_length);
+    if (comparison == 0) {
+        return (left_length > right_length) - (left_length < right_length);
+    }
+    return (comparison > 0) - (comparison < 0);
+}
+
+static size_t expression_value_text_length(const struct mylite_expression_value *value)
+{
+    if (value == NULL || value->text_value == NULL) {
+        return 0U;
+    }
+    return value->text_length;
+}
+
+static size_t nullable_text_length(const char *text)
+{
+    return text == NULL ? 0U : strlen(text);
 }
 
 static bool table_select_text_descriptor_is_binary(const struct mylite_field_descriptor *descriptor)

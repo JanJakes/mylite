@@ -107,15 +107,16 @@ by common scalar expressions:
   `CHARACTER_LENGTH`, `LOWER`, `LCASE`, `UPPER`, `UCASE`, `LEFT`, `RIGHT`,
   `REPLACE`, `CONCAT_WS`, `SUBSTRING`, `SUBSTR`, `MID`, `TRIM`, `LTRIM`,
   `RTRIM`, `ASCII`, `ORD`, `LOCATE`, `POSITION`, `INSTR`, `INSERT`, `QUOTE`,
-  `REPEAT`, `SPACE`, `REVERSE`, `LPAD`, `RPAD`, `ELT`, `FIELD`, and
-  `FIND_IN_SET`, and `MAKE_SET`; see
+  `REPEAT`, `SPACE`, `REVERSE`, `LPAD`, `RPAD`, `ELT`, `FIELD`,
+  `FIND_IN_SET`, `MAKE_SET`, `HEX`, and `UNHEX`; see
   `docs/specs/string-functions-substring-trim/specs.md` and
   `docs/specs/string-search-code-functions/specs.md` and
   `docs/specs/string-insert-function/specs.md` and
   `docs/specs/string-quote-function/specs.md` and
   `docs/specs/string-padding-repeat-functions/specs.md` and
   `docs/specs/string-list-index-functions/specs.md` and
-  `docs/specs/string-make-set-function/specs.md`
+  `docs/specs/string-make-set-function/specs.md` and
+  `docs/specs/string-hex-unhex-functions/specs.md`
 - numeric functions: `ABS`, `SIGN`, `FLOOR`, `CEIL`, `CEILING`, `MOD`, and
   `PI`
 - conditional/comparison functions: `IF`, `IFNULL`, `NULLIF`, `COALESCE`, and
@@ -133,6 +134,8 @@ syntax, trim direction syntax, byte-based `ASCII`, packed-byte `ORD`,
 `LOCATE` / `POSITION` / `INSTR` search positions, start-position edges,
 `INSERT` string splicing, `QUOTE` SQL-literal escaping, `QUOTE` numeric-source
 metadata, padding, repetition, spaces, UTF-8 reversal, empty pad strings,
+hex encoding, binary-string hex decoding, embedded-NUL byte lengths for
+`UNHEX()` results, invalid `UNHEX()` warnings,
 `MOD(..., 0)` warnings, table projection, filters, ordering, update assignment
 expressions, delete predicates, unsupported functions, unsupported arity, and
 selected result metadata.
@@ -140,7 +143,9 @@ selected result metadata.
 This checkpoint intentionally does not yet implement `INSERT ... VALUES` or
 `INSERT ... SET` function expressions, temporal functions, information
 functions outside the session-state slice, aggregate/window functions, JSON,
-regular expressions, spatial, full-text, encryption, loadable functions, or
+regular expressions, spatial, full-text, encryption, loadable functions,
+complete binary-string semantics for all scalar functions, exact
+exact-versus-approximate numeric preservation for every expression path, or
 exact MySQL error-code reporting for unsupported functions and argument-count
 mismatches.
 
@@ -427,6 +432,8 @@ Verified `mysql --column-type-info -vvv` examples:
 | Expression alias | Type | Length | Decimals | Collation | Flags |
 | --- | --- | ---: | ---: | --- | --- |
 | `CONCAT('a','b') AS concat_value` | `VAR_STRING` | `8` | `31` | `utf8mb4_0900_ai_ci` | none |
+| `HEX('Az') AS hex_text` | `VAR_STRING` | `64` | `31` | `utf8mb4_0900_ai_ci` | none |
+| `UNHEX('417a') AS unhex_text` | `VAR_STRING` | `8` | `31` | `binary` | `BINARY` |
 | `LENGTH('海豚') AS byte_len` | `LONGLONG` | `10` | `0` | `binary` | `NOT_NULL BINARY NUM` |
 | `CHAR_LENGTH('海豚') AS char_len` | `LONGLONG` | `10` | `0` | `binary` | `NOT_NULL BINARY NUM` |
 | `SUBSTRING('abcdef',2,3) AS substr_value` | `VAR_STRING` | `12` | `31` | `utf8mb4_0900_ai_ci` | none |

@@ -120,6 +120,7 @@ enum {
     mysql_warning_savepoint_does_not_exist = 1305,
     mysql_warning_no_default = 1364,
     mysql_warning_division_by_zero = 1365,
+    mysql_warning_incorrect_string_value = 1411,
     mysql_warning_duplicate_index = 1831,
     mysql_warning_legacy_syntax_converted = 3005,
     mysql_warning_field_in_order_not_select = 3065,
@@ -2451,6 +2452,32 @@ static int test_scalar_builtin_functions_execution(void)
         {"make_nums", NULL, NULL, NULL, NULL, NULL, 24U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
          MYLITE_FIELD_FLAG_NOT_NULL, MYLITE_FIELD_FLAG_BINARY, 0},
     };
+    static const struct expected_result_metadata hex_metadata[] = {
+        {"hex_text", NULL, NULL, NULL, NULL, NULL, 64U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"hex_num", NULL, NULL, NULL, NULL, NULL, 64U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"hex_null", NULL, NULL, NULL, NULL, NULL, 0U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"unhex_text", NULL, NULL, NULL, NULL, NULL, 8U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"unhex_empty", NULL, NULL, NULL, NULL, NULL, 0U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"unhex_invalid", NULL, NULL, NULL, NULL, NULL, 4U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"unhex_null", NULL, NULL, NULL, NULL, NULL, 0U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+    };
     static const struct expected_result_metadata nullable_search_metadata[] = {
         {"ascii_null", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
          MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
@@ -2542,6 +2569,25 @@ static int test_scalar_builtin_functions_execution(void)
         {"make_null_latin1", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_VAR_STRING, 31U,
          8U, 0U, MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, 1},
     };
+    static const struct expected_result_metadata hex_latin1_metadata[] = {
+        {"hex_text", NULL, NULL, NULL, NULL, NULL, 4U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"hex_num", NULL, NULL, NULL, NULL, NULL, 16U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"unhex_text", NULL, NULL, NULL, NULL, NULL, 2U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"unhex_invalid", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"unhex_null", NULL, NULL, NULL, NULL, NULL, 0U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+    };
     static const struct expected_result_metadata quote_table_metadata[] = {
         {"quote_n", NULL, NULL, NULL, NULL, NULL, 96U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
@@ -2551,6 +2597,22 @@ static int test_scalar_builtin_functions_execution(void)
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
              MYLITE_FIELD_FLAG_UNSIGNED,
          1},
+    };
+    static const struct expected_result_metadata hex_table_metadata[] = {
+        {"hex_s", NULL, NULL, NULL, NULL, NULL, 640U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"hex_n", NULL, NULL, NULL, NULL, NULL, 64U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"unhex_s", NULL, NULL, NULL, NULL, NULL, 40U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"unhex_n", NULL, NULL, NULL, NULL, NULL, 6U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
     };
     static const char *const edge_columns[] = {
         "left_zero", "left_negative", "right_zero", "right_negative", "replace_empty",
@@ -2865,6 +2927,61 @@ static int test_scalar_builtin_functions_execution(void)
     static const char *const make_selected_warning_columns[] = {"make_selected_null",
                                                                 "make_selected_second_null"};
     static const char *const make_selected_warning_values[] = {"", "a"};
+    static const char *const hex_columns[] = {
+        "hex_ascii",
+        "hex_empty",
+        "hex_null",
+        "hex_utf8",
+        "hex_int",
+        "hex_zero",
+        "hex_negative",
+        "hex_max_unsigned",
+        "hex_signed_boundary",
+        "hex_decimal",
+        "hex_float",
+        "hex_string_num",
+        "hex_cast_unsigned",
+        "unhex_lower",
+        "unhex_upper",
+        "unhex_odd",
+        "unhex_empty_len",
+        "unhex_null",
+        "unhex_numeric",
+        "unhex_unsigned",
+        "unhex_float_integer",
+        "unhex_utf8_roundtrip",
+        "unhex_nul_roundtrip",
+        "unhex_nul_length",
+    };
+    static const char *const hex_values[] = {
+        "417A",
+        "",
+        NULL,
+        "E78CAB",
+        "FF",
+        "0",
+        "FFFFFFFFFFFFFFFF",
+        "FFFFFFFFFFFFFFFF",
+        "8000000000000000",
+        "D",
+        "C",
+        "323535",
+        "FF",
+        "417A",
+        "417A",
+        "0ABC",
+        "0",
+        NULL,
+        "1267",
+        "18446744073709551615",
+        "12",
+        "E78CAB",
+        "4100FF",
+        "3",
+    };
+    static const char *const unhex_warning_columns[] = {"invalid_chars", "space_chars", "real_text",
+                                                        "negative_num", "negative_float"};
+    static const char *const unhex_warning_values[] = {"1", "1", "1", "1", "1"};
     static const char *const abs_in_columns[] = {"abs_in"};
     static const char *const abs_in_values[] = {"1"};
     static const char *const projection_columns[] = {"id", "title"};
@@ -2904,6 +3021,10 @@ static int test_scalar_builtin_functions_execution(void)
     static const char *const list_projection_values[] = {
         "2", "two", "2", "1", "-2", "1", "one", "1", "2", "alpha",
     };
+    static const char *const hex_site_projection_columns[] = {"id", "hex_s", "roundtrip", "hex_n"};
+    static const char *const hex_site_projection_values[] = {
+        "2", "4265", "4265", "FFFFFFFFFFFFFFFF", "1", "417A", "417A", "FF",
+    };
     static const char *const id_column[] = {"id"};
     static const char *const n_column[] = {"n"};
     static const char *const id_2[] = {"2"};
@@ -2917,8 +3038,12 @@ static int test_scalar_builtin_functions_execution(void)
     static const char *const updated_insert_values[] = {"1", "a-ha", "1"};
     static const char *const updated_quote_values[] = {"1", "'a-ha'", "1"};
     static const char *const updated_list_values[] = {"3", NULL, "2"};
+    static const char *const unchanged_hex_values[] = {"1", "Az", "255"};
+    static const char *const updated_hex_values[] = {"2", "6265", "-1"};
     static const char *const updated_make_order_values[] = {"2", "a", "99"};
+    static const char *const updated_hex_order_values[] = {"2", "61", "99"};
     static const char *const make_order_remaining_values[] = {"1", "3"};
+    static const char *const hex_order_remaining_values[] = {"1", "2"};
     static const char *const all_id_values[] = {"1", "2", "3"};
     static const char *const remaining_values[] = {"1"};
     mylite_db *database = NULL;
@@ -3021,6 +3146,28 @@ static int test_scalar_builtin_functions_execution(void)
     stmt = NULL;
 
     failures += prepare_sql(database,
+                            "SELECT HEX('Az') AS hex_text, "
+                            "HEX(255) AS hex_num, "
+                            "HEX(NULL) AS hex_null, "
+                            "UNHEX('417a') AS unhex_text, "
+                            "UNHEX('') AS unhex_empty, "
+                            "UNHEX('GG') AS unhex_invalid, "
+                            "UNHEX(NULL) AS unhex_null",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, hex_metadata,
+                                       (int)(sizeof(hex_metadata) / sizeof(hex_metadata[0])),
+                                       "hex/unhex utf8mb4 metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "hex/unhex utf8mb4 metadata row");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "hex/unhex utf8mb4 metadata warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_incorrect_string_value,
+                   "hex/unhex utf8mb4 metadata warning code");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "hex/unhex utf8mb4 metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
                             "SELECT ASCII(NULL) AS ascii_null, "
                             "LOCATE('a', NULL) AS locate_null, "
                             "INSERT('abc', NULL, 1, 'x') AS insert_null, "
@@ -3065,6 +3212,26 @@ static int test_scalar_builtin_functions_execution(void)
                                        "latin1 string function metadata");
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "latin1 string metadata row");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "latin1 string metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database,
+                            "SELECT HEX('Az') AS hex_text, "
+                            "HEX(255) AS hex_num, "
+                            "UNHEX('417a') AS unhex_text, "
+                            "UNHEX('GG') AS unhex_invalid, "
+                            "UNHEX(NULL) AS unhex_null",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_result_metadata(stmt, hex_latin1_metadata,
+                               (int)(sizeof(hex_latin1_metadata) / sizeof(hex_latin1_metadata[0])),
+                               "hex/unhex latin1 metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "hex/unhex latin1 metadata row");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "hex/unhex latin1 metadata warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_incorrect_string_value,
+                   "hex/unhex latin1 metadata warning code");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "hex/unhex latin1 metadata done");
     mylite_finalize(stmt);
     stmt = NULL;
     failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
@@ -3407,6 +3574,55 @@ static int test_scalar_builtin_functions_execution(void)
                                mysql_warning_division_by_zero, "MAKE_SET selected warning code");
     }
 
+    failures += expect_select_rows(database,
+                                   "SELECT HEX('Az') AS hex_ascii, "
+                                   "HEX('') AS hex_empty, "
+                                   "HEX(NULL) AS hex_null, "
+                                   "HEX('\xE7\x8C\xAB') AS hex_utf8, "
+                                   "HEX(255) AS hex_int, "
+                                   "HEX(0) AS hex_zero, "
+                                   "HEX(-1) AS hex_negative, "
+                                   "HEX(18446744073709551615) AS hex_max_unsigned, "
+                                   "HEX(9223372036854775808) AS hex_signed_boundary, "
+                                   "HEX(12.5) AS hex_decimal, "
+                                   "HEX(12.5E0) AS hex_float, "
+                                   "HEX('255') AS hex_string_num, "
+                                   "HEX(CAST('255' AS UNSIGNED)) AS hex_cast_unsigned, "
+                                   "HEX(UNHEX('417a')) AS unhex_lower, "
+                                   "HEX(UNHEX('417A')) AS unhex_upper, "
+                                   "HEX(UNHEX('abc')) AS unhex_odd, "
+                                   "LENGTH(UNHEX('')) AS unhex_empty_len, "
+                                   "HEX(UNHEX(NULL)) AS unhex_null, "
+                                   "HEX(UNHEX(1267)) AS unhex_numeric, "
+                                   "HEX(UNHEX(18446744073709551615)) AS unhex_unsigned, "
+                                   "HEX(UNHEX(12E0)) AS unhex_float_integer, "
+                                   "HEX(UNHEX('E78CAB')) AS unhex_utf8_roundtrip, "
+                                   "HEX(UNHEX('4100FF')) AS unhex_nul_roundtrip, "
+                                   "LENGTH(UNHEX('4100FF')) AS unhex_nul_length",
+                                   hex_columns, (int)(sizeof(hex_columns) / sizeof(hex_columns[0])),
+                                   hex_values, 1, "string HEX/UNHEX scalar values");
+
+    failures +=
+        expect_select_rows(database,
+                           "SELECT UNHEX('GG') IS NULL AS invalid_chars, "
+                           "UNHEX('41 42') IS NULL AS space_chars, "
+                           "UNHEX(1.0) IS NULL AS real_text, "
+                           "UNHEX(-1) IS NULL AS negative_num, "
+                           "UNHEX(-1E0) IS NULL AS negative_float",
+                           unhex_warning_columns,
+                           (int)(sizeof(unhex_warning_columns) / sizeof(unhex_warning_columns[0])),
+                           unhex_warning_values, 1, "string UNHEX invalid values");
+    failures += expect_int(mylite_warning_count(database),
+                           (int)(sizeof(unhex_warning_columns) / sizeof(unhex_warning_columns[0])),
+                           "UNHEX invalid warning count");
+    for (int index = 0;
+         index < (int)(sizeof(unhex_warning_columns) / sizeof(unhex_warning_columns[0])); ++index) {
+        failures += expect_int((int)mylite_warning_code(database, index),
+                               mysql_warning_incorrect_string_value, "UNHEX invalid warning code");
+    }
+    failures += expect_contains(mylite_warning_message(database, 0), "function unhex",
+                                "UNHEX invalid warning message");
+
     failures += expect_select_rows(database, "SELECT ABS(1 IN (1)) AS abs_in", abs_in_columns, 1,
                                    abs_in_values, 1, "function IN predicate argument");
 
@@ -3439,6 +3655,15 @@ static int test_scalar_builtin_functions_execution(void)
         stmt, quote_table_metadata,
         (int)(sizeof(quote_table_metadata) / sizeof(quote_table_metadata[0])),
         "table quote function metadata");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database,
+                            "SELECT HEX(s) AS hex_s, HEX(n) AS hex_n, "
+                            "UNHEX(s) AS unhex_s, UNHEX(n) AS unhex_n FROM t",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, hex_table_metadata, (int)(sizeof(hex_table_metadata) / sizeof(hex_table_metadata[0])),
+        "table hex/unhex function metadata");
     mylite_finalize(stmt);
     stmt = NULL;
     failures += expect_select_rows(database,
@@ -3494,6 +3719,22 @@ static int test_scalar_builtin_functions_execution(void)
                                    "FROM t WHERE ISNULL(s)=0 ORDER BY FIELD(s, 'Beta', 'alpha')",
                                    list_projection_columns, 5, list_projection_values, 2,
                                    "table list function projection and order");
+    failures += execute_sql(database,
+                            "CREATE TABLE hex_sites "
+                            "(id INT PRIMARY KEY, s VARCHAR(20), h VARCHAR(20), n INT)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO hex_sites VALUES "
+                            "(1,'Az','417A',255),(2,'Be','4265',-1),(3,NULL,NULL,0)",
+                            MYLITE_DONE);
+    failures += expect_select_rows(database,
+                                   "SELECT id, HEX(s) AS hex_s, HEX(UNHEX(h)) AS roundtrip, "
+                                   "HEX(n) AS hex_n FROM hex_sites "
+                                   "WHERE UNHEX(h) IS NOT NULL ORDER BY UNHEX(h) DESC",
+                                   hex_site_projection_columns, 4, hex_site_projection_values, 2,
+                                   "table hex/unhex projection where and order");
+    failures += expect_select_rows(database, "SELECT id FROM hex_sites WHERE HEX(UNHEX(h))='417A'",
+                                   id_column, 1, n_1, 1, "hex/unhex function where");
     failures += expect_select_rows(database, "SELECT id FROM t WHERE LPAD(s, 5, '.')='alpha'",
                                    id_column, 1, n_1, 1, "lpad function where");
     failures += expect_select_rows(database, "SELECT id FROM t WHERE REVERSE(s)='ateB'", id_column,
@@ -3584,6 +3825,46 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_select_rows(database, "SELECT id, s, n FROM t WHERE id = 3", id_s_n_columns,
                                    3, updated_list_values, 1, "updated list function values");
 
+    failures += prepare_sql(database, "UPDATE hex_sites SET n = 5 WHERE UNHEX('GG') IS NULL",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "update unhex warning promoted");
+    failures += expect_contains(mylite_error_message(database), "function unhex",
+                                "update unhex warning error");
+    failures += expect_int(mylite_warning_count(database), 1, "update unhex warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_incorrect_string_value, "update unhex warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "UPDATE hex_sites SET s = UNHEX('GG') WHERE id = 1",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR,
+                              "update unhex assignment warning promoted");
+    failures += expect_contains(mylite_error_message(database), "function unhex",
+                                "update unhex assignment warning error");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "update unhex assignment warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_incorrect_string_value,
+                   "update unhex assignment warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_select_rows(database, "SELECT id, s, n FROM hex_sites WHERE id = 1", id_s_n_columns,
+                           3, unchanged_hex_values, 1, "update unhex warning unchanged");
+
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE hex_sites SET s = HEX(UNHEX('6265')) WHERE HEX(UNHEX(h)) = '4265'", 1,
+        "update hex/unhex assignment and predicate");
+    failures +=
+        expect_select_rows(database, "SELECT id, s, n FROM hex_sites WHERE id = 2", id_s_n_columns,
+                           3, updated_hex_values, 1, "updated hex/unhex function values");
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM hex_sites WHERE HEX(UNHEX(h)) = '417A'", 1,
+        "delete hex/unhex function predicate");
+    failures += expect_select_rows(database, "SELECT id FROM hex_sites WHERE h IS NOT NULL",
+                                   id_column, 1, id_2, 1, "delete hex/unhex remaining rows");
+
     failures += execute_sql(database,
                             "CREATE TABLE make_order "
                             "(id INT PRIMARY KEY, s VARCHAR(20), n INT)",
@@ -3604,6 +3885,27 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_select_rows(database, "SELECT id FROM make_order ORDER BY id", id_column, 1,
                                    make_order_remaining_values, 2,
                                    "delete make_set order key remaining rows");
+
+    failures += execute_sql(database,
+                            "CREATE TABLE hex_order "
+                            "(id INT PRIMARY KEY, h VARCHAR(20), n INT)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO hex_order VALUES "
+                            "(1,'62',10),(2,'61',20),(3,'63',30)",
+                            MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE hex_order SET n = 99 ORDER BY UNHEX(h), id LIMIT 1", 1,
+        "update unhex order key");
+    failures += expect_select_rows(database, "SELECT id, h AS s, n FROM hex_order WHERE id = 2",
+                                   id_s_n_columns, 3, updated_hex_order_values, 1,
+                                   "updated unhex order key values");
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM hex_order ORDER BY HEX(UNHEX(h)) DESC, id LIMIT 1", 1,
+        "delete hex/unhex order key");
+    failures += expect_select_rows(database, "SELECT id FROM hex_order ORDER BY id", id_column, 1,
+                                   hex_order_remaining_values, 2,
+                                   "delete hex/unhex order key remaining rows");
 
     failures += prepare_sql(database, "UPDATE t SET n = 5 WHERE MOD(7,0)", MYLITE_OK, &stmt);
     failures +=
@@ -3634,6 +3936,20 @@ static int test_scalar_builtin_functions_execution(void)
     stmt = NULL;
     failures += expect_select_rows(database, "SELECT id FROM t ORDER BY id", id_column, 1,
                                    all_id_values, 3, "delete warning predicate unchanged");
+
+    failures +=
+        prepare_sql(database, "DELETE FROM hex_sites WHERE UNHEX('GG') IS NULL", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "delete unhex warning promoted");
+    failures += expect_contains(mylite_error_message(database), "function unhex",
+                                "delete unhex warning error");
+    failures += expect_int(mylite_warning_count(database), 1, "delete unhex warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_incorrect_string_value, "delete unhex warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM hex_sites WHERE h IS NOT NULL",
+                                   id_column, 1, id_2, 1, "delete unhex warning unchanged");
 
     failures += execute_sql_expect_done_affected(
         database, "DELETE FROM t WHERE INSERT(REVERSE(LPAD(s, 5, '.')), 1, 0, '') = 'eb-x.'", 1,
@@ -3731,6 +4047,14 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_no_stmt_handle(&stmt, "unsupported make_set zero arity");
     failures += prepare_sql(database, "SELECT MAKE_SET(1)", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported make_set one arity");
+    failures += prepare_sql(database, "SELECT HEX()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported hex zero arity");
+    failures += prepare_sql(database, "SELECT HEX('a','b')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported hex two arity");
+    failures += prepare_sql(database, "SELECT UNHEX()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported unhex zero arity");
+    failures += prepare_sql(database, "SELECT UNHEX('41','42')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported unhex two arity");
     failures += prepare_sql(database, "SELECT POSITION('a')", MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "position ordinary syntax");
     failures += prepare_sql(database, "SELECT LTRIM()", MYLITE_UNSUPPORTED, &stmt);

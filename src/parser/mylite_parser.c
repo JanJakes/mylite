@@ -166,6 +166,7 @@ static int token_is_invalid_identifier_atom(MyliteToken token,
                                             int allow_string_literal);
 static int token_starts_numeric_literal(MyliteToken token);
 static int token_is_hex_literal(MyliteToken token, size_t offset);
+static int token_is_lower_hex_literal(MyliteToken token, size_t offset);
 static int token_is_binary_literal(MyliteToken token, size_t offset);
 static int token_is_decimal_literal(MyliteToken token, size_t offset);
 static int ascii_is_digit(char ch);
@@ -547,6 +548,7 @@ static int token_ascii_equal(MyliteToken token, const char *expected);
 static int query_limit_option_token(int token_id, MyliteToken token);
 static int query_limit_number_token(MyliteToken token);
 static int token_is_show_log_position_literal(MyliteToken token);
+static int token_is_start_relay_log_position_literal(MyliteToken token);
 
 MyliteParseStatus mylite_parse_sql(const char *sql, size_t length,
                                    MyliteParseResult *result) {
@@ -11272,6 +11274,15 @@ void mylite_parser_require_unsigned_decimal_literal(MyliteParseContext *ctx,
   mylite_parser_reject(ctx, token, "invalid numeric literal");
 }
 
+void mylite_parser_require_unsigned_decimal_or_lower_hex_literal(
+    MyliteParseContext *ctx, MyliteToken token) {
+  if (token_is_start_relay_log_position_literal(token)) {
+    return;
+  }
+
+  mylite_parser_reject(ctx, token, "invalid numeric literal");
+}
+
 void mylite_parser_require_unsigned_integer_or_hex_literal(
     MyliteParseContext *ctx, MyliteToken token) {
   unsigned long value;
@@ -11433,6 +11444,23 @@ static int token_is_hex_literal(MyliteToken token, size_t offset) {
 
   if (token.length <= offset + 2 || token.start[offset] != '0' ||
       (token.start[offset + 1] != 'x' && token.start[offset + 1] != 'X')) {
+    return 0;
+  }
+
+  for (i = offset + 2; i < token.length; i++) {
+    if (!ascii_is_hex_digit(token.start[i])) {
+      return 0;
+    }
+  }
+
+  return 1;
+}
+
+static int token_is_lower_hex_literal(MyliteToken token, size_t offset) {
+  size_t i;
+
+  if (token.length <= offset + 2 || token.start[offset] != '0' ||
+      token.start[offset + 1] != 'x') {
     return 0;
   }
 
@@ -15251,6 +15279,11 @@ static int token_is_show_log_position_literal(MyliteToken token) {
   }
 
   return i == token.length;
+}
+
+static int token_is_start_relay_log_position_literal(MyliteToken token) {
+  return token_is_show_log_position_literal(token) ||
+         token_is_lower_hex_literal(token, 0);
 }
 
 static int dml_literal_token(int token_id, MyliteToken token) {

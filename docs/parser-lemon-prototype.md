@@ -373,9 +373,11 @@ token sink:
   ... FOR` thread-id lists support MySQL's optional comma separators.
 - `START REPLICA` recognizes `IO_THREAD`/`RELAY_THREAD` and `SQL_THREAD`,
   `UNTIL`, connection, and channel clauses with text-string log/GTID/user
-  option values that reject quoted hex/bit literals and numeric log-position
-  values. Source/relay log coordinate option lists are accepted in MySQL parser
-  order, and replication channel names use MySQL's text-string channel grammar.
+  option values that reject quoted hex/bit literals. Source/relay log
+  coordinate option lists are accepted in MySQL parser order, with unsigned
+  decimal source log positions and MySQL's unsigned decimal plus lowercase-hex
+  relay log-position forms. Replication channel names use MySQL's text-string
+  channel grammar.
   Removed `START SLAVE` and
   `STOP SLAVE` syntax is
   permissive-corpus-only.

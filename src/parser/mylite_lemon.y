@@ -2146,13 +2146,43 @@ start_until_log_options ::= start_until_log_option.
 start_until_log_options ::= start_until_log_options import_comma start_until_log_option.
 
 start_until_log_option ::= SOURCE_LOG_FILE start_option_equals text_string_literal.
-start_until_log_option ::= SOURCE_LOG_POS start_option_equals start_log_position_value.
+start_until_log_option ::= SOURCE_LOG_POS start_option_equals start_source_log_position_value.
 start_until_log_option ::= RELAY_LOG_FILE start_option_equals text_string_literal.
-start_until_log_option ::= RELAY_LOG_POS start_option_equals start_log_position_value.
+start_until_log_option ::= RELAY_LOG_POS start_option_equals start_relay_log_position_value.
 
-start_log_position_value ::= BOOLEAN_NUMBER.
-start_log_position_value ::= FACTOR_NUMBER.
-start_log_position_value ::= NUMBER_LITERAL.
+start_source_log_position_value ::= start_decimal_log_position_value.
+
+start_relay_log_position_value ::= BOOLEAN_NUMBER(A). {
+  mylite_parser_require_unsigned_decimal_or_lower_hex_literal(ctx, A);
+}
+start_relay_log_position_value ::= FACTOR_NUMBER(A). {
+  mylite_parser_require_unsigned_decimal_or_lower_hex_literal(ctx, A);
+}
+start_relay_log_position_value ::= NUMBER_LITERAL(A). {
+  mylite_parser_require_unsigned_decimal_or_lower_hex_literal(ctx, A);
+}
+start_relay_log_position_value ::= DOT start_decimal_log_position_fraction.
+
+start_decimal_log_position_value ::= BOOLEAN_NUMBER(A). {
+  mylite_parser_require_unsigned_decimal_literal(ctx, A);
+}
+start_decimal_log_position_value ::= FACTOR_NUMBER(A). {
+  mylite_parser_require_unsigned_decimal_literal(ctx, A);
+}
+start_decimal_log_position_value ::= NUMBER_LITERAL(A). {
+  mylite_parser_require_unsigned_decimal_literal(ctx, A);
+}
+start_decimal_log_position_value ::= DOT start_decimal_log_position_fraction.
+
+start_decimal_log_position_fraction ::= BOOLEAN_NUMBER(A). {
+  mylite_parser_require_unsigned_decimal_literal(ctx, A);
+}
+start_decimal_log_position_fraction ::= FACTOR_NUMBER(A). {
+  mylite_parser_require_unsigned_decimal_literal(ctx, A);
+}
+start_decimal_log_position_fraction ::= NUMBER_LITERAL(A). {
+  mylite_parser_require_unsigned_decimal_literal(ctx, A);
+}
 
 start_connection_tail ::= start_user_option start_password_option start_default_auth_option start_plugin_dir_option.
 

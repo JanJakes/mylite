@@ -23,7 +23,8 @@ Deferred surfaces:
 
 - full MySQL character-set catalog
 - executable `SHOW CHARACTER SET ... WHERE expr` filtering
-- `INFORMATION_SCHEMA.CHARACTER_SETS`
+- broader `INFORMATION_SCHEMA.CHARACTER_SETS` query support beyond
+  `SELECT *`
 - privilege filtering, if any future execution surface needs it
 
 ## Compatibility Sources
@@ -121,6 +122,8 @@ Rows:
   - `Maxlen`
 - `Maxlen` is numeric, not a string placeholder. The SQLite-backed statement
   should emit it as an integer expression.
+- `INFORMATION_SCHEMA.CHARACTER_SETS` uses the same shared registry and emits
+  the same character-set rows with uppercase information-schema column names.
 - Rows are ordered by `Charset` case-insensitively, then by binary name for
   deterministic tie-breaking. This matches the current MyLite ordering policy
   used by `SHOW VARIABLES` and `SHOW STATUS`.

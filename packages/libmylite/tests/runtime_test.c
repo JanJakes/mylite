@@ -15,7 +15,7 @@ enum {
     tables_column_count = 21,
     columns_column_count = 22,
     statistics_column_count = 18,
-    information_schema_view_count = 5,
+    information_schema_view_count = 6,
     schemata_catalog_column = 0,
     schemata_name_column = 1,
     schemata_character_set_column = 2,
@@ -216,6 +216,7 @@ static int test_schema_lifecycle(void);
 static int test_character_set_collation_foundation(void);
 static int test_core_metadata_catalog(void);
 static int test_information_schema_engines_execution(void);
+static int test_information_schema_character_sets_execution(void);
 static int test_mylite_file_preamble_and_vfs_payload(void);
 static int test_mylite_open_rejects_plain_sqlite(void);
 static int test_unsupported_statement(void);
@@ -375,6 +376,7 @@ int main(void)
     failures += test_character_set_collation_foundation();
     failures += test_core_metadata_catalog();
     failures += test_information_schema_engines_execution();
+    failures += test_information_schema_character_sets_execution();
     failures += test_mylite_file_preamble_and_vfs_payload();
     failures += test_mylite_open_rejects_plain_sqlite();
     failures += test_unsupported_statement();
@@ -933,6 +935,121 @@ static int test_information_schema_engines_execution(void)
     failures += expect_no_stmt_handle(&stmt, "information schema engines join");
 
     mylite_close(database);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
+    return failures;
+}
+
+static int test_information_schema_character_sets_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const columns[] = {"CHARACTER_SET_NAME", "DEFAULT_COLLATE_NAME",
+                                          "DESCRIPTION", "MAXLEN"};
+    static const char *const show_tables_columns[] = {
+        "Tables_in_information_schema (CHARACTER_SETS)", "Table_type"};
+    static const char *const show_tables_values[] = {"CHARACTER_SETS", "SYSTEM VIEW"};
+    static const char *const values[] = {
+        "binary",
+        "binary",
+        "Binary pseudo charset",
+        "1",
+        "latin1",
+        "latin1_swedish_ci",
+        "cp1252 West European",
+        "1",
+        "utf8mb3",
+        "utf8mb3_general_ci",
+        "UTF-8 Unicode",
+        "3",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        "UTF-8 Unicode",
+        "4",
+    };
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK,
+                              "open information schema character sets");
+
+    failures +=
+        expect_select_rows(database, "SELECT * FROM INFORMATION_SCHEMA.CHARACTER_SETS", columns, 4,
+                           values, 4, "information schema character sets registry");
+    failures +=
+        expect_select_rows(database, "SELECT * FROM information_schema.character_sets", columns, 4,
+                           values, 4, "information schema character sets lower-case");
+    failures +=
+        expect_select_rows(database, "SELECT * FROM Information_Schema.Character_Sets", columns, 4,
+                           values, 4, "information schema character sets mixed-case");
+    failures +=
+        expect_select_rows(database, "SELECT * FROM `information_schema`.`CHARACTER_SETS`", columns,
+                           4, values, 4, "information schema character sets quoted");
+
+    failures +=
+        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.CHARACTER_SETS", MYLITE_OK, &stmt);
+    failures += expect_column_names(stmt, columns, 4, "information schema character sets columns");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW,
+                              "information schema character sets numeric maxlen row");
+    failures += expect_int64(mylite_column_int64(stmt, 3), 1,
+                             "information schema character sets numeric maxlen");
+    failures += expect_int64(mylite_affected_rows(stmt), -1,
+                             "information schema character sets affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_information_schema_tables_views(database);
+    failures += expect_select_rows(database,
+                                   "SHOW FULL TABLES FROM information_schema LIKE 'character_sets'",
+                                   show_tables_columns, 2, show_tables_values, 1,
+                                   "show tables information schema character sets");
+
+    failures +=
+        prepare_sql(database, "SELECT CHARACTER_SET_NAME FROM INFORMATION_SCHEMA.CHARACTER_SETS",
+                    MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema character sets projection");
+    failures += prepare_sql(database, "SELECT DISTINCT * FROM INFORMATION_SCHEMA.CHARACTER_SETS",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema character sets distinct");
+    failures += prepare_sql(database, "SELECT ALL * FROM INFORMATION_SCHEMA.CHARACTER_SETS",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema character sets explicit all");
+    failures +=
+        prepare_sql(database,
+                    "SELECT * FROM INFORMATION_SCHEMA.CHARACTER_SETS WHERE CHARACTER_SET_NAME = "
+                    "'utf8mb4'",
+                    MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema character sets where");
+    failures += prepare_sql(database,
+                            "SELECT * FROM INFORMATION_SCHEMA.CHARACTER_SETS ORDER BY "
+                            "CHARACTER_SET_NAME",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema character sets order by");
+    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.CHARACTER_SETS LIMIT 1",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema character sets limit");
+    failures += prepare_sql(database, "SELECT COUNT(*) FROM INFORMATION_SCHEMA.CHARACTER_SETS",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema character sets count");
+    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.CHARACTER_SETS AS cs",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema character sets AS alias");
+    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.CHARACTER_SETS cs",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema character sets bare alias");
+    failures += prepare_sql(database,
+                            "SELECT INFORMATION_SCHEMA.CHARACTER_SETS.* FROM "
+                            "INFORMATION_SCHEMA.CHARACTER_SETS",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures +=
+        expect_no_stmt_handle(&stmt, "information schema character sets qualified wildcard");
+    failures += prepare_sql(database,
+                            "SELECT * FROM INFORMATION_SCHEMA.CHARACTER_SETS JOIN "
+                            "INFORMATION_SCHEMA.TABLES",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema character sets join");
+
+    mylite_close(database);
+    mylite_finalize(stmt);
     // NOLINTEND(readability-function-size,readability-magic-numbers)
     return failures;
 }
@@ -12139,7 +12256,7 @@ static int expect_no_information_schema_schemata_row(mylite_db *database, const 
 static int expect_information_schema_tables_views(mylite_db *database)
 {
     static const char *const expected_tables[] = {
-        "COLUMNS", "ENGINES", "SCHEMATA", "STATISTICS", "TABLES",
+        "CHARACTER_SETS", "COLUMNS", "ENGINES", "SCHEMATA", "STATISTICS", "TABLES",
     };
     mylite_stmt *stmt = NULL;
     int failures =

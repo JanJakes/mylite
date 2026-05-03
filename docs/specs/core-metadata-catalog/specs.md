@@ -15,12 +15,14 @@ minimum MySQL-compatible `INFORMATION_SCHEMA` surface needed before
 The implementation is deliberately narrow. It supports `SELECT * FROM
 INFORMATION_SCHEMA.<table>` for these catalog-backed tables, with
 case-insensitive resolution of `information_schema` and object names. The
-current system-view inventory also includes `INFORMATION_SCHEMA.ENGINES`,
+current system-view inventory also includes `INFORMATION_SCHEMA.ENGINES` and
+`INFORMATION_SCHEMA.CHARACTER_SETS`,
 specified separately in
-[INFORMATION_SCHEMA.ENGINES](../information-schema-engines/specs.md). General
-`SELECT` projection, filtering, ordering, aliases, joins, expressions over
-metadata tables, and privilege-sensitive metadata visibility are later
-features.
+[INFORMATION_SCHEMA.ENGINES](../information-schema-engines/specs.md) and
+[INFORMATION_SCHEMA.CHARACTER_SETS](../information-schema-character-sets/specs.md). General
+`SELECT` projection, explicit duplicate modifiers, filtering, ordering,
+aliases, joins, expressions over metadata tables, and privilege-sensitive
+metadata visibility are later features.
 
 ## Sources
 
@@ -63,8 +65,8 @@ sources.
 - An empty user-created schema has no rows in `TABLES`, `COLUMNS`, or
   `STATISTICS`.
 - `INFORMATION_SCHEMA.TABLES` contains rows for the
-  `INFORMATION_SCHEMA.SCHEMATA`, `TABLES`, `COLUMNS`, `ENGINES`, and
-  `STATISTICS` system views. In the verified runtime, each has
+  `INFORMATION_SCHEMA.CHARACTER_SETS`, `SCHEMATA`, `TABLES`, `COLUMNS`,
+  `ENGINES`, and `STATISTICS` system views. In the verified runtime, each has
   `TABLE_TYPE='SYSTEM VIEW'`,
   `ENGINE=NULL`, `VERSION=10`, `TABLE_ROWS=0`, `TABLE_COLLATION=NULL`, and an
   empty `TABLE_COMMENT`.
@@ -208,9 +210,9 @@ SELECT * FROM INFORMATION_SCHEMA.TABLES
 Behavior:
 
 - Returns rows from `__mylite_table_catalog`.
-- Also exposes system-view rows for `INFORMATION_SCHEMA.SCHEMATA`, `TABLES`,
-  `COLUMNS`, `ENGINES`, and `STATISTICS`.
-- For these five system views, MyLite returns `TABLE_TYPE='SYSTEM VIEW'`,
+- Also exposes system-view rows for `INFORMATION_SCHEMA.CHARACTER_SETS`,
+  `SCHEMATA`, `TABLES`, `COLUMNS`, `ENGINES`, and `STATISTICS`.
+- For these system views, MyLite returns `TABLE_TYPE='SYSTEM VIEW'`,
   `ENGINE=NULL`, `VERSION=10`, `TABLE_ROWS=0`, `TABLE_COLLATION=NULL`, and
   `TABLE_COMMENT=''`, matching observed MySQL 8.4.9 behavior for the fields
   this feature verifies.
@@ -253,10 +255,11 @@ parse or unsupported-statement diagnostic until the relevant SELECT feature
 lands:
 
 - explicit projections such as `SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA`
+- explicit `ALL` / `DISTINCT` modifiers
 - `WHERE`, `ORDER BY`, `LIMIT`, joins, aliases, and expressions over metadata
   tables
 - unqualified `SELECT * FROM SCHEMATA`
-- metadata tables other than the five supported current surfaces
+- metadata tables other than the supported current surfaces
 
 ## Lemon grammar snippets
 
@@ -303,7 +306,7 @@ The following observations were verified against `mylite-mysql-849`:
 | `SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA='mylite_metadata_catalog_a'` on an empty created schema | Returns `0`. |
 | `DROP DATABASE mylite_metadata_catalog_a; SELECT COUNT(*) FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME='mylite_metadata_catalog_a'` | Returns `0`. |
 | `SELECT COUNT(*) FROM information_schema.schemata`, `INFORMATION_SCHEMA.schemata`, and backtick-quoted `` `information_schema`.`SCHEMATA` `` | All resolve successfully. |
-| `SELECT ... FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA='information_schema' AND TABLE_NAME IN (...)` | The five scoped system views are reported as `SYSTEM VIEW` rows with `ENGINE=NULL`, `VERSION=10`, `TABLE_ROWS=0`, `TABLE_COLLATION=NULL`, and empty comments. |
+| `SELECT ... FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA='information_schema' AND TABLE_NAME IN (...)` | The scoped system views are reported as `SYSTEM VIEW` rows with `ENGINE=NULL`, `VERSION=10`, `TABLE_ROWS=0`, `TABLE_COLLATION=NULL`, and empty comments. |
 
 ## Test plan
 
@@ -319,7 +322,7 @@ The following observations were verified against `mylite-mysql-849`:
   - created schema defaults and encryption are reflected in `SCHEMATA`
   - dropping a schema removes its `SCHEMATA` row
   - information schema table resolution is case-insensitive
-  - `TABLES` exposes the 21 MySQL column names and the five system-view rows
+  - `TABLES` exposes the 21 MySQL column names and system-view rows
   - `TABLES` has no row for an empty user-created schema
   - `COLUMNS` exposes the 22 MySQL column names and has no rows before table
     metadata exists

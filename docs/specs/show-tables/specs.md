@@ -121,7 +121,8 @@ Rows:
 
 - User schemas are backed by `__mylite_table_catalog`.
 - `information_schema` additionally exposes MyLite's current metadata views:
-  `SCHEMATA`, `TABLES`, `COLUMNS`, `ENGINES`, and `STATISTICS`.
+  `CHARACTER_SETS`, `SCHEMATA`, `TABLES`, `COLUMNS`, `ENGINES`, and
+  `STATISTICS`.
 - User-created views are deferred and therefore not listed until view metadata
   exists.
 - `SHOW TABLES` returns only table/view names.
@@ -191,6 +192,8 @@ Runtime coverage:
 - `EXTENDED` accepted as no-op over the current catalog
 - parsed `WHERE` returns a deterministic unsupported diagnostic
 - `information_schema` existing metadata views as `SYSTEM VIEW`
+- `SHOW FULL TABLES FROM information_schema LIKE 'character_sets'` returns the
+  `CHARACTER_SETS` system-view row
 - `LIKE` column-label suffix and wildcard filtering
 - escaped `_` in `LIKE`
 - empty result with stable metadata

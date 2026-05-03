@@ -215,15 +215,20 @@ level application surfaces.
        `INFORMATION_SCHEMA.ENGINES` slice shares that registry for wildcard
        selection with exact uppercase columns and case-insensitive quoted name
        resolution; projections, filters, ordering, limits, aliases, joins, and
-       aggregates remain deferred. Full build-dependent engine catalog breadth
-       remains deferred. Specs:
+       aggregates remain deferred. The first `INFORMATION_SCHEMA.CHARACTER_SETS`
+       slice shares the supported character-set registry used by
+       `SHOW CHARACTER SET`, exposes exact uppercase columns and numeric
+       `MAXLEN`, and preserves the same wildcard-only information-schema query
+       policy. Full build-dependent engine catalog breadth and full MySQL
+       character-set catalog breadth remain deferred. Specs:
        [SHOW TABLES](../show-tables/specs.md),
        [SHOW COLUMNS](../show-columns/specs.md),
        [SHOW INDEX](../show-index/specs.md),
        [DESCRIBE / DESC table metadata](../describe-table/specs.md),
        [SHOW CREATE TABLE](../show-create-table/specs.md),
        [SHOW ENGINES](../show-engines/specs.md),
-       [INFORMATION_SCHEMA.ENGINES](../information-schema-engines/specs.md).
+       [INFORMATION_SCHEMA.ENGINES](../information-schema-engines/specs.md),
+       [INFORMATION_SCHEMA.CHARACTER_SETS](../information-schema-character-sets/specs.md).
 40. [ ] `SHOW VARIABLES`, `SHOW STATUS`, `SHOW WARNINGS`, `SHOW ERRORS`, and
        count variants: session state, diagnostics, filtering, and metadata.
        The diagnostic `SHOW WARNINGS` / `SHOW ERRORS` slice is specified for

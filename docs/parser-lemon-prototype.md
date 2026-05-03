@@ -265,11 +265,13 @@ token sink:
   `ROW_FORMAT`, decimal-versus-size number domains with quoted-hex size values,
   bounded numeric and quoted-hex `STATS_SAMPLE_PAGES`, storage values without equality signs,
   `UNION` table-name lists, and `START TRANSACTION`. `CREATE TABLE`
-  partition tails validate `HASH`/`LINEAR HASH` expressions, `RANGE`/`LIST`
+  partition tails validate `HASH`/`LINEAR HASH` expressions, reject
+  `LINEAR RANGE`/`LINEAR LIST`, validate `RANGE`/`LIST`
   and `RANGE COLUMNS`/`LIST COLUMNS` expression-list envelopes, `KEY`/`LINEAR
   KEY` column lists including MySQL's syntax-valid empty list, key
-  `ALGORITHM=1/2` values, non-empty `VALUES LESS THAN (...)` and `VALUES IN
-  (...)` lists, required values for explicit `RANGE`/`LIST` partitions,
+  `ALGORITHM=1/2` values, partition/subpartition count literals,
+  `HASH`/`KEY`-only subpartition methods, non-empty `VALUES LESS THAN (...)`
+  and `VALUES IN (...)` lists, required values for explicit `RANGE`/`LIST` partitions,
   `VALUES LESS THAN MAXVALUE`, and malformed/trailing partition definition
   commas, plus explicit partition options for `ENGINE`/`STORAGE ENGINE`,
   `COMMENT`, `DATA DIRECTORY`, `INDEX DIRECTORY`, `MAX_ROWS`, `MIN_ROWS`,

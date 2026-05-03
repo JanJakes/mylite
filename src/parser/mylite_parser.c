@@ -499,7 +499,7 @@ static void validate_alter_table_partition_definition_bodies(
     MyliteParseContext *ctx, MyliteToken start);
 static void validate_alter_table_order_by_from(MyliteParseContext *ctx,
                                                MyliteToken start);
-static int alter_table_partition_count_token(int token_id, MyliteToken token);
+static int partition_count_token(int token_id, MyliteToken token);
 static int event_interval_unit_token(MyliteToken token);
 static int event_schedule_boundary(int token_id);
 static int event_schedule_option_start(MyliteToken token);
@@ -9496,7 +9496,7 @@ static void validate_alter_table_expression_tails(MyliteParseContext *ctx,
     }
 
     if (state == ALTER_EXPR_EXPECT_PARTITION_COUNT) {
-      if (!alter_table_partition_count_token(token_id, token)) {
+      if (!partition_count_token(token_id, token)) {
         mylite_parser_reject(ctx, pending_token,
                              "invalid ALTER TABLE partition option");
         return;
@@ -9965,8 +9965,7 @@ static void validate_alter_table_order_by_from(MyliteParseContext *ctx,
   }
 }
 
-static int alter_table_partition_count_token(int token_id,
-                                             MyliteToken token) {
+static int partition_count_token(int token_id, MyliteToken token) {
   unsigned long value;
 
   if (token_id != ML_BOOLEAN_NUMBER && token_id != ML_FACTOR_NUMBER &&
@@ -13225,6 +13224,8 @@ static void validate_create_table_tail_options(MyliteParseContext *ctx,
   int partition_state = CREATE_TABLE_PARTITION_NONE;
   int partition_method = CREATE_TABLE_PARTITION_METHOD_NONE;
   int partition_outer_method = CREATE_TABLE_PARTITION_METHOD_NONE;
+  int partition_linear_seen = 0;
+  int partition_subpartition_method = 0;
   int partition_columns_seen = 0;
   int partition_key_algorithm_state =
       CREATE_TABLE_PARTITION_KEY_ALGORITHM_NONE;
@@ -13548,6 +13549,8 @@ static void validate_create_table_tail_options(MyliteParseContext *ctx,
       partition_state = CREATE_TABLE_PARTITION_EXPECT_BY;
       partition_method = CREATE_TABLE_PARTITION_METHOD_NONE;
       partition_outer_method = CREATE_TABLE_PARTITION_METHOD_NONE;
+      partition_linear_seen = 0;
+      partition_subpartition_method = 0;
       partition_columns_seen = 0;
       partition_key_algorithm_state =
           CREATE_TABLE_PARTITION_KEY_ALGORITHM_NONE;
@@ -13588,6 +13591,7 @@ static void validate_create_table_tail_options(MyliteParseContext *ctx,
         }
         partition_state = CREATE_TABLE_PARTITION_EXPECT_METHOD;
         partition_method = CREATE_TABLE_PARTITION_METHOD_NONE;
+        partition_linear_seen = 0;
         partition_columns_seen = 0;
         partition_key_algorithm_state =
             CREATE_TABLE_PARTITION_KEY_ALGORITHM_NONE;
@@ -13596,6 +13600,12 @@ static void validate_create_table_tail_options(MyliteParseContext *ctx,
       }
       if (partition_state == CREATE_TABLE_PARTITION_EXPECT_METHOD) {
         if (token_ascii_equal(token, "linear")) {
+          if (partition_linear_seen) {
+            mylite_parser_reject(ctx, token,
+                                 "invalid CREATE TABLE partition option");
+            return;
+          }
+          partition_linear_seen = 1;
           continue;
         }
         if (token_ascii_equal(token, "hash")) {
@@ -13617,6 +13627,11 @@ static void validate_create_table_tail_options(MyliteParseContext *ctx,
           continue;
         }
         if (token_ascii_equal(token, "range")) {
+          if (partition_linear_seen || partition_subpartition_method) {
+            mylite_parser_reject(ctx, token,
+                                 "invalid CREATE TABLE partition option");
+            return;
+          }
           partition_method = CREATE_TABLE_PARTITION_METHOD_RANGE;
           if (partition_outer_method == CREATE_TABLE_PARTITION_METHOD_NONE) {
             partition_outer_method = partition_method;
@@ -13626,6 +13641,11 @@ static void validate_create_table_tail_options(MyliteParseContext *ctx,
           continue;
         }
         if (token_ascii_equal(token, "list")) {
+          if (partition_linear_seen || partition_subpartition_method) {
+            mylite_parser_reject(ctx, token,
+                                 "invalid CREATE TABLE partition option");
+            return;
+          }
           partition_method = CREATE_TABLE_PARTITION_METHOD_LIST;
           if (partition_outer_method == CREATE_TABLE_PARTITION_METHOD_NONE) {
             partition_outer_method = partition_method;
@@ -13682,7 +13702,7 @@ static void validate_create_table_tail_options(MyliteParseContext *ctx,
         return;
       }
       if (partition_state == CREATE_TABLE_PARTITION_EXPECT_PARTITIONS_VALUE) {
-        if (!create_table_tail_option_number_token(token_id)) {
+        if (!partition_count_token(token_id, token)) {
           mylite_parser_reject(ctx, token,
                                "invalid CREATE TABLE partition option");
           return;
@@ -13692,13 +13712,27 @@ static void validate_create_table_tail_options(MyliteParseContext *ctx,
       }
       if (token_id == ML_PARTITIONS ||
           token_ascii_equal(token, "subpartitions")) {
+        if ((token_id == ML_PARTITIONS && partition_subpartition_method) ||
+            (token_ascii_equal(token, "subpartitions") &&
+             !partition_subpartition_method)) {
+          mylite_parser_reject(ctx, token,
+                               "invalid CREATE TABLE partition option");
+          return;
+        }
         partition_state = CREATE_TABLE_PARTITION_EXPECT_PARTITIONS_VALUE;
         pending_token = token;
         continue;
       }
       if (token_ascii_equal(token, "subpartition")) {
+        if (partition_subpartition_method) {
+          mylite_parser_reject(ctx, token,
+                               "invalid CREATE TABLE partition option");
+          return;
+        }
         partition_state = CREATE_TABLE_PARTITION_EXPECT_BY;
         partition_method = CREATE_TABLE_PARTITION_METHOD_NONE;
+        partition_linear_seen = 0;
+        partition_subpartition_method = 1;
         partition_columns_seen = 0;
         partition_key_algorithm_state =
             CREATE_TABLE_PARTITION_KEY_ALGORITHM_NONE;

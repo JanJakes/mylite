@@ -978,10 +978,6 @@ resource_group_signed_integer_value ::= NUMBER_LITERAL(A). {
   mylite_parser_require_signed_integer_literal(ctx, A);
 }
 
-resource_group_number_value ::= BOOLEAN_NUMBER.
-resource_group_number_value ::= FACTOR_NUMBER.
-resource_group_number_value ::= NUMBER_LITERAL.
-
 create_resource_type ::= create_type_marker diagnostics_equals create_resource_type_value.
 
 create_type_marker ::= TYPE.
@@ -4254,7 +4250,17 @@ set_resource_group_thread_list ::= set_resource_group_thread.
 set_resource_group_thread_list ::= set_resource_group_thread_list import_comma set_resource_group_thread.
 set_resource_group_thread_list ::= set_resource_group_thread_list set_resource_group_thread.
 
-set_resource_group_thread ::= resource_group_number_value.
+set_resource_group_thread ::= resource_group_thread_id_value.
+
+resource_group_thread_id_value ::= BOOLEAN_NUMBER(A). {
+  mylite_parser_require_unsigned_integer_or_lower_hex_literal(ctx, A);
+}
+resource_group_thread_id_value ::= FACTOR_NUMBER(A). {
+  mylite_parser_require_unsigned_integer_or_lower_hex_literal(ctx, A);
+}
+resource_group_thread_id_value ::= NUMBER_LITERAL(A). {
+  mylite_parser_require_unsigned_integer_or_lower_hex_literal(ctx, A);
+}
 
 set_password_tail ::= set_password_target_tail set_password_auth_option set_password_replace_tail set_password_retain_tail.
 

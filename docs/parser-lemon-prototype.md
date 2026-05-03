@@ -370,9 +370,9 @@ token sink:
   recognize table lists and their documented parser-level option keywords.
 - Resource group DDL and utility statements recognize MySQL 8.4 resource
   attributes, unsigned-integer VCPU ranges, optional-negative-integer thread
-  priorities, force modifiers, and numeric thread-id assignment lists. VCPU
-  range and `SET RESOURCE GROUP ... FOR` thread-id lists support MySQL's
-  optional comma separators.
+  priorities, force modifiers, and unsigned integer/lowercase-hex thread-id
+  assignment lists. VCPU range and `SET RESOURCE GROUP ... FOR` thread-id lists
+  support MySQL's optional comma separators.
 - `START REPLICA` recognizes `IO_THREAD`/`RELAY_THREAD` and `SQL_THREAD`,
   `UNTIL`, connection, and channel clauses with text-string log/GTID/user
   option values that reject quoted hex/bit literals. Source/relay log

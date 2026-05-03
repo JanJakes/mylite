@@ -11317,6 +11317,18 @@ void mylite_parser_require_unsigned_decimal_or_lower_hex_literal(
   mylite_parser_reject(ctx, token, "invalid numeric literal");
 }
 
+void mylite_parser_require_unsigned_integer_or_lower_hex_literal(
+    MyliteParseContext *ctx, MyliteToken token) {
+  unsigned long value;
+
+  if (token_is_plain_unsigned_integer(token, &value) ||
+      token_is_lower_hex_literal(token, 0)) {
+    return;
+  }
+
+  mylite_parser_reject(ctx, token, "invalid integer literal");
+}
+
 void mylite_parser_require_unsigned_integer_or_hex_literal(
     MyliteParseContext *ctx, MyliteToken token) {
   unsigned long value;

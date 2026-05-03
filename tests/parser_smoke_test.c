@@ -152,6 +152,13 @@ typedef struct ExpectedCreateTableOption {
   const char *value;
 } ExpectedCreateTableOption;
 
+typedef struct SemanticCounts {
+  size_t targets;
+  size_t expressions;
+  size_t operators;
+  size_t leaf_values;
+} SemanticCounts;
+
 static int expect_parse_ok(const char *sql);
 static int expect_ast_ok(const char *sql, const char *root_symbol);
 static int expect_ast_statements(const char *sql, size_t count,
@@ -210,6 +217,11 @@ static int expect_truncate_table_view(void);
 static int expect_transaction_statement_views(void);
 static int expect_update_statement_view(void);
 static int expect_use_database_view(void);
+static int expect_semantic_ast_materialization(void);
+static void count_semantic_nodes(const MyliteSemanticAstNode *node,
+                                 SemanticCounts *counts);
+static const MyliteSemanticAstNode *first_semantic_child_with_kind(
+    const MyliteSemanticAstNode *node, MyliteSemanticNodeKind kind);
 static int span_matches(const char *sql, size_t start, size_t end,
                         const char *expected);
 static int span_matches_when_expected(const char *sql, size_t start, size_t end,
@@ -821,6 +833,7 @@ int main(void) {
   failures += expect_transaction_statement_views();
   failures += expect_update_statement_view();
   failures += expect_use_database_view();
+  failures += expect_semantic_ast_materialization();
   {
     const ExpectedCreateTableColumn columns[] = {
         {.definition = "id INT NOT NULL AUTO_INCREMENT",
@@ -5539,6 +5552,149 @@ static int expect_rename_table_view(void) {
 
   mylite_ast_free(ast);
   return failed;
+}
+
+static int expect_semantic_ast_materialization(void) {
+  int failed = 0;
+  const char *dml_sql =
+      "INSERT INTO `db``x`.`t``y` (a, b) VALUES (1, DEFAULT), (2, a + 3) "
+      "ON DUPLICATE KEY UPDATE b = VALUES(b)";
+  MyliteParseResult result;
+  MyliteSemanticAst *semantic_ast = NULL;
+  MyliteParseStatus status =
+      mylite_parse_sql_semantic_ast(dml_sql, &semantic_ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "semantic AST DML parse failed: status=%s offset=%zu token=%d "
+            "message=%s\n",
+            mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return 1;
+  }
+
+  const MyliteSemanticAstNode *root =
+      mylite_semantic_ast_root(semantic_ast);
+  const MyliteSemanticAstNode *statement =
+      mylite_semantic_ast_node_child_at(root, 0);
+  const MyliteSemanticAstNode *target = first_semantic_child_with_kind(
+      statement, MYLITE_SEMANTIC_NODE_TARGET);
+  SemanticCounts counts = {0, 0, 0, 0};
+  count_semantic_nodes(root, &counts);
+
+  if (root == NULL ||
+      mylite_semantic_ast_node_kind(root) != MYLITE_SEMANTIC_NODE_PROGRAM ||
+      mylite_semantic_ast_statement_count(semantic_ast) != 1 ||
+      mylite_semantic_ast_node_child_count(root) != 1 ||
+      statement == NULL ||
+      mylite_semantic_ast_node_kind(statement) !=
+          MYLITE_SEMANTIC_NODE_STATEMENT ||
+      mylite_semantic_ast_node_statement_kind(statement) !=
+          MYLITE_STATEMENT_INSERT ||
+      target == NULL ||
+      mylite_semantic_ast_node_target_kind(target) !=
+          MYLITE_STATEMENT_TARGET_TABLE ||
+      mylite_semantic_ast_node_target_role(target) !=
+          MYLITE_STATEMENT_TARGET_ROLE_PRIMARY ||
+      !value_matches_when_expected(
+          mylite_semantic_ast_node_value(target),
+          mylite_semantic_ast_node_value_length(target), "t`y") ||
+      counts.targets != 1 || counts.expressions < 7 || counts.operators < 1 ||
+      counts.leaf_values < 5 ||
+      mylite_semantic_ast_node_count(semantic_ast) < 10 ||
+      mylite_semantic_ast_allocated_bytes(semantic_ast) == 0) {
+    fprintf(stderr,
+            "semantic AST DML shape mismatch: nodes=%zu bytes=%zu "
+            "targets=%zu expressions=%zu operators=%zu leaf_values=%zu\n",
+            mylite_semantic_ast_node_count(semantic_ast),
+            mylite_semantic_ast_allocated_bytes(semantic_ast), counts.targets,
+            counts.expressions, counts.operators, counts.leaf_values);
+    failed = 1;
+  }
+  mylite_semantic_ast_free(semantic_ast);
+
+  const char *ddl_sql =
+      "CREATE TABLE t ("
+      "a INT DEFAULT (1 + 2), "
+      "b INT GENERATED ALWAYS AS (a + 1) STORED, "
+      "c INT CHECK (c > 0), "
+      "d TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, "
+      "KEY k ((a + 1)), "
+      "CHECK (a < b))";
+  semantic_ast = NULL;
+  status = mylite_parse_sql_semantic_ast(ddl_sql, &semantic_ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "semantic AST DDL parse failed: status=%s offset=%zu token=%d "
+            "message=%s\n",
+            mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return failed + 1;
+  }
+
+  root = mylite_semantic_ast_root(semantic_ast);
+  statement = mylite_semantic_ast_node_child_at(root, 0);
+  target = first_semantic_child_with_kind(statement,
+                                         MYLITE_SEMANTIC_NODE_TARGET);
+  SemanticCounts ddl_counts = {0, 0, 0, 0};
+  count_semantic_nodes(root, &ddl_counts);
+  if (statement == NULL ||
+      mylite_semantic_ast_node_statement_kind(statement) !=
+          MYLITE_STATEMENT_CREATE ||
+      target == NULL ||
+      !value_matches_when_expected(
+          mylite_semantic_ast_node_value(target),
+          mylite_semantic_ast_node_value_length(target), "t") ||
+      ddl_counts.targets != 1 || ddl_counts.expressions < 6 ||
+      ddl_counts.operators < 5 || ddl_counts.leaf_values < 8) {
+    fprintf(stderr,
+            "semantic AST DDL shape mismatch: nodes=%zu targets=%zu "
+            "expressions=%zu operators=%zu leaf_values=%zu\n",
+            mylite_semantic_ast_node_count(semantic_ast), ddl_counts.targets,
+            ddl_counts.expressions, ddl_counts.operators,
+            ddl_counts.leaf_values);
+    failed = 1;
+  }
+  mylite_semantic_ast_free(semantic_ast);
+  return failed;
+}
+
+static void count_semantic_nodes(const MyliteSemanticAstNode *node,
+                                 SemanticCounts *counts) {
+  if (node == NULL || counts == NULL) {
+    return;
+  }
+  if (mylite_semantic_ast_node_kind(node) == MYLITE_SEMANTIC_NODE_TARGET) {
+    counts->targets++;
+  }
+  if (mylite_semantic_ast_node_kind(node) == MYLITE_SEMANTIC_NODE_EXPRESSION) {
+    counts->expressions++;
+    if (mylite_semantic_ast_node_expression_operator_kind(node) !=
+        MYLITE_EXPRESSION_OPERATOR_NONE) {
+      counts->operators++;
+    }
+    if (mylite_semantic_ast_node_child_count(node) == 0 &&
+        mylite_semantic_ast_node_value(node) != NULL) {
+      counts->leaf_values++;
+    }
+  }
+  for (size_t i = 0; i < mylite_semantic_ast_node_child_count(node); i++) {
+    count_semantic_nodes(mylite_semantic_ast_node_child_at(node, i), counts);
+  }
+}
+
+static const MyliteSemanticAstNode *first_semantic_child_with_kind(
+    const MyliteSemanticAstNode *node, MyliteSemanticNodeKind kind) {
+  if (node == NULL) {
+    return NULL;
+  }
+  for (size_t i = 0; i < mylite_semantic_ast_node_child_count(node); i++) {
+    const MyliteSemanticAstNode *child =
+        mylite_semantic_ast_node_child_at(node, i);
+    if (mylite_semantic_ast_node_kind(child) == kind) {
+      return child;
+    }
+  }
+  return NULL;
 }
 
 static int span_matches(const char *sql, size_t start, size_t end,

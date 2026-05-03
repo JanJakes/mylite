@@ -260,9 +260,19 @@ The tree is not yet the final semantic MyLite AST. It is a complete generated
 parse tree with a typed statement classification and target descriptor layer
 suitable for measuring cost and for guiding typed-node work.
 
-The semantic `CREATE TABLE` view is the first statement-level AST object layered
-on top of the descriptor work. It does not copy column, key, or option
-descriptors; instead it gives the next builder a stable object anchored to
+`mylite_parse_sql_semantic_ast()` now returns the first separate semantic graph
+as an opaque `MyliteSemanticAst`. This initial graph is deliberately narrower
+than the parser-view surface: it materializes program -> statement ->
+target/expression nodes, copies decoded target/expression values into its own
+arena, and frees the parser CST. Callers can inspect semantic node kind,
+statement kind, target kind/role, expression kind/literal/operator, spans,
+copied values, children, node count, statement count, and allocated bytes. Name
+resolution, query-block objects, table-reference objects, DDL metadata nodes,
+and execution semantics remain future layers.
+
+The parser-level semantic `CREATE TABLE` view was the first statement-level AST
+object layered on top of the descriptor work. It does not copy column, key, or
+option descriptors; instead it gives the next builder a stable object anchored to
 `nt_create_table_stmt`, with the normalized table name, descriptor counts, and
 opaque descriptor handles. Handle-level accessors expose column type spans,
 numeric parameters, enum/set elements, type attributes, option, default,
@@ -513,7 +523,23 @@ Prepare a NUL-separated corpus from the WordPress CSV, then run:
 
 ```sh
 build-perf/mylite-parser-bench /tmp/mylite-parser-corpus.nul syntax 100
+build-perf/mylite-parser-bench /tmp/mylite-parser-corpus.nul ast-only 100
 build-perf/mylite-parser-bench /tmp/mylite-parser-corpus.nul ast 100
+build-perf/mylite-parser-bench /tmp/mylite-parser-corpus.nul semantic 100
+```
+
+`ast-only` builds and frees the parser CST and parser-view summaries without the
+large benchmark coverage walk. `ast` keeps the historical public-view coverage
+counters. `semantic` parses through the parser AST, materializes the first
+semantic graph, frees the parser AST, and then counts the semantic graph.
+
+Latest semantic-AST construction run on May 3, 2026:
+
+```text
+mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=13.898933 qps=500333 mbps=38.05 avg_us=1.999
+mode=ast-only queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=34.466127 qps=201766 mbps=15.34 avg_us=4.956 avg_nodes=74.5 avg_ast_bytes=10893.3 avg_statements=1.00
+mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=35.078568 qps=198244 mbps=15.08 avg_us=5.044 avg_nodes=74.5 avg_ast_bytes=10893.3
+mode=semantic queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=36.172590 qps=192248 mbps=14.62 avg_us=5.202 avg_semantic_nodes=5.3 avg_semantic_bytes=4268.0 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_expressions=2.67 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.03
 ```
 
 Release benchmark result on May 2, 2026:
@@ -624,17 +650,19 @@ Current release build size on the same machine:
 generated parser C: 72,852 lines, 5,637,339 bytes
 generated parser object: 996K on disk, 905,398 bytes text/data/other
 parser support object: 301K on disk, 175,892 bytes text/data/other
+semantic AST object: 18K on disk, 8,095 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.4M on disk
 mylite-parse: 1.2M on disk
+mylite-parser-bench: 1.2M on disk
 ```
 
 ## Next Work
 
 - Replace temporary recognizer placeholder roots with real grammar productions
   or explicit typed placeholder statements.
-- Extend semantic `CREATE TABLE` AST nodes from the current view handles into
-  concrete column, key, table-option, data-type, and semantic expression
+- Expand `MyliteSemanticAst` beyond statement/target/expression nodes into
+  concrete `CREATE TABLE` column, key, table-option, data-type, and expression
   metadata nodes.
 - Normalize parser-derived DDL summaries into MySQL metadata-ready structures,
   including generated names for unnamed constraints and SQL-mode-sensitive

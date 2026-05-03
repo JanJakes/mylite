@@ -8,20 +8,29 @@
 
 typedef enum BenchMode {
   BENCH_SYNTAX,
-  BENCH_AST
+  BENCH_AST_ONLY,
+  BENCH_AST,
+  BENCH_SEMANTIC
 } BenchMode;
 
 static int run_benchmark(const char *path, BenchMode mode, int iterations);
 static void count_expression_tree(const MyliteAstExpression *expression,
                                   size_t *nodes, size_t *operators,
                                   size_t *leaf_values);
+static void count_semantic_tree(const MyliteSemanticAstNode *node,
+                                size_t *targets, size_t *expressions,
+                                size_t *operators, size_t *leaf_values);
 static char *read_file(const char *path, size_t *length);
 static double monotonic_seconds(void);
 static int parse_mode(const char *value, BenchMode *mode);
+static const char *bench_mode_name(BenchMode mode);
 
 int main(int argc, char **argv) {
   if (argc < 2 || argc > 4) {
-    fprintf(stderr, "usage: %s queries.nul [syntax|ast] [iterations]\n", argv[0]);
+    fprintf(stderr,
+            "usage: %s queries.nul [syntax|ast-only|ast|semantic] "
+            "[iterations]\n",
+            argv[0]);
     return 2;
   }
 
@@ -376,6 +385,13 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t key_referenced_column_name_values = 0;
   size_t key_options = 0;
   size_t options = 0;
+  size_t semantic_nodes = 0;
+  size_t semantic_bytes = 0;
+  size_t semantic_statements = 0;
+  size_t semantic_targets = 0;
+  size_t semantic_expressions = 0;
+  size_t semantic_expression_operators = 0;
+  size_t semantic_expression_leaf_values = 0;
   double start = monotonic_seconds();
   for (int iteration = 0; iteration < iterations; iteration++) {
     for (size_t offset = 0; offset < length;) {
@@ -383,7 +399,16 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
       size_t query_length = strlen(query);
       MyliteParseResult result;
       MyliteParseStatus status;
-      if (mode == BENCH_AST) {
+      if (mode == BENCH_AST_ONLY) {
+        MyliteAst *ast = NULL;
+        status = mylite_parse_sql_ast(query, &ast, &result);
+        if (status == MYLITE_PARSE_OK) {
+          ast_nodes += mylite_ast_node_count(ast);
+          ast_bytes += mylite_ast_allocated_bytes(ast);
+          statements += mylite_ast_statement_count(ast);
+        }
+        mylite_ast_free(ast);
+      } else if (mode == BENCH_AST) {
         MyliteAst *ast = NULL;
         status = mylite_parse_sql_ast(query, &ast, &result);
         if (status == MYLITE_PARSE_OK) {
@@ -1840,6 +1865,20 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
           }
         }
         mylite_ast_free(ast);
+      } else if (mode == BENCH_SEMANTIC) {
+        MyliteSemanticAst *semantic_ast = NULL;
+        status = mylite_parse_sql_semantic_ast(query, &semantic_ast, &result);
+        if (status == MYLITE_PARSE_OK) {
+          semantic_nodes += mylite_semantic_ast_node_count(semantic_ast);
+          semantic_bytes += mylite_semantic_ast_allocated_bytes(semantic_ast);
+          semantic_statements +=
+              mylite_semantic_ast_statement_count(semantic_ast);
+          count_semantic_tree(mylite_semantic_ast_root(semantic_ast),
+                              &semantic_targets, &semantic_expressions,
+                              &semantic_expression_operators,
+                              &semantic_expression_leaf_values);
+        }
+        mylite_semantic_ast_free(semantic_ast);
       } else {
         status = mylite_parse_sql(query, &result);
       }
@@ -1858,10 +1897,15 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   double total_bytes = (double)query_bytes * (double)iterations;
   printf("mode=%s queries=%zu iterations=%d parsed=%zu failed=%zu elapsed=%.6f "
          "qps=%.0f mbps=%.2f avg_us=%.3f",
-         mode == BENCH_AST ? "ast" : "syntax", query_count, iterations, parsed, failed,
+         bench_mode_name(mode), query_count, iterations, parsed, failed,
          elapsed, total_queries / elapsed, (total_bytes / (1024.0 * 1024.0)) / elapsed,
          (elapsed * 1000000.0) / total_queries);
-  if (mode == BENCH_AST && parsed > 0) {
+  if (mode == BENCH_AST_ONLY && parsed > 0) {
+    printf(" avg_nodes=%.1f avg_ast_bytes=%.1f avg_statements=%.2f",
+           (double)ast_nodes / (double)parsed,
+           (double)ast_bytes / (double)parsed,
+           (double)statements / (double)parsed);
+  } else if (mode == BENCH_AST && parsed > 0) {
     printf(" avg_nodes=%.1f avg_ast_bytes=%.1f avg_statements=%.2f "
            "avg_targets=%.2f avg_target_schema_values=%.2f "
            "avg_target_name_values=%.2f avg_columns=%.2f avg_keys=%.2f "
@@ -2518,6 +2562,19 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)column_type_charsets / (double)parsed,
            (double)column_type_collations / (double)parsed,
            (double)column_value_roots / (double)parsed);
+  } else if (mode == BENCH_SEMANTIC && parsed > 0) {
+    printf(" avg_semantic_nodes=%.1f avg_semantic_bytes=%.1f "
+           "avg_semantic_statements=%.2f avg_semantic_targets=%.2f "
+           "avg_semantic_expressions=%.2f "
+           "avg_semantic_expression_operators=%.2f "
+           "avg_semantic_expression_leaf_values=%.2f",
+           (double)semantic_nodes / (double)parsed,
+           (double)semantic_bytes / (double)parsed,
+           (double)semantic_statements / (double)parsed,
+           (double)semantic_targets / (double)parsed,
+           (double)semantic_expressions / (double)parsed,
+           (double)semantic_expression_operators / (double)parsed,
+           (double)semantic_expression_leaf_values / (double)parsed);
   }
   printf("\n");
 
@@ -2549,6 +2606,39 @@ static void count_expression_tree(const MyliteAstExpression *expression,
        i++) {
     count_expression_tree(mylite_ast_expression_view_child_at(expression, i),
                           nodes, operators, leaf_values);
+  }
+}
+
+static void count_semantic_tree(const MyliteSemanticAstNode *node,
+                                size_t *targets, size_t *expressions,
+                                size_t *operators, size_t *leaf_values) {
+  if (node == NULL) {
+    return;
+  }
+
+  if (mylite_semantic_ast_node_kind(node) == MYLITE_SEMANTIC_NODE_TARGET &&
+      targets != NULL) {
+    (*targets)++;
+  }
+  if (mylite_semantic_ast_node_kind(node) == MYLITE_SEMANTIC_NODE_EXPRESSION) {
+    if (expressions != NULL) {
+      (*expressions)++;
+    }
+    if (operators != NULL &&
+        mylite_semantic_ast_node_expression_operator_kind(node) !=
+            MYLITE_EXPRESSION_OPERATOR_NONE) {
+      (*operators)++;
+    }
+    if (leaf_values != NULL &&
+        mylite_semantic_ast_node_child_count(node) == 0 &&
+        mylite_semantic_ast_node_value(node) != NULL) {
+      (*leaf_values)++;
+    }
+  }
+
+  for (size_t i = 0; i < mylite_semantic_ast_node_child_count(node); i++) {
+    count_semantic_tree(mylite_semantic_ast_node_child_at(node, i), targets,
+                        expressions, operators, leaf_values);
   }
 }
 
@@ -2601,9 +2691,31 @@ static int parse_mode(const char *value, BenchMode *mode) {
     *mode = BENCH_SYNTAX;
     return 1;
   }
+  if (strcmp(value, "ast-only") == 0) {
+    *mode = BENCH_AST_ONLY;
+    return 1;
+  }
   if (strcmp(value, "ast") == 0) {
     *mode = BENCH_AST;
     return 1;
   }
+  if (strcmp(value, "semantic") == 0) {
+    *mode = BENCH_SEMANTIC;
+    return 1;
+  }
   return 0;
+}
+
+static const char *bench_mode_name(BenchMode mode) {
+  switch (mode) {
+    case BENCH_SYNTAX:
+      return "syntax";
+    case BENCH_AST_ONLY:
+      return "ast-only";
+    case BENCH_AST:
+      return "ast";
+    case BENCH_SEMANTIC:
+      return "semantic";
+  }
+  return "syntax";
 }

@@ -22,6 +22,8 @@ typedef struct MyliteParseResult {
 } MyliteParseResult;
 
 typedef struct MyliteAst MyliteAst;
+typedef struct MyliteSemanticAst MyliteSemanticAst;
+typedef struct MyliteSemanticAstNode MyliteSemanticAstNode;
 typedef struct MyliteAstAlterTable MyliteAstAlterTable;
 typedef struct MyliteAstAlterTableSpec MyliteAstAlterTableSpec;
 typedef struct MyliteAstCreateDatabase MyliteAstCreateDatabase;
@@ -79,6 +81,14 @@ typedef enum MyliteAstNodeKind {
   MYLITE_AST_NODE_RULE = 1,
   MYLITE_AST_NODE_TOKEN = 2
 } MyliteAstNodeKind;
+
+typedef enum MyliteSemanticNodeKind {
+  MYLITE_SEMANTIC_NODE_UNKNOWN = 0,
+  MYLITE_SEMANTIC_NODE_PROGRAM = 1,
+  MYLITE_SEMANTIC_NODE_STATEMENT = 2,
+  MYLITE_SEMANTIC_NODE_TARGET = 3,
+  MYLITE_SEMANTIC_NODE_EXPRESSION = 4
+} MyliteSemanticNodeKind;
 
 typedef enum MyliteExpressionKind {
   MYLITE_EXPRESSION_UNKNOWN = 0,
@@ -640,6 +650,9 @@ typedef enum MyliteAlterTableSpecKind {
 MyliteParseStatus mylite_parse_sql(const char *sql, MyliteParseResult *result);
 MyliteParseStatus mylite_parse_sql_ast(const char *sql, MyliteAst **ast,
                                        MyliteParseResult *result);
+MyliteParseStatus mylite_parse_sql_semantic_ast(const char *sql,
+                                                MyliteSemanticAst **ast,
+                                                MyliteParseResult *result);
 const char *mylite_parse_status_name(MyliteParseStatus status);
 const char *mylite_statement_kind_name(MyliteStatementKind kind);
 const char *mylite_statement_target_kind_name(MyliteStatementTargetKind kind);
@@ -719,6 +732,37 @@ const char *mylite_transaction_begin_mode_name(
 const char *mylite_transaction_access_mode_name(
     MyliteTransactionAccessMode mode);
 const char *mylite_alter_table_spec_kind_name(MyliteAlterTableSpecKind kind);
+
+void mylite_semantic_ast_free(MyliteSemanticAst *ast);
+const MyliteSemanticAstNode *mylite_semantic_ast_root(
+    const MyliteSemanticAst *ast);
+size_t mylite_semantic_ast_node_count(const MyliteSemanticAst *ast);
+size_t mylite_semantic_ast_allocated_bytes(const MyliteSemanticAst *ast);
+size_t mylite_semantic_ast_statement_count(const MyliteSemanticAst *ast);
+MyliteSemanticNodeKind mylite_semantic_ast_node_kind(
+    const MyliteSemanticAstNode *node);
+MyliteStatementKind mylite_semantic_ast_node_statement_kind(
+    const MyliteSemanticAstNode *node);
+MyliteStatementTargetKind mylite_semantic_ast_node_target_kind(
+    const MyliteSemanticAstNode *node);
+MyliteStatementTargetRole mylite_semantic_ast_node_target_role(
+    const MyliteSemanticAstNode *node);
+MyliteExpressionKind mylite_semantic_ast_node_expression_kind(
+    const MyliteSemanticAstNode *node);
+MyliteExpressionLiteralKind mylite_semantic_ast_node_expression_literal_kind(
+    const MyliteSemanticAstNode *node);
+MyliteExpressionOperatorKind mylite_semantic_ast_node_expression_operator_kind(
+    const MyliteSemanticAstNode *node);
+size_t mylite_semantic_ast_node_start(const MyliteSemanticAstNode *node);
+size_t mylite_semantic_ast_node_end(const MyliteSemanticAstNode *node);
+const char *mylite_semantic_ast_node_value(
+    const MyliteSemanticAstNode *node);
+size_t mylite_semantic_ast_node_value_length(
+    const MyliteSemanticAstNode *node);
+size_t mylite_semantic_ast_node_child_count(
+    const MyliteSemanticAstNode *node);
+const MyliteSemanticAstNode *mylite_semantic_ast_node_child_at(
+    const MyliteSemanticAstNode *node, size_t index);
 
 void mylite_ast_free(MyliteAst *ast);
 const MyliteAstNode *mylite_ast_root(const MyliteAst *ast);

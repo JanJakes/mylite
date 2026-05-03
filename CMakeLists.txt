@@ -54,6 +54,7 @@ add_custom_command(
 add_library(mylite_parser STATIC
   src/parser/lexer.c
   src/parser/parser.c
+  src/parser/semantic_ast.c
   "${MYLITE_LEMON_C}"
 )
 

@@ -192,11 +192,24 @@ level application surfaces.
        catalog-backed values, and selected-schema, missing-schema,
        missing-table, and unknown-system-table diagnostics. `information_schema`
        table descriptions currently return an unsupported diagnostic, and
-       broader query-plan `EXPLAIN` syntax remains deferred. Specs:
+       broader query-plan `EXPLAIN` syntax remains deferred. The first
+       `SHOW CREATE TABLE` slice is specified and implemented for supported
+       persistent MyLite base tables, including selected-schema and
+       schema-qualified targets, two-column `Table` / `Create Table` result
+       shape, catalog-backed deterministic CREATE text for the supported
+       column, primary-key, unique-key, nonunique-key, visibility, comments,
+       charset/collation, auto-increment, and table-option subset, backtick
+       identifier quoting, and selected-schema, missing-schema, missing-table,
+       known-system-table, and unknown-system-table diagnostics. Views,
+       temporary tables, foreign keys, checks, generated columns, partitions,
+       functional indexes, storage-engine-specific options, privilege
+       filtering, `SHOW CREATE VIEW`, and `sql_quote_show_create = 0` remain
+       deferred. Specs:
        [SHOW TABLES](../show-tables/specs.md),
        [SHOW COLUMNS](../show-columns/specs.md),
        [SHOW INDEX](../show-index/specs.md),
-       [DESCRIBE / DESC table metadata](../describe-table/specs.md).
+       [DESCRIBE / DESC table metadata](../describe-table/specs.md),
+       [SHOW CREATE TABLE](../show-create-table/specs.md).
 40. [ ] `SHOW VARIABLES`, `SHOW STATUS`, `SHOW WARNINGS`, `SHOW ERRORS`, and
        count variants: session state, diagnostics, filtering, and metadata.
 41. [ ] User and system variables: `SET`, user-variable storage, system-variable

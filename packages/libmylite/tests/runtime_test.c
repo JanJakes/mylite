@@ -199,6 +199,7 @@ static int test_truncate_table_execution(void);
 static int test_show_tables_execution(void);
 static int test_show_columns_execution(void);
 static int test_show_index_execution(void);
+static int test_show_create_table_execution(void);
 static int test_describe_table_execution(void);
 static int test_insert_values_execution(void);
 static int test_insert_set_execution(void);
@@ -338,6 +339,7 @@ int main(void)
     failures += test_show_tables_execution();
     failures += test_show_columns_execution();
     failures += test_show_index_execution();
+    failures += test_show_create_table_execution();
     failures += test_describe_table_execution();
     failures += test_insert_values_execution();
     failures += test_insert_set_execution();
@@ -4983,6 +4985,148 @@ static int test_describe_table_execution(void)
                                      MYLITE_EXEC_ERROR,
                                      "Unknown table 'MISSING_INFO' in information_schema",
                                      "describe unknown information schema table");
+
+    mylite_close(database);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
+    return failures;
+}
+
+static int test_show_create_table_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const columns[] = {"Table", "Create Table"};
+    static const char simple_create[] = "CREATE TABLE `simple_table` (\n"
+                                        "  `id` int NOT NULL,\n"
+                                        "  `v` varchar(10) DEFAULT NULL,\n"
+                                        "  PRIMARY KEY (`id`)\n"
+                                        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 "
+                                        "COLLATE=utf8mb4_0900_ai_ci";
+    static const char *const simple_values[] = {"simple_table", simple_create};
+    static const char qualified_create[] = "CREATE TABLE `qualified` (\n"
+                                           "  `code` int DEFAULT NULL\n"
+                                           ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 "
+                                           "COLLATE=utf8mb4_0900_ai_ci";
+    static const char *const qualified_values[] = {"qualified", qualified_create};
+    static const char meta_create[] =
+        "CREATE TABLE `meta` (\n"
+        "  `id` int NOT NULL AUTO_INCREMENT,\n"
+        "  `name` varchar(20) COLLATE utf8mb4_bin NOT NULL DEFAULT '' "
+        "COMMENT 'Name comment',\n"
+        "  `amount` decimal(10,2) DEFAULT '0.00',\n"
+        "  `flag` tinyint DEFAULT NULL,\n"
+        "  `hidden` int DEFAULT NULL /*!80023 INVISIBLE */,\n"
+        "  `a_1` int DEFAULT NULL,\n"
+        "  PRIMARY KEY (`id`),\n"
+        "  UNIQUE KEY `amount_unique` (`amount`),\n"
+        "  KEY `name_idx` (`name`),\n"
+        "  KEY `idx_name_tail` (`name`(5) DESC,`a_1`) COMMENT 'idx comment' "
+        "/*!80000 INVISIBLE */\n"
+        ") ENGINE=InnoDB AUTO_INCREMENT=42 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin "
+        "COMMENT='table comment'";
+    static const char *const meta_values[] = {"meta", meta_create};
+    static const char collation_default_create[] =
+        "CREATE TABLE `collation_default` (\n"
+        "  `c` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,\n"
+        "  `d` varchar(10) DEFAULT NULL\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
+    static const char *const collation_default_values[] = {"collation_default",
+                                                           collation_default_create};
+    static const char collation_table_bin_create[] =
+        "CREATE TABLE `collation_table_bin` (\n"
+        "  `c` varchar(10) COLLATE utf8mb4_bin DEFAULT NULL,\n"
+        "  `d` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin";
+    static const char *const collation_table_bin_values[] = {"collation_table_bin",
+                                                             collation_table_bin_create};
+    static const char escaped_create[] = "CREATE TABLE `weird``name` (\n"
+                                         "  `select` int DEFAULT NULL,\n"
+                                         "  `b``c` varchar(4) DEFAULT NULL,\n"
+                                         "  KEY `idx``s` (`b``c`)\n"
+                                         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 "
+                                         "COLLATE=utf8mb4_0900_ai_ci";
+    static const char *const escaped_values[] = {"weird`name", escaped_create};
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open show create table database");
+    failures +=
+        expect_prepare_error(database, "SHOW CREATE TABLE meta", MYLITE_EXEC_ERROR,
+                             "No database selected", "show create table requires selected schema");
+
+    failures += execute_sql(database, "CREATE DATABASE mylite_show_create_a", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE DATABASE mylite_show_create_b", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_show_create_a", MYLITE_DONE);
+    failures += execute_sql(
+        database, "CREATE TABLE simple_table (id INT PRIMARY KEY, v VARCHAR(10))", MYLITE_DONE);
+    failures += expect_select_rows(database, "SHOW CREATE TABLE simple_table", columns, 2,
+                                   simple_values, 1, "show create simple table");
+
+    failures += execute_sql(database,
+                            "CREATE TABLE meta ("
+                            "id INT NOT NULL AUTO_INCREMENT, "
+                            "name VARCHAR(20) NOT NULL DEFAULT '' COMMENT 'Name comment', "
+                            "amount DECIMAL(10,2) DEFAULT 0.00, "
+                            "flag TINYINT NULL, "
+                            "hidden INT INVISIBLE, "
+                            "a_1 INT, "
+                            "PRIMARY KEY (id), "
+                            "KEY name_idx (name), "
+                            "UNIQUE KEY amount_unique (amount), "
+                            "KEY idx_name_tail (name(5) DESC, a_1 ASC) "
+                            "COMMENT 'idx comment' INVISIBLE"
+                            ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin "
+                            "COMMENT='table comment' AUTO_INCREMENT=42",
+                            MYLITE_DONE);
+    failures += expect_select_rows(database, "SHOW CREATE TABLE meta", columns, 2, meta_values, 1,
+                                   "show create table full metadata");
+
+    failures += execute_sql(database,
+                            "CREATE TABLE collation_default ("
+                            "c VARCHAR(10) COLLATE utf8mb4_bin, d VARCHAR(10)"
+                            ") DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+                            MYLITE_DONE);
+    failures += expect_select_rows(database, "SHOW CREATE TABLE collation_default", columns, 2,
+                                   collation_default_values, 1,
+                                   "show create table explicit column collation");
+
+    failures += execute_sql(database,
+                            "CREATE TABLE collation_table_bin ("
+                            "c VARCHAR(10), d VARCHAR(10) COLLATE utf8mb4_0900_ai_ci"
+                            ") DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin",
+                            MYLITE_DONE);
+    failures += expect_select_rows(database, "SHOW CREATE TABLE collation_table_bin", columns, 2,
+                                   collation_table_bin_values, 1,
+                                   "show create table table default collation");
+
+    failures += execute_sql(database, "CREATE TABLE mylite_show_create_b.qualified (code INT)",
+                            MYLITE_DONE);
+    failures +=
+        expect_select_rows(database, "SHOW CREATE TABLE mylite_show_create_b.qualified", columns, 2,
+                           qualified_values, 1, "show create table schema qualified");
+
+    failures += execute_sql(database,
+                            "CREATE TABLE `weird``name` (`select` INT, `b``c` VARCHAR(4), "
+                            "KEY `idx``s` (`b``c`))",
+                            MYLITE_DONE);
+    failures += expect_select_rows(database, "SHOW CREATE TABLE `weird``name`", columns, 2,
+                                   escaped_values, 1, "show create table escaped identifiers");
+
+    failures += expect_prepare_error(database, "SHOW CREATE TABLE missing_show_create_db.t",
+                                     MYLITE_EXEC_ERROR, "Unknown database",
+                                     "show create table rejects missing schema");
+    failures += expect_prepare_error(database, "SHOW CREATE TABLE missing_show_create_table",
+                                     MYLITE_EXEC_ERROR, "doesn't exist",
+                                     "show create table rejects missing table");
+    failures += expect_prepare_error(database, "SHOW CREATE TABLE information_schema.TABLES",
+                                     MYLITE_UNSUPPORTED,
+                                     "SHOW CREATE TABLE for information_schema tables is not "
+                                     "supported",
+                                     "show create table information schema unsupported");
+    failures += expect_prepare_error(database, "SHOW CREATE TABLE information_schema.missing_info",
+                                     MYLITE_EXEC_ERROR,
+                                     "Unknown table 'MISSING_INFO' in information_schema",
+                                     "show create table unknown information schema table");
 
     mylite_close(database);
     // NOLINTEND(readability-function-size,readability-magic-numbers)

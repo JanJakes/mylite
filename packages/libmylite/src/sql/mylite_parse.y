@@ -196,6 +196,9 @@ statement(A) ::= show_columns_statement(B). {
 statement(A) ::= show_index_statement(B). {
     A = B;
 }
+statement(A) ::= show_create_table_statement(B). {
+    A = B;
+}
 statement(A) ::= describe_table_statement(B). {
     A = B;
 }
@@ -1107,6 +1110,11 @@ opt_show_index_filter(A) ::= . {
 }
 opt_show_index_filter(A) ::= where_clause(B). {
     A = B;
+}
+
+show_create_table_statement(A) ::= SHOW(S) CREATE TABLE(T) table_name(B). {
+    A = mylite_sql_parser_make_show_create_table_statement(
+        state, (struct mylite_sql_parser_show_create_table_tokens){.show = S, .table = T}, B);
 }
 
 set_names_statement(A) ::= SET(T) NAMES charset_value(B) opt_set_names_collation(C). {

@@ -24,6 +24,7 @@ static int test_truncate_table_syntax(void);
 static int test_show_tables_syntax(void);
 static int test_show_columns_syntax(void);
 static int test_show_index_syntax(void);
+static int test_show_create_table_syntax(void);
 static int test_describe_table_syntax(void);
 static int test_drop_table_syntax(void);
 static int test_insert_values_syntax(void);
@@ -165,6 +166,7 @@ int main(void)
     failures += test_show_tables_syntax();
     failures += test_show_columns_syntax();
     failures += test_show_index_syntax();
+    failures += test_show_create_table_syntax();
     failures += test_describe_table_syntax();
     failures += test_drop_table_syntax();
     failures += test_insert_values_syntax();
@@ -3166,6 +3168,58 @@ static int test_show_index_syntax(void)
 
     failures +=
         parse_sql("SHOW INDEX FROM t FROM app FROM other;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_show_create_table_syntax(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *table_name = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SHOW CREATE TABLE t; SHOW CREATE TABLE app.t; "
+                          "SHOW CREATE TABLE `weird``name`;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_child_count(result.root, 3U, "show create table script count");
+
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT, "show create table");
+    failures += expect_child_count(statement, 1U, "show create table child count");
+    failures += expect_span_text(child_at(statement, 0U), "t", "show create table name");
+
+    statement = child_at(result.root, 1U);
+    table_name = child_at(statement, 0U);
+    failures += expect_node(table_name, MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+                            "show create table qualified target");
+    failures +=
+        expect_span_text(child_at(table_name, 0U), "app", "show create table qualified schema");
+    failures +=
+        expect_span_text(child_at(table_name, 1U), "t", "show create table qualified table");
+
+    statement = child_at(result.root, 2U);
+    failures += expect_span_text(child_at(statement, 0U), "`weird``name`",
+                                 "show create table escaped name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW CREATE TABLE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW CREATE VIEW t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW FULL CREATE TABLE t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW CREATE TABLE t LIKE 'a%';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW CREATE TABLE t FROM app;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     // NOLINTEND(readability-magic-numbers)

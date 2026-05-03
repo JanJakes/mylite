@@ -115,6 +115,11 @@ struct mylite_sql_parser_show_index_tokens {
     struct mylite_sql_token index;
 };
 
+struct mylite_sql_parser_show_create_table_tokens {
+    struct mylite_sql_token show;
+    struct mylite_sql_token table;
+};
+
 struct mylite_sql_parser_describe_table_tokens {
     struct mylite_sql_token keyword;
 };
@@ -612,6 +617,9 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_index_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_parser_show_index_tokens tokens,
     struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *schema_name,
     struct mylite_sql_ast_node *filter);
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_table_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_parser_show_create_table_tokens tokens,
+    struct mylite_sql_ast_node *table_name);
 struct mylite_sql_ast_node *mylite_sql_parser_make_describe_table_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_parser_describe_table_tokens tokens,
     struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *filter);

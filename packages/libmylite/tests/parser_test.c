@@ -5184,7 +5184,7 @@ static int test_scalar_function_call_syntax(void)
         string_function_item_count = 15,
         padding_function_item_count = 6,
         quote_function_item_count = 2,
-        list_function_item_count = 15,
+        list_function_item_count = 16,
         coalesce_nested_arg_index = 2,
     };
     struct mylite_sql_parse_result result;
@@ -5408,7 +5408,8 @@ static int test_scalar_function_call_syntax(void)
                           "FIND_IN_SET('b', 'a,b'), MAKE_SET(3, 'a', 'b'), "
                           "HEX('Az'), UNHEX('417a'), TO_BASE64('Az'), from_base64('QXo='), "
                           "BIN(12), OCT(12), CONV('a',16,2), "
-                          "BIT_COUNT(7), BIT_LENGTH('abc'), INET_ATON('127.0.0.1'), "
+                          "BIT_COUNT(7), BIT_LENGTH('abc'), cRc32('MySQL'), "
+                          "INET_ATON('127.0.0.1'), "
                           "inet_ntoa(2130706433);",
                           MYLITE_SQL_PARSE_OK, &result);
     select_list = child_at(child_at(result.root, 0U), 0U);
@@ -5440,9 +5441,11 @@ static int test_scalar_function_call_syntax(void)
                                      "BIT_COUNT call");
     failures += expect_function_call(child_at(child_at(select_list, 12U), 0U), "BIT_LENGTH", 1U,
                                      "BIT_LENGTH call");
-    failures += expect_function_call(child_at(child_at(select_list, 13U), 0U), "INET_ATON", 1U,
+    failures += expect_function_call(child_at(child_at(select_list, 13U), 0U), "cRc32", 1U,
+                                     "CRC32 case-insensitive call");
+    failures += expect_function_call(child_at(child_at(select_list, 14U), 0U), "INET_ATON", 1U,
                                      "INET_ATON call");
-    failures += expect_function_call(child_at(child_at(select_list, 14U), 0U), "inet_ntoa", 1U,
+    failures += expect_function_call(child_at(child_at(select_list, 15U), 0U), "inet_ntoa", 1U,
                                      "INET_NTOA case-insensitive call");
     mylite_sql_parse_result_deinit(&result);
 

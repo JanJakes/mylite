@@ -2587,6 +2587,23 @@ static int test_scalar_builtin_functions_execution(void)
         {"bl_null", NULL, NULL, NULL, NULL, NULL, 10U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
          MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
     };
+    static const struct expected_result_metadata crc32_metadata[] = {
+        {"crc_text", NULL, NULL, NULL, NULL, NULL, 10U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY |
+             MYLITE_FIELD_FLAG_NUM,
+         0U, 0},
+        {"crc_empty", NULL, NULL, NULL, NULL, NULL, 10U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY |
+             MYLITE_FIELD_FLAG_NUM,
+         0U, 0},
+        {"crc_null", NULL, NULL, NULL, NULL, NULL, 10U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"crc_int", NULL, NULL, NULL, NULL, NULL, 10U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY |
+             MYLITE_FIELD_FLAG_NUM,
+         0U, 0},
+    };
     static const struct expected_result_metadata nullable_search_metadata[] = {
         {"ascii_null", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
          MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
@@ -3422,9 +3439,40 @@ static int test_scalar_builtin_functions_execution(void)
         "0", "1",  "3",  "64", "64", NULL, "3",  "0",  "4",  "64",
         "1", "63", "24", "0",  NULL, "16", "24", "32", "16",
     };
+    static const char *const crc32_columns[] = {
+        "crc_mysql",
+        "crc_lower",
+        "crc_empty",
+        "crc_null",
+        "crc_utf8",
+        "crc_int",
+        "crc_decimal",
+        "crc_plus_decimal",
+        "crc_neg_decimal",
+        "crc_float",
+        "crc_leading_decimal",
+        "crc_leading_int",
+        "crc_dot_decimal",
+        "crc_plus_dot_decimal",
+        "crc_zero_decimal",
+        "crc_neg_dot",
+        "crc_exp_pos",
+        "crc_exp_neg",
+        "crc_binary",
+    };
+    static const char *const crc32_values[] = {
+        "3259397556", "2501908538", "0",          NULL,         "235179326",
+        "2286445522", "3061501937", "3061501937", "2057867175", "327728169",
+        "3061501937", "1330857165", "1733606989", "1733606989", "1733606989",
+        "3110305273", "3966119374", "844230266",  "1826356594",
+    };
     static const char *const bit_site_projection_columns[] = {"id", "bc_s", "bc_n", "bl_s"};
     static const char *const bit_site_projection_values[] = {
         "2", "4", "64", "16", "1", "2", "8", "16",
+    };
+    static const char *const crc32_site_projection_columns[] = {"id", "crc_s", "crc_n"};
+    static const char *const crc32_site_projection_values[] = {
+        "2", "235179326", "808273962", "1", "409728153", "2658551721",
     };
     static const char *const id_column[] = {"id"};
     static const char *const n_column[] = {"n"};
@@ -3451,6 +3499,9 @@ static int test_scalar_builtin_functions_execution(void)
     static const char *const base_remaining_values[] = {"1", "2"};
     static const char *const updated_bit_values[] = {"1", "12", "16"};
     static const char *const bit_remaining_values[] = {"1"};
+    static const char *const updated_crc32_values[] = {"1", "Az", "409728153"};
+    static const char *const crc32_order_values[] = {"2", "ordered", "-1"};
+    static const char *const crc32_remaining_values[] = {"1"};
     static const char *const updated_make_order_values[] = {"2", "a", "99"};
     static const char *const updated_hex_order_values[] = {"2", "61", "99"};
     static const char *const make_order_remaining_values[] = {"1", "3"};
@@ -3651,6 +3702,21 @@ static int test_scalar_builtin_functions_execution(void)
     stmt = NULL;
 
     failures += prepare_sql(database,
+                            "SELECT CRC32('abc') AS crc_text, "
+                            "CRC32('') AS crc_empty, "
+                            "CRC32(NULL) AS crc_null, "
+                            "CRC32(123) AS crc_int",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, crc32_metadata,
+                                       (int)(sizeof(crc32_metadata) / sizeof(crc32_metadata[0])),
+                                       "CRC32 utf8mb4 metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CRC32 utf8mb4 metadata row");
+    failures += expect_int(mylite_warning_count(database), 0, "CRC32 utf8mb4 metadata warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CRC32 utf8mb4 metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
                             "SELECT ASCII(NULL) AS ascii_null, "
                             "LOCATE('a', NULL) AS locate_null, "
                             "INSERT('abc', NULL, 1, 'x') AS insert_null, "
@@ -3775,6 +3841,20 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "bit utility latin1 metadata done");
     mylite_finalize(stmt);
     stmt = NULL;
+    failures += prepare_sql(database,
+                            "SELECT CRC32('abc') AS crc_text, "
+                            "CRC32('') AS crc_empty, "
+                            "CRC32(NULL) AS crc_null, "
+                            "CRC32(123) AS crc_int",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, crc32_metadata,
+                                       (int)(sizeof(crc32_metadata) / sizeof(crc32_metadata[0])),
+                                       "CRC32 latin1 metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CRC32 latin1 metadata row");
+    failures += expect_int(mylite_warning_count(database), 0, "CRC32 latin1 metadata warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CRC32 latin1 metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
 
     failures += expect_select_rows(database,
@@ -3804,6 +3884,31 @@ static int test_scalar_builtin_functions_execution(void)
         failures += expect_int((int)mylite_warning_code(database, index),
                                mysql_warning_truncated_wrong_value, "bit utility warning code");
     }
+
+    failures +=
+        expect_select_rows(database,
+                           "SELECT CRC32('MySQL') AS crc_mysql, "
+                           "CRC32('mysql') AS crc_lower, "
+                           "CRC32('') AS crc_empty, "
+                           "CRC32(NULL) AS crc_null, "
+                           "CRC32('\xC3\xA9') AS crc_utf8, "
+                           "CRC32(123) AS crc_int, "
+                           "CRC32(12.50) AS crc_decimal, "
+                           "CRC32(+12.50) AS crc_plus_decimal, "
+                           "CRC32(-12.50) AS crc_neg_decimal, "
+                           "CRC32(12.5E0) AS crc_float, "
+                           "CRC32(0012.50) AS crc_leading_decimal, "
+                           "CRC32(00012) AS crc_leading_int, "
+                           "CRC32(.50) AS crc_dot_decimal, "
+                           "CRC32(+.50) AS crc_plus_dot_decimal, "
+                           "CRC32(0.50) AS crc_zero_decimal, "
+                           "CRC32(-.50) AS crc_neg_dot, "
+                           "CRC32(1e20) AS crc_exp_pos, "
+                           "CRC32(-1e20) AS crc_exp_neg, "
+                           "CRC32(CHAR(0,255 USING binary)) AS crc_binary",
+                           crc32_columns, (int)(sizeof(crc32_columns) / sizeof(crc32_columns[0])),
+                           crc32_values, 1, "CRC32 scalar values");
+    failures += expect_int(mylite_warning_count(database), 0, "CRC32 scalar warning count");
 
     failures +=
         expect_select_rows(database,
@@ -4591,6 +4696,22 @@ static int test_scalar_builtin_functions_execution(void)
         "table bit utility projection where and order");
     failures += expect_select_rows(database, "SELECT id FROM bit_sites WHERE BIT_COUNT(s)=2",
                                    id_column, 1, n_1, 1, "bit utility function where");
+    failures += execute_sql(database,
+                            "CREATE TABLE crc32_sites "
+                            "(id INT PRIMARY KEY, s VARCHAR(20), n BIGINT)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO crc32_sites VALUES "
+                            "(1,'Az',65),(2,'\xC3\xA9',-1),(3,NULL,NULL)",
+                            MYLITE_DONE);
+    failures += expect_select_rows(database,
+                                   "SELECT id, CRC32(s) AS crc_s, CRC32(n) AS crc_n "
+                                   "FROM crc32_sites WHERE id IN (1,2) ORDER BY CRC32(s), id",
+                                   crc32_site_projection_columns, 3, crc32_site_projection_values,
+                                   2, "table CRC32 projection where and order");
+    failures +=
+        expect_select_rows(database, "SELECT id FROM crc32_sites WHERE CRC32(s)=CRC32('Az')",
+                           id_column, 1, n_1, 1, "CRC32 function where");
     failures += expect_select_rows(database, "SELECT id FROM t WHERE LPAD(s, 5, '.')='alpha'",
                                    id_column, 1, n_1, 1, "lpad function where");
     failures += expect_select_rows(database, "SELECT id FROM t WHERE REVERSE(s)='ateB'", id_column,
@@ -4885,6 +5006,28 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_select_rows(database, "SELECT id FROM bit_sites ORDER BY id", id_column, 1,
                                    bit_remaining_values, 1, "delete bit utility remaining rows");
 
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE crc32_sites SET n = CRC32(s) WHERE CRC32(s) = CRC32('Az')", 1,
+        "update CRC32 assignment and predicate");
+    failures +=
+        expect_select_rows(database, "SELECT id, s, n FROM crc32_sites WHERE id = 1",
+                           id_s_n_columns, 3, updated_crc32_values, 1, "updated CRC32 values");
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE crc32_sites SET s = 'ordered' WHERE s IS NOT NULL ORDER BY CRC32(s), id LIMIT 1", 1,
+        "update CRC32 order key");
+    failures +=
+        expect_select_rows(database, "SELECT id, s, n FROM crc32_sites WHERE id = 2",
+                           id_s_n_columns, 3, crc32_order_values, 1, "CRC32 order update values");
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM crc32_sites WHERE CRC32(s) = CRC32('ordered')", 1,
+        "delete CRC32 predicate");
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM crc32_sites ORDER BY CRC32(s), id LIMIT 1", 1,
+        "delete CRC32 order key");
+    failures += expect_select_rows(database, "SELECT id FROM crc32_sites ORDER BY id", id_column, 1,
+                                   crc32_remaining_values, 1, "delete CRC32 remaining rows");
+
     failures += execute_sql(database,
                             "CREATE TABLE make_order "
                             "(id INT PRIMARY KEY, s VARCHAR(20), n INT)",
@@ -5104,6 +5247,10 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_no_stmt_handle(&stmt, "unsupported bit_length zero arity");
     failures += prepare_sql(database, "SELECT BIT_LENGTH('a','b')", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported bit_length two arity");
+    failures += prepare_sql(database, "SELECT CRC32()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported crc32 zero arity");
+    failures += prepare_sql(database, "SELECT CRC32('a','b')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported crc32 two arity");
     failures += prepare_sql(database, "SELECT POSITION('a')", MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "position ordinary syntax");
     failures += prepare_sql(database, "SELECT LTRIM()", MYLITE_UNSUPPORTED, &stmt);

@@ -34,6 +34,7 @@ In scope for the initial implementation:
   - `HEX`, `UNHEX`
   - `TO_BASE64`, `FROM_BASE64`
   - `BIN`, `OCT`
+  - `CRC32`
 - numeric functions:
   - `ABS`
   - `BIT_COUNT`
@@ -129,9 +130,10 @@ by common scalar expressions:
   `docs/specs/base64-string-functions/specs.md` and
   `docs/specs/numeric-base-conversion-functions/specs.md`
 - numeric functions: `ABS`, `SIGN`, `FLOOR`, `CEIL`, `CEILING`, `MOD`,
-  `CONV`, `BIT_COUNT`, `BIT_LENGTH`, `INET_ATON`, `INET_NTOA`, and `PI`; see
+  `CONV`, `BIT_COUNT`, `BIT_LENGTH`, `CRC32`, `INET_ATON`, `INET_NTOA`, and `PI`; see
   `docs/specs/numeric-base-conversion-functions/specs.md` and
   `docs/specs/bit-utility-functions/specs.md` and
+  `docs/specs/crc32-function/specs.md` and
   `docs/specs/inet-ipv4-functions/specs.md`
 - conditional/comparison functions: `IF`, `IFNULL`, `NULLIF`, `COALESCE`, and
   `ISNULL`
@@ -158,6 +160,8 @@ Base64 encoding, Base64 decoding, long-output newline wrapping, ignored decode
 whitespace, invalid `FROM_BASE64()` `NULL` results without warnings,
 binary/octal/arbitrary-base conversion, invalid base ranges, base-conversion
 string parsing warnings,
+CRC-32 checksum values, `CRC32()` string/numeric/NULL/binary-byte conversion,
+exact decimal leading-zero normalization, unsigned checksum metadata,
 IPv4 network-address conversion, short IPv4 forms, invalid IPv4 warnings,
 `INET_NTOA()` bounds and string-integer truncation warnings,
 `MOD(..., 0)` warnings, table projection, filters, ordering, update assignment

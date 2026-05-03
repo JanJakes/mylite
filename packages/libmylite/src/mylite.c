@@ -160,6 +160,7 @@ static const int mylite_mysql_decimal_conversion_base = 10;
 static const uint64_t mylite_mysql_double_display_length = 22U;
 static const uint64_t mylite_mysql_length_function_display_length = 10U;
 static const uint64_t mylite_mysql_bit_count_function_display_length = 21U;
+static const uint64_t mylite_mysql_crc32_function_display_length = 10U;
 static const uint64_t mylite_mysql_inet_ntoa_result_chars = 31U;
 static const uint64_t mylite_mysql_ascii_function_display_length = 3U;
 static const uint64_t mylite_mysql_search_function_display_length = 11U;
@@ -2085,7 +2086,7 @@ static uint64_t text_function_result_length(mylite_db *database,
 static bool infer_session_function_descriptor(mylite_db *database,
                                               const struct mylite_sql_ast_node *name,
                                               struct mylite_field_descriptor *out_descriptor);
-static bool infer_length_result_function_descriptor(const struct mylite_sql_ast_node *name,
+static bool infer_fixed_integer_function_descriptor(const struct mylite_sql_ast_node *name,
                                                     bool result_nullable,
                                                     struct mylite_field_descriptor *out_descriptor);
 static bool infer_list_index_function_descriptor(const struct mylite_sql_ast_node *name,
@@ -2203,6 +2204,7 @@ static bool function_name_is_coercibility(const struct mylite_sql_ast_node *name
 static bool
 function_name_is_charset_collation_introspection(const struct mylite_sql_ast_node *name);
 static bool function_name_is_bit_count(const struct mylite_sql_ast_node *name);
+static bool function_name_is_crc32(const struct mylite_sql_ast_node *name);
 static bool function_name_is_inet_aton(const struct mylite_sql_ast_node *name);
 static bool function_name_is_inet_ntoa(const struct mylite_sql_ast_node *name);
 static bool
@@ -10555,7 +10557,7 @@ static int infer_function_expression_descriptor(mylite_db *database,
         field_descriptor_set_nullable(out_descriptor, result_nullable);
         return MYLITE_OK;
     }
-    if (infer_length_result_function_descriptor(name, result_nullable, out_descriptor)) {
+    if (infer_fixed_integer_function_descriptor(name, result_nullable, out_descriptor)) {
         return MYLITE_OK;
     }
     if (infer_code_search_function_descriptor(name, result_nullable, out_descriptor)) {
@@ -10661,7 +10663,7 @@ static uint64_t text_function_result_length(mylite_db *database,
     return mylite_mysql_text_length;
 }
 
-static bool infer_length_result_function_descriptor(const struct mylite_sql_ast_node *name,
+static bool infer_fixed_integer_function_descriptor(const struct mylite_sql_ast_node *name,
                                                     bool result_nullable,
                                                     struct mylite_field_descriptor *out_descriptor)
 {
@@ -10673,6 +10675,11 @@ static bool infer_length_result_function_descriptor(const struct mylite_sql_ast_
     if (function_name_is_bit_count(name)) {
         *out_descriptor = signed_longlong_expression_descriptor(result_nullable);
         out_descriptor->length = mylite_mysql_bit_count_function_display_length;
+        return true;
+    }
+    if (function_name_is_crc32(name)) {
+        *out_descriptor = unsigned_longlong_expression_descriptor(result_nullable);
+        out_descriptor->length = mylite_mysql_crc32_function_display_length;
         return true;
     }
     return false;
@@ -12359,6 +12366,13 @@ static bool function_name_has_length_result(const struct mylite_sql_ast_node *na
 static bool function_name_is_bit_count(const struct mylite_sql_ast_node *name)
 {
     static const char *const names[] = {"BIT_COUNT"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_is_crc32(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"CRC32"};
 
     return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }
@@ -26751,8 +26765,8 @@ function_name_has_binary_numeric_collation_result(const struct mylite_sql_ast_no
     struct mylite_field_descriptor descriptor = field_descriptor_defaults();
 
     if (function_name_is_coercibility(name) || function_name_has_length_result(name) ||
-        function_name_is_bit_count(name) || function_name_is_inet_aton(name) ||
-        function_name_has_integer_result(name)) {
+        function_name_is_bit_count(name) || function_name_is_crc32(name) ||
+        function_name_is_inet_aton(name) || function_name_has_integer_result(name)) {
         return true;
     }
     if (infer_code_search_function_descriptor(name, true, &descriptor) ||

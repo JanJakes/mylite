@@ -89,6 +89,8 @@ enum {
 static const char mylite_pi_text[] = "3.141593";
 static const uint64_t mylite_expression_int64_min_magnitude = (uint64_t)INT64_MAX + UINT64_C(1);
 static const uint64_t mylite_expression_ipv4_u32_max = UINT32_MAX;
+static const uint32_t mylite_expression_crc32_initial = UINT32_C(0xFFFFFFFF);
+static const uint32_t mylite_expression_crc32_polynomial = UINT32_C(0xEDB88320);
 static const double mylite_expression_round_half = 0.5;
 
 struct numeric_value {
@@ -308,6 +310,7 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_BIT_LENGTH = 60,
     MYLITE_SCALAR_FUNCTION_INET_ATON = 61,
     MYLITE_SCALAR_FUNCTION_INET_NTOA = 62,
+    MYLITE_SCALAR_FUNCTION_CRC32 = 63,
 };
 
 static int eval_node(const struct mylite_sql_ast_node *node,
@@ -631,6 +634,17 @@ static int eval_bit_length_function(const struct mylite_sql_ast_node *arguments,
                                     const struct mylite_expression_eval_context *context,
                                     struct mylite_expression_warnings *warnings,
                                     struct mylite_expression_value *out_value);
+static int eval_crc32_function(const struct mylite_sql_ast_node *arguments,
+                               const struct mylite_expression_eval_context *context,
+                               struct mylite_expression_warnings *warnings,
+                               struct mylite_expression_value *out_value);
+static int crc32_argument_to_text(const struct mylite_expression_value *value,
+                                  const struct mylite_sql_ast_node *argument, char **out_text,
+                                  size_t *out_length);
+static void normalize_crc32_exact_decimal_text(char *text, size_t *length);
+static int crc32_real_to_text(double value, char **out_text, size_t *out_length);
+static void remove_positive_exponent_marker(char *text, size_t *length);
+static uint32_t crc32_bytes(const char *text, size_t text_length);
 static int eval_inet_aton_function(const struct mylite_sql_ast_node *arguments,
                                    const struct mylite_expression_eval_context *context,
                                    struct mylite_expression_warnings *warnings,
@@ -1146,6 +1160,7 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_COERCIBILITY:
     case MYLITE_SCALAR_FUNCTION_BIT_COUNT:
     case MYLITE_SCALAR_FUNCTION_BIT_LENGTH:
+    case MYLITE_SCALAR_FUNCTION_CRC32:
     case MYLITE_SCALAR_FUNCTION_INET_ATON:
     case MYLITE_SCALAR_FUNCTION_INET_NTOA:
     case MYLITE_SCALAR_FUNCTION_ABS:
@@ -1956,6 +1971,8 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_bit_count_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_BIT_LENGTH:
         return eval_bit_length_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_CRC32:
+        return eval_crc32_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_INET_ATON:
         return eval_inet_aton_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_INET_NTOA:
@@ -4785,6 +4802,7 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_FROM_BASE64:
     case MYLITE_SCALAR_FUNCTION_BIT_COUNT:
     case MYLITE_SCALAR_FUNCTION_BIT_LENGTH:
+    case MYLITE_SCALAR_FUNCTION_CRC32:
     case MYLITE_SCALAR_FUNCTION_INET_ATON:
     case MYLITE_SCALAR_FUNCTION_INET_NTOA:
         return -1;
@@ -4919,6 +4937,150 @@ static int eval_bit_length_function(const struct mylite_sql_ast_node *arguments,
                                                                  MYLITE_EXPRESSION_BITS_PER_BYTE};
     free(text);
     return 0;
+}
+
+static int eval_crc32_function(const struct mylite_sql_ast_node *arguments,
+                               const struct mylite_expression_eval_context *context,
+                               struct mylite_expression_warnings *warnings,
+                               struct mylite_expression_value *out_value)
+{
+    const struct mylite_sql_ast_node *argument = child_at(arguments, 0U);
+    struct mylite_expression_value value = {0};
+    char *text = NULL;
+    size_t text_length = 0U;
+    int status = eval_node(argument, context, warnings, &value);
+
+    if (status != 0) {
+        return status;
+    }
+    if (is_null(&value)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        mylite_expression_value_deinit(&value);
+        return 0;
+    }
+
+    status = crc32_argument_to_text(&value, argument, &text, &text_length);
+    if (status == 0) {
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_UINT64,
+            .uint64_value = crc32_bytes(text == NULL ? "" : text, text_length),
+        };
+    }
+
+    free(text);
+    mylite_expression_value_deinit(&value);
+    return status;
+}
+
+static int crc32_argument_to_text(const struct mylite_expression_value *value,
+                                  const struct mylite_sql_ast_node *argument, char **out_text,
+                                  size_t *out_length)
+{
+    bool matched_literal = false;
+    int status = 0;
+
+    if (value == NULL || out_text == NULL || out_length == NULL) {
+        return -1;
+    }
+    *out_text = NULL;
+    *out_length = 0U;
+    status = base_conversion_exact_numeric_literal_to_text(argument, out_text, out_length,
+                                                           &matched_literal);
+    if (status != 0 || matched_literal) {
+        if (status == 0 && memchr(*out_text, '.', *out_length) == NULL) {
+            free(*out_text);
+            *out_text = NULL;
+            *out_length = 0U;
+        } else if (status == 0) {
+            if (*out_length > 0U && (*out_text)[0] == '+') {
+                memmove(*out_text, *out_text + 1U, *out_length);
+                --*out_length;
+            }
+            normalize_crc32_exact_decimal_text(*out_text, out_length);
+        }
+        if (status != 0 || *out_text != NULL) {
+            return status;
+        }
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_REAL) {
+        return crc32_real_to_text(value->real_value, out_text, out_length);
+    }
+    return value_to_string_with_length(value, out_text, out_length);
+}
+
+static void normalize_crc32_exact_decimal_text(char *text, size_t *length)
+{
+    char *decimal = NULL;
+    size_t sign_length = 0U;
+    size_t decimal_index = 0U;
+    size_t first_kept = 0U;
+
+    if (text == NULL || length == NULL || *length == 0U) {
+        return;
+    }
+    sign_length = text[0] == '-' ? 1U : 0U;
+    decimal = memchr(text + sign_length, '.', *length - sign_length);
+    if (decimal == NULL) {
+        return;
+    }
+    decimal_index = (size_t)(decimal - text);
+    first_kept = sign_length;
+    while (first_kept + 1U < decimal_index && text[first_kept] == '0') {
+        ++first_kept;
+    }
+    if (first_kept > sign_length) {
+        size_t removed = first_kept - sign_length;
+
+        memmove(text + sign_length, text + first_kept, *length - first_kept + 1U);
+        *length -= removed;
+    }
+}
+
+static int crc32_real_to_text(double value, char **out_text, size_t *out_length)
+{
+    char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE] = {0};
+    int length = 0;
+
+    if (out_text == NULL || out_length == NULL) {
+        return -1;
+    }
+    length = snprintf(buffer, sizeof(buffer), "%.15g", value);
+    if (length < 0 || (size_t)length >= sizeof(buffer)) {
+        return -1;
+    }
+    *out_length = (size_t)length;
+    remove_positive_exponent_marker(buffer, out_length);
+    *out_text = copy_span_text(buffer, *out_length);
+    return *out_text == NULL ? -1 : 0;
+}
+
+static void remove_positive_exponent_marker(char *text, size_t *length)
+{
+    if (text == NULL || length == NULL || *length < 3U) {
+        return;
+    }
+    for (size_t index = 1U; index + 1U < *length; ++index) {
+        if ((text[index] == 'e' || text[index] == 'E') && text[index + 1U] == '+') {
+            memmove(text + index + 1U, text + index + 2U, *length - index - 1U);
+            --*length;
+            return;
+        }
+    }
+}
+
+static uint32_t crc32_bytes(const char *text, size_t text_length)
+{
+    uint32_t crc = mylite_expression_crc32_initial;
+
+    for (size_t index = 0U; index < text_length; ++index) {
+        crc ^= (unsigned char)text[index];
+        for (unsigned int bit = 0U; bit < CHAR_BIT; ++bit) {
+            uint32_t mask = 0U - (crc & UINT32_C(1));
+
+            crc = (crc >> 1U) ^ (mylite_expression_crc32_polynomial & mask);
+        }
+    }
+    return crc ^ mylite_expression_crc32_initial;
 }
 
 static int eval_inet_aton_function(const struct mylite_sql_ast_node *arguments,
@@ -7540,6 +7702,7 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"CURRENT_USER", MYLITE_SCALAR_FUNCTION_CURRENT_USER},
         {"BIT_COUNT", MYLITE_SCALAR_FUNCTION_BIT_COUNT},
         {"BIT_LENGTH", MYLITE_SCALAR_FUNCTION_BIT_LENGTH},
+        {"CRC32", MYLITE_SCALAR_FUNCTION_CRC32},
         {"INET_ATON", MYLITE_SCALAR_FUNCTION_INET_ATON},
         {"INET_NTOA", MYLITE_SCALAR_FUNCTION_INET_NTOA},
     };
@@ -7604,6 +7767,7 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_CONV:
     case MYLITE_SCALAR_FUNCTION_BIT_COUNT:
     case MYLITE_SCALAR_FUNCTION_BIT_LENGTH:
+    case MYLITE_SCALAR_FUNCTION_CRC32:
     case MYLITE_SCALAR_FUNCTION_INET_ATON:
     case MYLITE_SCALAR_FUNCTION_INET_NTOA:
     case MYLITE_SCALAR_FUNCTION_LOCATE:

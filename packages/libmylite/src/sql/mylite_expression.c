@@ -4,6 +4,7 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <float.h>
 #include <limits.h>
 #include <math.h>
 #include <stdbool.h>
@@ -123,6 +124,11 @@ struct numeric_value {
 struct numeric_text_input {
     const char *start;
     const char *text;
+};
+
+struct numeric_text_parse_input {
+    char *text;
+    char *start;
 };
 
 struct between_truth {
@@ -365,6 +371,7 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_SUBSTRING_INDEX = 67,
     MYLITE_SCALAR_FUNCTION_ROUND = 68,
     MYLITE_SCALAR_FUNCTION_POWER = 69,
+    MYLITE_SCALAR_FUNCTION_SQRT = 70,
 };
 
 static int eval_node(const struct mylite_sql_ast_node *node,
@@ -831,6 +838,10 @@ static int eval_power_function(const struct mylite_sql_ast_node *arguments,
                                const struct mylite_expression_eval_context *context,
                                struct mylite_expression_warnings *warnings,
                                struct mylite_expression_value *out_value);
+static int eval_sqrt_function(const struct mylite_sql_ast_node *arguments,
+                              const struct mylite_expression_eval_context *context,
+                              struct mylite_expression_warnings *warnings,
+                              struct mylite_expression_value *out_value);
 static int eval_round_function(const struct mylite_sql_ast_node *arguments,
                                const struct mylite_expression_eval_context *context,
                                struct mylite_expression_warnings *warnings,
@@ -972,6 +983,16 @@ static int compare_values(const struct mylite_expression_value *left,
 static int value_to_numeric(const struct mylite_expression_value *value,
                             struct mylite_expression_warnings *warnings,
                             struct numeric_value *out_numeric);
+static int text_value_to_numeric(const struct mylite_expression_value *value,
+                                 struct mylite_expression_warnings *warnings,
+                                 struct numeric_value *out_numeric);
+static bool numeric_text_has_digit(const char *start);
+static bool numeric_text_is_hex_like(const char *start);
+static int parse_numeric_text_double(struct numeric_text_parse_input input,
+                                     struct mylite_expression_warnings *warnings,
+                                     struct numeric_value *out_numeric);
+static void clamp_numeric_text_range(struct numeric_value *numeric);
+static int64_t numeric_real_to_truncated_int64(double value);
 static int append_numeric_text_without_digits_warning(struct mylite_expression_warnings *warnings,
                                                       struct numeric_text_input input);
 static int cast_value_to_signed_integer(const struct mylite_expression_value *value,
@@ -1006,6 +1027,7 @@ static int value_to_string(const struct mylite_expression_value *value, char **o
 static int value_to_string_with_length(const struct mylite_expression_value *value, char **out_text,
                                        size_t *out_length);
 static int format_compact_real_text(double value, char *buffer, size_t buffer_size);
+static bool compact_real_text_round_trips(double value, const char *text);
 static void normalize_real_exponent_text(char *text);
 static int set_text_value(const char *text, size_t length,
                           struct mylite_expression_value *out_value);
@@ -1331,6 +1353,7 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_SIGN:
     case MYLITE_SCALAR_FUNCTION_FLOOR:
     case MYLITE_SCALAR_FUNCTION_CEIL:
+    case MYLITE_SCALAR_FUNCTION_SQRT:
     case MYLITE_SCALAR_FUNCTION_ISNULL:
         return arity == 1U;
     case MYLITE_SCALAR_FUNCTION_ROUND:
@@ -2161,6 +2184,8 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_mod_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_POWER:
         return eval_power_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_SQRT:
+        return eval_sqrt_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_ABS:
     case MYLITE_SCALAR_FUNCTION_SIGN:
     case MYLITE_SCALAR_FUNCTION_FLOOR:
@@ -5152,6 +5177,7 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_CEIL:
     case MYLITE_SCALAR_FUNCTION_ROUND:
     case MYLITE_SCALAR_FUNCTION_POWER:
+    case MYLITE_SCALAR_FUNCTION_SQRT:
     case MYLITE_SCALAR_FUNCTION_MOD:
     case MYLITE_SCALAR_FUNCTION_PI:
     case MYLITE_SCALAR_FUNCTION_IF:
@@ -6637,6 +6663,53 @@ static int eval_power_function(const struct mylite_sql_ast_node *arguments,
 cleanup:
     mylite_expression_value_deinit(&base);
     mylite_expression_value_deinit(&exponent);
+    return status;
+}
+
+static int eval_sqrt_function(const struct mylite_sql_ast_node *arguments,
+                              const struct mylite_expression_eval_context *context,
+                              struct mylite_expression_warnings *warnings,
+                              struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value argument = {0};
+    struct numeric_value number = {0};
+    double result = 0.0;
+    int status = eval_node(child_at(arguments, 0U), context, warnings, &argument);
+
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&argument)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+
+    status = value_to_numeric(&argument, warnings, &number);
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (number.real_value < 0.0) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+
+    if (number.real_value == 0.0 && argument.kind != MYLITE_EXPRESSION_VALUE_TEXT) {
+        number.real_value = 0.0;
+    }
+    result = sqrt(number.real_value);
+    if (isnan(result) || isinf(result)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_REAL,
+        .real_value = result,
+        .compact_real_text = true,
+    };
+
+cleanup:
+    mylite_expression_value_deinit(&argument);
     return status;
 }
 
@@ -8161,86 +8234,133 @@ static int value_to_numeric(const struct mylite_expression_value *value,
                             struct mylite_expression_warnings *warnings,
                             struct numeric_value *out_numeric)
 {
-    char *text = NULL;
-    char *end = NULL;
-    bool saw_digit = false;
-
     *out_numeric = (struct numeric_value){0};
-    if (value->kind == MYLITE_EXPRESSION_VALUE_INT64) {
+    switch (value->kind) {
+    case MYLITE_EXPRESSION_VALUE_INT64:
         out_numeric->int64_value = value->int64_value;
         out_numeric->uint64_value = (uint64_t)value->int64_value;
         out_numeric->real_value = (double)value->int64_value;
         out_numeric->is_integer = true;
         return 0;
-    }
-    if (value->kind == MYLITE_EXPRESSION_VALUE_UINT64) {
+    case MYLITE_EXPRESSION_VALUE_UINT64:
         out_numeric->uint64_value = value->uint64_value;
         out_numeric->int64_value = (int64_t)value->uint64_value;
         out_numeric->real_value = (double)value->uint64_value;
         out_numeric->is_integer = true;
         out_numeric->is_unsigned = true;
         return 0;
-    }
-    if (value->kind == MYLITE_EXPRESSION_VALUE_REAL) {
+    case MYLITE_EXPRESSION_VALUE_REAL:
         out_numeric->real_value = value->real_value;
-        out_numeric->int64_value = (int64_t)value->real_value;
+        out_numeric->int64_value = numeric_real_to_truncated_int64(value->real_value);
         return 0;
-    }
-    if (value->kind == MYLITE_EXPRESSION_VALUE_NULL) {
+    case MYLITE_EXPRESSION_VALUE_TEXT:
+        return text_value_to_numeric(value, warnings, out_numeric);
+    case MYLITE_EXPRESSION_VALUE_NULL:
         return -1;
     }
+    return -1;
+}
 
-    text = value->text_value == NULL ? copy_span_text("", 0U)
-                                     : copy_span_text(value->text_value, strlen(value->text_value));
+static int text_value_to_numeric(const struct mylite_expression_value *value,
+                                 struct mylite_expression_warnings *warnings,
+                                 struct numeric_value *out_numeric)
+{
+    char *text = value->text_value == NULL
+                     ? copy_span_text("", 0U)
+                     : copy_span_text(value->text_value, strlen(value->text_value));
+    char *start = text;
+    int status = 0;
+
     if (text == NULL) {
         return -1;
     }
-    char *start = text;
     while (isspace((unsigned char)*start)) {
         ++start;
     }
-    char *scan = start;
+
+    if (!numeric_text_has_digit(start)) {
+        status = append_numeric_text_without_digits_warning(
+            warnings, (struct numeric_text_input){.start = start, .text = text});
+    } else if (numeric_text_is_hex_like(start)) {
+        status = append_truncation_warning(warnings, text);
+    } else {
+        status = parse_numeric_text_double(
+            (struct numeric_text_parse_input){.text = text, .start = start}, warnings, out_numeric);
+    }
+    free(text);
+    return status;
+}
+
+static bool numeric_text_has_digit(const char *start)
+{
+    const char *scan = start;
+
     if (*scan == '+' || *scan == '-') {
         ++scan;
     }
     for (; *scan != '\0'; ++scan) {
         if (isdigit((unsigned char)*scan)) {
-            saw_digit = true;
-            break;
+            return true;
         }
         if (*scan != '.') {
             break;
         }
     }
-    if (!saw_digit) {
-        int status = append_numeric_text_without_digits_warning(
-            warnings, (struct numeric_text_input){.start = start, .text = text});
-        free(text);
-        return status;
-    }
+    return false;
+}
+
+static bool numeric_text_is_hex_like(const char *start)
+{
     const char *number_start = start;
+
     if (*number_start == '+' || *number_start == '-') {
         ++number_start;
     }
-    if (number_start[0] == '0' && (number_start[1] == 'x' || number_start[1] == 'X')) {
-        int status = append_truncation_warning(warnings, text);
+    return number_start[0] == '0' && (number_start[1] == 'x' || number_start[1] == 'X');
+}
 
-        free(text);
-        return status;
-    }
+static int parse_numeric_text_double(struct numeric_text_parse_input input,
+                                     struct mylite_expression_warnings *warnings,
+                                     struct numeric_value *out_numeric)
+{
+    char *end = NULL;
+    bool overflow = false;
+
     errno = 0;
-    out_numeric->real_value = strtod(start, &end);
-    out_numeric->int64_value = (int64_t)out_numeric->real_value;
+    out_numeric->real_value = strtod(input.start, &end);
+    overflow = errno == ERANGE && isinf(out_numeric->real_value);
     while (end != NULL && isspace((unsigned char)*end)) {
         ++end;
     }
-    if (end == start || (end != NULL && *end != '\0')) {
-        int status = append_truncation_warning(warnings, text);
-        free(text);
-        return status;
+    if (overflow) {
+        clamp_numeric_text_range(out_numeric);
+    } else {
+        out_numeric->int64_value = numeric_real_to_truncated_int64(out_numeric->real_value);
     }
-    free(text);
+    if (end == input.start || (end != NULL && *end != '\0') || overflow) {
+        return append_truncation_warning(warnings, input.text);
+    }
     return 0;
+}
+
+static void clamp_numeric_text_range(struct numeric_value *numeric)
+{
+    numeric->real_value = signbit(numeric->real_value) ? -DBL_MAX : DBL_MAX;
+    numeric->int64_value = numeric_real_to_truncated_int64(numeric->real_value);
+}
+
+static int64_t numeric_real_to_truncated_int64(double value)
+{
+    if (isnan(value)) {
+        return 0;
+    }
+    if (value >= (double)INT64_MAX) {
+        return INT64_MAX;
+    }
+    if (value <= (double)INT64_MIN) {
+        return INT64_MIN;
+    }
+    return (int64_t)value;
 }
 
 static int append_numeric_text_without_digits_warning(struct mylite_expression_warnings *warnings,
@@ -8599,13 +8719,38 @@ static int value_to_string_with_length(const struct mylite_expression_value *val
 
 static int format_compact_real_text(double value, char *buffer, size_t buffer_size)
 {
-    int length = snprintf(buffer, buffer_size, "%.16g", value);
+    enum {
+        min_double_precision = 15,
+        max_double_precision = 17,
+    };
 
+    for (int precision = min_double_precision; precision <= max_double_precision; ++precision) {
+        int length = snprintf(buffer, buffer_size, "%.*g", precision, value);
+
+        if (length <= 0 || (size_t)length >= buffer_size) {
+            return length;
+        }
+        normalize_real_exponent_text(buffer);
+        if (compact_real_text_round_trips(value, buffer)) {
+            return (int)strlen(buffer);
+        }
+    }
+
+    int length = snprintf(buffer, buffer_size, "%.17g", value);
     if (length <= 0 || (size_t)length >= buffer_size) {
         return length;
     }
     normalize_real_exponent_text(buffer);
     return (int)strlen(buffer);
+}
+
+static bool compact_real_text_round_trips(double value, const char *text)
+{
+    char *end = NULL;
+    double parsed = strtod(text, &end);
+
+    return end != text && *end == '\0' && parsed == value &&
+           (value != 0.0 || signbit(parsed) == signbit(value));
 }
 
 static void normalize_real_exponent_text(char *text)
@@ -9018,6 +9163,7 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"ROUND", MYLITE_SCALAR_FUNCTION_ROUND},
         {"POW", MYLITE_SCALAR_FUNCTION_POWER},
         {"POWER", MYLITE_SCALAR_FUNCTION_POWER},
+        {"SQRT", MYLITE_SCALAR_FUNCTION_SQRT},
         {"MOD", MYLITE_SCALAR_FUNCTION_MOD},
         {"PI", MYLITE_SCALAR_FUNCTION_PI},
         {"IF", MYLITE_SCALAR_FUNCTION_IF},
@@ -9120,6 +9266,7 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_CEIL:
     case MYLITE_SCALAR_FUNCTION_ROUND:
     case MYLITE_SCALAR_FUNCTION_POWER:
+    case MYLITE_SCALAR_FUNCTION_SQRT:
     case MYLITE_SCALAR_FUNCTION_MOD:
     case MYLITE_SCALAR_FUNCTION_PI:
     case MYLITE_SCALAR_FUNCTION_IF:

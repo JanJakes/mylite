@@ -5180,7 +5180,7 @@ static int test_scalar_function_call_syntax(void)
 {
     // NOLINTBEGIN(readability-magic-numbers)
     enum {
-        expected_select_item_count = 22,
+        expected_select_item_count = 23,
         string_function_item_count = 17,
         padding_function_item_count = 6,
         quote_function_item_count = 2,
@@ -5200,7 +5200,8 @@ static int test_scalar_function_call_syntax(void)
                           "USER(), SESSION_USER(), SYSTEM_USER(), CURRENT_USER(), CURRENT_USER, "
                           "IF(1, 2, 3), "
                           "LEFT('abc', 1), RIGHT('abc', 1), REPLACE('a','a','b'), "
-                          "ROUND(123.456, 2), POW(2, 10), Power(2, -2) FROM DUAL;",
+                          "ROUND(123.456, 2), POW(2, 10), Power(2, -2), Sqrt(9) "
+                          "FROM DUAL;",
                           MYLITE_SQL_PARSE_OK, &result);
     select_list = child_at(child_at(result.root, 0U), 0U);
     failures += expect_child_count(select_list, expected_select_item_count, "function select list");
@@ -5259,6 +5260,8 @@ static int test_scalar_function_call_syntax(void)
         expect_function_call(child_at(child_at(select_list, 20U), 0U), "POW", 2U, "POW call");
     failures += expect_function_call(child_at(child_at(select_list, 21U), 0U), "Power", 2U,
                                      "POWER case-insensitive call");
+    failures += expect_function_call(child_at(child_at(select_list, 22U), 0U), "Sqrt", 1U,
+                                     "SQRT case-insensitive call");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT CONCAT_WS(',', 'a', 'b'), "

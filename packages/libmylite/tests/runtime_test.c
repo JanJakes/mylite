@@ -253,6 +253,7 @@ static int test_expression_operator_foundation(void);
 static int test_scalar_builtin_functions_execution(void);
 static int test_round_scalar_function_execution(mylite_db *database);
 static int test_power_scalar_function_execution(mylite_db *database);
+static int test_sqrt_scalar_function_execution(mylite_db *database);
 static int test_uuid_scalar_functions(mylite_db *database);
 static int test_inet_ipv4_functions_execution(void);
 static int test_charset_collation_functions_execution(void);
@@ -4027,6 +4028,8 @@ static int test_scalar_builtin_functions_execution(void)
 
     failures += test_power_scalar_function_execution(database);
 
+    failures += test_sqrt_scalar_function_execution(database);
+
     failures += test_uuid_scalar_functions(database);
 
     failures +=
@@ -5911,6 +5914,211 @@ static int test_power_scalar_function_execution(mylite_db *database)
     failures += expect_no_stmt_handle(&stmt, "POWER three arity unsupported");
     failures += prepare_sql(database, "SELECT POWER(1)", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "POWER alias one arity unsupported");
+
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_sqrt_scalar_function_execution(mylite_db *database)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const struct expected_result_metadata sqrt_metadata[] = {
+        {"sqrt_int", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"sqrt_null", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"sqrt_neg", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"sqrt_warn", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    static const struct expected_result_metadata sqrt_table_metadata[] = {
+        {"rx", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"rs", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    static const char *const sqrt_columns[] = {
+        "sqrt_int", "sqrt_real", "sqrt_zero", "sqrt_neg",      "sqrt_null", "sqrt_neg_zero",
+        "huge_pos", "tiny_pos",  "text_num",  "neg_text_zero", "text_zero", "text_underflow",
+    };
+    static const char *const sqrt_values[] = {
+        "2", "4.47213595499958", "0", NULL, NULL, "0", "1e154", "1e-154", "5", "-0", "0", "0",
+    };
+    static const char *const warning_columns[] = {
+        "trail_val",
+        "nonnumeric",
+        "empty_s",
+        "space_s",
+        "dot_s",
+        "plus_s",
+        "minus_s",
+        "hex_like",
+        "neg_trail",
+        "overflow_string",
+        "neg_overflow_string",
+        "nan_string",
+        "inf_string",
+    };
+    static const char *const warning_values[] = {
+        "3", "0", "0", "0", "0", "0", "0", "0", NULL, "1.3407807929942596e154", NULL, "0", "0"};
+    static const char *const sqrt_projection_columns[] = {"id", "r"};
+    static const char *const sqrt_projection_values[] = {
+        "3", NULL, "4", NULL, "5", "0", "1", "2", "2", "3",
+    };
+    static const char *const id_column[] = {"id"};
+    static const char *const selected_id_values[] = {"1", "2"};
+    static const char *const updated_columns[] = {"id", "x"};
+    static const char *const updated_values[] = {"1", "2.0000", "2", "3.0000", "5", NULL};
+    static const char *const dml_rollback_values[] = {"1", "2", "3", "4", "5"};
+    static const char *const remaining_values[] = {"1", "2"};
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_select_rows(database,
+                           "SELECT SQRT(4) AS sqrt_int, "
+                           "SQRT(20) AS sqrt_real, "
+                           "SQRT(0) AS sqrt_zero, "
+                           "SQRT(-1) AS sqrt_neg, "
+                           "SQRT(NULL) AS sqrt_null, "
+                           "SQRT(-0.0) AS sqrt_neg_zero, "
+                           "SQRT(1e308) AS huge_pos, "
+                           "SQRT(1e-308) AS tiny_pos, "
+                           "SQRT('  2.5e1 ') AS text_num, "
+                           "SQRT('-0') AS neg_text_zero, "
+                           "SQRT('0') AS text_zero, "
+                           "SQRT('1e-9999') AS text_underflow",
+                           sqrt_columns, (int)(sizeof(sqrt_columns) / sizeof(sqrt_columns[0])),
+                           sqrt_values, 1, "SQRT scalar values");
+    failures += expect_int(mylite_warning_count(database), 0, "SQRT scalar warning count");
+
+    failures += expect_select_rows(database,
+                                   "SELECT SQRT('9x') AS trail_val, "
+                                   "SQRT('foo') AS nonnumeric, "
+                                   "SQRT('') AS empty_s, "
+                                   "SQRT(' ') AS space_s, "
+                                   "SQRT('.') AS dot_s, "
+                                   "SQRT('+') AS plus_s, "
+                                   "SQRT('-') AS minus_s, "
+                                   "SQRT('0x10') AS hex_like, "
+                                   "SQRT('-1x') AS neg_trail, "
+                                   "SQRT('1e309') AS overflow_string, "
+                                   "SQRT('-1e309') AS neg_overflow_string, "
+                                   "SQRT('nan') AS nan_string, "
+                                   "SQRT('inf') AS inf_string",
+                                   warning_columns,
+                                   (int)(sizeof(warning_columns) / sizeof(warning_columns[0])),
+                                   warning_values, 1, "SQRT string warning values");
+    failures += expect_int(mylite_warning_count(database), 11, "SQRT string warning count");
+    for (int index = 0; index < 11; ++index) {
+        failures += expect_int((int)mylite_warning_code(database, index),
+                               mysql_warning_truncated_wrong_value, "SQRT string warning code");
+    }
+    failures += expect_contains(mylite_warning_message(database, 0), "9x", "SQRT trailing warning");
+    failures +=
+        expect_contains(mylite_warning_message(database, 1), "foo", "SQRT bad text warning");
+    failures +=
+        expect_contains(mylite_warning_message(database, 6), "-1x", "SQRT negative warning");
+
+    failures += prepare_sql(database,
+                            "SELECT SQRT(4) AS sqrt_int, "
+                            "SQRT(NULL) AS sqrt_null, "
+                            "SQRT(-1) AS sqrt_neg, "
+                            "SQRT('9x') AS sqrt_warn",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, sqrt_metadata,
+                                       (int)(sizeof(sqrt_metadata) / sizeof(sqrt_metadata[0])),
+                                       "SQRT scalar metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "SQRT metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "SQRT metadata done");
+    failures += expect_int(mylite_warning_count(database), 1, "SQRT metadata warning count");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database,
+                            "CREATE TABLE sqrt_sites ("
+                            "id INT PRIMARY KEY, "
+                            "x DOUBLE, "
+                            "s VARCHAR(16))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO sqrt_sites VALUES "
+                            "(1,4,'4'),"
+                            "(2,9,'9x'),"
+                            "(3,-1,'bad'),"
+                            "(4,NULL,''),"
+                            "(5,0,' ')",
+                            MYLITE_DONE);
+
+    failures += prepare_sql(database, "SELECT SQRT(x) AS rx, SQRT(s) AS rs FROM sqrt_sites LIMIT 0",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, sqrt_table_metadata,
+        (int)(sizeof(sqrt_table_metadata) / sizeof(sqrt_table_metadata[0])), "SQRT table metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "SQRT table metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_select_rows(database,
+                                   "SELECT id, SQRT(x) AS r FROM sqrt_sites "
+                                   "ORDER BY SQRT(x), id",
+                                   sqrt_projection_columns, 2, sqrt_projection_values, 5,
+                                   "SQRT table projection order");
+    failures += expect_int(mylite_warning_count(database), 0, "SQRT table projection warnings");
+    failures +=
+        expect_select_rows(database, "SELECT id FROM sqrt_sites WHERE SQRT(x) >= 2 ORDER BY id",
+                           id_column, 1, selected_id_values, 2, "SQRT table WHERE");
+    failures += expect_int(mylite_warning_count(database), 0, "SQRT table WHERE warnings");
+
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE sqrt_sites SET x = SQRT(x) WHERE SQRT(x) >= 2", 2,
+        "SQRT update assignment and predicate");
+    failures += execute_sql_expect_done_affected(database,
+                                                 "UPDATE sqrt_sites SET x = SQRT(-1) "
+                                                 "WHERE id = 5",
+                                                 1, "SQRT update domain assignment");
+    failures += expect_select_rows(database,
+                                   "SELECT id, x FROM sqrt_sites WHERE id IN (1,2,5) "
+                                   "ORDER BY id",
+                                   updated_columns, 2, updated_values, 3, "SQRT updated values");
+    failures += expect_int(mylite_warning_count(database), 0, "SQRT update warning count");
+
+    failures += prepare_sql(database, "UPDATE sqrt_sites SET x = SQRT('9x') WHERE id = 1",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Truncated incorrect DOUBLE value",
+                                  "SQRT update warning promoted");
+    failures += expect_int(mylite_warning_count(database), 1, "SQRT update warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "SQRT update warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM sqrt_sites ORDER BY id", id_column, 1,
+                                   dml_rollback_values, 5, "SQRT update rollback rows");
+
+    failures +=
+        prepare_sql(database, "DELETE FROM sqrt_sites WHERE SQRT('9x') = 3", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Truncated incorrect DOUBLE value",
+                                  "SQRT delete warning promoted");
+    failures += expect_int(mylite_warning_count(database), 1, "SQRT delete warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "SQRT delete warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM sqrt_sites ORDER BY id", id_column, 1,
+                                   dml_rollback_values, 5, "SQRT delete warning rollback rows");
+
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM sqrt_sites WHERE id IN (3,4,5) AND SQRT(x) IS NULL", 3,
+        "SQRT delete domain predicate");
+    failures += expect_int(mylite_warning_count(database), 0, "SQRT delete domain warning count");
+    failures += expect_select_rows(database, "SELECT id FROM sqrt_sites ORDER BY id", id_column, 1,
+                                   remaining_values, 2, "SQRT delete remaining rows");
+
+    failures += prepare_sql(database, "SELECT SQRT()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "SQRT zero arity unsupported");
+    failures += prepare_sql(database, "SELECT SQRT(1,2)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "SQRT two arity unsupported");
 
     // NOLINTEND(readability-magic-numbers)
     return failures;

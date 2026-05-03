@@ -143,7 +143,10 @@ static const unsigned int mylite_mysql_cast_default_decimal_precision = 10U;
 static const int mylite_mysql_decimal_conversion_base = 10;
 static const uint64_t mylite_mysql_double_display_length = 22U;
 static const uint64_t mylite_mysql_length_function_display_length = 10U;
+static const uint64_t mylite_mysql_ascii_function_display_length = 3U;
+static const uint64_t mylite_mysql_search_function_display_length = 11U;
 static const uint64_t mylite_mysql_integer_function_display_length = 21U;
+static const uint64_t mylite_mysql_ord_function_display_length = 21U;
 static const uint64_t mylite_mysql_schema_function_display_length = 256U;
 static const uint64_t mylite_mysql_version_function_display_length = 20U;
 static const uint64_t mylite_mysql_session_integer_function_display_length = 21U;
@@ -2117,8 +2120,14 @@ static int infer_function_arguments_nullable(mylite_db *database,
                                              const struct mylite_select_plan *plan,
                                              const struct mylite_sql_ast_node *arguments,
                                              bool *out_nullable);
+static bool infer_code_search_function_descriptor(const struct mylite_sql_ast_node *name,
+                                                  bool nullable,
+                                                  struct mylite_field_descriptor *out_descriptor);
 static bool function_name_has_text_result(const struct mylite_sql_ast_node *name);
 static bool function_name_has_length_result(const struct mylite_sql_ast_node *name);
+static bool function_name_is_ascii(const struct mylite_sql_ast_node *name);
+static bool function_name_is_ord(const struct mylite_sql_ast_node *name);
+static bool function_name_has_search_result(const struct mylite_sql_ast_node *name);
 static bool function_name_has_integer_result(const struct mylite_sql_ast_node *name);
 static bool function_name_matches_any(const struct mylite_sql_ast_node *name,
                                       const char *const *candidates, size_t candidate_count);
@@ -10305,6 +10314,9 @@ static int infer_function_expression_descriptor(mylite_db *database,
         out_descriptor->length = mylite_mysql_length_function_display_length;
         return MYLITE_OK;
     }
+    if (infer_code_search_function_descriptor(name, result_nullable, out_descriptor)) {
+        return MYLITE_OK;
+    }
     if (name != NULL && ascii_span_equal_ci(name->span, "ISNULL")) {
         *out_descriptor = signed_longlong_expression_descriptor(false);
         out_descriptor->length = 1U;
@@ -11103,6 +11115,28 @@ static int infer_function_arguments_nullable(mylite_db *database,
     return MYLITE_OK;
 }
 
+static bool infer_code_search_function_descriptor(const struct mylite_sql_ast_node *name,
+                                                  bool nullable,
+                                                  struct mylite_field_descriptor *out_descriptor)
+{
+    if (function_name_is_ascii(name)) {
+        *out_descriptor = signed_longlong_expression_descriptor(nullable);
+        out_descriptor->length = mylite_mysql_ascii_function_display_length;
+        return true;
+    }
+    if (function_name_is_ord(name)) {
+        *out_descriptor = signed_longlong_expression_descriptor(nullable);
+        out_descriptor->length = mylite_mysql_ord_function_display_length;
+        return true;
+    }
+    if (function_name_has_search_result(name)) {
+        *out_descriptor = signed_longlong_expression_descriptor(nullable);
+        out_descriptor->length = mylite_mysql_search_function_display_length;
+        return true;
+    }
+    return false;
+}
+
 static bool function_name_has_text_result(const struct mylite_sql_ast_node *name)
 {
     static const char *const names[] = {"CONCAT", "LOWER",  "LCASE",  "UPPER",
@@ -11138,6 +11172,27 @@ static bool function_name_has_length_result(const struct mylite_sql_ast_node *na
 {
     static const char *const names[] = {"LENGTH", "OCTET_LENGTH", "CHAR_LENGTH",
                                         "CHARACTER_LENGTH"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_is_ascii(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"ASCII"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_is_ord(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"ORD"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_has_search_result(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"LOCATE", "POSITION", "INSTR"};
 
     return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }

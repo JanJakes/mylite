@@ -2378,6 +2378,22 @@ static int test_scalar_builtin_functions_execution(void)
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
              MYLITE_FIELD_FLAG_UNSIGNED,
          1},
+        {"ascii_value", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"ord_value", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"locate_value", NULL, NULL, NULL, NULL, NULL, 11U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"position_value", NULL, NULL, NULL, NULL, NULL, 11U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"instr_value", NULL, NULL, NULL, NULL, NULL, 11U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+    };
+    static const struct expected_result_metadata nullable_search_metadata[] = {
+        {"ascii_null", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"locate_null", NULL, NULL, NULL, NULL, NULL, 11U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
     };
     static const struct expected_result_metadata latin1_metadata[] = {
         {"concat_ws_latin1", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_VAR_STRING, 31U,
@@ -2394,6 +2410,10 @@ static int test_scalar_builtin_functions_execution(void)
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
              MYLITE_FIELD_FLAG_UNSIGNED,
          1},
+        {"ascii_latin1", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"locate_latin1", NULL, NULL, NULL, NULL, NULL, 11U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
     };
     static const char *const edge_columns[] = {
         "left_zero", "left_negative", "right_zero", "right_negative", "replace_empty",
@@ -2442,12 +2462,55 @@ static int test_scalar_builtin_functions_execution(void)
         "  hi", "hi",           "hix", "xxhi", "hi",  "bar", "barx", "abc", "hi", "hi  ",
         "  hi", NULL,           NULL,  NULL,
     };
+    static const char *const search_columns[] = {
+        "ascii_empty",
+        "ascii_null",
+        "ascii_a",
+        "ascii_utf8",
+        "ord_empty",
+        "ord_null",
+        "ord_a",
+        "ord_utf8",
+        "locate_hit",
+        "locate_miss",
+        "locate_empty",
+        "locate_start",
+        "locate_start_zero",
+        "locate_start_negative",
+        "locate_start_past",
+        "locate_null_needle",
+        "locate_null_source",
+        "locate_utf8",
+        "locate_utf8_start_hit",
+        "locate_utf8_start_past",
+        "locate_empty_start",
+        "locate_empty_after_end",
+        "locate_empty_past_end",
+        "position_hit",
+        "position_miss",
+        "position_empty",
+        "position_parenthesized_source",
+        "instr_hit",
+        "instr_miss",
+        "instr_utf8",
+    };
+    static const char *const search_values[] = {
+        "0",  NULL, "65", "230", "0", NULL, "65", "15119799", "3", "0", "1", "5", "0", "0", "0",
+        NULL, NULL, "2",  "3",   "0", "2",  "6",  "0",        "3", "0", "1", "1", "3", "0", "2",
+    };
+    static const char *const abs_in_columns[] = {"abs_in"};
+    static const char *const abs_in_values[] = {"1"};
     static const char *const projection_columns[] = {"id", "title"};
     static const char *const projection_values[] = {"1", "Alpha", "2", "Beta"};
     static const char *const string_projection_columns[] = {"id", "joined", "middle", "clean",
                                                             "lead_trim"};
     static const char *const string_projection_values[] = {
         "1", "alpha:1", "lp", "alpha", "lpha", "2", "Beta:-2", "et", "Beta", "Beta",
+    };
+    static const char *const search_projection_columns[] = {"id", "first_code", "left_code",
+                                                            "a_pos", "t_pos"};
+    static const char *const search_projection_values[] = {
+        "2", "66", "66", "4", "3", "1", "97", "97", "1", "0",
     };
     static const char *const id_column[] = {"id"};
     static const char *const n_column[] = {"n"};
@@ -2457,6 +2520,7 @@ static int test_scalar_builtin_functions_execution(void)
     static const char *const id_s_n_columns[] = {"id", "s", "n"};
     static const char *const updated_values[] = {"2", "beta", "2"};
     static const char *const updated_string_values[] = {"2", "x-be", "2"};
+    static const char *const updated_search_values[] = {"2", "x-be", "120"};
     static const char *const all_id_values[] = {"1", "2", "3"};
     static const char *const remaining_values[] = {"1"};
     mylite_db *database = NULL;
@@ -2470,6 +2534,7 @@ static int test_scalar_builtin_functions_execution(void)
                             "DEFAULT CHARACTER SET utf8mb4",
                             MYLITE_DONE);
     failures += execute_sql(database, "USE mylite_task24_functions", MYLITE_DONE);
+    failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
 
     failures += prepare_sql(database,
                             "SELECT CONCAT('a','b') AS concat_text, "
@@ -2527,7 +2592,12 @@ static int test_scalar_builtin_functions_execution(void)
                             "MID('abcdef', 2, 3) AS mid_value, "
                             "TRIM('  hi  ') AS trim_value, "
                             "LTRIM('  hi  ') AS ltrim_value, "
-                            "RTRIM('  hi  ') AS rtrim_value",
+                            "RTRIM('  hi  ') AS rtrim_value, "
+                            "ASCII('A') AS ascii_value, "
+                            "ORD('\xE6\xB5\xB7') AS ord_value, "
+                            "LOCATE('ph', 'alpha') AS locate_value, "
+                            "POSITION('ph' IN 'alpha') AS position_value, "
+                            "INSTR('alpha', 'ph') AS instr_value",
                             MYLITE_OK, &stmt);
     failures += expect_result_metadata(
         stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "scalar function metadata");
@@ -2536,11 +2606,26 @@ static int test_scalar_builtin_functions_execution(void)
     mylite_finalize(stmt);
     stmt = NULL;
 
+    failures += prepare_sql(database,
+                            "SELECT ASCII(NULL) AS ascii_null, "
+                            "LOCATE('a', NULL) AS locate_null",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, nullable_search_metadata,
+        (int)(sizeof(nullable_search_metadata) / sizeof(nullable_search_metadata[0])),
+        "nullable search/code function metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "nullable search metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "nullable search metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
     failures += execute_sql(database, "SET NAMES latin1", MYLITE_DONE);
     failures += prepare_sql(database,
                             "SELECT CONCAT_WS(',', 'a', 'b') AS concat_ws_latin1, "
                             "SUBSTRING('abcdef', 2, 3) AS substring_latin1, "
-                            "TRIM('  hi  ') AS trim_latin1",
+                            "TRIM('  hi  ') AS trim_latin1, "
+                            "ASCII('A') AS ascii_latin1, "
+                            "LOCATE('a', 'alpha') AS locate_latin1",
                             MYLITE_OK, &stmt);
     failures += expect_result_metadata(stmt, latin1_metadata,
                                        (int)(sizeof(latin1_metadata) / sizeof(latin1_metadata[0])),
@@ -2603,6 +2688,46 @@ static int test_scalar_builtin_functions_execution(void)
         slice_columns, (int)(sizeof(slice_columns) / sizeof(slice_columns[0])), slice_values, 1,
         "substring trim scalar values");
 
+    failures += expect_select_rows(
+        database,
+        "SELECT ASCII('') AS ascii_empty, "
+        "ASCII(NULL) AS ascii_null, "
+        "ASCII('A') AS ascii_a, "
+        "ASCII('\xE6\xB5\xB7') AS ascii_utf8, "
+        "ORD('') AS ord_empty, "
+        "ORD(NULL) AS ord_null, "
+        "ORD('A') AS ord_a, "
+        "ORD('\xE6\xB5\xB7') AS ord_utf8, "
+        "LOCATE('pha', 'alpha') AS locate_hit, "
+        "LOCATE('z', 'alpha') AS locate_miss, "
+        "LOCATE('', 'alpha') AS locate_empty, "
+        "LOCATE('a', 'alpha', 2) AS locate_start, "
+        "LOCATE('a', 'alpha', 0) AS locate_start_zero, "
+        "LOCATE('a', 'alpha', -1) AS locate_start_negative, "
+        "LOCATE('a', 'alpha', 99) AS locate_start_past, "
+        "LOCATE(NULL, 'alpha') AS locate_null_needle, "
+        "LOCATE('a', NULL) AS locate_null_source, "
+        "LOCATE('\xE8\xB1\x9A', '\xE6\xB5\xB7\xE8\xB1\x9A\xE7\x8C\xAB') AS locate_utf8, "
+        "LOCATE('\xE7\x8C\xAB', '\xE6\xB5\xB7\xE8\xB1\x9A\xE7\x8C\xAB', 3) AS "
+        "locate_utf8_start_hit, "
+        "LOCATE('\xE7\x8C\xAB', '\xE6\xB5\xB7\xE8\xB1\x9A\xE7\x8C\xAB', 4) AS "
+        "locate_utf8_start_past, "
+        "LOCATE('', 'alpha', 2) AS locate_empty_start, "
+        "LOCATE('', 'alpha', 6) AS locate_empty_after_end, "
+        "LOCATE('', 'alpha', 7) AS locate_empty_past_end, "
+        "POSITION('ph' IN 'alpha') AS position_hit, "
+        "POSITION('z' IN 'alpha') AS position_miss, "
+        "POSITION('' IN 'alpha') AS position_empty, "
+        "POSITION('a' IN ('abc')) AS position_parenthesized_source, "
+        "INSTR('alpha', 'ph') AS instr_hit, "
+        "INSTR('alpha', 'z') AS instr_miss, "
+        "INSTR('\xE6\xB5\xB7\xE8\xB1\x9A\xE7\x8C\xAB', '\xE8\xB1\x9A') AS instr_utf8",
+        search_columns, (int)(sizeof(search_columns) / sizeof(search_columns[0])), search_values, 1,
+        "string search and code scalar values");
+
+    failures += expect_select_rows(database, "SELECT ABS(1 IN (1)) AS abs_in", abs_in_columns, 1,
+                                   abs_in_values, 1, "function IN predicate argument");
+
     failures += prepare_sql(database, "SELECT MOD(7,0) AS mod_zero", MYLITE_OK, &stmt);
     failures += expect_int(mylite_warning_count(database), 0, "mod zero warning before step");
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "mod zero row");
@@ -2644,6 +2769,16 @@ static int test_scalar_builtin_functions_execution(void)
                                    1, "table function where");
     failures += expect_select_rows(database, "SELECT id FROM t WHERE SUBSTRING(s,1,1)='B'",
                                    id_column, 1, id_2, 1, "substring function where");
+    failures += expect_select_rows(database,
+                                   "SELECT id, ASCII(s) AS first_code, ORD(s) AS left_code, "
+                                   "LOCATE('a', s) AS a_pos, INSTR(s, 't') AS t_pos "
+                                   "FROM t WHERE ISNULL(s)=0 ORDER BY LOCATE('a', s, 2), id",
+                                   search_projection_columns, 5, search_projection_values, 2,
+                                   "table search/code function projection and order");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE LOCATE('ph', s)=3", id_column,
+                                   1, n_1, 1, "locate function where");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE INSTR(s, 'ta')=3", id_column,
+                                   1, id_2, 1, "instr function where");
     failures += expect_select_rows(database, "SELECT id FROM t ORDER BY COALESCE(n,0), id LIMIT 1",
                                    id_column, 1, id_2, 1, "table function order");
     failures += expect_select_rows(
@@ -2666,6 +2801,13 @@ static int test_scalar_builtin_functions_execution(void)
         "update string function assignment");
     failures += expect_select_rows(database, "SELECT id, s, n FROM t WHERE id = 2", id_s_n_columns,
                                    3, updated_string_values, 1, "updated string function values");
+
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE t SET n = ORD(s) WHERE INSTR(s, 'x-') = 1", 1,
+        "update search/code function assignment and predicate");
+    failures +=
+        expect_select_rows(database, "SELECT id, s, n FROM t WHERE id = 2", id_s_n_columns, 3,
+                           updated_search_values, 1, "updated search/code function values");
 
     failures += prepare_sql(database, "UPDATE t SET n = 5 WHERE MOD(7,0)", MYLITE_OK, &stmt);
     failures +=
@@ -2700,8 +2842,9 @@ static int test_scalar_builtin_functions_execution(void)
     failures += execute_sql_expect_done_affected(
         database, "DELETE FROM t WHERE RTRIM(CONCAT(s, '  ')) = 'x-be'", 1,
         "delete string function predicate");
-    failures += execute_sql_expect_done_affected(database, "DELETE FROM t WHERE ISNULL(s)", 1,
-                                                 "delete function predicate");
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM t WHERE ISNULL(s) AND LOCATE('', s) IS NULL", 1,
+        "delete search function predicate");
     failures += expect_select_rows(database, "SELECT id FROM t ORDER BY id", id_column, 1,
                                    remaining_values, 1, "delete function remaining rows");
 
@@ -2713,6 +2856,26 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_no_stmt_handle(&stmt, "unsupported concat_ws zero arity");
     failures += prepare_sql(database, "SELECT CONCAT_WS(',')", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported concat_ws one arity");
+    failures += prepare_sql(database, "SELECT ASCII()", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "ascii zero arity syntax");
+    failures += prepare_sql(database, "SELECT ASCII('a','b')", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "ascii two arity syntax");
+    failures += prepare_sql(database, "SELECT ORD()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported ord zero arity");
+    failures += prepare_sql(database, "SELECT ORD('a','b')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported ord two arity");
+    failures += prepare_sql(database, "SELECT LOCATE('a')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported locate one arity");
+    failures += prepare_sql(database, "SELECT LOCATE('a' IN ('abc'))", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported locate boolean argument arity");
+    failures += prepare_sql(database, "SELECT LOCATE('a','b','c','d')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported locate four arity");
+    failures += prepare_sql(database, "SELECT INSTR('a')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported instr one arity");
+    failures += prepare_sql(database, "SELECT INSTR('a','b','c')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported instr three arity");
+    failures += prepare_sql(database, "SELECT POSITION('a')", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "position ordinary syntax");
     failures += prepare_sql(database, "SELECT LTRIM()", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported ltrim zero arity");
     failures += prepare_sql(database, "SELECT LTRIM('a','b')", MYLITE_UNSUPPORTED, &stmt);

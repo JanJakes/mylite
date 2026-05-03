@@ -40,6 +40,11 @@ struct mylite_sql_parser_substring_operands {
     struct mylite_sql_ast_node *length;
 };
 
+struct mylite_sql_parser_position_operands {
+    struct mylite_sql_ast_node *substring;
+    struct mylite_sql_ast_node *source;
+};
+
 struct mylite_sql_parser_trim_operands {
     struct mylite_sql_ast_node *remove;
     struct mylite_sql_ast_node *source;
@@ -1074,6 +1079,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_from_function_call(
     struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
     struct mylite_sql_token left_paren, struct mylite_sql_ast_node *first,
     struct mylite_sql_ast_node *second, struct mylite_sql_token right_paren);
+struct mylite_sql_ast_node *mylite_sql_parser_make_position_function_call(
+    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
+    struct mylite_sql_token left_paren, struct mylite_sql_parser_position_operands operands,
+    struct mylite_sql_token right_paren);
 struct mylite_sql_ast_node *mylite_sql_parser_make_substring_for_function_call(
     struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
     struct mylite_sql_token left_paren, struct mylite_sql_parser_substring_operands operands,

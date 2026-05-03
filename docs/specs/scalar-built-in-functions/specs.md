@@ -102,8 +102,10 @@ by common scalar expressions:
 
 - string functions: `CONCAT`, `LENGTH`, `OCTET_LENGTH`, `CHAR_LENGTH`,
   `CHARACTER_LENGTH`, `LOWER`, `LCASE`, `UPPER`, `UCASE`, `LEFT`, `RIGHT`,
-  `REPLACE`, `CONCAT_WS`, `SUBSTRING`, `SUBSTR`, `MID`, `TRIM`, `LTRIM`, and
-  `RTRIM`; see `docs/specs/string-functions-substring-trim/specs.md`
+  `REPLACE`, `CONCAT_WS`, `SUBSTRING`, `SUBSTR`, `MID`, `TRIM`, `LTRIM`,
+  `RTRIM`, `ASCII`, `ORD`, `LOCATE`, `POSITION`, and `INSTR`; see
+  `docs/specs/string-functions-substring-trim/specs.md` and
+  `docs/specs/string-search-code-functions/specs.md`
 - numeric functions: `ABS`, `SIGN`, `FLOOR`, `CEIL`, `CEILING`, `MOD`, and
   `PI`
 - conditional/comparison functions: `IF`, `IFNULL`, `NULLIF`, `COALESCE`, and
@@ -117,9 +119,11 @@ These functions are implemented in no-table scalar `SELECT`, one-table
 single-table `UPDATE` and `DELETE` expression paths. The checkpoint includes
 runtime tests for scalar rows, NULL propagation, UTF-8 length and substring
 handling, zero and negative `LEFT`/`RIGHT` counts, `SUBSTRING` `FROM` / `FOR`
-syntax, trim direction syntax, `MOD(..., 0)` warnings, table projection,
-filters, ordering, update assignment expressions, delete predicates, unsupported
-functions, unsupported arity, and selected result metadata.
+syntax, trim direction syntax, byte-based `ASCII`, packed-byte `ORD`,
+`LOCATE` / `POSITION` / `INSTR` search positions, start-position edges,
+`MOD(..., 0)` warnings, table projection, filters, ordering, update assignment
+expressions, delete predicates, unsupported functions, unsupported arity, and
+selected result metadata.
 
 This checkpoint intentionally does not yet implement `INSERT ... VALUES` or
 `INSERT ... SET` function expressions, temporal functions, information

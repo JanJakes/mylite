@@ -22,6 +22,7 @@ enum {
     MYLITE_EXPRESSION_BITS_PER_UINT64 = 64,
     MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE = 256,
     MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW = 160,
+    MYLITE_EXPRESSION_ORD_BYTE_BASE = 256,
     MYLITE_UTF8_CONTINUATION_MASK = 0xC0U,
     MYLITE_UTF8_CONTINUATION_MARKER = 0x80U,
 };
@@ -58,6 +59,18 @@ struct trim_match {
     const char *source;
     const char *remove;
     size_t remove_length;
+};
+
+struct locate_texts {
+    const char *text;
+    const char *needle;
+};
+
+struct locate_search {
+    const char *text;
+    const char *needle;
+    size_t start_offset;
+    int64_t start_position;
 };
 
 struct cast_integer_parse {
@@ -99,6 +112,10 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_VERSION = 27,
     MYLITE_SCALAR_FUNCTION_LAST_INSERT_ID = 28,
     MYLITE_SCALAR_FUNCTION_ROW_COUNT = 29,
+    MYLITE_SCALAR_FUNCTION_ASCII = 30,
+    MYLITE_SCALAR_FUNCTION_ORD = 31,
+    MYLITE_SCALAR_FUNCTION_LOCATE = 32,
+    MYLITE_SCALAR_FUNCTION_INSTR = 33,
 };
 
 static int eval_node(const struct mylite_sql_ast_node *node,
@@ -187,6 +204,11 @@ static int eval_unary_string_function(enum mylite_scalar_function_id function_id
                                       const struct mylite_expression_eval_context *context,
                                       struct mylite_expression_warnings *warnings,
                                       struct mylite_expression_value *out_value);
+static int eval_leftmost_code_function(enum mylite_scalar_function_id function_id,
+                                       const struct mylite_sql_ast_node *arguments,
+                                       const struct mylite_expression_eval_context *context,
+                                       struct mylite_expression_warnings *warnings,
+                                       struct mylite_expression_value *out_value);
 static int eval_left_right_function(enum mylite_scalar_function_id function_id,
                                     const struct mylite_sql_ast_node *arguments,
                                     const struct mylite_expression_eval_context *context,
@@ -220,6 +242,21 @@ static int eval_replace_function(const struct mylite_sql_ast_node *arguments,
                                  const struct mylite_expression_eval_context *context,
                                  struct mylite_expression_warnings *warnings,
                                  struct mylite_expression_value *out_value);
+static int eval_locate_function(enum mylite_scalar_function_id function_id,
+                                const struct mylite_sql_ast_node *arguments,
+                                const struct mylite_expression_eval_context *context,
+                                struct mylite_expression_warnings *warnings,
+                                struct mylite_expression_value *out_value);
+static int eval_locate_arguments(enum mylite_scalar_function_id function_id,
+                                 const struct mylite_sql_ast_node *arguments,
+                                 const struct mylite_expression_eval_context *context,
+                                 struct mylite_expression_warnings *warnings,
+                                 struct mylite_expression_value values[3],
+                                 const struct mylite_sql_ast_node **out_start_node);
+static bool locate_arguments_are_null(const struct mylite_expression_value values[3],
+                                      const struct mylite_sql_ast_node *start_node);
+static int set_locate_function_result(struct locate_texts texts, int64_t start,
+                                      struct mylite_expression_value *out_value);
 static int eval_mod_function(const struct mylite_sql_ast_node *arguments,
                              const struct mylite_expression_eval_context *context,
                              struct mylite_expression_warnings *warnings,
@@ -354,6 +391,8 @@ static int set_text_value(const char *text, size_t length,
 static int append_text(char **text, size_t *length, const char *addition, size_t addition_length);
 static int utf8_char_count(const char *text, int64_t *out_count);
 static size_t utf8_offset_for_chars(const char *text, int64_t char_count);
+static size_t utf8_first_character_length(const char *text);
+static int64_t find_text_match_position(struct locate_search search);
 static int append_warning(struct mylite_expression_warnings *warnings, unsigned int code,
                           const char *message);
 static int append_truncation_warning(struct mylite_expression_warnings *warnings, const char *text);
@@ -633,6 +672,8 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_UPPER:
     case MYLITE_SCALAR_FUNCTION_LTRIM:
     case MYLITE_SCALAR_FUNCTION_RTRIM:
+    case MYLITE_SCALAR_FUNCTION_ASCII:
+    case MYLITE_SCALAR_FUNCTION_ORD:
     case MYLITE_SCALAR_FUNCTION_ABS:
     case MYLITE_SCALAR_FUNCTION_SIGN:
     case MYLITE_SCALAR_FUNCTION_FLOOR:
@@ -644,8 +685,10 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_MOD:
     case MYLITE_SCALAR_FUNCTION_IFNULL:
     case MYLITE_SCALAR_FUNCTION_NULLIF:
+    case MYLITE_SCALAR_FUNCTION_INSTR:
         return arity == 2U;
     case MYLITE_SCALAR_FUNCTION_SUBSTRING:
+    case MYLITE_SCALAR_FUNCTION_LOCATE:
         return arity == 2U || arity == 3U;
     case MYLITE_SCALAR_FUNCTION_TRIM:
         return arguments->trim_spec ? (arity == 1U || arity == 2U) : arity == 1U;
@@ -1368,6 +1411,9 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
     case MYLITE_SCALAR_FUNCTION_LOWER:
     case MYLITE_SCALAR_FUNCTION_UPPER:
         return eval_unary_string_function(function_id, arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_ASCII:
+    case MYLITE_SCALAR_FUNCTION_ORD:
+        return eval_leftmost_code_function(function_id, arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_LEFT:
     case MYLITE_SCALAR_FUNCTION_RIGHT:
         return eval_left_right_function(function_id, arguments, context, warnings, out_value);
@@ -1379,6 +1425,9 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_trim_function(function_id, arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_REPLACE:
         return eval_replace_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_LOCATE:
+    case MYLITE_SCALAR_FUNCTION_INSTR:
+        return eval_locate_function(function_id, arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_MOD:
         return eval_mod_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_ABS:
@@ -1579,6 +1628,49 @@ static int eval_unary_string_function(enum mylite_scalar_function_id function_id
         free(text);
         return -1;
     }
+}
+
+static int eval_leftmost_code_function(enum mylite_scalar_function_id function_id,
+                                       const struct mylite_sql_ast_node *arguments,
+                                       const struct mylite_expression_eval_context *context,
+                                       struct mylite_expression_warnings *warnings,
+                                       struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value value = {0};
+    char *text = NULL;
+    int status = eval_node(arguments->first_child, context, warnings, &value);
+
+    if (status != 0 || is_null(&value)) {
+        mylite_expression_value_deinit(&value);
+        if (status == 0) {
+            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        }
+        return status;
+    }
+    status = value_to_string(&value, &text);
+    mylite_expression_value_deinit(&value);
+    if (status != 0) {
+        return status;
+    }
+
+    if (text[0] == '\0') {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
+                                                      .int64_value = 0};
+    } else if (function_id == MYLITE_SCALAR_FUNCTION_ASCII) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
+                                                      .int64_value = (unsigned char)text[0]};
+    } else {
+        uint64_t result = 0U;
+        size_t character_length = utf8_first_character_length(text);
+
+        for (size_t index = 0U; index < character_length; ++index) {
+            result = (result * MYLITE_EXPRESSION_ORD_BYTE_BASE) + (unsigned char)text[index];
+        }
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
+                                                      .int64_value = (int64_t)result};
+    }
+    free(text);
+    return 0;
 }
 
 static int eval_left_right_function(enum mylite_scalar_function_id function_id,
@@ -1913,6 +2005,131 @@ cleanup:
         mylite_expression_value_deinit(&values[index]);
     }
     return status;
+}
+
+static int eval_locate_function(enum mylite_scalar_function_id function_id,
+                                const struct mylite_sql_ast_node *arguments,
+                                const struct mylite_expression_eval_context *context,
+                                struct mylite_expression_warnings *warnings,
+                                struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value values[3] = {{0}, {0}, {0}};
+    char *needle = NULL;
+    char *text = NULL;
+    size_t arity = child_count(arguments);
+    size_t value_count = arity < 3U ? arity : 3U;
+    const struct mylite_sql_ast_node *start_node = NULL;
+    int64_t start = 1;
+    int status =
+        eval_locate_arguments(function_id, arguments, context, warnings, values, &start_node);
+
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (locate_arguments_are_null(values, start_node)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+
+    status = value_to_string(&values[0], &needle);
+    if (status == 0) {
+        status = value_to_string(&values[1], &text);
+    }
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (start_node != NULL) {
+        start = mylite_expression_value_to_int64(&values[2]);
+    }
+
+    status = set_locate_function_result((struct locate_texts){.text = text, .needle = needle},
+                                        start, out_value);
+
+cleanup:
+    free(needle);
+    free(text);
+    for (size_t index = 0U; index < value_count; ++index) {
+        mylite_expression_value_deinit(&values[index]);
+    }
+    return status;
+}
+
+static int eval_locate_arguments(enum mylite_scalar_function_id function_id,
+                                 const struct mylite_sql_ast_node *arguments,
+                                 const struct mylite_expression_eval_context *context,
+                                 struct mylite_expression_warnings *warnings,
+                                 struct mylite_expression_value values[3],
+                                 const struct mylite_sql_ast_node **out_start_node)
+{
+    const struct mylite_sql_ast_node *needle_node = child_at(arguments, 0U);
+    const struct mylite_sql_ast_node *text_node = child_at(arguments, 1U);
+    int status = 0;
+
+    *out_start_node = function_id == MYLITE_SCALAR_FUNCTION_INSTR ? NULL : child_at(arguments, 2U);
+    if (function_id == MYLITE_SCALAR_FUNCTION_INSTR) {
+        text_node = child_at(arguments, 0U);
+        needle_node = child_at(arguments, 1U);
+        status = eval_node(text_node, context, warnings, &values[1]);
+        return status == 0 ? eval_node(needle_node, context, warnings, &values[0]) : status;
+    }
+
+    status = eval_node(needle_node, context, warnings, &values[0]);
+    if (status == 0) {
+        status = eval_node(text_node, context, warnings, &values[1]);
+    }
+    if (status == 0 && *out_start_node != NULL) {
+        status = eval_node(*out_start_node, context, warnings, &values[2]);
+    }
+    return status;
+}
+
+static bool locate_arguments_are_null(const struct mylite_expression_value values[3],
+                                      const struct mylite_sql_ast_node *start_node)
+{
+    return is_null(&values[0]) || is_null(&values[1]) ||
+           (start_node != NULL && is_null(&values[2]));
+}
+
+static int set_locate_function_result(struct locate_texts texts, int64_t start,
+                                      struct mylite_expression_value *out_value)
+{
+    const char *text = texts.text == NULL ? "" : texts.text;
+    const char *needle = texts.needle == NULL ? "" : texts.needle;
+    int64_t char_count = 0;
+    int status = utf8_char_count(text, &char_count);
+
+    if (status != 0) {
+        return status;
+    }
+    if (start <= 0 || start > char_count + 1) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
+                                                      .int64_value = 0};
+        return 0;
+    }
+    if (needle[0] == '\0') {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
+                                                      .int64_value = start};
+        return 0;
+    }
+    if (start > char_count) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
+                                                      .int64_value = 0};
+        return 0;
+    }
+
+    {
+        size_t start_offset = utf8_offset_for_chars(text, start - 1);
+        int64_t position = find_text_match_position((struct locate_search){
+            .text = text,
+            .needle = needle,
+            .start_offset = start_offset,
+            .start_position = start,
+        });
+
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
+                                                      .int64_value = position};
+    }
+    return 0;
 }
 
 static int eval_mod_function(const struct mylite_sql_ast_node *arguments,
@@ -3364,6 +3581,51 @@ static size_t utf8_offset_for_chars(const char *text, int64_t char_count)
     return (size_t)((const char *)cursor - (text == NULL ? "" : text));
 }
 
+static size_t utf8_first_character_length(const char *text)
+{
+    const unsigned char *cursor = (const unsigned char *)(text == NULL ? "" : text);
+    size_t length = 0U;
+
+    if (*cursor == '\0') {
+        return 0U;
+    }
+    ++cursor;
+    length = 1U;
+    while (*cursor != '\0' &&
+           (*cursor & MYLITE_UTF8_CONTINUATION_MASK) == MYLITE_UTF8_CONTINUATION_MARKER) {
+        ++cursor;
+        ++length;
+    }
+    return length;
+}
+
+static int64_t find_text_match_position(struct locate_search search)
+{
+    const char *source = search.text == NULL ? "" : search.text;
+    const char *target = search.needle == NULL ? "" : search.needle;
+    size_t source_length = strlen(source);
+    size_t target_length = strlen(target);
+    size_t offset = search.start_offset;
+    int64_t position = search.start_position;
+
+    if (target_length == 0U) {
+        return search.start_offset <= source_length ? position : 0;
+    }
+    if (search.start_offset > source_length ||
+        target_length > source_length - search.start_offset) {
+        return 0;
+    }
+
+    while (offset + target_length <= source_length) {
+        if (memcmp(source + offset, target, target_length) == 0) {
+            return position;
+        }
+        ++position;
+        offset = utf8_offset_for_chars(source, position - 1);
+    }
+    return 0;
+}
+
 static int append_warning(struct mylite_expression_warnings *warnings, unsigned int code,
                           const char *message)
 {
@@ -3563,6 +3825,8 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"OCTET_LENGTH", MYLITE_SCALAR_FUNCTION_LENGTH},
         {"CHAR_LENGTH", MYLITE_SCALAR_FUNCTION_CHAR_LENGTH},
         {"CHARACTER_LENGTH", MYLITE_SCALAR_FUNCTION_CHAR_LENGTH},
+        {"ASCII", MYLITE_SCALAR_FUNCTION_ASCII},
+        {"ORD", MYLITE_SCALAR_FUNCTION_ORD},
         {"LOWER", MYLITE_SCALAR_FUNCTION_LOWER},
         {"LCASE", MYLITE_SCALAR_FUNCTION_LOWER},
         {"UPPER", MYLITE_SCALAR_FUNCTION_UPPER},
@@ -3576,6 +3840,9 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"LTRIM", MYLITE_SCALAR_FUNCTION_LTRIM},
         {"RTRIM", MYLITE_SCALAR_FUNCTION_RTRIM},
         {"REPLACE", MYLITE_SCALAR_FUNCTION_REPLACE},
+        {"LOCATE", MYLITE_SCALAR_FUNCTION_LOCATE},
+        {"POSITION", MYLITE_SCALAR_FUNCTION_LOCATE},
+        {"INSTR", MYLITE_SCALAR_FUNCTION_INSTR},
         {"ABS", MYLITE_SCALAR_FUNCTION_ABS},
         {"SIGN", MYLITE_SCALAR_FUNCTION_SIGN},
         {"FLOOR", MYLITE_SCALAR_FUNCTION_FLOOR},
@@ -3617,6 +3884,8 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_CONCAT_WS:
     case MYLITE_SCALAR_FUNCTION_LENGTH:
     case MYLITE_SCALAR_FUNCTION_CHAR_LENGTH:
+    case MYLITE_SCALAR_FUNCTION_ASCII:
+    case MYLITE_SCALAR_FUNCTION_ORD:
     case MYLITE_SCALAR_FUNCTION_LOWER:
     case MYLITE_SCALAR_FUNCTION_UPPER:
     case MYLITE_SCALAR_FUNCTION_LEFT:
@@ -3626,6 +3895,8 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_LTRIM:
     case MYLITE_SCALAR_FUNCTION_RTRIM:
     case MYLITE_SCALAR_FUNCTION_REPLACE:
+    case MYLITE_SCALAR_FUNCTION_LOCATE:
+    case MYLITE_SCALAR_FUNCTION_INSTR:
     case MYLITE_SCALAR_FUNCTION_ABS:
     case MYLITE_SCALAR_FUNCTION_SIGN:
     case MYLITE_SCALAR_FUNCTION_FLOOR:

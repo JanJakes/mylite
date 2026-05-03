@@ -64,6 +64,8 @@ static bool lexer_next_non_comment(struct mylite_sql_lexer *lexer,
                                    struct mylite_sql_token *out_token);
 static bool token_text_equals(const struct mylite_sql_token *token, const char *text);
 static bool span_text_equals(struct mylite_sql_source_span span, const char *text);
+static bool function_name_is_ascii(const struct mylite_sql_ast_node *name);
+static bool function_name_is_position(const struct mylite_sql_ast_node *name);
 static bool function_name_is_trim(const struct mylite_sql_ast_node *name);
 static bool function_name_is_substring(const struct mylite_sql_ast_node *name);
 static bool function_name_matches(const struct mylite_sql_ast_node *name, const char *text);
@@ -4852,6 +4854,15 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_function_call(
         return call;
     }
 
+    if (function_name_is_ascii(name) &&
+        (arguments == NULL || mylite_sql_ast_node_child_count(arguments) != 1U)) {
+        mylite_sql_parser_state_parse_failed(state);
+        return NULL;
+    }
+    if (function_name_is_position(name)) {
+        mylite_sql_parser_state_parse_failed(state);
+        return NULL;
+    }
     if (function_name_is_substring(name)) {
         size_t arity = mylite_sql_ast_node_child_count(arguments);
 
@@ -4901,6 +4912,37 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_from_function_call(
 
     mylite_sql_parser_state_parse_failed(state);
     return NULL;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_position_function_call(
+    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
+    struct mylite_sql_token left_paren, struct mylite_sql_parser_position_operands operands,
+    struct mylite_sql_token right_paren)
+{
+    struct mylite_sql_source_span span = name == NULL ? span_from_token(&left_paren) : name->span;
+    struct mylite_sql_ast_node *list = NULL;
+    struct mylite_sql_ast_node *call = NULL;
+
+    if (!function_name_is_position(name)) {
+        mylite_sql_parser_state_parse_failed(state);
+        return NULL;
+    }
+
+    list = mylite_sql_parser_make_function_argument_list(state, operands.substring);
+    list = mylite_sql_parser_append_function_argument(state, list, operands.source);
+    if (list == NULL) {
+        return NULL;
+    }
+
+    span = span_join(span, span_from_token(&right_paren));
+    call = make_node(state, MYLITE_SQL_AST_FUNCTION_CALL, span);
+    if (call == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(call, name);
+    mylite_sql_ast_node_append_child(call, list);
+    return call;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_substring_for_function_call(
@@ -5400,6 +5442,9 @@ static bool map_lexer_token(const struct mylite_sql_token *token, bool previous_
     switch (token->kind) {
     case MYLITE_SQL_TOKEN_IDENTIFIER:
         parser_token = MYLITE_SQL_PARSE_IDENTIFIER;
+        if (token_text_equals(token, "POSITION")) {
+            parser_token = MYLITE_SQL_PARSE_POSITION;
+        }
         break;
     case MYLITE_SQL_TOKEN_QUOTED_IDENTIFIER:
         parser_token = MYLITE_SQL_PARSE_QUOTED_IDENTIFIER;
@@ -6111,6 +6156,16 @@ static bool span_text_equals(struct mylite_sql_source_span span, const char *tex
     }
 
     return true;
+}
+
+static bool function_name_is_ascii(const struct mylite_sql_ast_node *name)
+{
+    return function_name_matches(name, "ASCII");
+}
+
+static bool function_name_is_position(const struct mylite_sql_ast_node *name)
+{
+    return function_name_matches(name, "POSITION");
 }
 
 static bool function_name_is_trim(const struct mylite_sql_ast_node *name)

@@ -5334,6 +5334,50 @@ static int test_scalar_function_call_syntax(void)
         expect_function_call(child_at(child_at(select_list, 14U), 0U), "RTRIM", 1U, "RTRIM call");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SELECT ASCII('A'), ORD('\xE6\xB5\xB7'), LOCATE('a','alpha'), "
+                          "LOCATE('a','alpha',2), POSITION('ph' IN 'alpha'), "
+                          "INSTR('alpha','ph');",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_child_count(select_list, 6U, "search/code function select list");
+    failures +=
+        expect_function_call(child_at(child_at(select_list, 0U), 0U), "ASCII", 1U, "ASCII call");
+    failures +=
+        expect_function_call(child_at(child_at(select_list, 1U), 0U), "ORD", 1U, "ORD call");
+    failures +=
+        expect_function_call(child_at(child_at(select_list, 2U), 0U), "LOCATE", 2U, "LOCATE call");
+    failures += expect_function_call(child_at(child_at(select_list, 3U), 0U), "LOCATE", 3U,
+                                     "LOCATE start call");
+    call = child_at(child_at(select_list, 4U), 0U);
+    failures += expect_function_call(call, "POSITION", 2U, "POSITION special call");
+    arguments = child_at(call, 1U);
+    failures += expect_span_text(child_at(arguments, 0U), "'ph'", "POSITION substring");
+    failures += expect_span_text(child_at(arguments, 1U), "'alpha'", "POSITION source");
+    failures +=
+        expect_function_call(child_at(child_at(select_list, 5U), 0U), "INSTR", 2U, "INSTR call");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT POSITION('a' IN ('abc'));", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    call = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_function_call(call, "POSITION", 2U, "POSITION parenthesized source");
+    arguments = child_at(call, 1U);
+    failures +=
+        expect_span_text(child_at(arguments, 0U), "'a'", "POSITION parenthesized substring");
+    failures +=
+        expect_span_text(child_at(arguments, 1U), "('abc')", "POSITION parenthesized source");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT ABS(1 IN (1)), LOCATE('a' IN ('abc'));", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_child_count(select_list, 2U, "IN predicate function argument select list");
+    failures += expect_function_call(child_at(child_at(select_list, 0U), 0U), "ABS", 1U,
+                                     "function IN predicate argument");
+    failures += expect_function_call(child_at(child_at(select_list, 1U), 0U), "LOCATE", 1U,
+                                     "LOCATE boolean argument call");
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("SELECT CONCAT ('a','b') AS spaced, LEFT('abc', 1) 'left alias';",
                           MYLITE_SQL_PARSE_OK, &result);
     select_list = child_at(child_at(result.root, 0U), 0U);
@@ -5392,7 +5436,27 @@ static int test_scalar_function_call_syntax(void)
     failures += parse_sql("SELECT IF(1,2)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("SELECT POSITION('a' IN 'abc')", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SELECT ASCII()", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT ASCII('a','b')", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT POSITION('a')", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT POSITION('a','b')", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT POSITION('a' IN 'abc' IN 'x')", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT POSITION(1 IN (1) IN 'abc')", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT LOCATE('a' IN 'abc')", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT SUBSTRING('abc')", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

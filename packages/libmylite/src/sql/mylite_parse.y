@@ -104,7 +104,7 @@
 %fallback IDENTIFIER AFTER AUTO_INCREMENT BEGIN BOOL BOOLEAN BTREE CHAIN CHARSET COLLATION
     COLUMN_FORMAT COMMENT COMMIT CONSISTENT COUNT DATE DATETIME DISK DYNAMIC ENGINE
     ENGINES ENGINE_ATTRIBUTE ENCRYPTION ERRORS FIRST FIXED HASH INSTANT INVISIBLE KEY_BLOCK_SIZE
-    MEMORY MODIFY NCHAR NO NVARCHAR OFFSET ONLY ROLLBACK SAVEPOINT SECONDARY_ENGINE_ATTRIBUTE
+    MEMORY MODIFY NCHAR NO NVARCHAR OFFSET ONLY POSITION ROLLBACK SAVEPOINT SECONDARY_ENGINE_ATTRIBUTE
     SIGNED SNAPSHOT START STORAGE TEMPORARY TEXT TIME TIMESTAMP TRANSACTION TYPE VISIBLE VALUE
     WARNINGS WORK YEAR.
 
@@ -2844,7 +2844,7 @@ between_expression(A) ::= comparison_expression(B) NOT(T) BETWEEN comparison_exp
         state, B, T, MYLITE_SQL_AST_OPERATOR_NOT_BETWEEN, C, D);
 }
 
-comparison_expression(A) ::= bit_or_expression(B). {
+comparison_expression(A) ::= bit_or_expression(B). [LOWEST] {
     A = B;
 }
 comparison_expression(A) ::= comparison_expression(B) EQ(T) bit_or_expression(C). {
@@ -3291,6 +3291,15 @@ scalar_function_call(A) ::= IF(T) LPAREN(L) expression(B) COMMA expression(C) CO
 }
 scalar_function_call(A) ::= function_name(B) LPAREN(L) expression(C) FROM expression(D) RPAREN(R). {
     A = mylite_sql_parser_make_from_function_call(state, B, L, C, D, R);
+}
+scalar_function_call(A) ::= POSITION(T) LPAREN(L) bit_or_expression(C) IN expression(D) RPAREN(R). {
+    A = mylite_sql_parser_make_position_function_call(
+        state, mylite_sql_parser_make_identifier(state, T), L,
+        (struct mylite_sql_parser_position_operands){
+            .substring = C,
+            .source = D,
+        },
+        R);
 }
 scalar_function_call(A) ::= function_name(B) LPAREN(L) expression(C) FROM expression(D) FOR expression(E) RPAREN(R). {
     A = mylite_sql_parser_make_substring_for_function_call(

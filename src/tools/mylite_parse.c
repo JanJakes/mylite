@@ -132,6 +132,8 @@ static void dump_statements(const MyliteAst *ast) {
     const MyliteAstDropIndex *drop_index = mylite_ast_drop_index_view(ast, i);
     const MyliteAstDropTable *drop_table = mylite_ast_drop_table_view(ast, i);
     const MyliteAstDropView *drop_view = mylite_ast_drop_view_view(ast, i);
+    const MyliteAstCallStatement *call_statement =
+        mylite_ast_call_statement_view(ast, i);
     const MyliteAstDoStatement *do_statement =
         mylite_ast_do_statement_view(ast, i);
     const MyliteAstPrepareStatement *prepare_statement =
@@ -904,6 +906,68 @@ static void dump_statements(const MyliteAst *ast) {
             mylite_ast_insert_assignment_view_value_expression(assignment);
         if (expression != NULL) {
           printf("      insert_duplicate_assignment[%zu].expression\n", j);
+          dump_expression_tree(expression, 4);
+        }
+      }
+    }
+    if (call_statement != NULL) {
+      printf("  call_statement span=%zu..%zu routine=%zu..%zu "
+             "schema=%zu..%zu name=%zu..%zu parentheses=%d "
+             "argument_list=%zu..%zu arguments=%zu node=%s\n",
+             mylite_ast_call_statement_view_start(call_statement),
+             mylite_ast_call_statement_view_end(call_statement),
+             mylite_ast_call_statement_view_routine_start(call_statement),
+             mylite_ast_call_statement_view_routine_end(call_statement),
+             mylite_ast_call_statement_view_routine_schema_start(
+                 call_statement),
+             mylite_ast_call_statement_view_routine_schema_end(call_statement),
+             mylite_ast_call_statement_view_routine_name_start(call_statement),
+             mylite_ast_call_statement_view_routine_name_end(call_statement),
+             mylite_ast_call_statement_view_has_parentheses(call_statement),
+             mylite_ast_call_statement_view_argument_list_start(
+                 call_statement),
+             mylite_ast_call_statement_view_argument_list_end(call_statement),
+             mylite_ast_call_statement_view_argument_count(call_statement),
+             node_symbol_or_none(
+                 mylite_ast_call_statement_view_node(call_statement)));
+      printf("    call_routine.schema len=%zu value=",
+             mylite_ast_call_statement_view_routine_schema_value_length(
+                 call_statement));
+      const char *schema =
+          mylite_ast_call_statement_view_routine_schema_value(call_statement);
+      if (schema == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(
+            schema,
+            mylite_ast_call_statement_view_routine_schema_value_length(
+                call_statement));
+      }
+      printf(" name_len=%zu value=",
+             mylite_ast_call_statement_view_routine_name_value_length(
+                 call_statement));
+      const char *name =
+          mylite_ast_call_statement_view_routine_name_value(call_statement);
+      if (name == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(
+            name, mylite_ast_call_statement_view_routine_name_value_length(
+                      call_statement));
+      }
+      fputc('\n', stdout);
+      for (size_t j = 0;
+           j < mylite_ast_call_statement_view_argument_count(call_statement);
+           j++) {
+        const MyliteAstCallArgument *argument =
+            mylite_ast_call_statement_view_argument_at(call_statement, j);
+        printf("    call_argument[%zu] span=%zu..%zu\n", j,
+               mylite_ast_call_argument_view_start(argument),
+               mylite_ast_call_argument_view_end(argument));
+        const MyliteAstExpression *expression =
+            mylite_ast_call_argument_view_expression(argument);
+        if (expression != NULL) {
+          printf("      call_argument[%zu].expression\n", j);
           dump_expression_tree(expression, 4);
         }
       }

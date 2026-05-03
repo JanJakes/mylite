@@ -72,7 +72,8 @@ column-detail handles, key-part/key-option handles, table-option
 descriptor/value views, and compact table-option/key/column summaries. It also
 builds semantic parser views for `CREATE TABLE`, `CREATE DATABASE`, `CREATE
 VIEW`, `ALTER TABLE`, `CREATE INDEX`, `DROP DATABASE`, `DROP INDEX`, `DROP
-TABLE`, `DROP VIEW`, `RENAME TABLE`, `TRUNCATE TABLE`, `DO`, `SET`, `USE`,
+TABLE`, `DROP VIEW`, `RENAME TABLE`, `TRUNCATE TABLE`, `CALL`, `DO`, `SET`,
+`USE`,
 `PREPARE`, `EXECUTE`, `DEALLOCATE`, and transaction-control statements that
 expose opaque descriptor handles for the next typed AST layer. The `CREATE
 DATABASE` view currently covers decoded database targets, `IF NOT EXISTS`,
@@ -183,7 +184,7 @@ below. The current prototype parses the WordPress MySQL server query corpus with
 
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
-| `CALL` | ❌ | medium | Procedure invocation, result sets, OUT/INOUT parameters, and diagnostics. |  |
+| `CALL` | ❌ | medium | Procedure invocation, result sets, OUT/INOUT parameters, and diagnostics. | Parser prototype exposes decoded routine schema/name spans, parenthesized-call marker, and ordered argument descriptors with recursive expression views. Runtime procedure invocation is not implemented yet. |
 | `DELETE` (single-table) | ❌ | top | Single-table delete with aliases, partitions, ORDER BY, LIMIT, LOW_PRIORITY, QUICK, and IGNORE. | Parser prototype exposes target table spans, priority, `QUICK`, and `IGNORE` modifiers, statement-level `WHERE` predicate views, and `ORDER BY` / `LIMIT` anchors. Runtime semantics are not implemented yet. |
 | `DELETE` (multi-table) | ❌ | high | Multi-table delete forms using FROM and USING, join semantics, and affected rows. | Parser prototype classifies `DELETE target_list FROM table_refs` and `DELETE FROM target_list USING table_refs`, exposes ordered delete-target descriptors with decoded names and wildcard markers, anchors joined table references, and exposes statement-level `WHERE` predicate views. Runtime semantics are not implemented yet. |
 | `DO` | ❌ | medium | Expression execution with warning and error semantics. | Parser prototype exposes ordered top-level expression descriptors with recursive expression views. Runtime evaluation, warning, and error semantics are not implemented yet. |

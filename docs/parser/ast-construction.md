@@ -85,6 +85,9 @@ expression nodes.
   `INTO` modifiers, partition markers, optional column lists, VALUES row/value
   descriptors, SET assignment descriptors, and SELECT source anchors. REPLACE
   values and assignments reuse the recursive expression view.
+- `CALL` statements expose parser-level views for decoded routine
+  schema/name, parenthesized-call markers, and ordered argument descriptors.
+  CALL arguments reuse the recursive expression view.
 - `DO` statements expose parser-level views for the top-level ordered
   expression list. Each expression descriptor reuses the recursive expression
   view.
@@ -183,6 +186,9 @@ expression nodes.
 - typed `REPLACE` column, value, and assignment descriptors with decoded names,
   row/value coordinates, `DEFAULT` markers, and recursive value-expression
   handles
+- typed `CALL` descriptors with decoded routine schema/name spans,
+  parenthesized-call markers, argument-list spans, and ordered argument
+  expression handles
 - typed `DO` descriptors with expression-list spans and ordered expression
   handles
 - typed `UPDATE` descriptors with `WITH` and multi-table markers, priority and
@@ -423,6 +429,14 @@ the recursive expression view. The view does not yet implement delete-then-inser
 semantics, cascades, triggers, affected rows, warnings, auto-increment behavior,
 or query/replace metadata integration.
 
+The first parser-level `CALL` view records the routine span, decoded optional
+schema/name pair, whether the parsed form used parentheses, the argument-list
+span, and ordered argument descriptors. Argument payloads reuse the recursive
+expression view, so literals, user variables, and assignment expressions are
+available to the next AST layer. Stored-procedure lookup, invocation, OUT/INOUT
+parameter binding, result-set streaming, diagnostics, and security context
+remain runtime work.
+
 The first parser-level `DO` view records the statement expression-list span and
 ordered top-level expression descriptors. Each descriptor anchors the original
 CST expression and exposes the shared recursive expression view, covering
@@ -570,6 +584,13 @@ mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=14.0469
 mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=35.306811 qps=196962 mbps=14.98 avg_us=5.077 avg_nodes=74.5 avg_ast_bytes=10888.5 avg_do_statement_views=0.00 avg_do_statement_expressions=0.00 avg_do_statement_expression_tree_nodes=0.01 avg_do_statement_expression_tree_operators=0.00 avg_do_statement_expression_tree_leaf_values=0.00
 ```
 
+Latest CALL parser-view run on the same corpus:
+
+```text
+mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=13.797887 qps=503997 mbps=38.33 avg_us=1.984
+mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=35.733288 qps=194611 mbps=14.80 avg_us=5.138 avg_nodes=74.5 avg_ast_bytes=10890.7 avg_call_statement_views=0.01 avg_call_statement_schema_values=0.00 avg_call_statement_name_values=0.01 avg_call_statement_parentheses=0.01 avg_call_statement_arguments=0.01 avg_call_statement_expression_tree_nodes=0.01 avg_call_statement_expression_tree_operators=0.00 avg_call_statement_expression_tree_leaf_values=0.01
+```
+
 Before semantic actions were generated, syntax-only parsing measured about
 `711k queries/sec` on the same corpus. The current syntax-only path still runs
 the generated reduce actions, but with AST building disabled, so it avoids arena
@@ -580,7 +601,7 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,852 lines, 5,637,339 bytes
 generated parser object: 996K on disk, 905,398 bytes text/data/other
-parser support object: 291K on disk, 170,330 bytes text/data/other
+parser support object: 296K on disk, 172,848 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.4M on disk
 mylite-parse: 1.2M on disk

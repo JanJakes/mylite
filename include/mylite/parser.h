@@ -39,6 +39,8 @@ typedef struct MyliteAstDropDatabase MyliteAstDropDatabase;
 typedef struct MyliteAstDropIndex MyliteAstDropIndex;
 typedef struct MyliteAstDropTable MyliteAstDropTable;
 typedef struct MyliteAstExpression MyliteAstExpression;
+typedef struct MyliteAstCallArgument MyliteAstCallArgument;
+typedef struct MyliteAstCallStatement MyliteAstCallStatement;
 typedef struct MyliteAstDeallocateStatement MyliteAstDeallocateStatement;
 typedef struct MyliteAstDeleteStatement MyliteAstDeleteStatement;
 typedef struct MyliteAstDeleteTarget MyliteAstDeleteTarget;
@@ -791,6 +793,8 @@ const MyliteAstDropTable *mylite_ast_drop_table_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstDropView *mylite_ast_drop_view_view(
     const MyliteAst *ast, size_t statement_index);
+const MyliteAstCallStatement *mylite_ast_call_statement_view(
+    const MyliteAst *ast, size_t statement_index);
 const MyliteAstDoStatement *mylite_ast_do_statement_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstInsertStatement *mylite_ast_insert_statement_view(
@@ -819,6 +823,50 @@ const MyliteAstUpdateStatement *mylite_ast_update_statement_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstUseDatabase *mylite_ast_use_database_view(
     const MyliteAst *ast, size_t statement_index);
+const MyliteAstNode *mylite_ast_call_statement_view_node(
+    const MyliteAstCallStatement *call_statement);
+size_t mylite_ast_call_statement_view_start(
+    const MyliteAstCallStatement *call_statement);
+size_t mylite_ast_call_statement_view_end(
+    const MyliteAstCallStatement *call_statement);
+size_t mylite_ast_call_statement_view_routine_start(
+    const MyliteAstCallStatement *call_statement);
+size_t mylite_ast_call_statement_view_routine_end(
+    const MyliteAstCallStatement *call_statement);
+size_t mylite_ast_call_statement_view_routine_schema_start(
+    const MyliteAstCallStatement *call_statement);
+size_t mylite_ast_call_statement_view_routine_schema_end(
+    const MyliteAstCallStatement *call_statement);
+const char *mylite_ast_call_statement_view_routine_schema_value(
+    const MyliteAstCallStatement *call_statement);
+size_t mylite_ast_call_statement_view_routine_schema_value_length(
+    const MyliteAstCallStatement *call_statement);
+size_t mylite_ast_call_statement_view_routine_name_start(
+    const MyliteAstCallStatement *call_statement);
+size_t mylite_ast_call_statement_view_routine_name_end(
+    const MyliteAstCallStatement *call_statement);
+const char *mylite_ast_call_statement_view_routine_name_value(
+    const MyliteAstCallStatement *call_statement);
+size_t mylite_ast_call_statement_view_routine_name_value_length(
+    const MyliteAstCallStatement *call_statement);
+int mylite_ast_call_statement_view_has_parentheses(
+    const MyliteAstCallStatement *call_statement);
+size_t mylite_ast_call_statement_view_argument_list_start(
+    const MyliteAstCallStatement *call_statement);
+size_t mylite_ast_call_statement_view_argument_list_end(
+    const MyliteAstCallStatement *call_statement);
+size_t mylite_ast_call_statement_view_argument_count(
+    const MyliteAstCallStatement *call_statement);
+const MyliteAstCallArgument *mylite_ast_call_statement_view_argument_at(
+    const MyliteAstCallStatement *call_statement, size_t argument_index);
+const MyliteAstNode *mylite_ast_call_argument_view_node(
+    const MyliteAstCallArgument *argument);
+size_t mylite_ast_call_argument_view_start(
+    const MyliteAstCallArgument *argument);
+size_t mylite_ast_call_argument_view_end(
+    const MyliteAstCallArgument *argument);
+const MyliteAstExpression *mylite_ast_call_argument_view_expression(
+    const MyliteAstCallArgument *argument);
 const MyliteAstNode *mylite_ast_do_statement_view_node(
     const MyliteAstDoStatement *do_statement);
 size_t mylite_ast_do_statement_view_start(

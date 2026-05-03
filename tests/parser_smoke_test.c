@@ -195,6 +195,7 @@ static int expect_drop_database_view(void);
 static int expect_drop_index_view(void);
 static int expect_drop_table_view(void);
 static int expect_drop_view_view(void);
+static int expect_call_statement_view(void);
 static int expect_do_statement_view(void);
 static int expect_delete_statement_view(void);
 static int expect_insert_statement_view(void);
@@ -804,6 +805,7 @@ int main(void) {
   failures += expect_drop_index_view();
   failures += expect_drop_table_view();
   failures += expect_drop_view_view();
+  failures += expect_call_statement_view();
   failures += expect_do_statement_view();
   failures += expect_delete_statement_view();
   failures += expect_insert_statement_view();
@@ -4052,6 +4054,129 @@ static int expect_replace_statement_view(void) {
         mylite_ast_replace_statement_view_column_count(view) != 1 ||
         mylite_ast_replace_statement_view_select_source_node(view) == NULL) {
       fprintf(stderr, "REPLACE SELECT statement view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  return failed;
+}
+
+static int expect_call_statement_view(void) {
+  int failed = 0;
+  {
+    const char *sql = "CALL `db``x`.`p``y`(1, @out, @x := 2)";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "CALL statement view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+
+    const MyliteAstCallStatement *view =
+        mylite_ast_call_statement_view(ast, 0);
+    const MyliteAstCallArgument *literal_argument =
+        view == NULL ? NULL
+                     : mylite_ast_call_statement_view_argument_at(view, 0);
+    const MyliteAstCallArgument *variable_argument =
+        view == NULL ? NULL
+                     : mylite_ast_call_statement_view_argument_at(view, 1);
+    const MyliteAstCallArgument *assignment_argument =
+        view == NULL ? NULL
+                     : mylite_ast_call_statement_view_argument_at(view, 2);
+    const MyliteAstExpression *literal_expression =
+        mylite_ast_call_argument_view_expression(literal_argument);
+    const MyliteAstExpression *variable_expression =
+        mylite_ast_call_argument_view_expression(variable_argument);
+    const MyliteAstExpression *assignment_expression =
+        mylite_ast_call_argument_view_expression(assignment_argument);
+    if (view == NULL || mylite_ast_statement_kind(ast, 0) !=
+                            MYLITE_STATEMENT_CALL ||
+        !mylite_ast_call_statement_view_has_parentheses(view) ||
+        mylite_ast_call_statement_view_argument_count(view) != 3 ||
+        !span_matches(sql, mylite_ast_call_statement_view_routine_start(view),
+                      mylite_ast_call_statement_view_routine_end(view),
+                      "`db``x`.`p``y`") ||
+        !span_matches(sql,
+                      mylite_ast_call_statement_view_routine_schema_start(view),
+                      mylite_ast_call_statement_view_routine_schema_end(view),
+                      "`db``x`") ||
+        !span_matches(sql,
+                      mylite_ast_call_statement_view_routine_name_start(view),
+                      mylite_ast_call_statement_view_routine_name_end(view),
+                      "`p``y`") ||
+        !value_matches_when_expected(
+            mylite_ast_call_statement_view_routine_schema_value(view),
+            mylite_ast_call_statement_view_routine_schema_value_length(view),
+            "db`x") ||
+        !value_matches_when_expected(
+            mylite_ast_call_statement_view_routine_name_value(view),
+            mylite_ast_call_statement_view_routine_name_value_length(view),
+            "p`y") ||
+        !span_matches(sql,
+                      mylite_ast_call_statement_view_argument_list_start(view),
+                      mylite_ast_call_statement_view_argument_list_end(view),
+                      "1, @out, @x := 2") ||
+        literal_argument == NULL ||
+        !span_matches(sql, mylite_ast_call_argument_view_start(literal_argument),
+                      mylite_ast_call_argument_view_end(literal_argument),
+                      "1") ||
+        literal_expression == NULL ||
+        mylite_ast_expression_view_literal_kind(literal_expression) !=
+            MYLITE_EXPRESSION_LITERAL_UNSIGNED_INTEGER ||
+        variable_argument == NULL ||
+        !span_matches(sql,
+                      mylite_ast_call_argument_view_start(variable_argument),
+                      mylite_ast_call_argument_view_end(variable_argument),
+                      "@out") ||
+        variable_expression == NULL ||
+        mylite_ast_expression_view_kind(variable_expression) !=
+            MYLITE_EXPRESSION_VARIABLE ||
+        assignment_argument == NULL ||
+        !span_matches(
+            sql, mylite_ast_call_argument_view_start(assignment_argument),
+            mylite_ast_call_argument_view_end(assignment_argument), "@x := 2") ||
+        assignment_expression == NULL ||
+        mylite_ast_expression_view_operator_kind(assignment_expression) !=
+            MYLITE_EXPRESSION_OPERATOR_ASSIGNMENT) {
+      fprintf(stderr, "CALL statement view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql = "CALL p()";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "CALL empty statement view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+
+    const MyliteAstCallStatement *view =
+        mylite_ast_call_statement_view(ast, 0);
+    if (view == NULL ||
+        !mylite_ast_call_statement_view_has_parentheses(view) ||
+        mylite_ast_call_statement_view_argument_count(view) != 0 ||
+        !span_matches(sql, mylite_ast_call_statement_view_routine_name_start(view),
+                      mylite_ast_call_statement_view_routine_name_end(view),
+                      "p") ||
+        !value_matches_when_expected(
+            mylite_ast_call_statement_view_routine_name_value(view),
+            mylite_ast_call_statement_view_routine_name_value_length(view),
+            "p")) {
+      fprintf(stderr, "CALL empty statement view failed: %s\n", sql);
       failed = 1;
     }
     mylite_ast_free(ast);

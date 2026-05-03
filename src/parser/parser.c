@@ -631,6 +631,36 @@ struct MyliteAstDeleteStatement {
   int has_ignore;
 };
 
+struct MyliteAstCallArgument {
+  const MyliteAstNode *node;
+  MyliteAstExpression expression;
+  size_t start;
+  size_t end;
+};
+
+struct MyliteAstCallStatement {
+  const MyliteAstNode *node;
+  const MyliteAstNode *procedure_call_node;
+  const MyliteAstNode *argument_list_node;
+  MyliteAstCallArgument *arguments;
+  size_t argument_count;
+  size_t start;
+  size_t end;
+  size_t routine_start;
+  size_t routine_end;
+  size_t routine_schema_start;
+  size_t routine_schema_end;
+  const char *routine_schema_value;
+  size_t routine_schema_value_length;
+  size_t routine_name_start;
+  size_t routine_name_end;
+  const char *routine_name_value;
+  size_t routine_name_value_length;
+  size_t argument_list_start;
+  size_t argument_list_end;
+  int has_parentheses;
+};
+
 struct MyliteAstDoExpression {
   const MyliteAstNode *node;
   MyliteAstExpression expression;
@@ -882,6 +912,7 @@ typedef struct MyliteAstStatement {
   MyliteAstDropIndex *drop_index;
   MyliteAstDropTable *drop_table;
   MyliteAstDropView *drop_view;
+  MyliteAstCallStatement *call_statement;
   MyliteAstDoStatement *do_statement;
   MyliteAstPrepareStatement *prepare_statement;
   MyliteAstExecuteStatement *execute_statement;
@@ -990,6 +1021,22 @@ static int mylite_ast_fill_delete_targets(
 static int mylite_ast_fill_delete_target(MyliteAst *ast,
                                          MyliteAstDeleteTarget *target,
                                          const MyliteAstNode *node);
+static int mylite_ast_set_call_statement_view(MyliteAst *ast,
+                                              MyliteAstStatement *statement,
+                                              const MyliteAstNode *payload);
+static int mylite_ast_set_call_routine(MyliteAst *ast,
+                                       MyliteAstCallStatement *call_statement);
+static const MyliteAstNode *mylite_ast_call_argument_list(
+    const MyliteAstNode *procedure_call);
+static int mylite_ast_fill_call_arguments(MyliteAst *ast,
+                                          MyliteAstCallArgument *arguments,
+                                          size_t argument_count,
+                                          const MyliteAstNode *node,
+                                          size_t *index);
+static int mylite_ast_fill_call_argument(MyliteAst *ast,
+                                         MyliteAstCallArgument *argument,
+                                         const MyliteAstNode *node);
+static int mylite_ast_call_identifier_node(const MyliteAstNode *node);
 static int mylite_ast_set_do_statement_view(MyliteAst *ast,
                                             MyliteAstStatement *statement,
                                             const MyliteAstNode *payload);
@@ -3217,6 +3264,13 @@ const MyliteAstDropView *mylite_ast_drop_view_view(
   return statement == NULL ? NULL : statement->drop_view;
 }
 
+const MyliteAstCallStatement *mylite_ast_call_statement_view(
+    const MyliteAst *ast, size_t statement_index) {
+  const MyliteAstStatement *statement =
+      mylite_ast_statement_at(ast, statement_index);
+  return statement == NULL ? NULL : statement->call_statement;
+}
+
 const MyliteAstDoStatement *mylite_ast_do_statement_view(
     const MyliteAst *ast, size_t statement_index) {
   const MyliteAstStatement *statement =
@@ -3313,6 +3367,122 @@ const MyliteAstUseDatabase *mylite_ast_use_database_view(
   const MyliteAstStatement *statement =
       mylite_ast_statement_at(ast, statement_index);
   return statement == NULL ? NULL : statement->use_database;
+}
+
+const MyliteAstNode *mylite_ast_call_statement_view_node(
+    const MyliteAstCallStatement *call_statement) {
+  return call_statement == NULL ? NULL : call_statement->node;
+}
+
+size_t mylite_ast_call_statement_view_start(
+    const MyliteAstCallStatement *call_statement) {
+  return call_statement == NULL ? 0 : call_statement->start;
+}
+
+size_t mylite_ast_call_statement_view_end(
+    const MyliteAstCallStatement *call_statement) {
+  return call_statement == NULL ? 0 : call_statement->end;
+}
+
+size_t mylite_ast_call_statement_view_routine_start(
+    const MyliteAstCallStatement *call_statement) {
+  return call_statement == NULL ? 0 : call_statement->routine_start;
+}
+
+size_t mylite_ast_call_statement_view_routine_end(
+    const MyliteAstCallStatement *call_statement) {
+  return call_statement == NULL ? 0 : call_statement->routine_end;
+}
+
+size_t mylite_ast_call_statement_view_routine_schema_start(
+    const MyliteAstCallStatement *call_statement) {
+  return call_statement == NULL ? 0 : call_statement->routine_schema_start;
+}
+
+size_t mylite_ast_call_statement_view_routine_schema_end(
+    const MyliteAstCallStatement *call_statement) {
+  return call_statement == NULL ? 0 : call_statement->routine_schema_end;
+}
+
+const char *mylite_ast_call_statement_view_routine_schema_value(
+    const MyliteAstCallStatement *call_statement) {
+  return call_statement == NULL ? NULL : call_statement->routine_schema_value;
+}
+
+size_t mylite_ast_call_statement_view_routine_schema_value_length(
+    const MyliteAstCallStatement *call_statement) {
+  return call_statement == NULL ? 0
+                                : call_statement->routine_schema_value_length;
+}
+
+size_t mylite_ast_call_statement_view_routine_name_start(
+    const MyliteAstCallStatement *call_statement) {
+  return call_statement == NULL ? 0 : call_statement->routine_name_start;
+}
+
+size_t mylite_ast_call_statement_view_routine_name_end(
+    const MyliteAstCallStatement *call_statement) {
+  return call_statement == NULL ? 0 : call_statement->routine_name_end;
+}
+
+const char *mylite_ast_call_statement_view_routine_name_value(
+    const MyliteAstCallStatement *call_statement) {
+  return call_statement == NULL ? NULL : call_statement->routine_name_value;
+}
+
+size_t mylite_ast_call_statement_view_routine_name_value_length(
+    const MyliteAstCallStatement *call_statement) {
+  return call_statement == NULL ? 0 : call_statement->routine_name_value_length;
+}
+
+int mylite_ast_call_statement_view_has_parentheses(
+    const MyliteAstCallStatement *call_statement) {
+  return call_statement == NULL ? 0 : call_statement->has_parentheses;
+}
+
+size_t mylite_ast_call_statement_view_argument_list_start(
+    const MyliteAstCallStatement *call_statement) {
+  return call_statement == NULL ? 0 : call_statement->argument_list_start;
+}
+
+size_t mylite_ast_call_statement_view_argument_list_end(
+    const MyliteAstCallStatement *call_statement) {
+  return call_statement == NULL ? 0 : call_statement->argument_list_end;
+}
+
+size_t mylite_ast_call_statement_view_argument_count(
+    const MyliteAstCallStatement *call_statement) {
+  return call_statement == NULL ? 0 : call_statement->argument_count;
+}
+
+const MyliteAstCallArgument *mylite_ast_call_statement_view_argument_at(
+    const MyliteAstCallStatement *call_statement, size_t argument_index) {
+  if (call_statement == NULL || argument_index >= call_statement->argument_count) {
+    return NULL;
+  }
+  return &call_statement->arguments[argument_index];
+}
+
+const MyliteAstNode *mylite_ast_call_argument_view_node(
+    const MyliteAstCallArgument *argument) {
+  return argument == NULL ? NULL : argument->node;
+}
+
+size_t mylite_ast_call_argument_view_start(
+    const MyliteAstCallArgument *argument) {
+  return argument == NULL ? 0 : argument->start;
+}
+
+size_t mylite_ast_call_argument_view_end(
+    const MyliteAstCallArgument *argument) {
+  return argument == NULL ? 0 : argument->end;
+}
+
+const MyliteAstExpression *mylite_ast_call_argument_view_expression(
+    const MyliteAstCallArgument *argument) {
+  return argument == NULL || argument->expression.node == NULL
+             ? NULL
+             : &argument->expression;
 }
 
 const MyliteAstNode *mylite_ast_do_statement_view_node(
@@ -9426,6 +9596,9 @@ static int mylite_ast_set_statement_details(MyliteAst *ast,
   if (statement->kind == MYLITE_STATEMENT_SELECT) {
     return mylite_ast_set_select_statement_view(ast, statement, payload);
   }
+  if (statement->kind == MYLITE_STATEMENT_CALL) {
+    return mylite_ast_set_call_statement_view(ast, statement, payload);
+  }
   if (statement->kind == MYLITE_STATEMENT_DO) {
     return mylite_ast_set_do_statement_view(ast, statement, payload);
   }
@@ -9788,6 +9961,191 @@ static int mylite_ast_fill_delete_target(MyliteAst *ast,
     return 0;
   }
   return 1;
+}
+
+static int mylite_ast_set_call_statement_view(MyliteAst *ast,
+                                              MyliteAstStatement *statement,
+                                              const MyliteAstNode *payload) {
+  if (ast == NULL || statement == NULL || payload == NULL) {
+    return 1;
+  }
+  MyliteAstCallStatement *call_statement =
+      mylite_ast_alloc(ast, sizeof(*call_statement));
+  if (call_statement == NULL) {
+    return 0;
+  }
+  call_statement->node = payload;
+  call_statement->start = mylite_ast_node_start(payload);
+  call_statement->end = mylite_ast_node_end(payload);
+  call_statement->procedure_call_node =
+      mylite_ast_insert_direct_child_symbol(payload, "nt_procedure_call");
+  if (!mylite_ast_set_call_routine(ast, call_statement)) {
+    return 0;
+  }
+  call_statement->argument_list_node =
+      mylite_ast_call_argument_list(call_statement->procedure_call_node);
+  if (call_statement->argument_list_node != NULL) {
+    call_statement->argument_list_start =
+        mylite_ast_node_start(call_statement->argument_list_node);
+    call_statement->argument_list_end =
+        mylite_ast_node_end(call_statement->argument_list_node);
+  }
+  call_statement->argument_count =
+      mylite_ast_expression_list_count(call_statement->argument_list_node);
+  if (call_statement->argument_count > 0) {
+    call_statement->arguments =
+        mylite_ast_alloc(ast, call_statement->argument_count *
+                                  sizeof(*call_statement->arguments));
+    if (call_statement->arguments == NULL) {
+      return 0;
+    }
+    size_t index = 0;
+    if (!mylite_ast_fill_call_arguments(
+            ast, call_statement->arguments, call_statement->argument_count,
+            call_statement->argument_list_node, &index) ||
+        index != call_statement->argument_count) {
+      return 0;
+    }
+  }
+  statement->call_statement = call_statement;
+  return 1;
+}
+
+static int mylite_ast_set_call_routine(
+    MyliteAst *ast, MyliteAstCallStatement *call_statement) {
+  if (ast == NULL || call_statement == NULL ||
+      call_statement->procedure_call_node == NULL) {
+    return 1;
+  }
+
+  const MyliteAstNode *procedure_call = call_statement->procedure_call_node;
+  const MyliteAstNode *schema = NULL;
+  const MyliteAstNode *name = NULL;
+  size_t identifier_count = 0;
+  for (size_t i = 0; i < procedure_call->child_count; i++) {
+    const MyliteAstNode *child = procedure_call->children[i];
+    if (!mylite_ast_call_identifier_node(child)) {
+      continue;
+    }
+    if (identifier_count == 0) {
+      schema = child;
+    } else if (identifier_count == 1) {
+      name = child;
+      break;
+    }
+    identifier_count++;
+  }
+
+  if (name == NULL) {
+    name = schema;
+    schema = NULL;
+  }
+  if (name == NULL) {
+    return 1;
+  }
+
+  call_statement->routine_start =
+      mylite_ast_node_start(schema == NULL ? name : schema);
+  call_statement->routine_end = mylite_ast_node_end(name);
+  call_statement->routine_name_start = mylite_ast_node_start(name);
+  call_statement->routine_name_end = mylite_ast_node_end(name);
+  if (!mylite_ast_decode_identifier(
+          ast, call_statement->routine_name_start,
+          call_statement->routine_name_end, &call_statement->routine_name_value,
+          &call_statement->routine_name_value_length)) {
+    return 0;
+  }
+  if (schema != NULL) {
+    call_statement->routine_schema_start = mylite_ast_node_start(schema);
+    call_statement->routine_schema_end = mylite_ast_node_end(schema);
+    if (!mylite_ast_decode_identifier(
+            ast, call_statement->routine_schema_start,
+            call_statement->routine_schema_end,
+            &call_statement->routine_schema_value,
+            &call_statement->routine_schema_value_length)) {
+      return 0;
+    }
+  }
+
+  for (size_t i = 0; i < procedure_call->child_count; i++) {
+    const MyliteAstNode *child = procedure_call->children[i];
+    if (child != NULL && child->kind == MYLITE_AST_NODE_TOKEN &&
+        child->token == MYLITE_TOK_LPAREN) {
+      call_statement->has_parentheses = 1;
+      break;
+    }
+  }
+  return 1;
+}
+
+static const MyliteAstNode *mylite_ast_call_argument_list(
+    const MyliteAstNode *procedure_call) {
+  const MyliteAstNode *argument_list_opt =
+      mylite_ast_insert_direct_child_symbol(procedure_call,
+                                            "nt_expression_list_opt");
+  if (argument_list_opt == NULL || argument_list_opt->child_count != 1) {
+    return NULL;
+  }
+  return mylite_ast_expression_is_symbol(argument_list_opt->children[0],
+                                         "nt_expression_list")
+             ? argument_list_opt->children[0]
+             : NULL;
+}
+
+static int mylite_ast_fill_call_arguments(MyliteAst *ast,
+                                          MyliteAstCallArgument *arguments,
+                                          size_t argument_count,
+                                          const MyliteAstNode *node,
+                                          size_t *index) {
+  if (node == NULL) {
+    return 1;
+  }
+  if (mylite_ast_expression_is_symbol(node, "nt_expression")) {
+    if (arguments == NULL || index == NULL || *index >= argument_count) {
+      return 0;
+    }
+    if (!mylite_ast_fill_call_argument(ast, &arguments[*index], node)) {
+      return 0;
+    }
+    (*index)++;
+    return 1;
+  }
+  if (mylite_ast_expression_is_symbol(node, "nt_expression_list")) {
+    if (node->child_count == 1) {
+      return mylite_ast_fill_call_arguments(ast, arguments, argument_count,
+                                            node->children[0], index);
+    }
+    if (node->child_count == 3) {
+      return mylite_ast_fill_call_arguments(ast, arguments, argument_count,
+                                            node->children[0], index) &&
+             mylite_ast_fill_call_arguments(ast, arguments, argument_count,
+                                            node->children[2], index);
+    }
+  }
+  return 1;
+}
+
+static int mylite_ast_fill_call_argument(MyliteAst *ast,
+                                         MyliteAstCallArgument *argument,
+                                         const MyliteAstNode *node) {
+  if (ast == NULL || argument == NULL || node == NULL) {
+    return 1;
+  }
+  argument->node = node;
+  argument->start = mylite_ast_node_start(node);
+  argument->end = mylite_ast_node_end(node);
+  return mylite_ast_set_expression_summary(ast, &argument->expression, node);
+}
+
+static int mylite_ast_call_identifier_node(const MyliteAstNode *node) {
+  if (node == NULL) {
+    return 0;
+  }
+  if (node->kind == MYLITE_AST_NODE_TOKEN &&
+      node->token == MYLITE_TOK_IDENTIFIER) {
+    return 1;
+  }
+  return mylite_ast_expression_is_symbol(node, "nt_identifier");
 }
 
 static int mylite_ast_set_do_statement_view(MyliteAst *ast,

@@ -102,6 +102,14 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t insert_statement_expression_tree_nodes = 0;
   size_t insert_statement_expression_tree_operators = 0;
   size_t insert_statement_expression_tree_leaf_values = 0;
+  size_t call_statement_views = 0;
+  size_t call_statement_schema_values = 0;
+  size_t call_statement_name_values = 0;
+  size_t call_statement_parentheses = 0;
+  size_t call_statement_arguments = 0;
+  size_t call_statement_expression_tree_nodes = 0;
+  size_t call_statement_expression_tree_operators = 0;
+  size_t call_statement_expression_tree_leaf_values = 0;
   size_t do_statement_views = 0;
   size_t do_statement_expressions = 0;
   size_t do_statement_expression_tree_nodes = 0;
@@ -1137,6 +1145,39 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                     &insert_statement_expression_tree_leaf_values);
               }
             }
+            const MyliteAstCallStatement *call_statement =
+                mylite_ast_call_statement_view(ast, i);
+            if (call_statement != NULL) {
+              call_statement_views++;
+              if (mylite_ast_call_statement_view_routine_schema_value(
+                      call_statement) != NULL) {
+                call_statement_schema_values++;
+              }
+              if (mylite_ast_call_statement_view_routine_name_value(
+                      call_statement) != NULL) {
+                call_statement_name_values++;
+              }
+              if (mylite_ast_call_statement_view_has_parentheses(
+                      call_statement)) {
+                call_statement_parentheses++;
+              }
+              call_statement_arguments +=
+                  mylite_ast_call_statement_view_argument_count(
+                      call_statement);
+              for (size_t j = 0;
+                   j < mylite_ast_call_statement_view_argument_count(
+                           call_statement);
+                   j++) {
+                const MyliteAstCallArgument *argument =
+                    mylite_ast_call_statement_view_argument_at(call_statement,
+                                                               j);
+                count_expression_tree(
+                    mylite_ast_call_argument_view_expression(argument),
+                    &call_statement_expression_tree_nodes,
+                    &call_statement_expression_tree_operators,
+                    &call_statement_expression_tree_leaf_values);
+              }
+            }
             const MyliteAstDoStatement *do_statement =
                 mylite_ast_do_statement_view(ast, i);
             if (do_statement != NULL) {
@@ -1805,6 +1846,14 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_insert_statement_expression_tree_nodes=%.2f "
            "avg_insert_statement_expression_tree_operators=%.2f "
            "avg_insert_statement_expression_tree_leaf_values=%.2f "
+           "avg_call_statement_views=%.2f "
+           "avg_call_statement_schema_values=%.2f "
+           "avg_call_statement_name_values=%.2f "
+           "avg_call_statement_parentheses=%.2f "
+           "avg_call_statement_arguments=%.2f "
+           "avg_call_statement_expression_tree_nodes=%.2f "
+           "avg_call_statement_expression_tree_operators=%.2f "
+           "avg_call_statement_expression_tree_leaf_values=%.2f "
            "avg_do_statement_views=%.2f "
            "avg_do_statement_expressions=%.2f "
            "avg_do_statement_expression_tree_nodes=%.2f "
@@ -2077,6 +2126,15 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)insert_statement_expression_tree_operators /
                (double)parsed,
            (double)insert_statement_expression_tree_leaf_values /
+               (double)parsed,
+           (double)call_statement_views / (double)parsed,
+           (double)call_statement_schema_values / (double)parsed,
+           (double)call_statement_name_values / (double)parsed,
+           (double)call_statement_parentheses / (double)parsed,
+           (double)call_statement_arguments / (double)parsed,
+           (double)call_statement_expression_tree_nodes / (double)parsed,
+           (double)call_statement_expression_tree_operators / (double)parsed,
+           (double)call_statement_expression_tree_leaf_values /
                (double)parsed,
            (double)do_statement_views / (double)parsed,
            (double)do_statement_expressions / (double)parsed,

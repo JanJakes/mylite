@@ -8544,6 +8544,108 @@ static int expect_semantic_ast_materialization(void) {
   }
   mylite_semantic_ast_free(semantic_ast);
 
+  const char *alter_sql =
+      "ALTER TABLE db1.t1 ADD COLUMN c INT DEFAULT (1 + 2), ADD KEY k (c)";
+  semantic_ast = NULL;
+  status = mylite_parse_sql_semantic_ast(alter_sql, &semantic_ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "semantic AST ALTER TABLE parse failed: status=%s offset=%zu "
+            "token=%d message=%s\n",
+            mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return failed + 1;
+  }
+
+  root = mylite_semantic_ast_root(semantic_ast);
+  statement = mylite_semantic_ast_node_child_at(root, 0);
+  target = first_semantic_child_with_kind(statement,
+                                         MYLITE_SEMANTIC_NODE_TARGET);
+  const MyliteSemanticAstNode *alter_table_node =
+      first_semantic_child_with_kind(statement, MYLITE_SEMANTIC_NODE_TABLE);
+  const MyliteSemanticAstNode *alter_column_spec =
+      first_semantic_child_with_descriptor_kind(
+          alter_table_node, MYLITE_SEMANTIC_DESCRIPTOR_ALTER_TABLE_SPEC);
+  const MyliteSemanticAstNode *alter_column_descriptor =
+      first_semantic_child_with_descriptor_kind(
+          alter_column_spec, MYLITE_SEMANTIC_DESCRIPTOR_COLUMN);
+  const MyliteSemanticAstNode *alter_key_spec =
+      mylite_semantic_ast_node_child_at(alter_table_node, 1);
+  const MyliteSemanticAstNode *alter_key_descriptor =
+      first_semantic_child_with_descriptor_kind(
+          alter_key_spec, MYLITE_SEMANTIC_DESCRIPTOR_KEY);
+  const MyliteSemanticAstNode *alter_key_part_descriptor =
+      first_semantic_child_with_descriptor_kind(
+          alter_key_spec, MYLITE_SEMANTIC_DESCRIPTOR_KEY_PART);
+  const MyliteSemanticAstNode *direct_alter_spec =
+      first_semantic_child_with_descriptor_kind(
+          statement, MYLITE_SEMANTIC_DESCRIPTOR_ALTER_TABLE_SPEC);
+  const MyliteSemanticAstNode *direct_alter_column =
+      first_semantic_child_with_descriptor_kind(
+          statement, MYLITE_SEMANTIC_DESCRIPTOR_COLUMN);
+  const MyliteSemanticAstNode *alter_data_type =
+      first_semantic_child_with_kind(alter_column_descriptor,
+                                    MYLITE_SEMANTIC_NODE_DATA_TYPE);
+  SemanticCounts alter_counts = {0};
+  count_semantic_nodes(root, &alter_counts);
+  if (statement == NULL ||
+      mylite_semantic_ast_node_statement_kind(statement) !=
+          MYLITE_STATEMENT_ALTER ||
+      target == NULL ||
+      !value_matches_when_expected(
+          mylite_semantic_ast_node_value(target),
+          mylite_semantic_ast_node_value_length(target), "t1") ||
+      alter_table_node == NULL ||
+      mylite_semantic_ast_node_target_kind(alter_table_node) !=
+          MYLITE_STATEMENT_TARGET_TABLE ||
+      mylite_semantic_ast_node_target_role(alter_table_node) !=
+          MYLITE_STATEMENT_TARGET_ROLE_PRIMARY ||
+      mylite_semantic_ast_node_child_count(alter_table_node) != 2 ||
+      !value_matches_when_expected(
+          mylite_semantic_ast_node_schema_value(alter_table_node),
+          mylite_semantic_ast_node_schema_value_length(alter_table_node),
+          "db1") ||
+      !value_matches_when_expected(
+          mylite_semantic_ast_node_value(alter_table_node),
+          mylite_semantic_ast_node_value_length(alter_table_node), "t1") ||
+      alter_column_spec == NULL ||
+      mylite_semantic_ast_node_child_count(alter_column_spec) != 1 ||
+      alter_column_descriptor == NULL ||
+      !value_matches_when_expected(
+          mylite_semantic_ast_node_value(alter_column_descriptor),
+          mylite_semantic_ast_node_value_length(alter_column_descriptor), "c") ||
+      alter_data_type == NULL ||
+      mylite_semantic_ast_node_data_type_kind(alter_data_type) !=
+          MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_INT ||
+      alter_key_spec == NULL ||
+      mylite_semantic_ast_node_child_count(alter_key_spec) != 2 ||
+      alter_key_descriptor == NULL ||
+      !value_matches_when_expected(
+          mylite_semantic_ast_node_value(alter_key_descriptor),
+          mylite_semantic_ast_node_value_length(alter_key_descriptor), "k") ||
+      alter_key_part_descriptor == NULL ||
+      !value_matches_when_expected(
+          mylite_semantic_ast_node_value(alter_key_part_descriptor),
+          mylite_semantic_ast_node_value_length(alter_key_part_descriptor),
+          "c") ||
+      direct_alter_spec != NULL || direct_alter_column != NULL ||
+      alter_counts.targets != 1 || alter_counts.tables != 1 ||
+      alter_counts.descriptors != 5 || alter_counts.data_types != 1 ||
+      alter_counts.expressions < 3 || alter_counts.operators < 1 ||
+      alter_counts.leaf_values < 2) {
+    fprintf(stderr,
+            "semantic AST ALTER TABLE shape mismatch: nodes=%zu targets=%zu "
+            "tables=%zu descriptors=%zu data_types=%zu expressions=%zu "
+            "operators=%zu leaf_values=%zu\n",
+            mylite_semantic_ast_node_count(semantic_ast), alter_counts.targets,
+            alter_counts.tables, alter_counts.descriptors,
+            alter_counts.data_types, alter_counts.expressions,
+            alter_counts.operators,
+            alter_counts.leaf_values);
+    failed = 1;
+  }
+  mylite_semantic_ast_free(semantic_ast);
+
   const char *type_sql =
       "CREATE TABLE type_t ("
       "a DECIMAL(10,2) UNSIGNED ZEROFILL, "

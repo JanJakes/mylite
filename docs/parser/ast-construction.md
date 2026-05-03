@@ -85,6 +85,9 @@ expression nodes.
   `INTO` modifiers, partition markers, optional column lists, VALUES row/value
   descriptors, SET assignment descriptors, and SELECT source anchors. REPLACE
   values and assignments reuse the recursive expression view.
+- `DO` statements expose parser-level views for the top-level ordered
+  expression list. Each expression descriptor reuses the recursive expression
+  view.
 - `UPDATE` statements expose parser-level views for `WITH` markers,
   single-table versus joined/multi-table target references, priority and
   `IGNORE` modifiers, ordered assignment descriptors, statement-level `WHERE`
@@ -179,6 +182,8 @@ expression nodes.
   handles, SET assignment handles, and SELECT source anchors
 - typed `REPLACE` column, value, and assignment descriptors with decoded names,
   row/value coordinates, `DEFAULT` markers, and recursive value-expression
+  handles
+- typed `DO` descriptors with expression-list spans and ordered expression
   handles
 - typed `UPDATE` descriptors with `WITH` and multi-table markers, priority and
   `IGNORE` modifiers, table-reference spans, ordered assignment handles,
@@ -418,6 +423,13 @@ the recursive expression view. The view does not yet implement delete-then-inser
 semantics, cascades, triggers, affected rows, warnings, auto-increment behavior,
 or query/replace metadata integration.
 
+The first parser-level `DO` view records the statement expression-list span and
+ordered top-level expression descriptors. Each descriptor anchors the original
+CST expression and exposes the shared recursive expression view, covering
+function calls, variable assignment expressions, literals, identifiers, and
+operators. Runtime expression evaluation, result discarding, diagnostics, and
+warning propagation remain later execution-layer work.
+
 The first parser-level `UPDATE` view covers the statement shape needed before
 semantic update execution. It records whether a `WITH` clause is present,
 anchors the table-reference subtree, marks joined/multi-table references,
@@ -551,6 +563,13 @@ mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=13.9652
 mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=34.939524 qps=199032 mbps=15.14 avg_us=5.024 avg_nodes=74.5 avg_ast_bytes=10885.9 avg_replace_statement_views=0.00 avg_replace_statement_values_sources=0.00 avg_replace_statement_set_sources=0.00 avg_replace_statement_select_sources=0.00 avg_replace_statement_priorities=0.00 avg_replace_statement_into_clauses=0.00 avg_replace_statement_partition_clauses=0.00 avg_replace_statement_columns=0.00 avg_replace_statement_column_name_values=0.00 avg_replace_statement_value_rows=0.00 avg_replace_statement_values=0.00 avg_replace_statement_default_values=0.00 avg_replace_statement_set_assignments=0.00 avg_replace_statement_assignment_name_values=0.00 avg_replace_statement_expression_tree_nodes=0.00 avg_replace_statement_expression_tree_operators=0.00 avg_replace_statement_expression_tree_leaf_values=0.00
 ```
 
+Latest DO parser-view run on the same corpus:
+
+```text
+mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=14.046980 qps=495060 mbps=37.65 avg_us=2.020
+mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=35.306811 qps=196962 mbps=14.98 avg_us=5.077 avg_nodes=74.5 avg_ast_bytes=10888.5 avg_do_statement_views=0.00 avg_do_statement_expressions=0.00 avg_do_statement_expression_tree_nodes=0.01 avg_do_statement_expression_tree_operators=0.00 avg_do_statement_expression_tree_leaf_values=0.00
+```
+
 Before semantic actions were generated, syntax-only parsing measured about
 `711k queries/sec` on the same corpus. The current syntax-only path still runs
 the generated reduce actions, but with AST building disabled, so it avoids arena
@@ -561,7 +580,7 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,852 lines, 5,637,339 bytes
 generated parser object: 996K on disk, 905,398 bytes text/data/other
-parser support object: 288K on disk, 168,302 bytes text/data/other
+parser support object: 291K on disk, 170,330 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.4M on disk
 mylite-parse: 1.2M on disk

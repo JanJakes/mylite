@@ -102,6 +102,11 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t insert_statement_expression_tree_nodes = 0;
   size_t insert_statement_expression_tree_operators = 0;
   size_t insert_statement_expression_tree_leaf_values = 0;
+  size_t do_statement_views = 0;
+  size_t do_statement_expressions = 0;
+  size_t do_statement_expression_tree_nodes = 0;
+  size_t do_statement_expression_tree_operators = 0;
+  size_t do_statement_expression_tree_leaf_values = 0;
   size_t replace_statement_views = 0;
   size_t replace_statement_values_sources = 0;
   size_t replace_statement_set_sources = 0;
@@ -1132,6 +1137,26 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                     &insert_statement_expression_tree_leaf_values);
               }
             }
+            const MyliteAstDoStatement *do_statement =
+                mylite_ast_do_statement_view(ast, i);
+            if (do_statement != NULL) {
+              do_statement_views++;
+              do_statement_expressions +=
+                  mylite_ast_do_statement_view_expression_count(do_statement);
+              for (size_t j = 0;
+                   j < mylite_ast_do_statement_view_expression_count(
+                           do_statement);
+                   j++) {
+                const MyliteAstDoExpression *expression =
+                    mylite_ast_do_statement_view_expression_at(do_statement,
+                                                               j);
+                count_expression_tree(
+                    mylite_ast_do_expression_view_expression(expression),
+                    &do_statement_expression_tree_nodes,
+                    &do_statement_expression_tree_operators,
+                    &do_statement_expression_tree_leaf_values);
+              }
+            }
             const MyliteAstReplaceStatement *replace_statement =
                 mylite_ast_replace_statement_view(ast, i);
             if (replace_statement != NULL) {
@@ -1780,6 +1805,11 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_insert_statement_expression_tree_nodes=%.2f "
            "avg_insert_statement_expression_tree_operators=%.2f "
            "avg_insert_statement_expression_tree_leaf_values=%.2f "
+           "avg_do_statement_views=%.2f "
+           "avg_do_statement_expressions=%.2f "
+           "avg_do_statement_expression_tree_nodes=%.2f "
+           "avg_do_statement_expression_tree_operators=%.2f "
+           "avg_do_statement_expression_tree_leaf_values=%.2f "
            "avg_replace_statement_views=%.2f "
            "avg_replace_statement_values_sources=%.2f "
            "avg_replace_statement_set_sources=%.2f "
@@ -2048,6 +2078,11 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                (double)parsed,
            (double)insert_statement_expression_tree_leaf_values /
                (double)parsed,
+           (double)do_statement_views / (double)parsed,
+           (double)do_statement_expressions / (double)parsed,
+           (double)do_statement_expression_tree_nodes / (double)parsed,
+           (double)do_statement_expression_tree_operators / (double)parsed,
+           (double)do_statement_expression_tree_leaf_values / (double)parsed,
            (double)replace_statement_views / (double)parsed,
            (double)replace_statement_values_sources / (double)parsed,
            (double)replace_statement_set_sources / (double)parsed,

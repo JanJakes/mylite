@@ -195,6 +195,7 @@ static int expect_drop_database_view(void);
 static int expect_drop_index_view(void);
 static int expect_drop_table_view(void);
 static int expect_drop_view_view(void);
+static int expect_do_statement_view(void);
 static int expect_delete_statement_view(void);
 static int expect_insert_statement_view(void);
 static int expect_prepared_statement_views(void);
@@ -803,6 +804,7 @@ int main(void) {
   failures += expect_drop_index_view();
   failures += expect_drop_table_view();
   failures += expect_drop_view_view();
+  failures += expect_do_statement_view();
   failures += expect_delete_statement_view();
   failures += expect_insert_statement_view();
   failures += expect_prepared_statement_views();
@@ -4055,6 +4057,73 @@ static int expect_replace_statement_view(void) {
     mylite_ast_free(ast);
   }
 
+  return failed;
+}
+
+static int expect_do_statement_view(void) {
+  const char *sql = "DO SLEEP(1), @x := 2, a + 3";
+  MyliteParseResult result;
+  MyliteAst *ast = NULL;
+  MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "DO statement view parse failed: status=%s offset=%zu token=%d "
+            "message=%s\n",
+            mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return 1;
+  }
+
+  const MyliteAstDoStatement *view = mylite_ast_do_statement_view(ast, 0);
+  const MyliteAstDoExpression *function_item =
+      view == NULL ? NULL : mylite_ast_do_statement_view_expression_at(view, 0);
+  const MyliteAstDoExpression *assignment_item =
+      view == NULL ? NULL : mylite_ast_do_statement_view_expression_at(view, 1);
+  const MyliteAstDoExpression *add_item =
+      view == NULL ? NULL : mylite_ast_do_statement_view_expression_at(view, 2);
+  const MyliteAstExpression *function_expression =
+      mylite_ast_do_expression_view_expression(function_item);
+  const MyliteAstExpression *assignment_expression =
+      mylite_ast_do_expression_view_expression(assignment_item);
+  const MyliteAstExpression *add_expression =
+      mylite_ast_do_expression_view_expression(add_item);
+  int failed = 0;
+  if (view == NULL || mylite_ast_statement_kind(ast, 0) !=
+                          MYLITE_STATEMENT_DO ||
+      mylite_ast_do_statement_view_expression_count(view) != 3 ||
+      !span_matches(sql,
+                    mylite_ast_do_statement_view_expression_list_start(view),
+                    mylite_ast_do_statement_view_expression_list_end(view),
+                    "SLEEP(1), @x := 2, a + 3") ||
+      function_item == NULL ||
+      !span_matches(sql, mylite_ast_do_expression_view_start(function_item),
+                    mylite_ast_do_expression_view_end(function_item),
+                    "SLEEP(1)") ||
+      function_expression == NULL ||
+      mylite_ast_expression_view_kind(function_expression) !=
+          MYLITE_EXPRESSION_FUNCTION_CALL ||
+      !value_matches_when_expected(
+          mylite_ast_expression_view_value(function_expression),
+          mylite_ast_expression_view_value_length(function_expression),
+          "SLEEP") ||
+      assignment_item == NULL ||
+      !span_matches(sql, mylite_ast_do_expression_view_start(assignment_item),
+                    mylite_ast_do_expression_view_end(assignment_item),
+                    "@x := 2") ||
+      assignment_expression == NULL ||
+      mylite_ast_expression_view_operator_kind(assignment_expression) !=
+          MYLITE_EXPRESSION_OPERATOR_ASSIGNMENT ||
+      add_item == NULL ||
+      !span_matches(sql, mylite_ast_do_expression_view_start(add_item),
+                    mylite_ast_do_expression_view_end(add_item), "a + 3") ||
+      add_expression == NULL ||
+      mylite_ast_expression_view_operator_kind(add_expression) !=
+          MYLITE_EXPRESSION_OPERATOR_ADD) {
+    fprintf(stderr, "DO statement view failed: %s\n", sql);
+    failed = 1;
+  }
+
+  mylite_ast_free(ast);
   return failed;
 }
 

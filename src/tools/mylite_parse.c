@@ -132,6 +132,8 @@ static void dump_statements(const MyliteAst *ast) {
     const MyliteAstDropIndex *drop_index = mylite_ast_drop_index_view(ast, i);
     const MyliteAstDropTable *drop_table = mylite_ast_drop_table_view(ast, i);
     const MyliteAstDropView *drop_view = mylite_ast_drop_view_view(ast, i);
+    const MyliteAstDoStatement *do_statement =
+        mylite_ast_do_statement_view(ast, i);
     const MyliteAstPrepareStatement *prepare_statement =
         mylite_ast_prepare_statement_view(ast, i);
     const MyliteAstExecuteStatement *execute_statement =
@@ -903,6 +905,32 @@ static void dump_statements(const MyliteAst *ast) {
         if (expression != NULL) {
           printf("      insert_duplicate_assignment[%zu].expression\n", j);
           dump_expression_tree(expression, 4);
+        }
+      }
+    }
+    if (do_statement != NULL) {
+      printf("  do_statement span=%zu..%zu expression_list=%zu..%zu "
+             "expressions=%zu node=%s\n",
+             mylite_ast_do_statement_view_start(do_statement),
+             mylite_ast_do_statement_view_end(do_statement),
+             mylite_ast_do_statement_view_expression_list_start(do_statement),
+             mylite_ast_do_statement_view_expression_list_end(do_statement),
+             mylite_ast_do_statement_view_expression_count(do_statement),
+             node_symbol_or_none(
+                 mylite_ast_do_statement_view_node(do_statement)));
+      for (size_t j = 0;
+           j < mylite_ast_do_statement_view_expression_count(do_statement);
+           j++) {
+        const MyliteAstDoExpression *expression =
+            mylite_ast_do_statement_view_expression_at(do_statement, j);
+        printf("    do_expression[%zu] span=%zu..%zu\n", j,
+               mylite_ast_do_expression_view_start(expression),
+               mylite_ast_do_expression_view_end(expression));
+        const MyliteAstExpression *expression_view =
+            mylite_ast_do_expression_view_expression(expression);
+        if (expression_view != NULL) {
+          printf("      do_expression[%zu].expression\n", j);
+          dump_expression_tree(expression_view, 4);
         }
       }
     }

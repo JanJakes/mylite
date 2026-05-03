@@ -42,6 +42,8 @@ typedef struct MyliteAstExpression MyliteAstExpression;
 typedef struct MyliteAstDeallocateStatement MyliteAstDeallocateStatement;
 typedef struct MyliteAstDeleteStatement MyliteAstDeleteStatement;
 typedef struct MyliteAstDeleteTarget MyliteAstDeleteTarget;
+typedef struct MyliteAstDoExpression MyliteAstDoExpression;
+typedef struct MyliteAstDoStatement MyliteAstDoStatement;
 typedef struct MyliteAstExecuteStatement MyliteAstExecuteStatement;
 typedef struct MyliteAstInsertAssignment MyliteAstInsertAssignment;
 typedef struct MyliteAstInsertColumn MyliteAstInsertColumn;
@@ -789,6 +791,8 @@ const MyliteAstDropTable *mylite_ast_drop_table_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstDropView *mylite_ast_drop_view_view(
     const MyliteAst *ast, size_t statement_index);
+const MyliteAstDoStatement *mylite_ast_do_statement_view(
+    const MyliteAst *ast, size_t statement_index);
 const MyliteAstInsertStatement *mylite_ast_insert_statement_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstPrepareStatement *mylite_ast_prepare_statement_view(
@@ -815,6 +819,28 @@ const MyliteAstUpdateStatement *mylite_ast_update_statement_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstUseDatabase *mylite_ast_use_database_view(
     const MyliteAst *ast, size_t statement_index);
+const MyliteAstNode *mylite_ast_do_statement_view_node(
+    const MyliteAstDoStatement *do_statement);
+size_t mylite_ast_do_statement_view_start(
+    const MyliteAstDoStatement *do_statement);
+size_t mylite_ast_do_statement_view_end(
+    const MyliteAstDoStatement *do_statement);
+size_t mylite_ast_do_statement_view_expression_list_start(
+    const MyliteAstDoStatement *do_statement);
+size_t mylite_ast_do_statement_view_expression_list_end(
+    const MyliteAstDoStatement *do_statement);
+size_t mylite_ast_do_statement_view_expression_count(
+    const MyliteAstDoStatement *do_statement);
+const MyliteAstDoExpression *mylite_ast_do_statement_view_expression_at(
+    const MyliteAstDoStatement *do_statement, size_t expression_index);
+const MyliteAstNode *mylite_ast_do_expression_view_node(
+    const MyliteAstDoExpression *expression);
+size_t mylite_ast_do_expression_view_start(
+    const MyliteAstDoExpression *expression);
+size_t mylite_ast_do_expression_view_end(
+    const MyliteAstDoExpression *expression);
+const MyliteAstExpression *mylite_ast_do_expression_view_expression(
+    const MyliteAstDoExpression *expression);
 const MyliteAstNode *mylite_ast_insert_statement_view_node(
     const MyliteAstInsertStatement *insert_statement);
 size_t mylite_ast_insert_statement_view_start(

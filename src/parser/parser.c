@@ -631,6 +631,24 @@ struct MyliteAstDeleteStatement {
   int has_ignore;
 };
 
+struct MyliteAstDoExpression {
+  const MyliteAstNode *node;
+  MyliteAstExpression expression;
+  size_t start;
+  size_t end;
+};
+
+struct MyliteAstDoStatement {
+  const MyliteAstNode *node;
+  const MyliteAstNode *expression_list_node;
+  MyliteAstDoExpression *expressions;
+  size_t expression_count;
+  size_t start;
+  size_t end;
+  size_t expression_list_start;
+  size_t expression_list_end;
+};
+
 struct MyliteAstUpdateAssignment {
   const MyliteAstNode *node;
   const MyliteAstNode *value_node;
@@ -864,6 +882,7 @@ typedef struct MyliteAstStatement {
   MyliteAstDropIndex *drop_index;
   MyliteAstDropTable *drop_table;
   MyliteAstDropView *drop_view;
+  MyliteAstDoStatement *do_statement;
   MyliteAstPrepareStatement *prepare_statement;
   MyliteAstExecuteStatement *execute_statement;
   MyliteAstDeallocateStatement *deallocate_statement;
@@ -970,6 +989,18 @@ static int mylite_ast_fill_delete_targets(
     const MyliteAstNode *node, const char *target_symbol, size_t *index);
 static int mylite_ast_fill_delete_target(MyliteAst *ast,
                                          MyliteAstDeleteTarget *target,
+                                         const MyliteAstNode *node);
+static int mylite_ast_set_do_statement_view(MyliteAst *ast,
+                                            MyliteAstStatement *statement,
+                                            const MyliteAstNode *payload);
+static size_t mylite_ast_count_do_expressions(const MyliteAstNode *node);
+static int mylite_ast_fill_do_expressions(MyliteAst *ast,
+                                          MyliteAstDoExpression *expressions,
+                                          size_t expression_count,
+                                          const MyliteAstNode *node,
+                                          size_t *index);
+static int mylite_ast_fill_do_expression(MyliteAst *ast,
+                                         MyliteAstDoExpression *expression,
                                          const MyliteAstNode *node);
 static int mylite_ast_set_insert_statement_view(MyliteAst *ast,
                                                 MyliteAstStatement *statement,
@@ -3186,6 +3217,13 @@ const MyliteAstDropView *mylite_ast_drop_view_view(
   return statement == NULL ? NULL : statement->drop_view;
 }
 
+const MyliteAstDoStatement *mylite_ast_do_statement_view(
+    const MyliteAst *ast, size_t statement_index) {
+  const MyliteAstStatement *statement =
+      mylite_ast_statement_at(ast, statement_index);
+  return statement == NULL ? NULL : statement->do_statement;
+}
+
 const MyliteAstInsertStatement *mylite_ast_insert_statement_view(
     const MyliteAst *ast, size_t statement_index) {
   const MyliteAstStatement *statement =
@@ -3275,6 +3313,67 @@ const MyliteAstUseDatabase *mylite_ast_use_database_view(
   const MyliteAstStatement *statement =
       mylite_ast_statement_at(ast, statement_index);
   return statement == NULL ? NULL : statement->use_database;
+}
+
+const MyliteAstNode *mylite_ast_do_statement_view_node(
+    const MyliteAstDoStatement *do_statement) {
+  return do_statement == NULL ? NULL : do_statement->node;
+}
+
+size_t mylite_ast_do_statement_view_start(
+    const MyliteAstDoStatement *do_statement) {
+  return do_statement == NULL ? 0 : do_statement->start;
+}
+
+size_t mylite_ast_do_statement_view_end(
+    const MyliteAstDoStatement *do_statement) {
+  return do_statement == NULL ? 0 : do_statement->end;
+}
+
+size_t mylite_ast_do_statement_view_expression_list_start(
+    const MyliteAstDoStatement *do_statement) {
+  return do_statement == NULL ? 0 : do_statement->expression_list_start;
+}
+
+size_t mylite_ast_do_statement_view_expression_list_end(
+    const MyliteAstDoStatement *do_statement) {
+  return do_statement == NULL ? 0 : do_statement->expression_list_end;
+}
+
+size_t mylite_ast_do_statement_view_expression_count(
+    const MyliteAstDoStatement *do_statement) {
+  return do_statement == NULL ? 0 : do_statement->expression_count;
+}
+
+const MyliteAstDoExpression *mylite_ast_do_statement_view_expression_at(
+    const MyliteAstDoStatement *do_statement, size_t expression_index) {
+  if (do_statement == NULL ||
+      expression_index >= do_statement->expression_count) {
+    return NULL;
+  }
+  return &do_statement->expressions[expression_index];
+}
+
+const MyliteAstNode *mylite_ast_do_expression_view_node(
+    const MyliteAstDoExpression *expression) {
+  return expression == NULL ? NULL : expression->node;
+}
+
+size_t mylite_ast_do_expression_view_start(
+    const MyliteAstDoExpression *expression) {
+  return expression == NULL ? 0 : expression->start;
+}
+
+size_t mylite_ast_do_expression_view_end(
+    const MyliteAstDoExpression *expression) {
+  return expression == NULL ? 0 : expression->end;
+}
+
+const MyliteAstExpression *mylite_ast_do_expression_view_expression(
+    const MyliteAstDoExpression *expression) {
+  return expression == NULL || expression->expression.node == NULL
+             ? NULL
+             : &expression->expression;
 }
 
 const MyliteAstNode *mylite_ast_insert_statement_view_node(
@@ -9327,6 +9426,9 @@ static int mylite_ast_set_statement_details(MyliteAst *ast,
   if (statement->kind == MYLITE_STATEMENT_SELECT) {
     return mylite_ast_set_select_statement_view(ast, statement, payload);
   }
+  if (statement->kind == MYLITE_STATEMENT_DO) {
+    return mylite_ast_set_do_statement_view(ast, statement, payload);
+  }
   if (statement->kind == MYLITE_STATEMENT_INSERT) {
     return mylite_ast_set_insert_statement_view(ast, statement, payload);
   }
@@ -9686,6 +9788,122 @@ static int mylite_ast_fill_delete_target(MyliteAst *ast,
     return 0;
   }
   return 1;
+}
+
+static int mylite_ast_set_do_statement_view(MyliteAst *ast,
+                                            MyliteAstStatement *statement,
+                                            const MyliteAstNode *payload) {
+  if (ast == NULL || statement == NULL || payload == NULL) {
+    return 1;
+  }
+  MyliteAstDoStatement *do_statement =
+      mylite_ast_alloc(ast, sizeof(*do_statement));
+  if (do_statement == NULL) {
+    return 0;
+  }
+  do_statement->node = payload;
+  do_statement->start = mylite_ast_node_start(payload);
+  do_statement->end = mylite_ast_node_end(payload);
+  do_statement->expression_list_node =
+      mylite_ast_insert_direct_child_symbol(payload, "nt_expression_list");
+  if (do_statement->expression_list_node != NULL) {
+    do_statement->expression_list_start =
+        mylite_ast_node_start(do_statement->expression_list_node);
+    do_statement->expression_list_end =
+        mylite_ast_node_end(do_statement->expression_list_node);
+  }
+  do_statement->expression_count =
+      mylite_ast_count_do_expressions(do_statement->expression_list_node);
+  if (do_statement->expression_count > 0) {
+    do_statement->expressions =
+        mylite_ast_alloc(ast, do_statement->expression_count *
+                                  sizeof(*do_statement->expressions));
+    if (do_statement->expressions == NULL) {
+      return 0;
+    }
+    size_t index = 0;
+    if (!mylite_ast_fill_do_expressions(ast, do_statement->expressions,
+                                        do_statement->expression_count,
+                                        do_statement->expression_list_node,
+                                        &index) ||
+        index != do_statement->expression_count) {
+      return 0;
+    }
+  }
+  statement->do_statement = do_statement;
+  return 1;
+}
+
+static size_t mylite_ast_count_do_expressions(const MyliteAstNode *node) {
+  if (node == NULL ||
+      !mylite_ast_expression_is_symbol(node, "nt_expression_list")) {
+    return 0;
+  }
+  if (node->child_count == 1 &&
+      mylite_ast_expression_is_symbol(node->children[0], "nt_expression")) {
+    return 1;
+  }
+  size_t count = 0;
+  if (node->child_count >= 1) {
+    count += mylite_ast_count_do_expressions(node->children[0]);
+  }
+  if (node->child_count >= 3 &&
+      mylite_ast_expression_is_symbol(node->children[2], "nt_expression")) {
+    count++;
+  }
+  return count;
+}
+
+static int mylite_ast_fill_do_expressions(MyliteAst *ast,
+                                          MyliteAstDoExpression *expressions,
+                                          size_t expression_count,
+                                          const MyliteAstNode *node,
+                                          size_t *index) {
+  if (node == NULL ||
+      !mylite_ast_expression_is_symbol(node, "nt_expression_list")) {
+    return 1;
+  }
+  if (node->child_count == 1 &&
+      mylite_ast_expression_is_symbol(node->children[0], "nt_expression")) {
+    if (expressions == NULL || index == NULL || *index >= expression_count) {
+      return 0;
+    }
+    if (!mylite_ast_fill_do_expression(ast, &expressions[*index],
+                                       node->children[0])) {
+      return 0;
+    }
+    (*index)++;
+    return 1;
+  }
+  if (node->child_count >= 1 &&
+      !mylite_ast_fill_do_expressions(ast, expressions, expression_count,
+                                      node->children[0], index)) {
+    return 0;
+  }
+  if (node->child_count >= 3 &&
+      mylite_ast_expression_is_symbol(node->children[2], "nt_expression")) {
+    if (expressions == NULL || index == NULL || *index >= expression_count) {
+      return 0;
+    }
+    if (!mylite_ast_fill_do_expression(ast, &expressions[*index],
+                                       node->children[2])) {
+      return 0;
+    }
+    (*index)++;
+  }
+  return 1;
+}
+
+static int mylite_ast_fill_do_expression(MyliteAst *ast,
+                                         MyliteAstDoExpression *expression,
+                                         const MyliteAstNode *node) {
+  if (ast == NULL || expression == NULL || node == NULL) {
+    return 1;
+  }
+  expression->node = node;
+  expression->start = mylite_ast_node_start(node);
+  expression->end = mylite_ast_node_end(node);
+  return mylite_ast_set_expression_summary(ast, &expression->expression, node);
 }
 
 static int mylite_ast_set_insert_statement_view(MyliteAst *ast,

@@ -7449,6 +7449,11 @@ static int expect_semantic_ast_materialization(void) {
   const MyliteSemanticAstNode *assignment_descriptor =
       first_semantic_child_with_descriptor_kind(
           statement, MYLITE_SEMANTIC_DESCRIPTOR_ASSIGNMENT);
+  const MyliteSemanticAstNode *value_descriptor =
+      first_semantic_child_with_descriptor_kind(
+          statement, MYLITE_SEMANTIC_DESCRIPTOR_VALUE);
+  const MyliteSemanticAstNode *direct_expression =
+      first_semantic_child_with_kind(statement, MYLITE_SEMANTIC_NODE_EXPRESSION);
   SemanticCounts counts = {0, 0, 0, 0, 0};
   count_semantic_nodes(root, &counts);
 
@@ -7479,6 +7484,10 @@ static int expect_semantic_ast_materialization(void) {
       !value_matches_when_expected(
           mylite_semantic_ast_node_value(assignment_descriptor),
           mylite_semantic_ast_node_value_length(assignment_descriptor), "b") ||
+      mylite_semantic_ast_node_child_count(assignment_descriptor) != 1 ||
+      value_descriptor == NULL ||
+      mylite_semantic_ast_node_child_count(value_descriptor) != 1 ||
+      direct_expression != NULL ||
       counts.targets != 1 || counts.descriptors < 7 ||
       counts.expressions < 7 || counts.operators < 1 ||
       counts.leaf_values < 5 ||
@@ -7537,6 +7546,7 @@ static int expect_semantic_ast_materialization(void) {
       !value_matches_when_expected(
           mylite_semantic_ast_node_value(column_descriptor),
           mylite_semantic_ast_node_value_length(column_descriptor), "a") ||
+      mylite_semantic_ast_node_child_count(column_descriptor) != 1 ||
       key_descriptor == NULL ||
       !value_matches_when_expected(
           mylite_semantic_ast_node_value(key_descriptor),

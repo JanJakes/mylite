@@ -27,7 +27,7 @@ def main() -> int:
         "target_kind=table",
         "descriptor_kind=column",
         'value="a"',
-        "descriptor_kind=value",
+        "children=1 descriptor_kind=value",
         "expression_kind=literal",
         'value="1"',
     )

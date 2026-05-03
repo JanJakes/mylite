@@ -370,11 +370,14 @@ as an opaque `MyliteSemanticAst`. This graph materializes program -> statement
 expression values into its own arena, and frees the parser CST. Callers can
 inspect semantic node kind, statement kind, target kind/role, descriptor kind,
 expression kind/literal/operator, spans, copied values, children, node count,
-statement count, and allocated bytes. Descriptor nodes are intentionally
-shallow: they preserve the parser-view item identity and value, while
-statement-specific typed AST objects, name resolution, query-block objects,
-table-reference objects, DDL metadata nodes, and execution semantics remain
-future layers.
+statement count, and allocated bytes. Descriptor nodes own the obvious
+expression payload for their parser-view item, including projection, VALUES,
+assignment, column default/generated/check, key check/key-part, LOAD
+assignment, and LOAD option expressions. Statement-level clause expressions
+such as `WHERE`, `HAVING`, `SHOW ... LIKE/WHERE`, and `KILL CONNECTION_ID()`
+remain direct statement children until clause nodes exist. Statement-specific
+typed AST objects, name resolution, query-block objects, table-reference
+objects, DDL metadata nodes, and execution semantics remain future layers.
 
 The parser-level semantic `CREATE TABLE` view was the first statement-level AST
 object layered on top of the descriptor work. It does not copy column, key, or
@@ -759,7 +762,7 @@ Latest semantic-AST construction run on May 3, 2026:
 mode=syntax queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=2.769838 qps=502130 mbps=38.19 avg_us=1.992
 mode=ast-only queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.157245 qps=194323 mbps=14.78 avg_us=5.146 avg_nodes=74.5 avg_ast_bytes=11091.3 avg_statements=1.00
 mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.286471 qps=190877 mbps=14.52 avg_us=5.239 avg_nodes=74.5 avg_ast_bytes=11091.3
-mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.563729 qps=183880 mbps=13.98 avg_us=5.438 avg_semantic_nodes=7.9 avg_semantic_bytes=4344.9 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_descriptors=2.57 avg_semantic_expressions=2.68 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.04
+mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.710065 qps=180390 mbps=13.72 avg_us=5.544 avg_semantic_nodes=7.9 avg_semantic_bytes=4344.3 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_descriptors=2.57 avg_semantic_expressions=2.68 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.04 avg_semantic_descriptor_expressions=1.81 avg_semantic_statement_expressions=0.11
 ```
 
 Latest EXPLAIN/DESCRIBE parser-view run on May 3, 2026:
@@ -960,7 +963,7 @@ Current release build size on the same machine:
 generated parser C: 72,876 lines, 5,639,543 bytes
 generated parser object: 997K on disk, 905,630 bytes text/data/other
 parser support object: 408K on disk, 235,023 bytes text/data/other
-semantic AST object: 49K on disk, 22,934 bytes text/data/other
+semantic AST object: 44K on disk, 19,250 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.6M on disk
 mylite-parse: 1.3M on disk

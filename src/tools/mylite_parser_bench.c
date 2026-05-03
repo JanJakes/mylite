@@ -20,7 +20,10 @@ static void count_expression_tree(const MyliteAstExpression *expression,
 static void count_semantic_tree(const MyliteSemanticAstNode *node,
                                 size_t *targets, size_t *descriptors,
                                 size_t *expressions, size_t *operators,
-                                size_t *leaf_values);
+                                size_t *leaf_values,
+                                size_t *descriptor_expressions,
+                                size_t *statement_expressions,
+                                MyliteSemanticNodeKind parent_kind);
 static char *read_file(const char *path, size_t *length);
 static double monotonic_seconds(void);
 static int parse_mode(const char *value, BenchMode *mode);
@@ -564,6 +567,8 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t semantic_expressions = 0;
   size_t semantic_expression_operators = 0;
   size_t semantic_expression_leaf_values = 0;
+  size_t semantic_descriptor_expressions = 0;
+  size_t semantic_statement_expressions = 0;
   double start = monotonic_seconds();
   for (int iteration = 0; iteration < iterations; iteration++) {
     for (size_t offset = 0; offset < length;) {
@@ -2820,7 +2825,10 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                               &semantic_targets, &semantic_descriptors,
                               &semantic_expressions,
                               &semantic_expression_operators,
-                              &semantic_expression_leaf_values);
+                              &semantic_expression_leaf_values,
+                              &semantic_descriptor_expressions,
+                              &semantic_statement_expressions,
+                              MYLITE_SEMANTIC_NODE_UNKNOWN);
         }
         mylite_semantic_ast_free(semantic_ast);
       } else {
@@ -3861,7 +3869,9 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_semantic_descriptors=%.2f "
            "avg_semantic_expressions=%.2f "
            "avg_semantic_expression_operators=%.2f "
-           "avg_semantic_expression_leaf_values=%.2f",
+           "avg_semantic_expression_leaf_values=%.2f "
+           "avg_semantic_descriptor_expressions=%.2f "
+           "avg_semantic_statement_expressions=%.2f",
            (double)semantic_nodes / (double)parsed,
            (double)semantic_bytes / (double)parsed,
            (double)semantic_statements / (double)parsed,
@@ -3869,7 +3879,9 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)semantic_descriptors / (double)parsed,
            (double)semantic_expressions / (double)parsed,
            (double)semantic_expression_operators / (double)parsed,
-           (double)semantic_expression_leaf_values / (double)parsed);
+           (double)semantic_expression_leaf_values / (double)parsed,
+           (double)semantic_descriptor_expressions / (double)parsed,
+           (double)semantic_statement_expressions / (double)parsed);
   }
   printf("\n");
 
@@ -3907,23 +3919,33 @@ static void count_expression_tree(const MyliteAstExpression *expression,
 static void count_semantic_tree(const MyliteSemanticAstNode *node,
                                 size_t *targets, size_t *descriptors,
                                 size_t *expressions, size_t *operators,
-                                size_t *leaf_values) {
+                                size_t *leaf_values,
+                                size_t *descriptor_expressions,
+                                size_t *statement_expressions,
+                                MyliteSemanticNodeKind parent_kind) {
   if (node == NULL) {
     return;
   }
 
-  if (mylite_semantic_ast_node_kind(node) == MYLITE_SEMANTIC_NODE_TARGET &&
-      targets != NULL) {
+  MyliteSemanticNodeKind kind = mylite_semantic_ast_node_kind(node);
+  if (kind == MYLITE_SEMANTIC_NODE_TARGET && targets != NULL) {
     (*targets)++;
   }
-  if (mylite_semantic_ast_node_kind(node) ==
-          MYLITE_SEMANTIC_NODE_DESCRIPTOR &&
+  if (kind == MYLITE_SEMANTIC_NODE_DESCRIPTOR &&
       descriptors != NULL) {
     (*descriptors)++;
   }
-  if (mylite_semantic_ast_node_kind(node) == MYLITE_SEMANTIC_NODE_EXPRESSION) {
+  if (kind == MYLITE_SEMANTIC_NODE_EXPRESSION) {
     if (expressions != NULL) {
       (*expressions)++;
+    }
+    if (descriptor_expressions != NULL &&
+        parent_kind == MYLITE_SEMANTIC_NODE_DESCRIPTOR) {
+      (*descriptor_expressions)++;
+    }
+    if (statement_expressions != NULL &&
+        parent_kind == MYLITE_SEMANTIC_NODE_STATEMENT) {
+      (*statement_expressions)++;
     }
     if (operators != NULL &&
         mylite_semantic_ast_node_expression_operator_kind(node) !=
@@ -3939,7 +3961,8 @@ static void count_semantic_tree(const MyliteSemanticAstNode *node,
 
   for (size_t i = 0; i < mylite_semantic_ast_node_child_count(node); i++) {
     count_semantic_tree(mylite_semantic_ast_node_child_at(node, i), targets,
-                        descriptors, expressions, operators, leaf_values);
+                        descriptors, expressions, operators, leaf_values,
+                        descriptor_expressions, statement_expressions, kind);
   }
 }
 

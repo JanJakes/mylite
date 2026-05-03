@@ -579,6 +579,17 @@ void mylite_sql_ast_node_set_subquery_quantifier(struct mylite_sql_ast_node *nod
     node->subquery_quantifier = quantifier;
 }
 
+void mylite_sql_ast_node_set_trim_spec(struct mylite_sql_ast_node *node,
+                                       enum mylite_sql_ast_trim_direction direction)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->trim_spec = true;
+    node->trim_direction = direction;
+}
+
 void mylite_sql_ast_node_set_show_tables_extended(struct mylite_sql_ast_node *node)
 {
     if (node == NULL) {

@@ -28,6 +28,7 @@
 %type subquery { struct mylite_sql_parser_subquery }
 %type quantified_comparison_operator { struct mylite_sql_parser_comparison_operator }
 %type subquery_quantifier { enum mylite_sql_ast_subquery_quantifier }
+%type trim_direction { enum mylite_sql_ast_trim_direction }
 %type index_class { enum mylite_sql_ast_index_class }
 %type fulltext_or_spatial { struct mylite_sql_parser_index_class_token }
 %type index_or_key { struct mylite_sql_parser_alter_table_index_spelling_token }
@@ -3287,6 +3288,47 @@ scalar_function_call(A) ::= IF(T) LPAREN(L) expression(B) COMMA expression(C) CO
     arguments = mylite_sql_parser_append_function_argument(state, arguments, D);
     A = mylite_sql_parser_make_function_call(
         state, mylite_sql_parser_make_identifier(state, T), L, arguments, R);
+}
+scalar_function_call(A) ::= function_name(B) LPAREN(L) expression(C) FROM expression(D) RPAREN(R). {
+    A = mylite_sql_parser_make_from_function_call(state, B, L, C, D, R);
+}
+scalar_function_call(A) ::= function_name(B) LPAREN(L) expression(C) FROM expression(D) FOR expression(E) RPAREN(R). {
+    A = mylite_sql_parser_make_substring_for_function_call(
+        state, B, L,
+        (struct mylite_sql_parser_substring_operands){
+            .text = C,
+            .position = D,
+            .length = E,
+        },
+        R);
+}
+scalar_function_call(A) ::= function_name(B) LPAREN(L) trim_direction(D) expression(C) FROM expression(E) RPAREN(R). {
+    A = mylite_sql_parser_make_trim_direction_function_call(
+        state, B, L, D,
+        (struct mylite_sql_parser_trim_operands){
+            .remove = C,
+            .source = E,
+        },
+        R);
+}
+scalar_function_call(A) ::= function_name(B) LPAREN(L) trim_direction(D) FROM expression(E) RPAREN(R). {
+    A = mylite_sql_parser_make_trim_direction_function_call(
+        state, B, L, D,
+        (struct mylite_sql_parser_trim_operands){
+            .remove = NULL,
+            .source = E,
+        },
+        R);
+}
+
+trim_direction(A) ::= BOTH. {
+    A = MYLITE_SQL_AST_TRIM_DIRECTION_BOTH;
+}
+trim_direction(A) ::= LEADING. {
+    A = MYLITE_SQL_AST_TRIM_DIRECTION_LEADING;
+}
+trim_direction(A) ::= TRAILING. {
+    A = MYLITE_SQL_AST_TRIM_DIRECTION_TRAILING;
 }
 
 function_name(A) ::= identifier(B). {

@@ -470,6 +470,13 @@ enum mylite_sql_ast_subquery_quantifier {
     MYLITE_SQL_AST_SUBQUERY_QUANTIFIER_ALL = 3,
 };
 
+enum mylite_sql_ast_trim_direction {
+    MYLITE_SQL_AST_TRIM_DIRECTION_NONE = 0,
+    MYLITE_SQL_AST_TRIM_DIRECTION_BOTH = 1,
+    MYLITE_SQL_AST_TRIM_DIRECTION_LEADING = 2,
+    MYLITE_SQL_AST_TRIM_DIRECTION_TRAILING = 3,
+};
+
 struct mylite_sql_ast_select_duplicate_mode_spans {
     struct mylite_sql_source_span first;
     struct mylite_sql_source_span last;
@@ -524,6 +531,7 @@ struct mylite_sql_ast_node {
     enum mylite_sql_ast_select_duplicate_mode select_duplicate_mode;
     enum mylite_sql_ast_set_duplicate_mode set_duplicate_mode;
     enum mylite_sql_ast_subquery_quantifier subquery_quantifier;
+    enum mylite_sql_ast_trim_direction trim_direction;
     enum mylite_sql_ast_show_diagnostics_kind show_diagnostics_kind;
     enum mylite_sql_ast_show_variables_scope show_variables_scope;
     enum mylite_sql_ast_show_status_scope show_status_scope;
@@ -558,6 +566,7 @@ struct mylite_sql_ast_node {
     bool show_columns_full;
     bool show_index_extended;
     bool show_create_schema_if_not_exists;
+    bool trim_spec;
 };
 
 struct mylite_sql_ast {
@@ -662,6 +671,8 @@ void mylite_sql_ast_node_set_set_duplicate_mode(struct mylite_sql_ast_node *node
                                                 enum mylite_sql_ast_set_duplicate_mode mode);
 void mylite_sql_ast_node_set_subquery_quantifier(
     struct mylite_sql_ast_node *node, enum mylite_sql_ast_subquery_quantifier quantifier);
+void mylite_sql_ast_node_set_trim_spec(struct mylite_sql_ast_node *node,
+                                       enum mylite_sql_ast_trim_direction direction);
 void mylite_sql_ast_node_set_show_tables_extended(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_show_tables_full(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_show_columns_extended(struct mylite_sql_ast_node *node);

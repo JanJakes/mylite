@@ -102,7 +102,8 @@ by common scalar expressions:
 
 - string functions: `CONCAT`, `LENGTH`, `OCTET_LENGTH`, `CHAR_LENGTH`,
   `CHARACTER_LENGTH`, `LOWER`, `LCASE`, `UPPER`, `UCASE`, `LEFT`, `RIGHT`,
-  and `REPLACE`
+  `REPLACE`, `CONCAT_WS`, `SUBSTRING`, `SUBSTR`, `MID`, `TRIM`, `LTRIM`, and
+  `RTRIM`; see `docs/specs/string-functions-substring-trim/specs.md`
 - numeric functions: `ABS`, `SIGN`, `FLOOR`, `CEIL`, `CEILING`, `MOD`, and
   `PI`
 - conditional/comparison functions: `IF`, `IFNULL`, `NULLIF`, `COALESCE`, and
@@ -114,8 +115,9 @@ by common scalar expressions:
 These functions are implemented in no-table scalar `SELECT`, one-table
 `SELECT` projection, `WHERE`, and `ORDER BY` expressions, and the existing
 single-table `UPDATE` and `DELETE` expression paths. The checkpoint includes
-runtime tests for scalar rows, NULL propagation, UTF-8 length handling, zero and
-negative `LEFT`/`RIGHT` counts, `MOD(..., 0)` warnings, table projection,
+runtime tests for scalar rows, NULL propagation, UTF-8 length and substring
+handling, zero and negative `LEFT`/`RIGHT` counts, `SUBSTRING` `FROM` / `FOR`
+syntax, trim direction syntax, `MOD(..., 0)` warnings, table projection,
 filters, ordering, update assignment expressions, delete predicates, unsupported
 functions, unsupported arity, and selected result metadata.
 
@@ -532,7 +534,7 @@ AST additions should include:
 - `MYLITE_SQL_AST_CASE_WHEN_LIST`
 - `MYLITE_SQL_AST_CASE_WHEN`
 - `MYLITE_SQL_AST_INTERVAL_EXPR`
-- `MYLITE_SQL_AST_TRIM_SPEC`
+- trim-spec metadata on `MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST`
 - a normalized built-in function enum for supported built-ins
 - an interval-unit enum shared by temporal function evaluation
 - source spans and original function-name spelling for diagnostics and default
@@ -831,7 +833,8 @@ docker exec -i mylite-mysql-849 mysql -uroot --column-type-info -vvv
 
 and `LIMIT 0` queries for:
 
-- string functions: `CONCAT`, `LENGTH`, `CHAR_LENGTH`, `SUBSTRING`
+- string functions: `CONCAT`, `CONCAT_WS`, `LENGTH`, `CHAR_LENGTH`,
+  `SUBSTRING`, `SUBSTR`, `MID`, `TRIM`, `LTRIM`, `RTRIM`
 - numeric functions: `ABS`, `ROUND`, `POW`, `SQRT`
 - conditional/comparison functions: `IF`, `IFNULL`, `COALESCE`, `GREATEST`
 - temporal functions: `NOW(6)`, `CURDATE`, `DATEDIFF`, `DATE_ADD`

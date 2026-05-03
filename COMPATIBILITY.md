@@ -616,7 +616,7 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 | `COLLATION()` | ❌ | high | Return the collation of the string argument |  |
 | `COMPRESS()` | ❌ | medium | Return result as a binary string |  |
 | `CONCAT()` | 🟡 | top | Return concatenated string | Implemented in the Task 24 pure scalar function subset, including NULL propagation and result metadata for covered cases. Full collation/coercibility and exact arity diagnostics remain deferred. See [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
-| `CONCAT_WS()` | ❌ | top | Return concatenate with separator |  |
+| `CONCAT_WS()` | 🟡 | top | Return concatenate with separator | Implemented in the string-function slice for supported scalar expression call sites, including `NULL` separator handling, skipped `NULL` value arguments, empty-string retention, no-table results, table projection/`WHERE`/`ORDER BY`, `UPDATE`, `DELETE`, and covered metadata. Full charset/collation aggregation, binary-string behavior, and exact native arity diagnostics remain deferred. See [string function slice spec](docs/specs/string-functions-substring-trim/specs.md) and [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `CONNECTION_ID()` | ❌ | high | Return the connection ID (thread ID) for the connection |  |
 | `CONV()` | ❌ | high | Convert numbers between different number bases |  |
 | `CONVERT()` | ❌ | high | Cast a value as a certain type |  |
@@ -778,7 +778,7 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 | `LOG2()` | ❌ | medium | Return the base-2 logarithm of the argument |  |
 | `LOWER()` | 🟡 | top | Return the argument in lowercase | Implemented in the Task 24 pure scalar function subset with ASCII case mapping. Non-ASCII case folding remains deferred. See [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `LPAD()` | ❌ | medium | Return the string argument, left-padded with the specified string |  |
-| `LTRIM()` | ❌ | top | Remove leading spaces |  |
+| `LTRIM()` | 🟡 | top | Remove leading spaces | Implemented in the string-function slice for supported scalar expression call sites, including `NULL` propagation, ASCII-space trimming, no-table results, table projection/`WHERE`/`ORDER BY`, `UPDATE`, `DELETE`, and covered metadata. Full charset/collation whitespace semantics, binary-string behavior, and exact native arity diagnostics remain deferred. See [string function slice spec](docs/specs/string-functions-substring-trim/specs.md) and [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `MAKE_SET()` | ❌ | high | Return a set of comma-separated strings that have the corresponding bit in bits set |  |
 | `MAKEDATE()` | ❌ | medium | Create a date from the year and day of year |  |
 | `MAKETIME()` | ❌ | medium | Create time from hour, minute, second |  |
@@ -797,7 +797,7 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 | `MD5()` | ❌ | high | Calculate MD5 checksum |  |
 | `MEMBER OF()` | ❌ | high | Returns true (1) if first operand matches any element of JSON array passed as second operand, otherwise returns false (0) |  |
 | `MICROSECOND()` | ❌ | high | Return the microseconds from argument |  |
-| `MID()` | ❌ | top | Return a substring starting from the specified position |  |
+| `MID()` | 🟡 | top | Return a substring starting from the specified position | Implemented as a `SUBSTRING()` synonym in the string-function slice, including two- and three-argument forms, UTF-8 character offsets, `NULL` propagation, no-table results, table projection/`WHERE`/`ORDER BY`, `UPDATE`, `DELETE`, and covered metadata. Full charset/collation semantics, binary-string behavior, and exact native syntax diagnostics remain deferred. See [string function slice spec](docs/specs/string-functions-substring-trim/specs.md) and [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `MIN()` | 🟡 | top | Return the minimum value | Implemented for the first single-table aggregate slice, including implicit and grouped aggregates, NULL skipping, empty-input `NULL`, current string/numeric comparison domains, no-table top-level aggregate calls, metadata, `HAVING`, and `ORDER BY`. `DISTINCT`, window execution, joins, subqueries, full collation semantics, and broad type fidelity remain deferred. See [aggregate functions and grouping spec](docs/specs/aggregate-grouping/specs.md). |
 | `MINUTE()` | ❌ | high | Return the minute from the argument |  |
 | `MOD()` | 🟡 | top | Return the remainder | Implemented as an operator in Task 16 and as a function in the Task 24 pure scalar function subset, including division-by-zero warning behavior in covered scalar results. Full type coercion edge cases remain deferred. See [expression operator foundation spec](docs/specs/expression-operator-foundation/specs.md) and [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
@@ -855,7 +855,7 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 | `ROW_COUNT()` | 🟡 | top | The number of rows updated | Implemented with handle-owned previous completed statement row-count state for supported DDL, DML, and result-set statements; drained result sets set the later value to `-1`. Broader protocol affected-row surfaces and exact failed-statement diagnostics remain deferred. See [session information functions spec](docs/specs/session-information-functions/specs.md). |
 | `ROW_NUMBER()` | ❌ | medium | Number of current row within its partition |  |
 | `RPAD()` | ❌ | medium | Append string the specified number of times |  |
-| `RTRIM()` | ❌ | top | Remove trailing spaces |  |
+| `RTRIM()` | 🟡 | top | Remove trailing spaces | Implemented in the string-function slice for supported scalar expression call sites, including `NULL` propagation, ASCII-space trimming, no-table results, table projection/`WHERE`/`ORDER BY`, `UPDATE`, `DELETE`, and covered metadata. Full charset/collation whitespace semantics, binary-string behavior, and exact native arity diagnostics remain deferred. See [string function slice spec](docs/specs/string-functions-substring-trim/specs.md) and [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `SCHEMA()` | 🟡 | top | Synonym for DATABASE() | Implemented as a `DATABASE()` synonym over handle-owned selected-schema state. Exact MySQL syntax-error code for `SCHEMA(1)` remains deferred. See [session information functions spec](docs/specs/session-information-functions/specs.md). |
 | `SEC_TO_TIME()` | ❌ | high | Converts seconds to 'hh:mm:ss' format |  |
 | `SECOND()` | ❌ | high | Return the second (0-59) |  |
@@ -955,8 +955,8 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 | `STR_TO_DATE()` | ❌ | high | Convert a string to a date |  |
 | `STRCMP()` | ❌ | high | Compare two strings |  |
 | `SUBDATE()` | ❌ | top | Synonym for DATE_SUB() when invoked with three arguments |  |
-| `SUBSTR()` | ❌ | top | Return the substring as specified |  |
-| `SUBSTRING()` | ❌ | top | Return the substring as specified |  |
+| `SUBSTR()` | 🟡 | top | Return the substring as specified | Implemented as a `SUBSTRING()` synonym in the string-function slice, including comma and `FROM` / `FOR` forms, UTF-8 character offsets, `NULL` propagation, no-table results, table projection/`WHERE`/`ORDER BY`, `UPDATE`, `DELETE`, and covered metadata. Full charset/collation semantics, binary-string behavior, and exact native syntax diagnostics remain deferred. See [string function slice spec](docs/specs/string-functions-substring-trim/specs.md) and [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
+| `SUBSTRING()` | 🟡 | top | Return the substring as specified | Implemented in the string-function slice, including comma and `FROM` / `FOR` forms, positive/negative/zero positions, zero/negative lengths, UTF-8 character offsets, `NULL` propagation, no-table results, table projection/`WHERE`/`ORDER BY`, `UPDATE`, `DELETE`, and covered metadata. Full charset/collation semantics, binary-string behavior, and exact native syntax diagnostics remain deferred. See [string function slice spec](docs/specs/string-functions-substring-trim/specs.md) and [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `SUBSTRING_INDEX()` | ❌ | high | Return a substring from a string before the specified number of occurrences of the delimiter |  |
 | `SUBTIME()` | ❌ | medium | Subtract times |  |
 | `SUM()` | 🟡 | top | Return the sum | Implemented for the first single-table aggregate slice, including implicit and grouped aggregates, NULL skipping, empty-input `NULL`, numeric conversion warnings, no-table top-level aggregate calls, metadata, `HAVING`, and `ORDER BY`. `DISTINCT`, window execution, native fixed-point arithmetic, joins, subqueries, and broad type/collation fidelity remain deferred. See [aggregate functions and grouping spec](docs/specs/aggregate-grouping/specs.md). |
@@ -973,7 +973,7 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 | `TO_BASE64()` | ❌ | medium | Return the argument converted to a base-64 string |  |
 | `TO_DAYS()` | ❌ | high | Return the date argument converted to days |  |
 | `TO_SECONDS()` | ❌ | high | Return the date or datetime argument converted to seconds since Year 0 |  |
-| `TRIM()` | ❌ | top | Remove leading and trailing spaces |  |
+| `TRIM()` | 🟡 | top | Remove leading and trailing spaces | Implemented in the string-function slice for supported scalar expression call sites, including ordinary `TRIM(str)`, `BOTH`/`LEADING`/`TRAILING` forms, `remstr FROM str`, omitted `remstr`, `NULL` propagation, no-table results, table projection/`WHERE`/`ORDER BY`, `UPDATE`, `DELETE`, and covered metadata. Full charset/collation whitespace semantics, binary-string behavior, and exact native syntax diagnostics remain deferred. See [string function slice spec](docs/specs/string-functions-substring-trim/specs.md) and [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `TRUNCATE()` | ❌ | medium | Truncate to specified number of decimal places |  |
 | `UCASE()` | 🟡 | top | Synonym for UPPER() | Implemented as an `UPPER()` synonym in the Task 24 pure scalar function subset. Non-ASCII case folding remains deferred. See [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `UNCOMPRESS()` | ❌ | medium | Uncompress a string compressed |  |

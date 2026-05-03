@@ -5181,6 +5181,7 @@ static int test_scalar_function_call_syntax(void)
     // NOLINTBEGIN(readability-magic-numbers)
     enum {
         expected_select_item_count = 13,
+        string_function_item_count = 15,
         coalesce_nested_arg_index = 2,
     };
     struct mylite_sql_parse_result result;
@@ -5234,6 +5235,103 @@ static int test_scalar_function_call_syntax(void)
         expect_function_call(child_at(child_at(select_list, 11U), 0U), "RIGHT", 2U, "RIGHT call");
     failures += expect_function_call(child_at(child_at(select_list, 12U), 0U), "REPLACE", 3U,
                                      "REPLACE call");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT CONCAT_WS(',', 'a', 'b'), "
+                          "SUBSTRING('abcdef', 2, 3), "
+                          "SUBSTRING('abcdef' FROM 2 FOR 3), "
+                          "SUBSTRING('abcdef' FROM -2), "
+                          "SUBSTR('abcdef', 2, 3), SUBSTR('abcdef' FROM 2 FOR 3), "
+                          "MID('abcdef', 2, 3), MID('abcdef' FROM -2), "
+                          "TRIM('  hi  '), TRIM(LEADING 'x' FROM 'xx'), "
+                          "TRIM(TRAILING 'x' FROM 'xx'), TRIM('x' FROM 'xx'), "
+                          "TRIM(BOTH FROM '  hi  '), LTRIM('  hi  '), RTRIM('  hi  ');",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures +=
+        expect_child_count(select_list, string_function_item_count, "string function select list");
+    failures += expect_function_call(child_at(child_at(select_list, 0U), 0U), "CONCAT_WS", 3U,
+                                     "CONCAT_WS call");
+    failures += expect_function_call(child_at(child_at(select_list, 1U), 0U), "SUBSTRING", 3U,
+                                     "SUBSTRING comma call");
+    failures += expect_function_call(child_at(child_at(select_list, 2U), 0U), "SUBSTRING", 3U,
+                                     "SUBSTRING FROM FOR call");
+    failures += expect_function_call(child_at(child_at(select_list, 3U), 0U), "SUBSTRING", 2U,
+                                     "SUBSTRING FROM call");
+    failures +=
+        expect_function_call(child_at(child_at(select_list, 4U), 0U), "SUBSTR", 3U, "SUBSTR call");
+    failures += expect_function_call(child_at(child_at(select_list, 5U), 0U), "SUBSTR", 3U,
+                                     "SUBSTR FROM FOR call");
+    failures +=
+        expect_function_call(child_at(child_at(select_list, 6U), 0U), "MID", 3U, "MID call");
+    failures +=
+        expect_function_call(child_at(child_at(select_list, 7U), 0U), "MID", 2U, "MID FROM call");
+
+    call = child_at(child_at(select_list, 8U), 0U);
+    failures += expect_function_call(call, "TRIM", 1U, "ordinary TRIM call");
+    arguments = child_at(call, 1U);
+    {
+        bool has_trim_spec = false;
+
+        if (arguments != NULL) {
+            has_trim_spec = arguments->trim_spec;
+        }
+        failures += expect_bool(has_trim_spec, false, "ordinary TRIM has no trim spec");
+    }
+
+    call = child_at(child_at(select_list, 9U), 0U);
+    failures += expect_function_call(call, "TRIM", 2U, "directed TRIM call");
+    arguments = child_at(call, 1U);
+    {
+        bool has_trim_spec = false;
+
+        if (arguments != NULL) {
+            has_trim_spec = arguments->trim_spec;
+        }
+        failures += expect_bool(has_trim_spec, true, "directed TRIM has trim spec");
+    }
+    if (arguments != NULL && arguments->trim_direction != MYLITE_SQL_AST_TRIM_DIRECTION_LEADING) {
+        fprintf(stderr, "directed TRIM direction was not LEADING\n");
+        failures = 1;
+    }
+    failures += expect_span_text(child_at(arguments, 0U), "'xx'", "directed TRIM source");
+    failures += expect_span_text(child_at(arguments, 1U), "'x'", "directed TRIM remove string");
+
+    call = child_at(child_at(select_list, 10U), 0U);
+    failures += expect_function_call(call, "TRIM", 2U, "trailing TRIM call");
+    arguments = child_at(call, 1U);
+    if (arguments != NULL && arguments->trim_direction != MYLITE_SQL_AST_TRIM_DIRECTION_TRAILING) {
+        fprintf(stderr, "trailing TRIM direction was not TRAILING\n");
+        failures = 1;
+    }
+
+    call = child_at(child_at(select_list, 11U), 0U);
+    failures += expect_function_call(call, "TRIM", 2U, "remstr TRIM call");
+    arguments = child_at(call, 1U);
+    if (arguments != NULL && arguments->trim_direction != MYLITE_SQL_AST_TRIM_DIRECTION_BOTH) {
+        fprintf(stderr, "remstr TRIM direction was not BOTH\n");
+        failures = 1;
+    }
+
+    call = child_at(child_at(select_list, 12U), 0U);
+    failures += expect_function_call(call, "TRIM", 1U, "defaulted directed TRIM call");
+    arguments = child_at(call, 1U);
+    {
+        bool has_trim_spec = false;
+
+        if (arguments != NULL) {
+            has_trim_spec = arguments->trim_spec;
+        }
+        failures += expect_bool(has_trim_spec, true, "defaulted directed TRIM has trim spec");
+    }
+    if (arguments != NULL && arguments->trim_direction != MYLITE_SQL_AST_TRIM_DIRECTION_BOTH) {
+        fprintf(stderr, "defaulted directed TRIM direction was not BOTH\n");
+        failures = 1;
+    }
+    failures +=
+        expect_function_call(child_at(child_at(select_list, 13U), 0U), "LTRIM", 1U, "LTRIM call");
+    failures +=
+        expect_function_call(child_at(child_at(select_list, 14U), 0U), "RTRIM", 1U, "RTRIM call");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT CONCAT ('a','b') AS spaced, LEFT('abc', 1) 'left alias';",
@@ -5297,8 +5395,26 @@ static int test_scalar_function_call_syntax(void)
     failures += parse_sql("SELECT POSITION('a' IN 'abc')", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parse_sql("SELECT TRIM(LEADING 'x' FROM 'xx')", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SELECT SUBSTRING('abc')", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT SUBSTRING('abc',1,2,3)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT SUBSTRING('abc' FROM 1 FOR 2 FOR 3)",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT TRIM()", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT TRIM('x','abc')", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT TRIM(BOTH 'x')", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT FOO('a' FROM 1)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     // NOLINTEND(readability-magic-numbers)

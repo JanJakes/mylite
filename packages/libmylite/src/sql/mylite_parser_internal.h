@@ -34,6 +34,17 @@ struct mylite_sql_parser_aggregate_star_tokens {
     struct mylite_sql_token right_paren;
 };
 
+struct mylite_sql_parser_substring_operands {
+    struct mylite_sql_ast_node *text;
+    struct mylite_sql_ast_node *position;
+    struct mylite_sql_ast_node *length;
+};
+
+struct mylite_sql_parser_trim_operands {
+    struct mylite_sql_ast_node *remove;
+    struct mylite_sql_ast_node *source;
+};
+
 struct mylite_sql_parser_display_width_tokens {
     struct mylite_sql_token left_paren;
     struct mylite_sql_token integer;
@@ -1059,6 +1070,18 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_function_call(
     struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
     struct mylite_sql_token left_paren, struct mylite_sql_ast_node *arguments,
     struct mylite_sql_token right_paren);
+struct mylite_sql_ast_node *mylite_sql_parser_make_from_function_call(
+    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
+    struct mylite_sql_token left_paren, struct mylite_sql_ast_node *first,
+    struct mylite_sql_ast_node *second, struct mylite_sql_token right_paren);
+struct mylite_sql_ast_node *mylite_sql_parser_make_substring_for_function_call(
+    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
+    struct mylite_sql_token left_paren, struct mylite_sql_parser_substring_operands operands,
+    struct mylite_sql_token right_paren);
+struct mylite_sql_ast_node *mylite_sql_parser_make_trim_direction_function_call(
+    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
+    struct mylite_sql_token left_paren, enum mylite_sql_ast_trim_direction direction,
+    struct mylite_sql_parser_trim_operands operands, struct mylite_sql_token right_paren);
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_aggregate_star_call(struct mylite_sql_parser_state *state,
                                            struct mylite_sql_ast_node *name,

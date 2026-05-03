@@ -2343,14 +2343,112 @@ static int test_scalar_builtin_functions_execution(void)
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
         {"isnull_value", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"concat_ws_value", NULL, NULL, NULL, NULL, NULL, 12U, MYLITE_FIELD_TYPE_VAR_STRING, 31U,
+         255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"substring_value", NULL, NULL, NULL, NULL, NULL, 12U, MYLITE_FIELD_TYPE_VAR_STRING, 31U,
+         255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"substr_value", NULL, NULL, NULL, NULL, NULL, 12U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"mid_value", NULL, NULL, NULL, NULL, NULL, 12U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"trim_value", NULL, NULL, NULL, NULL, NULL, 24U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"ltrim_value", NULL, NULL, NULL, NULL, NULL, 24U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"rtrim_value", NULL, NULL, NULL, NULL, NULL, 24U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+    };
+    static const struct expected_result_metadata latin1_metadata[] = {
+        {"concat_ws_latin1", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_VAR_STRING, 31U,
+         8U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"substring_latin1", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_VAR_STRING, 31U,
+         8U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"trim_latin1", NULL, NULL, NULL, NULL, NULL, 6U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
     };
     static const char *const edge_columns[] = {
         "left_zero", "left_negative", "right_zero", "right_negative", "replace_empty",
         "octets",    "characters",    "lcase_text", "ucase_text",
     };
     static const char *const edge_values[] = {"", "", "", "", "abc", "6", "2", "abc", "ABC"};
+    static const char *const slice_columns[] = {
+        "concat_ws_skip_null",
+        "concat_ws_separator_null",
+        "concat_ws_all_null_len",
+        "concat_ws_one",
+        "substr_mid",
+        "substr_neg",
+        "substr_zero",
+        "substr_zero_len",
+        "substr_negative_len",
+        "substr_too_negative",
+        "substr_past_end",
+        "substr_utf8",
+        "substr_from_for",
+        "substr_from_neg",
+        "substr_alias",
+        "substr_alias_from_for",
+        "mid_alias",
+        "mid_alias_from_for",
+        "trim_space",
+        "ltrim_space",
+        "rtrim_space",
+        "trim_both_x",
+        "trim_leading_x",
+        "trim_trailing_x",
+        "trim_default_both_x",
+        "trim_both_multichar",
+        "trim_trailing_multichar",
+        "trim_empty_remove",
+        "trim_both_default",
+        "trim_leading_default",
+        "trim_trailing_default",
+        "trim_null",
+        "trim_null_remove",
+        "trim_null_source",
+    };
+    static const char *const slice_values[] = {
+        "a,,b", NULL,           "0",   "a",    "bcd", "ef",  "",     "",    "",   "",
+        "",     "\xE8\xB1\x9A", "bcd", "ef",   "bcd", "bcd", "bcd",  "bcd", "hi", "hi  ",
+        "  hi", "hi",           "hix", "xxhi", "hi",  "bar", "barx", "abc", "hi", "hi  ",
+        "  hi", NULL,           NULL,  NULL,
+    };
     static const char *const projection_columns[] = {"id", "title"};
     static const char *const projection_values[] = {"1", "Alpha", "2", "Beta"};
+    static const char *const string_projection_columns[] = {"id", "joined", "middle", "clean",
+                                                            "lead_trim"};
+    static const char *const string_projection_values[] = {
+        "1", "alpha:1", "lp", "alpha", "lpha", "2", "Beta:-2", "et", "Beta", "Beta",
+    };
     static const char *const id_column[] = {"id"};
     static const char *const n_column[] = {"n"};
     static const char *const id_2[] = {"2"};
@@ -2358,8 +2456,9 @@ static int test_scalar_builtin_functions_execution(void)
     static const char *const n_1[] = {"1"};
     static const char *const id_s_n_columns[] = {"id", "s", "n"};
     static const char *const updated_values[] = {"2", "beta", "2"};
+    static const char *const updated_string_values[] = {"2", "x-be", "2"};
     static const char *const all_id_values[] = {"1", "2", "3"};
-    static const char *const remaining_values[] = {"1", "2"};
+    static const char *const remaining_values[] = {"1"};
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -2421,7 +2520,14 @@ static int test_scalar_builtin_functions_execution(void)
     failures += prepare_sql(database,
                             "SELECT CONCAT('a','b') AS concat_text, "
                             "LENGTH('abc') AS byte_len, PI() AS pi_value, "
-                            "ISNULL(NULL) AS isnull_value",
+                            "ISNULL(NULL) AS isnull_value, "
+                            "CONCAT_WS(',', 'a', 'b') AS concat_ws_value, "
+                            "SUBSTRING('abcdef', 2, 3) AS substring_value, "
+                            "SUBSTR('abcdef', 2, 3) AS substr_value, "
+                            "MID('abcdef', 2, 3) AS mid_value, "
+                            "TRIM('  hi  ') AS trim_value, "
+                            "LTRIM('  hi  ') AS ltrim_value, "
+                            "RTRIM('  hi  ') AS rtrim_value",
                             MYLITE_OK, &stmt);
     failures += expect_result_metadata(
         stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "scalar function metadata");
@@ -2429,6 +2535,21 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "scalar metadata done");
     mylite_finalize(stmt);
     stmt = NULL;
+
+    failures += execute_sql(database, "SET NAMES latin1", MYLITE_DONE);
+    failures += prepare_sql(database,
+                            "SELECT CONCAT_WS(',', 'a', 'b') AS concat_ws_latin1, "
+                            "SUBSTRING('abcdef', 2, 3) AS substring_latin1, "
+                            "TRIM('  hi  ') AS trim_latin1",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, latin1_metadata,
+                                       (int)(sizeof(latin1_metadata) / sizeof(latin1_metadata[0])),
+                                       "latin1 string function metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "latin1 string metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "latin1 string metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
 
     failures +=
         expect_select_rows(database,
@@ -2442,6 +2563,45 @@ static int test_scalar_builtin_functions_execution(void)
                            "LCASE('AbC') AS lcase_text, UCASE('AbC') AS ucase_text",
                            edge_columns, (int)(sizeof(edge_columns) / sizeof(edge_columns[0])),
                            edge_values, 1, "scalar function edge values");
+
+    failures += expect_select_rows(
+        database,
+        "SELECT CONCAT_WS(',', 'a', NULL, '', 'b') AS concat_ws_skip_null, "
+        "CONCAT_WS(NULL, 'a') AS concat_ws_separator_null, "
+        "LENGTH(CONCAT_WS(',', NULL, NULL)) AS concat_ws_all_null_len, "
+        "CONCAT_WS(',', 'a') AS concat_ws_one, "
+        "SUBSTRING('abcdef', 2, 3) AS substr_mid, "
+        "SUBSTRING('abcdef', -2) AS substr_neg, "
+        "SUBSTRING('abcdef', 0, 3) AS substr_zero, "
+        "SUBSTRING('abcdef', 2, 0) AS substr_zero_len, "
+        "SUBSTRING('abcdef', 2, -1) AS substr_negative_len, "
+        "SUBSTRING('abc', -5) AS substr_too_negative, "
+        "SUBSTRING('abc', 5) AS substr_past_end, "
+        "SUBSTRING('\xE6\xB5\xB7\xE8\xB1\x9A\xE7\x8C\xAB', 2, 1) AS substr_utf8, "
+        "SUBSTRING('abcdef' FROM 2 FOR 3) AS substr_from_for, "
+        "SUBSTRING('abcdef' FROM -2) AS substr_from_neg, "
+        "SUBSTR('abcdef', 2, 3) AS substr_alias, "
+        "SUBSTR('abcdef' FROM 2 FOR 3) AS substr_alias_from_for, "
+        "MID('abcdef', 2, 3) AS mid_alias, "
+        "MID('abcdef' FROM 2 FOR 3) AS mid_alias_from_for, "
+        "TRIM('  hi  ') AS trim_space, "
+        "LTRIM('  hi  ') AS ltrim_space, "
+        "RTRIM('  hi  ') AS rtrim_space, "
+        "TRIM(BOTH 'x' FROM 'xxhix') AS trim_both_x, "
+        "TRIM(LEADING 'x' FROM 'xxhix') AS trim_leading_x, "
+        "TRIM(TRAILING 'x' FROM 'xxhix') AS trim_trailing_x, "
+        "TRIM('x' FROM 'xxhix') AS trim_default_both_x, "
+        "TRIM(BOTH 'xyz' FROM 'xyzbarxyzxyz') AS trim_both_multichar, "
+        "TRIM(TRAILING 'xyz' FROM 'barxxyz') AS trim_trailing_multichar, "
+        "TRIM('' FROM 'abc') AS trim_empty_remove, "
+        "TRIM(BOTH FROM '  hi  ') AS trim_both_default, "
+        "TRIM(LEADING FROM '  hi  ') AS trim_leading_default, "
+        "TRIM(TRAILING FROM '  hi  ') AS trim_trailing_default, "
+        "TRIM(NULL) AS trim_null, "
+        "TRIM(NULL FROM 'abc') AS trim_null_remove, "
+        "TRIM('x' FROM NULL) AS trim_null_source",
+        slice_columns, (int)(sizeof(slice_columns) / sizeof(slice_columns[0])), slice_values, 1,
+        "substring trim scalar values");
 
     failures += prepare_sql(database, "SELECT MOD(7,0) AS mod_zero", MYLITE_OK, &stmt);
     failures += expect_int(mylite_warning_count(database), 0, "mod zero warning before step");
@@ -2472,10 +2632,24 @@ static int test_scalar_builtin_functions_execution(void)
                                    "FROM t WHERE ISNULL(s)=0 ORDER BY LOWER(s)",
                                    projection_columns, 2, projection_values, 2,
                                    "table function projection");
+    failures += expect_select_rows(database,
+                                   "SELECT id, CONCAT_WS(':', s, n) AS joined, "
+                                   "SUBSTRING(s, 2, 2) AS middle, "
+                                   "TRIM(BOTH FROM CONCAT(' ', s, ' ')) AS clean, "
+                                   "TRIM(LEADING 'a' FROM s) AS lead_trim "
+                                   "FROM t WHERE ISNULL(s)=0 ORDER BY id",
+                                   string_projection_columns, 5, string_projection_values, 2,
+                                   "table string function projection");
     failures += expect_select_rows(database, "SELECT id FROM t WHERE ABS(n)=2", id_column, 1, id_2,
                                    1, "table function where");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE SUBSTRING(s,1,1)='B'",
+                                   id_column, 1, id_2, 1, "substring function where");
     failures += expect_select_rows(database, "SELECT id FROM t ORDER BY COALESCE(n,0), id LIMIT 1",
                                    id_column, 1, id_2, 1, "table function order");
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM t WHERE ISNULL(s)=0 ORDER BY TRIM(CONCAT(' ', LOWER(s), ' ')) LIMIT 1",
+        id_column, 1, n_1, 1, "trim function order");
     failures += expect_select_rows(database, "SELECT id FROM t WHERE COALESCE(n,0)=0", id_column, 1,
                                    id_3, 1, "coalesce where null row");
 
@@ -2486,6 +2660,12 @@ static int test_scalar_builtin_functions_execution(void)
         1, "update function assignment");
     failures += expect_select_rows(database, "SELECT id, s, n FROM t WHERE id = 2", id_s_n_columns,
                                    3, updated_values, 1, "updated function values");
+
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE t SET s = CONCAT_WS('-', TRIM(' x '), SUBSTRING(s,1,2)) WHERE id = 2", 1,
+        "update string function assignment");
+    failures += expect_select_rows(database, "SELECT id, s, n FROM t WHERE id = 2", id_s_n_columns,
+                                   3, updated_string_values, 1, "updated string function values");
 
     failures += prepare_sql(database, "UPDATE t SET n = 5 WHERE MOD(7,0)", MYLITE_OK, &stmt);
     failures +=
@@ -2517,15 +2697,30 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_select_rows(database, "SELECT id FROM t ORDER BY id", id_column, 1,
                                    all_id_values, 3, "delete warning predicate unchanged");
 
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM t WHERE RTRIM(CONCAT(s, '  ')) = 'x-be'", 1,
+        "delete string function predicate");
     failures += execute_sql_expect_done_affected(database, "DELETE FROM t WHERE ISNULL(s)", 1,
                                                  "delete function predicate");
     failures += expect_select_rows(database, "SELECT id FROM t ORDER BY id", id_column, 1,
-                                   remaining_values, 2, "delete function remaining rows");
+                                   remaining_values, 1, "delete function remaining rows");
 
     failures += prepare_sql(database, "SELECT SIN(1)", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported scalar function");
     failures += prepare_sql(database, "SELECT CONCAT()", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported concat arity");
+    failures += prepare_sql(database, "SELECT CONCAT_WS()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported concat_ws zero arity");
+    failures += prepare_sql(database, "SELECT CONCAT_WS(',')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported concat_ws one arity");
+    failures += prepare_sql(database, "SELECT LTRIM()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported ltrim zero arity");
+    failures += prepare_sql(database, "SELECT LTRIM('a','b')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported ltrim two arity");
+    failures += prepare_sql(database, "SELECT RTRIM()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported rtrim zero arity");
+    failures += prepare_sql(database, "SELECT RTRIM('a','b')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported rtrim two arity");
     failures += prepare_sql(database, "SELECT PI(1)", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported pi arity");
 

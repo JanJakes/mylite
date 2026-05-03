@@ -2038,6 +2038,21 @@ static int infer_function_expression_descriptor(mylite_db *database,
 static bool infer_session_function_descriptor(mylite_db *database,
                                               const struct mylite_sql_ast_node *name,
                                               struct mylite_field_descriptor *out_descriptor);
+// NOLINTNEXTLINE(misc-no-recursion)
+static int infer_slice_string_function_descriptor(mylite_db *database,
+                                                  const struct mylite_select_plan *plan,
+                                                  const struct mylite_sql_ast_node *expression,
+                                                  const struct mylite_expression_value *value,
+                                                  struct mylite_field_descriptor *out_descriptor,
+                                                  bool *out_matched);
+// NOLINTNEXTLINE(misc-no-recursion)
+static uint64_t slice_string_function_result_length(mylite_db *database,
+                                                    const struct mylite_select_plan *plan,
+                                                    const struct mylite_sql_ast_node *expression,
+                                                    const struct mylite_expression_value *value);
+static bool function_name_has_slice_string_result(const struct mylite_sql_ast_node *name);
+static bool function_name_is_concat_ws(const struct mylite_sql_ast_node *name);
+static bool function_name_uses_trim_source_length(const struct mylite_sql_ast_node *name);
 static int infer_aggregate_expression_descriptor(mylite_db *database,
                                                  const struct mylite_select_plan *plan,
                                                  const struct mylite_sql_ast_node *expression,
@@ -10248,6 +10263,7 @@ static int infer_function_expression_descriptor(mylite_db *database,
     const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
     bool nullable = false;
     bool result_nullable = false;
+    bool matched_slice_string = false;
     int status = MYLITE_OK;
 
     if (!mylite_expression_is_supported_function_call(expression)) {
@@ -10264,6 +10280,11 @@ static int infer_function_expression_descriptor(mylite_db *database,
 
     if (infer_session_function_descriptor(database, name, out_descriptor)) {
         return MYLITE_OK;
+    }
+    status = infer_slice_string_function_descriptor(database, plan, expression, value,
+                                                    out_descriptor, &matched_slice_string);
+    if (status != MYLITE_OK || matched_slice_string) {
+        return status;
     }
     if (function_name_has_text_result(name)) {
         *out_descriptor = (struct mylite_field_descriptor){
@@ -10374,6 +10395,53 @@ static bool infer_session_function_descriptor(mylite_db *database,
         return true;
     }
     return false;
+}
+
+static int infer_slice_string_function_descriptor( // NOLINT(misc-no-recursion)
+    mylite_db *database, const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression, const struct mylite_expression_value *value,
+    struct mylite_field_descriptor *out_descriptor, bool *out_matched)
+{
+    const struct mylite_sql_ast_node *name = child_at(expression, 0U);
+
+    *out_matched = function_name_has_slice_string_result(name);
+    if (!*out_matched) {
+        return MYLITE_OK;
+    }
+
+    *out_descriptor = (struct mylite_field_descriptor){
+        .type = MYLITE_FIELD_TYPE_VAR_STRING,
+        .flags = 0U,
+        .length = slice_string_function_result_length(database, plan, expression, value),
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = field_descriptor_connection_charset_id(database),
+        .nullable = true,
+    };
+    field_descriptor_set_nullable(out_descriptor, true);
+    return MYLITE_OK;
+}
+
+static uint64_t slice_string_function_result_length( // NOLINT(misc-no-recursion)
+    mylite_db *database, const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression, const struct mylite_expression_value *value)
+{
+    const struct mylite_sql_ast_node *name = child_at(expression, 0U);
+    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *source = child_at(arguments, 0U);
+    struct mylite_field_descriptor source_descriptor = field_descriptor_defaults();
+
+    if (!function_name_uses_trim_source_length(name) && value != NULL &&
+        value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+        return expression_string_length(database, value, NULL);
+    }
+    if (function_name_is_concat_ws(name)) {
+        return mylite_mysql_text_length;
+    }
+    if (source != NULL && infer_expression_descriptor(database, plan, source, NULL,
+                                                      &source_descriptor) == MYLITE_OK) {
+        return source_descriptor.length;
+    }
+    return mylite_mysql_text_length;
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
@@ -11040,6 +11108,28 @@ static bool function_name_has_text_result(const struct mylite_sql_ast_node *name
     static const char *const names[] = {"CONCAT", "LOWER",  "LCASE",  "UPPER",
                                         "UCASE",  "LEFT",   "RIGHT",  "REPLACE",
                                         "IF",     "IFNULL", "NULLIF", "COALESCE"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_has_slice_string_result(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"CONCAT_WS", "SUBSTRING", "SUBSTR", "MID",
+                                        "TRIM",      "LTRIM",     "RTRIM"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_is_concat_ws(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"CONCAT_WS"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_uses_trim_source_length(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"TRIM", "LTRIM", "RTRIM"};
 
     return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }

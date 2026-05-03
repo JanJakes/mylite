@@ -24,6 +24,7 @@ struct MyliteSemanticAstNode {
   unsigned int data_type_flags;
   size_t data_type_numeric_parameter_count;
   unsigned long long data_type_numeric_parameters[2];
+  MyliteSemanticDataTypeAttributeKind data_type_attribute_kind;
   MyliteExpressionKind expression_kind;
   MyliteExpressionLiteralKind expression_literal_kind;
   MyliteExpressionOperatorKind expression_operator_kind;
@@ -94,6 +95,14 @@ static int mylite_semantic_ast_fill_data_type_children(
 static MyliteSemanticAstNode *mylite_semantic_ast_materialize_data_type_element(
     MyliteSemanticAst *ast,
     const MyliteAstCreateTableColumnTypeElement *element);
+static int mylite_semantic_ast_append_data_type_attribute_child(
+    MyliteSemanticAst *ast, MyliteSemanticAstNode *data_type, size_t *index,
+    MyliteSemanticDataTypeAttributeKind kind, size_t start, size_t end,
+    const char *value, size_t value_length);
+static MyliteSemanticAstNode *
+mylite_semantic_ast_materialize_data_type_attribute(
+    MyliteSemanticAst *ast, MyliteSemanticDataTypeAttributeKind kind,
+    size_t start, size_t end, const char *value, size_t value_length);
 static int mylite_semantic_ast_append_create_table_key_descriptors(
     MyliteSemanticAst *ast, MyliteSemanticAstNode *parent, size_t *index,
     const MyliteAstCreateTableKey *key);
@@ -131,6 +140,8 @@ static size_t mylite_semantic_ast_count_expression_root(
     const MyliteAstExpression *expression);
 static size_t mylite_semantic_ast_count_clause_span(size_t start, size_t end);
 static size_t mylite_semantic_ast_count_create_table_column_data_type(
+    const MyliteAstCreateTableColumn *column);
+static size_t mylite_semantic_ast_count_create_table_column_data_type_attributes(
     const MyliteAstCreateTableColumn *column);
 static int mylite_semantic_ast_append_expression_child(
     MyliteSemanticAst *ast, MyliteSemanticAstNode *parent, size_t *index,
@@ -229,6 +240,25 @@ MyliteStatementTargetKind mylite_semantic_ast_node_target_kind(
 MyliteStatementTargetRole mylite_semantic_ast_node_target_role(
     const MyliteSemanticAstNode *node) {
   return node == NULL ? MYLITE_STATEMENT_TARGET_ROLE_NONE : node->target_role;
+}
+
+const char *mylite_semantic_data_type_attribute_kind_name(
+    MyliteSemanticDataTypeAttributeKind kind) {
+  switch (kind) {
+  case MYLITE_SEMANTIC_DATA_TYPE_ATTRIBUTE_UNKNOWN:
+    return "unknown";
+  case MYLITE_SEMANTIC_DATA_TYPE_ATTRIBUTE_UNSIGNED:
+    return "unsigned";
+  case MYLITE_SEMANTIC_DATA_TYPE_ATTRIBUTE_ZEROFILL:
+    return "zerofill";
+  case MYLITE_SEMANTIC_DATA_TYPE_ATTRIBUTE_BINARY:
+    return "binary";
+  case MYLITE_SEMANTIC_DATA_TYPE_ATTRIBUTE_CHARSET:
+    return "charset";
+  case MYLITE_SEMANTIC_DATA_TYPE_ATTRIBUTE_COLLATION:
+    return "collation";
+  }
+  return "unknown";
 }
 
 const char *mylite_semantic_clause_kind_name(MyliteSemanticClauseKind kind) {
@@ -373,6 +403,13 @@ mylite_semantic_ast_node_data_type_numeric_parameter_at(
     return 0;
   }
   return node->data_type_numeric_parameters[parameter_index];
+}
+
+MyliteSemanticDataTypeAttributeKind
+mylite_semantic_ast_node_data_type_attribute_kind(
+    const MyliteSemanticAstNode *node) {
+  return node == NULL ? MYLITE_SEMANTIC_DATA_TYPE_ATTRIBUTE_UNKNOWN
+                      : node->data_type_attribute_kind;
 }
 
 MyliteExpressionKind mylite_semantic_ast_node_expression_kind(
@@ -1698,7 +1735,9 @@ static MyliteSemanticAstNode *mylite_semantic_ast_materialize_data_type(
   }
   if (!mylite_semantic_ast_set_node_child_count(
           ast, data_type,
-          mylite_ast_create_table_column_view_type_element_count(column)) ||
+          mylite_ast_create_table_column_view_type_element_count(column) +
+              mylite_semantic_ast_count_create_table_column_data_type_attributes(
+                  column)) ||
       !mylite_semantic_ast_fill_data_type_children(ast, data_type, column)) {
     return NULL;
   }
@@ -1720,6 +1759,42 @@ static int mylite_semantic_ast_fill_data_type_children(
       return 0;
     }
   }
+  if (!mylite_semantic_ast_append_data_type_attribute_child(
+          ast, data_type, &child_index,
+          MYLITE_SEMANTIC_DATA_TYPE_ATTRIBUTE_UNSIGNED,
+          mylite_ast_create_table_column_view_type_unsigned_start(column),
+          mylite_ast_create_table_column_view_type_unsigned_end(column), NULL,
+          0) ||
+      !mylite_semantic_ast_append_data_type_attribute_child(
+          ast, data_type, &child_index,
+          MYLITE_SEMANTIC_DATA_TYPE_ATTRIBUTE_ZEROFILL,
+          mylite_ast_create_table_column_view_type_zerofill_start(column),
+          mylite_ast_create_table_column_view_type_zerofill_end(column), NULL,
+          0) ||
+      !mylite_semantic_ast_append_data_type_attribute_child(
+          ast, data_type, &child_index,
+          MYLITE_SEMANTIC_DATA_TYPE_ATTRIBUTE_BINARY,
+          mylite_ast_create_table_column_view_type_binary_start(column),
+          mylite_ast_create_table_column_view_type_binary_end(column), NULL,
+          0) ||
+      !mylite_semantic_ast_append_data_type_attribute_child(
+          ast, data_type, &child_index,
+          MYLITE_SEMANTIC_DATA_TYPE_ATTRIBUTE_CHARSET,
+          mylite_ast_create_table_column_view_type_charset_start(column),
+          mylite_ast_create_table_column_view_type_charset_end(column),
+          mylite_ast_create_table_column_view_type_charset_value(column),
+          mylite_ast_create_table_column_view_type_charset_value_length(
+              column)) ||
+      !mylite_semantic_ast_append_data_type_attribute_child(
+          ast, data_type, &child_index,
+          MYLITE_SEMANTIC_DATA_TYPE_ATTRIBUTE_COLLATION,
+          mylite_ast_create_table_column_view_type_collation_start(column),
+          mylite_ast_create_table_column_view_type_collation_end(column),
+          mylite_ast_create_table_column_view_type_collation_value(column),
+          mylite_ast_create_table_column_view_type_collation_value_length(
+              column))) {
+    return 0;
+  }
   return child_index == data_type->child_count;
 }
 
@@ -1738,6 +1813,35 @@ static MyliteSemanticAstNode *mylite_semantic_ast_materialize_data_type_element(
           mylite_ast_create_table_column_type_element_view_value(element),
           mylite_ast_create_table_column_type_element_view_value_length(
               element))) {
+    return NULL;
+  }
+  return node;
+}
+
+static int mylite_semantic_ast_append_data_type_attribute_child(
+    MyliteSemanticAst *ast, MyliteSemanticAstNode *data_type, size_t *index,
+    MyliteSemanticDataTypeAttributeKind kind, size_t start, size_t end,
+    const char *value, size_t value_length) {
+  if (mylite_semantic_ast_count_clause_span(start, end) == 0) {
+    return 1;
+  }
+  return mylite_semantic_ast_append_child(
+      data_type, index,
+      mylite_semantic_ast_materialize_data_type_attribute(
+          ast, kind, start, end, value, value_length));
+}
+
+static MyliteSemanticAstNode *
+mylite_semantic_ast_materialize_data_type_attribute(
+    MyliteSemanticAst *ast, MyliteSemanticDataTypeAttributeKind kind,
+    size_t start, size_t end, const char *value, size_t value_length) {
+  MyliteSemanticAstNode *node = mylite_semantic_ast_new_node(
+      ast, MYLITE_SEMANTIC_NODE_DATA_TYPE_ATTRIBUTE, start, end);
+  if (node == NULL) {
+    return NULL;
+  }
+  node->data_type_attribute_kind = kind;
+  if (!mylite_semantic_ast_copy_node_value(ast, node, value, value_length)) {
     return NULL;
   }
   return node;
@@ -2177,6 +2281,28 @@ static size_t mylite_semantic_ast_count_create_table_column_data_type(
   return mylite_semantic_ast_count_clause_span(
       mylite_ast_create_table_column_view_type_start(column),
       mylite_ast_create_table_column_view_type_end(column));
+}
+
+static size_t mylite_semantic_ast_count_create_table_column_data_type_attributes(
+    const MyliteAstCreateTableColumn *column) {
+  if (column == NULL) {
+    return 0;
+  }
+  return mylite_semantic_ast_count_clause_span(
+             mylite_ast_create_table_column_view_type_unsigned_start(column),
+             mylite_ast_create_table_column_view_type_unsigned_end(column)) +
+         mylite_semantic_ast_count_clause_span(
+             mylite_ast_create_table_column_view_type_zerofill_start(column),
+             mylite_ast_create_table_column_view_type_zerofill_end(column)) +
+         mylite_semantic_ast_count_clause_span(
+             mylite_ast_create_table_column_view_type_binary_start(column),
+             mylite_ast_create_table_column_view_type_binary_end(column)) +
+         mylite_semantic_ast_count_clause_span(
+             mylite_ast_create_table_column_view_type_charset_start(column),
+             mylite_ast_create_table_column_view_type_charset_end(column)) +
+         mylite_semantic_ast_count_clause_span(
+             mylite_ast_create_table_column_view_type_collation_start(column),
+             mylite_ast_create_table_column_view_type_collation_end(column));
 }
 
 static int mylite_semantic_ast_append_expression_child(

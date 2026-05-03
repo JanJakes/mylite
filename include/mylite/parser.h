@@ -117,8 +117,18 @@ typedef enum MyliteSemanticNodeKind {
   MYLITE_SEMANTIC_NODE_DESCRIPTOR = 5,
   MYLITE_SEMANTIC_NODE_CLAUSE = 6,
   MYLITE_SEMANTIC_NODE_DATA_TYPE = 7,
-  MYLITE_SEMANTIC_NODE_DATA_TYPE_ELEMENT = 8
+  MYLITE_SEMANTIC_NODE_DATA_TYPE_ELEMENT = 8,
+  MYLITE_SEMANTIC_NODE_DATA_TYPE_ATTRIBUTE = 9
 } MyliteSemanticNodeKind;
+
+typedef enum MyliteSemanticDataTypeAttributeKind {
+  MYLITE_SEMANTIC_DATA_TYPE_ATTRIBUTE_UNKNOWN = 0,
+  MYLITE_SEMANTIC_DATA_TYPE_ATTRIBUTE_UNSIGNED,
+  MYLITE_SEMANTIC_DATA_TYPE_ATTRIBUTE_ZEROFILL,
+  MYLITE_SEMANTIC_DATA_TYPE_ATTRIBUTE_BINARY,
+  MYLITE_SEMANTIC_DATA_TYPE_ATTRIBUTE_CHARSET,
+  MYLITE_SEMANTIC_DATA_TYPE_ATTRIBUTE_COLLATION
+} MyliteSemanticDataTypeAttributeKind;
 
 typedef enum MyliteSemanticClauseKind {
   MYLITE_SEMANTIC_CLAUSE_UNKNOWN = 0,
@@ -1026,6 +1036,8 @@ const char *mylite_parse_status_name(MyliteParseStatus status);
 const char *mylite_statement_kind_name(MyliteStatementKind kind);
 const char *mylite_statement_target_kind_name(MyliteStatementTargetKind kind);
 const char *mylite_statement_target_role_name(MyliteStatementTargetRole role);
+const char *mylite_semantic_data_type_attribute_kind_name(
+    MyliteSemanticDataTypeAttributeKind kind);
 const char *mylite_semantic_clause_kind_name(MyliteSemanticClauseKind kind);
 const char *mylite_semantic_descriptor_kind_name(
     MyliteSemanticDescriptorKind kind);
@@ -1179,6 +1191,9 @@ size_t mylite_semantic_ast_node_data_type_numeric_parameter_count(
 unsigned long long
 mylite_semantic_ast_node_data_type_numeric_parameter_at(
     const MyliteSemanticAstNode *node, size_t parameter_index);
+MyliteSemanticDataTypeAttributeKind
+mylite_semantic_ast_node_data_type_attribute_kind(
+    const MyliteSemanticAstNode *node);
 MyliteExpressionKind mylite_semantic_ast_node_expression_kind(
     const MyliteSemanticAstNode *node);
 MyliteExpressionLiteralKind mylite_semantic_ast_node_expression_literal_kind(

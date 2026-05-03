@@ -3207,6 +3207,10 @@ static void dump_semantic_node(const MyliteSemanticAstNode *node,
            mylite_semantic_ast_node_data_type_numeric_parameter_count(node),
            mylite_semantic_ast_node_data_type_numeric_parameter_at(node, 0),
            mylite_semantic_ast_node_data_type_numeric_parameter_at(node, 1));
+  } else if (kind == MYLITE_SEMANTIC_NODE_DATA_TYPE_ATTRIBUTE) {
+    printf(" data_type_attribute_kind=%s",
+           mylite_semantic_data_type_attribute_kind_name(
+               mylite_semantic_ast_node_data_type_attribute_kind(node)));
   } else if (kind == MYLITE_SEMANTIC_NODE_EXPRESSION) {
     printf(" expression_kind=%s literal=%s operator=%s",
            mylite_expression_kind_name(
@@ -3252,6 +3256,8 @@ static const char *semantic_node_kind_name(MyliteSemanticNodeKind kind) {
     return "data_type";
   case MYLITE_SEMANTIC_NODE_DATA_TYPE_ELEMENT:
     return "data_type_element";
+  case MYLITE_SEMANTIC_NODE_DATA_TYPE_ATTRIBUTE:
+    return "data_type_attribute";
   }
   return "unknown";
 }

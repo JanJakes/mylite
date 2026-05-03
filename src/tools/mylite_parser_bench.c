@@ -24,6 +24,7 @@ static void count_semantic_tree(const MyliteSemanticAstNode *node,
                                 size_t *data_types,
                                 size_t *data_type_numeric_parameters,
                                 size_t *data_type_elements,
+                                size_t *data_type_attributes,
                                 size_t *expressions, size_t *operators,
                                 size_t *leaf_values,
                                 size_t *descriptor_expressions,
@@ -575,6 +576,7 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t semantic_data_types = 0;
   size_t semantic_data_type_numeric_parameters = 0;
   size_t semantic_data_type_elements = 0;
+  size_t semantic_data_type_attributes = 0;
   size_t semantic_expressions = 0;
   size_t semantic_expression_operators = 0;
   size_t semantic_expression_leaf_values = 0;
@@ -2840,6 +2842,7 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                               &semantic_data_types,
                               &semantic_data_type_numeric_parameters,
                               &semantic_data_type_elements,
+                              &semantic_data_type_attributes,
                               &semantic_expressions,
                               &semantic_expression_operators,
                               &semantic_expression_leaf_values,
@@ -3890,6 +3893,7 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_semantic_data_types=%.2f "
            "avg_semantic_data_type_numeric_parameters=%.2f "
            "avg_semantic_data_type_elements=%.2f "
+           "avg_semantic_data_type_attributes=%.2f "
            "avg_semantic_expressions=%.2f "
            "avg_semantic_expression_operators=%.2f "
            "avg_semantic_expression_leaf_values=%.2f "
@@ -3906,6 +3910,7 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)semantic_data_types / (double)parsed,
            (double)semantic_data_type_numeric_parameters / (double)parsed,
            (double)semantic_data_type_elements / (double)parsed,
+           (double)semantic_data_type_attributes / (double)parsed,
            (double)semantic_expressions / (double)parsed,
            (double)semantic_expression_operators / (double)parsed,
            (double)semantic_expression_leaf_values / (double)parsed,
@@ -3953,6 +3958,7 @@ static void count_semantic_tree(const MyliteSemanticAstNode *node,
                                 size_t *data_types,
                                 size_t *data_type_numeric_parameters,
                                 size_t *data_type_elements,
+                                size_t *data_type_attributes,
                                 size_t *expressions, size_t *operators,
                                 size_t *leaf_values,
                                 size_t *descriptor_expressions,
@@ -3992,6 +3998,10 @@ static void count_semantic_tree(const MyliteSemanticAstNode *node,
       data_type_elements != NULL) {
     (*data_type_elements)++;
   }
+  if (kind == MYLITE_SEMANTIC_NODE_DATA_TYPE_ATTRIBUTE &&
+      data_type_attributes != NULL) {
+    (*data_type_attributes)++;
+  }
   if (kind == MYLITE_SEMANTIC_NODE_EXPRESSION) {
     if (expressions != NULL) {
       (*expressions)++;
@@ -4024,7 +4034,7 @@ static void count_semantic_tree(const MyliteSemanticAstNode *node,
     count_semantic_tree(mylite_semantic_ast_node_child_at(node, i), targets,
                         descriptors, clauses, structural_clauses, data_types,
                         data_type_numeric_parameters, data_type_elements,
-                        expressions, operators, leaf_values,
+                        data_type_attributes, expressions, operators, leaf_values,
                         descriptor_expressions,
                         clause_expressions, statement_expressions, kind);
   }

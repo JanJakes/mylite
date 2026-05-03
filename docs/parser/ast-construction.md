@@ -379,8 +379,10 @@ expression kind/literal/operator, spans, copied values, children, node count,
 statement count, and allocated bytes. `SELECT` statements now own one semantic
 query node; the query node owns projection descriptors plus `FROM`, `WHERE`,
 `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`, `INTO`, and locking clause nodes.
-`FROM` clauses own a table-reference span node for the parser-level table
-reference anchor. Descriptor nodes own the obvious expression payload for their
+Standalone `VALUES` query forms also own one semantic query node; it owns value
+descriptors plus `ORDER BY`, `LIMIT`, `INTO`, and locking clause nodes. `FROM`
+clauses own a table-reference span node for the parser-level table reference
+anchor. Descriptor nodes own the obvious expression payload for their
 parser-view item, including projection, VALUES, assignment, column
 default/generated/check, key check/key-part, LOAD assignment, and LOAD option
 expressions. Column descriptor nodes now also own a data-type child with the
@@ -779,7 +781,7 @@ Latest semantic-AST construction run on May 3, 2026:
 mode=syntax queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=2.769838 qps=502130 mbps=38.19 avg_us=1.992
 mode=ast-only queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.157245 qps=194323 mbps=14.78 avg_us=5.146 avg_nodes=74.5 avg_ast_bytes=11091.3 avg_statements=1.00
 mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.286471 qps=190877 mbps=14.52 avg_us=5.239 avg_nodes=74.5 avg_ast_bytes=11091.3
-mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.931321 qps=175358 mbps=13.34 avg_us=5.703 avg_semantic_nodes=9.0 avg_semantic_bytes=4517.3 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_queries=0.25 avg_semantic_table_references=0.15 avg_semantic_descriptors=2.57 avg_semantic_clauses=0.35 avg_semantic_structural_clauses=0.10 avg_semantic_data_types=0.31 avg_semantic_data_type_numeric_parameters=0.12 avg_semantic_data_type_elements=0.05 avg_semantic_data_type_attributes=0.03 avg_semantic_expressions=2.68 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.04 avg_semantic_descriptor_expressions=1.81 avg_semantic_clause_expressions=0.11 avg_semantic_statement_expressions=0.00
+mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.556756 qps=184050 mbps=14.00 avg_us=5.433 avg_semantic_nodes=9.0 avg_semantic_bytes=4517.3 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_queries=0.25 avg_semantic_table_references=0.15 avg_semantic_descriptors=2.57 avg_semantic_clauses=0.35 avg_semantic_structural_clauses=0.09 avg_semantic_data_types=0.31 avg_semantic_data_type_numeric_parameters=0.12 avg_semantic_data_type_elements=0.05 avg_semantic_data_type_attributes=0.03 avg_semantic_expressions=2.68 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.04 avg_semantic_descriptor_expressions=1.81 avg_semantic_clause_expressions=0.11 avg_semantic_statement_expressions=0.00
 ```
 
 Latest EXPLAIN/DESCRIBE parser-view run on May 3, 2026:
@@ -980,7 +982,7 @@ Current release build size on the same machine:
 generated parser C: 72,876 lines, 5,639,543 bytes
 generated parser object: 997K on disk, 905,630 bytes text/data/other
 parser support object: 408K on disk, 235,023 bytes text/data/other
-semantic AST object: 63K on disk, 28,653 bytes text/data/other
+semantic AST object: 63K on disk, 28,665 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.6M on disk
 mylite-parse: 1.3M on disk

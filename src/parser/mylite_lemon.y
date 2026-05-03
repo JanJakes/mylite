@@ -1050,9 +1050,7 @@ create_server_option ::= SOCKET text_string_literal.
 create_server_option ::= OWNER text_string_literal.
 create_server_option ::= PORT create_server_port.
 
-create_server_port ::= BOOLEAN_NUMBER.
-create_server_port ::= FACTOR_NUMBER.
-create_server_port ::= NUMBER_LITERAL.
+create_server_port ::= unsigned_decimal_or_lower_hex_value.
 
 create_reference ::= REFERENCE.
 

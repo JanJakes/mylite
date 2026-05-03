@@ -280,7 +280,7 @@ token sink:
   `WAIT`, and `NO_WAIT`.
 - `CREATE SERVER` and `ALTER SERVER` recognize the documented foreign-server
   `OPTIONS` names, text-string option values with quoted hex/bit rejection, and
-  numeric ports.
+  unsigned decimal plus lowercase-hex ports.
 - `CREATE EVENT` recognizes event schedules with `AT` timestamps and `EVERY`
   intervals, validates interval units plus `STARTS`/`ENDS` schedule tails, and
   recognizes scheduler status tails including `DISABLE ON REPLICA` and

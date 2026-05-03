@@ -65,6 +65,10 @@ expression nodes.
   `TRUNCATE TABLE` statements expose semantic DDL views that reuse the same
   decoded identifier, target, key-part, key-option, table-option, and
   database-option infrastructure.
+- `SELECT` statements expose parser-level query views with CTE/set-operation
+  markers, query-block counts, projection descriptors, common clause spans, and
+  recursive expression views for projection, `WHERE`, and `HAVING`
+  expressions.
 - `SET` statements expose typed statement-form and assignment descriptors for
   variable assignments, `SET NAMES`, `SET CHARACTER SET`, `SET TRANSACTION`,
   and TiDB `SET CONFIG` syntax, including value-expression CST anchors.
@@ -136,6 +140,13 @@ expression nodes.
 - typed `CREATE VIEW` descriptors with decoded view target, `OR REPLACE`,
   algorithm, SQL security, check-option kind, optional definer span, explicit
   column handles, and a CST anchor/span for the view query
+- typed `SELECT` descriptors with CTE and set-operation markers, query-block
+  counts, projection handles, `FROM`, `WHERE`, `GROUP BY`, `HAVING`, `ORDER
+  BY`, `LIMIT`, `INTO`, and locking clause spans, plus expression-view handles
+  for projection, `WHERE`, and `HAVING` expressions
+- typed `SELECT` projection descriptors with expression/wildcard/table-wildcard
+  kind, source spans, expression spans, decoded aliases, table-wildcard
+  qualifier spans, and recursive expression views where present
 - typed `SET` descriptors with statement form, assignment kind, variable scope,
   operator kind, decoded assignment names, value CST anchors/spans, and optional
   extended value spans for `SET NAMES ... COLLATE ...`, plus expression-view
@@ -321,6 +332,18 @@ optional `TABLE` keyword was present. These views are still parser-level
 metadata: they do not perform existence checks, generate implicit names,
 validate engine-specific rules, or apply runtime effects.
 
+The first parser-level `SELECT` view is intentionally structural rather than a
+final query AST. It records whether the statement has a `WITH` clause or set
+operation, counts query blocks, exposes all projection fields found in statement
+order, distinguishes expression projections from `*` and table-qualified
+wildcards, decodes projection aliases, and anchors the first visible `FROM`,
+`WHERE`, `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`, `INTO`, and locking clauses.
+Projection, `WHERE`, and `HAVING` expressions reuse the same recursive
+expression view as DDL and `SET`. The view keeps nested CTE/subquery/union
+projections in statement order for now; the later semantic query AST must split
+them into query-expression and query-block objects with scope-aware name
+resolution.
+
 Session-level statement views now cover `SET` and `USE`. `SET` records the
 statement form, ordered assignments, assignment kind, variable scope, assignment
 operator, decoded assignment name, value CST anchor/span, and optional extended
@@ -409,6 +432,13 @@ mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=14.0646
 mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=23.975336 qps=290052 mbps=22.06 avg_us=3.448 avg_nodes=74.5 avg_ast_bytes=10458.0 avg_create_table_view_column_expression_roots=0.06 avg_create_table_view_column_expression_tree_nodes=0.07 avg_create_table_view_column_expression_tree_operators=0.00 avg_create_table_view_column_expression_tree_leaf_values=0.06 avg_create_table_view_key_expression_roots=0.00 avg_create_table_view_key_expression_tree_nodes=0.00 avg_create_table_view_key_expression_tree_operators=0.00 avg_create_table_view_key_expression_tree_leaf_values=0.00 avg_set_assignment_expression_tree_nodes=0.09 avg_set_assignment_expression_tree_operators=0.00 avg_set_assignment_expression_tree_leaf_values=0.08
 ```
 
+Latest SELECT parser-view run on the same corpus:
+
+```text
+mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=14.589427 qps=476653 mbps=36.25 avg_us=2.098
+mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=33.844687 qps=205471 mbps=15.63 avg_us=4.867 avg_nodes=74.5 avg_ast_bytes=10654.3 avg_select_statement_views=0.25 avg_select_statement_query_blocks=0.27 avg_select_statement_projections=0.41 avg_select_statement_projection_expressions=0.36 avg_select_statement_where_expressions=0.06 avg_select_statement_having_expressions=0.01 avg_select_statement_expression_tree_nodes=1.02 avg_select_statement_expression_tree_operators=0.16 avg_select_statement_expression_tree_leaf_values=0.51
+```
+
 Before semantic actions were generated, syntax-only parsing measured about
 `711k queries/sec` on the same corpus. The current syntax-only path still runs
 the generated reduce actions, but with AST building disabled, so it avoids arena
@@ -419,7 +449,7 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,852 lines, 5,637,339 bytes
 generated parser object: 996K on disk, 905,398 bytes text/data/other
-parser support object: 235K on disk, 138,834 bytes text/data/other
+parser support object: 246K on disk, 144,127 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.3M on disk
 mylite-parse: 1.1M on disk
@@ -440,6 +470,9 @@ mylite-parse: 1.1M on disk
   clauses, and final metadata operations.
 - Add typed AST nodes for the next analyzer statement families underneath the
   statement classification and indexed target descriptor layer.
+- Split the parser-level `SELECT` view into semantic query-expression,
+  query-block, table-reference, projection, and clause objects with scoped name
+  resolution.
 - Decide whether syntax-only builds should use a separate no-action generated
   parser if the action overhead matters.
 - Add tree-shape tests for representative DDL, DML, expressions, stored

@@ -63,6 +63,26 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t targets = 0;
   size_t target_schema_values = 0;
   size_t target_name_values = 0;
+  size_t select_statement_views = 0;
+  size_t select_statement_query_blocks = 0;
+  size_t select_statement_projections = 0;
+  size_t select_statement_projection_expressions = 0;
+  size_t select_statement_projection_alias_values = 0;
+  size_t select_statement_projection_wildcards = 0;
+  size_t select_statement_projection_table_wildcards = 0;
+  size_t select_statement_where_expressions = 0;
+  size_t select_statement_having_expressions = 0;
+  size_t select_statement_from_clauses = 0;
+  size_t select_statement_group_by_clauses = 0;
+  size_t select_statement_order_by_clauses = 0;
+  size_t select_statement_limit_clauses = 0;
+  size_t select_statement_into_clauses = 0;
+  size_t select_statement_lock_clauses = 0;
+  size_t select_statement_with_clauses = 0;
+  size_t select_statement_set_operations = 0;
+  size_t select_statement_expression_tree_nodes = 0;
+  size_t select_statement_expression_tree_operators = 0;
+  size_t select_statement_expression_tree_leaf_values = 0;
   size_t create_table_views = 0;
   size_t create_table_view_schema_values = 0;
   size_t create_table_view_name_values = 0;
@@ -288,6 +308,113 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
               }
               if (mylite_ast_statement_target_name_value_at(ast, i, j) != NULL) {
                 target_name_values++;
+              }
+            }
+            const MyliteAstSelectStatement *select_statement =
+                mylite_ast_select_statement_view(ast, i);
+            if (select_statement != NULL) {
+              select_statement_views++;
+              select_statement_query_blocks +=
+                  mylite_ast_select_statement_view_query_block_count(
+                      select_statement);
+              select_statement_projections +=
+                  mylite_ast_select_statement_view_projection_count(
+                      select_statement);
+              if (mylite_ast_select_statement_view_has_with_clause(
+                      select_statement)) {
+                select_statement_with_clauses++;
+              }
+              if (mylite_ast_select_statement_view_has_set_operation(
+                      select_statement)) {
+                select_statement_set_operations++;
+              }
+              if (mylite_ast_select_statement_view_from_start(
+                      select_statement) !=
+                  mylite_ast_select_statement_view_from_end(
+                      select_statement)) {
+                select_statement_from_clauses++;
+              }
+              if (mylite_ast_select_statement_view_group_by_start(
+                      select_statement) !=
+                  mylite_ast_select_statement_view_group_by_end(
+                      select_statement)) {
+                select_statement_group_by_clauses++;
+              }
+              if (mylite_ast_select_statement_view_order_by_start(
+                      select_statement) !=
+                  mylite_ast_select_statement_view_order_by_end(
+                      select_statement)) {
+                select_statement_order_by_clauses++;
+              }
+              if (mylite_ast_select_statement_view_limit_start(
+                      select_statement) !=
+                  mylite_ast_select_statement_view_limit_end(
+                      select_statement)) {
+                select_statement_limit_clauses++;
+              }
+              if (mylite_ast_select_statement_view_into_start(
+                      select_statement) !=
+                  mylite_ast_select_statement_view_into_end(select_statement)) {
+                select_statement_into_clauses++;
+              }
+              if (mylite_ast_select_statement_view_lock_start(
+                      select_statement) !=
+                  mylite_ast_select_statement_view_lock_end(select_statement)) {
+                select_statement_lock_clauses++;
+              }
+              const MyliteAstExpression *where_expression =
+                  mylite_ast_select_statement_view_where_expression(
+                      select_statement);
+              if (where_expression != NULL) {
+                select_statement_where_expressions++;
+                count_expression_tree(
+                    where_expression,
+                    &select_statement_expression_tree_nodes,
+                    &select_statement_expression_tree_operators,
+                    &select_statement_expression_tree_leaf_values);
+              }
+              const MyliteAstExpression *having_expression =
+                  mylite_ast_select_statement_view_having_expression(
+                      select_statement);
+              if (having_expression != NULL) {
+                select_statement_having_expressions++;
+                count_expression_tree(
+                    having_expression,
+                    &select_statement_expression_tree_nodes,
+                    &select_statement_expression_tree_operators,
+                    &select_statement_expression_tree_leaf_values);
+              }
+              for (size_t j = 0;
+                   j < mylite_ast_select_statement_view_projection_count(
+                           select_statement);
+                   j++) {
+                const MyliteAstSelectProjection *projection =
+                    mylite_ast_select_statement_view_projection_at(
+                        select_statement, j);
+                if (mylite_ast_select_projection_view_expression(projection) !=
+                    NULL) {
+                  select_statement_projection_expressions++;
+                  count_expression_tree(
+                      mylite_ast_select_projection_view_expression(projection),
+                      &select_statement_expression_tree_nodes,
+                      &select_statement_expression_tree_operators,
+                      &select_statement_expression_tree_leaf_values);
+                }
+                if (mylite_ast_select_projection_view_alias_value(projection) !=
+                    NULL) {
+                  select_statement_projection_alias_values++;
+                }
+                switch (mylite_ast_select_projection_view_kind(projection)) {
+                  case MYLITE_SELECT_PROJECTION_WILDCARD:
+                    select_statement_projection_wildcards++;
+                    break;
+                  case MYLITE_SELECT_PROJECTION_TABLE_WILDCARD:
+                    select_statement_projection_table_wildcards++;
+                    break;
+                  case MYLITE_SELECT_PROJECTION_EXPRESSION:
+                  case MYLITE_SELECT_PROJECTION_UNKNOWN:
+                    break;
+                }
               }
             }
             columns += mylite_ast_create_table_column_count(ast, i);
@@ -1213,6 +1340,26 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
     printf(" avg_nodes=%.1f avg_ast_bytes=%.1f avg_statements=%.2f "
            "avg_targets=%.2f avg_target_schema_values=%.2f "
            "avg_target_name_values=%.2f avg_columns=%.2f avg_keys=%.2f "
+           "avg_select_statement_views=%.2f "
+           "avg_select_statement_query_blocks=%.2f "
+           "avg_select_statement_projections=%.2f "
+           "avg_select_statement_projection_expressions=%.2f "
+           "avg_select_statement_projection_alias_values=%.2f "
+           "avg_select_statement_projection_wildcards=%.2f "
+           "avg_select_statement_projection_table_wildcards=%.2f "
+           "avg_select_statement_where_expressions=%.2f "
+           "avg_select_statement_having_expressions=%.2f "
+           "avg_select_statement_from_clauses=%.2f "
+           "avg_select_statement_group_by_clauses=%.2f "
+           "avg_select_statement_order_by_clauses=%.2f "
+           "avg_select_statement_limit_clauses=%.2f "
+           "avg_select_statement_into_clauses=%.2f "
+           "avg_select_statement_lock_clauses=%.2f "
+           "avg_select_statement_with_clauses=%.2f "
+           "avg_select_statement_set_operations=%.2f "
+           "avg_select_statement_expression_tree_nodes=%.2f "
+           "avg_select_statement_expression_tree_operators=%.2f "
+           "avg_select_statement_expression_tree_leaf_values=%.2f "
            "avg_create_table_views=%.2f "
            "avg_create_table_view_schema_values=%.2f "
            "avg_create_table_view_name_values=%.2f "
@@ -1389,6 +1536,29 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)target_schema_values / (double)parsed,
            (double)target_name_values / (double)parsed,
            (double)columns / (double)parsed, (double)keys / (double)parsed,
+           (double)select_statement_views / (double)parsed,
+           (double)select_statement_query_blocks / (double)parsed,
+           (double)select_statement_projections / (double)parsed,
+           (double)select_statement_projection_expressions / (double)parsed,
+           (double)select_statement_projection_alias_values / (double)parsed,
+           (double)select_statement_projection_wildcards / (double)parsed,
+           (double)select_statement_projection_table_wildcards /
+               (double)parsed,
+           (double)select_statement_where_expressions / (double)parsed,
+           (double)select_statement_having_expressions / (double)parsed,
+           (double)select_statement_from_clauses / (double)parsed,
+           (double)select_statement_group_by_clauses / (double)parsed,
+           (double)select_statement_order_by_clauses / (double)parsed,
+           (double)select_statement_limit_clauses / (double)parsed,
+           (double)select_statement_into_clauses / (double)parsed,
+           (double)select_statement_lock_clauses / (double)parsed,
+           (double)select_statement_with_clauses / (double)parsed,
+           (double)select_statement_set_operations / (double)parsed,
+           (double)select_statement_expression_tree_nodes / (double)parsed,
+           (double)select_statement_expression_tree_operators /
+               (double)parsed,
+           (double)select_statement_expression_tree_leaf_values /
+               (double)parsed,
            (double)create_table_views / (double)parsed,
            (double)create_table_view_schema_values / (double)parsed,
            (double)create_table_view_name_values / (double)parsed,

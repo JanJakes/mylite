@@ -140,6 +140,8 @@ static void dump_statements(const MyliteAst *ast) {
         mylite_ast_deallocate_statement_view(ast, i);
     const MyliteAstRenameTable *rename_table =
         mylite_ast_rename_table_view(ast, i);
+    const MyliteAstSelectStatement *select_statement =
+        mylite_ast_select_statement_view(ast, i);
     const MyliteAstSetStatement *set_statement =
         mylite_ast_set_statement_view(ast, i);
     const MyliteAstTruncateTable *truncate_table =
@@ -709,6 +711,102 @@ static void dump_statements(const MyliteAst *ast) {
         print_escaped_bytes(name, name_length);
       }
       fputc('\n', stdout);
+    }
+    if (select_statement != NULL) {
+      printf("  select_statement span=%zu..%zu with=%d set_op=%d "
+             "query_blocks=%zu projections=%zu from=%zu..%zu "
+             "where=%zu..%zu group=%zu..%zu having=%zu..%zu "
+             "order=%zu..%zu limit=%zu..%zu into=%zu..%zu lock=%zu..%zu "
+             "node=%s\n",
+             mylite_ast_select_statement_view_start(select_statement),
+             mylite_ast_select_statement_view_end(select_statement),
+             mylite_ast_select_statement_view_has_with_clause(
+                 select_statement),
+             mylite_ast_select_statement_view_has_set_operation(
+                 select_statement),
+             mylite_ast_select_statement_view_query_block_count(
+                 select_statement),
+             mylite_ast_select_statement_view_projection_count(
+                 select_statement),
+             mylite_ast_select_statement_view_from_start(select_statement),
+             mylite_ast_select_statement_view_from_end(select_statement),
+             mylite_ast_select_statement_view_where_start(select_statement),
+             mylite_ast_select_statement_view_where_end(select_statement),
+             mylite_ast_select_statement_view_group_by_start(select_statement),
+             mylite_ast_select_statement_view_group_by_end(select_statement),
+             mylite_ast_select_statement_view_having_start(select_statement),
+             mylite_ast_select_statement_view_having_end(select_statement),
+             mylite_ast_select_statement_view_order_by_start(select_statement),
+             mylite_ast_select_statement_view_order_by_end(select_statement),
+             mylite_ast_select_statement_view_limit_start(select_statement),
+             mylite_ast_select_statement_view_limit_end(select_statement),
+             mylite_ast_select_statement_view_into_start(select_statement),
+             mylite_ast_select_statement_view_into_end(select_statement),
+             mylite_ast_select_statement_view_lock_start(select_statement),
+             mylite_ast_select_statement_view_lock_end(select_statement),
+             node_symbol_or_none(
+                 mylite_ast_select_statement_view_node(select_statement)));
+      const MyliteAstExpression *where_expression =
+          mylite_ast_select_statement_view_where_expression(select_statement);
+      if (where_expression != NULL) {
+        fputs("    select_statement.where_expression\n", stdout);
+        dump_expression_tree(where_expression, 3);
+      }
+      const MyliteAstExpression *having_expression =
+          mylite_ast_select_statement_view_having_expression(select_statement);
+      if (having_expression != NULL) {
+        fputs("    select_statement.having_expression\n", stdout);
+        dump_expression_tree(having_expression, 3);
+      }
+      for (size_t j = 0;
+           j < mylite_ast_select_statement_view_projection_count(
+                   select_statement);
+           j++) {
+        const MyliteAstSelectProjection *projection =
+            mylite_ast_select_statement_view_projection_at(select_statement, j);
+        printf("    projection[%zu] kind=%s span=%zu..%zu expr=%zu..%zu "
+               "alias=%zu..%zu qualifier=%zu..%zu alias_len=%zu value=",
+               j,
+               mylite_select_projection_kind_name(
+                   mylite_ast_select_projection_view_kind(projection)),
+               mylite_ast_select_projection_view_start(projection),
+               mylite_ast_select_projection_view_end(projection),
+               mylite_ast_select_projection_view_expression_start(projection),
+               mylite_ast_select_projection_view_expression_end(projection),
+               mylite_ast_select_projection_view_alias_start(projection),
+               mylite_ast_select_projection_view_alias_end(projection),
+               mylite_ast_select_projection_view_qualifier_start(projection),
+               mylite_ast_select_projection_view_qualifier_end(projection),
+               mylite_ast_select_projection_view_alias_value_length(
+                   projection));
+        const char *alias =
+            mylite_ast_select_projection_view_alias_value(projection);
+        if (alias == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(
+              alias,
+              mylite_ast_select_projection_view_alias_value_length(projection));
+        }
+        size_t qualifier_length =
+            mylite_ast_select_projection_view_qualifier_value_length(
+                projection);
+        printf(" qualifier_len=%zu value=", qualifier_length);
+        const char *qualifier =
+            mylite_ast_select_projection_view_qualifier_value(projection);
+        if (qualifier == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(qualifier, qualifier_length);
+        }
+        fputc('\n', stdout);
+        const MyliteAstExpression *projection_expression =
+            mylite_ast_select_projection_view_expression(projection);
+        if (projection_expression != NULL) {
+          printf("      projection[%zu].expression\n", j);
+          dump_expression_tree(projection_expression, 4);
+        }
+      }
     }
     if (set_statement != NULL) {
       printf("  set_statement span=%zu..%zu form=%s assignments=%zu\n",

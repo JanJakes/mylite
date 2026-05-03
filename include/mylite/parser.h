@@ -46,6 +46,8 @@ typedef struct MyliteAstPreparedStatementVariable
     MyliteAstPreparedStatementVariable;
 typedef struct MyliteAstPrepareStatement MyliteAstPrepareStatement;
 typedef struct MyliteAstRenameTable MyliteAstRenameTable;
+typedef struct MyliteAstSelectProjection MyliteAstSelectProjection;
+typedef struct MyliteAstSelectStatement MyliteAstSelectStatement;
 typedef struct MyliteAstSetAssignment MyliteAstSetAssignment;
 typedef struct MyliteAstSetStatement MyliteAstSetStatement;
 typedef struct MyliteAstTruncateTable MyliteAstTruncateTable;
@@ -165,6 +167,13 @@ typedef enum MyliteStatementTargetRole {
   MYLITE_STATEMENT_TARGET_ROLE_SOURCE,
   MYLITE_STATEMENT_TARGET_ROLE_DESTINATION
 } MyliteStatementTargetRole;
+
+typedef enum MyliteSelectProjectionKind {
+  MYLITE_SELECT_PROJECTION_UNKNOWN = 0,
+  MYLITE_SELECT_PROJECTION_EXPRESSION,
+  MYLITE_SELECT_PROJECTION_WILDCARD,
+  MYLITE_SELECT_PROJECTION_TABLE_WILDCARD
+} MyliteSelectProjectionKind;
 
 typedef enum MyliteCreateTableColumnTypeFamily {
   MYLITE_CREATE_TABLE_COLUMN_TYPE_UNKNOWN = 0,
@@ -568,6 +577,8 @@ const char *mylite_parse_status_name(MyliteParseStatus status);
 const char *mylite_statement_kind_name(MyliteStatementKind kind);
 const char *mylite_statement_target_kind_name(MyliteStatementTargetKind kind);
 const char *mylite_statement_target_role_name(MyliteStatementTargetRole role);
+const char *mylite_select_projection_kind_name(
+    MyliteSelectProjectionKind kind);
 const char *mylite_expression_kind_name(MyliteExpressionKind kind);
 const char *mylite_expression_literal_kind_name(
     MyliteExpressionLiteralKind kind);
@@ -717,6 +728,8 @@ const MyliteAstDeallocateStatement *mylite_ast_deallocate_statement_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstRenameTable *mylite_ast_rename_table_view(
     const MyliteAst *ast, size_t statement_index);
+const MyliteAstSelectStatement *mylite_ast_select_statement_view(
+    const MyliteAst *ast, size_t statement_index);
 const MyliteAstSetStatement *mylite_ast_set_statement_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstTruncateTable *mylite_ast_truncate_table_view(
@@ -725,6 +738,91 @@ const MyliteAstTransactionStatement *mylite_ast_transaction_statement_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstUseDatabase *mylite_ast_use_database_view(
     const MyliteAst *ast, size_t statement_index);
+const MyliteAstNode *mylite_ast_select_statement_view_node(
+    const MyliteAstSelectStatement *select_statement);
+size_t mylite_ast_select_statement_view_start(
+    const MyliteAstSelectStatement *select_statement);
+size_t mylite_ast_select_statement_view_end(
+    const MyliteAstSelectStatement *select_statement);
+int mylite_ast_select_statement_view_has_with_clause(
+    const MyliteAstSelectStatement *select_statement);
+int mylite_ast_select_statement_view_has_set_operation(
+    const MyliteAstSelectStatement *select_statement);
+size_t mylite_ast_select_statement_view_query_block_count(
+    const MyliteAstSelectStatement *select_statement);
+size_t mylite_ast_select_statement_view_projection_count(
+    const MyliteAstSelectStatement *select_statement);
+const MyliteAstSelectProjection *
+mylite_ast_select_statement_view_projection_at(
+    const MyliteAstSelectStatement *select_statement, size_t projection_index);
+size_t mylite_ast_select_statement_view_from_start(
+    const MyliteAstSelectStatement *select_statement);
+size_t mylite_ast_select_statement_view_from_end(
+    const MyliteAstSelectStatement *select_statement);
+size_t mylite_ast_select_statement_view_where_start(
+    const MyliteAstSelectStatement *select_statement);
+size_t mylite_ast_select_statement_view_where_end(
+    const MyliteAstSelectStatement *select_statement);
+const MyliteAstExpression *mylite_ast_select_statement_view_where_expression(
+    const MyliteAstSelectStatement *select_statement);
+size_t mylite_ast_select_statement_view_group_by_start(
+    const MyliteAstSelectStatement *select_statement);
+size_t mylite_ast_select_statement_view_group_by_end(
+    const MyliteAstSelectStatement *select_statement);
+size_t mylite_ast_select_statement_view_having_start(
+    const MyliteAstSelectStatement *select_statement);
+size_t mylite_ast_select_statement_view_having_end(
+    const MyliteAstSelectStatement *select_statement);
+const MyliteAstExpression *mylite_ast_select_statement_view_having_expression(
+    const MyliteAstSelectStatement *select_statement);
+size_t mylite_ast_select_statement_view_order_by_start(
+    const MyliteAstSelectStatement *select_statement);
+size_t mylite_ast_select_statement_view_order_by_end(
+    const MyliteAstSelectStatement *select_statement);
+size_t mylite_ast_select_statement_view_limit_start(
+    const MyliteAstSelectStatement *select_statement);
+size_t mylite_ast_select_statement_view_limit_end(
+    const MyliteAstSelectStatement *select_statement);
+size_t mylite_ast_select_statement_view_into_start(
+    const MyliteAstSelectStatement *select_statement);
+size_t mylite_ast_select_statement_view_into_end(
+    const MyliteAstSelectStatement *select_statement);
+size_t mylite_ast_select_statement_view_lock_start(
+    const MyliteAstSelectStatement *select_statement);
+size_t mylite_ast_select_statement_view_lock_end(
+    const MyliteAstSelectStatement *select_statement);
+const MyliteAstNode *mylite_ast_select_projection_view_node(
+    const MyliteAstSelectProjection *projection);
+MyliteSelectProjectionKind mylite_ast_select_projection_view_kind(
+    const MyliteAstSelectProjection *projection);
+size_t mylite_ast_select_projection_view_start(
+    const MyliteAstSelectProjection *projection);
+size_t mylite_ast_select_projection_view_end(
+    const MyliteAstSelectProjection *projection);
+const MyliteAstNode *mylite_ast_select_projection_view_expression_node(
+    const MyliteAstSelectProjection *projection);
+const MyliteAstExpression *mylite_ast_select_projection_view_expression(
+    const MyliteAstSelectProjection *projection);
+size_t mylite_ast_select_projection_view_expression_start(
+    const MyliteAstSelectProjection *projection);
+size_t mylite_ast_select_projection_view_expression_end(
+    const MyliteAstSelectProjection *projection);
+size_t mylite_ast_select_projection_view_alias_start(
+    const MyliteAstSelectProjection *projection);
+size_t mylite_ast_select_projection_view_alias_end(
+    const MyliteAstSelectProjection *projection);
+const char *mylite_ast_select_projection_view_alias_value(
+    const MyliteAstSelectProjection *projection);
+size_t mylite_ast_select_projection_view_alias_value_length(
+    const MyliteAstSelectProjection *projection);
+size_t mylite_ast_select_projection_view_qualifier_start(
+    const MyliteAstSelectProjection *projection);
+size_t mylite_ast_select_projection_view_qualifier_end(
+    const MyliteAstSelectProjection *projection);
+const char *mylite_ast_select_projection_view_qualifier_value(
+    const MyliteAstSelectProjection *projection);
+size_t mylite_ast_select_projection_view_qualifier_value_length(
+    const MyliteAstSelectProjection *projection);
 const MyliteAstNode *mylite_ast_alter_table_view_node(
     const MyliteAstAlterTable *alter_table);
 size_t mylite_ast_alter_table_view_start(

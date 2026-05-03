@@ -197,6 +197,7 @@ static int expect_drop_table_view(void);
 static int expect_drop_view_view(void);
 static int expect_prepared_statement_views(void);
 static int expect_rename_table_view(void);
+static int expect_select_statement_view(void);
 static int expect_set_expression_tree_view(void);
 static int expect_set_statement_view(void);
 static int expect_truncate_table_view(void);
@@ -800,6 +801,7 @@ int main(void) {
   failures += expect_drop_view_view();
   failures += expect_prepared_statement_views();
   failures += expect_rename_table_view();
+  failures += expect_select_statement_view();
   failures += expect_set_statement_view();
   failures += expect_set_expression_tree_view();
   failures += expect_truncate_table_view();
@@ -3989,6 +3991,159 @@ static int expect_set_statement_view(void) {
   }
 
   mylite_ast_free(ast);
+  return failed;
+}
+
+static int expect_select_statement_view(void) {
+  int failed = 0;
+  {
+    const char *sql =
+        "SELECT a + 1 AS x, t.* FROM db1.t AS t WHERE a > 0 "
+        "GROUP BY t.b HAVING COUNT(*) > 1 ORDER BY x DESC LIMIT 10";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "SELECT statement view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+
+    const MyliteAstSelectStatement *view =
+        mylite_ast_select_statement_view(ast, 0);
+    const MyliteAstSelectProjection *projection0 =
+        view == NULL ? NULL
+                     : mylite_ast_select_statement_view_projection_at(view, 0);
+    const MyliteAstSelectProjection *projection1 =
+        view == NULL ? NULL
+                     : mylite_ast_select_statement_view_projection_at(view, 1);
+    const MyliteAstExpression *projection0_expression =
+        mylite_ast_select_projection_view_expression(projection0);
+    const MyliteAstExpression *where_expression =
+        mylite_ast_select_statement_view_where_expression(view);
+    const MyliteAstExpression *having_expression =
+        mylite_ast_select_statement_view_having_expression(view);
+    if (view == NULL ||
+        mylite_ast_select_statement_view_query_block_count(view) != 1 ||
+        mylite_ast_select_statement_view_projection_count(view) != 2 ||
+        !span_matches(sql, mylite_ast_select_statement_view_from_start(view),
+                      mylite_ast_select_statement_view_from_end(view),
+                      "db1.t AS t") ||
+        !span_matches(sql, mylite_ast_select_statement_view_where_start(view),
+                      mylite_ast_select_statement_view_where_end(view),
+                      "WHERE a > 0") ||
+        !span_matches(sql, mylite_ast_select_statement_view_group_by_start(view),
+                      mylite_ast_select_statement_view_group_by_end(view),
+                      "GROUP BY t.b") ||
+        !span_matches(sql, mylite_ast_select_statement_view_having_start(view),
+                      mylite_ast_select_statement_view_having_end(view),
+                      "HAVING COUNT(*) > 1") ||
+        !span_matches(sql, mylite_ast_select_statement_view_order_by_start(view),
+                      mylite_ast_select_statement_view_order_by_end(view),
+                      "ORDER BY x DESC") ||
+        !span_matches(sql, mylite_ast_select_statement_view_limit_start(view),
+                      mylite_ast_select_statement_view_limit_end(view),
+                      "LIMIT 10") ||
+        projection0 == NULL ||
+        mylite_ast_select_projection_view_kind(projection0) !=
+            MYLITE_SELECT_PROJECTION_EXPRESSION ||
+        !value_matches_when_expected(
+            mylite_ast_select_projection_view_alias_value(projection0),
+            mylite_ast_select_projection_view_alias_value_length(projection0),
+            "x") ||
+        projection0_expression == NULL ||
+        mylite_ast_expression_view_operator_kind(projection0_expression) !=
+            MYLITE_EXPRESSION_OPERATOR_ADD ||
+        projection1 == NULL ||
+        mylite_ast_select_projection_view_kind(projection1) !=
+            MYLITE_SELECT_PROJECTION_TABLE_WILDCARD ||
+        !value_matches_when_expected(
+            mylite_ast_select_projection_view_qualifier_value(projection1),
+            mylite_ast_select_projection_view_qualifier_value_length(
+                projection1),
+            "t") ||
+        where_expression == NULL ||
+        mylite_ast_expression_view_operator_kind(where_expression) !=
+            MYLITE_EXPRESSION_OPERATOR_GT ||
+        having_expression == NULL ||
+        mylite_ast_expression_view_operator_kind(having_expression) !=
+            MYLITE_EXPRESSION_OPERATOR_GT) {
+      fprintf(stderr, "SELECT statement view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql =
+        "(SELECT 1 AS a) UNION SELECT 2 AS a ORDER BY a LIMIT 1";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "UNION SELECT statement view parse failed: status=%s "
+              "offset=%zu token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+
+    const MyliteAstSelectStatement *view =
+        mylite_ast_select_statement_view(ast, 0);
+    if (view == NULL ||
+        !mylite_ast_select_statement_view_has_set_operation(view) ||
+        mylite_ast_select_statement_view_query_block_count(view) != 2 ||
+        mylite_ast_select_statement_view_projection_count(view) != 2 ||
+        !span_matches(sql, mylite_ast_select_statement_view_order_by_start(view),
+                      mylite_ast_select_statement_view_order_by_end(view),
+                      "ORDER BY a") ||
+        !span_matches(sql, mylite_ast_select_statement_view_limit_start(view),
+                      mylite_ast_select_statement_view_limit_end(view),
+                      "LIMIT 1")) {
+      fprintf(stderr, "UNION SELECT statement view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql =
+        "WITH cte AS (SELECT 1 AS a) SELECT a FROM cte WHERE a = 1";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "WITH SELECT statement view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+
+    const MyliteAstSelectStatement *view =
+        mylite_ast_select_statement_view(ast, 0);
+    const MyliteAstExpression *where_expression =
+        mylite_ast_select_statement_view_where_expression(view);
+    if (view == NULL ||
+        !mylite_ast_select_statement_view_has_with_clause(view) ||
+        mylite_ast_select_statement_view_query_block_count(view) != 2 ||
+        mylite_ast_select_statement_view_projection_count(view) != 2 ||
+        !span_matches(sql, mylite_ast_select_statement_view_from_start(view),
+                      mylite_ast_select_statement_view_from_end(view), "cte") ||
+        where_expression == NULL ||
+        mylite_ast_expression_view_operator_kind(where_expression) !=
+            MYLITE_EXPRESSION_OPERATOR_EQ) {
+      fprintf(stderr, "WITH SELECT statement view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
   return failed;
 }
 

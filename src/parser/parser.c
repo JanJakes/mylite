@@ -454,6 +454,58 @@ struct MyliteAstDropView {
   int has_if_exists;
 };
 
+struct MyliteAstSelectProjection {
+  const MyliteAstNode *node;
+  const MyliteAstNode *expression_node;
+  MyliteAstExpression expression;
+  MyliteSelectProjectionKind kind;
+  size_t start;
+  size_t end;
+  size_t expression_start;
+  size_t expression_end;
+  size_t alias_start;
+  size_t alias_end;
+  const char *alias_value;
+  size_t alias_value_length;
+  size_t qualifier_start;
+  size_t qualifier_end;
+  const char *qualifier_value;
+  size_t qualifier_value_length;
+};
+
+struct MyliteAstSelectStatement {
+  const MyliteAstNode *node;
+  const MyliteAstNode *with_node;
+  const MyliteAstNode *where_expression_node;
+  const MyliteAstNode *having_expression_node;
+  MyliteAstExpression where_expression;
+  MyliteAstExpression having_expression;
+  MyliteAstSelectProjection *projections;
+  size_t projection_count;
+  size_t query_block_count;
+  size_t start;
+  size_t end;
+  size_t with_start;
+  size_t with_end;
+  size_t from_start;
+  size_t from_end;
+  size_t where_start;
+  size_t where_end;
+  size_t group_by_start;
+  size_t group_by_end;
+  size_t having_start;
+  size_t having_end;
+  size_t order_by_start;
+  size_t order_by_end;
+  size_t limit_start;
+  size_t limit_end;
+  size_t into_start;
+  size_t into_end;
+  size_t lock_start;
+  size_t lock_end;
+  int has_set_operation;
+};
+
 struct MyliteAstSetAssignment {
   const MyliteAstNode *node;
   const MyliteAstNode *value_node;
@@ -602,6 +654,7 @@ typedef struct MyliteAstStatement {
   MyliteAstExecuteStatement *execute_statement;
   MyliteAstDeallocateStatement *deallocate_statement;
   MyliteAstRenameTable *rename_table;
+  MyliteAstSelectStatement *select_statement;
   MyliteAstSetStatement *set_statement;
   MyliteAstTruncateTable *truncate_table;
   MyliteAstTransactionStatement *transaction_statement;
@@ -673,6 +726,36 @@ static int mylite_ast_set_statement_target(MyliteAstStatement *statement,
 static int mylite_ast_set_statement_details(MyliteAst *ast,
                                             MyliteAstStatement *statement,
                                             const MyliteAstNode *payload);
+static int mylite_ast_set_select_statement_view(MyliteAst *ast,
+                                                MyliteAstStatement *statement,
+                                                const MyliteAstNode *payload);
+static void mylite_ast_set_select_clause_spans(
+    MyliteAstSelectStatement *select_statement, const MyliteAstNode *payload);
+static int mylite_ast_set_select_clause_expression_views(
+    MyliteAst *ast, MyliteAstSelectStatement *select_statement);
+static int mylite_ast_set_select_projections(
+    MyliteAst *ast, MyliteAstSelectStatement *select_statement,
+    const MyliteAstNode *payload);
+static size_t mylite_ast_count_select_query_blocks(const MyliteAstNode *node);
+static size_t mylite_ast_count_select_projections(const MyliteAstNode *node);
+static void mylite_ast_fill_select_projections(
+    MyliteAst *ast, MyliteAstSelectProjection *projections,
+    const MyliteAstNode *node, size_t *index, int *ok);
+static int mylite_ast_fill_select_projection(
+    MyliteAst *ast, MyliteAstSelectProjection *projection,
+    const MyliteAstNode *node);
+static MyliteSelectProjectionKind mylite_ast_classify_select_projection(
+    const MyliteAstNode *node);
+static int mylite_ast_set_select_projection_alias(
+    MyliteAst *ast, MyliteAstSelectProjection *projection,
+    const MyliteAstNode *node);
+static int mylite_ast_set_select_projection_qualifier(
+    MyliteAst *ast, MyliteAstSelectProjection *projection,
+    const MyliteAstNode *node);
+static const MyliteAstNode *mylite_ast_find_first_spanned_symbol(
+    const MyliteAstNode *node, const char *symbol_name);
+static const MyliteAstNode *mylite_ast_find_first_select_into_node(
+    const MyliteAstNode *node);
 static int mylite_ast_set_create_database_view(MyliteAst *ast,
                                                MyliteAstStatement *statement,
                                                const MyliteAstNode *payload);
@@ -1410,6 +1493,21 @@ const char *mylite_statement_target_role_name(MyliteStatementTargetRole role) {
       return "source";
     case MYLITE_STATEMENT_TARGET_ROLE_DESTINATION:
       return "destination";
+  }
+  return "unknown";
+}
+
+const char *mylite_select_projection_kind_name(
+    MyliteSelectProjectionKind kind) {
+  switch (kind) {
+    case MYLITE_SELECT_PROJECTION_UNKNOWN:
+      return "unknown";
+    case MYLITE_SELECT_PROJECTION_EXPRESSION:
+      return "expression";
+    case MYLITE_SELECT_PROJECTION_WILDCARD:
+      return "wildcard";
+    case MYLITE_SELECT_PROJECTION_TABLE_WILDCARD:
+      return "table_wildcard";
   }
   return "unknown";
 }
@@ -2617,6 +2715,13 @@ const MyliteAstRenameTable *mylite_ast_rename_table_view(
   return statement == NULL ? NULL : statement->rename_table;
 }
 
+const MyliteAstSelectStatement *mylite_ast_select_statement_view(
+    const MyliteAst *ast, size_t statement_index) {
+  const MyliteAstStatement *statement =
+      mylite_ast_statement_at(ast, statement_index);
+  return statement == NULL ? NULL : statement->select_statement;
+}
+
 const MyliteAstSetStatement *mylite_ast_set_statement_view(
     const MyliteAst *ast, size_t statement_index) {
   const MyliteAstStatement *statement =
@@ -2643,6 +2748,230 @@ const MyliteAstUseDatabase *mylite_ast_use_database_view(
   const MyliteAstStatement *statement =
       mylite_ast_statement_at(ast, statement_index);
   return statement == NULL ? NULL : statement->use_database;
+}
+
+const MyliteAstNode *mylite_ast_select_statement_view_node(
+    const MyliteAstSelectStatement *select_statement) {
+  return select_statement == NULL ? NULL : select_statement->node;
+}
+
+size_t mylite_ast_select_statement_view_start(
+    const MyliteAstSelectStatement *select_statement) {
+  return select_statement == NULL ? 0 : select_statement->start;
+}
+
+size_t mylite_ast_select_statement_view_end(
+    const MyliteAstSelectStatement *select_statement) {
+  return select_statement == NULL ? 0 : select_statement->end;
+}
+
+int mylite_ast_select_statement_view_has_with_clause(
+    const MyliteAstSelectStatement *select_statement) {
+  return select_statement != NULL && select_statement->with_node != NULL;
+}
+
+int mylite_ast_select_statement_view_has_set_operation(
+    const MyliteAstSelectStatement *select_statement) {
+  return select_statement == NULL ? 0 : select_statement->has_set_operation;
+}
+
+size_t mylite_ast_select_statement_view_query_block_count(
+    const MyliteAstSelectStatement *select_statement) {
+  return select_statement == NULL ? 0 : select_statement->query_block_count;
+}
+
+size_t mylite_ast_select_statement_view_projection_count(
+    const MyliteAstSelectStatement *select_statement) {
+  return select_statement == NULL ? 0 : select_statement->projection_count;
+}
+
+const MyliteAstSelectProjection *
+mylite_ast_select_statement_view_projection_at(
+    const MyliteAstSelectStatement *select_statement, size_t projection_index) {
+  if (select_statement == NULL ||
+      projection_index >= select_statement->projection_count) {
+    return NULL;
+  }
+  return &select_statement->projections[projection_index];
+}
+
+size_t mylite_ast_select_statement_view_from_start(
+    const MyliteAstSelectStatement *select_statement) {
+  return select_statement == NULL ? 0 : select_statement->from_start;
+}
+
+size_t mylite_ast_select_statement_view_from_end(
+    const MyliteAstSelectStatement *select_statement) {
+  return select_statement == NULL ? 0 : select_statement->from_end;
+}
+
+size_t mylite_ast_select_statement_view_where_start(
+    const MyliteAstSelectStatement *select_statement) {
+  return select_statement == NULL ? 0 : select_statement->where_start;
+}
+
+size_t mylite_ast_select_statement_view_where_end(
+    const MyliteAstSelectStatement *select_statement) {
+  return select_statement == NULL ? 0 : select_statement->where_end;
+}
+
+const MyliteAstExpression *mylite_ast_select_statement_view_where_expression(
+    const MyliteAstSelectStatement *select_statement) {
+  return select_statement == NULL ||
+                 select_statement->where_expression_node == NULL
+             ? NULL
+             : &select_statement->where_expression;
+}
+
+size_t mylite_ast_select_statement_view_group_by_start(
+    const MyliteAstSelectStatement *select_statement) {
+  return select_statement == NULL ? 0 : select_statement->group_by_start;
+}
+
+size_t mylite_ast_select_statement_view_group_by_end(
+    const MyliteAstSelectStatement *select_statement) {
+  return select_statement == NULL ? 0 : select_statement->group_by_end;
+}
+
+size_t mylite_ast_select_statement_view_having_start(
+    const MyliteAstSelectStatement *select_statement) {
+  return select_statement == NULL ? 0 : select_statement->having_start;
+}
+
+size_t mylite_ast_select_statement_view_having_end(
+    const MyliteAstSelectStatement *select_statement) {
+  return select_statement == NULL ? 0 : select_statement->having_end;
+}
+
+const MyliteAstExpression *mylite_ast_select_statement_view_having_expression(
+    const MyliteAstSelectStatement *select_statement) {
+  return select_statement == NULL ||
+                 select_statement->having_expression_node == NULL
+             ? NULL
+             : &select_statement->having_expression;
+}
+
+size_t mylite_ast_select_statement_view_order_by_start(
+    const MyliteAstSelectStatement *select_statement) {
+  return select_statement == NULL ? 0 : select_statement->order_by_start;
+}
+
+size_t mylite_ast_select_statement_view_order_by_end(
+    const MyliteAstSelectStatement *select_statement) {
+  return select_statement == NULL ? 0 : select_statement->order_by_end;
+}
+
+size_t mylite_ast_select_statement_view_limit_start(
+    const MyliteAstSelectStatement *select_statement) {
+  return select_statement == NULL ? 0 : select_statement->limit_start;
+}
+
+size_t mylite_ast_select_statement_view_limit_end(
+    const MyliteAstSelectStatement *select_statement) {
+  return select_statement == NULL ? 0 : select_statement->limit_end;
+}
+
+size_t mylite_ast_select_statement_view_into_start(
+    const MyliteAstSelectStatement *select_statement) {
+  return select_statement == NULL ? 0 : select_statement->into_start;
+}
+
+size_t mylite_ast_select_statement_view_into_end(
+    const MyliteAstSelectStatement *select_statement) {
+  return select_statement == NULL ? 0 : select_statement->into_end;
+}
+
+size_t mylite_ast_select_statement_view_lock_start(
+    const MyliteAstSelectStatement *select_statement) {
+  return select_statement == NULL ? 0 : select_statement->lock_start;
+}
+
+size_t mylite_ast_select_statement_view_lock_end(
+    const MyliteAstSelectStatement *select_statement) {
+  return select_statement == NULL ? 0 : select_statement->lock_end;
+}
+
+const MyliteAstNode *mylite_ast_select_projection_view_node(
+    const MyliteAstSelectProjection *projection) {
+  return projection == NULL ? NULL : projection->node;
+}
+
+MyliteSelectProjectionKind mylite_ast_select_projection_view_kind(
+    const MyliteAstSelectProjection *projection) {
+  return projection == NULL ? MYLITE_SELECT_PROJECTION_UNKNOWN
+                            : projection->kind;
+}
+
+size_t mylite_ast_select_projection_view_start(
+    const MyliteAstSelectProjection *projection) {
+  return projection == NULL ? 0 : projection->start;
+}
+
+size_t mylite_ast_select_projection_view_end(
+    const MyliteAstSelectProjection *projection) {
+  return projection == NULL ? 0 : projection->end;
+}
+
+const MyliteAstNode *mylite_ast_select_projection_view_expression_node(
+    const MyliteAstSelectProjection *projection) {
+  return projection == NULL ? NULL : projection->expression_node;
+}
+
+const MyliteAstExpression *mylite_ast_select_projection_view_expression(
+    const MyliteAstSelectProjection *projection) {
+  return projection == NULL || projection->expression_node == NULL
+             ? NULL
+             : &projection->expression;
+}
+
+size_t mylite_ast_select_projection_view_expression_start(
+    const MyliteAstSelectProjection *projection) {
+  return projection == NULL ? 0 : projection->expression_start;
+}
+
+size_t mylite_ast_select_projection_view_expression_end(
+    const MyliteAstSelectProjection *projection) {
+  return projection == NULL ? 0 : projection->expression_end;
+}
+
+size_t mylite_ast_select_projection_view_alias_start(
+    const MyliteAstSelectProjection *projection) {
+  return projection == NULL ? 0 : projection->alias_start;
+}
+
+size_t mylite_ast_select_projection_view_alias_end(
+    const MyliteAstSelectProjection *projection) {
+  return projection == NULL ? 0 : projection->alias_end;
+}
+
+const char *mylite_ast_select_projection_view_alias_value(
+    const MyliteAstSelectProjection *projection) {
+  return projection == NULL ? NULL : projection->alias_value;
+}
+
+size_t mylite_ast_select_projection_view_alias_value_length(
+    const MyliteAstSelectProjection *projection) {
+  return projection == NULL ? 0 : projection->alias_value_length;
+}
+
+size_t mylite_ast_select_projection_view_qualifier_start(
+    const MyliteAstSelectProjection *projection) {
+  return projection == NULL ? 0 : projection->qualifier_start;
+}
+
+size_t mylite_ast_select_projection_view_qualifier_end(
+    const MyliteAstSelectProjection *projection) {
+  return projection == NULL ? 0 : projection->qualifier_end;
+}
+
+const char *mylite_ast_select_projection_view_qualifier_value(
+    const MyliteAstSelectProjection *projection) {
+  return projection == NULL ? NULL : projection->qualifier_value;
+}
+
+size_t mylite_ast_select_projection_view_qualifier_value_length(
+    const MyliteAstSelectProjection *projection) {
+  return projection == NULL ? 0 : projection->qualifier_value_length;
 }
 
 const MyliteAstNode *mylite_ast_alter_table_view_node(
@@ -7525,6 +7854,9 @@ static int mylite_ast_set_statement_details(MyliteAst *ast,
   if (statement == NULL || statement->symbol_name == NULL) {
     return 1;
   }
+  if (statement->kind == MYLITE_STATEMENT_SELECT) {
+    return mylite_ast_set_select_statement_view(ast, statement, payload);
+  }
   if (strcmp(statement->symbol_name, "nt_create_table_stmt") == 0) {
     return mylite_ast_collect_create_table_columns(ast, statement, payload) &&
            mylite_ast_collect_create_table_keys(ast, statement, payload) &&
@@ -7583,6 +7915,325 @@ static int mylite_ast_set_statement_details(MyliteAst *ast,
     return mylite_ast_set_use_database_view(ast, statement, payload);
   }
   return 1;
+}
+
+static int mylite_ast_set_select_statement_view(MyliteAst *ast,
+                                                MyliteAstStatement *statement,
+                                                const MyliteAstNode *payload) {
+  if (ast == NULL || statement == NULL || payload == NULL) {
+    return 1;
+  }
+  MyliteAstSelectStatement *select_statement =
+      mylite_ast_alloc(ast, sizeof(*select_statement));
+  if (select_statement == NULL) {
+    return 0;
+  }
+  select_statement->node = payload;
+  select_statement->start = mylite_ast_node_start(payload);
+  select_statement->end = mylite_ast_node_end(payload);
+  select_statement->with_node =
+      mylite_ast_find_first_spanned_symbol(payload, "nt_with_clause");
+  if (select_statement->with_node != NULL) {
+    select_statement->with_start =
+        mylite_ast_node_start(select_statement->with_node);
+    select_statement->with_end =
+        mylite_ast_node_end(select_statement->with_node);
+  }
+  select_statement->has_set_operation =
+      mylite_ast_find_first_spanned_symbol(payload, "nt_set_opr") != NULL;
+  select_statement->query_block_count =
+      mylite_ast_count_select_query_blocks(payload);
+  mylite_ast_set_select_clause_spans(select_statement, payload);
+  if (!mylite_ast_set_select_projections(ast, select_statement, payload) ||
+      !mylite_ast_set_select_clause_expression_views(ast, select_statement)) {
+    return 0;
+  }
+  statement->select_statement = select_statement;
+  return 1;
+}
+
+static void mylite_ast_set_select_clause_spans(
+    MyliteAstSelectStatement *select_statement, const MyliteAstNode *payload) {
+  if (select_statement == NULL || payload == NULL) {
+    return;
+  }
+
+  const MyliteAstNode *clause =
+      mylite_ast_find_first_spanned_symbol(payload, "nt_table_refs_clause");
+  if (clause != NULL) {
+    select_statement->from_start = mylite_ast_node_start(clause);
+    select_statement->from_end = mylite_ast_node_end(clause);
+  }
+
+  clause = mylite_ast_find_first_spanned_symbol(payload, "nt_where_clause");
+  if (clause != NULL) {
+    select_statement->where_start = mylite_ast_node_start(clause);
+    select_statement->where_end = mylite_ast_node_end(clause);
+    select_statement->where_expression_node =
+        mylite_ast_find_first_spanned_symbol(clause, "nt_expression");
+  }
+
+  clause = mylite_ast_find_first_spanned_symbol(payload, "nt_group_by_clause");
+  if (clause != NULL) {
+    select_statement->group_by_start = mylite_ast_node_start(clause);
+    select_statement->group_by_end = mylite_ast_node_end(clause);
+  }
+
+  clause = mylite_ast_find_first_spanned_symbol(payload, "nt_having_clause");
+  if (clause != NULL) {
+    select_statement->having_start = mylite_ast_node_start(clause);
+    select_statement->having_end = mylite_ast_node_end(clause);
+    select_statement->having_expression_node =
+        mylite_ast_find_first_spanned_symbol(clause, "nt_expression");
+  }
+
+  clause = mylite_ast_find_first_spanned_symbol(payload, "nt_order_by");
+  if (clause != NULL) {
+    select_statement->order_by_start = mylite_ast_node_start(clause);
+    select_statement->order_by_end = mylite_ast_node_end(clause);
+  }
+
+  clause =
+      mylite_ast_find_first_spanned_symbol(payload, "nt_select_stmt_limit");
+  if (clause != NULL) {
+    select_statement->limit_start = mylite_ast_node_start(clause);
+    select_statement->limit_end = mylite_ast_node_end(clause);
+  }
+
+  clause = mylite_ast_find_first_select_into_node(payload);
+  if (clause != NULL) {
+    select_statement->into_start = mylite_ast_node_start(clause);
+    select_statement->into_end = mylite_ast_node_end(clause);
+  }
+
+  clause = mylite_ast_find_first_spanned_symbol(payload, "nt_select_lock_opt");
+  if (clause != NULL) {
+    select_statement->lock_start = mylite_ast_node_start(clause);
+    select_statement->lock_end = mylite_ast_node_end(clause);
+  }
+}
+
+static int mylite_ast_set_select_clause_expression_views(
+    MyliteAst *ast, MyliteAstSelectStatement *select_statement) {
+  if (ast == NULL || select_statement == NULL) {
+    return 1;
+  }
+  if (select_statement->where_expression_node != NULL &&
+      !mylite_ast_set_expression_summary(
+          ast, &select_statement->where_expression,
+          select_statement->where_expression_node)) {
+    return 0;
+  }
+  if (select_statement->having_expression_node != NULL &&
+      !mylite_ast_set_expression_summary(
+          ast, &select_statement->having_expression,
+          select_statement->having_expression_node)) {
+    return 0;
+  }
+  return 1;
+}
+
+static int mylite_ast_set_select_projections(
+    MyliteAst *ast, MyliteAstSelectStatement *select_statement,
+    const MyliteAstNode *payload) {
+  if (ast == NULL || select_statement == NULL || payload == NULL) {
+    return 1;
+  }
+  select_statement->projection_count =
+      mylite_ast_count_select_projections(payload);
+  if (select_statement->projection_count == 0) {
+    return 1;
+  }
+  select_statement->projections =
+      mylite_ast_alloc(ast, select_statement->projection_count *
+                                sizeof(*select_statement->projections));
+  if (select_statement->projections == NULL) {
+    return 0;
+  }
+  size_t index = 0;
+  int ok = 1;
+  mylite_ast_fill_select_projections(ast, select_statement->projections,
+                                     payload, &index, &ok);
+  return ok && index == select_statement->projection_count;
+}
+
+static size_t mylite_ast_count_select_query_blocks(const MyliteAstNode *node) {
+  if (node == NULL) {
+    return 0;
+  }
+  if (mylite_ast_expression_is_symbol(node, "nt_select_stmt_basic")) {
+    return 1;
+  }
+  size_t count = 0;
+  for (size_t i = 0; i < node->child_count; i++) {
+    count += mylite_ast_count_select_query_blocks(node->children[i]);
+  }
+  return count;
+}
+
+static size_t mylite_ast_count_select_projections(const MyliteAstNode *node) {
+  if (node == NULL) {
+    return 0;
+  }
+  if (mylite_ast_expression_is_symbol(node, "nt_field")) {
+    return 1;
+  }
+  size_t count = 0;
+  for (size_t i = 0; i < node->child_count; i++) {
+    count += mylite_ast_count_select_projections(node->children[i]);
+  }
+  return count;
+}
+
+static void mylite_ast_fill_select_projections(
+    MyliteAst *ast, MyliteAstSelectProjection *projections,
+    const MyliteAstNode *node, size_t *index, int *ok) {
+  if (node == NULL || ok == NULL || !*ok) {
+    return;
+  }
+  if (mylite_ast_expression_is_symbol(node, "nt_field")) {
+    if (index == NULL ||
+        !mylite_ast_fill_select_projection(ast, &projections[*index], node)) {
+      if (ok != NULL) {
+        *ok = 0;
+      }
+      return;
+    }
+    (*index)++;
+    return;
+  }
+  for (size_t i = 0; i < node->child_count; i++) {
+    mylite_ast_fill_select_projections(ast, projections, node->children[i],
+                                       index, ok);
+  }
+}
+
+static int mylite_ast_fill_select_projection(
+    MyliteAst *ast, MyliteAstSelectProjection *projection,
+    const MyliteAstNode *node) {
+  if (ast == NULL || projection == NULL || node == NULL) {
+    return 1;
+  }
+  projection->node = node;
+  projection->start = mylite_ast_node_start(node);
+  projection->end = mylite_ast_node_end(node);
+  projection->kind = mylite_ast_classify_select_projection(node);
+  projection->expression_node = mylite_ast_direct_child_symbol(
+      node, 0, "nt_expression");
+  if (projection->expression_node != NULL) {
+    projection->expression_start =
+        mylite_ast_node_start(projection->expression_node);
+    projection->expression_end =
+        mylite_ast_node_end(projection->expression_node);
+    if (!mylite_ast_set_expression_summary(ast, &projection->expression,
+                                           projection->expression_node)) {
+      return 0;
+    }
+  }
+  return mylite_ast_set_select_projection_alias(ast, projection, node) &&
+         mylite_ast_set_select_projection_qualifier(ast, projection, node);
+}
+
+static MyliteSelectProjectionKind mylite_ast_classify_select_projection(
+    const MyliteAstNode *node) {
+  if (mylite_ast_direct_child_token(node, 0, MYLITE_TOK_STAR) != NULL) {
+    return MYLITE_SELECT_PROJECTION_WILDCARD;
+  }
+  if (node != NULL && node->child_count >= 3 &&
+      mylite_ast_direct_child_token(node, node->child_count - 1,
+                                    MYLITE_TOK_STAR) != NULL &&
+      mylite_ast_direct_child_token(node, node->child_count - 2,
+                                    MYLITE_TOK_DOT) != NULL) {
+    return MYLITE_SELECT_PROJECTION_TABLE_WILDCARD;
+  }
+  if (mylite_ast_direct_child_symbol(node, 0, "nt_expression") != NULL) {
+    return MYLITE_SELECT_PROJECTION_EXPRESSION;
+  }
+  return MYLITE_SELECT_PROJECTION_UNKNOWN;
+}
+
+static int mylite_ast_set_select_projection_alias(
+    MyliteAst *ast, MyliteAstSelectProjection *projection,
+    const MyliteAstNode *node) {
+  const MyliteAstNode *alias =
+      mylite_ast_find_first_symbol(node, "nt_field_as_name");
+  if (alias == NULL || !alias->has_span) {
+    return 1;
+  }
+  const MyliteAstNode *value = mylite_ast_find_first_symbol(alias,
+                                                            "nt_identifier");
+  if (value != NULL && value->has_span) {
+    projection->alias_start = mylite_ast_node_start(value);
+    projection->alias_end = mylite_ast_node_end(value);
+    return mylite_ast_decode_identifier(ast, projection->alias_start,
+                                        projection->alias_end,
+                                        &projection->alias_value,
+                                        &projection->alias_value_length);
+  }
+  value = mylite_ast_find_first_token(alias, MYLITE_TOK_STRING_LIT);
+  if (value != NULL && value->has_span) {
+    projection->alias_start = mylite_ast_node_start(value);
+    projection->alias_end = mylite_ast_node_end(value);
+    return mylite_ast_decode_sql_string_literal(
+        ast, projection->alias_start, projection->alias_end,
+        &projection->alias_value, &projection->alias_value_length);
+  }
+  projection->alias_start = mylite_ast_node_start(alias);
+  projection->alias_end = mylite_ast_node_end(alias);
+  return mylite_ast_copy_source_span(ast, projection->alias_start,
+                                     projection->alias_end,
+                                     &projection->alias_value,
+                                     &projection->alias_value_length);
+}
+
+static int mylite_ast_set_select_projection_qualifier(
+    MyliteAst *ast, MyliteAstSelectProjection *projection,
+    const MyliteAstNode *node) {
+  if (projection == NULL ||
+      projection->kind != MYLITE_SELECT_PROJECTION_TABLE_WILDCARD ||
+      node == NULL || node->child_count < 3) {
+    return 1;
+  }
+  const MyliteAstNode *last_identifier = node->children[node->child_count - 3];
+  if (last_identifier == NULL || !last_identifier->has_span) {
+    return 1;
+  }
+  projection->qualifier_start = mylite_ast_node_start(node);
+  projection->qualifier_end = mylite_ast_node_end(last_identifier);
+  return mylite_ast_copy_source_span(ast, projection->qualifier_start,
+                                     projection->qualifier_end,
+                                     &projection->qualifier_value,
+                                     &projection->qualifier_value_length);
+}
+
+static const MyliteAstNode *mylite_ast_find_first_spanned_symbol(
+    const MyliteAstNode *node, const char *symbol_name) {
+  if (node == NULL || symbol_name == NULL) {
+    return NULL;
+  }
+  if (mylite_ast_expression_is_symbol(node, symbol_name) && node->has_span) {
+    return node;
+  }
+  for (size_t i = 0; i < node->child_count; i++) {
+    const MyliteAstNode *found =
+        mylite_ast_find_first_spanned_symbol(node->children[i], symbol_name);
+    if (found != NULL) {
+      return found;
+    }
+  }
+  return NULL;
+}
+
+static const MyliteAstNode *mylite_ast_find_first_select_into_node(
+    const MyliteAstNode *node) {
+  const MyliteAstNode *into =
+      mylite_ast_find_first_spanned_symbol(node,
+                                           "nt_mysql_select_into_target_list");
+  if (into != NULL) {
+    return into;
+  }
+  return mylite_ast_find_first_spanned_symbol(node,
+                                              "nt_select_stmt_into_option");
 }
 
 static int mylite_ast_set_create_database_view(MyliteAst *ast,

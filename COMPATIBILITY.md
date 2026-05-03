@@ -80,6 +80,10 @@ DATABASE` view currently covers decoded database targets, `IF NOT EXISTS`,
 charset/collation/encryption summaries. The `CREATE VIEW` view currently covers
 decoded view targets, `OR REPLACE`, algorithm, SQL security, check-option kind,
 optional definer spans, explicit column descriptors, and the query CST anchor.
+The `SELECT` view currently covers CTE/set-operation markers, query-block
+counts, projection descriptors, common clause spans, decoded projection aliases,
+table-wildcard qualifiers, and recursive parser-level expression views for
+projection, `WHERE`, and `HAVING` expressions.
 The `SET` view currently covers statement form, ordered assignments, assignment
 kind, variable scope, assignment operator, decoded assignment names, value CST
 anchors, `SET NAMES` extended collation spans, and recursive parser-level
@@ -180,7 +184,7 @@ below. The current prototype parses the WordPress MySQL server query corpus with
 | `REPLACE ... SET` | ❌ | high | SET-form replace semantics. |  |
 | `REPLACE ... SELECT` | ❌ | high | Replace from query expression semantics. |  |
 | `REPLACE LOW_PRIORITY` / `DELAYED` | ❌ | low | Priority and deprecated delayed modifiers for REPLACE. |  |
-| `SELECT` | ❌ | top | Full query expression surface; see section 2. |  |
+| `SELECT` | ❌ | top | Full query expression surface; see section 2. | Parser view exposes CTE/set-operation markers, query-block count, projection descriptors, common clause spans, aliases, wildcard qualifiers, and recursive parser-level expression views for projections, `WHERE`, and `HAVING`; semantic query AST and execution are not implemented yet. |
 | `SELECT ... INTO var_list` | ❌ | high | User/local variable assignment semantics. |  |
 | `SELECT ... INTO OUTFILE` | ❌ | medium | File export syntax and embedded-compatible diagnostics. |  |
 | `SELECT ... INTO DUMPFILE` | ❌ | medium | Binary file export syntax and embedded-compatible diagnostics. |  |

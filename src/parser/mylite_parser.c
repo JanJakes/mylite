@@ -495,6 +495,8 @@ static int alter_table_add_non_index_marker(int token_id);
 static int alter_table_action_start_token(int token_id);
 static void validate_alter_table_expression_tails(MyliteParseContext *ctx,
                                                   MyliteToken start);
+static void validate_alter_table_partition_definition_bodies(
+    MyliteParseContext *ctx, MyliteToken start);
 static void validate_alter_table_order_by_from(MyliteParseContext *ctx,
                                                MyliteToken start);
 static int alter_table_partition_method_token(int token_id, MyliteToken token);
@@ -8794,6 +8796,9 @@ void mylite_parser_validate_alter_table_statement(MyliteParseContext *ctx,
   } else if (!ctx->failed) {
     validate_alter_table_expression_tails(ctx, start);
     if (!ctx->failed) {
+      validate_alter_table_partition_definition_bodies(ctx, start);
+    }
+    if (!ctx->failed) {
       validate_alter_table_option_values(ctx, start);
     }
   }
@@ -9382,6 +9387,138 @@ static void validate_alter_table_expression_tails(MyliteParseContext *ctx,
     if (token_id == ML_ALTER) {
       state = ALTER_EXPR_AFTER_ALTER;
       pending_token = token;
+      continue;
+    }
+  }
+}
+
+static void validate_alter_table_partition_definition_bodies(
+    MyliteParseContext *ctx, MyliteToken start) {
+  enum {
+    ALTER_PARTITION_DEFS_READY,
+    ALTER_PARTITION_DEFS_AFTER_ADD,
+    ALTER_PARTITION_DEFS_IN_ADD_PARTITION,
+    ALTER_PARTITION_DEFS_AFTER_REORGANIZE,
+    ALTER_PARTITION_DEFS_IN_REORGANIZE_PARTITION,
+    ALTER_PARTITION_DEFS_AFTER_INTO
+  };
+  MyliteLexer lexer;
+  MyliteToken token;
+  int token_id;
+  int saw_statement = 0;
+  int saw_table = 0;
+  int table_ref_done = 0;
+  int table_name_parts = 0;
+  int table_dot_pending = 0;
+  int state = ALTER_PARTITION_DEFS_READY;
+  int skip_depth = 0;
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_statement) {
+      if (token.offset == start.offset) {
+        saw_statement = 1;
+      }
+      continue;
+    }
+
+    if (!saw_table) {
+      if (token_id == ML_TABLE) {
+        saw_table = 1;
+      }
+      continue;
+    }
+
+    if (!table_ref_done) {
+      if (token_id == ML_SEMI) {
+        return;
+      }
+      if (table_dot_pending) {
+        table_name_parts++;
+        table_dot_pending = 0;
+        continue;
+      }
+      if (table_name_parts == 0) {
+        table_name_parts = 1;
+        continue;
+      }
+      if (token_id == ML_DOT && table_name_parts == 1) {
+        table_dot_pending = 1;
+        continue;
+      }
+      table_ref_done = 1;
+    }
+
+    if (skip_depth > 0) {
+      if (token_opens_nested_expression(token_id)) {
+        skip_depth++;
+      } else if (token_closes_nested_expression(token_id)) {
+        skip_depth--;
+      }
+      continue;
+    }
+
+    if (token_id == ML_SEMI) {
+      return;
+    }
+
+    if (token_id == ML_COMMA) {
+      state = ALTER_PARTITION_DEFS_READY;
+      continue;
+    }
+
+    if (state == ALTER_PARTITION_DEFS_AFTER_ADD) {
+      if (token_id == ML_PARTITION) {
+        state = ALTER_PARTITION_DEFS_IN_ADD_PARTITION;
+        continue;
+      }
+      state = ALTER_PARTITION_DEFS_READY;
+    }
+
+    if (state == ALTER_PARTITION_DEFS_AFTER_REORGANIZE) {
+      if (token_id == ML_PARTITION) {
+        state = ALTER_PARTITION_DEFS_IN_REORGANIZE_PARTITION;
+        continue;
+      }
+      state = ALTER_PARTITION_DEFS_READY;
+    }
+
+    if (state == ALTER_PARTITION_DEFS_IN_ADD_PARTITION) {
+      if (token_id == ML_LP) {
+        validate_create_table_partition_definitions_from(ctx, token, 0);
+        if (ctx->failed) {
+          return;
+        }
+        skip_depth = 1;
+      }
+      continue;
+    }
+
+    if (state == ALTER_PARTITION_DEFS_IN_REORGANIZE_PARTITION) {
+      if (token_id == ML_INTO) {
+        state = ALTER_PARTITION_DEFS_AFTER_INTO;
+      }
+      continue;
+    }
+
+    if (state == ALTER_PARTITION_DEFS_AFTER_INTO) {
+      if (token_id == ML_LP) {
+        validate_create_table_partition_definitions_from(ctx, token, 0);
+        if (ctx->failed) {
+          return;
+        }
+        skip_depth = 1;
+      }
+      continue;
+    }
+
+    if (token_id == ML_ADD) {
+      state = ALTER_PARTITION_DEFS_AFTER_ADD;
+      continue;
+    }
+
+    if (token_id == ML_REORGANIZE) {
+      state = ALTER_PARTITION_DEFS_AFTER_REORGANIZE;
       continue;
     }
   }

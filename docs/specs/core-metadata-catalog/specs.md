@@ -16,12 +16,14 @@ The implementation is deliberately narrow. It supports `SELECT * FROM
 INFORMATION_SCHEMA.<table>` for these catalog-backed tables, with
 case-insensitive resolution of `information_schema` and object names. The
 current system-view inventory also includes `INFORMATION_SCHEMA.ENGINES`,
-`INFORMATION_SCHEMA.CHARACTER_SETS`, and `INFORMATION_SCHEMA.COLLATIONS`,
-specified separately in
-[INFORMATION_SCHEMA.ENGINES](../information-schema-engines/specs.md) and
+`INFORMATION_SCHEMA.CHARACTER_SETS`, `INFORMATION_SCHEMA.COLLATIONS`,
+`INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY`, and
+`INFORMATION_SCHEMA.KEYWORDS`, specified separately in
+[INFORMATION_SCHEMA.ENGINES](../information-schema-engines/specs.md),
 [INFORMATION_SCHEMA.CHARACTER_SETS](../information-schema-character-sets/specs.md),
-and
-[INFORMATION_SCHEMA.COLLATIONS](../information-schema-collations/specs.md).
+[INFORMATION_SCHEMA.COLLATIONS](../information-schema-collations/specs.md),
+[INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY](../information-schema-collation-character-set-applicability/specs.md),
+and [INFORMATION_SCHEMA.KEYWORDS](../information-schema-keywords/specs.md).
 General `SELECT` projection, explicit duplicate modifiers, filtering, ordering,
 aliases, joins, expressions over metadata tables, and privilege-sensitive
 metadata visibility are later features.
@@ -67,8 +69,9 @@ sources.
 - An empty user-created schema has no rows in `TABLES`, `COLUMNS`, or
   `STATISTICS`.
 - `INFORMATION_SCHEMA.TABLES` contains rows for the
-  `INFORMATION_SCHEMA.CHARACTER_SETS`, `COLLATIONS`, `SCHEMATA`, `TABLES`,
-  `COLUMNS`, `ENGINES`, and `STATISTICS` system views. In the verified
+  `INFORMATION_SCHEMA.CHARACTER_SETS`,
+  `COLLATION_CHARACTER_SET_APPLICABILITY`, `COLLATIONS`, `SCHEMATA`, `TABLES`,
+  `COLUMNS`, `ENGINES`, `KEYWORDS`, and `STATISTICS` system views. In the verified
   runtime, each has
   `TABLE_TYPE='SYSTEM VIEW'`,
   `ENGINE=NULL`, `VERSION=10`, `TABLE_ROWS=0`, `TABLE_COLLATION=NULL`, and an
@@ -215,7 +218,7 @@ Behavior:
 - Returns rows from `__mylite_table_catalog`.
 - Also exposes system-view rows for `INFORMATION_SCHEMA.CHARACTER_SETS`,
   `COLLATION_CHARACTER_SET_APPLICABILITY`, `COLLATIONS`, `SCHEMATA`, `TABLES`,
-  `COLUMNS`, `ENGINES`, and `STATISTICS`.
+  `COLUMNS`, `ENGINES`, `KEYWORDS`, and `STATISTICS`.
 - For these system views, MyLite returns `TABLE_TYPE='SYSTEM VIEW'`,
   `ENGINE=NULL`, `VERSION=10`, `TABLE_ROWS=0`, `TABLE_COLLATION=NULL`, and
   `TABLE_COMMENT=''`, matching observed MySQL 8.4.9 behavior for the fields

@@ -6,6 +6,7 @@
 #include "mylite_parser.h"
 #include "mylite_sqlite_translator.h"
 #include "mylite_vfs.h"
+#include "sql/mylite_lexer.h"
 #include "sqlite3.h"
 #include "types/mylite_column_type.h"
 
@@ -61,6 +62,7 @@ enum mylite_information_schema_table {
     MYLITE_INFORMATION_SCHEMA_CHARACTER_SETS = 6,
     MYLITE_INFORMATION_SCHEMA_COLLATIONS = 7,
     MYLITE_INFORMATION_SCHEMA_COLLATION_CHARACTER_SET_APPLICABILITY = 8,
+    MYLITE_INFORMATION_SCHEMA_KEYWORDS = 9,
 };
 
 enum mylite_mysql_condition_code {
@@ -1459,6 +1461,7 @@ static const char information_schema_tables_sql[] =
     "UNION ALL SELECT 'TABLES' "
     "UNION ALL SELECT 'COLUMNS' "
     "UNION ALL SELECT 'ENGINES' "
+    "UNION ALL SELECT 'KEYWORDS' "
     "UNION ALL SELECT 'STATISTICS') "
     "UNION ALL "
     "SELECT table_catalog AS TABLE_CATALOG,"
@@ -1644,6 +1647,12 @@ static int information_schema_collation_character_set_applicability_sql(mylite_d
                                                                         char **out_sql);
 static void append_information_schema_collation_character_set_applicability_row(
     sqlite3_str *sql, bool *first, const struct mylite_collation *collation);
+static int information_schema_keywords_sql(mylite_db *database, char **out_sql);
+static void append_information_schema_keyword_row(sqlite3_str *sql, bool *first, const char *word,
+                                                  unsigned int flags);
+static int information_schema_dynamic_table_sql(mylite_db *database,
+                                                enum mylite_information_schema_table table,
+                                                char **out_sql);
 static int prepare_show_tables_statement(mylite_db *database,
                                          const struct mylite_sql_ast_node *statement,
                                          mylite_stmt **out_stmt);
@@ -6743,6 +6752,43 @@ static void append_information_schema_collation_character_set_applicability_row(
     *first = false;
 }
 
+static int information_schema_keywords_sql(mylite_db *database, char **out_sql)
+{
+    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
+    bool first = true;
+
+    *out_sql = NULL;
+    if (sql == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    sqlite3_str_appendall(sql, "WITH keywords(WORD, RESERVED) AS (VALUES ");
+    for (size_t index = 0U; index < mylite_sql_keyword_catalog_count(); ++index) {
+        const char *word = NULL;
+        unsigned int flags = 0U;
+
+        if (mylite_sql_keyword_catalog_at(index, &word, &flags)) {
+            append_information_schema_keyword_row(sql, &first, word, flags);
+        }
+    }
+    sqlite3_str_appendall(sql, ") SELECT WORD, RESERVED FROM keywords");
+
+    *out_sql = sqlite3_str_finish(sql);
+    return *out_sql == NULL ? MYLITE_NOMEM : MYLITE_OK;
+}
+
+static void append_information_schema_keyword_row(sqlite3_str *sql, bool *first, const char *word,
+                                                  unsigned int flags)
+{
+    int reserved = (flags & MYLITE_SQL_KEYWORD_RESERVED) != 0U ? 1 : 0;
+
+    if (!*first) {
+        sqlite3_str_appendall(sql, ", ");
+    }
+    sqlite3_str_appendf(sql, "(%Q, %d)", word, reserved);
+    *first = false;
+}
+
 static int prepare_show_tables_statement(mylite_db *database,
                                          const struct mylite_sql_ast_node *statement,
                                          mylite_stmt **out_stmt)
@@ -6964,6 +7010,7 @@ static char *show_tables_sql(mylite_db *database, const struct mylite_show_table
         "UNION ALL SELECT 'TABLES' "
         "UNION ALL SELECT 'COLUMNS' "
         "UNION ALL SELECT 'ENGINES' "
+        "UNION ALL SELECT 'KEYWORDS' "
         "UNION ALL SELECT 'STATISTICS') "
         "UNION ALL "
         "SELECT table_schema AS TABLE_SCHEMA, table_name AS TABLE_NAME, table_type AS TABLE_TYPE "
@@ -8189,42 +8236,8 @@ static int prepare_information_schema_select_statement(mylite_db *database,
     if (table == MYLITE_INFORMATION_SCHEMA_NONE) {
         return MYLITE_UNSUPPORTED;
     }
-    if (table == MYLITE_INFORMATION_SCHEMA_CHARACTER_SETS) {
-        status = information_schema_character_sets_sql(database, &sqlite_sql);
-        if (status == MYLITE_OK) {
-            status = prepare_sqlite_statement(database, sqlite_sql, out_stmt);
-        }
-        sqlite3_free(sqlite_sql);
-        if (status == MYLITE_NOMEM) {
-            (void)set_error_message(database, "out of memory");
-        }
-        return status;
-    }
-    if (table == MYLITE_INFORMATION_SCHEMA_COLLATIONS) {
-        status = information_schema_collations_sql(database, &sqlite_sql);
-        if (status == MYLITE_OK) {
-            status = prepare_sqlite_statement(database, sqlite_sql, out_stmt);
-        }
-        sqlite3_free(sqlite_sql);
-        if (status == MYLITE_NOMEM) {
-            (void)set_error_message(database, "out of memory");
-        }
-        return status;
-    }
-    if (table == MYLITE_INFORMATION_SCHEMA_COLLATION_CHARACTER_SET_APPLICABILITY) {
-        status =
-            information_schema_collation_character_set_applicability_sql(database, &sqlite_sql);
-        if (status == MYLITE_OK) {
-            status = prepare_sqlite_statement(database, sqlite_sql, out_stmt);
-        }
-        sqlite3_free(sqlite_sql);
-        if (status == MYLITE_NOMEM) {
-            (void)set_error_message(database, "out of memory");
-        }
-        return status;
-    }
-    if (table == MYLITE_INFORMATION_SCHEMA_ENGINES) {
-        status = information_schema_engines_sql(database, &sqlite_sql);
+    status = information_schema_dynamic_table_sql(database, table, &sqlite_sql);
+    if (status != MYLITE_UNSUPPORTED) {
         if (status == MYLITE_OK) {
             status = prepare_sqlite_statement(database, sqlite_sql, out_stmt);
         }
@@ -8240,6 +8253,32 @@ static int prepare_information_schema_select_statement(mylite_db *database,
         return MYLITE_UNSUPPORTED;
     }
     return prepare_sqlite_statement(database, sql, out_stmt);
+}
+
+static int information_schema_dynamic_table_sql(mylite_db *database,
+                                                enum mylite_information_schema_table table,
+                                                char **out_sql)
+{
+    *out_sql = NULL;
+    switch (table) {
+    case MYLITE_INFORMATION_SCHEMA_CHARACTER_SETS:
+        return information_schema_character_sets_sql(database, out_sql);
+    case MYLITE_INFORMATION_SCHEMA_COLLATIONS:
+        return information_schema_collations_sql(database, out_sql);
+    case MYLITE_INFORMATION_SCHEMA_COLLATION_CHARACTER_SET_APPLICABILITY:
+        return information_schema_collation_character_set_applicability_sql(database, out_sql);
+    case MYLITE_INFORMATION_SCHEMA_ENGINES:
+        return information_schema_engines_sql(database, out_sql);
+    case MYLITE_INFORMATION_SCHEMA_KEYWORDS:
+        return information_schema_keywords_sql(database, out_sql);
+    case MYLITE_INFORMATION_SCHEMA_SCHEMATA:
+    case MYLITE_INFORMATION_SCHEMA_TABLES:
+    case MYLITE_INFORMATION_SCHEMA_COLUMNS:
+    case MYLITE_INFORMATION_SCHEMA_STATISTICS:
+    case MYLITE_INFORMATION_SCHEMA_NONE:
+        return MYLITE_UNSUPPORTED;
+    }
+    return MYLITE_UNSUPPORTED;
 }
 
 static int validate_select_duplicate_mode(mylite_db *database,
@@ -32209,6 +32248,9 @@ static enum mylite_information_schema_table information_schema_table_from_name(c
     if (ascii_case_equal(name, "collation_character_set_applicability")) {
         return MYLITE_INFORMATION_SCHEMA_COLLATION_CHARACTER_SET_APPLICABILITY;
     }
+    if (ascii_case_equal(name, "keywords")) {
+        return MYLITE_INFORMATION_SCHEMA_KEYWORDS;
+    }
     return MYLITE_INFORMATION_SCHEMA_NONE;
 }
 
@@ -32227,6 +32269,7 @@ static const char *information_schema_table_sql(enum mylite_information_schema_t
     case MYLITE_INFORMATION_SCHEMA_CHARACTER_SETS:
     case MYLITE_INFORMATION_SCHEMA_COLLATIONS:
     case MYLITE_INFORMATION_SCHEMA_COLLATION_CHARACTER_SET_APPLICABILITY:
+    case MYLITE_INFORMATION_SCHEMA_KEYWORDS:
     case MYLITE_INFORMATION_SCHEMA_NONE:
         return NULL;
     }

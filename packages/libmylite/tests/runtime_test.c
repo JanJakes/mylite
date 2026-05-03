@@ -3,6 +3,7 @@
 #include "mylite_file_format.h"
 #include "mylite_internal.h"
 #include "mylite_vfs.h"
+#include "sql/mylite_lexer.h"
 #include "sqlite3.h"
 
 #include <inttypes.h>
@@ -15,7 +16,7 @@ enum {
     tables_column_count = 21,
     columns_column_count = 22,
     statistics_column_count = 18,
-    information_schema_view_count = 8,
+    information_schema_view_count = 9,
     schemata_catalog_column = 0,
     schemata_name_column = 1,
     schemata_character_set_column = 2,
@@ -219,6 +220,7 @@ static int test_information_schema_engines_execution(void);
 static int test_information_schema_character_sets_execution(void);
 static int test_information_schema_collations_execution(void);
 static int test_information_schema_collation_character_set_applicability_execution(void);
+static int test_information_schema_keywords_execution(void);
 static int test_mylite_file_preamble_and_vfs_payload(void);
 static int test_mylite_open_rejects_plain_sqlite(void);
 static int test_unsupported_statement(void);
@@ -292,6 +294,10 @@ static int expect_information_schema_schemata_row(mylite_db *database,
                                                   const struct expected_schemata_row *expected);
 static int expect_no_information_schema_schemata_row(mylite_db *database, const char *schema_name);
 static int expect_information_schema_tables_views(mylite_db *database);
+static int expect_information_schema_keywords_first_rows(mylite_db *database, const char *sql);
+static int expect_information_schema_keywords_matches_catalog(mylite_db *database);
+static int expect_information_schema_keyword_row(mylite_db *database, const char *word,
+                                                 int64_t expected_reserved);
 static int expect_information_schema_column_row(mylite_db *database,
                                                 const struct expected_columns_row *expected);
 static int expect_no_information_schema_table_schema_row(mylite_db *database,
@@ -381,6 +387,7 @@ int main(void)
     failures += test_information_schema_character_sets_execution();
     failures += test_information_schema_collations_execution();
     failures += test_information_schema_collation_character_set_applicability_execution();
+    failures += test_information_schema_keywords_execution();
     failures += test_mylite_file_preamble_and_vfs_payload();
     failures += test_mylite_open_rejects_plain_sqlite();
     failures += test_unsupported_statement();
@@ -1326,6 +1333,98 @@ static int test_information_schema_collation_character_set_applicability_executi
                     MYLITE_UNSUPPORTED, &stmt);
     failures +=
         expect_no_stmt_handle(&stmt, "information schema collation charset applicability join");
+
+    mylite_close(database);
+    mylite_finalize(stmt);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
+    return failures;
+}
+
+static int test_information_schema_keywords_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const columns[] = {"WORD", "RESERVED"};
+    static const char *const show_tables_columns[] = {"Tables_in_information_schema (KEYWORDS)",
+                                                      "Table_type"};
+    static const char *const show_tables_values[] = {"KEYWORDS", "SYSTEM VIEW"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open information schema keywords");
+
+    failures += expect_information_schema_keywords_first_rows(
+        database, "SELECT * FROM INFORMATION_SCHEMA.KEYWORDS");
+    failures += expect_information_schema_keywords_first_rows(
+        database, "SELECT * FROM information_schema.keywords");
+    failures += expect_information_schema_keywords_first_rows(
+        database, "SELECT * FROM Information_Schema.Keywords");
+    failures += expect_information_schema_keywords_first_rows(
+        database, "SELECT * FROM `information_schema`.`KEYWORDS`");
+    failures += expect_information_schema_keywords_matches_catalog(database);
+
+    failures +=
+        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.KEYWORDS", MYLITE_OK, &stmt);
+    failures += expect_column_names(stmt, columns, 2, "information schema keywords columns");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "information schema keywords row");
+    failures += expect_int64(mylite_column_int64(stmt, 1), 1,
+                             "information schema keywords numeric reserved");
+    failures +=
+        expect_int64(mylite_affected_rows(stmt), -1, "information schema keywords affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_information_schema_keyword_row(database, "ACCOUNT", 0);
+    failures += expect_information_schema_keyword_row(database, "ADD", 1);
+    failures += expect_information_schema_keyword_row(database, "JSON_TABLE", 1);
+    failures += expect_information_schema_keyword_row(database, "SELECT", 1);
+    failures += expect_information_schema_keyword_row(database, "SYSTEM", 1);
+    failures += expect_information_schema_keyword_row(database, "VISIBLE", 0);
+    failures += expect_information_schema_keyword_row(database, "WINDOW", 1);
+
+    failures += expect_information_schema_tables_views(database);
+    failures += expect_select_rows(
+        database, "SHOW FULL TABLES FROM information_schema LIKE 'keywords'", show_tables_columns,
+        2, show_tables_values, 1, "show tables information schema keywords");
+
+    failures += prepare_sql(database, "SELECT WORD FROM INFORMATION_SCHEMA.KEYWORDS",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema keywords projection");
+    failures += prepare_sql(database, "SELECT DISTINCT * FROM INFORMATION_SCHEMA.KEYWORDS",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema keywords distinct");
+    failures += prepare_sql(database, "SELECT ALL * FROM INFORMATION_SCHEMA.KEYWORDS",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema keywords explicit all");
+    failures +=
+        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.KEYWORDS WHERE RESERVED = 1",
+                    MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema keywords where");
+    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.KEYWORDS ORDER BY WORD",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema keywords order by");
+    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.KEYWORDS LIMIT 5",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema keywords limit");
+    failures += prepare_sql(database, "SELECT COUNT(*) FROM INFORMATION_SCHEMA.KEYWORDS",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema keywords count");
+    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.KEYWORDS AS k",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema keywords AS alias");
+    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.KEYWORDS k",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema keywords bare alias");
+    failures += prepare_sql(database,
+                            "SELECT INFORMATION_SCHEMA.KEYWORDS.* FROM INFORMATION_SCHEMA.KEYWORDS",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema keywords qualified wildcard");
+    failures += prepare_sql(database,
+                            "SELECT * FROM INFORMATION_SCHEMA.KEYWORDS JOIN "
+                            "INFORMATION_SCHEMA.TABLES",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema keywords join");
 
     mylite_close(database);
     mylite_finalize(stmt);
@@ -12538,7 +12637,8 @@ static int expect_information_schema_tables_views(mylite_db *database)
         "CHARACTER_SETS", "COLLATION_CHARACTER_SET_APPLICABILITY",
         "COLLATIONS",     "COLUMNS",
         "ENGINES",        "SCHEMATA",
-        "STATISTICS",     "TABLES",
+        "KEYWORDS",       "STATISTICS",
+        "TABLES",
     };
     mylite_stmt *stmt = NULL;
     int failures =
@@ -12591,6 +12691,102 @@ static int expect_information_schema_tables_views(mylite_db *database)
                     expected_tables[index]);
             failures = 1;
         }
+    }
+
+    mylite_finalize(stmt);
+    return failures;
+}
+
+static int expect_information_schema_keywords_first_rows(mylite_db *database, const char *sql)
+{
+    static const char *const expected_words[] = {
+        "ACCESSIBLE", "ACCOUNT", "ACTION", "ACTIVE", "ADD",
+    };
+    enum { expected_keyword_prefix_count = sizeof(expected_words) / sizeof(expected_words[0]) };
+    static const int64_t expected_reserved[] = {1, 0, 0, 0, 1};
+    static const char *const columns[] = {"WORD", "RESERVED"};
+    mylite_stmt *stmt = NULL;
+    int failures = prepare_sql(database, sql, MYLITE_OK, &stmt);
+
+    failures += expect_column_names(stmt, columns, 2, sql);
+    for (int index = 0; index < expected_keyword_prefix_count; ++index) {
+        failures += expect_status(mylite_step(stmt), MYLITE_ROW, sql);
+        failures += expect_string(mylite_column_text(stmt, 0), expected_words[index], sql);
+        failures += expect_int64(mylite_column_int64(stmt, 1), expected_reserved[index], sql);
+    }
+    failures += expect_int64(mylite_affected_rows(stmt), -1, sql);
+
+    mylite_finalize(stmt);
+    return failures;
+}
+
+static int expect_information_schema_keywords_matches_catalog(mylite_db *database)
+{
+    static const char *const columns[] = {"WORD", "RESERVED"};
+    mylite_stmt *stmt = NULL;
+    size_t index = 0U;
+    int failures =
+        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.KEYWORDS", MYLITE_OK, &stmt);
+
+    failures += expect_column_names(stmt, columns, 2, "information schema keywords catalog");
+    for (; index < mylite_sql_keyword_catalog_count(); ++index) {
+        const char *expected_word = NULL;
+        const char *actual_word = NULL;
+        unsigned int expected_flags = 0U;
+        int64_t expected_reserved = 0;
+
+        failures += expect_status(mylite_step(stmt), MYLITE_ROW, "information schema keyword row");
+        if (!mylite_sql_keyword_catalog_at(index, &expected_word, &expected_flags)) {
+            fprintf(stderr, "keyword catalog did not return index %zu\n", index);
+            failures = 1;
+            break;
+        }
+        actual_word = mylite_column_text(stmt, 0);
+        expected_reserved = (expected_flags & MYLITE_SQL_KEYWORD_RESERVED) != 0U ? 1 : 0;
+        failures += expect_string(actual_word, expected_word, "information schema keyword word");
+        failures += expect_int64(mylite_column_int64(stmt, 1), expected_reserved,
+                                 "information schema keyword reserved");
+        if (failures != 0) {
+            break;
+        }
+    }
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "information schema keyword end");
+
+    mylite_finalize(stmt);
+    return failures;
+}
+
+static int expect_information_schema_keyword_row(mylite_db *database, const char *word,
+                                                 int64_t expected_reserved)
+{
+    mylite_stmt *stmt = NULL;
+    int saw_word = 0;
+    int failures =
+        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.KEYWORDS", MYLITE_OK, &stmt);
+
+    while (failures == 0) {
+        int status = mylite_step(stmt);
+        const char *actual_word = NULL;
+
+        if (status == MYLITE_DONE) {
+            break;
+        }
+        failures += expect_status(status, MYLITE_ROW, word);
+        if (failures != 0) {
+            break;
+        }
+
+        actual_word = mylite_column_text(stmt, 0);
+        if (actual_word != NULL && strcmp(actual_word, word) == 0) {
+            saw_word = 1;
+            failures += expect_int64(mylite_column_int64(stmt, 1), expected_reserved, word);
+            break;
+        }
+    }
+
+    if (!saw_word) {
+        fprintf(stderr, "keywords did not return required word '%s'\n", word);
+        failures = 1;
     }
 
     mylite_finalize(stmt);

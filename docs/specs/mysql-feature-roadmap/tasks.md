@@ -10,8 +10,8 @@ level application surfaces.
 1. [x] Schema selection and database lifecycle: `CREATE DATABASE`, `USE`,
        `ALTER DATABASE`, `DROP DATABASE`, and `SHOW DATABASES`.
 2. [x] Core metadata catalog: internal schema/table/column/index storage plus
-       `INFORMATION_SCHEMA.SCHEMATA`, `TABLES`, `COLUMNS`, `ENGINES`, and
-       `STATISTICS`.
+       `INFORMATION_SCHEMA.SCHEMATA`, `TABLES`, `COLUMNS`, `ENGINES`,
+       `KEYWORDS`, and `STATISTICS`.
 3. [x] Character set and collation foundation: `utf8mb4`, `utf8mb3`, `latin1`,
        `binary`, default charset/collation tracking, `SET NAMES`, and
        `SET CHARACTER SET`.
@@ -225,10 +225,14 @@ level application surfaces.
        same wildcard-only information-schema query policy. The first
        `INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY` slice reuses
        that collation registry and exposes the collation-to-character-set
-       mapping with the same wildcard-only policy. Full
+       mapping with the same wildcard-only policy. The first
+       `INFORMATION_SCHEMA.KEYWORDS` slice exposes MyLite's lexer-supported
+       keyword catalog with `WORD` and numeric `RESERVED` columns under the
+       same wildcard-only policy. Full
        build-dependent engine catalog breadth, full MySQL character-set
-       catalog breadth, and full MySQL collation catalog breadth remain
-       deferred. Specs:
+       catalog breadth, full MySQL collation catalog breadth, exact MySQL
+       keyword catalog completeness, and general information-schema query
+       processing remain deferred. Specs:
        [SHOW TABLES](../show-tables/specs.md),
        [SHOW COLUMNS](../show-columns/specs.md),
        [SHOW INDEX](../show-index/specs.md),
@@ -238,7 +242,8 @@ level application surfaces.
        [INFORMATION_SCHEMA.ENGINES](../information-schema-engines/specs.md),
        [INFORMATION_SCHEMA.CHARACTER_SETS](../information-schema-character-sets/specs.md),
        [INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY](../information-schema-collation-character-set-applicability/specs.md),
-       [INFORMATION_SCHEMA.COLLATIONS](../information-schema-collations/specs.md).
+       [INFORMATION_SCHEMA.COLLATIONS](../information-schema-collations/specs.md),
+       [INFORMATION_SCHEMA.KEYWORDS](../information-schema-keywords/specs.md).
 40. [ ] `SHOW VARIABLES`, `SHOW STATUS`, `SHOW WARNINGS`, `SHOW ERRORS`, and
        count variants: session state, diagnostics, filtering, and metadata.
        The diagnostic `SHOW WARNINGS` / `SHOW ERRORS` slice is specified for

@@ -36,6 +36,7 @@ static const size_t corpus_minimum_token_count = 1000U;
         .sql = (sql_value), .modes = (modes_value), .kind = (kind_value), .error = (error_value)})
 
 static int test_keywords(void);
+static int test_keyword_catalog_iteration(void);
 static int test_basic_select_tokens(void);
 static int test_literals(void);
 static int test_comments(void);
@@ -59,6 +60,7 @@ int main(void)
     int failures = 0;
 
     failures += test_keywords();
+    failures += test_keyword_catalog_iteration();
     failures += test_basic_select_tokens();
     failures += test_literals();
     failures += test_comments();
@@ -83,6 +85,80 @@ static int test_keywords(void)
                                               MYLITE_SQL_KEYWORD_RESTRICTED_ROLE);
     failures += expect_keyword("_filename", MYLITE_SQL_KEYWORD_RESERVED);
     failures += expect_not_keyword("mylite_private_name");
+
+    return failures;
+}
+
+static int test_keyword_catalog_iteration(void)
+{
+    enum {
+        minimum_keyword_catalog_entries = 5,
+        stale_keyword_flags = 42,
+    };
+    const char *word = NULL;
+    unsigned int flags = 0U;
+    int failures = 0;
+
+    if (mylite_sql_keyword_catalog_count() <= (size_t)minimum_keyword_catalog_entries) {
+        fprintf(stderr, "keyword catalog returned too few keywords\n");
+        failures = 1;
+    }
+    if (mylite_sql_keyword_catalog_at(0U, &word, &flags)) {
+        if (strcmp(word, "ACCESSIBLE") != 0) {
+            fprintf(stderr, "expected first keyword ACCESSIBLE, got %s\n", word);
+            failures = 1;
+        }
+        if ((flags & MYLITE_SQL_KEYWORD_RESERVED) == 0U) {
+            fprintf(stderr, "expected first keyword to be reserved\n");
+            failures = 1;
+        }
+    } else {
+        fprintf(stderr, "keyword catalog did not return first keyword\n");
+        failures = 1;
+    }
+
+    if (mylite_sql_keyword_catalog_at(1U, &word, &flags)) {
+        if (strcmp(word, "ACCOUNT") != 0) {
+            fprintf(stderr, "expected second keyword ACCOUNT, got %s\n", word);
+            failures = 1;
+        }
+        if ((flags & MYLITE_SQL_KEYWORD_RESERVED) != 0U) {
+            fprintf(stderr, "expected second keyword to be nonreserved\n");
+            failures = 1;
+        }
+    } else {
+        fprintf(stderr, "keyword catalog did not return second keyword\n");
+        failures = 1;
+    }
+
+    if (mylite_sql_keyword_catalog_at(mylite_sql_keyword_catalog_count(), &word, &flags)) {
+        fprintf(stderr, "keyword catalog unexpectedly returned out-of-range keyword\n");
+        failures = 1;
+    }
+    if (word != NULL || flags != 0U) {
+        fprintf(stderr, "keyword catalog did not clear outputs for out-of-range lookup\n");
+        failures = 1;
+    }
+
+    word = "stale";
+    flags = stale_keyword_flags;
+    if (mylite_sql_keyword_catalog_at(0U, NULL, &flags)) {
+        fprintf(stderr, "keyword catalog unexpectedly accepted NULL word output\n");
+        failures = 1;
+    }
+    if (flags != 0U) {
+        fprintf(stderr, "keyword catalog did not clear flags for NULL word output\n");
+        failures = 1;
+    }
+
+    if (mylite_sql_keyword_catalog_at(0U, &word, NULL)) {
+        fprintf(stderr, "keyword catalog unexpectedly accepted NULL flags output\n");
+        failures = 1;
+    }
+    if (word != NULL) {
+        fprintf(stderr, "keyword catalog did not clear word for NULL flags output\n");
+        failures = 1;
+    }
 
     return failures;
 }

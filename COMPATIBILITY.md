@@ -1061,7 +1061,7 @@ Metadata rows include base MySQL objects plus optional plugin, Enterprise, NDB C
 | `INFORMATION_SCHEMA.INNODB_TRX` | ❌ | low | Active InnoDB transaction information |  |
 | `INFORMATION_SCHEMA.INNODB_VIRTUAL` | ❌ | low | InnoDB virtual generated column metadata |  |
 | `INFORMATION_SCHEMA.KEY_COLUMN_USAGE` | ❌ | top | Which key columns have constraints |  |
-| `INFORMATION_SCHEMA.KEYWORDS` | ❌ | medium | MySQL keywords |  |
+| `INFORMATION_SCHEMA.KEYWORDS` | 🟡 | medium | MySQL keywords | `SELECT * FROM INFORMATION_SCHEMA.KEYWORDS` exposes MyLite's shared lexer-supported keyword catalog with uppercase `WORD` and numeric `RESERVED` columns, case-insensitive quoted table resolution, and a `SYSTEM VIEW` row in `INFORMATION_SCHEMA.TABLES` / `SHOW TABLES FROM information_schema`. MyLite does not yet claim exact MySQL 8.4.9 keyword catalog completeness; projections, explicit duplicate modifiers, filters, ordering, limits, joins, aliases, aggregates, qualified wildcards, and full MySQL field metadata for information-schema SELECTs remain deferred. See [INFORMATION_SCHEMA.KEYWORDS spec](docs/specs/information-schema-keywords/specs.md). |
 | `INFORMATION_SCHEMA.MYSQL_FIREWALL_USERS` | ❌ | low | Firewall in-memory data for account profiles Deprecated in MySQL 8.4. |  |
 | `INFORMATION_SCHEMA.MYSQL_FIREWALL_WHITELIST` | ❌ | low | Firewall in-memory data for account profile allowlists Deprecated in MySQL 8.4. |  |
 | `INFORMATION_SCHEMA.ndb_transid_mysql_connection_map` | ❌ | low | NDB Cluster transaction mapping table when the NDB information-schema plugin is available; unavailable in standard MySQL 8.4 Server. | Conditional NDB Cluster surface. |

@@ -113,6 +113,8 @@ void mylite_sql_lexer_init(struct mylite_sql_lexer *lexer, struct mylite_sql_lex
 
 int mylite_sql_lexer_next(struct mylite_sql_lexer *lexer, struct mylite_sql_token *out_token);
 
+size_t mylite_sql_keyword_catalog_count(void);
+bool mylite_sql_keyword_catalog_at(size_t index, const char **out_word, unsigned int *out_flags);
 bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *out_flags);
 
 const char *mylite_sql_token_kind_name(enum mylite_sql_token_kind kind);

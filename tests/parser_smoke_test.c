@@ -7478,6 +7478,10 @@ static int expect_delete_statement_view(void) {
     const MyliteAstDeleteTarget *target =
         view == NULL ? NULL
                      : mylite_ast_delete_statement_view_target_at(view, 0);
+    const MyliteAstTableReference *table_reference =
+        view == NULL ? NULL
+                     : mylite_ast_delete_statement_view_table_reference_at(
+                           view, 0);
     const MyliteAstExpression *where_expression =
         mylite_ast_delete_statement_view_where_expression(view);
     if (view == NULL || mylite_ast_statement_kind(ast, 0) !=
@@ -7494,6 +7498,12 @@ static int expect_delete_statement_view(void) {
         !span_matches(
             sql, mylite_ast_delete_statement_view_table_reference_start(view),
             mylite_ast_delete_statement_view_table_reference_end(view), "t") ||
+        mylite_ast_delete_statement_view_table_reference_count(view) != 1 ||
+        table_reference == NULL ||
+        !value_matches_when_expected(
+            mylite_ast_table_reference_view_name_value(table_reference),
+            mylite_ast_table_reference_view_name_value_length(table_reference),
+            "t") ||
         !span_matches(sql, mylite_ast_delete_statement_view_where_start(view),
                       mylite_ast_delete_statement_view_where_end(view),
                       "WHERE id = ?") ||
@@ -7541,6 +7551,14 @@ static int expect_delete_statement_view(void) {
     const MyliteAstDeleteTarget *target1 =
         view == NULL ? NULL
                      : mylite_ast_delete_statement_view_target_at(view, 1);
+    const MyliteAstTableReference *table_reference0 =
+        view == NULL ? NULL
+                     : mylite_ast_delete_statement_view_table_reference_at(
+                           view, 0);
+    const MyliteAstTableReference *table_reference1 =
+        view == NULL ? NULL
+                     : mylite_ast_delete_statement_view_table_reference_at(
+                           view, 1);
     const MyliteAstExpression *where_expression =
         mylite_ast_delete_statement_view_where_expression(view);
     if (view == NULL ||
@@ -7561,6 +7579,26 @@ static int expect_delete_statement_view(void) {
             sql, mylite_ast_delete_statement_view_table_reference_start(view),
             mylite_ast_delete_statement_view_table_reference_end(view),
             "db1.t AS t JOIN s ON t.id = s.id") ||
+        mylite_ast_delete_statement_view_table_reference_count(view) != 2 ||
+        table_reference0 == NULL || table_reference1 == NULL ||
+        !value_matches_when_expected(
+            mylite_ast_table_reference_view_schema_value(table_reference0),
+            mylite_ast_table_reference_view_schema_value_length(
+                table_reference0),
+            "db1") ||
+        !value_matches_when_expected(
+            mylite_ast_table_reference_view_name_value(table_reference0),
+            mylite_ast_table_reference_view_name_value_length(table_reference0),
+            "t") ||
+        !value_matches_when_expected(
+            mylite_ast_table_reference_view_alias_value(table_reference0),
+            mylite_ast_table_reference_view_alias_value_length(
+                table_reference0),
+            "t") ||
+        !value_matches_when_expected(
+            mylite_ast_table_reference_view_name_value(table_reference1),
+            mylite_ast_table_reference_view_name_value_length(table_reference1),
+            "s") ||
         target0 == NULL ||
         !mylite_ast_delete_target_view_has_wildcard(target0) ||
         !value_matches_when_expected(
@@ -7647,6 +7685,10 @@ static int expect_update_statement_view(void) {
     const MyliteAstUpdateAssignment *assignment1 =
         view == NULL ? NULL
                      : mylite_ast_update_statement_view_assignment_at(view, 1);
+    const MyliteAstTableReference *table_reference =
+        view == NULL ? NULL
+                     : mylite_ast_update_statement_view_table_reference_at(
+                           view, 0);
     const MyliteAstExpression *assignment1_expression =
         mylite_ast_update_assignment_view_value_expression(assignment1);
     const MyliteAstExpression *where_expression =
@@ -7661,6 +7703,12 @@ static int expect_update_statement_view(void) {
                           view),
                       mylite_ast_update_statement_view_table_reference_end(view),
                       "t") ||
+        mylite_ast_update_statement_view_table_reference_count(view) != 1 ||
+        table_reference == NULL ||
+        !value_matches_when_expected(
+            mylite_ast_table_reference_view_name_value(table_reference),
+            mylite_ast_table_reference_view_name_value_length(table_reference),
+            "t") ||
         !span_matches(sql, mylite_ast_update_statement_view_where_start(view),
                       mylite_ast_update_statement_view_where_end(view),
                       "WHERE id = ?") ||
@@ -7716,6 +7764,14 @@ static int expect_update_statement_view(void) {
     const MyliteAstUpdateAssignment *assignment1 =
         view == NULL ? NULL
                      : mylite_ast_update_statement_view_assignment_at(view, 1);
+    const MyliteAstTableReference *table_reference0 =
+        view == NULL ? NULL
+                     : mylite_ast_update_statement_view_table_reference_at(
+                           view, 0);
+    const MyliteAstTableReference *table_reference1 =
+        view == NULL ? NULL
+                     : mylite_ast_update_statement_view_table_reference_at(
+                           view, 1);
     const MyliteAstExpression *assignment1_expression =
         mylite_ast_update_assignment_view_value_expression(assignment1);
     if (view == NULL ||
@@ -7729,6 +7785,26 @@ static int expect_update_statement_view(void) {
                           view),
                       mylite_ast_update_statement_view_table_reference_end(view),
                       "db1.t AS t JOIN s ON t.id = s.id") ||
+        mylite_ast_update_statement_view_table_reference_count(view) != 2 ||
+        table_reference0 == NULL || table_reference1 == NULL ||
+        !value_matches_when_expected(
+            mylite_ast_table_reference_view_schema_value(table_reference0),
+            mylite_ast_table_reference_view_schema_value_length(
+                table_reference0),
+            "db1") ||
+        !value_matches_when_expected(
+            mylite_ast_table_reference_view_name_value(table_reference0),
+            mylite_ast_table_reference_view_name_value_length(table_reference0),
+            "t") ||
+        !value_matches_when_expected(
+            mylite_ast_table_reference_view_alias_value(table_reference0),
+            mylite_ast_table_reference_view_alias_value_length(
+                table_reference0),
+            "t") ||
+        !value_matches_when_expected(
+            mylite_ast_table_reference_view_name_value(table_reference1),
+            mylite_ast_table_reference_view_name_value_length(table_reference1),
+            "s") ||
         mylite_ast_update_statement_view_assignment_count(view) != 2 ||
         assignment1 == NULL ||
         !value_matches_when_expected(
@@ -8578,6 +8654,16 @@ static int expect_semantic_ast_materialization(void) {
       "UPDATE clauses", "UPDATE t SET a = 1 WHERE b = 2", update_clauses,
       sizeof(update_clauses) / sizeof(update_clauses[0]));
 
+  const ExpectedSemanticClause update_join_clauses[] = {
+      {MYLITE_SEMANTIC_CLAUSE_TABLE_REFERENCE, 2},
+      {MYLITE_SEMANTIC_CLAUSE_WHERE, 1},
+  };
+  failed += expect_semantic_clauses(
+      "joined UPDATE clauses",
+      "UPDATE db1.t AS t JOIN s ON t.id = s.id SET t.a = s.a WHERE s.a > 0",
+      update_join_clauses,
+      sizeof(update_join_clauses) / sizeof(update_join_clauses[0]));
+
   const ExpectedSemanticClause delete_clauses[] = {
       {MYLITE_SEMANTIC_CLAUSE_TABLE_REFERENCE, 1},
       {MYLITE_SEMANTIC_CLAUSE_WHERE, 1},
@@ -8585,6 +8671,16 @@ static int expect_semantic_ast_materialization(void) {
   failed += expect_semantic_clauses(
       "DELETE clauses", "DELETE FROM t WHERE a = 1", delete_clauses,
       sizeof(delete_clauses) / sizeof(delete_clauses[0]));
+
+  const ExpectedSemanticClause delete_join_clauses[] = {
+      {MYLITE_SEMANTIC_CLAUSE_TABLE_REFERENCE, 2},
+      {MYLITE_SEMANTIC_CLAUSE_WHERE, 1},
+  };
+  failed += expect_semantic_clauses(
+      "joined DELETE clauses",
+      "DELETE t FROM db1.t AS t JOIN s ON t.id = s.id WHERE s.id > 0",
+      delete_join_clauses,
+      sizeof(delete_join_clauses) / sizeof(delete_join_clauses[0]));
 
   const ExpectedSemanticClause show_like_clauses[] = {
       {MYLITE_SEMANTIC_CLAUSE_SHOW_LIKE, 1},

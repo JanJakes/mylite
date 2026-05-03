@@ -1695,6 +1695,12 @@ size_t mylite_ast_delete_statement_view_table_reference_start(
     const MyliteAstDeleteStatement *delete_statement);
 size_t mylite_ast_delete_statement_view_table_reference_end(
     const MyliteAstDeleteStatement *delete_statement);
+size_t mylite_ast_delete_statement_view_table_reference_count(
+    const MyliteAstDeleteStatement *delete_statement);
+const MyliteAstTableReference *
+mylite_ast_delete_statement_view_table_reference_at(
+    const MyliteAstDeleteStatement *delete_statement,
+    size_t table_reference_index);
 size_t mylite_ast_delete_statement_view_target_count(
     const MyliteAstDeleteStatement *delete_statement);
 const MyliteAstDeleteTarget *mylite_ast_delete_statement_view_target_at(
@@ -1755,6 +1761,12 @@ size_t mylite_ast_update_statement_view_table_reference_start(
     const MyliteAstUpdateStatement *update_statement);
 size_t mylite_ast_update_statement_view_table_reference_end(
     const MyliteAstUpdateStatement *update_statement);
+size_t mylite_ast_update_statement_view_table_reference_count(
+    const MyliteAstUpdateStatement *update_statement);
+const MyliteAstTableReference *
+mylite_ast_update_statement_view_table_reference_at(
+    const MyliteAstUpdateStatement *update_statement,
+    size_t table_reference_index);
 size_t mylite_ast_update_statement_view_assignment_count(
     const MyliteAstUpdateStatement *update_statement);
 const MyliteAstUpdateAssignment *

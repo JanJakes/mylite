@@ -612,7 +612,9 @@ struct MyliteAstDeleteStatement {
   const MyliteAstNode *where_expression_node;
   MyliteAstExpression where_expression;
   MyliteAstDeleteTarget *targets;
+  MyliteAstTableReference *table_references;
   size_t target_count;
+  size_t table_reference_count;
   MyliteDeleteStatementKind kind;
   MyliteDeletePriority priority;
   size_t start;
@@ -697,10 +699,13 @@ struct MyliteAstUpdateStatement {
   const MyliteAstNode *node;
   const MyliteAstNode *payload_node;
   const MyliteAstNode *with_node;
+  const MyliteAstNode *table_reference_node;
   const MyliteAstNode *where_expression_node;
   MyliteAstExpression where_expression;
   MyliteAstUpdateAssignment *assignments;
+  MyliteAstTableReference *table_references;
   size_t assignment_count;
+  size_t table_reference_count;
   MyliteUpdatePriority priority;
   size_t start;
   size_t end;
@@ -1783,6 +1788,9 @@ static int mylite_ast_set_update_assignments(
     const MyliteAstNode *payload);
 static int mylite_ast_set_update_clause_expression_views(
     MyliteAst *ast, MyliteAstUpdateStatement *update_statement);
+static int mylite_ast_set_table_reference_descriptors(
+    MyliteAst *ast, MyliteAstTableReference **table_references,
+    size_t *table_reference_count, const MyliteAstNode *node);
 static const MyliteAstNode *mylite_ast_update_payload(
     const MyliteAstNode *payload);
 static MyliteUpdatePriority mylite_ast_update_priority(
@@ -1845,7 +1853,7 @@ static int mylite_ast_set_table_reference_name(
 static int mylite_ast_set_table_reference_alias(
     MyliteAst *ast, MyliteAstTableReference *table_reference,
     const MyliteAstNode *node);
-static int mylite_ast_is_named_table_factor(const MyliteAstNode *node);
+static int mylite_ast_is_named_table_reference_node(const MyliteAstNode *node);
 static size_t
 mylite_ast_count_select_query_block_projections(const MyliteAstNode *node,
                                                 int is_root);
@@ -5909,6 +5917,22 @@ size_t mylite_ast_delete_statement_view_table_reference_end(
   return delete_statement == NULL ? 0 : delete_statement->table_reference_end;
 }
 
+size_t mylite_ast_delete_statement_view_table_reference_count(
+    const MyliteAstDeleteStatement *delete_statement) {
+  return delete_statement == NULL ? 0 : delete_statement->table_reference_count;
+}
+
+const MyliteAstTableReference *
+mylite_ast_delete_statement_view_table_reference_at(
+    const MyliteAstDeleteStatement *delete_statement,
+    size_t table_reference_index) {
+  if (delete_statement == NULL ||
+      table_reference_index >= delete_statement->table_reference_count) {
+    return NULL;
+  }
+  return &delete_statement->table_references[table_reference_index];
+}
+
 size_t mylite_ast_delete_statement_view_target_count(
     const MyliteAstDeleteStatement *delete_statement) {
   return delete_statement == NULL ? 0 : delete_statement->target_count;
@@ -6065,6 +6089,22 @@ size_t mylite_ast_update_statement_view_table_reference_start(
 size_t mylite_ast_update_statement_view_table_reference_end(
     const MyliteAstUpdateStatement *update_statement) {
   return update_statement == NULL ? 0 : update_statement->table_reference_end;
+}
+
+size_t mylite_ast_update_statement_view_table_reference_count(
+    const MyliteAstUpdateStatement *update_statement) {
+  return update_statement == NULL ? 0 : update_statement->table_reference_count;
+}
+
+const MyliteAstTableReference *
+mylite_ast_update_statement_view_table_reference_at(
+    const MyliteAstUpdateStatement *update_statement,
+    size_t table_reference_index) {
+  if (update_statement == NULL ||
+      table_reference_index >= update_statement->table_reference_count) {
+    return NULL;
+  }
+  return &update_statement->table_references[table_reference_index];
 }
 
 size_t mylite_ast_update_statement_view_assignment_count(
@@ -13511,6 +13551,10 @@ static int mylite_ast_set_delete_statement_view(MyliteAst *ast,
   mylite_ast_set_delete_statement_shape(delete_statement,
                                         delete_statement->payload_node);
   if (!mylite_ast_set_delete_targets(ast, delete_statement) ||
+      !mylite_ast_set_table_reference_descriptors(
+          ast, &delete_statement->table_references,
+          &delete_statement->table_reference_count,
+          delete_statement->table_reference_node) ||
       !mylite_ast_set_delete_clause_expression_views(ast, delete_statement)) {
     return 0;
   }
@@ -15110,6 +15154,10 @@ static int mylite_ast_set_update_statement_view(MyliteAst *ast,
                                         update_statement->payload_node);
   if (!mylite_ast_set_update_assignments(ast, update_statement,
                                          update_statement->payload_node) ||
+      !mylite_ast_set_table_reference_descriptors(
+          ast, &update_statement->table_references,
+          &update_statement->table_reference_count,
+          update_statement->table_reference_node) ||
       !mylite_ast_set_update_clause_expression_views(ast, update_statement)) {
     return 0;
   }
@@ -15138,6 +15186,7 @@ static void mylite_ast_set_update_statement_shape(
       table_refs != NULL ||
       mylite_ast_find_first_symbol(table_scope, "nt_join_table") != NULL;
   if (table_scope != NULL) {
+    update_statement->table_reference_node = table_scope;
     update_statement->table_reference_start =
         mylite_ast_node_start(table_scope);
     update_statement->table_reference_end = mylite_ast_node_end(table_scope);
@@ -15210,6 +15259,32 @@ static int mylite_ast_set_update_clause_expression_views(
     return 0;
   }
   return 1;
+}
+
+static int mylite_ast_set_table_reference_descriptors(
+    MyliteAst *ast, MyliteAstTableReference **table_references,
+    size_t *table_reference_count, const MyliteAstNode *node) {
+  if (ast == NULL || table_references == NULL ||
+      table_reference_count == NULL || node == NULL) {
+    return 1;
+  }
+
+  *table_reference_count = mylite_ast_count_select_table_references(node, 1);
+  if (*table_reference_count == 0) {
+    return 1;
+  }
+
+  *table_references =
+      mylite_ast_alloc(ast, *table_reference_count * sizeof(**table_references));
+  if (*table_references == NULL) {
+    return 0;
+  }
+
+  size_t index = 0;
+  int ok = 1;
+  mylite_ast_fill_select_table_references(ast, *table_references, node, &index,
+                                          &ok, 1);
+  return ok && index == *table_reference_count;
 }
 
 static const MyliteAstNode *mylite_ast_update_payload(
@@ -15877,29 +15952,11 @@ static int mylite_ast_set_select_query_block_clause_expression_views(
 
 static int mylite_ast_set_select_query_block_table_references(
     MyliteAst *ast, MyliteAstSelectQueryBlock *query_block) {
-  if (ast == NULL || query_block == NULL || query_block->from_node == NULL) {
-    return 1;
-  }
-
-  query_block->table_reference_count =
-      mylite_ast_count_select_table_references(query_block->from_node, 1);
-  if (query_block->table_reference_count == 0) {
-    return 1;
-  }
-
-  query_block->table_references =
-      mylite_ast_alloc(ast, query_block->table_reference_count *
-                                sizeof(*query_block->table_references));
-  if (query_block->table_references == NULL) {
-    return 0;
-  }
-
-  size_t index = 0;
-  int ok = 1;
-  mylite_ast_fill_select_table_references(
-      ast, query_block->table_references, query_block->from_node, &index, &ok,
-      1);
-  return ok && index == query_block->table_reference_count;
+  return query_block == NULL
+             ? 1
+             : mylite_ast_set_table_reference_descriptors(
+                   ast, &query_block->table_references,
+                   &query_block->table_reference_count, query_block->from_node);
 }
 
 static size_t mylite_ast_count_select_table_references(
@@ -15910,7 +15967,7 @@ static size_t mylite_ast_count_select_table_references(
   if (!is_root && mylite_ast_is_select_query_block(node)) {
     return 0;
   }
-  if (mylite_ast_is_named_table_factor(node)) {
+  if (mylite_ast_is_named_table_reference_node(node)) {
     return 1;
   }
 
@@ -15930,7 +15987,7 @@ static void mylite_ast_fill_select_table_references(
   if (!is_root && mylite_ast_is_select_query_block(node)) {
     return;
   }
-  if (mylite_ast_is_named_table_factor(node)) {
+  if (mylite_ast_is_named_table_reference_node(node)) {
     if (ast == NULL || table_references == NULL || index == NULL ||
         !mylite_ast_fill_table_reference(ast, &table_references[*index],
                                          node)) {
@@ -15964,7 +16021,9 @@ static int mylite_ast_set_table_reference_name(
     MyliteAst *ast, MyliteAstTableReference *table_reference,
     const MyliteAstNode *node) {
   const MyliteAstNode *table_name =
-      mylite_ast_direct_child_symbol(node, 0, "nt_table_name");
+      mylite_ast_expression_is_symbol(node, "nt_table_name")
+          ? node
+          : mylite_ast_direct_child_symbol(node, 0, "nt_table_name");
   if (table_name == NULL) {
     return 1;
   }
@@ -16011,6 +16070,9 @@ static int mylite_ast_set_table_reference_name(
 static int mylite_ast_set_table_reference_alias(
     MyliteAst *ast, MyliteAstTableReference *table_reference,
     const MyliteAstNode *node) {
+  if (!mylite_ast_expression_is_symbol(node, "nt_table_factor")) {
+    return 1;
+  }
   const MyliteAstNode *alias =
       mylite_ast_find_first_symbol(
           mylite_ast_direct_child_symbol(node, 2, "nt_table_as_name_opt"),
@@ -16038,9 +16100,10 @@ static int mylite_ast_set_table_reference_alias(
                                       &table_reference->alias_value_length);
 }
 
-static int mylite_ast_is_named_table_factor(const MyliteAstNode *node) {
-  return mylite_ast_expression_is_symbol(node, "nt_table_factor") &&
-         mylite_ast_direct_child_symbol(node, 0, "nt_table_name") != NULL;
+static int mylite_ast_is_named_table_reference_node(const MyliteAstNode *node) {
+  return mylite_ast_expression_is_symbol(node, "nt_table_name") ||
+         (mylite_ast_expression_is_symbol(node, "nt_table_factor") &&
+          mylite_ast_direct_child_symbol(node, 0, "nt_table_name") != NULL);
 }
 
 static size_t

@@ -82,8 +82,8 @@ expression nodes.
 - `DELETE` statements expose parser-level views for single-table, multi-table
   `FROM`, and multi-table `USING` forms, `WITH` markers, priority, `QUICK`, and
   `IGNORE` modifiers, ordered delete-target descriptors, table-reference spans,
-  statement-level `WHERE` predicate expressions, and `ORDER BY` / `LIMIT`
-  anchors.
+  decoded named table-reference descriptors, statement-level `WHERE` predicate
+  expressions, and `ORDER BY` / `LIMIT` anchors.
 - `INSERT` statements expose parser-level views for decoded target tables,
   source-form classification (`VALUES`, `SET`, or `SELECT`), priority and
   `IGNORE` modifiers, partition and duplicate-update markers, optional column
@@ -103,9 +103,10 @@ expression nodes.
   view.
 - `UPDATE` statements expose parser-level views for `WITH` markers,
   single-table versus joined/multi-table target references, priority and
-  `IGNORE` modifiers, ordered assignment descriptors, statement-level `WHERE`
-  predicate expressions, and `ORDER BY` / `LIMIT` anchors. UPDATE assignments
-  reuse the recursive expression view.
+  `IGNORE` modifiers, decoded named table-reference descriptors, ordered
+  assignment descriptors, statement-level `WHERE` predicate expressions, and
+  `ORDER BY` / `LIMIT` anchors. UPDATE assignments reuse the recursive
+  expression view.
 - `SET` statements expose typed statement-form and assignment descriptors for
   variable assignments, `SET NAMES`, `SET CHARACTER SET`, `SET TRANSACTION`,
   and TiDB `SET CONFIG` syntax, including value-expression CST anchors.
@@ -253,8 +254,9 @@ expression nodes.
   value-expression handles
 - typed `DELETE` descriptors with statement form, `WITH` and multi-table
   markers, priority, `QUICK`, and `IGNORE` modifiers, delete-target handles,
-  target-list spans, table-reference spans, statement-level `WHERE` predicate
-  expression handles, and `ORDER BY` / `LIMIT` spans
+  target-list spans, table-reference spans, decoded named table-reference
+  handles, statement-level `WHERE` predicate expression handles, and
+  `ORDER BY` / `LIMIT` spans
 - typed `DELETE` target descriptors with target/schema/name spans, decoded
   schema/name values, and wildcard markers for `tbl.*`
 - typed `REPLACE` descriptors with decoded target table, source form, priority,
@@ -269,9 +271,9 @@ expression nodes.
 - typed `DO` descriptors with expression-list spans and ordered expression
   handles
 - typed `UPDATE` descriptors with `WITH` and multi-table markers, priority and
-  `IGNORE` modifiers, table-reference spans, ordered assignment handles,
-  statement-level `WHERE` predicate expression handles, and `ORDER BY` / `LIMIT`
-  spans
+  `IGNORE` modifiers, table-reference spans, decoded named table-reference
+  handles, ordered assignment handles, statement-level `WHERE` predicate
+  expression handles, and `ORDER BY` / `LIMIT` spans
 - typed `UPDATE` assignment descriptors with assignment/name/value spans,
   decoded assignment names, value CST anchors, and recursive value-expression
   handles
@@ -399,12 +401,11 @@ clause nodes for that block.
 Standalone `VALUES` query forms also own one semantic query node; it owns row
 nodes followed by `ORDER BY`, `LIMIT`, `INTO`, and locking clause nodes. Each
 row node preserves the row index and owns the row's value descriptors.
-SELECT `FROM` clauses own decoded semantic table-reference nodes for named table
-factors when the parser descriptor layer exposes them; otherwise they keep the
-raw `FROM` span fallback. DML table-reference clauses still own a raw
-table-reference span node for the parser-level table-reference anchor. `INSERT`
-and `REPLACE` statements now own one semantic source node with `VALUES`, `SET`,
-or `SELECT` source kind;
+SELECT `FROM`, UPDATE table-reference, and DELETE table-reference clauses own
+decoded semantic table-reference nodes for named table factors when the parser
+descriptor layer exposes them; otherwise they keep the raw table-reference span
+fallback. `INSERT` and `REPLACE` statements now own one semantic source node
+with `VALUES`, `SET`, or `SELECT` source kind;
 VALUES sources own row nodes, each row node owns the row's value descriptors,
 and SET payload descriptors live directly under the source node. Column
 descriptors and duplicate-key assignment descriptors remain statement-scoped.
@@ -806,14 +807,15 @@ large benchmark coverage walk. `ast` keeps the historical public-view coverage
 counters. `semantic` parses through the parser AST, materializes the first
 semantic graph, frees the parser AST, and then counts the semantic graph.
 
-Latest semantic-AST construction run on May 3, 2026, after decoded SELECT
-table-reference descriptors and semantic `CREATE TABLE` table-node grouping:
+Latest semantic-AST construction run on May 3, 2026, after decoded
+SELECT/UPDATE/DELETE table-reference descriptors and semantic `CREATE TABLE`
+table-node grouping:
 
 ```text
-mode=syntax queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=2.837120 qps=490222 mbps=37.28 avg_us=2.040
-mode=ast-only queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=8.532224 qps=163008 mbps=12.40 avg_us=6.135 avg_nodes=74.5 avg_ast_bytes=11241.7 avg_statements=1.00
-mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=8.525048 qps=163145 mbps=12.41 avg_us=6.130 avg_nodes=74.5 avg_ast_bytes=11241.7
-mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=9.012075 qps=154328 mbps=11.74 avg_us=6.480 avg_semantic_nodes=10.3 avg_semantic_bytes=4839.0 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_queries=0.25 avg_semantic_query_blocks=0.28 avg_semantic_tables=0.13 avg_semantic_table_references=0.23 avg_semantic_sources=0.19 avg_semantic_rows=0.58 avg_semantic_descriptors=2.58 avg_semantic_clauses=0.37 avg_semantic_structural_clauses=0.06 avg_semantic_data_types=0.31 avg_semantic_data_type_numeric_parameters=0.12 avg_semantic_data_type_elements=0.05 avg_semantic_data_type_attributes=0.03 avg_semantic_expressions=2.69 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.04 avg_semantic_descriptor_expressions=1.81 avg_semantic_clause_expressions=0.11 avg_semantic_statement_expressions=0.00
+mode=syntax queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=2.802289 qps=496316 mbps=37.75 avg_us=2.015
+mode=ast-only queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=8.442583 qps=164739 mbps=12.53 avg_us=6.070 avg_nodes=74.5 avg_ast_bytes=11244.6 avg_statements=1.00
+mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=8.609782 qps=161540 mbps=12.29 avg_us=6.190 avg_nodes=74.5 avg_ast_bytes=11244.6
+mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=8.946954 qps=155452 mbps=11.82 avg_us=6.433 avg_semantic_nodes=10.3 avg_semantic_bytes=4839.5 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_queries=0.25 avg_semantic_query_blocks=0.28 avg_semantic_tables=0.13 avg_semantic_table_references=0.23 avg_semantic_sources=0.19 avg_semantic_rows=0.58 avg_semantic_descriptors=2.58 avg_semantic_clauses=0.37 avg_semantic_structural_clauses=0.06 avg_semantic_data_types=0.31 avg_semantic_data_type_numeric_parameters=0.12 avg_semantic_data_type_elements=0.05 avg_semantic_data_type_attributes=0.03 avg_semantic_expressions=2.69 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.04 avg_semantic_descriptor_expressions=1.81 avg_semantic_clause_expressions=0.11 avg_semantic_statement_expressions=0.00
 ```
 
 Latest EXPLAIN/DESCRIBE parser-view run on May 3, 2026:
@@ -1013,8 +1015,8 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,876 lines, 5,639,543 bytes
 generated parser object: 997K on disk, 905,630 bytes text/data/other
-parser support object: 420K on disk, 242,034 bytes text/data/other
-semantic AST object: 72K on disk, 34,735 bytes text/data/other
+parser support object: 421K on disk, 242,586 bytes text/data/other
+semantic AST object: 74K on disk, 35,811 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.6M on disk
 mylite-parse: 1.3M on disk

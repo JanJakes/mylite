@@ -341,6 +341,12 @@ token sink:
 - `CREATE TABLE ... LIKE` recognizes one- and two-part target/source table
   names, including `TEMPORARY` and `IF NOT EXISTS`, and rejects trailing table
   options or tokens after the source table.
+- `CREATE TEMPORARY TABLE` shares the definition, `LIKE`, and CTAS parser
+  paths with regular `CREATE TABLE`.
+- `DROP EVENT`, `DROP PROCEDURE`, `DROP SERVER`, and `DROP TRIGGER` recognize
+  optional `IF EXISTS` and validated object-name shapes.
+- `RENAME TABLE` recognizes `TABLE`/`TABLES` plus comma-separated source/target
+  table pairs.
   `DROP`/`EXCHANGE`/`REORGANIZE PARTITION` require concrete partition names;
   `REORGANIZE PARTITION` also requires a non-empty `INTO (...)` body.
   Table-level `ENGINE_ATTRIBUTE` and `SECONDARY_ENGINE_ATTRIBUTE` changes
@@ -447,8 +453,12 @@ token sink:
 - Replication channel clauses share one text-string grammar across
   `START`/`STOP`/`RESET`/`SHOW`/`FLUSH` and `CHANGE ... FOR CHANNEL`, with
   quoted hex/bit rejection.
+- `STOP GROUP_REPLICATION` recognizes the standalone statement and rejects
+  trailing options.
 - `SHOW PARSE_TREE` is accepted only in permissive corpus mode because normal
   MySQL 8.4 builds reject that conditional debug/development SHOW form.
+- `SHOW CREATE` recognizes database/schema, event, function, procedure, table,
+  trigger, view, and user targets with validated object/account names.
 - `SHOW ENGINE ... STATUS|LOGS|MUTEX` recognizes engine names using the shared
   identifier grammar plus MySQL's `ALL` engine selector.
 - Shared `SHOW ... LIKE` filters require text-string patterns, while
@@ -485,6 +495,8 @@ token sink:
 - XA statements recognize string, hex, and binary XID parts while rejecting
   bare decimal XID literals.
 - Stored-program label and cursor references use the shared identifier grammar.
+- Compound `BEGIN ... END` blocks and `LOOP ... END LOOP` bodies are recognized
+  with optional labels and preserved nested statement tails.
 - Embedded stored-program `LEAVE` and `ITERATE` statements validate their
   required label arity.
 - Embedded stored-program cursor statements validate `OPEN`, `FETCH`, and
@@ -506,6 +518,7 @@ token sink:
   user-variable sources, rejecting quoted hex/bit statement text literals.
 - XA statements recognize one-, two-, and three-part string or hex XIDs with
   unsigned decimal, lowercase-hex, or quoted-hex `formatID` values.
+- `XA RECOVER` recognizes the bare statement and `CONVERT XID`.
 - `CACHE INDEX` recognizes table, single-table partition, optional empty or
   named key/index, and key-cache names using the shared identifier grammar;
   `RESET PERSIST` uses the shared grammar for persisted-variable names while

@@ -260,6 +260,7 @@ static int test_sqrt_scalar_function_execution(mylite_db *database);
 static int test_trigonometric_scalar_function_execution(mylite_db *database);
 static int test_cot_scalar_function_execution(mylite_db *database);
 static int test_inverse_trigonometric_scalar_function_execution(mylite_db *database);
+static int test_atan_scalar_function_execution(mylite_db *database);
 static int test_angle_conversion_scalar_function_execution(mylite_db *database);
 static int test_uuid_scalar_functions(mylite_db *database);
 static int test_inet_ipv4_functions_execution(void);
@@ -4047,6 +4048,8 @@ static int test_scalar_builtin_functions_execution(void)
 
     failures += test_inverse_trigonometric_scalar_function_execution(database);
 
+    failures += test_atan_scalar_function_execution(database);
+
     failures += test_angle_conversion_scalar_function_execution(database);
 
     failures += test_uuid_scalar_functions(database);
@@ -5361,7 +5364,7 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_select_rows(database, "SELECT id FROM t ORDER BY id", id_column, 1,
                                    remaining_values, 1, "delete list function remaining rows");
 
-    failures += prepare_sql(database, "SELECT ATAN(1)", MYLITE_UNSUPPORTED, &stmt);
+    failures += prepare_sql(database, "SELECT UNKNOWN_SCALAR(1)", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported scalar function");
     failures += prepare_sql(database, "SELECT CONCAT()", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported concat arity");
@@ -7801,6 +7804,359 @@ static int test_inverse_trigonometric_scalar_function_execution(mylite_db *datab
     failures += expect_no_stmt_handle(&stmt, "ASIN zero arity unsupported");
     failures += prepare_sql(database, "SELECT ASIN(1,2)", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "ASIN two arity unsupported");
+
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_atan_scalar_function_execution(mylite_db *database)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const struct expected_result_metadata atan_metadata[] = {
+        {"atan_one", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"atan_null", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"atan_warn", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"atan_yx", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"atan2_one", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"atan2_null", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"atan2_warn", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"atan2_yx", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    static const struct expected_result_metadata atan_table_metadata[] = {
+        {"atan_y", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"atan_n", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"atan_s", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"atan_yx", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"atan2_yx", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    static const char *const atan_columns[] = {
+        "atan_zero",       "atan_neg_zero", "atan_one",      "atan_neg_one", "atan_null",
+        "atan_under",      "atan2_one",     "atan2_neg_one", "atan2_null",   "atan_yx_q1",
+        "atan_yx_steep",   "atan_yx_q4",    "atan_yx_q2",    "atan_yx_q3",   "atan_pos_x",
+        "atan_neg_x",      "atan_pos_y",    "atan_neg_y",    "atan_origin",  "atan_neg_zero_neg_x",
+        "atan_zero_neg_z", "atan2_yx_q1",   "atan2_yx_q2",   "atan2_neg_x",  "atan2_zero_neg_z",
+    };
+    static const char *const atan_values[] = {
+        "0",
+        "0",
+        "0.7853981633974483",
+        "-0.7853981633974483",
+        NULL,
+        "0",
+        "0.7853981633974483",
+        "-0.7853981633974483",
+        NULL,
+        "0.4636476090008061",
+        "1.1071487177940904",
+        "-0.4636476090008061",
+        "2.677945044588987",
+        "-2.677945044588987",
+        "0",
+        "3.141592653589793",
+        "1.5707963267948966",
+        "-1.5707963267948966",
+        "0",
+        "3.141592653589793",
+        "0",
+        "0.4636476090008061",
+        "2.677945044588987",
+        "3.141592653589793",
+        "0",
+    };
+    static const char *const warning_columns[] = {
+        "atan_trail",     "atan_foo",        "atan_empty",       "atan_space",   "atan_dot",
+        "atan_plus",      "atan_minus",      "atan_hex",         "atan_spaced",  "atan_pos_over",
+        "atan_neg_over",  "atan_nan",        "atan_inf",         "atan_neg_inf", "atan2_trail",
+        "atan2_two_text", "atan_null_first", "atan_second_null",
+    };
+    static const char *const warning_values[] = {
+        "0.7853981633974483",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "1.5308176396716067",
+        "1.5707963267948966",
+        "-1.5707963267948966",
+        "0",
+        "0",
+        "0",
+        "0.7853981633974483",
+        "0.4636476090008061",
+        NULL,
+        NULL,
+    };
+    static const char *const atan_two_text_columns[] = {"atan_two_text"};
+    static const char *const atan_two_text_values[] = {"0.4636476090008061"};
+    static const char *const atan_projection_columns[] = {"id", "a"};
+    static const char *const atan_projection_values[] = {
+        "5", "-2.677945044588987", "3", "-0.4636476090008061", "2", "0",
+        "1", "0.4636476090008061", "4", "2.677945044588987",   "6", "3.141592653589793",
+    };
+    static const char *const id_column[] = {"id"};
+    static const char *const positive_quadrant_ids[] = {"4", "6"};
+    static const char *const negative_quadrant_ids[] = {"3", "5"};
+    static const char *const updated_unary_ids[] = {"1", "2", "3"};
+    static const char *const updated_binary_ids[] = {"4", "5", "6"};
+    static const char *const id_two_value[] = {"2"};
+    static const char *const all_id_values[] = {"1", "2", "3", "4", "5", "6"};
+    static const char *const remaining_values[] = {"1", "2", "3", "4", "5"};
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_select_rows(database,
+                           "SELECT ATAN(0) AS atan_zero, "
+                           "ATAN(-0.0) AS atan_neg_zero, "
+                           "ATAN(1) AS atan_one, "
+                           "ATAN(-1) AS atan_neg_one, "
+                           "ATAN(NULL) AS atan_null, "
+                           "ATAN(1e-9999) AS atan_under, "
+                           "ATAN2(1) AS atan2_one, "
+                           "ATAN2(-1) AS atan2_neg_one, "
+                           "ATAN2(NULL) AS atan2_null, "
+                           "ATAN(1,2) AS atan_yx_q1, "
+                           "ATAN(2,1) AS atan_yx_steep, "
+                           "ATAN(-1,2) AS atan_yx_q4, "
+                           "ATAN(1,-2) AS atan_yx_q2, "
+                           "ATAN(-1,-2) AS atan_yx_q3, "
+                           "ATAN(0,1) AS atan_pos_x, "
+                           "ATAN(0,-1) AS atan_neg_x, "
+                           "ATAN(1,0) AS atan_pos_y, "
+                           "ATAN(-1,0) AS atan_neg_y, "
+                           "ATAN(0,0) AS atan_origin, "
+                           "ATAN(-0.0,-1) AS atan_neg_zero_neg_x, "
+                           "ATAN(0,-0.0) AS atan_zero_neg_z, "
+                           "ATAN2(1,2) AS atan2_yx_q1, "
+                           "ATAN2(1,-2) AS atan2_yx_q2, "
+                           "ATAN2(0,-1) AS atan2_neg_x, "
+                           "ATAN2(0,-0.0) AS atan2_zero_neg_z",
+                           atan_columns, (int)(sizeof(atan_columns) / sizeof(atan_columns[0])),
+                           atan_values, 1, "ATAN scalar values");
+    failures += expect_int(mylite_warning_count(database), 0, "ATAN scalar warning count");
+
+    failures += expect_select_rows(database,
+                                   "SELECT ATAN('1x') AS atan_trail, "
+                                   "ATAN('foo') AS atan_foo, "
+                                   "ATAN('') AS atan_empty, "
+                                   "ATAN(' ') AS atan_space, "
+                                   "ATAN('.') AS atan_dot, "
+                                   "ATAN('+') AS atan_plus, "
+                                   "ATAN('-') AS atan_minus, "
+                                   "ATAN('0x10') AS atan_hex, "
+                                   "ATAN('  2.5e1 ') AS atan_spaced, "
+                                   "ATAN('1e309') AS atan_pos_over, "
+                                   "ATAN('-1e309') AS atan_neg_over, "
+                                   "ATAN('nan') AS atan_nan, "
+                                   "ATAN('inf') AS atan_inf, "
+                                   "ATAN('-inf') AS atan_neg_inf, "
+                                   "ATAN2('1x') AS atan2_trail, "
+                                   "ATAN2('1x','2x') AS atan2_two_text, "
+                                   "ATAN(NULL,'2x') AS atan_null_first, "
+                                   "ATAN('1x',NULL) AS atan_second_null",
+                                   warning_columns,
+                                   (int)(sizeof(warning_columns) / sizeof(warning_columns[0])),
+                                   warning_values, 1, "ATAN string warning values");
+    failures += expect_int(mylite_warning_count(database), 15, "ATAN warning count");
+    for (int index = 0; index < 15; ++index) {
+        failures += expect_int((int)mylite_warning_code(database, index),
+                               mysql_warning_truncated_wrong_value, "ATAN warning code");
+    }
+    failures += expect_contains(mylite_warning_message(database, 0), "1x", "ATAN trail warning");
+    failures += expect_contains(mylite_warning_message(database, 1), "foo", "ATAN foo warning");
+    failures += expect_contains(mylite_warning_message(database, 5), "0x10", "ATAN hex warning");
+    failures +=
+        expect_contains(mylite_warning_message(database, 12), "1x", "ATAN2 first arg warning");
+    failures +=
+        expect_contains(mylite_warning_message(database, 13), "2x", "ATAN2 second arg warning");
+    failures +=
+        expect_contains(mylite_warning_message(database, 14), "1x", "ATAN null second warning");
+
+    failures += expect_select_rows(database, "SELECT ATAN('1x','2x') AS atan_two_text",
+                                   atan_two_text_columns, 1, atan_two_text_values, 1,
+                                   "ATAN two text warning values");
+    failures += expect_int(mylite_warning_count(database), 2, "ATAN two text warning count");
+    for (int index = 0; index < 2; ++index) {
+        failures += expect_int((int)mylite_warning_code(database, index),
+                               mysql_warning_truncated_wrong_value, "ATAN two text warning code");
+    }
+    failures +=
+        expect_contains(mylite_warning_message(database, 0), "1x", "ATAN first arg warning");
+    failures +=
+        expect_contains(mylite_warning_message(database, 1), "2x", "ATAN second arg warning");
+
+    failures += prepare_sql(database,
+                            "SELECT aTaN(1) AS atan_one, "
+                            "ATAN(NULL) AS atan_null, "
+                            "ATAN('1x') AS atan_warn, "
+                            "ATAN(1,2) AS atan_yx, "
+                            "AtAn2(1) AS atan2_one, "
+                            "ATAN2(NULL) AS atan2_null, "
+                            "ATAN2('1x') AS atan2_warn, "
+                            "ATAN2(1,2) AS atan2_yx",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, atan_metadata,
+                                       (int)(sizeof(atan_metadata) / sizeof(atan_metadata[0])),
+                                       "ATAN scalar metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "ATAN metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "ATAN metadata done");
+    failures += expect_int(mylite_warning_count(database), 2, "ATAN metadata warning count");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database,
+                            "CREATE TABLE atan_sites ("
+                            "id INT PRIMARY KEY, "
+                            "y DOUBLE NOT NULL, "
+                            "x DOUBLE NOT NULL, "
+                            "n DOUBLE NULL, "
+                            "s VARCHAR(32) NOT NULL)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO atan_sites VALUES "
+                            "(1,1,2,NULL,'1x'),"
+                            "(2,0,1,1,'foo'),"
+                            "(3,-1,2,NULL,''),"
+                            "(4,1,-2,0,'2'),"
+                            "(5,-1,-2,NULL,'-2'),"
+                            "(6,0,-1,NULL,'0')",
+                            MYLITE_DONE);
+
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE atan_sites SET n = ATAN(NULL) WHERE id = 2", 1,
+        "ATAN nullable update assignment");
+    failures += expect_int(mylite_warning_count(database), 0, "ATAN nullable update warnings");
+    failures +=
+        expect_select_rows(database, "SELECT id FROM atan_sites WHERE id = 2 AND n IS NULL",
+                           id_column, 1, id_two_value, 1, "ATAN nullable update assignment value");
+
+    failures += prepare_sql(database,
+                            "SELECT ATAN(y) AS atan_y, ATAN(n) AS atan_n, "
+                            "ATAN(s) AS atan_s, ATAN(y,x) AS atan_yx, "
+                            "ATAN2(y,x) AS atan2_yx FROM atan_sites LIMIT 0",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, atan_table_metadata,
+        (int)(sizeof(atan_table_metadata) / sizeof(atan_table_metadata[0])), "ATAN table metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "ATAN table metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_select_rows(database,
+                                   "SELECT id, ATAN(y,x) AS a FROM atan_sites "
+                                   "ORDER BY ATAN2(y,x), id",
+                                   atan_projection_columns, 2, atan_projection_values, 6,
+                                   "ATAN table projection order");
+    failures += expect_int(mylite_warning_count(database), 0, "ATAN table projection warnings");
+    failures +=
+        expect_select_rows(database, "SELECT id FROM atan_sites WHERE ATAN2(y,x) > 1 ORDER BY id",
+                           id_column, 1, positive_quadrant_ids, 2, "ATAN2 positive quadrant WHERE");
+    failures += expect_int(mylite_warning_count(database), 0, "ATAN2 positive WHERE warnings");
+    failures +=
+        expect_select_rows(database, "SELECT id FROM atan_sites WHERE ATAN(y,x) < 0 ORDER BY id",
+                           id_column, 1, negative_quadrant_ids, 2, "ATAN negative quadrant WHERE");
+    failures += expect_int(mylite_warning_count(database), 0, "ATAN negative WHERE warnings");
+
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE atan_sites SET n = ATAN(y) WHERE id IN (1,2,3)", 3,
+        "ATAN update unary assignment");
+    failures += expect_select_rows(database,
+                                   "SELECT id FROM atan_sites "
+                                   "WHERE (id = 1 AND n > 0.78 AND n < 0.79) "
+                                   "OR (id = 2 AND n = 0) "
+                                   "OR (id = 3 AND n < -0.78 AND n > -0.79) "
+                                   "ORDER BY id",
+                                   id_column, 1, updated_unary_ids, 3, "ATAN updated unary values");
+    failures += expect_int(mylite_warning_count(database), 0, "ATAN update unary warnings");
+
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE atan_sites SET n = ATAN2(y,x) WHERE id IN (4,5,6)", 3,
+        "ATAN2 update binary assignment");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT id FROM atan_sites "
+                           "WHERE (id = 4 AND n > 2.67 AND n < 2.68) "
+                           "OR (id = 5 AND n < -2.67 AND n > -2.68) "
+                           "OR (id = 6 AND n > 3.14 AND n < 3.15) "
+                           "ORDER BY id",
+                           id_column, 1, updated_binary_ids, 3, "ATAN2 updated binary values");
+    failures += expect_int(mylite_warning_count(database), 0, "ATAN2 update binary warnings");
+
+    failures += prepare_sql(database, "UPDATE atan_sites SET y = ATAN('1x') WHERE id = 2",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Truncated incorrect DOUBLE value",
+                                  "ATAN update warning promoted");
+    failures += expect_int(mylite_warning_count(database), 1, "ATAN update warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "ATAN update warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM atan_sites ORDER BY id", id_column, 1,
+                                   all_id_values, 6, "ATAN update warning rollback rows");
+
+    failures += prepare_sql(database, "UPDATE atan_sites SET n = ATAN2(s,x) WHERE id = 1",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Truncated incorrect DOUBLE value",
+                                  "ATAN2 update warning promoted");
+    failures += expect_int(mylite_warning_count(database), 1, "ATAN2 update warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "ATAN2 update warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM atan_sites ORDER BY id", id_column, 1,
+                                   all_id_values, 6, "ATAN2 update warning rollback rows");
+
+    failures += prepare_sql(database, "DELETE FROM atan_sites WHERE id = 1 AND ATAN(s) > 0",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Truncated incorrect DOUBLE value",
+                                  "ATAN delete warning promoted");
+    failures += expect_int(mylite_warning_count(database), 1, "ATAN delete warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "ATAN delete warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM atan_sites ORDER BY id", id_column, 1,
+                                   all_id_values, 6, "ATAN delete warning rollback rows");
+
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM atan_sites WHERE id = 6 AND ATAN2(y,x) > 3", 1,
+        "ATAN2 delete predicate");
+    failures += expect_select_rows(database, "SELECT id FROM atan_sites ORDER BY id", id_column, 1,
+                                   remaining_values, 5, "ATAN2 delete remaining rows");
+    failures += expect_int(mylite_warning_count(database), 0, "ATAN2 delete warning count");
+
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM atan_sites WHERE ATAN2(NULL,s) IS NULL", 5,
+        "ATAN2 null shortcut delete predicate");
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "ATAN2 null shortcut delete warning count");
+    failures += expect_select_rows(database, "SELECT id FROM atan_sites ORDER BY id", id_column, 1,
+                                   NULL, 0, "ATAN2 null shortcut delete remaining rows");
+
+    failures += prepare_sql(database, "SELECT ATAN()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "ATAN zero arity unsupported");
+    failures += prepare_sql(database, "SELECT ATAN(1,2,3)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "ATAN three arity unsupported");
+    failures += prepare_sql(database, "SELECT ATAN2()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "ATAN2 zero arity unsupported");
+    failures += prepare_sql(database, "SELECT ATAN2(1,2,3)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "ATAN2 three arity unsupported");
 
     // NOLINTEND(readability-magic-numbers)
     return failures;

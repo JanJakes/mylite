@@ -52,7 +52,7 @@ In scope for the initial implementation:
   - `POW`, `POWER`
   - `SQRT`
   - `SIN`, `COS`, `TAN`, `COT`
-  - `ACOS`, `ASIN`
+  - `ACOS`, `ASIN`, `ATAN`, `ATAN2`
   - `DEGREES`, `RADIANS`
   - `MOD`
   - `CONV`
@@ -141,7 +141,8 @@ by common scalar expressions:
   `docs/specs/uuid-conversion-functions/specs.md`
 - numeric functions: `ABS`, `SIGN`, `FLOOR`, `CEIL`, `CEILING`, `MOD`,
   `ROUND`, `EXP`, `LN`, `LOG`, `LOG2`, `LOG10`, `POW`, `POWER`, `SQRT`,
-  `SIN`, `COS`, `TAN`, `COT`, `ACOS`, `ASIN`, `DEGREES`, `RADIANS`,
+  `SIN`, `COS`, `TAN`, `COT`, `ACOS`, `ASIN`, `ATAN`, `ATAN2`,
+  `DEGREES`, `RADIANS`,
   `CONV`, `BIT_COUNT`, `BIT_LENGTH`, `CRC32`, `INET_ATON`, `INET_NTOA`, and
   `PI`; see
   `docs/specs/round-function/specs.md` and
@@ -152,6 +153,7 @@ by common scalar expressions:
   `docs/specs/trigonometric-basic-functions/specs.md` and
   `docs/specs/cot-function/specs.md` and
   `docs/specs/acos-asin-functions/specs.md` and
+  `docs/specs/atan-functions/specs.md` and
   `docs/specs/angle-conversion-functions/specs.md` and
   `docs/specs/numeric-base-conversion-functions/specs.md` and
   `docs/specs/bit-utility-functions/specs.md` and
@@ -192,6 +194,7 @@ optional UUID time-part swap flags,
 warnings, `SQRT()` domain behavior, `SIN()` / `COS()` / `TAN()` radian
 semantics and text conversion, `COT()` radian semantics and range errors,
 `ACOS()` / `ASIN()` inverse-trigonometric domain behavior,
+`ATAN()` / `ATAN2()` arctangent and quadrant behavior,
 `DEGREES()` / `RADIANS()` conversion semantics, `DEGREES()` overflow behavior,
 table projection, filters, ordering, update assignment expressions, delete
 predicates, unsupported functions, unsupported arity, and selected result
@@ -365,6 +368,10 @@ Representative runtime results:
 | `ACOS(1.0001)` | `NULL` | none |
 | `ASIN(0.2)` | `0.2013579207903308` | none |
 | `ASIN('foo')` | `0` | warning 1292, truncated incorrect double value |
+| `ATAN(1)` | `0.7853981633974483` | none |
+| `ATAN(1,2)` | `0.4636476090008061` | none |
+| `ATAN2(1)` | `0.7853981633974483` | none |
+| `ATAN2('1x','2x')` | `0.4636476090008061` | two warning 1292 records, left to right |
 | `DEGREES(PI())` | `180` | none |
 | `RADIANS(180)` | `3.141592653589793` | none |
 | `DEGREES(1e308)` | error | 1690 / `22003`, out of range |
@@ -531,6 +538,8 @@ Verified `mysql --column-type-info -vvv` examples:
 | `COT(1) AS cot_value` | `DOUBLE` | `23` | `31` | `binary` | `BINARY NUM` |
 | `ACOS(1.0001) AS acos_domain` | `DOUBLE` | `23` | `31` | `binary` | `BINARY NUM` |
 | `ASIN('1x') AS asin_warn` | `DOUBLE` | `23` | `31` | `binary` | `BINARY NUM` |
+| `ATAN(1,2) AS atan_yx` | `DOUBLE` | `23` | `31` | `binary` | `BINARY NUM` |
+| `ATAN2(1) AS atan2_one` | `DOUBLE` | `23` | `31` | `binary` | `BINARY NUM` |
 | `DEGREES(1) AS deg_value` | `DOUBLE` | `23` | `31` | `binary` | `NOT_NULL BINARY NUM` |
 | `RADIANS(NULL) AS rad_null` | `DOUBLE` | `23` | `31` | `binary` | `BINARY NUM` |
 | `IF(1,'yes','no') AS if_value` | `VAR_STRING` | `12` | `31` | `utf8mb4_0900_ai_ci` | `NOT_NULL` |
@@ -796,6 +805,8 @@ SELECT
   COT(1),
   ACOS(1),
   ASIN(0.2),
+  ATAN(1),
+  ATAN2(1,2),
   DEGREES(PI()),
   RADIANS(180),
   MOD(7, 3);
@@ -806,7 +817,8 @@ Expected row:
 ```text
 12.5, -1, 3, 2, 123.46, -2, -1, 1024, 3, NULL,
 0.8414709848078965, 0.5403023058681398, 1.5574077246549023,
-0.6420926159343306, 0, 0.2013579207903308, 180, 3.141592653589793, 1
+0.6420926159343306, 0, 0.2013579207903308, 0.7853981633974483,
+0.4636476090008061, 180, 3.141592653589793, 1
 ```
 
 `ROUND(25E-1)` is approximate-input behavior. Keep a focused MySQL runtime

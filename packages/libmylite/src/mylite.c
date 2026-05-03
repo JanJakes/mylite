@@ -12924,7 +12924,7 @@ static bool function_name_is_trigonometric(const struct mylite_sql_ast_node *nam
 
 static bool function_name_is_inverse_trigonometric(const struct mylite_sql_ast_node *name)
 {
-    static const char *const names[] = {"ACOS", "ASIN"};
+    static const char *const names[] = {"ACOS", "ASIN", "ATAN", "ATAN2"};
 
     return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }

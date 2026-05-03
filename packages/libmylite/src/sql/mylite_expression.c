@@ -388,6 +388,8 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_RADIANS = 81,
     MYLITE_SCALAR_FUNCTION_ACOS = 82,
     MYLITE_SCALAR_FUNCTION_ASIN = 83,
+    MYLITE_SCALAR_FUNCTION_ATAN = 84,
+    MYLITE_SCALAR_FUNCTION_ATAN2 = 85,
 };
 
 struct angle_conversion_input {
@@ -398,6 +400,11 @@ struct angle_conversion_input {
 struct inverse_trigonometric_input {
     enum mylite_scalar_function_id function_id;
     double input;
+};
+
+struct atan_input {
+    double y;
+    double x;
 };
 
 struct trigonometric_input {
@@ -906,6 +913,16 @@ static int eval_inverse_trigonometric_function(enum mylite_scalar_function_id fu
                                                const struct mylite_expression_eval_context *context,
                                                struct mylite_expression_warnings *warnings,
                                                struct mylite_expression_value *out_value);
+static int eval_atan_function(const struct mylite_sql_ast_node *arguments,
+                              const struct mylite_expression_eval_context *context,
+                              struct mylite_expression_warnings *warnings,
+                              struct mylite_expression_value *out_value);
+static int eval_atan_argument(const struct mylite_sql_ast_node *argument_node,
+                              const struct mylite_expression_eval_context *context,
+                              struct mylite_expression_warnings *warnings,
+                              struct mylite_expression_value *argument,
+                              struct numeric_value *number, bool *out_null_result);
+static double atan_function_result(struct atan_input input, size_t arity);
 static int eval_inverse_trigonometric_argument(const struct mylite_sql_ast_node *argument_node,
                                                const struct mylite_expression_eval_context *context,
                                                struct mylite_expression_warnings *warnings,
@@ -1468,6 +1485,8 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
         return arity == 1U;
     case MYLITE_SCALAR_FUNCTION_LOG:
     case MYLITE_SCALAR_FUNCTION_ROUND:
+    case MYLITE_SCALAR_FUNCTION_ATAN:
+    case MYLITE_SCALAR_FUNCTION_ATAN2:
         return arity == 1U || arity == 2U;
     case MYLITE_SCALAR_FUNCTION_LEFT:
     case MYLITE_SCALAR_FUNCTION_RIGHT:
@@ -2311,6 +2330,8 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_trigonometric_function(function_id, arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_ACOS:
     case MYLITE_SCALAR_FUNCTION_ASIN:
+    case MYLITE_SCALAR_FUNCTION_ATAN:
+    case MYLITE_SCALAR_FUNCTION_ATAN2:
         return eval_inverse_trigonometric_function(function_id, arguments, context, warnings,
                                                    out_value);
     case MYLITE_SCALAR_FUNCTION_DEGREES:
@@ -5337,6 +5358,8 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_RADIANS:
     case MYLITE_SCALAR_FUNCTION_ACOS:
     case MYLITE_SCALAR_FUNCTION_ASIN:
+    case MYLITE_SCALAR_FUNCTION_ATAN:
+    case MYLITE_SCALAR_FUNCTION_ATAN2:
     case MYLITE_SCALAR_FUNCTION_MOD:
     case MYLITE_SCALAR_FUNCTION_PI:
     case MYLITE_SCALAR_FUNCTION_IF:
@@ -7116,6 +7139,8 @@ static int trigonometric_function_result(struct trigonometric_input input,
         break;
     case MYLITE_SCALAR_FUNCTION_ACOS:
     case MYLITE_SCALAR_FUNCTION_ASIN:
+    case MYLITE_SCALAR_FUNCTION_ATAN:
+    case MYLITE_SCALAR_FUNCTION_ATAN2:
     case MYLITE_SCALAR_FUNCTION_UNKNOWN:
     case MYLITE_SCALAR_FUNCTION_CONCAT:
     case MYLITE_SCALAR_FUNCTION_CONCAT_WS:
@@ -7223,8 +7248,14 @@ static int eval_inverse_trigonometric_function(enum mylite_scalar_function_id fu
     struct numeric_value number = {0};
     double result = 0.0;
     bool null_result = false;
-    int status = eval_inverse_trigonometric_argument(argument_node, context, warnings, &argument,
-                                                     &number, &null_result);
+    int status = 0;
+
+    if (function_id == MYLITE_SCALAR_FUNCTION_ATAN || function_id == MYLITE_SCALAR_FUNCTION_ATAN2) {
+        return eval_atan_function(arguments, context, warnings, out_value);
+    }
+
+    status = eval_inverse_trigonometric_argument(argument_node, context, warnings, &argument,
+                                                 &number, &null_result);
 
     if (status != 0) {
         goto cleanup;
@@ -7258,6 +7289,87 @@ static int eval_inverse_trigonometric_function(enum mylite_scalar_function_id fu
 cleanup:
     mylite_expression_value_deinit(&argument);
     return status;
+}
+
+static int eval_atan_function(const struct mylite_sql_ast_node *arguments,
+                              const struct mylite_expression_eval_context *context,
+                              struct mylite_expression_warnings *warnings,
+                              struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value y_argument = {0};
+    struct mylite_expression_value x_argument = {0};
+    struct numeric_value y_number = {0};
+    struct numeric_value x_number = {0};
+    size_t arity = child_count(arguments);
+    double result = 0.0;
+    bool null_result = false;
+    int status = eval_atan_argument(child_at(arguments, 0U), context, warnings, &y_argument,
+                                    &y_number, &null_result);
+
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (null_result) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+
+    if (arity == 2U) {
+        status = eval_atan_argument(child_at(arguments, 1U), context, warnings, &x_argument,
+                                    &x_number, &null_result);
+        if (status != 0) {
+            goto cleanup;
+        }
+        if (null_result) {
+            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+            goto cleanup;
+        }
+    }
+
+    if (y_number.real_value == 0.0) {
+        y_number.real_value = 0.0;
+    }
+    if (x_number.real_value == 0.0) {
+        x_number.real_value = 0.0;
+    }
+    result = atan_function_result(
+        (struct atan_input){.y = y_number.real_value, .x = x_number.real_value}, arity);
+    if (!isfinite(result)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    if (result == 0.0) {
+        result = 0.0;
+    }
+
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_REAL,
+        .real_value = result,
+        .compact_real_text = true,
+    };
+
+cleanup:
+    mylite_expression_value_deinit(&x_argument);
+    mylite_expression_value_deinit(&y_argument);
+    return status;
+}
+
+static int eval_atan_argument(const struct mylite_sql_ast_node *argument_node,
+                              const struct mylite_expression_eval_context *context,
+                              struct mylite_expression_warnings *warnings,
+                              struct mylite_expression_value *argument,
+                              struct numeric_value *number, bool *out_null_result)
+{
+    return eval_inverse_trigonometric_argument(argument_node, context, warnings, argument, number,
+                                               out_null_result);
+}
+
+static double atan_function_result(struct atan_input input, size_t arity)
+{
+    if (arity == 1U) {
+        return atan(input.y);
+    }
+    return atan2(input.y, input.x);
 }
 
 static int eval_inverse_trigonometric_argument(const struct mylite_sql_ast_node *argument_node,
@@ -7298,6 +7410,8 @@ static int inverse_trigonometric_function_result(struct inverse_trigonometric_in
     case MYLITE_SCALAR_FUNCTION_ASIN:
         *out_result = asin(input.input);
         return 0;
+    case MYLITE_SCALAR_FUNCTION_ATAN:
+    case MYLITE_SCALAR_FUNCTION_ATAN2:
     case MYLITE_SCALAR_FUNCTION_UNKNOWN:
     case MYLITE_SCALAR_FUNCTION_CONCAT:
     case MYLITE_SCALAR_FUNCTION_CONCAT_WS:
@@ -7538,6 +7652,8 @@ static int angle_conversion_result(struct angle_conversion_input conversion, dou
     case MYLITE_SCALAR_FUNCTION_COT:
     case MYLITE_SCALAR_FUNCTION_ACOS:
     case MYLITE_SCALAR_FUNCTION_ASIN:
+    case MYLITE_SCALAR_FUNCTION_ATAN:
+    case MYLITE_SCALAR_FUNCTION_ATAN2:
     case MYLITE_SCALAR_FUNCTION_MOD:
     case MYLITE_SCALAR_FUNCTION_PI:
     case MYLITE_SCALAR_FUNCTION_IF:
@@ -10237,6 +10353,8 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"RADIANS", MYLITE_SCALAR_FUNCTION_RADIANS},
         {"ACOS", MYLITE_SCALAR_FUNCTION_ACOS},
         {"ASIN", MYLITE_SCALAR_FUNCTION_ASIN},
+        {"ATAN", MYLITE_SCALAR_FUNCTION_ATAN},
+        {"ATAN2", MYLITE_SCALAR_FUNCTION_ATAN2},
         {"MOD", MYLITE_SCALAR_FUNCTION_MOD},
         {"PI", MYLITE_SCALAR_FUNCTION_PI},
         {"IF", MYLITE_SCALAR_FUNCTION_IF},
@@ -10353,6 +10471,8 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_RADIANS:
     case MYLITE_SCALAR_FUNCTION_ACOS:
     case MYLITE_SCALAR_FUNCTION_ASIN:
+    case MYLITE_SCALAR_FUNCTION_ATAN:
+    case MYLITE_SCALAR_FUNCTION_ATAN2:
     case MYLITE_SCALAR_FUNCTION_MOD:
     case MYLITE_SCALAR_FUNCTION_PI:
     case MYLITE_SCALAR_FUNCTION_IF:

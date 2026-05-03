@@ -5180,7 +5180,7 @@ static int test_scalar_function_call_syntax(void)
 {
     // NOLINTBEGIN(readability-magic-numbers)
     enum {
-        expected_select_item_count = 32,
+        expected_select_item_count = 36,
         string_function_item_count = 17,
         padding_function_item_count = 6,
         quote_function_item_count = 2,
@@ -5202,7 +5202,8 @@ static int test_scalar_function_call_syntax(void)
                           "LEFT('abc', 1), RIGHT('abc', 1), REPLACE('a','a','b'), "
                           "ROUND(123.456, 2), Exp(2), Ln(2), LOG(2), Log(10, 100), "
                           "LOG2(8), LOG10(1000), POW(2, 10), Power(2, -2), Sqrt(9), "
-                          "Sin(1), COS(1), Tan(1) "
+                          "Sin(1), COS(1), Tan(1), AtAn(1), ATAN(1, 2), ATAN2(1), "
+                          "AtAn2(1, 2) "
                           "FROM DUAL;",
                           MYLITE_SQL_PARSE_OK, &result);
     select_list = child_at(child_at(result.root, 0U), 0U);
@@ -5275,6 +5276,20 @@ static int test_scalar_function_call_syntax(void)
                                      "POWER case-insensitive call");
     failures += expect_function_call(child_at(child_at(select_list, 28U), 0U), "Sqrt", 1U,
                                      "SQRT case-insensitive call");
+    failures +=
+        expect_function_call(child_at(child_at(select_list, 29U), 0U), "Sin", 1U, "SIN call");
+    failures +=
+        expect_function_call(child_at(child_at(select_list, 30U), 0U), "COS", 1U, "COS call");
+    failures +=
+        expect_function_call(child_at(child_at(select_list, 31U), 0U), "Tan", 1U, "TAN call");
+    failures += expect_function_call(child_at(child_at(select_list, 32U), 0U), "AtAn", 1U,
+                                     "ATAN one-argument call");
+    failures += expect_function_call(child_at(child_at(select_list, 33U), 0U), "ATAN", 2U,
+                                     "ATAN two-argument call");
+    failures += expect_function_call(child_at(child_at(select_list, 34U), 0U), "ATAN2", 1U,
+                                     "ATAN2 one-argument call");
+    failures += expect_function_call(child_at(child_at(select_list, 35U), 0U), "AtAn2", 2U,
+                                     "ATAN2 two-argument call");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT CONCAT_WS(',', 'a', 'b'), "

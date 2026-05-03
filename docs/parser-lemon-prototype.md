@@ -264,7 +264,14 @@ token sink:
   number domains, string-literal options, closed `INSERT_METHOD`, closed
   `ROW_FORMAT`, decimal-versus-size number domains with quoted-hex size values,
   bounded numeric and quoted-hex `STATS_SAMPLE_PAGES`, storage values without equality signs,
-  `UNION` table-name lists, and `START TRANSACTION`. No-definition and
+  `UNION` table-name lists, and `START TRANSACTION`. `CREATE TABLE`
+  partition tails validate `HASH`/`LINEAR HASH` expressions, `RANGE`/`LIST`
+  and `RANGE COLUMNS`/`LIST COLUMNS` expression-list envelopes, `KEY`/`LINEAR
+  KEY` column lists including MySQL's syntax-valid empty list, key
+  `ALGORITHM=1/2` values, non-empty `VALUES LESS THAN (...)` and `VALUES IN
+  (...)` lists, required values for explicit `RANGE`/`LIST` partitions,
+  `VALUES LESS THAN MAXVALUE`, and malformed/trailing partition definition
+  commas. No-definition and
   post-definition CTAS forms are recognized explicitly with table/partition options, including
   `IGNORE`/`REPLACE` duplicate-handling modifiers, and no-definition
   table-option forms must include a query body. Direct CTAS query bodies validate

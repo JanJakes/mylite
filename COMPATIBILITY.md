@@ -429,15 +429,15 @@ while preserving common MySQL expression forms.
 
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
-| `PARTITION BY RANGE` | ❌ | medium | Range partition syntax, VALUES LESS THAN, MAXVALUE, and pruning-visible metadata. |  |
-| `PARTITION BY RANGE COLUMNS` | ❌ | medium | Range columns syntax and comparison semantics. |  |
-| `PARTITION BY LIST` | ❌ | medium | List partition syntax and value matching. |  |
-| `PARTITION BY LIST COLUMNS` | ❌ | medium | List columns syntax and tuple matching. |  |
-| `PARTITION BY HASH` | ❌ | medium | Hash partition syntax and function semantics. |  |
-| `PARTITION BY LINEAR HASH` | ❌ | medium | Linear hash partition syntax. |  |
-| `PARTITION BY KEY` | ❌ | medium | Key partition syntax and default key selection. |  |
-| `PARTITION BY LINEAR KEY` | ❌ | medium | Linear key partition syntax. |  |
-| Subpartitioning | ❌ | low | HASH/KEY subpartition syntax and metadata. |  |
+| `PARTITION BY RANGE` | ❌ | medium | Range partition syntax, VALUES LESS THAN, MAXVALUE, and pruning-visible metadata. | Parser recognizes range method expressions and partition definition lists, requires each explicit partition definition to include values, validates non-empty `VALUES LESS THAN (...)` expression lists, permits `VALUES LESS THAN MAXVALUE`, and rejects malformed/trailing partition-list envelopes. |
+| `PARTITION BY RANGE COLUMNS` | ❌ | medium | Range columns syntax and comparison semantics. | Parser recognizes `RANGE COLUMNS (...)` and validates non-empty column/expression-list and tuple value-list envelopes. |
+| `PARTITION BY LIST` | ❌ | medium | List partition syntax and value matching. | Parser recognizes list method expressions and partition definitions, requires each explicit partition definition to include values, validates non-empty `VALUES IN (...)` expression lists, and rejects malformed/trailing partition-list envelopes. |
+| `PARTITION BY LIST COLUMNS` | ❌ | medium | List columns syntax and tuple matching. | Parser recognizes `LIST COLUMNS (...)` and validates non-empty column/expression-list and tuple value-list envelopes. |
+| `PARTITION BY HASH` | ❌ | medium | Hash partition syntax and function semantics. | Parser recognizes hash method expressions, validates non-empty parenthesized expressions, and rejects `KEY`-only `ALGORITHM`/`COLUMNS` modifiers. |
+| `PARTITION BY LINEAR HASH` | ❌ | medium | Linear hash partition syntax. | Parser recognizes the `LINEAR HASH` method with the same expression validation as `HASH`. |
+| `PARTITION BY KEY` | ❌ | medium | Key partition syntax and default key selection. | Parser recognizes key column lists, including MySQL's syntax-valid empty list, validates comma-separated identifier lists, rejects expression/prefix/direction forms, and recognizes `ALGORITHM=1/2` with decimal, lowercase-hex, or quoted-hex values. |
+| `PARTITION BY LINEAR KEY` | ❌ | medium | Linear key partition syntax. | Parser recognizes the `LINEAR KEY` method with the same column-list and algorithm validation as `KEY`. |
+| Subpartitioning | ❌ | low | HASH/KEY subpartition syntax and metadata. | Parser recognizes `SUBPARTITION BY HASH/KEY` method tails and `SUBPARTITIONS` counts using the same method-list validators. |
 | Partition options | ❌ | low | ENGINE, COMMENT, DATA/INDEX DIRECTORY, MAX_ROWS, MIN_ROWS, TABLESPACE, and nodegroup syntax. |  |
 
 ## 4. Type System, Literals, and Conversion

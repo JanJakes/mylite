@@ -151,7 +151,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
 | `START TRANSACTION` | ❌ | top | Transaction start modifiers including READ WRITE, READ ONLY, and WITH CONSISTENT SNAPSHOT. | Parser recognizes comma-separated transaction characteristics and rejects conflicting `READ ONLY`/`READ WRITE` access modes. |
-| `BEGIN` / `BEGIN WORK` | ❌ | top | Transaction begin statement distinct from compound BEGIN ... END. |  |
+| `BEGIN` / `BEGIN WORK` | ❌ | top | Transaction begin statement distinct from compound BEGIN ... END. | Parser recognizes transaction `BEGIN` and `BEGIN WORK` only; compound stored-program bodies are tracked separately under `BEGIN ... END`. |
 | `COMMIT` | ❌ | top | AND CHAIN, AND NO CHAIN, RELEASE, NO RELEASE, completion_type, and diagnostics. | Parser recognizes `WORK`, `AND [NO] CHAIN`, and `[NO] RELEASE` tails while rejecting MySQL's invalid `AND CHAIN RELEASE` combination. |
 | `ROLLBACK` | ❌ | top | AND CHAIN, AND NO CHAIN, RELEASE, NO RELEASE, completion_type, and diagnostics. | Parser recognizes transaction-end tails with the same `AND CHAIN RELEASE` rejection as `COMMIT`, plus savepoint rollback forms. |
 | `SAVEPOINT` | ❌ | top | Nested savepoint creation and replacement semantics. | Parser recognizes savepoint names using the shared identifier grammar. |

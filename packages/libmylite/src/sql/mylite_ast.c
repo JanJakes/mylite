@@ -953,6 +953,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "show_engines_statement";
     case MYLITE_SQL_AST_SHOW_CREATE_SCHEMA_STATEMENT:
         return "show_create_schema_statement";
+    case MYLITE_SQL_AST_SHOW_TABLE_STATUS_STATEMENT:
+        return "show_table_status_statement";
     }
 
     return "unknown";

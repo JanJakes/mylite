@@ -27,6 +27,7 @@ static int test_show_engines_syntax(void);
 static int test_show_character_set_syntax(void);
 static int test_show_collation_syntax(void);
 static int test_show_tables_syntax(void);
+static int test_show_table_status_syntax(void);
 static int test_show_columns_syntax(void);
 static int test_show_index_syntax(void);
 static int test_show_create_database_syntax(void);
@@ -176,6 +177,7 @@ int main(void)
     failures += test_show_character_set_syntax();
     failures += test_show_collation_syntax();
     failures += test_show_tables_syntax();
+    failures += test_show_table_status_syntax();
     failures += test_show_columns_syntax();
     failures += test_show_index_syntax();
     failures += test_show_create_database_syntax();
@@ -3338,6 +3340,88 @@ static int test_show_tables_syntax(void)
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SHOW FULL FULL TABLES;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_show_table_status_syntax(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SHOW TABLE STATUS; SHOW TABLE STATUS FROM app; "
+                          "SHOW TABLE STATUS IN app LIKE 'alpha%'; "
+                          "SHOW TABLE STATUS FROM `select` LIKE 'beta\\_%'; "
+                          "SHOW TABLE STATUS LIKE 'solo%'; "
+                          "SHOW TABLE STATUS WHERE Name = 'simple';",
+                          MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_child_count(result.root, 6U, "show table status script count");
+
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_TABLE_STATUS_STATEMENT, "show table status");
+    failures += expect_child_count(statement, 0U, "show table status child count");
+
+    statement = child_at(result.root, 1U);
+    failures += expect_child_count(statement, 1U, "show table status from child count");
+    failures += expect_node(child_at(statement, 0U), MYLITE_SQL_AST_IDENTIFIER,
+                            "show table status from schema");
+    failures +=
+        expect_span_text(child_at(statement, 0U), "app", "show table status from schema name");
+
+    statement = child_at(result.root, 2U);
+    failures += expect_child_count(statement, 2U, "show table status in like child count");
+    failures +=
+        expect_span_text(child_at(statement, 0U), "app", "show table status in schema name");
+    failures += expect_literal(child_at(statement, 1U), MYLITE_SQL_AST_LITERAL_STRING,
+                               "show table status like pattern");
+    failures += expect_span_text(child_at(statement, 1U), "'alpha%'",
+                                 "show table status like pattern text");
+
+    statement = child_at(result.root, 3U);
+    failures +=
+        expect_span_text(child_at(statement, 0U), "`select`", "show table status quoted schema");
+    failures += expect_span_text(child_at(statement, 1U), "'beta\\_%'",
+                                 "show table status escaped pattern");
+
+    statement = child_at(result.root, 4U);
+    failures += expect_child_count(statement, 1U, "show table status like-only child count");
+    failures += expect_literal(child_at(statement, 0U), MYLITE_SQL_AST_LITERAL_STRING,
+                               "show table status like-only pattern");
+
+    statement = child_at(result.root, 5U);
+    failures += expect_child_count(statement, 1U, "show table status where child count");
+    failures += expect_node(child_at(statement, 0U), MYLITE_SQL_AST_WHERE_CLAUSE,
+                            "show table status where clause");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW TABLE STATUS LIKE 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW TABLE STATUS LIKE 'a%' WHERE Name = 'a';",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW FULL TABLE STATUS;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW EXTENDED TABLE STATUS;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW TABLE STATUS FROM app IN other;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW TABLE STATUS FROM app FROM other;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW TABLE STATUS IN app FROM other;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     // NOLINTEND(readability-magic-numbers)

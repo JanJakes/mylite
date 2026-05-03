@@ -49,6 +49,7 @@
 %type opt_show_collation_filter { struct mylite_sql_ast_node * }
 %type opt_show_tables_schema { struct mylite_sql_ast_node * }
 %type opt_show_tables_filter { struct mylite_sql_ast_node * }
+%type show_table_status_keyword { struct mylite_sql_token }
 %type show_columns_keyword { struct mylite_sql_token }
 %type opt_show_columns_schema { struct mylite_sql_ast_node * }
 %type opt_show_columns_filter { struct mylite_sql_ast_node * }
@@ -215,6 +216,9 @@ statement(A) ::= show_collation_statement(B). {
     A = B;
 }
 statement(A) ::= show_tables_statement(B). {
+    A = B;
+}
+statement(A) ::= show_table_status_statement(B). {
     A = B;
 }
 statement(A) ::= show_columns_statement(B). {
@@ -1118,6 +1122,18 @@ show_tables_statement(A) ::= SHOW(T) opt_extended(E) opt_full(F) TABLES(S)
         state, (struct mylite_sql_parser_show_tables_tokens){
                    .show = T, .extended = E, .full = F, .tables = S},
         D, L);
+}
+
+show_table_status_statement(A) ::= SHOW(T) TABLE(S) show_table_status_keyword(K)
+        opt_show_tables_schema(D) opt_show_tables_filter(L). {
+    A = mylite_sql_parser_make_show_table_status_statement(
+        state, (struct mylite_sql_parser_show_table_status_tokens){
+                   .show = T, .table = S, .status = K},
+        D, L);
+}
+
+show_table_status_keyword(A) ::= STATUS(T). {
+    A = T;
 }
 
 opt_extended(A) ::= . {

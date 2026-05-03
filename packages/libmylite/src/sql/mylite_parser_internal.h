@@ -102,6 +102,12 @@ struct mylite_sql_parser_show_tables_tokens {
     struct mylite_sql_token tables;
 };
 
+struct mylite_sql_parser_show_table_status_tokens {
+    struct mylite_sql_token show;
+    struct mylite_sql_token table;
+    struct mylite_sql_token status;
+};
+
 struct mylite_sql_parser_show_columns_tokens {
     struct mylite_sql_token show;
     struct mylite_sql_token extended;
@@ -663,6 +669,9 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_collation_statement(
     struct mylite_sql_token collation_token, struct mylite_sql_ast_node *filter);
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_tables_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_parser_show_tables_tokens tokens,
+    struct mylite_sql_ast_node *schema_name, struct mylite_sql_ast_node *filter);
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_table_status_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_parser_show_table_status_tokens tokens,
     struct mylite_sql_ast_node *schema_name, struct mylite_sql_ast_node *filter);
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_columns_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_parser_show_columns_tokens tokens,

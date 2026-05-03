@@ -165,7 +165,15 @@ level application surfaces.
        selected/missing-schema diagnostics. `EXTENDED` is currently a no-op
        because MyLite has no hidden failed-ALTER table catalog; `WHERE`
        filtering is parsed and rejected as unsupported until SHOW expression
-       filtering lands. The first `SHOW COLUMNS` / `SHOW FIELDS` slice is also
+       filtering lands. The first `SHOW TABLE STATUS` slice is specified and
+       implemented for supported persistent MyLite base tables and existing
+       `information_schema` metadata views, including `FROM`/`IN`, `LIKE`,
+       `WHERE` grammar, exact MySQL status columns, catalog-backed table
+       metadata, deterministic `0` placeholders for user base-table storage
+       counters until physical statistics are maintained, empty results,
+       information-schema pattern normalization, and selected/missing-schema
+       diagnostics. `SHOW TABLE STATUS WHERE` is parsed but currently returns
+       an unsupported diagnostic. The first `SHOW COLUMNS` / `SHOW FIELDS` slice is also
        specified and implemented for supported persistent base tables, including
        `EXTENDED`, `FULL`, `FROM`/`IN`, `db.table`, `LIKE`, `WHERE` grammar,
        `FIELDS` synonym support, non-`FULL` and `FULL` result-set shapes,
@@ -258,6 +266,7 @@ level application surfaces.
        constraint rows, and general information-schema query
        processing remain deferred. Specs:
        [SHOW TABLES](../show-tables/specs.md),
+       [SHOW TABLE STATUS](../show-table-status/specs.md),
        [SHOW COLUMNS](../show-columns/specs.md),
        [SHOW INDEX](../show-index/specs.md),
        [DESCRIBE / DESC table metadata](../describe-table/specs.md),

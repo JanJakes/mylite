@@ -280,6 +280,7 @@ static int test_show_engines_execution(void);
 static int test_show_character_set_execution(void);
 static int test_show_collation_execution(void);
 static int test_show_tables_execution(void);
+static int test_show_table_status_execution(void);
 static int test_show_columns_execution(void);
 static int test_show_index_execution(void);
 static int test_show_create_database_execution(void);
@@ -320,6 +321,8 @@ static int execute_sql_expect_done_affected(mylite_db *database, const char *sql
 static int expect_select_rows(mylite_db *database, const char *sql, const char *const *columns,
                               int column_count, const char *const *values, int row_count,
                               const char *context);
+static int expect_show_table_status_information_schema_rows(mylite_db *database,
+                                                            const char *const *columns);
 static int expect_show_variables_contains(mylite_db *database,
                                           const struct show_variable_expectation *expected);
 static int expect_show_status_catalog_rows(mylite_db *database,
@@ -462,6 +465,7 @@ int main(void)
     failures += test_show_character_set_execution();
     failures += test_show_collation_execution();
     failures += test_show_tables_execution();
+    failures += test_show_table_status_execution();
     failures += test_show_columns_execution();
     failures += test_show_index_execution();
     failures += test_show_create_database_execution();
@@ -6069,6 +6073,135 @@ static int test_show_tables_execution(void)
     failures += expect_prepare_error(database, "SHOW TABLES FROM missing_show_tables_schema",
                                      MYLITE_EXEC_ERROR, "Unknown database",
                                      "show tables rejects missing schema");
+
+    mylite_close(database);
+
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
+    return failures;
+}
+
+static int test_show_table_status_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const columns[] = {
+        "Name",           "Engine",         "Version",         "Row_format",   "Rows",
+        "Avg_row_length", "Data_length",    "Max_data_length", "Index_length", "Data_free",
+        "Auto_increment", "Create_time",    "Update_time",     "Check_time",   "Collation",
+        "Checksum",       "Create_options", "Comment",
+    };
+    static const char *const selected_values[] = {
+        "CamelCase",   "InnoDB", "10",          "Dynamic", "0",  "0",
+        "0",           "0",      "0",           "0",       NULL, "1970-01-01 00:00:00",
+        NULL,          NULL,     "utf8mb4_bin", NULL,      "",   "",
+        "alpha",       "InnoDB", "10",          "Dynamic", "0",  "0",
+        "0",           "0",      "0",           "0",       NULL, "1970-01-01 00:00:00",
+        NULL,          NULL,     "utf8mb4_bin", NULL,      "",   "",
+        "beta_1",      "InnoDB", "10",          "Dynamic", "0",  "0",
+        "0",           "0",      "0",           "0",       NULL, "1970-01-01 00:00:00",
+        NULL,          NULL,     "utf8mb4_bin", NULL,      "",   "",
+        "status_meta", "InnoDB", "10",          "Dynamic", "0",  "0",
+        "0",           "0",      "0",           "0",       "44", "1970-01-01 00:00:00",
+        NULL,          NULL,     "utf8mb4_bin", NULL,      "",   "table comment",
+    };
+    static const char *const alpha_values[] = {
+        "alpha", "InnoDB", "10",          "Dynamic", "0",  "0",
+        "0",     "0",      "0",           "0",       NULL, "1970-01-01 00:00:00",
+        NULL,    NULL,     "utf8mb4_bin", NULL,      "",   "",
+    };
+    static const char *const beta_values[] = {
+        "beta_1", "InnoDB", "10",          "Dynamic", "0",  "0",
+        "0",      "0",      "0",           "0",       NULL, "1970-01-01 00:00:00",
+        NULL,     NULL,     "utf8mb4_bin", NULL,      "",   "",
+    };
+    static const char *const camel_values[] = {
+        "CamelCase",           "InnoDB", "10", "Dynamic",     "0",  "0", "0", "0", "0", "0", NULL,
+        "1970-01-01 00:00:00", NULL,     NULL, "utf8mb4_bin", NULL, "",  "",
+    };
+    static const char *const in_values[] = {
+        "in_table", "InnoDB", "10",
+        "Dynamic",  "0",      "0",
+        "0",        "0",      "0",
+        "0",        NULL,     "1970-01-01 00:00:00",
+        NULL,       NULL,     "utf8mb4_0900_ai_ci",
+        NULL,       "",       "",
+    };
+    static const char *const info_values[] = {
+        "TABLES", NULL, "10", NULL, "0", "0", "0", "0", "0", "0", NULL, "1970-01-01 00:00:00",
+        NULL,     NULL, NULL, NULL, "",  "",
+    };
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open show table status database");
+    failures +=
+        expect_prepare_error(database, "SHOW TABLE STATUS", MYLITE_EXEC_ERROR,
+                             "No database selected", "show table status requires selected schema");
+
+    failures += execute_sql(database,
+                            "CREATE DATABASE mylite_show_table_status_a DEFAULT CHARSET=utf8mb4 "
+                            "COLLATE=utf8mb4_bin",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "CREATE DATABASE mylite_show_table_status_b", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "CREATE DATABASE mylite_show_table_status_empty", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_show_table_status_a", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE alpha (id INT)", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE beta_1 (id INT)", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE CamelCase (id INT)", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE status_meta ("
+                            "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, v INT) "
+                            "AUTO_INCREMENT=42 COMMENT='table comment'",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO status_meta (v) VALUES (10)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO status_meta (v) VALUES (20)", MYLITE_DONE);
+
+    failures += expect_select_rows(database, "SHOW TABLE STATUS", columns, 18, selected_values, 4,
+                                   "show table status selected schema");
+    failures += expect_select_rows(database, "SHOW TABLE STATUS LIKE 'alpha%'", columns, 18,
+                                   alpha_values, 1, "show table status like alpha");
+    failures +=
+        expect_select_rows(database,
+                           "SHOW TABLE STATUS FROM mylite_show_table_status_a LIKE "
+                           "'beta\\_%'",
+                           columns, 18, beta_values, 1, "show table status escaped underscore");
+    failures += expect_select_rows(database, "SHOW TABLE STATUS LIKE 'camel%'", columns, 18, NULL,
+                                   0, "show table status like is case-sensitive");
+    failures += expect_select_rows(database, "SHOW TABLE STATUS LIKE 'Camel%'", columns, 18,
+                                   camel_values, 1, "show table status like uppercase pattern");
+    failures += expect_prepare_error(database, "SHOW TABLE STATUS WHERE Name = 'alpha'",
+                                     MYLITE_UNSUPPORTED, "SHOW TABLE STATUS WHERE is not supported",
+                                     "show table status where is parsed but unsupported");
+
+    failures += execute_sql(database, "CREATE TABLE mylite_show_table_status_b.in_table (id INT)",
+                            MYLITE_DONE);
+    failures += expect_select_rows(database, "SHOW TABLE STATUS FROM mylite_show_table_status_b",
+                                   columns, 18, in_values, 1, "show table status from schema");
+    failures += expect_select_rows(database, "SHOW TABLE STATUS IN mylite_show_table_status_b",
+                                   columns, 18, in_values, 1, "show table status in schema");
+    failures +=
+        expect_select_rows(database, "SHOW TABLE STATUS FROM mylite_show_table_status_empty",
+                           columns, 18, NULL, 0, "show table status empty schema");
+
+    failures += expect_select_rows(database,
+                                   "SHOW TABLE STATUS FROM information_schema LIKE "
+                                   "'tables'",
+                                   columns, 18, info_values, 1,
+                                   "show table status information schema lower-case pattern");
+    failures += expect_select_rows(database,
+                                   "SHOW TABLE STATUS FROM Information_Schema LIKE "
+                                   "'tables'",
+                                   columns, 18, info_values, 1,
+                                   "show table status information schema mixed-case schema");
+    failures += expect_show_table_status_information_schema_rows(database, columns);
+    failures += expect_prepare_error(
+        database, "SHOW TABLE STATUS FROM missing_show_table_status", MYLITE_EXEC_ERROR,
+        "Unknown database 'missing_show_table_status'", "show table status rejects missing schema");
+    failures += expect_prepare_error(
+        database, "SHOW TABLE STATUS FROM missing_show_table_status WHERE Name = 'x'",
+        MYLITE_EXEC_ERROR, "Unknown database 'missing_show_table_status'",
+        "show table status validates schema before where unsupported");
 
     mylite_close(database);
 
@@ -13375,6 +13508,56 @@ static int expect_select_rows(mylite_db *database, const char *sql, const char *
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, context);
     failures += expect_int64(mylite_affected_rows(stmt), -1, context);
     mylite_finalize(stmt);
+    return failures;
+}
+
+static int expect_show_table_status_information_schema_rows(mylite_db *database,
+                                                            const char *const *columns)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const char *const names[] = {
+        "CHARACTER_SETS",
+        "CHECK_CONSTRAINTS",
+        "COLLATIONS",
+        "COLLATION_CHARACTER_SET_APPLICABILITY",
+        "COLUMNS",
+        "ENGINES",
+        "KEYWORDS",
+        "KEY_COLUMN_USAGE",
+        "REFERENTIAL_CONSTRAINTS",
+        "SCHEMATA",
+        "STATISTICS",
+        "TABLES",
+        "TABLE_CONSTRAINTS",
+    };
+    static const char context[] = "show table status information schema known views";
+    mylite_stmt *stmt = NULL;
+    int failures =
+        prepare_sql(database, "SHOW TABLE STATUS FROM information_schema", MYLITE_OK, &stmt);
+
+    failures += expect_column_names(stmt, columns, 18, context);
+    for (size_t row = 0U; row < sizeof(names) / sizeof(names[0]); ++row) {
+        failures += expect_status(mylite_step(stmt), MYLITE_ROW, context);
+        failures += expect_string(mylite_column_text(stmt, 0), names[row], context);
+        failures += expect_null_text(mylite_column_text(stmt, 1), context);
+        failures += expect_string(mylite_column_text(stmt, 2), "10", context);
+        failures += expect_null_text(mylite_column_text(stmt, 3), context);
+        for (int column = 4; column <= 9; ++column) {
+            failures += expect_string(mylite_column_text(stmt, column), "0", context);
+        }
+        failures += expect_null_text(mylite_column_text(stmt, 10), context);
+        failures += expect_string(mylite_column_text(stmt, 11), "1970-01-01 00:00:00", context);
+        for (int column = 12; column <= 15; ++column) {
+            failures += expect_null_text(mylite_column_text(stmt, column), context);
+        }
+        failures += expect_string(mylite_column_text(stmt, 16), "", context);
+        failures += expect_string(mylite_column_text(stmt, 17), "", context);
+    }
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, context);
+    failures += expect_int64(mylite_affected_rows(stmt), -1, context);
+    mylite_finalize(stmt);
+
+    // NOLINTEND(readability-magic-numbers)
     return failures;
 }
 

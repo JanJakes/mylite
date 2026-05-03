@@ -122,6 +122,7 @@ enum {
     mysql_warning_no_default = 1364,
     mysql_warning_division_by_zero = 1365,
     mysql_warning_incorrect_string_value = 1411,
+    mysql_warning_out_of_range = 1690,
     mysql_warning_duplicate_index = 1831,
     mysql_warning_legacy_syntax_converted = 3005,
     mysql_warning_field_in_order_not_select = 3065,
@@ -250,6 +251,7 @@ static int test_select_integer_literal(void);
 static int test_select_integer_literal_with_semicolon(void);
 static int test_expression_operator_foundation(void);
 static int test_scalar_builtin_functions_execution(void);
+static int test_round_scalar_function_execution(mylite_db *database);
 static int test_uuid_scalar_functions(mylite_db *database);
 static int test_inet_ipv4_functions_execution(void);
 static int test_charset_collation_functions_execution(void);
@@ -4020,6 +4022,8 @@ static int test_scalar_builtin_functions_execution(void)
                            crc32_values, 1, "CRC32 scalar values");
     failures += expect_int(mylite_warning_count(database), 0, "CRC32 scalar warning count");
 
+    failures += test_round_scalar_function_execution(database);
+
     failures += test_uuid_scalar_functions(database);
 
     failures +=
@@ -5468,6 +5472,212 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_no_stmt_handle(&stmt, "unsupported pi arity");
 
     mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_round_scalar_function_execution(mylite_db *database)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const struct expected_result_metadata round_metadata[] = {
+        {"const_decimal", NULL, NULL, NULL, NULL, NULL, 8U, MYLITE_FIELD_TYPE_NEWDECIMAL, 2U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"const_float", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"const_int", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"const_text", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"const_null", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    static const struct expected_result_metadata round_table_metadata[] = {
+        {"round_i", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"round_u", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"round_d", NULL, NULL, NULL, NULL, NULL, 10U, MYLITE_FIELD_TYPE_NEWDECIMAL, 2U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"round_f", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"round_s", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    static const char *const round_columns[] = {
+        "exact_half", "exact_neg_half", "approx_half", "approx_neg_half", "pos_scale",
+        "half_scale", "neg_half_scale", "neg_one",     "neg_three",       "scale_high",
+        "neg_high",   "unsigned_round", "null_x",      "null_d",          "text_decimal",
+        "text_trail", "text_bad",       "text_half",   "scale_decimal",   "scale_text_decimal",
+    };
+    static const char *const round_values[] = {
+        "3",       "-3",
+        "2",       "-2",
+        "123.46",  "123.46",
+        "-123.46", "20",
+        "99000",   "0.123456789012345678901234567890",
+        "0",       "9223372036854775810",
+        NULL,      NULL,
+        "123.46",  "123.46",
+        "0",       "2",
+        "12.56",   "12.6",
+    };
+    static const char *const round_site_projection_columns[] = {"id", "ri", "rf", "rs"};
+    static const char *const round_site_projection_values[] = {
+        "1", "-30", "2", "123.46", "2", "20", "-2", "0",
+    };
+    static const char *const id_column[] = {"id"};
+    static const char *const id_s_n_columns[] = {"id", "s", "n"};
+    static const char *const updated_round_values[] = {"1", "123", "123.455"};
+    static const char *const round_remaining_values[] = {"1", "3"};
+    int failures = 0;
+    mylite_stmt *stmt = NULL;
+
+    failures +=
+        expect_select_rows(database,
+                           "SELECT ROUND(2.5) AS exact_half, "
+                           "ROUND(-2.5) AS exact_neg_half, "
+                           "ROUND(25E-1) AS approx_half, "
+                           "ROUND(-25E-1) AS approx_neg_half, "
+                           "ROUND(123.456,2) AS pos_scale, "
+                           "ROUND(123.455,2) AS half_scale, "
+                           "ROUND(-123.455,2) AS neg_half_scale, "
+                           "ROUND(23.298,-1) AS neg_one, "
+                           "ROUND(98765.4321,-3) AS neg_three, "
+                           "ROUND(.12345678901234567890123456789012345,35) AS scale_high, "
+                           "ROUND(12345,-35) AS neg_high, "
+                           "ROUND(9223372036854775808,-1) AS unsigned_round, "
+                           "ROUND(NULL) AS null_x, "
+                           "ROUND(1.2,NULL) AS null_d, "
+                           "ROUND('123.455',2) AS text_decimal, "
+                           "ROUND('123.455x',2) AS text_trail, "
+                           "ROUND('abc',2) AS text_bad, "
+                           "ROUND('2.5') AS text_half, "
+                           "ROUND(12.555,1.9) AS scale_decimal, "
+                           "ROUND(12.555,'1.9') AS scale_text_decimal",
+                           round_columns, (int)(sizeof(round_columns) / sizeof(round_columns[0])),
+                           round_values, 1, "ROUND scalar values");
+    failures += expect_int(mylite_warning_count(database), 3, "ROUND scalar warning count");
+    for (int index = 0; index < 3; ++index) {
+        failures += expect_int((int)mylite_warning_code(database, index),
+                               mysql_warning_truncated_wrong_value, "ROUND scalar warning code");
+    }
+
+    failures +=
+        prepare_sql(database, "SELECT ROUND(9223372036854775807,-1)", MYLITE_EXEC_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "ROUND signed overflow handle");
+    failures +=
+        expect_contains(mylite_error_message(database), "BIGINT value is out of range in 'round()'",
+                        "ROUND signed overflow message");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "ROUND signed overflow warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_out_of_range,
+                           "ROUND signed overflow warning code");
+
+    failures +=
+        prepare_sql(database, "SELECT ROUND(18446744073709551615,-1)", MYLITE_EXEC_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "ROUND unsigned overflow handle");
+    failures += expect_contains(mylite_error_message(database),
+                                "BIGINT UNSIGNED value is out of range in 'round()'",
+                                "ROUND unsigned overflow message");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "ROUND unsigned overflow warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_out_of_range,
+                           "ROUND unsigned overflow warning code");
+
+    failures += prepare_sql(database,
+                            "SELECT ROUND(123.456,2) AS const_decimal, "
+                            "ROUND(25E-1) AS const_float, "
+                            "ROUND(150,2) AS const_int, "
+                            "ROUND('123.455',2) AS const_text, "
+                            "ROUND(NULL,2) AS const_null",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, round_metadata,
+                                       (int)(sizeof(round_metadata) / sizeof(round_metadata[0])),
+                                       "ROUND scalar metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "ROUND metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "ROUND metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database,
+                            "CREATE TABLE round_sites ("
+                            "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, "
+                            "i INT, "
+                            "u INT UNSIGNED, "
+                            "d DECIMAL(8,3), "
+                            "f DOUBLE, "
+                            "s VARCHAR(16))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO round_sites (i,u,d,f,s) VALUES "
+                            "(-25,25,123.455,2.5,'123.455'),"
+                            "(15,15,-123.455,-2.5,'abc'),"
+                            "(NULL,NULL,NULL,NULL,NULL)",
+                            MYLITE_DONE);
+    failures += prepare_sql(database,
+                            "SELECT ROUND(i,-1) AS round_i, "
+                            "ROUND(u,-1) AS round_u, "
+                            "ROUND(d,2) AS round_d, "
+                            "ROUND(f,0) AS round_f, "
+                            "ROUND(s,2) AS round_s FROM round_sites LIMIT 0",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, round_table_metadata,
+        (int)(sizeof(round_table_metadata) / sizeof(round_table_metadata[0])),
+        "table ROUND metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "table ROUND metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_select_rows(database,
+                                   "SELECT id, ROUND(i,-1) AS ri, ROUND(f) AS rf, "
+                                   "ROUND(s,2) AS rs FROM round_sites "
+                                   "WHERE ROUND(i,0) IS NOT NULL ORDER BY ROUND(i,-1), id",
+                                   round_site_projection_columns, 4, round_site_projection_values,
+                                   2, "ROUND table projection");
+    failures += expect_int(mylite_warning_count(database), 1, "ROUND table warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "ROUND table warning code");
+
+    failures += prepare_sql(database, "UPDATE round_sites SET i = 0 WHERE ROUND(s,2) = 0",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "update ROUND warning promoted");
+    failures += expect_contains(mylite_error_message(database), "Truncated incorrect DOUBLE value",
+                                "update ROUND warning error");
+    failures += expect_int(mylite_warning_count(database), 1, "update ROUND warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "update ROUND warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE round_sites SET i = ROUND(s,0) WHERE id = 1 AND ROUND(s,2) > 100", 1,
+        "update ROUND assignment and predicate");
+    failures +=
+        expect_select_rows(database, "SELECT id, i AS s, s AS n FROM round_sites WHERE id=1",
+                           id_s_n_columns, 3, updated_round_values, 1, "updated ROUND values");
+    failures +=
+        prepare_sql(database, "DELETE FROM round_sites WHERE ROUND(s,2) = 0", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "delete ROUND warning promoted");
+    failures += expect_contains(mylite_error_message(database), "Truncated incorrect DOUBLE value",
+                                "delete ROUND warning error");
+    failures += expect_int(mylite_warning_count(database), 1, "delete ROUND warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "delete ROUND warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM round_sites WHERE id = 2 AND ROUND(i,-1) = 20", 1,
+        "delete ROUND predicate");
+    failures += expect_select_rows(database, "SELECT id FROM round_sites ORDER BY id", id_column, 1,
+                                   round_remaining_values, 2, "delete ROUND remaining rows");
+    failures += prepare_sql(database, "SELECT ROUND()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported round zero arity");
+    failures += prepare_sql(database, "SELECT ROUND(1,2,3)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported round three arity");
+
     // NOLINTEND(readability-magic-numbers)
     return failures;
 }

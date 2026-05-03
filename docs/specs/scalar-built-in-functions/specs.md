@@ -135,7 +135,8 @@ by common scalar expressions:
   `docs/specs/numeric-base-conversion-functions/specs.md` and
   `docs/specs/uuid-conversion-functions/specs.md`
 - numeric functions: `ABS`, `SIGN`, `FLOOR`, `CEIL`, `CEILING`, `MOD`,
-  `CONV`, `BIT_COUNT`, `BIT_LENGTH`, `CRC32`, `INET_ATON`, `INET_NTOA`, and `PI`; see
+  `ROUND`, `CONV`, `BIT_COUNT`, `BIT_LENGTH`, `CRC32`, `INET_ATON`, `INET_NTOA`, and `PI`; see
+  `docs/specs/round-function/specs.md` and
   `docs/specs/numeric-base-conversion-functions/specs.md` and
   `docs/specs/bit-utility-functions/specs.md` and
   `docs/specs/crc32-function/specs.md` and

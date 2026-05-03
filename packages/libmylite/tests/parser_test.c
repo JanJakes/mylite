@@ -5180,7 +5180,7 @@ static int test_scalar_function_call_syntax(void)
 {
     // NOLINTBEGIN(readability-magic-numbers)
     enum {
-        expected_select_item_count = 19,
+        expected_select_item_count = 20,
         string_function_item_count = 17,
         padding_function_item_count = 6,
         quote_function_item_count = 2,
@@ -5199,7 +5199,8 @@ static int test_scalar_function_call_syntax(void)
                           "LAST_INSERT_ID(), LAST_INSERT_ID(5), ROW_COUNT(), CONNECTION_ID(), "
                           "USER(), SESSION_USER(), SYSTEM_USER(), CURRENT_USER(), CURRENT_USER, "
                           "IF(1, 2, 3), "
-                          "LEFT('abc', 1), RIGHT('abc', 1), REPLACE('a','a','b') FROM DUAL;",
+                          "LEFT('abc', 1), RIGHT('abc', 1), REPLACE('a','a','b'), "
+                          "ROUND(123.456, 2) FROM DUAL;",
                           MYLITE_SQL_PARSE_OK, &result);
     select_list = child_at(child_at(result.root, 0U), 0U);
     failures += expect_child_count(select_list, expected_select_item_count, "function select list");
@@ -5252,6 +5253,8 @@ static int test_scalar_function_call_syntax(void)
         expect_function_call(child_at(child_at(select_list, 17U), 0U), "RIGHT", 2U, "RIGHT call");
     failures += expect_function_call(child_at(child_at(select_list, 18U), 0U), "REPLACE", 3U,
                                      "REPLACE call");
+    failures +=
+        expect_function_call(child_at(child_at(select_list, 19U), 0U), "ROUND", 2U, "ROUND call");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT CONCAT_WS(',', 'a', 'b'), "

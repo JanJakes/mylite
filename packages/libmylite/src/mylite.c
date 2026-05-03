@@ -12,6 +12,7 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <limits.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -2292,6 +2293,17 @@ static int infer_function_arguments_nullable(mylite_db *database,
                                              const struct mylite_select_plan *plan,
                                              const struct mylite_sql_ast_node *arguments,
                                              bool *out_nullable);
+static int infer_round_function_descriptor(mylite_db *database,
+                                           const struct mylite_select_plan *plan,
+                                           const struct mylite_sql_ast_node *expression,
+                                           const struct mylite_expression_value *value,
+                                           bool result_nullable,
+                                           struct mylite_field_descriptor *out_descriptor);
+static bool
+round_function_argument_is_approximate_literal(const struct mylite_sql_ast_node *argument);
+static bool round_function_constant_scale(const struct mylite_sql_ast_node *argument,
+                                          int *out_scale);
+static int round_function_descriptor_scale(int scale);
 static bool infer_code_search_function_descriptor(const struct mylite_sql_ast_node *name,
                                                   bool nullable,
                                                   struct mylite_field_descriptor *out_descriptor);
@@ -10539,6 +10551,11 @@ static int infer_function_expression_descriptor(mylite_db *database,
     if (infer_common_scalar_function_descriptor(database, name, out_descriptor)) {
         return MYLITE_OK;
     }
+    status = infer_round_function_descriptor(database, plan, expression, value, result_nullable,
+                                             out_descriptor);
+    if (status != MYLITE_UNSUPPORTED) {
+        return status;
+    }
     status = infer_char_function_descriptor(database, expression, out_descriptor);
     if (status != MYLITE_UNSUPPORTED) {
         return status;
@@ -10624,6 +10641,188 @@ static bool infer_common_scalar_function_descriptor(mylite_db *database,
         return true;
     }
     return infer_base_conversion_function_descriptor(database, name, out_descriptor);
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int infer_round_function_descriptor(mylite_db *database,
+                                           const struct mylite_select_plan *plan,
+                                           const struct mylite_sql_ast_node *expression,
+                                           const struct mylite_expression_value *value,
+                                           bool result_nullable,
+                                           struct mylite_field_descriptor *out_descriptor)
+{
+    const struct mylite_sql_ast_node *name = child_at(expression, 0U);
+    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *value_argument = child_at(arguments, 0U);
+    const struct mylite_sql_ast_node *scale_argument = child_at(arguments, 1U);
+    struct mylite_field_descriptor value_descriptor = field_descriptor_defaults();
+    int scale = 0;
+    int status = MYLITE_OK;
+
+    if (name == NULL || !ascii_span_equal_ci(name->span, "ROUND")) {
+        return MYLITE_UNSUPPORTED;
+    }
+    status = infer_expression_descriptor(database, plan, value_argument, NULL, &value_descriptor);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    if (round_function_argument_is_approximate_literal(value_argument)) {
+        *out_descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_DOUBLE,
+            .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+            .length = mylite_mysql_double_display_length + 1U,
+            .decimals = mylite_mysql_not_fixed_decimals,
+            .charset_id = mylite_mysql_binary_charset_id,
+            .nullable = result_nullable,
+        };
+        field_descriptor_set_nullable(out_descriptor, result_nullable);
+        return MYLITE_OK;
+    }
+
+    if (value_descriptor.type == MYLITE_FIELD_TYPE_NEWDECIMAL) {
+        *out_descriptor = value_descriptor;
+        out_descriptor->flags |= MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM;
+        if (round_function_constant_scale(scale_argument, &scale)) {
+            int rounded_scale = round_function_descriptor_scale(scale);
+
+            if (rounded_scale < 0) {
+                out_descriptor->decimals = 0U;
+                if (out_descriptor->length > value_descriptor.decimals) {
+                    out_descriptor->length -= value_descriptor.decimals;
+                }
+            } else if ((unsigned int)rounded_scale < out_descriptor->decimals) {
+                out_descriptor->decimals = (unsigned int)rounded_scale;
+            }
+        }
+        field_descriptor_set_nullable(out_descriptor, result_nullable);
+        return MYLITE_OK;
+    }
+    if (value_descriptor.type == MYLITE_FIELD_TYPE_TINY ||
+        value_descriptor.type == MYLITE_FIELD_TYPE_SHORT ||
+        value_descriptor.type == MYLITE_FIELD_TYPE_LONG ||
+        value_descriptor.type == MYLITE_FIELD_TYPE_LONGLONG ||
+        value_descriptor.type == MYLITE_FIELD_TYPE_INT24 ||
+        value_descriptor.type == MYLITE_FIELD_TYPE_YEAR) {
+        *out_descriptor = signed_longlong_expression_descriptor(result_nullable);
+        out_descriptor->length = mylite_mysql_signed_longlong_display_length;
+        if ((value_descriptor.flags & MYLITE_FIELD_FLAG_UNSIGNED) != 0U) {
+            out_descriptor->flags |= MYLITE_FIELD_FLAG_UNSIGNED;
+        }
+        return MYLITE_OK;
+    }
+    if (value_descriptor.type == MYLITE_FIELD_TYPE_NULL) {
+        *out_descriptor = expression_value_descriptor(value);
+        if (out_descriptor->type == MYLITE_FIELD_TYPE_NULL) {
+            *out_descriptor = (struct mylite_field_descriptor){
+                .type = MYLITE_FIELD_TYPE_DOUBLE,
+                .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+                .length = mylite_mysql_double_display_length + 1U,
+                .decimals = mylite_mysql_not_fixed_decimals,
+                .charset_id = mylite_mysql_binary_charset_id,
+                .nullable = true,
+            };
+        }
+        return MYLITE_OK;
+    }
+
+    *out_descriptor = (struct mylite_field_descriptor){
+        .type = MYLITE_FIELD_TYPE_DOUBLE,
+        .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+        .length = mylite_mysql_double_display_length + 1U,
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = mylite_mysql_binary_charset_id,
+        .nullable = result_nullable,
+    };
+    field_descriptor_set_nullable(out_descriptor, result_nullable);
+    return MYLITE_OK;
+}
+
+static bool
+round_function_argument_is_approximate_literal(const struct mylite_sql_ast_node *argument)
+{
+    argument = unwrap_parenthesized_expression(argument);
+    if (argument != NULL && argument->kind == MYLITE_SQL_AST_UNARY_EXPRESSION &&
+        (argument->operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ||
+         argument->operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE)) {
+        argument = unwrap_parenthesized_expression(child_at(argument, 0U));
+    }
+    if (argument == NULL || argument->kind != MYLITE_SQL_AST_LITERAL) {
+        return false;
+    }
+    if (argument->literal_kind != MYLITE_SQL_AST_LITERAL_FLOAT) {
+        return false;
+    }
+    return true;
+}
+
+static bool round_function_constant_scale(const struct mylite_sql_ast_node *argument,
+                                          int *out_scale)
+{
+    bool negative = false;
+    int64_t scale = 0;
+
+    if (out_scale == NULL) {
+        return false;
+    }
+    *out_scale = 0;
+    if (argument == NULL) {
+        return true;
+    }
+    while (argument != NULL && argument->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
+        argument = child_at(argument, 0U);
+    }
+    if (argument != NULL && argument->kind == MYLITE_SQL_AST_UNARY_EXPRESSION &&
+        (argument->operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ||
+         argument->operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE)) {
+        negative = argument->operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE;
+        argument = child_at(argument, 0U);
+        while (argument != NULL && argument->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
+            argument = child_at(argument, 0U);
+        }
+    }
+    if (argument == NULL || argument->kind != MYLITE_SQL_AST_LITERAL ||
+        argument->literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        return false;
+    }
+    enum { decimal_base = 10 };
+
+    for (size_t index = 0U; index < argument->span.length; ++index) {
+        char character = argument->span.text[index];
+
+        if (!isdigit((unsigned char)character)) {
+            return false;
+        }
+        if (scale < INT64_MAX / decimal_base) {
+            scale = (scale * decimal_base) + (int64_t)(character - '0');
+        } else {
+            scale = INT64_MAX;
+        }
+    }
+    if (negative) {
+        scale = -scale;
+    }
+    if (scale > INT_MAX) {
+        *out_scale = INT_MAX;
+    } else if (scale < INT_MIN) {
+        *out_scale = INT_MIN;
+    } else {
+        *out_scale = (int)scale;
+    }
+    return true;
+}
+
+static int round_function_descriptor_scale(int scale)
+{
+    enum { round_scale_limit = 30 };
+
+    if (scale > round_scale_limit) {
+        return round_scale_limit;
+    }
+    if (scale < -round_scale_limit) {
+        return -round_scale_limit;
+    }
+    return scale;
 }
 
 static bool

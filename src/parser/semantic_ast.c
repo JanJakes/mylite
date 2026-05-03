@@ -38,6 +38,10 @@ struct MyliteSemanticAstNode {
   size_t end;
   const char *value;
   size_t value_length;
+  const char *schema_value;
+  size_t schema_value_length;
+  const char *alias_value;
+  size_t alias_value_length;
   MyliteSemanticAstNode **children;
   size_t child_count;
 };
@@ -145,6 +149,9 @@ mylite_semantic_ast_append_select_query_block_projection_descriptors(
 static int mylite_semantic_ast_append_select_query_block_clauses(
     MyliteSemanticAst *ast, MyliteSemanticAstNode *query_block,
     size_t *child_index, const MyliteAstSelectQueryBlock *parser_query_block);
+static int mylite_semantic_ast_append_select_table_reference_clause_child(
+    MyliteSemanticAst *ast, MyliteSemanticAstNode *parent, size_t *child_index,
+    const MyliteAstSelectQueryBlock *parser_query_block);
 static int mylite_semantic_ast_append_table_reference_clause_child(
     MyliteSemanticAst *ast, MyliteSemanticAstNode *parent, size_t *child_index,
     MyliteSemanticClauseKind kind, size_t start, size_t end);
@@ -168,6 +175,9 @@ static MyliteSemanticAstNode *mylite_semantic_ast_materialize_row(
     size_t child_count);
 static MyliteSemanticAstNode *mylite_semantic_ast_materialize_table_reference(
     MyliteSemanticAst *ast, size_t start, size_t end);
+static MyliteSemanticAstNode *
+mylite_semantic_ast_materialize_named_table_reference(
+    MyliteSemanticAst *ast, const MyliteAstTableReference *table_reference);
 static MyliteSemanticAstNode *mylite_semantic_ast_materialize_target(
     MyliteSemanticAst *ast, const MyliteAst *parser_ast,
     size_t statement_index, size_t target_index);
@@ -246,6 +256,11 @@ static int mylite_semantic_ast_copy_node_value(MyliteSemanticAst *ast,
                                                MyliteSemanticAstNode *node,
                                                const char *value,
                                                size_t value_length);
+static int mylite_semantic_ast_copy_optional_string(MyliteSemanticAst *ast,
+                                                    const char **target,
+                                                    size_t *target_length,
+                                                    const char *value,
+                                                    size_t value_length);
 static int mylite_semantic_ast_copy_source_span_value(
     MyliteSemanticAst *ast, MyliteSemanticAstNode *node, size_t start,
     size_t end);
@@ -601,6 +616,26 @@ const char *mylite_semantic_ast_node_value(
 size_t mylite_semantic_ast_node_value_length(
     const MyliteSemanticAstNode *node) {
   return node == NULL ? 0 : node->value_length;
+}
+
+const char *mylite_semantic_ast_node_schema_value(
+    const MyliteSemanticAstNode *node) {
+  return node == NULL ? NULL : node->schema_value;
+}
+
+size_t mylite_semantic_ast_node_schema_value_length(
+    const MyliteSemanticAstNode *node) {
+  return node == NULL ? 0 : node->schema_value_length;
+}
+
+const char *mylite_semantic_ast_node_alias_value(
+    const MyliteSemanticAstNode *node) {
+  return node == NULL ? NULL : node->alias_value;
+}
+
+size_t mylite_semantic_ast_node_alias_value_length(
+    const MyliteSemanticAstNode *node) {
+  return node == NULL ? 0 : node->alias_value_length;
 }
 
 size_t mylite_semantic_ast_node_child_count(
@@ -1628,10 +1663,8 @@ mylite_semantic_ast_append_select_query_block_projection_descriptors(
 static int mylite_semantic_ast_append_select_query_block_clauses(
     MyliteSemanticAst *ast, MyliteSemanticAstNode *query_block,
     size_t *child_index, const MyliteAstSelectQueryBlock *parser_query_block) {
-  if (!mylite_semantic_ast_append_table_reference_clause_child(
-          ast, query_block, child_index, MYLITE_SEMANTIC_CLAUSE_FROM,
-          mylite_ast_select_query_block_view_from_start(parser_query_block),
-          mylite_ast_select_query_block_view_from_end(parser_query_block))) {
+  if (!mylite_semantic_ast_append_select_table_reference_clause_child(
+          ast, query_block, child_index, parser_query_block)) {
     return 0;
   }
   if (!mylite_semantic_ast_append_clause_child(
@@ -1678,6 +1711,55 @@ static int mylite_semantic_ast_append_select_query_block_clauses(
       ast, query_block, child_index, MYLITE_SEMANTIC_CLAUSE_LOCKING,
       mylite_ast_select_query_block_view_lock_start(parser_query_block),
       mylite_ast_select_query_block_view_lock_end(parser_query_block));
+}
+
+static int mylite_semantic_ast_append_select_table_reference_clause_child(
+    MyliteSemanticAst *ast, MyliteSemanticAstNode *parent, size_t *child_index,
+    const MyliteAstSelectQueryBlock *parser_query_block) {
+  size_t start = mylite_ast_select_query_block_view_from_start(
+      parser_query_block);
+  size_t end =
+      mylite_ast_select_query_block_view_from_end(parser_query_block);
+  if (mylite_semantic_ast_count_clause_span(start, end) == 0) {
+    return 1;
+  }
+
+  size_t table_reference_count =
+      mylite_ast_select_query_block_view_table_reference_count(
+          parser_query_block);
+  size_t child_count = table_reference_count == 0 ? 1 : table_reference_count;
+  MyliteSemanticAstNode *clause = mylite_semantic_ast_materialize_clause(
+      ast, MYLITE_SEMANTIC_CLAUSE_FROM, start, end, NULL);
+  if (clause == NULL ||
+      !mylite_semantic_ast_set_node_child_count(ast, clause, child_count)) {
+    return 0;
+  }
+
+  size_t table_reference_index = 0;
+  if (table_reference_count == 0) {
+    if (!mylite_semantic_ast_append_child(
+            clause, &table_reference_index,
+            mylite_semantic_ast_materialize_table_reference(ast, start, end))) {
+      return 0;
+    }
+  } else {
+    for (size_t i = 0; i < table_reference_count; i++) {
+      const MyliteAstTableReference *table_reference =
+          mylite_ast_select_query_block_view_table_reference_at(
+              parser_query_block, i);
+      if (!mylite_semantic_ast_append_child(
+              clause, &table_reference_index,
+              mylite_semantic_ast_materialize_named_table_reference(
+                  ast, table_reference))) {
+        return 0;
+      }
+    }
+  }
+  if (table_reference_index != clause->child_count) {
+    return 0;
+  }
+
+  return mylite_semantic_ast_append_child(parent, child_index, clause);
 }
 
 static int mylite_semantic_ast_append_table_reference_clause_child(
@@ -1888,6 +1970,40 @@ static MyliteSemanticAstNode *mylite_semantic_ast_materialize_table_reference(
     MyliteSemanticAst *ast, size_t start, size_t end) {
   return mylite_semantic_ast_new_node(
       ast, MYLITE_SEMANTIC_NODE_TABLE_REFERENCE, start, end);
+}
+
+static MyliteSemanticAstNode *
+mylite_semantic_ast_materialize_named_table_reference(
+    MyliteSemanticAst *ast, const MyliteAstTableReference *table_reference) {
+  if (table_reference == NULL) {
+    return NULL;
+  }
+  MyliteSemanticAstNode *node = mylite_semantic_ast_materialize_table_reference(
+      ast, mylite_ast_table_reference_view_start(table_reference),
+      mylite_ast_table_reference_view_end(table_reference));
+  if (node == NULL) {
+    return NULL;
+  }
+  node->target_kind = MYLITE_STATEMENT_TARGET_TABLE;
+  node->target_role = MYLITE_STATEMENT_TARGET_ROLE_PRIMARY;
+  if (!mylite_semantic_ast_copy_node_value(
+          ast, node, mylite_ast_table_reference_view_name_value(
+                         table_reference),
+          mylite_ast_table_reference_view_name_value_length(
+              table_reference)) ||
+      !mylite_semantic_ast_copy_optional_string(
+          ast, &node->schema_value, &node->schema_value_length,
+          mylite_ast_table_reference_view_schema_value(table_reference),
+          mylite_ast_table_reference_view_schema_value_length(
+              table_reference)) ||
+      !mylite_semantic_ast_copy_optional_string(
+          ast, &node->alias_value, &node->alias_value_length,
+          mylite_ast_table_reference_view_alias_value(table_reference),
+          mylite_ast_table_reference_view_alias_value_length(
+              table_reference))) {
+    return NULL;
+  }
+  return node;
 }
 
 static MyliteSemanticAstNode *mylite_semantic_ast_materialize_target(
@@ -3088,6 +3204,18 @@ static int mylite_semantic_ast_copy_node_value(MyliteSemanticAst *ast,
   if (ast == NULL || node == NULL) {
     return 0;
   }
+  return mylite_semantic_ast_copy_optional_string(
+      ast, &node->value, &node->value_length, value, value_length);
+}
+
+static int mylite_semantic_ast_copy_optional_string(MyliteSemanticAst *ast,
+                                                    const char **target,
+                                                    size_t *target_length,
+                                                    const char *value,
+                                                    size_t value_length) {
+  if (ast == NULL || target == NULL || target_length == NULL) {
+    return 0;
+  }
   if (value == NULL) {
     return 1;
   }
@@ -3100,8 +3228,8 @@ static int mylite_semantic_ast_copy_node_value(MyliteSemanticAst *ast,
   }
   memcpy(copy, value, value_length);
   copy[value_length] = '\0';
-  node->value = copy;
-  node->value_length = value_length;
+  *target = copy;
+  *target_length = value_length;
   return 1;
 }
 

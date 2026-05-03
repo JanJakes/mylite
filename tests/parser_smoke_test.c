@@ -6502,6 +6502,11 @@ static int expect_select_statement_view(void) {
         mylite_ast_select_query_block_view_where_expression(query_block0);
     const MyliteAstExpression *block_having_expression =
         mylite_ast_select_query_block_view_having_expression(query_block0);
+    const MyliteAstTableReference *table_reference0 =
+        query_block0 == NULL
+            ? NULL
+            : mylite_ast_select_query_block_view_table_reference_at(
+                  query_block0, 0);
     if (view == NULL ||
         mylite_ast_select_statement_view_query_block_count(view) != 1 ||
         query_block0 == NULL ||
@@ -6518,6 +6523,42 @@ static int expect_select_statement_view(void) {
                                query_block0),
                       mylite_ast_select_query_block_view_from_end(query_block0),
                       "db1.t AS t") ||
+        mylite_ast_select_query_block_view_table_reference_count(
+            query_block0) != 1 ||
+        table_reference0 == NULL ||
+        !span_matches(sql, mylite_ast_table_reference_view_start(
+                               table_reference0),
+                      mylite_ast_table_reference_view_end(table_reference0),
+                      "db1.t AS t") ||
+        !span_matches(sql, mylite_ast_table_reference_view_schema_start(
+                               table_reference0),
+                      mylite_ast_table_reference_view_schema_end(
+                          table_reference0),
+                      "db1") ||
+        !value_matches_when_expected(
+            mylite_ast_table_reference_view_schema_value(table_reference0),
+            mylite_ast_table_reference_view_schema_value_length(
+                table_reference0),
+            "db1") ||
+        !span_matches(sql, mylite_ast_table_reference_view_name_start(
+                               table_reference0),
+                      mylite_ast_table_reference_view_name_end(
+                          table_reference0),
+                      "t") ||
+        !value_matches_when_expected(
+            mylite_ast_table_reference_view_name_value(table_reference0),
+            mylite_ast_table_reference_view_name_value_length(table_reference0),
+            "t") ||
+        !span_matches(sql, mylite_ast_table_reference_view_alias_start(
+                               table_reference0),
+                      mylite_ast_table_reference_view_alias_end(
+                          table_reference0),
+                      "t") ||
+        !value_matches_when_expected(
+            mylite_ast_table_reference_view_alias_value(table_reference0),
+            mylite_ast_table_reference_view_alias_value_length(
+                table_reference0),
+            "t") ||
         !span_matches(sql, mylite_ast_select_query_block_view_where_start(
                                query_block0),
                       mylite_ast_select_query_block_view_where_end(query_block0),
@@ -6621,6 +6662,8 @@ static int expect_select_statement_view(void) {
         query_block0 == NULL ||
         mylite_ast_select_query_block_view_from_start(query_block0) != 0 ||
         mylite_ast_select_query_block_view_from_end(query_block0) != 0 ||
+        mylite_ast_select_query_block_view_table_reference_count(
+            query_block0) != 0 ||
         !span_matches(sql, mylite_ast_select_query_block_view_where_start(
                                query_block0),
                       mylite_ast_select_query_block_view_where_end(
@@ -6676,6 +6719,8 @@ static int expect_select_statement_view(void) {
         query_block0 == NULL ||
         mylite_ast_select_query_block_view_from_start(query_block0) != 0 ||
         mylite_ast_select_query_block_view_from_end(query_block0) != 0 ||
+        mylite_ast_select_query_block_view_table_reference_count(
+            query_block0) != 0 ||
         !span_matches(sql, mylite_ast_select_query_block_view_where_start(
                                query_block0),
                       mylite_ast_select_query_block_view_where_end(
@@ -6699,6 +6744,161 @@ static int expect_select_statement_view(void) {
         mylite_ast_expression_view_kind(block_where_expression) !=
             MYLITE_EXPRESSION_LITERAL) {
       fprintf(stderr, "FROM DUAL SELECT query block view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql =
+        "SELECT * FROM db1.t AS x, u y WHERE x.a = y.a";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "comma SELECT table references parse failed: status=%s "
+              "offset=%zu token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+
+    const MyliteAstSelectStatement *view =
+        mylite_ast_select_statement_view(ast, 0);
+    const MyliteAstSelectQueryBlock *query_block0 =
+        view == NULL ? NULL
+                     : mylite_ast_select_statement_view_query_block_at(view, 0);
+    const MyliteAstTableReference *table_reference0 =
+        query_block0 == NULL
+            ? NULL
+            : mylite_ast_select_query_block_view_table_reference_at(
+                  query_block0, 0);
+    const MyliteAstTableReference *table_reference1 =
+        query_block0 == NULL
+            ? NULL
+            : mylite_ast_select_query_block_view_table_reference_at(
+                  query_block0, 1);
+    if (view == NULL ||
+        mylite_ast_select_statement_view_query_block_count(view) != 1 ||
+        query_block0 == NULL ||
+        !span_matches(sql, mylite_ast_select_query_block_view_from_start(
+                               query_block0),
+                      mylite_ast_select_query_block_view_from_end(query_block0),
+                      "db1.t AS x, u y") ||
+        mylite_ast_select_query_block_view_table_reference_count(
+            query_block0) != 2 ||
+        table_reference0 == NULL || table_reference1 == NULL ||
+        !span_matches(sql, mylite_ast_table_reference_view_start(
+                               table_reference0),
+                      mylite_ast_table_reference_view_end(table_reference0),
+                      "db1.t AS x") ||
+        !value_matches_when_expected(
+            mylite_ast_table_reference_view_schema_value(table_reference0),
+            mylite_ast_table_reference_view_schema_value_length(
+                table_reference0),
+            "db1") ||
+        !value_matches_when_expected(
+            mylite_ast_table_reference_view_name_value(table_reference0),
+            mylite_ast_table_reference_view_name_value_length(table_reference0),
+            "t") ||
+        !value_matches_when_expected(
+            mylite_ast_table_reference_view_alias_value(table_reference0),
+            mylite_ast_table_reference_view_alias_value_length(
+                table_reference0),
+            "x") ||
+        !span_matches(sql, mylite_ast_table_reference_view_start(
+                               table_reference1),
+                      mylite_ast_table_reference_view_end(table_reference1),
+                      "u y") ||
+        mylite_ast_table_reference_view_schema_value(table_reference1) !=
+            NULL ||
+        !value_matches_when_expected(
+            mylite_ast_table_reference_view_name_value(table_reference1),
+            mylite_ast_table_reference_view_name_value_length(table_reference1),
+            "u") ||
+        !value_matches_when_expected(
+            mylite_ast_table_reference_view_alias_value(table_reference1),
+            mylite_ast_table_reference_view_alias_value_length(
+                table_reference1),
+            "y")) {
+      fprintf(stderr, "comma SELECT table references failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql =
+        "SELECT * FROM (SELECT * FROM inner_t) AS d JOIN outer_t o "
+        "ON d.a = o.a";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "derived SELECT table references parse failed: status=%s "
+              "offset=%zu token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+
+    const MyliteAstSelectStatement *view =
+        mylite_ast_select_statement_view(ast, 0);
+    const MyliteAstSelectQueryBlock *outer_query_block =
+        view == NULL ? NULL
+                     : mylite_ast_select_statement_view_query_block_at(view, 0);
+    const MyliteAstSelectQueryBlock *inner_query_block =
+        view == NULL ? NULL
+                     : mylite_ast_select_statement_view_query_block_at(view, 1);
+    const MyliteAstTableReference *outer_table_reference =
+        outer_query_block == NULL
+            ? NULL
+            : mylite_ast_select_query_block_view_table_reference_at(
+                  outer_query_block, 0);
+    const MyliteAstTableReference *inner_table_reference =
+        inner_query_block == NULL
+            ? NULL
+            : mylite_ast_select_query_block_view_table_reference_at(
+                  inner_query_block, 0);
+    if (view == NULL ||
+        mylite_ast_select_statement_view_query_block_count(view) != 2 ||
+        outer_query_block == NULL || inner_query_block == NULL ||
+        mylite_ast_select_query_block_view_table_reference_count(
+            outer_query_block) != 1 ||
+        outer_table_reference == NULL ||
+        !span_matches(sql, mylite_ast_table_reference_view_start(
+                               outer_table_reference),
+                      mylite_ast_table_reference_view_end(
+                          outer_table_reference),
+                      "outer_t o") ||
+        !value_matches_when_expected(
+            mylite_ast_table_reference_view_name_value(outer_table_reference),
+            mylite_ast_table_reference_view_name_value_length(
+                outer_table_reference),
+            "outer_t") ||
+        !value_matches_when_expected(
+            mylite_ast_table_reference_view_alias_value(outer_table_reference),
+            mylite_ast_table_reference_view_alias_value_length(
+                outer_table_reference),
+            "o") ||
+        mylite_ast_select_query_block_view_table_reference_count(
+            inner_query_block) != 1 ||
+        inner_table_reference == NULL ||
+        !span_matches(sql, mylite_ast_table_reference_view_start(
+                               inner_table_reference),
+                      mylite_ast_table_reference_view_end(
+                          inner_table_reference),
+                      "inner_t") ||
+        !value_matches_when_expected(
+            mylite_ast_table_reference_view_name_value(inner_table_reference),
+            mylite_ast_table_reference_view_name_value_length(
+                inner_table_reference),
+            "inner_t") ||
+        mylite_ast_table_reference_view_alias_value(inner_table_reference) !=
+            NULL) {
+      fprintf(stderr, "derived SELECT table references failed: %s\n", sql);
       failed = 1;
     }
     mylite_ast_free(ast);
@@ -7884,7 +8084,7 @@ static int expect_semantic_ast_materialization(void) {
   mylite_semantic_ast_free(semantic_ast);
 
   const char *query_sql =
-      "SELECT a AS aa FROM t WHERE a > 1 GROUP BY a HAVING a < 10 "
+      "SELECT a AS aa FROM db.t AS tt WHERE a > 1 GROUP BY a HAVING a < 10 "
       "ORDER BY aa LIMIT 1 FOR UPDATE";
   semantic_ast = NULL;
   status = mylite_parse_sql_semantic_ast(query_sql, &semantic_ast, &result);
@@ -7961,9 +8161,24 @@ static int expect_semantic_ast_materialization(void) {
       table_reference == NULL ||
       mylite_semantic_ast_node_kind(table_reference) !=
           MYLITE_SEMANTIC_NODE_TABLE_REFERENCE ||
+      mylite_semantic_ast_node_target_kind(table_reference) !=
+          MYLITE_STATEMENT_TARGET_TABLE ||
+      mylite_semantic_ast_node_target_role(table_reference) !=
+          MYLITE_STATEMENT_TARGET_ROLE_PRIMARY ||
       !span_matches(
           query_sql, mylite_semantic_ast_node_start(table_reference),
-          mylite_semantic_ast_node_end(table_reference), "t") ||
+          mylite_semantic_ast_node_end(table_reference), "db.t AS tt") ||
+      !value_matches_when_expected(
+          mylite_semantic_ast_node_value(table_reference),
+          mylite_semantic_ast_node_value_length(table_reference), "t") ||
+      !value_matches_when_expected(
+          mylite_semantic_ast_node_schema_value(table_reference),
+          mylite_semantic_ast_node_schema_value_length(table_reference),
+          "db") ||
+      !value_matches_when_expected(
+          mylite_semantic_ast_node_alias_value(table_reference),
+          mylite_semantic_ast_node_alias_value_length(table_reference),
+          "tt") ||
       where_clause == NULL ||
       mylite_semantic_ast_node_child_count(where_clause) != 1 ||
       group_by_clause == NULL || having_clause == NULL ||
@@ -7984,6 +8199,69 @@ static int expect_semantic_ast_materialization(void) {
             query_counts.clauses, query_counts.expressions,
             query_counts.operators,
             query_counts.leaf_values);
+    failed = 1;
+  }
+  mylite_semantic_ast_free(semantic_ast);
+
+  const char *query_tables_sql = "SELECT * FROM db1.t AS x, u y";
+  semantic_ast = NULL;
+  status = mylite_parse_sql_semantic_ast(query_tables_sql, &semantic_ast,
+                                         &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "semantic AST query table refs parse failed: status=%s "
+            "offset=%zu token=%d message=%s\n",
+            mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return failed + 1;
+  }
+
+  root = mylite_semantic_ast_root(semantic_ast);
+  statement = mylite_semantic_ast_node_child_at(root, 0);
+  query = first_semantic_child_with_kind(statement, MYLITE_SEMANTIC_NODE_QUERY);
+  query_block =
+      first_semantic_child_with_kind(query, MYLITE_SEMANTIC_NODE_QUERY_BLOCK);
+  from_clause = first_semantic_child_with_clause_kind(
+      query_block, MYLITE_SEMANTIC_CLAUSE_FROM);
+  const MyliteSemanticAstNode *table_reference0 =
+      mylite_semantic_ast_node_child_at(from_clause, 0);
+  const MyliteSemanticAstNode *table_reference1 =
+      mylite_semantic_ast_node_child_at(from_clause, 1);
+  SemanticCounts query_tables_counts = {0};
+  count_semantic_nodes(root, &query_tables_counts);
+  if (from_clause == NULL ||
+      mylite_semantic_ast_node_child_count(from_clause) != 2 ||
+      table_reference0 == NULL || table_reference1 == NULL ||
+      !span_matches(query_tables_sql,
+                    mylite_semantic_ast_node_start(table_reference0),
+                    mylite_semantic_ast_node_end(table_reference0),
+                    "db1.t AS x") ||
+      !value_matches_when_expected(
+          mylite_semantic_ast_node_schema_value(table_reference0),
+          mylite_semantic_ast_node_schema_value_length(table_reference0),
+          "db1") ||
+      !value_matches_when_expected(
+          mylite_semantic_ast_node_value(table_reference0),
+          mylite_semantic_ast_node_value_length(table_reference0), "t") ||
+      !value_matches_when_expected(
+          mylite_semantic_ast_node_alias_value(table_reference0),
+          mylite_semantic_ast_node_alias_value_length(table_reference0),
+          "x") ||
+      !span_matches(query_tables_sql,
+                    mylite_semantic_ast_node_start(table_reference1),
+                    mylite_semantic_ast_node_end(table_reference1), "u y") ||
+      mylite_semantic_ast_node_schema_value(table_reference1) != NULL ||
+      !value_matches_when_expected(
+          mylite_semantic_ast_node_value(table_reference1),
+          mylite_semantic_ast_node_value_length(table_reference1), "u") ||
+      !value_matches_when_expected(
+          mylite_semantic_ast_node_alias_value(table_reference1),
+          mylite_semantic_ast_node_alias_value_length(table_reference1),
+          "y") ||
+      query_tables_counts.table_references != 2) {
+    fprintf(stderr,
+            "semantic AST query table refs mismatch: table_refs=%zu sql=%s\n",
+            query_tables_counts.table_references, query_tables_sql);
     failed = 1;
   }
   mylite_semantic_ast_free(semantic_ast);

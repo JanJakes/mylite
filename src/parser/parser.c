@@ -735,14 +735,35 @@ struct MyliteAstSelectProjection {
   size_t qualifier_value_length;
 };
 
+struct MyliteAstTableReference {
+  const MyliteAstNode *node;
+  size_t start;
+  size_t end;
+  size_t schema_start;
+  size_t schema_end;
+  const char *schema_value;
+  size_t schema_value_length;
+  size_t name_start;
+  size_t name_end;
+  const char *name_value;
+  size_t name_value_length;
+  size_t alias_start;
+  size_t alias_end;
+  const char *alias_value;
+  size_t alias_value_length;
+};
+
 struct MyliteAstSelectQueryBlock {
   const MyliteAstNode *node;
+  const MyliteAstNode *from_node;
   const MyliteAstNode *where_expression_node;
   const MyliteAstNode *having_expression_node;
   MyliteAstExpression where_expression;
   MyliteAstExpression having_expression;
+  MyliteAstTableReference *table_references;
   size_t projection_index;
   size_t projection_count;
+  size_t table_reference_count;
   size_t start;
   size_t end;
   size_t from_start;
@@ -1808,6 +1829,23 @@ static void mylite_ast_set_select_query_block_clause_span(
     const char *symbol_name);
 static int mylite_ast_set_select_query_block_clause_expression_views(
     MyliteAst *ast, MyliteAstSelectQueryBlock *query_block);
+static int mylite_ast_set_select_query_block_table_references(
+    MyliteAst *ast, MyliteAstSelectQueryBlock *query_block);
+static size_t mylite_ast_count_select_table_references(
+    const MyliteAstNode *node, int is_root);
+static void mylite_ast_fill_select_table_references(
+    MyliteAst *ast, MyliteAstTableReference *table_references,
+    const MyliteAstNode *node, size_t *index, int *ok, int is_root);
+static int mylite_ast_fill_table_reference(
+    MyliteAst *ast, MyliteAstTableReference *table_reference,
+    const MyliteAstNode *node);
+static int mylite_ast_set_table_reference_name(
+    MyliteAst *ast, MyliteAstTableReference *table_reference,
+    const MyliteAstNode *node);
+static int mylite_ast_set_table_reference_alias(
+    MyliteAst *ast, MyliteAstTableReference *table_reference,
+    const MyliteAstNode *node);
+static int mylite_ast_is_named_table_factor(const MyliteAstNode *node);
 static size_t
 mylite_ast_count_select_query_block_projections(const MyliteAstNode *node,
                                                 int is_root);
@@ -6326,6 +6364,22 @@ size_t mylite_ast_select_query_block_view_from_end(
   return query_block == NULL ? 0 : query_block->from_end;
 }
 
+size_t mylite_ast_select_query_block_view_table_reference_count(
+    const MyliteAstSelectQueryBlock *query_block) {
+  return query_block == NULL ? 0 : query_block->table_reference_count;
+}
+
+const MyliteAstTableReference *
+mylite_ast_select_query_block_view_table_reference_at(
+    const MyliteAstSelectQueryBlock *query_block,
+    size_t table_reference_index) {
+  if (query_block == NULL ||
+      table_reference_index >= query_block->table_reference_count) {
+    return NULL;
+  }
+  return &query_block->table_references[table_reference_index];
+}
+
 size_t mylite_ast_select_query_block_view_where_start(
     const MyliteAstSelectQueryBlock *query_block) {
   return query_block == NULL ? 0 : query_block->where_start;
@@ -6408,6 +6462,81 @@ size_t mylite_ast_select_query_block_view_lock_start(
 size_t mylite_ast_select_query_block_view_lock_end(
     const MyliteAstSelectQueryBlock *query_block) {
   return query_block == NULL ? 0 : query_block->lock_end;
+}
+
+const MyliteAstNode *mylite_ast_table_reference_view_node(
+    const MyliteAstTableReference *table_reference) {
+  return table_reference == NULL ? NULL : table_reference->node;
+}
+
+size_t mylite_ast_table_reference_view_start(
+    const MyliteAstTableReference *table_reference) {
+  return table_reference == NULL ? 0 : table_reference->start;
+}
+
+size_t mylite_ast_table_reference_view_end(
+    const MyliteAstTableReference *table_reference) {
+  return table_reference == NULL ? 0 : table_reference->end;
+}
+
+size_t mylite_ast_table_reference_view_schema_start(
+    const MyliteAstTableReference *table_reference) {
+  return table_reference == NULL ? 0 : table_reference->schema_start;
+}
+
+size_t mylite_ast_table_reference_view_schema_end(
+    const MyliteAstTableReference *table_reference) {
+  return table_reference == NULL ? 0 : table_reference->schema_end;
+}
+
+const char *mylite_ast_table_reference_view_schema_value(
+    const MyliteAstTableReference *table_reference) {
+  return table_reference == NULL ? NULL : table_reference->schema_value;
+}
+
+size_t mylite_ast_table_reference_view_schema_value_length(
+    const MyliteAstTableReference *table_reference) {
+  return table_reference == NULL ? 0 : table_reference->schema_value_length;
+}
+
+size_t mylite_ast_table_reference_view_name_start(
+    const MyliteAstTableReference *table_reference) {
+  return table_reference == NULL ? 0 : table_reference->name_start;
+}
+
+size_t mylite_ast_table_reference_view_name_end(
+    const MyliteAstTableReference *table_reference) {
+  return table_reference == NULL ? 0 : table_reference->name_end;
+}
+
+const char *mylite_ast_table_reference_view_name_value(
+    const MyliteAstTableReference *table_reference) {
+  return table_reference == NULL ? NULL : table_reference->name_value;
+}
+
+size_t mylite_ast_table_reference_view_name_value_length(
+    const MyliteAstTableReference *table_reference) {
+  return table_reference == NULL ? 0 : table_reference->name_value_length;
+}
+
+size_t mylite_ast_table_reference_view_alias_start(
+    const MyliteAstTableReference *table_reference) {
+  return table_reference == NULL ? 0 : table_reference->alias_start;
+}
+
+size_t mylite_ast_table_reference_view_alias_end(
+    const MyliteAstTableReference *table_reference) {
+  return table_reference == NULL ? 0 : table_reference->alias_end;
+}
+
+const char *mylite_ast_table_reference_view_alias_value(
+    const MyliteAstTableReference *table_reference) {
+  return table_reference == NULL ? NULL : table_reference->alias_value;
+}
+
+size_t mylite_ast_table_reference_view_alias_value_length(
+    const MyliteAstTableReference *table_reference) {
+  return table_reference == NULL ? 0 : table_reference->alias_value_length;
 }
 
 const MyliteAstNode *mylite_ast_select_projection_view_node(
@@ -15599,8 +15728,9 @@ static int mylite_ast_fill_select_query_block(
       mylite_ast_count_select_query_block_projections(node, 1);
   *projection_index += query_block->projection_count;
   mylite_ast_set_select_query_block_clause_spans(query_block, node);
-  return mylite_ast_set_select_query_block_clause_expression_views(ast,
-                                                                   query_block);
+  return mylite_ast_set_select_query_block_clause_expression_views(
+             ast, query_block) &&
+         mylite_ast_set_select_query_block_table_references(ast, query_block);
 }
 
 static void mylite_ast_set_select_query_block_clause_spans(
@@ -15618,9 +15748,10 @@ static void mylite_ast_set_select_query_block_clause_spans(
   const MyliteAstNode *lock_container = NULL;
 
   if (mylite_ast_expression_is_symbol(body, "nt_select_stmt_from_table")) {
+    query_block->from_node =
+        mylite_ast_direct_child_symbol(body, 2, "nt_table_refs_clause");
     mylite_ast_set_select_query_block_clause_span(
-        &query_block->from_start, &query_block->from_end,
-        mylite_ast_direct_child_symbol(body, 2, "nt_table_refs_clause"),
+        &query_block->from_start, &query_block->from_end, query_block->from_node,
         "nt_table_refs_clause");
     where_container =
         mylite_ast_direct_child_symbol(body, 3, "nt_where_clause_optional");
@@ -15742,6 +15873,174 @@ static int mylite_ast_set_select_query_block_clause_expression_views(
     return 0;
   }
   return 1;
+}
+
+static int mylite_ast_set_select_query_block_table_references(
+    MyliteAst *ast, MyliteAstSelectQueryBlock *query_block) {
+  if (ast == NULL || query_block == NULL || query_block->from_node == NULL) {
+    return 1;
+  }
+
+  query_block->table_reference_count =
+      mylite_ast_count_select_table_references(query_block->from_node, 1);
+  if (query_block->table_reference_count == 0) {
+    return 1;
+  }
+
+  query_block->table_references =
+      mylite_ast_alloc(ast, query_block->table_reference_count *
+                                sizeof(*query_block->table_references));
+  if (query_block->table_references == NULL) {
+    return 0;
+  }
+
+  size_t index = 0;
+  int ok = 1;
+  mylite_ast_fill_select_table_references(
+      ast, query_block->table_references, query_block->from_node, &index, &ok,
+      1);
+  return ok && index == query_block->table_reference_count;
+}
+
+static size_t mylite_ast_count_select_table_references(
+    const MyliteAstNode *node, int is_root) {
+  if (node == NULL) {
+    return 0;
+  }
+  if (!is_root && mylite_ast_is_select_query_block(node)) {
+    return 0;
+  }
+  if (mylite_ast_is_named_table_factor(node)) {
+    return 1;
+  }
+
+  size_t count = 0;
+  for (size_t i = 0; i < node->child_count; i++) {
+    count += mylite_ast_count_select_table_references(node->children[i], 0);
+  }
+  return count;
+}
+
+static void mylite_ast_fill_select_table_references(
+    MyliteAst *ast, MyliteAstTableReference *table_references,
+    const MyliteAstNode *node, size_t *index, int *ok, int is_root) {
+  if (node == NULL || ok == NULL || !*ok) {
+    return;
+  }
+  if (!is_root && mylite_ast_is_select_query_block(node)) {
+    return;
+  }
+  if (mylite_ast_is_named_table_factor(node)) {
+    if (ast == NULL || table_references == NULL || index == NULL ||
+        !mylite_ast_fill_table_reference(ast, &table_references[*index],
+                                         node)) {
+      *ok = 0;
+      return;
+    }
+    (*index)++;
+    return;
+  }
+
+  for (size_t i = 0; i < node->child_count; i++) {
+    mylite_ast_fill_select_table_references(
+        ast, table_references, node->children[i], index, ok, 0);
+  }
+}
+
+static int mylite_ast_fill_table_reference(
+    MyliteAst *ast, MyliteAstTableReference *table_reference,
+    const MyliteAstNode *node) {
+  if (ast == NULL || table_reference == NULL || node == NULL) {
+    return 1;
+  }
+  table_reference->node = node;
+  table_reference->start = mylite_ast_node_start(node);
+  table_reference->end = mylite_ast_node_end(node);
+  return mylite_ast_set_table_reference_name(ast, table_reference, node) &&
+         mylite_ast_set_table_reference_alias(ast, table_reference, node);
+}
+
+static int mylite_ast_set_table_reference_name(
+    MyliteAst *ast, MyliteAstTableReference *table_reference,
+    const MyliteAstNode *node) {
+  const MyliteAstNode *table_name =
+      mylite_ast_direct_child_symbol(node, 0, "nt_table_name");
+  if (table_name == NULL) {
+    return 1;
+  }
+
+  const MyliteAstNode *first_identifier = NULL;
+  const MyliteAstNode *last_identifier = NULL;
+  size_t identifier_count = 0;
+  for (size_t i = 0; i < table_name->child_count; i++) {
+    const MyliteAstNode *identifier =
+        mylite_ast_direct_child_symbol(table_name, i, "nt_identifier");
+    if (identifier == NULL || !identifier->has_span) {
+      continue;
+    }
+    if (first_identifier == NULL) {
+      first_identifier = identifier;
+    }
+    last_identifier = identifier;
+    identifier_count++;
+  }
+
+  if (last_identifier == NULL) {
+    return 1;
+  }
+
+  if (identifier_count > 1 && first_identifier != NULL) {
+    table_reference->schema_start = mylite_ast_node_start(first_identifier);
+    table_reference->schema_end = mylite_ast_node_end(first_identifier);
+    if (!mylite_ast_decode_identifier(
+            ast, table_reference->schema_start, table_reference->schema_end,
+            &table_reference->schema_value,
+            &table_reference->schema_value_length)) {
+      return 0;
+    }
+  }
+
+  table_reference->name_start = mylite_ast_node_start(last_identifier);
+  table_reference->name_end = mylite_ast_node_end(last_identifier);
+  return mylite_ast_decode_identifier(ast, table_reference->name_start,
+                                      table_reference->name_end,
+                                      &table_reference->name_value,
+                                      &table_reference->name_value_length);
+}
+
+static int mylite_ast_set_table_reference_alias(
+    MyliteAst *ast, MyliteAstTableReference *table_reference,
+    const MyliteAstNode *node) {
+  const MyliteAstNode *alias =
+      mylite_ast_find_first_symbol(
+          mylite_ast_direct_child_symbol(node, 2, "nt_table_as_name_opt"),
+          "nt_table_as_name");
+  if (alias == NULL || !alias->has_span) {
+    return 1;
+  }
+
+  const MyliteAstNode *identifier =
+      mylite_ast_find_first_symbol(alias, "nt_identifier");
+  if (identifier == NULL || !identifier->has_span) {
+    table_reference->alias_start = mylite_ast_node_start(alias);
+    table_reference->alias_end = mylite_ast_node_end(alias);
+    return mylite_ast_copy_source_span(ast, table_reference->alias_start,
+                                       table_reference->alias_end,
+                                       &table_reference->alias_value,
+                                       &table_reference->alias_value_length);
+  }
+
+  table_reference->alias_start = mylite_ast_node_start(identifier);
+  table_reference->alias_end = mylite_ast_node_end(identifier);
+  return mylite_ast_decode_identifier(ast, table_reference->alias_start,
+                                      table_reference->alias_end,
+                                      &table_reference->alias_value,
+                                      &table_reference->alias_value_length);
+}
+
+static int mylite_ast_is_named_table_factor(const MyliteAstNode *node) {
+  return mylite_ast_expression_is_symbol(node, "nt_table_factor") &&
+         mylite_ast_direct_child_symbol(node, 0, "nt_table_name") != NULL;
 }
 
 static size_t

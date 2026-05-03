@@ -3181,7 +3181,8 @@ static void dump_semantic_node(const MyliteSemanticAstNode *node,
            mylite_statement_kind_name(
                mylite_semantic_ast_node_statement_kind(node)));
   } else if (kind == MYLITE_SEMANTIC_NODE_TARGET ||
-             kind == MYLITE_SEMANTIC_NODE_TABLE) {
+             kind == MYLITE_SEMANTIC_NODE_TABLE ||
+             kind == MYLITE_SEMANTIC_NODE_TABLE_REFERENCE) {
     printf(" target_kind=%s target_role=%s",
            mylite_statement_target_kind_name(
                mylite_semantic_ast_node_target_kind(node)),
@@ -3243,6 +3244,24 @@ static void dump_semantic_node(const MyliteSemanticAstNode *node,
     fputs("none", stdout);
   } else {
     print_escaped_bytes(value, value_length);
+  }
+  if (kind == MYLITE_SEMANTIC_NODE_TABLE_REFERENCE) {
+    const char *schema = mylite_semantic_ast_node_schema_value(node);
+    size_t schema_length = mylite_semantic_ast_node_schema_value_length(node);
+    const char *alias = mylite_semantic_ast_node_alias_value(node);
+    size_t alias_length = mylite_semantic_ast_node_alias_value_length(node);
+    printf(" schema_len=%zu schema=", schema_length);
+    if (schema == NULL) {
+      fputs("none", stdout);
+    } else {
+      print_escaped_bytes(schema, schema_length);
+    }
+    printf(" alias_len=%zu alias=", alias_length);
+    if (alias == NULL) {
+      fputs("none", stdout);
+    } else {
+      print_escaped_bytes(alias, alias_length);
+    }
   }
   fputc('\n', stdout);
 

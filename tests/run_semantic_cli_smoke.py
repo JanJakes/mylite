@@ -43,7 +43,7 @@ def main() -> int:
             sys.stderr.write(completed.stdout)
             failures += 1
 
-    sql = "SELECT a FROM t WHERE a = 1\n"
+    sql = "SELECT a FROM db.t AS tt WHERE a = 1\n"
     completed = subprocess.run(
         [args.parser, "--semantic"],
         input=sql,
@@ -63,6 +63,10 @@ def main() -> int:
         "semantic kind=query_block",
         "query_block_index=0",
         "semantic kind=table_reference",
+        "target_kind=table",
+        'value_len=1 value="t"',
+        'schema_len=2 schema="db"',
+        'alias_len=2 alias="tt"',
         "semantic kind=clause",
         "clause_kind=from",
         "clause_kind=where",

@@ -85,6 +85,7 @@ typedef struct MyliteAstRenameTable MyliteAstRenameTable;
 typedef struct MyliteAstSelectProjection MyliteAstSelectProjection;
 typedef struct MyliteAstSelectQueryBlock MyliteAstSelectQueryBlock;
 typedef struct MyliteAstSelectStatement MyliteAstSelectStatement;
+typedef struct MyliteAstTableReference MyliteAstTableReference;
 typedef struct MyliteAstShowStatement MyliteAstShowStatement;
 typedef struct MyliteAstSetAssignment MyliteAstSetAssignment;
 typedef struct MyliteAstSetStatement MyliteAstSetStatement;
@@ -1232,6 +1233,14 @@ const char *mylite_semantic_ast_node_value(
     const MyliteSemanticAstNode *node);
 size_t mylite_semantic_ast_node_value_length(
     const MyliteSemanticAstNode *node);
+const char *mylite_semantic_ast_node_schema_value(
+    const MyliteSemanticAstNode *node);
+size_t mylite_semantic_ast_node_schema_value_length(
+    const MyliteSemanticAstNode *node);
+const char *mylite_semantic_ast_node_alias_value(
+    const MyliteSemanticAstNode *node);
+size_t mylite_semantic_ast_node_alias_value_length(
+    const MyliteSemanticAstNode *node);
 size_t mylite_semantic_ast_node_child_count(
     const MyliteSemanticAstNode *node);
 const MyliteSemanticAstNode *mylite_semantic_ast_node_child_at(
@@ -1858,6 +1867,12 @@ size_t mylite_ast_select_query_block_view_from_start(
     const MyliteAstSelectQueryBlock *query_block);
 size_t mylite_ast_select_query_block_view_from_end(
     const MyliteAstSelectQueryBlock *query_block);
+size_t mylite_ast_select_query_block_view_table_reference_count(
+    const MyliteAstSelectQueryBlock *query_block);
+const MyliteAstTableReference *
+mylite_ast_select_query_block_view_table_reference_at(
+    const MyliteAstSelectQueryBlock *query_block,
+    size_t table_reference_index);
 size_t mylite_ast_select_query_block_view_where_start(
     const MyliteAstSelectQueryBlock *query_block);
 size_t mylite_ast_select_query_block_view_where_end(
@@ -1890,6 +1905,36 @@ size_t mylite_ast_select_query_block_view_lock_start(
     const MyliteAstSelectQueryBlock *query_block);
 size_t mylite_ast_select_query_block_view_lock_end(
     const MyliteAstSelectQueryBlock *query_block);
+const MyliteAstNode *mylite_ast_table_reference_view_node(
+    const MyliteAstTableReference *table_reference);
+size_t mylite_ast_table_reference_view_start(
+    const MyliteAstTableReference *table_reference);
+size_t mylite_ast_table_reference_view_end(
+    const MyliteAstTableReference *table_reference);
+size_t mylite_ast_table_reference_view_schema_start(
+    const MyliteAstTableReference *table_reference);
+size_t mylite_ast_table_reference_view_schema_end(
+    const MyliteAstTableReference *table_reference);
+const char *mylite_ast_table_reference_view_schema_value(
+    const MyliteAstTableReference *table_reference);
+size_t mylite_ast_table_reference_view_schema_value_length(
+    const MyliteAstTableReference *table_reference);
+size_t mylite_ast_table_reference_view_name_start(
+    const MyliteAstTableReference *table_reference);
+size_t mylite_ast_table_reference_view_name_end(
+    const MyliteAstTableReference *table_reference);
+const char *mylite_ast_table_reference_view_name_value(
+    const MyliteAstTableReference *table_reference);
+size_t mylite_ast_table_reference_view_name_value_length(
+    const MyliteAstTableReference *table_reference);
+size_t mylite_ast_table_reference_view_alias_start(
+    const MyliteAstTableReference *table_reference);
+size_t mylite_ast_table_reference_view_alias_end(
+    const MyliteAstTableReference *table_reference);
+const char *mylite_ast_table_reference_view_alias_value(
+    const MyliteAstTableReference *table_reference);
+size_t mylite_ast_table_reference_view_alias_value_length(
+    const MyliteAstTableReference *table_reference);
 const MyliteAstNode *mylite_ast_select_projection_view_node(
     const MyliteAstSelectProjection *projection);
 MyliteSelectProjectionKind mylite_ast_select_projection_view_kind(

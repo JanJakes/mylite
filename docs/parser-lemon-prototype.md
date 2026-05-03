@@ -324,8 +324,8 @@ token sink:
   validated `ALTER ... SET DEFAULT` expression tails, validated `ORDER BY`
   expression-list tails, partition definition, maintenance/exchange,
   reorganize forms, validated partition-method expression lists, validated
-  `ADD PARTITION (...)` and `REORGANIZE PARTITION ... INTO (...)`
-  partition-definition envelopes, maintenance
+  `PARTITION BY ... (...)`, `ADD PARTITION (...)`, and
+  `REORGANIZE PARTITION ... INTO (...)` partition-definition envelopes, maintenance
   binlog modifiers, CHECK/REPAIR maintenance options, and unsigned
   integer/lowercase-hex coalesce/add-partition counts,
   tablespace/storage/union changes with closed storage values,

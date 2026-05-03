@@ -9400,7 +9400,14 @@ static void validate_alter_table_partition_definition_bodies(
     ALTER_PARTITION_DEFS_IN_ADD_PARTITION,
     ALTER_PARTITION_DEFS_AFTER_REORGANIZE,
     ALTER_PARTITION_DEFS_IN_REORGANIZE_PARTITION,
-    ALTER_PARTITION_DEFS_AFTER_INTO
+    ALTER_PARTITION_DEFS_AFTER_INTO,
+    ALTER_PARTITION_DEFS_AFTER_PARTITION,
+    ALTER_PARTITION_DEFS_AFTER_PARTITION_BY,
+    ALTER_PARTITION_DEFS_IN_PARTITION_METHOD,
+    ALTER_PARTITION_DEFS_AFTER_PARTITION_METHOD,
+    ALTER_PARTITION_DEFS_AFTER_SUBPARTITION,
+    ALTER_PARTITION_DEFS_AFTER_SUBPARTITION_BY,
+    ALTER_PARTITION_DEFS_IN_SUBPARTITION_METHOD
   };
   MyliteLexer lexer;
   MyliteToken token;
@@ -9412,6 +9419,7 @@ static void validate_alter_table_partition_definition_bodies(
   int table_dot_pending = 0;
   int state = ALTER_PARTITION_DEFS_READY;
   int skip_depth = 0;
+  int partition_values_required = 0;
 
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
   while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
@@ -9464,6 +9472,7 @@ static void validate_alter_table_partition_definition_bodies(
 
     if (token_id == ML_COMMA) {
       state = ALTER_PARTITION_DEFS_READY;
+      partition_values_required = 0;
       continue;
     }
 
@@ -9512,6 +9521,84 @@ static void validate_alter_table_partition_definition_bodies(
       continue;
     }
 
+    if (state == ALTER_PARTITION_DEFS_AFTER_PARTITION) {
+      if (token_id == ML_BY) {
+        state = ALTER_PARTITION_DEFS_AFTER_PARTITION_BY;
+        partition_values_required = 0;
+        continue;
+      }
+      state = ALTER_PARTITION_DEFS_READY;
+    }
+
+    if (state == ALTER_PARTITION_DEFS_AFTER_PARTITION_BY) {
+      if (token_ascii_equal(token, "linear")) {
+        continue;
+      }
+      if (token_ascii_equal(token, "range") ||
+          token_ascii_equal(token, "list")) {
+        partition_values_required = 1;
+        state = ALTER_PARTITION_DEFS_IN_PARTITION_METHOD;
+        continue;
+      }
+      if (token_ascii_equal(token, "hash") || token_id == ML_KEY) {
+        partition_values_required = 0;
+        state = ALTER_PARTITION_DEFS_IN_PARTITION_METHOD;
+        continue;
+      }
+      state = ALTER_PARTITION_DEFS_READY;
+    }
+
+    if (state == ALTER_PARTITION_DEFS_IN_PARTITION_METHOD) {
+      if (token_id == ML_LP) {
+        skip_depth = 1;
+        state = ALTER_PARTITION_DEFS_AFTER_PARTITION_METHOD;
+      }
+      continue;
+    }
+
+    if (state == ALTER_PARTITION_DEFS_AFTER_PARTITION_METHOD) {
+      if (token_ascii_equal(token, "subpartition")) {
+        state = ALTER_PARTITION_DEFS_AFTER_SUBPARTITION;
+        continue;
+      }
+      if (token_id == ML_LP) {
+        validate_create_table_partition_definitions_from(
+            ctx, token, partition_values_required);
+        if (ctx->failed) {
+          return;
+        }
+        skip_depth = 1;
+      }
+      continue;
+    }
+
+    if (state == ALTER_PARTITION_DEFS_AFTER_SUBPARTITION) {
+      if (token_id == ML_BY) {
+        state = ALTER_PARTITION_DEFS_AFTER_SUBPARTITION_BY;
+        continue;
+      }
+      state = ALTER_PARTITION_DEFS_AFTER_PARTITION_METHOD;
+    }
+
+    if (state == ALTER_PARTITION_DEFS_AFTER_SUBPARTITION_BY) {
+      if (token_ascii_equal(token, "linear")) {
+        continue;
+      }
+      if (token_ascii_equal(token, "hash") || token_id == ML_KEY) {
+        state = ALTER_PARTITION_DEFS_IN_SUBPARTITION_METHOD;
+        continue;
+      }
+      state = ALTER_PARTITION_DEFS_AFTER_PARTITION_METHOD;
+    }
+
+    if (state == ALTER_PARTITION_DEFS_IN_SUBPARTITION_METHOD) {
+      if (token_id == ML_LP) {
+        skip_depth = 1;
+        state = ALTER_PARTITION_DEFS_AFTER_PARTITION_METHOD;
+      }
+      continue;
+    }
+
     if (token_id == ML_ADD) {
       state = ALTER_PARTITION_DEFS_AFTER_ADD;
       continue;
@@ -9519,6 +9606,12 @@ static void validate_alter_table_partition_definition_bodies(
 
     if (token_id == ML_REORGANIZE) {
       state = ALTER_PARTITION_DEFS_AFTER_REORGANIZE;
+      continue;
+    }
+
+    if (token_id == ML_PARTITION) {
+      state = ALTER_PARTITION_DEFS_AFTER_PARTITION;
+      partition_values_required = 0;
       continue;
     }
   }

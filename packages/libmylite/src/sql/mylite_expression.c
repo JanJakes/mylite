@@ -29,6 +29,19 @@ enum {
     MYLITE_EXPRESSION_ORD_BYTE_BASE = 256,
     MYLITE_EXPRESSION_HEX_ALPHA_OFFSET = 10,
     MYLITE_EXPRESSION_HEX_LOW_NIBBLE_MASK = 0x0FU,
+    MYLITE_EXPRESSION_BASE64_INPUT_GROUP = 3,
+    MYLITE_EXPRESSION_BASE64_OUTPUT_GROUP = 4,
+    MYLITE_EXPRESSION_BASE64_LINE_LENGTH = 76,
+    MYLITE_EXPRESSION_BASE64_SHIFT_TWO = 2,
+    MYLITE_EXPRESSION_BASE64_SHIFT_FOUR = 4,
+    MYLITE_EXPRESSION_BASE64_SHIFT_SIX = 6,
+    MYLITE_EXPRESSION_BASE64_TWO_BIT_MASK = 0x03U,
+    MYLITE_EXPRESSION_BASE64_FOUR_BIT_MASK = 0x0FU,
+    MYLITE_EXPRESSION_BASE64_SIX_BIT_MASK = 0x3FU,
+    MYLITE_EXPRESSION_BASE64_LOWER_ALPHA_OFFSET = 26,
+    MYLITE_EXPRESSION_BASE64_DIGIT_OFFSET = 52,
+    MYLITE_EXPRESSION_BASE64_PLUS_VALUE = 62,
+    MYLITE_EXPRESSION_BASE64_SLASH_VALUE = 63,
     MYLITE_EXPRESSION_BINARY_BASE = 2,
     MYLITE_EXPRESSION_OCTAL_BASE = 8,
     MYLITE_EXPRESSION_MIN_BASE = 2,
@@ -279,20 +292,22 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_MAKE_SET = 44,
     MYLITE_SCALAR_FUNCTION_HEX = 45,
     MYLITE_SCALAR_FUNCTION_UNHEX = 46,
-    MYLITE_SCALAR_FUNCTION_BIN = 47,
-    MYLITE_SCALAR_FUNCTION_OCT = 48,
-    MYLITE_SCALAR_FUNCTION_CONV = 49,
-    MYLITE_SCALAR_FUNCTION_CHAR = 50,
-    MYLITE_SCALAR_FUNCTION_CHARSET = 51,
-    MYLITE_SCALAR_FUNCTION_COLLATION = 52,
-    MYLITE_SCALAR_FUNCTION_COERCIBILITY = 53,
-    MYLITE_SCALAR_FUNCTION_CONNECTION_ID = 54,
-    MYLITE_SCALAR_FUNCTION_USER = 55,
-    MYLITE_SCALAR_FUNCTION_CURRENT_USER = 56,
-    MYLITE_SCALAR_FUNCTION_BIT_COUNT = 57,
-    MYLITE_SCALAR_FUNCTION_BIT_LENGTH = 58,
-    MYLITE_SCALAR_FUNCTION_INET_ATON = 59,
-    MYLITE_SCALAR_FUNCTION_INET_NTOA = 60,
+    MYLITE_SCALAR_FUNCTION_TO_BASE64 = 47,
+    MYLITE_SCALAR_FUNCTION_FROM_BASE64 = 48,
+    MYLITE_SCALAR_FUNCTION_BIN = 49,
+    MYLITE_SCALAR_FUNCTION_OCT = 50,
+    MYLITE_SCALAR_FUNCTION_CONV = 51,
+    MYLITE_SCALAR_FUNCTION_CHAR = 52,
+    MYLITE_SCALAR_FUNCTION_CHARSET = 53,
+    MYLITE_SCALAR_FUNCTION_COLLATION = 54,
+    MYLITE_SCALAR_FUNCTION_COERCIBILITY = 55,
+    MYLITE_SCALAR_FUNCTION_CONNECTION_ID = 56,
+    MYLITE_SCALAR_FUNCTION_USER = 57,
+    MYLITE_SCALAR_FUNCTION_CURRENT_USER = 58,
+    MYLITE_SCALAR_FUNCTION_BIT_COUNT = 59,
+    MYLITE_SCALAR_FUNCTION_BIT_LENGTH = 60,
+    MYLITE_SCALAR_FUNCTION_INET_ATON = 61,
+    MYLITE_SCALAR_FUNCTION_INET_NTOA = 62,
 };
 
 static int eval_node(const struct mylite_sql_ast_node *node,
@@ -577,6 +592,27 @@ static int unhex_text_value(const char *text, size_t text_length,
 static int append_unhex_warning(struct mylite_expression_warnings *warnings, const char *text,
                                 size_t text_length);
 static int hex_digit_value(unsigned char character);
+static int eval_to_base64_function(const struct mylite_sql_ast_node *arguments,
+                                   const struct mylite_expression_eval_context *context,
+                                   struct mylite_expression_warnings *warnings,
+                                   struct mylite_expression_value *out_value);
+static int base64_argument_to_text(const struct mylite_expression_value *value,
+                                   const struct mylite_sql_ast_node *argument, char **out_text,
+                                   size_t *out_length);
+static int to_base64_text_value(const char *text, size_t text_length,
+                                struct mylite_expression_value *out_value);
+static size_t base64_encoded_length(size_t text_length);
+static int eval_from_base64_function(const struct mylite_sql_ast_node *arguments,
+                                     const struct mylite_expression_eval_context *context,
+                                     struct mylite_expression_warnings *warnings,
+                                     struct mylite_expression_value *out_value);
+static int from_base64_text_value(const char *text, size_t text_length,
+                                  struct mylite_expression_value *out_value);
+static char *copy_base64_clean_text(const char *text, size_t text_length, size_t *out_length);
+static bool base64_decode_group(const unsigned char *source, bool is_last_group, char *result,
+                                size_t *output);
+static int base64_digit_value(unsigned char character);
+static bool base64_ignored_whitespace(unsigned char character);
 static int eval_base_conversion_function(enum mylite_scalar_function_id function_id,
                                          const struct mylite_sql_ast_node *arguments,
                                          const struct mylite_expression_eval_context *context,
@@ -1101,6 +1137,8 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_ORD:
     case MYLITE_SCALAR_FUNCTION_HEX:
     case MYLITE_SCALAR_FUNCTION_UNHEX:
+    case MYLITE_SCALAR_FUNCTION_TO_BASE64:
+    case MYLITE_SCALAR_FUNCTION_FROM_BASE64:
     case MYLITE_SCALAR_FUNCTION_BIN:
     case MYLITE_SCALAR_FUNCTION_OCT:
     case MYLITE_SCALAR_FUNCTION_CHARSET:
@@ -1906,6 +1944,10 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_hex_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_UNHEX:
         return eval_unhex_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_TO_BASE64:
+        return eval_to_base64_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_FROM_BASE64:
+        return eval_from_base64_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_BIN:
     case MYLITE_SCALAR_FUNCTION_OCT:
     case MYLITE_SCALAR_FUNCTION_CONV:
@@ -4317,6 +4359,359 @@ static int hex_digit_value(unsigned char character)
     return -1;
 }
 
+static int eval_to_base64_function(const struct mylite_sql_ast_node *arguments,
+                                   const struct mylite_expression_eval_context *context,
+                                   struct mylite_expression_warnings *warnings,
+                                   struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value value = {0};
+    char *text = NULL;
+    size_t text_length = 0U;
+    int status = eval_node(child_at(arguments, 0U), context, warnings, &value);
+
+    if (status != 0) {
+        return status;
+    }
+    if (is_null(&value)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        mylite_expression_value_deinit(&value);
+        return 0;
+    }
+
+    status = base64_argument_to_text(&value, child_at(arguments, 0U), &text, &text_length);
+    if (status == 0) {
+        status = to_base64_text_value(text, text_length, out_value);
+    }
+    free(text);
+    mylite_expression_value_deinit(&value);
+    return status;
+}
+
+static int to_base64_text_value(const char *text, size_t text_length,
+                                struct mylite_expression_value *out_value)
+{
+    static const char digits[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const unsigned char *source = (const unsigned char *)text;
+    size_t result_length = base64_encoded_length(text_length);
+    char *result = NULL;
+    size_t input = 0U;
+    size_t output = 0U;
+    size_t line_length = 0U;
+
+    if (text == NULL) {
+        return text_length == 0U ? set_text_value("", 0U, out_value) : -1;
+    }
+    if (text_length == 0U) {
+        return set_text_value("", 0U, out_value);
+    }
+    if (result_length == SIZE_MAX) {
+        return -1;
+    }
+    result = malloc(result_length + 1U);
+    if (result == NULL) {
+        return -1;
+    }
+    while (input < text_length) {
+        size_t source_count = text_length - input;
+        unsigned int first = source[input];
+        unsigned int second = 0U;
+        unsigned int third = 0U;
+
+        if (source_count > MYLITE_EXPRESSION_BASE64_INPUT_GROUP) {
+            source_count = MYLITE_EXPRESSION_BASE64_INPUT_GROUP;
+        }
+        if (source_count > 1U) {
+            second = source[input + 1U];
+        }
+        if (source_count > 2U) {
+            third = source[input + 2U];
+        }
+        input += source_count;
+
+        result[output++] = digits[first >> MYLITE_EXPRESSION_BASE64_SHIFT_TWO];
+        result[output++] = digits[((first & MYLITE_EXPRESSION_BASE64_TWO_BIT_MASK)
+                                   << MYLITE_EXPRESSION_BASE64_SHIFT_FOUR) |
+                                  (second >> MYLITE_EXPRESSION_BASE64_SHIFT_FOUR)];
+        result[output++] = source_count > 1U
+                               ? digits[((second & MYLITE_EXPRESSION_BASE64_FOUR_BIT_MASK)
+                                         << MYLITE_EXPRESSION_BASE64_SHIFT_TWO) |
+                                        (third >> MYLITE_EXPRESSION_BASE64_SHIFT_SIX)]
+                               : '=';
+        result[output++] =
+            source_count > 2U ? digits[third & MYLITE_EXPRESSION_BASE64_SIX_BIT_MASK] : '=';
+        line_length += MYLITE_EXPRESSION_BASE64_OUTPUT_GROUP;
+        if (line_length == MYLITE_EXPRESSION_BASE64_LINE_LENGTH && input < text_length) {
+            result[output++] = '\n';
+            line_length = 0U;
+        }
+    }
+    result[output] = '\0';
+    out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
+    out_value->text_value = result;
+    out_value->text_length = output;
+    return 0;
+}
+
+static int base64_argument_to_text(const struct mylite_expression_value *value,
+                                   const struct mylite_sql_ast_node *argument, char **out_text,
+                                   size_t *out_length)
+{
+    char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
+    bool matched_literal = false;
+    int length = 0;
+    int status = 0;
+
+    if (value == NULL || out_text == NULL || out_length == NULL) {
+        return -1;
+    }
+    *out_text = NULL;
+    *out_length = 0U;
+    status = base_conversion_exact_numeric_literal_to_text(argument, out_text, out_length,
+                                                           &matched_literal);
+    if (status != 0 || matched_literal) {
+        if (status == 0 && *out_length > 0U && (*out_text)[0] == '+') {
+            memmove(*out_text, *out_text + 1, *out_length);
+            --*out_length;
+        }
+        return status;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+        return value_to_string_with_length(value, out_text, out_length);
+    }
+
+    switch (value->kind) {
+    case MYLITE_EXPRESSION_VALUE_INT64:
+        length = snprintf(buffer, sizeof(buffer), "%lld", (long long)value->int64_value);
+        break;
+    case MYLITE_EXPRESSION_VALUE_UINT64:
+        length = snprintf(buffer, sizeof(buffer), "%llu", (unsigned long long)value->uint64_value);
+        break;
+    case MYLITE_EXPRESSION_VALUE_REAL:
+        length = snprintf(buffer, sizeof(buffer), "%.15g", value->real_value);
+        break;
+    case MYLITE_EXPRESSION_VALUE_TEXT:
+    case MYLITE_EXPRESSION_VALUE_NULL:
+        return -1;
+    }
+    if (length <= 0 || (size_t)length >= sizeof(buffer)) {
+        return -1;
+    }
+    *out_text = copy_span_text(buffer, (size_t)length);
+    if (*out_text == NULL) {
+        return -1;
+    }
+    *out_length = (size_t)length;
+    return 0;
+}
+
+static size_t base64_encoded_length(size_t text_length)
+{
+    size_t groups = 0U;
+    size_t encoded = 0U;
+    size_t newlines = 0U;
+
+    if (text_length == 0U) {
+        return 0U;
+    }
+    if (text_length > SIZE_MAX - (MYLITE_EXPRESSION_BASE64_INPUT_GROUP - 1U)) {
+        return SIZE_MAX;
+    }
+    groups = (text_length + (MYLITE_EXPRESSION_BASE64_INPUT_GROUP - 1U)) /
+             MYLITE_EXPRESSION_BASE64_INPUT_GROUP;
+    if (groups > SIZE_MAX / MYLITE_EXPRESSION_BASE64_OUTPUT_GROUP) {
+        return SIZE_MAX;
+    }
+    encoded = groups * MYLITE_EXPRESSION_BASE64_OUTPUT_GROUP;
+    newlines = (encoded - 1U) / MYLITE_EXPRESSION_BASE64_LINE_LENGTH;
+    if (encoded > SIZE_MAX - newlines) {
+        return SIZE_MAX;
+    }
+    return encoded + newlines;
+}
+
+static int eval_from_base64_function(const struct mylite_sql_ast_node *arguments,
+                                     const struct mylite_expression_eval_context *context,
+                                     struct mylite_expression_warnings *warnings,
+                                     struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value value = {0};
+    char *text = NULL;
+    size_t text_length = 0U;
+    int status = eval_node(child_at(arguments, 0U), context, warnings, &value);
+
+    if (status != 0) {
+        return status;
+    }
+    if (is_null(&value)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+
+    (void)warnings;
+    status = base64_argument_to_text(&value, child_at(arguments, 0U), &text, &text_length);
+    if (status == 0) {
+        status = from_base64_text_value(text, text_length, out_value);
+    }
+
+cleanup:
+    free(text);
+    mylite_expression_value_deinit(&value);
+    return status;
+}
+
+static int from_base64_text_value(const char *text, size_t text_length,
+                                  struct mylite_expression_value *out_value)
+{
+    size_t clean_length = 0U;
+    char *clean = copy_base64_clean_text(text, text_length, &clean_length);
+    char *result = NULL;
+    size_t result_length = 0U;
+    size_t output = 0U;
+
+    if (clean == NULL) {
+        return -1;
+    }
+    if (clean_length == 0U) {
+        free(clean);
+        return set_text_value("", 0U, out_value);
+    }
+    if ((clean_length % MYLITE_EXPRESSION_BASE64_OUTPUT_GROUP) != 0U) {
+        free(clean);
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        return 0;
+    }
+    result_length = (clean_length / MYLITE_EXPRESSION_BASE64_OUTPUT_GROUP) *
+                    MYLITE_EXPRESSION_BASE64_INPUT_GROUP;
+    result = malloc(result_length + 1U);
+    if (result == NULL) {
+        free(clean);
+        return -1;
+    }
+    for (size_t input = 0U; input < clean_length; input += MYLITE_EXPRESSION_BASE64_OUTPUT_GROUP) {
+        if (!base64_decode_group((const unsigned char *)clean + input,
+                                 input + MYLITE_EXPRESSION_BASE64_OUTPUT_GROUP == clean_length,
+                                 result, &output)) {
+            free(result);
+            free(clean);
+            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+            return 0;
+        }
+    }
+    free(clean);
+    result[output] = '\0';
+    out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
+    out_value->text_value = result;
+    out_value->text_length = output;
+    return 0;
+}
+
+static char *copy_base64_clean_text(const char *text, size_t text_length, size_t *out_length)
+{
+    const unsigned char *source = (const unsigned char *)text;
+    char *clean = NULL;
+    size_t output = 0U;
+
+    if (text == NULL) {
+        if (text_length != 0U) {
+            return NULL;
+        }
+        clean = malloc(1U);
+        if (clean == NULL) {
+            return NULL;
+        }
+        clean[0] = '\0';
+        *out_length = 0U;
+        return clean;
+    }
+    source = (const unsigned char *)(text == NULL ? "" : text);
+    if (text_length == SIZE_MAX) {
+        return NULL;
+    }
+    clean = malloc(text_length + 1U);
+    if (clean == NULL) {
+        return NULL;
+    }
+    for (size_t index = 0U; index < text_length; ++index) {
+        if (!base64_ignored_whitespace(source[index])) {
+            clean[output++] = (char)source[index];
+        }
+    }
+    clean[output] = '\0';
+    *out_length = output;
+    return clean;
+}
+
+static bool base64_decode_group(const unsigned char *source, bool is_last_group, char *result,
+                                size_t *output)
+{
+    int first = base64_digit_value(source[0]);
+    int second = base64_digit_value(source[1]);
+    int third = source[2] == '=' ? 0 : base64_digit_value(source[2]);
+    int fourth = source[3] == '=' ? 0 : base64_digit_value(source[3]);
+    size_t pad = 0U;
+
+    if (first < 0 || second < 0 || (source[2] != '=' && third < 0) ||
+        (source[3] != '=' && fourth < 0)) {
+        return false;
+    }
+    if (source[2] == '=') {
+        if (source[3] != '=') {
+            return false;
+        }
+        pad = 2U;
+    } else if (source[3] == '=') {
+        pad = 1U;
+    }
+    if (pad > 0U && !is_last_group) {
+        return false;
+    }
+
+    unsigned int first_value = (unsigned int)first;
+    unsigned int second_value = (unsigned int)second;
+    unsigned int third_value = (unsigned int)third;
+    unsigned int fourth_value = (unsigned int)fourth;
+
+    result[(*output)++] = (char)((first_value << MYLITE_EXPRESSION_BASE64_SHIFT_TWO) |
+                                 (second_value >> MYLITE_EXPRESSION_BASE64_SHIFT_FOUR));
+    if (pad < 2U) {
+        result[(*output)++] = (char)(((second_value & MYLITE_EXPRESSION_BASE64_FOUR_BIT_MASK)
+                                      << MYLITE_EXPRESSION_BASE64_SHIFT_FOUR) |
+                                     (third_value >> MYLITE_EXPRESSION_BASE64_SHIFT_TWO));
+    }
+    if (pad == 0U) {
+        result[(*output)++] = (char)(((third_value & MYLITE_EXPRESSION_BASE64_TWO_BIT_MASK)
+                                      << MYLITE_EXPRESSION_BASE64_SHIFT_SIX) |
+                                     fourth_value);
+    }
+    return true;
+}
+
+static int base64_digit_value(unsigned char character)
+{
+    if (character >= 'A' && character <= 'Z') {
+        return character - 'A';
+    }
+    if (character >= 'a' && character <= 'z') {
+        return (character - 'a') + MYLITE_EXPRESSION_BASE64_LOWER_ALPHA_OFFSET;
+    }
+    if (character >= '0' && character <= '9') {
+        return (character - '0') + MYLITE_EXPRESSION_BASE64_DIGIT_OFFSET;
+    }
+    if (character == '+') {
+        return MYLITE_EXPRESSION_BASE64_PLUS_VALUE;
+    }
+    if (character == '/') {
+        return MYLITE_EXPRESSION_BASE64_SLASH_VALUE;
+    }
+    return -1;
+}
+
+static bool base64_ignored_whitespace(unsigned char character)
+{
+    return character == ' ' || character == '\t' || character == '\n' || character == '\v' ||
+           character == '\f' || character == '\r';
+}
+
 static int eval_base_conversion_function(enum mylite_scalar_function_id function_id,
                                          const struct mylite_sql_ast_node *arguments,
                                          const struct mylite_expression_eval_context *context,
@@ -4386,6 +4781,8 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_CHAR:
     case MYLITE_SCALAR_FUNCTION_HEX:
     case MYLITE_SCALAR_FUNCTION_UNHEX:
+    case MYLITE_SCALAR_FUNCTION_TO_BASE64:
+    case MYLITE_SCALAR_FUNCTION_FROM_BASE64:
     case MYLITE_SCALAR_FUNCTION_BIT_COUNT:
     case MYLITE_SCALAR_FUNCTION_BIT_LENGTH:
     case MYLITE_SCALAR_FUNCTION_INET_ATON:
@@ -7111,6 +7508,8 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"COERCIBILITY", MYLITE_SCALAR_FUNCTION_COERCIBILITY},
         {"HEX", MYLITE_SCALAR_FUNCTION_HEX},
         {"UNHEX", MYLITE_SCALAR_FUNCTION_UNHEX},
+        {"TO_BASE64", MYLITE_SCALAR_FUNCTION_TO_BASE64},
+        {"FROM_BASE64", MYLITE_SCALAR_FUNCTION_FROM_BASE64},
         {"BIN", MYLITE_SCALAR_FUNCTION_BIN},
         {"OCT", MYLITE_SCALAR_FUNCTION_OCT},
         {"CONV", MYLITE_SCALAR_FUNCTION_CONV},
@@ -7198,6 +7597,8 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_CHAR:
     case MYLITE_SCALAR_FUNCTION_HEX:
     case MYLITE_SCALAR_FUNCTION_UNHEX:
+    case MYLITE_SCALAR_FUNCTION_TO_BASE64:
+    case MYLITE_SCALAR_FUNCTION_FROM_BASE64:
     case MYLITE_SCALAR_FUNCTION_BIN:
     case MYLITE_SCALAR_FUNCTION_OCT:
     case MYLITE_SCALAR_FUNCTION_CONV:

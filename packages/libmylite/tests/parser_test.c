@@ -5184,7 +5184,7 @@ static int test_scalar_function_call_syntax(void)
         string_function_item_count = 15,
         padding_function_item_count = 6,
         quote_function_item_count = 2,
-        list_function_item_count = 13,
+        list_function_item_count = 15,
         coalesce_nested_arg_index = 2,
     };
     struct mylite_sql_parse_result result;
@@ -5406,7 +5406,8 @@ static int test_scalar_function_call_syntax(void)
 
     failures += parse_sql("SELECT ELT(2, 'a', 'b'), FIELD('b', 'a', 'b'), "
                           "FIND_IN_SET('b', 'a,b'), MAKE_SET(3, 'a', 'b'), "
-                          "HEX('Az'), UNHEX('417a'), BIN(12), OCT(12), CONV('a',16,2), "
+                          "HEX('Az'), UNHEX('417a'), TO_BASE64('Az'), from_base64('QXo='), "
+                          "BIN(12), OCT(12), CONV('a',16,2), "
                           "BIT_COUNT(7), BIT_LENGTH('abc'), INET_ATON('127.0.0.1'), "
                           "inet_ntoa(2130706433);",
                           MYLITE_SQL_PARSE_OK, &result);
@@ -5425,19 +5426,23 @@ static int test_scalar_function_call_syntax(void)
         expect_function_call(child_at(child_at(select_list, 4U), 0U), "HEX", 1U, "HEX call");
     failures +=
         expect_function_call(child_at(child_at(select_list, 5U), 0U), "UNHEX", 1U, "UNHEX call");
+    failures += expect_function_call(child_at(child_at(select_list, 6U), 0U), "TO_BASE64", 1U,
+                                     "TO_BASE64 call");
+    failures += expect_function_call(child_at(child_at(select_list, 7U), 0U), "from_base64", 1U,
+                                     "FROM_BASE64 case-insensitive call");
     failures +=
-        expect_function_call(child_at(child_at(select_list, 6U), 0U), "BIN", 1U, "BIN call");
+        expect_function_call(child_at(child_at(select_list, 8U), 0U), "BIN", 1U, "BIN call");
     failures +=
-        expect_function_call(child_at(child_at(select_list, 7U), 0U), "OCT", 1U, "OCT call");
+        expect_function_call(child_at(child_at(select_list, 9U), 0U), "OCT", 1U, "OCT call");
     failures +=
-        expect_function_call(child_at(child_at(select_list, 8U), 0U), "CONV", 3U, "CONV call");
-    failures += expect_function_call(child_at(child_at(select_list, 9U), 0U), "BIT_COUNT", 1U,
+        expect_function_call(child_at(child_at(select_list, 10U), 0U), "CONV", 3U, "CONV call");
+    failures += expect_function_call(child_at(child_at(select_list, 11U), 0U), "BIT_COUNT", 1U,
                                      "BIT_COUNT call");
-    failures += expect_function_call(child_at(child_at(select_list, 10U), 0U), "BIT_LENGTH", 1U,
+    failures += expect_function_call(child_at(child_at(select_list, 12U), 0U), "BIT_LENGTH", 1U,
                                      "BIT_LENGTH call");
-    failures += expect_function_call(child_at(child_at(select_list, 11U), 0U), "INET_ATON", 1U,
+    failures += expect_function_call(child_at(child_at(select_list, 13U), 0U), "INET_ATON", 1U,
                                      "INET_ATON call");
-    failures += expect_function_call(child_at(child_at(select_list, 12U), 0U), "inet_ntoa", 1U,
+    failures += expect_function_call(child_at(child_at(select_list, 14U), 0U), "inet_ntoa", 1U,
                                      "INET_NTOA case-insensitive call");
     mylite_sql_parse_result_deinit(&result);
 

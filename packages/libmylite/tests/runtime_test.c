@@ -2483,6 +2483,36 @@ static int test_scalar_builtin_functions_execution(void)
          MYLITE_FIELD_FLAG_BINARY,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
     };
+    static const struct expected_result_metadata base64_metadata[] = {
+        {"to_ascii", NULL, NULL, NULL, NULL, NULL, 64U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"to_empty", NULL, NULL, NULL, NULL, NULL, 0U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"to_null", NULL, NULL, NULL, NULL, NULL, 0U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"to_num", NULL, NULL, NULL, NULL, NULL, 32U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"from_ascii", NULL, NULL, NULL, NULL, NULL, 12U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"from_empty", NULL, NULL, NULL, NULL, NULL, 0U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"from_bad", NULL, NULL, NULL, NULL, NULL, 9U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"from_null", NULL, NULL, NULL, NULL, NULL, 0U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+    };
     static const struct expected_result_metadata char_metadata[] = {
         {"char_binary", NULL, NULL, NULL, NULL, NULL, 4U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
          MYLITE_FIELD_FLAG_BINARY,
@@ -2667,6 +2697,25 @@ static int test_scalar_builtin_functions_execution(void)
          MYLITE_FIELD_FLAG_BINARY,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
     };
+    static const struct expected_result_metadata base64_latin1_metadata[] = {
+        {"to_ascii", NULL, NULL, NULL, NULL, NULL, 4U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"to_num", NULL, NULL, NULL, NULL, NULL, 8U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"from_ascii", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"from_bad", NULL, NULL, NULL, NULL, NULL, 2U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"from_null", NULL, NULL, NULL, NULL, NULL, 0U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+    };
     static const struct expected_result_metadata char_latin1_metadata[] = {
         {"char_binary", NULL, NULL, NULL, NULL, NULL, 4U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
          MYLITE_FIELD_FLAG_BINARY,
@@ -2726,6 +2775,22 @@ static int test_scalar_builtin_functions_execution(void)
          MYLITE_FIELD_FLAG_BINARY,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
         {"unhex_n", NULL, NULL, NULL, NULL, NULL, 6U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+    };
+    static const struct expected_result_metadata base64_table_metadata[] = {
+        {"to_s", NULL, NULL, NULL, NULL, NULL, 436U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"to_n", NULL, NULL, NULL, NULL, NULL, 64U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"from_s", NULL, NULL, NULL, NULL, NULL, 60U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"from_n", NULL, NULL, NULL, NULL, NULL, 8U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
          MYLITE_FIELD_FLAG_BINARY,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
     };
@@ -3108,6 +3173,43 @@ static int test_scalar_builtin_functions_execution(void)
         "4100FF",
         "3",
     };
+    static const char *const base64_columns[] = {
+        "to_ascii",          "to_empty",   "to_null",        "to_utf8",         "to_int",
+        "to_decimal",        "to_float",   "to_negative",    "to_binary",       "long_length",
+        "long_encoded",      "from_ascii", "from_empty_len", "from_null",       "from_utf8",
+        "from_ws",           "from_num",   "from_binary",    "from_binary_len", "from_nonzero_pad2",
+        "from_nonzero_pad1",
+    };
+    static const char *const base64_values[] = {
+        "YWJj",
+        "",
+        NULL,
+        "54yr",
+        "MjU1",
+        "MTIuNQ==",
+        "MTIuNQ==",
+        "LTE=",
+        "AP8=",
+        "81",
+        "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFh\nYQ==",
+        "abc",
+        "0",
+        NULL,
+        "E78CAB",
+        "abc",
+        "D76DF8",
+        "00FF",
+        "2",
+        "00",
+        "0000",
+    };
+    static const char *const base64_invalid_columns[] = {
+        "bad_chars",  "missing_pad",   "one_char",  "only_pad",
+        "middle_pad", "pad_then_more", "extra_pad", "numeric_invalid",
+    };
+    static const char *const base64_invalid_values[] = {
+        "1", "1", "1", "1", "1", "1", "1", "1",
+    };
     static const char *const char_columns[] = {
         "char_one",         "char_multi",       "char_null_len", "char_skip_null", "char_nul_hex",
         "char_nul_len",     "char_controls",    "char_255",      "char_256",       "char_65535",
@@ -3299,6 +3401,10 @@ static int test_scalar_builtin_functions_execution(void)
     static const char *const hex_site_projection_values[] = {
         "2", "4265", "4265", "FFFFFFFFFFFFFFFF", "1", "417A", "417A", "FF",
     };
+    static const char *const base64_site_projection_columns[] = {"id", "encoded", "roundtrip"};
+    static const char *const base64_site_projection_values[] = {
+        "1", "QXo=", "417A", "2", "QmU=", "4265", "3", "Q3k=", "4379",
+    };
     static const char *const char_site_projection_columns[] = {"id", "bytes", "text"};
     static const char *const char_site_projection_values[] = {
         "2", "62", "b", "1", "41", "A",
@@ -3335,6 +3441,8 @@ static int test_scalar_builtin_functions_execution(void)
     static const char *const updated_list_values[] = {"3", NULL, "2"};
     static const char *const unchanged_hex_values[] = {"1", "Az", "255"};
     static const char *const updated_hex_values[] = {"2", "6265", "-1"};
+    static const char *const updated_base64_values[] = {"1", "QXo=", "5"};
+    static const char *const base64_remaining_values[] = {"1"};
     static const char *const unchanged_char_values[] = {"1", "Az", "65"};
     static const char *const updated_char_values[] = {"1", "43", "65"};
     static const char *const char_remaining_values[] = {"1", "3"};
@@ -3471,6 +3579,25 @@ static int test_scalar_builtin_functions_execution(void)
     stmt = NULL;
 
     failures += prepare_sql(database,
+                            "SELECT TO_BASE64('abc') AS to_ascii, "
+                            "TO_BASE64('') AS to_empty, "
+                            "TO_BASE64(NULL) AS to_null, "
+                            "TO_BASE64(255) AS to_num, "
+                            "FROM_BASE64('YWJj') AS from_ascii, "
+                            "FROM_BASE64('') AS from_empty, "
+                            "FROM_BASE64('bad') AS from_bad, "
+                            "FROM_BASE64(NULL) AS from_null",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, base64_metadata,
+                                       (int)(sizeof(base64_metadata) / sizeof(base64_metadata[0])),
+                                       "base64 utf8mb4 metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "base64 utf8mb4 metadata row");
+    failures += expect_int(mylite_warning_count(database), 0, "base64 utf8mb4 metadata warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "base64 utf8mb4 metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
                             "SELECT CHAR(65) AS char_binary, "
                             "CHAR(65,66) AS char_binary_multi, "
                             "CHAR(65 USING utf8mb4) AS char_utf8, "
@@ -3588,6 +3715,22 @@ static int test_scalar_builtin_functions_execution(void)
         expect_int((int)mylite_warning_code(database, 0), mysql_warning_incorrect_string_value,
                    "hex/unhex latin1 metadata warning code");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "hex/unhex latin1 metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database,
+                            "SELECT TO_BASE64('abc') AS to_ascii, "
+                            "TO_BASE64(255) AS to_num, "
+                            "FROM_BASE64('YWJj') AS from_ascii, "
+                            "FROM_BASE64('bad') AS from_bad, "
+                            "FROM_BASE64(NULL) AS from_null",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, base64_latin1_metadata,
+        (int)(sizeof(base64_latin1_metadata) / sizeof(base64_latin1_metadata[0])),
+        "base64 latin1 metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "base64 latin1 metadata row");
+    failures += expect_int(mylite_warning_count(database), 0, "base64 latin1 metadata warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "base64 latin1 metadata done");
     mylite_finalize(stmt);
     stmt = NULL;
     failures += prepare_sql(database,
@@ -4028,6 +4171,48 @@ static int test_scalar_builtin_functions_execution(void)
                                    hex_columns, (int)(sizeof(hex_columns) / sizeof(hex_columns[0])),
                                    hex_values, 1, "string HEX/UNHEX scalar values");
 
+    failures += expect_select_rows(
+        database,
+        "SELECT TO_BASE64('abc') AS to_ascii, "
+        "TO_BASE64('') AS to_empty, "
+        "TO_BASE64(NULL) AS to_null, "
+        "TO_BASE64('\xE7\x8C\xAB') AS to_utf8, "
+        "TO_BASE64(255) AS to_int, "
+        "TO_BASE64(12.5) AS to_decimal, "
+        "TO_BASE64(12.5E0) AS to_float, "
+        "TO_BASE64(-1) AS to_negative, "
+        "TO_BASE64(CHAR(0,255 USING binary)) AS to_binary, "
+        "LENGTH(TO_BASE64(REPEAT('a',58))) AS long_length, "
+        "TO_BASE64(REPEAT('a',58)) AS long_encoded, "
+        "FROM_BASE64('YWJj') AS from_ascii, "
+        "LENGTH(FROM_BASE64('')) AS from_empty_len, "
+        "HEX(FROM_BASE64(NULL)) AS from_null, "
+        "HEX(FROM_BASE64('54yr')) AS from_utf8, "
+        "FROM_BASE64('Y W\nJ\v\f\rj\t') AS from_ws, "
+        "HEX(FROM_BASE64(1234)) AS from_num, "
+        "HEX(FROM_BASE64(TO_BASE64(CHAR(0,255 USING binary)))) AS from_binary, "
+        "LENGTH(FROM_BASE64(TO_BASE64(CHAR(0,255 USING binary)))) AS from_binary_len, "
+        "HEX(FROM_BASE64('AB==')) AS from_nonzero_pad2, "
+        "HEX(FROM_BASE64('AAB=')) AS from_nonzero_pad1",
+        base64_columns, (int)(sizeof(base64_columns) / sizeof(base64_columns[0])), base64_values, 1,
+        "string Base64 scalar values");
+    failures += expect_int(mylite_warning_count(database), 0, "Base64 scalar warning count");
+
+    failures += expect_select_rows(
+        database,
+        "SELECT FROM_BASE64('not base64') IS NULL AS bad_chars, "
+        "FROM_BASE64('YWI') IS NULL AS missing_pad, "
+        "FROM_BASE64('Y') IS NULL AS one_char, "
+        "FROM_BASE64('====') IS NULL AS only_pad, "
+        "FROM_BASE64('AA=A') IS NULL AS middle_pad, "
+        "FROM_BASE64('AA==AA==') IS NULL AS pad_then_more, "
+        "FROM_BASE64('YWJj====') IS NULL AS extra_pad, "
+        "FROM_BASE64(12.5) IS NULL AS numeric_invalid",
+        base64_invalid_columns,
+        (int)(sizeof(base64_invalid_columns) / sizeof(base64_invalid_columns[0])),
+        base64_invalid_values, 1, "string Base64 invalid values");
+    failures += expect_int(mylite_warning_count(database), 0, "Base64 invalid warning count");
+
     failures +=
         expect_select_rows(database,
                            "SELECT HEX(CHAR(65)) AS char_one, "
@@ -4247,6 +4432,16 @@ static int test_scalar_builtin_functions_execution(void)
     mylite_finalize(stmt);
     stmt = NULL;
     failures += prepare_sql(database,
+                            "SELECT TO_BASE64(s) AS to_s, TO_BASE64(n) AS to_n, "
+                            "FROM_BASE64(s) AS from_s, FROM_BASE64(n) AS from_n FROM t",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, base64_table_metadata,
+        (int)(sizeof(base64_table_metadata) / sizeof(base64_table_metadata[0])),
+        "table base64 function metadata");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database,
                             "SELECT BIN(s) AS bin_s, OCT(n) AS oct_n, "
                             "CONV(s,10,16) AS conv_h FROM t",
                             MYLITE_OK, &stmt);
@@ -4325,6 +4520,23 @@ static int test_scalar_builtin_functions_execution(void)
                                    "table hex/unhex projection where and order");
     failures += expect_select_rows(database, "SELECT id FROM hex_sites WHERE HEX(UNHEX(h))='417A'",
                                    id_column, 1, n_1, 1, "hex/unhex function where");
+    failures += execute_sql(database,
+                            "CREATE TABLE base64_sites "
+                            "(id INT PRIMARY KEY, s VARCHAR(20), b64 VARCHAR(20), n INT)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO base64_sites VALUES "
+                            "(1,'Az','Q Xo=',1),(2,'Be','QmU=',2),(3,'Cy','Q3k=',3)",
+                            MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id, TO_BASE64(s) AS encoded, HEX(FROM_BASE64(b64)) AS roundtrip "
+        "FROM base64_sites WHERE FROM_BASE64(b64) IS NOT NULL ORDER BY FROM_BASE64(b64)",
+        base64_site_projection_columns, 3, base64_site_projection_values, 3,
+        "table Base64 projection where and order");
+    failures +=
+        expect_select_rows(database, "SELECT id FROM base64_sites WHERE TO_BASE64(s)='QXo='",
+                           id_column, 1, n_1, 1, "Base64 function where");
     failures += execute_sql(database,
                             "CREATE TABLE char_sites "
                             "(id INT PRIMARY KEY, s VARCHAR(20), n INT)",
@@ -4508,6 +4720,28 @@ static int test_scalar_builtin_functions_execution(void)
         "delete hex/unhex function predicate");
     failures += expect_select_rows(database, "SELECT id FROM hex_sites WHERE h IS NOT NULL",
                                    id_column, 1, id_2, 1, "delete hex/unhex remaining rows");
+
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE base64_sites SET n = 5 WHERE FROM_BASE64('not base64') IS NULL", 3,
+        "update Base64 invalid predicate");
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE base64_sites SET b64 = TO_BASE64(s) WHERE HEX(FROM_BASE64(b64)) = '417A'",
+        1, "update Base64 assignment and predicate");
+    failures += expect_select_rows(
+        database, "SELECT id, b64 AS s, n FROM base64_sites WHERE id = 1", id_s_n_columns, 3,
+        updated_base64_values, 1, "updated Base64 function values");
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE base64_sites SET n = 9 ORDER BY FROM_BASE64(b64) DESC, id LIMIT 1", 1,
+        "update Base64 order key");
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM base64_sites WHERE TO_BASE64(s) = 'QmU='", 1,
+        "delete Base64 function predicate");
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM base64_sites ORDER BY TO_BASE64(s), id LIMIT 1", 1,
+        "delete Base64 order key");
+    failures += expect_select_rows(database, "SELECT id FROM base64_sites ORDER BY id", id_column,
+                                   1, base64_remaining_values, 1, "delete Base64 remaining rows");
+    failures += expect_int(mylite_warning_count(database), 0, "Base64 DML warning count");
 
     failures += prepare_sql(database, "UPDATE char_sites SET n = 9 WHERE CHAR('x') = CHAR(0)",
                             MYLITE_OK, &stmt);
@@ -4841,6 +5075,15 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_no_stmt_handle(&stmt, "unsupported unhex zero arity");
     failures += prepare_sql(database, "SELECT UNHEX('41','42')", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported unhex two arity");
+    failures += prepare_sql(database, "SELECT TO_BASE64()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported to_base64 zero arity");
+    failures += prepare_sql(database, "SELECT TO_BASE64('a','b')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported to_base64 two arity");
+    failures += prepare_sql(database, "SELECT FROM_BASE64()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported from_base64 zero arity");
+    failures +=
+        prepare_sql(database, "SELECT FROM_BASE64('QQ==','Qg==')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported from_base64 two arity");
     failures += prepare_sql(database, "SELECT BIN()", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported bin zero arity");
     failures += prepare_sql(database, "SELECT BIN(1,2)", MYLITE_UNSUPPORTED, &stmt);

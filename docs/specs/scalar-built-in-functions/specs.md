@@ -32,6 +32,7 @@ In scope for the initial implementation:
   - `ELT`, `FIELD`, `FIND_IN_SET`
   - `MAKE_SET`
   - `HEX`, `UNHEX`
+  - `TO_BASE64`, `FROM_BASE64`
   - `BIN`, `OCT`
 - numeric functions:
   - `ABS`
@@ -115,7 +116,8 @@ by common scalar expressions:
   `REPLACE`, `CONCAT_WS`, `SUBSTRING`, `SUBSTR`, `MID`, `TRIM`, `LTRIM`,
   `RTRIM`, `ASCII`, `ORD`, `LOCATE`, `POSITION`, `INSTR`, `INSERT`, `QUOTE`,
   `REPEAT`, `SPACE`, `REVERSE`, `LPAD`, `RPAD`, `ELT`, `FIELD`,
-  `FIND_IN_SET`, `MAKE_SET`, `HEX`, `UNHEX`, `BIN`, and `OCT`; see
+  `FIND_IN_SET`, `MAKE_SET`, `HEX`, `UNHEX`, `TO_BASE64`, `FROM_BASE64`,
+  `BIN`, and `OCT`; see
   `docs/specs/string-functions-substring-trim/specs.md` and
   `docs/specs/string-search-code-functions/specs.md` and
   `docs/specs/string-insert-function/specs.md` and
@@ -124,6 +126,7 @@ by common scalar expressions:
   `docs/specs/string-list-index-functions/specs.md` and
   `docs/specs/string-make-set-function/specs.md` and
   `docs/specs/string-hex-unhex-functions/specs.md` and
+  `docs/specs/base64-string-functions/specs.md` and
   `docs/specs/numeric-base-conversion-functions/specs.md`
 - numeric functions: `ABS`, `SIGN`, `FLOOR`, `CEIL`, `CEILING`, `MOD`,
   `CONV`, `BIT_COUNT`, `BIT_LENGTH`, `INET_ATON`, `INET_NTOA`, and `PI`; see
@@ -151,6 +154,8 @@ metadata, padding, repetition, spaces, UTF-8 reversal, empty pad strings,
 `CHAR()` byte emission and optional `USING` charset syntax,
 hex encoding, binary-string hex decoding, embedded-NUL byte lengths for
 `UNHEX()` results, invalid `UNHEX()` warnings,
+Base64 encoding, Base64 decoding, long-output newline wrapping, ignored decode
+whitespace, invalid `FROM_BASE64()` `NULL` results without warnings,
 binary/octal/arbitrary-base conversion, invalid base ranges, base-conversion
 string parsing warnings,
 IPv4 network-address conversion, short IPv4 forms, invalid IPv4 warnings,

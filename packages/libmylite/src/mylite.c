@@ -166,6 +166,9 @@ static const uint64_t mylite_mysql_search_function_display_length = 11U;
 static const uint64_t mylite_mysql_list_index_function_display_length = 3U;
 static const uint64_t mylite_mysql_char_function_argument_bytes = 4U;
 static const uint64_t mylite_mysql_hex_numeric_result_chars = 16U;
+static const uint64_t mylite_mysql_base64_input_group = 3U;
+static const uint64_t mylite_mysql_base64_output_group = 4U;
+static const uint64_t mylite_mysql_base64_line_length = 76U;
 static const uint64_t mylite_mysql_base_conversion_result_chars = 65U;
 static const uint64_t mylite_mysql_integer_function_display_length = 21U;
 static const uint64_t mylite_mysql_ord_function_display_length = 21U;
@@ -2100,11 +2103,11 @@ static int validate_char_function_charset(mylite_db *database,
                                           const struct mylite_sql_ast_node *expression);
 static bool char_function_charset_name_is_supported(const char *name);
 // NOLINTNEXTLINE(misc-no-recursion)
-static int infer_hex_unhex_function_descriptor(mylite_db *database,
-                                               const struct mylite_select_plan *plan,
-                                               const struct mylite_sql_ast_node *expression,
-                                               struct mylite_field_descriptor *out_descriptor,
-                                               bool *out_matched);
+static int infer_string_encoding_function_descriptor(mylite_db *database,
+                                                     const struct mylite_select_plan *plan,
+                                                     const struct mylite_sql_ast_node *expression,
+                                                     struct mylite_field_descriptor *out_descriptor,
+                                                     bool *out_matched);
 static bool
 infer_base_conversion_function_descriptor(mylite_db *database,
                                           const struct mylite_sql_ast_node *name,
@@ -2118,6 +2121,18 @@ static int infer_unhex_function_descriptor(mylite_db *database,
                                            const struct mylite_select_plan *plan,
                                            const struct mylite_sql_ast_node *expression,
                                            struct mylite_field_descriptor *out_descriptor);
+// NOLINTNEXTLINE(misc-no-recursion)
+static int infer_to_base64_function_descriptor(mylite_db *database,
+                                               const struct mylite_select_plan *plan,
+                                               const struct mylite_sql_ast_node *expression,
+                                               struct mylite_field_descriptor *out_descriptor);
+// NOLINTNEXTLINE(misc-no-recursion)
+static int infer_from_base64_function_descriptor(mylite_db *database,
+                                                 const struct mylite_select_plan *plan,
+                                                 const struct mylite_sql_ast_node *expression,
+                                                 struct mylite_field_descriptor *out_descriptor);
+static uint64_t base64_encoded_descriptor_length(uint64_t source_length);
+static uint64_t base64_decoded_descriptor_length(uint64_t source_length);
 // NOLINTNEXTLINE(misc-no-recursion)
 static uint64_t quote_function_result_length(mylite_db *database,
                                              const struct mylite_select_plan *plan,
@@ -2175,6 +2190,10 @@ static bool function_name_is_insert(const struct mylite_sql_ast_node *name);
 static bool function_name_is_char(const struct mylite_sql_ast_node *name);
 static bool function_name_is_hex(const struct mylite_sql_ast_node *name);
 static bool function_name_is_unhex(const struct mylite_sql_ast_node *name);
+static bool function_name_is_to_base64(const struct mylite_sql_ast_node *name);
+static bool function_name_is_from_base64(const struct mylite_sql_ast_node *name);
+static bool function_name_has_binary_string_result(const struct mylite_sql_ast_node *name);
+static bool function_name_has_connection_string_result(const struct mylite_sql_ast_node *name);
 static bool function_name_has_base_conversion_result(const struct mylite_sql_ast_node *name);
 static bool function_name_is_concat_ws(const struct mylite_sql_ast_node *name);
 static bool function_name_uses_trim_source_length(const struct mylite_sql_ast_node *name);
@@ -10491,7 +10510,7 @@ static int infer_function_expression_descriptor(mylite_db *database,
     const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
     bool nullable = false;
     bool result_nullable = false;
-    bool matched_hex_unhex = false;
+    bool matched_string_encoding = false;
     bool matched_slice_string = false;
     int status = MYLITE_OK;
 
@@ -10514,9 +10533,9 @@ static int infer_function_expression_descriptor(mylite_db *database,
     if (status != MYLITE_UNSUPPORTED) {
         return status;
     }
-    status = infer_hex_unhex_function_descriptor(database, plan, expression, out_descriptor,
-                                                 &matched_hex_unhex);
-    if (status != MYLITE_OK || matched_hex_unhex) {
+    status = infer_string_encoding_function_descriptor(database, plan, expression, out_descriptor,
+                                                       &matched_string_encoding);
+    if (status != MYLITE_OK || matched_string_encoding) {
         return status;
     }
     status = infer_slice_string_function_descriptor(database, plan, expression, value, nullable,
@@ -10959,11 +10978,11 @@ static bool char_function_charset_name_is_supported(const char *name)
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int infer_hex_unhex_function_descriptor(mylite_db *database,
-                                               const struct mylite_select_plan *plan,
-                                               const struct mylite_sql_ast_node *expression,
-                                               struct mylite_field_descriptor *out_descriptor,
-                                               bool *out_matched)
+static int infer_string_encoding_function_descriptor(mylite_db *database,
+                                                     const struct mylite_select_plan *plan,
+                                                     const struct mylite_sql_ast_node *expression,
+                                                     struct mylite_field_descriptor *out_descriptor,
+                                                     bool *out_matched)
 {
     const struct mylite_sql_ast_node *name = child_at(expression, 0U);
 
@@ -10973,6 +10992,12 @@ static int infer_hex_unhex_function_descriptor(mylite_db *database,
     }
     if (function_name_is_unhex(name)) {
         return infer_unhex_function_descriptor(database, plan, expression, out_descriptor);
+    }
+    if (function_name_is_to_base64(name)) {
+        return infer_to_base64_function_descriptor(database, plan, expression, out_descriptor);
+    }
+    if (function_name_is_from_base64(name)) {
+        return infer_from_base64_function_descriptor(database, plan, expression, out_descriptor);
     }
     *out_matched = false;
     return MYLITE_OK;
@@ -11051,6 +11076,105 @@ static int infer_unhex_function_descriptor(mylite_db *database,
     };
     field_descriptor_set_nullable(out_descriptor, true);
     return MYLITE_OK;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int infer_to_base64_function_descriptor(mylite_db *database,
+                                               const struct mylite_select_plan *plan,
+                                               const struct mylite_sql_ast_node *expression,
+                                               struct mylite_field_descriptor *out_descriptor)
+{
+    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *source = child_at(arguments, 0U);
+    struct mylite_field_descriptor source_descriptor = field_descriptor_defaults();
+    uint64_t max_bytes_per_character = connection_character_max_length(database);
+    uint64_t encoded_chars = 0U;
+    uint64_t length = 0U;
+    int status = infer_expression_descriptor(database, plan, source, NULL, &source_descriptor);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    encoded_chars = source_descriptor.type == MYLITE_FIELD_TYPE_NULL
+                        ? 0U
+                        : base64_encoded_descriptor_length(source_descriptor.length);
+    length = max_bytes_per_character != 0U && encoded_chars > UINT64_MAX / max_bytes_per_character
+                 ? mylite_mysql_long_text_length
+                 : encoded_chars * max_bytes_per_character;
+
+    *out_descriptor = (struct mylite_field_descriptor){
+        .type = MYLITE_FIELD_TYPE_VAR_STRING,
+        .flags = 0U,
+        .length = length,
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = field_descriptor_connection_charset_id(database),
+        .nullable = true,
+    };
+    field_descriptor_set_nullable(out_descriptor, true);
+    return MYLITE_OK;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int infer_from_base64_function_descriptor(mylite_db *database,
+                                                 const struct mylite_select_plan *plan,
+                                                 const struct mylite_sql_ast_node *expression,
+                                                 struct mylite_field_descriptor *out_descriptor)
+{
+    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *source = child_at(arguments, 0U);
+    struct mylite_field_descriptor source_descriptor = field_descriptor_defaults();
+    uint64_t length = 0U;
+    int status = infer_expression_descriptor(database, plan, source, NULL, &source_descriptor);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    length = source_descriptor.type == MYLITE_FIELD_TYPE_NULL
+                 ? 0U
+                 : base64_decoded_descriptor_length(source_descriptor.length);
+
+    *out_descriptor = (struct mylite_field_descriptor){
+        .type = MYLITE_FIELD_TYPE_VAR_STRING,
+        .flags = MYLITE_FIELD_FLAG_BINARY,
+        .length = length,
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = mylite_mysql_binary_charset_id,
+        .nullable = true,
+    };
+    field_descriptor_set_nullable(out_descriptor, true);
+    return MYLITE_OK;
+}
+
+static uint64_t base64_encoded_descriptor_length(uint64_t source_length)
+{
+    uint64_t groups = 0U;
+    uint64_t encoded = 0U;
+    uint64_t newlines = 0U;
+
+    if (source_length == 0U) {
+        return 0U;
+    }
+    if (source_length > UINT64_MAX - (mylite_mysql_base64_input_group - 1U)) {
+        return mylite_mysql_long_text_length;
+    }
+    groups =
+        (source_length + (mylite_mysql_base64_input_group - 1U)) / mylite_mysql_base64_input_group;
+    if (groups > UINT64_MAX / mylite_mysql_base64_output_group) {
+        return mylite_mysql_long_text_length;
+    }
+    encoded = groups * mylite_mysql_base64_output_group;
+    newlines = (encoded - 1U) / mylite_mysql_base64_line_length;
+    if (encoded > UINT64_MAX - newlines) {
+        return mylite_mysql_long_text_length;
+    }
+    return encoded + newlines;
+}
+
+static uint64_t base64_decoded_descriptor_length(uint64_t source_length)
+{
+    return ((source_length / mylite_mysql_base64_output_group) * mylite_mysql_base64_input_group) +
+           (((source_length % mylite_mysql_base64_output_group) * mylite_mysql_base64_input_group) /
+            mylite_mysql_base64_output_group);
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
@@ -12128,6 +12252,36 @@ static bool function_name_is_unhex(const struct mylite_sql_ast_node *name)
     static const char *const names[] = {"UNHEX"};
 
     return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_is_to_base64(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"TO_BASE64"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_is_from_base64(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"FROM_BASE64"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_has_binary_string_result(const struct mylite_sql_ast_node *name)
+{
+    if (function_name_is_unhex(name)) {
+        return true;
+    }
+    return function_name_is_from_base64(name);
+}
+
+static bool function_name_has_connection_string_result(const struct mylite_sql_ast_node *name)
+{
+    if (function_name_is_hex(name) || function_name_is_to_base64(name)) {
+        return true;
+    }
+    return function_name_has_base_conversion_result(name);
 }
 
 static bool function_name_has_base_conversion_result(const struct mylite_sql_ast_node *name)
@@ -26482,11 +26636,11 @@ static int infer_function_collation_info(mylite_db *database,
     if (function_name_is_char(name)) {
         return infer_char_function_collation_info(database, expression, out_info);
     }
-    if (function_name_is_unhex(name)) {
+    if (function_name_has_binary_string_result(name)) {
         *out_info = binary_collation_info(mylite_mysql_coercibility_coercible);
         return MYLITE_OK;
     }
-    if (function_name_is_hex(name) || function_name_has_base_conversion_result(name)) {
+    if (function_name_has_connection_string_result(name)) {
         *out_info = connection_collation_info(database, mylite_mysql_coercibility_coercible);
         return MYLITE_OK;
     }

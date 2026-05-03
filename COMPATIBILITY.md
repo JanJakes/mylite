@@ -283,7 +283,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `SHOW RELAYLOG EVENTS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW REPLICA STATUS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW REPLICAS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
-| `SHOW STATUS` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
+| `SHOW STATUS` | 🟡 | top | Result-set shape, filtering, scope modifiers, status-variable values, and MySQL 8.4-compatible diagnostics. | First executable slice is implemented for `SHOW [GLOBAL\|SESSION\|LOCAL] STATUS [LIKE 'pattern' \| WHERE expr]`, including MySQL-compatible `Variable_name` / `Value` columns, `LOCAL` as a session synonym, deterministic status-name ordering, case-insensitive `LIKE` filtering with backslash escapes, embedded connection/thread/uptime rows, and documented zero placeholders for common `Questions` and `Com_*` counters until accurate statement accounting lands. `WHERE` is parsed but returns `SHOW STATUS WHERE is not supported` until shared SHOW filtering lands. Complete status catalog, global aggregation across handles, `FLUSH STATUS`, Performance Schema status tables, protocol byte counters, and accurate command counters remain deferred. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
 | `SHOW TABLE STATUS` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW TABLES` | 🟡 | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | First executable slice is implemented for supported MyLite base tables and existing `information_schema` metadata views, including parser/AST coverage for `SHOW [EXTENDED] [FULL] TABLES [FROM\|IN db] [LIKE pattern \| WHERE expr]`, selected-schema and explicit-schema resolution, MySQL-compatible result column names, `FULL` table type output, `EXTENDED` no-op behavior for the current catalog, case-sensitive `LIKE` filtering with backslash escapes, empty results, and deterministic no-selected/missing-schema diagnostics. `WHERE` filtering is parsed and returns a clear unsupported diagnostic until SHOW expression filtering lands. Temporary tables, user views, privilege filtering, lower-case table-name modes, locks, counters, and broader system-schema contents remain deferred. See [SHOW TABLES spec](docs/specs/show-tables/specs.md). |
 | `SHOW TRIGGERS` | ❌ | high | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
@@ -2560,7 +2560,7 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Com_alter_user_default_role` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_analyze` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_assign_to_keycache` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Com_begin` | ❌ | high | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
+| `Com_begin` | ⚪ | high | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes a documented zero placeholder; accurate statement counting is deferred. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
 | `Com_binlog` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_call_procedure` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_change_db` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
@@ -2569,33 +2569,33 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Com_check` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_checksum` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_clone` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Com_commit` | ❌ | top | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Com_create_db` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
+| `Com_commit` | ⚪ | top | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes a documented zero placeholder; accurate statement counting is deferred. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
+| `Com_create_db` | ⚪ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes a documented zero placeholder; accurate statement counting is deferred. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
 | `Com_create_event` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_create_function` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Com_create_index` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
+| `Com_create_index` | ⚪ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes a documented zero placeholder; accurate statement counting is deferred. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
 | `Com_create_procedure` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_create_resource_group` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_create_role` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_create_server` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Com_create_table` | ❌ | high | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
+| `Com_create_table` | ⚪ | high | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes a documented zero placeholder; accurate statement counting is deferred. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
 | `Com_create_trigger` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_create_udf` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_create_user` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_create_view` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_dealloc_sql` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Com_delete` | ❌ | top | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
+| `Com_delete` | ⚪ | top | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes a documented zero placeholder; accurate statement counting is deferred. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
 | `Com_delete_multi` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_do` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Com_drop_db` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
+| `Com_drop_db` | ⚪ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes a documented zero placeholder; accurate statement counting is deferred. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
 | `Com_drop_event` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_drop_function` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Com_drop_index` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
+| `Com_drop_index` | ⚪ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes a documented zero placeholder; accurate statement counting is deferred. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
 | `Com_drop_procedure` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_drop_resource_group` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_drop_role` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_drop_server` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Com_drop_table` | ❌ | high | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
+| `Com_drop_table` | ⚪ | high | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes a documented zero placeholder; accurate statement counting is deferred. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
 | `Com_drop_trigger` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_drop_user` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_drop_view` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
@@ -2612,7 +2612,7 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Com_ha_open` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_ha_read` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_help` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Com_insert` | ❌ | top | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
+| `Com_insert` | ⚪ | top | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes a documented zero placeholder; accurate statement counting is deferred. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
 | `Com_insert_select` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_install_component` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_install_plugin` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
@@ -2624,11 +2624,11 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Com_prepare_sql` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_purge` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_purge_before_date` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Com_release_savepoint` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Com_rename_table` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
+| `Com_release_savepoint` | ⚪ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes a documented zero placeholder; accurate statement counting is deferred. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
+| `Com_rename_table` | ⚪ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes a documented zero placeholder; accurate statement counting is deferred. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
 | `Com_rename_user` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_repair` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Com_replace` | ❌ | top | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
+| `Com_replace` | ⚪ | top | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes a documented zero placeholder; accurate statement counting is deferred. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
 | `Com_replace_select` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_replica_start` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_replica_stop` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
@@ -2638,11 +2638,11 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Com_revoke` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_revoke_all` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_revoke_roles` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Com_rollback` | ❌ | top | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Com_rollback_to_savepoint` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Com_savepoint` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Com_select` | ❌ | top | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Com_set_option` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
+| `Com_rollback` | ⚪ | top | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes a documented zero placeholder; accurate statement counting is deferred. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
+| `Com_rollback_to_savepoint` | ⚪ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes a documented zero placeholder; accurate statement counting is deferred. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
+| `Com_savepoint` | ⚪ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes a documented zero placeholder; accurate statement counting is deferred. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
+| `Com_select` | ⚪ | top | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes a documented zero placeholder; accurate statement counting is deferred. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
+| `Com_set_option` | ⚪ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes a documented zero placeholder for current `SET`-family support; accurate statement counting is deferred. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
 | `Com_set_resource_group` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_set_role` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_show_authors` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
@@ -2663,13 +2663,13 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Com_show_engine_logs` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_show_engine_mutex` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_show_engine_status` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Com_show_errors` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
+| `Com_show_errors` | ⚪ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes a documented zero placeholder; accurate statement counting is deferred. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
 | `Com_show_events` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Com_show_fields` | ❌ | high | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
+| `Com_show_fields` | ⚪ | high | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes a documented zero placeholder for `SHOW COLUMNS` / `SHOW FIELDS`; accurate statement counting is deferred. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
 | `Com_show_function_code` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_show_function_status` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_show_grants` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Com_show_keys` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
+| `Com_show_keys` | ⚪ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes a documented zero placeholder for `SHOW INDEX` / `SHOW KEYS`; accurate statement counting is deferred. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
 | `Com_show_ndb_status` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_show_open_tables` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_show_plugins` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
@@ -2682,13 +2682,13 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Com_show_relaylog_events` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_show_replica_status` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_show_replicas` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Com_show_status` | ❌ | high | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
+| `Com_show_status` | ⚪ | high | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes a documented zero placeholder; accurate statement counting is deferred. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
 | `Com_show_storage_engines` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_show_table_status` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Com_show_tables` | ❌ | high | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
+| `Com_show_tables` | ⚪ | high | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes a documented zero placeholder; accurate statement counting is deferred. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
 | `Com_show_triggers` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Com_show_variables` | ❌ | high | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Com_show_warnings` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
+| `Com_show_variables` | ⚪ | high | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes a documented zero placeholder; accurate statement counting is deferred. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
+| `Com_show_warnings` | ⚪ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes a documented zero placeholder; accurate statement counting is deferred. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
 | `Com_shutdown` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_signal` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_stmt_close` | ❌ | high | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
@@ -2698,11 +2698,11 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Com_stmt_reprepare` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_stmt_reset` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_stmt_send_long_data` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Com_truncate` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
+| `Com_truncate` | ⚪ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes a documented zero placeholder; accurate statement counting is deferred. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
 | `Com_uninstall_component` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_uninstall_plugin` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_unlock_tables` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Com_update` | ❌ | top | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
+| `Com_update` | ⚪ | top | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes a documented zero placeholder; accurate statement counting is deferred. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
 | `Com_update_multi` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_xa_commit` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Com_xa_end` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
@@ -2720,7 +2720,7 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Connection_errors_peer_address` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Connection_errors_select` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Connection_errors_tcpwrap` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Connections` | ❌ | top | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
+| `Connections` | 🟡 | top | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes embedded-handle value `1` for session/global scope; process-wide connection accounting is deferred. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
 | `Created_tmp_disk_tables` | ❌ | top | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Created_tmp_files` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Created_tmp_tables` | ❌ | top | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
@@ -3136,7 +3136,7 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Performance_schema_users_lost` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Prepared_stmt_count` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Queries` | ❌ | top | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Questions` | ❌ | top | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
+| `Questions` | ⚪ | top | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes a documented zero placeholder; accurate prepare/execute/protocol statement counting is deferred. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
 | `Replica_open_temp_tables` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Resource_group_supported` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Rewriter_number_loaded_rules` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
@@ -3225,14 +3225,14 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Telemetry_metrics_supported` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Telemetry_traces_supported` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `telemetry.live_sessions` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Threads_cached` | ❌ | high | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Threads_connected` | ❌ | top | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Threads_created` | ❌ | high | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Threads_running` | ❌ | top | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
+| `Threads_cached` | 🟡 | high | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes embedded value `0` because MyLite has no server thread cache. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
+| `Threads_connected` | 🟡 | top | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes embedded-handle value `1` for session/global scope. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
+| `Threads_created` | 🟡 | high | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes embedded-handle value `1`; server thread-pool accounting is deferred. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
+| `Threads_running` | 🟡 | top | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice exposes embedded value `1` for the caller thread running the current statement. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
 | `Tls_library_version` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `Tls_sni_server_name` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Uptime` | ❌ | top | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
-| `Uptime_since_flush_status` | ❌ | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
+| `Uptime` | 🟡 | top | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice maps server uptime to elapsed seconds since the MyLite handle opened. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
+| `Uptime_since_flush_status` | 🟡 | medium | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. | First `SHOW STATUS` slice matches `Uptime` because `FLUSH STATUS` is not implemented. See [SHOW STATUS spec](docs/specs/show-status/specs.md). |
 | `validate_password_dictionary_file_last_parsed` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `validate_password_dictionary_file_words_count` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |
 | `validate_password.dictionary_file_last_parsed` | ❌ | low | Expose MySQL-compatible value and counter/update semantics, or a documented embedded-compatible zero/empty value. |  |

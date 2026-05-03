@@ -41,6 +41,8 @@
 %type opt_like_escape { struct mylite_sql_ast_node * }
 %type opt_show_variables_scope { struct mylite_sql_parser_show_variables_scope }
 %type opt_show_variables_filter { struct mylite_sql_ast_node * }
+%type opt_show_status_scope { struct mylite_sql_parser_show_status_scope }
+%type opt_show_status_filter { struct mylite_sql_ast_node * }
 %type opt_show_tables_schema { struct mylite_sql_ast_node * }
 %type opt_show_tables_filter { struct mylite_sql_ast_node * }
 %type show_columns_keyword { struct mylite_sql_token }
@@ -192,6 +194,9 @@ statement(A) ::= show_schemas_statement(B). {
     A = B;
 }
 statement(A) ::= show_variables_statement(B). {
+    A = B;
+}
+statement(A) ::= show_status_statement(B). {
     A = B;
 }
 statement(A) ::= show_tables_statement(B). {
@@ -999,6 +1004,38 @@ opt_show_variables_filter(A) ::= LIKE STRING(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
 }
 opt_show_variables_filter(A) ::= where_clause(B). {
+    A = B;
+}
+
+show_status_statement(A) ::= SHOW(T) opt_show_status_scope(S) STATUS(V)
+        opt_show_status_filter(F). {
+    A = mylite_sql_parser_make_show_status_statement(state, T, S, V, F);
+}
+
+opt_show_status_scope(A) ::= . {
+    A = mylite_sql_parser_make_show_status_scope(
+        (struct mylite_sql_token){0}, MYLITE_SQL_AST_SHOW_STATUS_SESSION);
+}
+opt_show_status_scope(A) ::= GLOBAL(T). {
+    A = mylite_sql_parser_make_show_status_scope(
+        T, MYLITE_SQL_AST_SHOW_STATUS_GLOBAL);
+}
+opt_show_status_scope(A) ::= SESSION(T). {
+    A = mylite_sql_parser_make_show_status_scope(
+        T, MYLITE_SQL_AST_SHOW_STATUS_SESSION);
+}
+opt_show_status_scope(A) ::= LOCAL(T). {
+    A = mylite_sql_parser_make_show_status_scope(
+        T, MYLITE_SQL_AST_SHOW_STATUS_SESSION);
+}
+
+opt_show_status_filter(A) ::= . {
+    A = NULL;
+}
+opt_show_status_filter(A) ::= LIKE STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+opt_show_status_filter(A) ::= where_clause(B). {
     A = B;
 }
 
@@ -3319,6 +3356,9 @@ nonreserved_identifier_keyword(A) ::= SHARED(T). {
     A = T;
 }
 nonreserved_identifier_keyword(A) ::= SESSION(T). {
+    A = T;
+}
+nonreserved_identifier_keyword(A) ::= STATUS(T). {
     A = T;
 }
 nonreserved_identifier_keyword(A) ::= TABLES(T). {

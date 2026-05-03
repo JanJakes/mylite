@@ -138,6 +138,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_SHOW_DIAGNOSTICS_STATEMENT = 127,
     MYLITE_SQL_AST_SHOW_DIAGNOSTICS_COUNT_STATEMENT = 128,
     MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT = 129,
+    MYLITE_SQL_AST_SHOW_STATUS_STATEMENT = 130,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -162,6 +163,11 @@ enum mylite_sql_ast_show_diagnostics_kind {
 enum mylite_sql_ast_show_variables_scope {
     MYLITE_SQL_AST_SHOW_VARIABLES_SESSION = 0,
     MYLITE_SQL_AST_SHOW_VARIABLES_GLOBAL = 1,
+};
+
+enum mylite_sql_ast_show_status_scope {
+    MYLITE_SQL_AST_SHOW_STATUS_SESSION = 0,
+    MYLITE_SQL_AST_SHOW_STATUS_GLOBAL = 1,
 };
 
 enum mylite_sql_ast_operator {
@@ -515,6 +521,7 @@ struct mylite_sql_ast_node {
     enum mylite_sql_ast_subquery_quantifier subquery_quantifier;
     enum mylite_sql_ast_show_diagnostics_kind show_diagnostics_kind;
     enum mylite_sql_ast_show_variables_scope show_variables_scope;
+    enum mylite_sql_ast_show_status_scope show_status_scope;
     unsigned int column_display_width;
     bool column_type_unsigned;
     bool column_type_signed;
@@ -658,6 +665,8 @@ void mylite_sql_ast_node_set_show_diagnostics_kind(struct mylite_sql_ast_node *n
                                                    enum mylite_sql_ast_show_diagnostics_kind kind);
 void mylite_sql_ast_node_set_show_variables_scope(struct mylite_sql_ast_node *node,
                                                   enum mylite_sql_ast_show_variables_scope scope);
+void mylite_sql_ast_node_set_show_status_scope(struct mylite_sql_ast_node *node,
+                                               enum mylite_sql_ast_show_status_scope scope);
 
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node);
 

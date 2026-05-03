@@ -22,6 +22,7 @@ static int test_alter_table_key_constraint_operations_syntax(void);
 static int test_rename_table_syntax(void);
 static int test_truncate_table_syntax(void);
 static int test_show_variables_syntax(void);
+static int test_show_status_syntax(void);
 static int test_show_tables_syntax(void);
 static int test_show_columns_syntax(void);
 static int test_show_index_syntax(void);
@@ -166,6 +167,7 @@ int main(void)
     failures += test_rename_table_syntax();
     failures += test_truncate_table_syntax();
     failures += test_show_variables_syntax();
+    failures += test_show_status_syntax();
     failures += test_show_tables_syntax();
     failures += test_show_columns_syntax();
     failures += test_show_index_syntax();
@@ -2949,6 +2951,106 @@ static int test_show_variables_syntax(void)
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SHOW VARIABLES GLOBAL;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_show_status_syntax(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SHOW STATUS; SHOW GLOBAL STATUS; SHOW SESSION STATUS; "
+                          "SHOW LOCAL STATUS; SHOW STATUS LIKE 'Uptime%'; "
+                          "SHOW GLOBAL STATUS LIKE 'Com\\_%'; "
+                          "SHOW SESSION STATUS WHERE Variable_name = 'Uptime'; "
+                          "SHOW STATUS WHERE Value = '0';",
+                          MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_child_count(result.root, 8U, "show status script count");
+
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_STATUS_STATEMENT, "show status");
+    failures += expect_child_count(statement, 0U, "show status child count");
+    if (statement != NULL && statement->show_status_scope != MYLITE_SQL_AST_SHOW_STATUS_SESSION) {
+        fprintf(stderr, "show status: expected default session scope\n");
+        failures = 1;
+    }
+
+    statement = child_at(result.root, 1U);
+    if (statement != NULL && statement->show_status_scope != MYLITE_SQL_AST_SHOW_STATUS_GLOBAL) {
+        fprintf(stderr, "show global status: expected global scope\n");
+        failures = 1;
+    }
+
+    statement = child_at(result.root, 2U);
+    if (statement != NULL && statement->show_status_scope != MYLITE_SQL_AST_SHOW_STATUS_SESSION) {
+        fprintf(stderr, "show session status: expected session scope\n");
+        failures = 1;
+    }
+
+    statement = child_at(result.root, 3U);
+    if (statement != NULL && statement->show_status_scope != MYLITE_SQL_AST_SHOW_STATUS_SESSION) {
+        fprintf(stderr, "show local status: expected session scope\n");
+        failures = 1;
+    }
+
+    statement = child_at(result.root, 4U);
+    failures += expect_child_count(statement, 1U, "show status like child count");
+    failures += expect_literal(child_at(statement, 0U), MYLITE_SQL_AST_LITERAL_STRING,
+                               "show status like pattern");
+    failures +=
+        expect_span_text(child_at(statement, 0U), "'Uptime%'", "show status like pattern text");
+
+    statement = child_at(result.root, 5U);
+    failures += expect_child_count(statement, 1U, "show global status like child count");
+    failures += expect_span_text(child_at(statement, 0U), "'Com\\_%'",
+                                 "show global status escaped pattern text");
+
+    statement = child_at(result.root, 6U);
+    failures += expect_child_count(statement, 1U, "show status where child count");
+    failures += expect_node(child_at(statement, 0U), MYLITE_SQL_AST_WHERE_CLAUSE,
+                            "show status where clause");
+
+    statement = child_at(result.root, 7U);
+    failures += expect_child_count(statement, 1U, "show status where value child count");
+    failures += expect_node(child_at(statement, 0U), MYLITE_SQL_AST_WHERE_CLAUSE,
+                            "show status where value clause");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE status (global INT, session INT, local INT, status INT);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_child_count(result.root, 1U, "show status keyword identifiers");
+    failures += expect_span_text(child_at(child_at(result.root, 0U), 0U), "status",
+                                 "status keyword as table name");
+    statement = child_at(child_at(result.root, 0U), 1U);
+    failures += expect_span_text(child_at(child_at(statement, 0U), 0U), "global",
+                                 "global keyword as status column name");
+    failures += expect_span_text(child_at(child_at(statement, 1U), 0U), "session",
+                                 "session keyword as status column name");
+    failures += expect_span_text(child_at(child_at(statement, 2U), 0U), "local",
+                                 "local keyword as status column name");
+    failures += expect_span_text(child_at(child_at(statement, 3U), 0U), "status",
+                                 "status keyword as column name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW STATUS LIKE 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW STATUS LIKE 'a%' WHERE TRUE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW STATUS LIMIT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW LOCAL GLOBAL STATUS;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW STATUS GLOBAL;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     // NOLINTEND(readability-magic-numbers)

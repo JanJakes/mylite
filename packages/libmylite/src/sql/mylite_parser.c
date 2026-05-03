@@ -2568,6 +2568,38 @@ mylite_sql_parser_make_show_variables_scope(struct mylite_sql_token token,
     };
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_status_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token show_token,
+    struct mylite_sql_parser_show_status_scope scope, struct mylite_sql_token status_token,
+    struct mylite_sql_ast_node *filter)
+{
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&show_token), span_from_token(&status_token));
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (filter != NULL) {
+        span = span_join(span, filter->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_SHOW_STATUS_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+    mylite_sql_ast_node_set_show_status_scope(statement, scope.scope);
+    mylite_sql_ast_node_append_child(statement, filter);
+    return statement;
+}
+
+struct mylite_sql_parser_show_status_scope
+mylite_sql_parser_make_show_status_scope(struct mylite_sql_token token,
+                                         enum mylite_sql_ast_show_status_scope scope)
+{
+    return (struct mylite_sql_parser_show_status_scope){
+        .token = token,
+        .scope = scope,
+    };
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_tables_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_parser_show_tables_tokens tokens,
     struct mylite_sql_ast_node *schema_name, struct mylite_sql_ast_node *filter)
@@ -5649,6 +5681,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"SOME", MYLITE_SQL_PARSE_SOME},
         {"SPATIAL", MYLITE_SQL_PARSE_SPATIAL},
         {"START", MYLITE_SQL_PARSE_START},
+        {"STATUS", MYLITE_SQL_PARSE_STATUS},
         {"STORAGE", MYLITE_SQL_PARSE_STORAGE},
         {"TABLE", MYLITE_SQL_PARSE_TABLE},
         {"TABLES", MYLITE_SQL_PARSE_TABLES},

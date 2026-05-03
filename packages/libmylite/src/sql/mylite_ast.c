@@ -644,6 +644,16 @@ void mylite_sql_ast_node_set_show_variables_scope(struct mylite_sql_ast_node *no
     node->show_variables_scope = scope;
 }
 
+void mylite_sql_ast_node_set_show_status_scope(struct mylite_sql_ast_node *node,
+                                               enum mylite_sql_ast_show_status_scope scope)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->show_status_scope = scope;
+}
+
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node)
 {
     const struct mylite_sql_ast_node *child = NULL;
@@ -924,6 +934,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "show_diagnostics_count_statement";
     case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
         return "show_variables_statement";
+    case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:
+        return "show_status_statement";
     }
 
     return "unknown";

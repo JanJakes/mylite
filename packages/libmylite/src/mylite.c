@@ -1159,6 +1159,11 @@ struct mylite_show_variables_query {
     const char *like_pattern;
 };
 
+struct mylite_show_status_query {
+    enum mylite_sql_ast_show_status_scope scope;
+    const char *like_pattern;
+};
+
 struct mylite_show_tables_query {
     const char *schema_name;
     const char *column_name;
@@ -1234,6 +1239,7 @@ struct mylite_db {
     bool transaction_active;
     bool transaction_consistent_snapshot;
     bool transaction_released;
+    time_t status_started_at;
     struct mylite_savepoint_state savepoints;
     struct mylite_pending_auto_increment *pending_auto_increments;
     size_t pending_auto_increment_count;
@@ -1538,6 +1544,17 @@ static int show_variables_sql(mylite_db *database, const struct mylite_show_vari
                               char **out_sql);
 static void append_show_variable_row(sqlite3_str *sql, bool *first, const char *name,
                                      const char *value);
+static int prepare_show_status_statement(mylite_db *database,
+                                         const struct mylite_sql_ast_node *statement,
+                                         mylite_stmt **out_stmt);
+static char *copy_show_status_like_pattern(const struct mylite_sql_ast_node *statement);
+static int show_status_sql(mylite_db *database, const struct mylite_show_status_query *query,
+                           char **out_sql);
+static uint64_t show_status_uptime(const mylite_db *database);
+static void append_show_status_row(sqlite3_str *sql, bool *first, const char *name,
+                                   const char *value);
+static void append_show_status_integer_row(sqlite3_str *sql, bool *first, const char *name,
+                                           uint64_t value);
 static int prepare_show_tables_statement(mylite_db *database,
                                          const struct mylite_sql_ast_node *statement,
                                          mylite_stmt **out_stmt);
@@ -4855,6 +4872,7 @@ static int open_sqlite_database(const char *filename, int flags, const char *vfs
     if (database == NULL) {
         return MYLITE_NOMEM;
     }
+    database->status_started_at = time(NULL);
 
     rc = sqlite3_open_v2(filename, &database->sqlite, flags, vfs_name);
     if (rc != SQLITE_OK) {
@@ -5000,6 +5018,8 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
             return prepare_show_schemas_statement(database, out_stmt);
         case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
             return prepare_show_variables_statement(database, statement, out_stmt);
+        case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:
+            return prepare_show_status_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
             return prepare_show_tables_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
@@ -5219,6 +5239,7 @@ static int prepare_schema_lifecycle_statement(mylite_db *database,
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
@@ -5366,6 +5387,7 @@ static int prepare_connection_charset_statement(mylite_db *database,
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
@@ -5678,6 +5700,7 @@ static int prepare_transaction_statement(mylite_db *database,
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
@@ -6041,6 +6064,147 @@ static void append_show_variable_row(sqlite3_str *sql, bool *first, const char *
     }
     sqlite3_str_appendf(sql, "SELECT %Q AS \"Variable_name\", %Q AS \"Value\"", name,
                         value == NULL ? "" : value);
+    *first = false;
+}
+
+static int prepare_show_status_statement(mylite_db *database,
+                                         const struct mylite_sql_ast_node *statement,
+                                         mylite_stmt **out_stmt)
+{
+    char *like_pattern = NULL;
+    char *sqlite_sql = NULL;
+    int status = MYLITE_OK;
+
+    if (find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
+        (void)set_error_message(database, "SHOW STATUS WHERE is not supported");
+        return MYLITE_UNSUPPORTED;
+    }
+
+    like_pattern = copy_show_status_like_pattern(statement);
+    if (find_child_kind(statement, MYLITE_SQL_AST_LITERAL) != NULL && like_pattern == NULL) {
+        status = MYLITE_NOMEM;
+    }
+    if (status == MYLITE_OK) {
+        status = show_status_sql(database,
+                                 &(const struct mylite_show_status_query){
+                                     .scope = statement->show_status_scope,
+                                     .like_pattern = like_pattern,
+                                 },
+                                 &sqlite_sql);
+    }
+    if (status == MYLITE_OK) {
+        status = prepare_sqlite_statement(database, sqlite_sql, out_stmt);
+    }
+
+    if (status == MYLITE_NOMEM) {
+        (void)set_error_message(database, "out of memory");
+    }
+    free(like_pattern);
+    sqlite3_free(sqlite_sql);
+    return status;
+}
+
+static char *copy_show_status_like_pattern(const struct mylite_sql_ast_node *statement)
+{
+    const struct mylite_sql_ast_node *literal = find_child_kind(statement, MYLITE_SQL_AST_LITERAL);
+
+    if (literal == NULL) {
+        return NULL;
+    }
+    return copy_show_like_pattern_span(literal);
+}
+
+static int show_status_sql(mylite_db *database, const struct mylite_show_status_query *query,
+                           char **out_sql)
+{
+    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
+    uint64_t uptime = show_status_uptime(database);
+    bool first = true;
+
+    (void)query->scope;
+    *out_sql = NULL;
+    if (sql == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    sqlite3_str_appendall(sql, "SELECT Variable_name, Value FROM (");
+    append_show_status_row(sql, &first, "Com_begin", "0");
+    append_show_status_row(sql, &first, "Com_commit", "0");
+    append_show_status_row(sql, &first, "Com_create_db", "0");
+    append_show_status_row(sql, &first, "Com_create_index", "0");
+    append_show_status_row(sql, &first, "Com_create_table", "0");
+    append_show_status_row(sql, &first, "Com_delete", "0");
+    append_show_status_row(sql, &first, "Com_drop_db", "0");
+    append_show_status_row(sql, &first, "Com_drop_index", "0");
+    append_show_status_row(sql, &first, "Com_drop_table", "0");
+    append_show_status_row(sql, &first, "Com_insert", "0");
+    append_show_status_row(sql, &first, "Com_release_savepoint", "0");
+    append_show_status_row(sql, &first, "Com_rename_table", "0");
+    append_show_status_row(sql, &first, "Com_replace", "0");
+    append_show_status_row(sql, &first, "Com_rollback", "0");
+    append_show_status_row(sql, &first, "Com_rollback_to_savepoint", "0");
+    append_show_status_row(sql, &first, "Com_savepoint", "0");
+    append_show_status_row(sql, &first, "Com_select", "0");
+    append_show_status_row(sql, &first, "Com_set_option", "0");
+    append_show_status_row(sql, &first, "Com_show_errors", "0");
+    append_show_status_row(sql, &first, "Com_show_fields", "0");
+    append_show_status_row(sql, &first, "Com_show_keys", "0");
+    append_show_status_row(sql, &first, "Com_show_status", "0");
+    append_show_status_row(sql, &first, "Com_show_tables", "0");
+    append_show_status_row(sql, &first, "Com_show_variables", "0");
+    append_show_status_row(sql, &first, "Com_show_warnings", "0");
+    append_show_status_row(sql, &first, "Com_truncate", "0");
+    append_show_status_row(sql, &first, "Com_update", "0");
+    append_show_status_row(sql, &first, "Connections", "1");
+    append_show_status_row(sql, &first, "Questions", "0");
+    append_show_status_row(sql, &first, "Threads_cached", "0");
+    append_show_status_row(sql, &first, "Threads_connected", "1");
+    append_show_status_row(sql, &first, "Threads_created", "1");
+    append_show_status_row(sql, &first, "Threads_running", "1");
+    append_show_status_integer_row(sql, &first, "Uptime", uptime);
+    append_show_status_integer_row(sql, &first, "Uptime_since_flush_status", uptime);
+    sqlite3_str_appendall(sql, ")");
+
+    if (query->like_pattern != NULL) {
+        sqlite3_str_appendf(sql, " WHERE Variable_name LIKE %Q ESCAPE '\\'", query->like_pattern);
+    }
+    sqlite3_str_appendall(sql,
+                          " ORDER BY Variable_name COLLATE NOCASE, Variable_name COLLATE BINARY");
+
+    *out_sql = sqlite3_str_finish(sql);
+    return *out_sql == NULL ? MYLITE_NOMEM : MYLITE_OK;
+}
+
+static uint64_t show_status_uptime(const mylite_db *database)
+{
+    time_t now = time(NULL);
+
+    if (database == NULL || database->status_started_at == (time_t)-1 || now == (time_t)-1 ||
+        now < database->status_started_at) {
+        return 0U;
+    }
+    return (uint64_t)(now - database->status_started_at);
+}
+
+static void append_show_status_row(sqlite3_str *sql, bool *first, const char *name,
+                                   const char *value)
+{
+    if (!*first) {
+        sqlite3_str_appendall(sql, " UNION ALL ");
+    }
+    sqlite3_str_appendf(sql, "SELECT %Q AS \"Variable_name\", %Q AS \"Value\"", name,
+                        value == NULL ? "" : value);
+    *first = false;
+}
+
+static void append_show_status_integer_row(sqlite3_str *sql, bool *first, const char *name,
+                                           uint64_t value)
+{
+    if (!*first) {
+        sqlite3_str_appendall(sql, " UNION ALL ");
+    }
+    sqlite3_str_appendf(sql, "SELECT %Q AS \"Variable_name\", '%llu' AS \"Value\"", name,
+                        (unsigned long long)value);
     *first = false;
 }
 
@@ -8517,6 +8681,7 @@ static int infer_expression_descriptor(mylite_db *database, const struct mylite_
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
@@ -11471,6 +11636,7 @@ static int bind_select_predicate_expression_in_clause(mylite_db *database,
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
@@ -12172,6 +12338,7 @@ static int bind_select_aggregate_aware_expression(mylite_db *database,
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
@@ -12733,6 +12900,7 @@ static int bind_select_order_expression(mylite_db *database,
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
@@ -13449,6 +13617,7 @@ static bool select_expression_is_group_invariant( // NOLINT(misc-no-recursion)
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
@@ -21476,6 +21645,7 @@ static int bind_update_predicate_expression(mylite_stmt *stmt,
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
@@ -22944,6 +23114,7 @@ static int bind_delete_predicate_expression(mylite_stmt *stmt,
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
@@ -34497,6 +34668,7 @@ static int copy_insert_simple_value(const struct mylite_sql_ast_node *value_node
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:

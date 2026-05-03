@@ -222,9 +222,17 @@ level application surfaces.
        catalog of charset/collation, diagnostics, autocommit, transaction,
        SQL-mode, and version variables, session/default scope behavior, and a
        clear unsupported diagnostic for parsed `WHERE` filters until shared
-       SHOW filtering lands. Specs:
+       SHOW filtering lands. The first `SHOW STATUS` slice is specified for
+       `SHOW [GLOBAL|SESSION|LOCAL] STATUS [LIKE 'pattern' | WHERE expr]`,
+       including `Variable_name` / `Value` metadata, `LOCAL` as a session
+       synonym, case-insensitive `LIKE` filtering with escapes, embedded
+       connection/thread/uptime rows, documented zero placeholders for common
+       `Questions` and `Com_*` counters, same-value session/global behavior
+       where MyLite has no separate mutable global state, and a clear
+       unsupported diagnostic for parsed `WHERE` filters. Specs:
        [SHOW diagnostics](../show-diagnostics/specs.md),
-       [SHOW VARIABLES](../show-variables/specs.md).
+       [SHOW VARIABLES](../show-variables/specs.md),
+       [SHOW STATUS](../show-status/specs.md).
 41. [ ] User and system variables: `SET`, user-variable storage, system-variable
        validation, scope, charset/collation metadata, and expression use.
 42. [ ] Prepared statements: `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`,

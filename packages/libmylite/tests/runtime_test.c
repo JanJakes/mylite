@@ -119,6 +119,25 @@ struct show_variable_expectation {
     const char *context;
 };
 
+struct show_status_numeric_expectation {
+    const char *sql;
+    const char *const *variable_names;
+    int row_count;
+    const char *context;
+};
+
+struct show_status_row_expectation {
+    const char *variable_name;
+    const char *value;
+};
+
+struct show_status_catalog_expectation {
+    const char *sql;
+    const struct show_status_row_expectation *rows;
+    int row_count;
+    const char *context;
+};
+
 struct sqlite_physical_value_expectation {
     const char *path;
     const char *physical_name;
@@ -205,6 +224,7 @@ static int test_alter_table_key_operations_execution(void);
 static int test_rename_table_execution(void);
 static int test_truncate_table_execution(void);
 static int test_show_variables_execution(void);
+static int test_show_status_execution(void);
 static int test_show_tables_execution(void);
 static int test_show_columns_execution(void);
 static int test_show_index_execution(void);
@@ -247,6 +267,10 @@ static int expect_select_rows(mylite_db *database, const char *sql, const char *
                               const char *context);
 static int expect_show_variables_contains(mylite_db *database,
                                           const struct show_variable_expectation *expected);
+static int expect_show_status_catalog_rows(mylite_db *database,
+                                           const struct show_status_catalog_expectation *expected);
+static int expect_show_status_numeric_rows(mylite_db *database,
+                                           const struct show_status_numeric_expectation *expected);
 static int expect_select_row_count(mylite_db *database, const char *sql, int row_count,
                                    const char *context);
 static int expect_information_schema_schemata_row(mylite_db *database,
@@ -318,6 +342,7 @@ static int expect_int(int actual, int expected, const char *context);
 static int expect_int64(int64_t actual, int64_t expected, const char *context);
 static int expect_u16(unsigned int actual, unsigned int expected, const char *context);
 static int expect_string(const char *actual, const char *expected, const char *context);
+static int expect_unsigned_decimal_text(const char *actual, const char *context);
 static int expect_null_text(const char *actual, const char *context);
 static int expect_contains(const char *actual, const char *expected_fragment, const char *context);
 static int expect_bytes(const unsigned char *actual, const void *expected, size_t size,
@@ -349,6 +374,7 @@ int main(void)
     failures += test_rename_table_execution();
     failures += test_truncate_table_execution();
     failures += test_show_variables_execution();
+    failures += test_show_status_execution();
     failures += test_show_tables_execution();
     failures += test_show_columns_execution();
     failures += test_show_index_execution();
@@ -4935,6 +4961,174 @@ static int expect_show_variables_contains(mylite_db *database,
                 expected->variable_name);
         failures = 1;
     }
+    failures += expect_int64(mylite_affected_rows(stmt), -1, expected->context);
+    mylite_finalize(stmt);
+    return failures;
+}
+
+static int test_show_status_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const columns[] = {"Variable_name", "Value"};
+    static const char *const diagnostics_columns[] = {"Level", "Code", "Message"};
+    static const char *const uptime_names[] = {"Uptime", "Uptime_since_flush_status"};
+    static const char *const threads_values[] = {
+        "Threads_cached",  "0", "Threads_connected", "1",
+        "Threads_created", "1", "Threads_running",   "1",
+    };
+    static const char *const connections_values[] = {"Connections", "1"};
+    static const char *const questions_values[] = {"Questions", "0"};
+    static const char *const com_select_values[] = {"Com_select", "0"};
+    static const char *const com_show_values[] = {
+        "Com_show_errors",   "0", "Com_show_fields", "0", "Com_show_keys",      "0",
+        "Com_show_status",   "0", "Com_show_tables", "0", "Com_show_variables", "0",
+        "Com_show_warnings", "0",
+    };
+    static const struct show_status_row_expectation catalog_rows[] = {
+        {"Com_begin", "0"},
+        {"Com_commit", "0"},
+        {"Com_create_db", "0"},
+        {"Com_create_index", "0"},
+        {"Com_create_table", "0"},
+        {"Com_delete", "0"},
+        {"Com_drop_db", "0"},
+        {"Com_drop_index", "0"},
+        {"Com_drop_table", "0"},
+        {"Com_insert", "0"},
+        {"Com_release_savepoint", "0"},
+        {"Com_rename_table", "0"},
+        {"Com_replace", "0"},
+        {"Com_rollback", "0"},
+        {"Com_rollback_to_savepoint", "0"},
+        {"Com_savepoint", "0"},
+        {"Com_select", "0"},
+        {"Com_set_option", "0"},
+        {"Com_show_errors", "0"},
+        {"Com_show_fields", "0"},
+        {"Com_show_keys", "0"},
+        {"Com_show_status", "0"},
+        {"Com_show_tables", "0"},
+        {"Com_show_variables", "0"},
+        {"Com_show_warnings", "0"},
+        {"Com_truncate", "0"},
+        {"Com_update", "0"},
+        {"Connections", "1"},
+        {"Questions", "0"},
+        {"Threads_cached", "0"},
+        {"Threads_connected", "1"},
+        {"Threads_created", "1"},
+        {"Threads_running", "1"},
+        {"Uptime", NULL},
+        {"Uptime_since_flush_status", NULL},
+    };
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open show status");
+
+    failures += expect_show_status_catalog_rows(
+        database, &(const struct show_status_catalog_expectation){
+                      .sql = "SHOW STATUS",
+                      .rows = catalog_rows,
+                      .row_count = (int)(sizeof(catalog_rows) / sizeof(catalog_rows[0])),
+                      .context = "show status ordered catalog",
+                  });
+    failures +=
+        expect_show_status_numeric_rows(database, &(const struct show_status_numeric_expectation){
+                                                      .sql = "SHOW STATUS LIKE 'Uptime%'",
+                                                      .variable_names = uptime_names,
+                                                      .row_count = 2,
+                                                      .context = "show status uptime rows",
+                                                  });
+    failures += expect_select_rows(database, "SHOW STATUS LIKE 'Threads%'", columns, 2,
+                                   threads_values, 4, "show status thread rows");
+    failures += expect_select_rows(database, "SHOW STATUS LIKE 'threads_%'", columns, 2,
+                                   threads_values, 4, "show status like is case-insensitive");
+    failures +=
+        expect_select_rows(database, "SHOW STATUS LIKE 'THREADS\\_%'", columns, 2, threads_values,
+                           4, "show status escaped like is case-insensitive");
+    failures += expect_select_rows(database, "SHOW SESSION STATUS LIKE 'Threads%'", columns, 2,
+                                   threads_values, 4, "show session status threads");
+    failures += expect_select_rows(database, "SHOW LOCAL STATUS LIKE 'Threads%'", columns, 2,
+                                   threads_values, 4, "show local status threads");
+    failures += expect_select_rows(database, "SHOW GLOBAL STATUS LIKE 'Threads%'", columns, 2,
+                                   threads_values, 4, "show global status threads");
+    failures += expect_select_rows(database, "SHOW STATUS LIKE 'Connections'", columns, 2,
+                                   connections_values, 1, "show status connections");
+    failures += expect_select_rows(database, "SHOW STATUS LIKE 'Questions'", columns, 2,
+                                   questions_values, 1, "show status questions placeholder");
+    failures += expect_select_rows(database, "SHOW STATUS LIKE 'Com_select'", columns, 2,
+                                   com_select_values, 1, "show status com select placeholder");
+    failures += expect_select_rows(database, "SHOW STATUS LIKE 'Com\\_show\\_%'", columns, 2,
+                                   com_show_values, 7, "show status escaped com show rows");
+    failures += expect_select_rows(database, "SHOW STATUS LIKE 'no_such_status'", columns, 2, NULL,
+                                   0, "show status empty like result");
+
+    failures += expect_prepare_error(database, "SHOW STATUS WHERE Variable_name = 'Uptime'",
+                                     MYLITE_UNSUPPORTED, "SHOW STATUS WHERE is not supported",
+                                     "show status where is parsed but unsupported");
+    failures += expect_prepare_error(database, "SHOW STATUS WHERE Value = '0'", MYLITE_UNSUPPORTED,
+                                     "SHOW STATUS WHERE is not supported",
+                                     "show status where value is parsed but unsupported");
+    failures += expect_prepare_error(database, "SHOW STATUS LIMIT 1", MYLITE_PARSE_ERROR,
+                                     "syntax_error", "show status limit syntax");
+
+    failures += execute_sql(database, "CREATE DATABASE mylite_show_status", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_show_status", MYLITE_DONE);
+    failures +=
+        expect_prepare_error(database, "SELECT * FROM missing_show_status_table", MYLITE_EXEC_ERROR,
+                             "doesn't exist", "show status error source");
+    failures += expect_select_rows(database, "SHOW STATUS LIKE 'Questions'", columns, 2,
+                                   questions_values, 1, "show status clears diagnostics");
+    failures += expect_select_rows(database, "SHOW ERRORS", diagnostics_columns, 3, NULL, 0,
+                                   "show status cleared diagnostics");
+
+    mylite_close(database);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
+    return failures;
+}
+
+static int expect_show_status_catalog_rows(mylite_db *database,
+                                           const struct show_status_catalog_expectation *expected)
+{
+    static const char *const columns[] = {"Variable_name", "Value"};
+    mylite_stmt *stmt = NULL;
+    int failures = prepare_sql(database, expected->sql, MYLITE_OK, &stmt);
+
+    failures += expect_column_names(stmt, columns, 2, expected->context);
+    for (int row = 0; row < expected->row_count; ++row) {
+        failures += expect_status(mylite_step(stmt), MYLITE_ROW, expected->context);
+        failures += expect_string(mylite_column_text(stmt, 0), expected->rows[row].variable_name,
+                                  expected->context);
+        if (expected->rows[row].value == NULL) {
+            failures +=
+                expect_unsigned_decimal_text(mylite_column_text(stmt, 1), expected->context);
+        } else {
+            failures += expect_string(mylite_column_text(stmt, 1), expected->rows[row].value,
+                                      expected->context);
+        }
+    }
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, expected->context);
+    failures += expect_int64(mylite_affected_rows(stmt), -1, expected->context);
+    mylite_finalize(stmt);
+    return failures;
+}
+
+static int expect_show_status_numeric_rows(mylite_db *database,
+                                           const struct show_status_numeric_expectation *expected)
+{
+    static const char *const columns[] = {"Variable_name", "Value"};
+    mylite_stmt *stmt = NULL;
+    int failures = prepare_sql(database, expected->sql, MYLITE_OK, &stmt);
+
+    failures += expect_column_names(stmt, columns, 2, expected->context);
+    for (int row = 0; row < expected->row_count; ++row) {
+        failures += expect_status(mylite_step(stmt), MYLITE_ROW, expected->context);
+        failures += expect_string(mylite_column_text(stmt, 0), expected->variable_names[row],
+                                  expected->context);
+        failures += expect_unsigned_decimal_text(mylite_column_text(stmt, 1), expected->context);
+    }
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, expected->context);
     failures += expect_int64(mylite_affected_rows(stmt), -1, expected->context);
     mylite_finalize(stmt);
     return failures;
@@ -12342,6 +12536,22 @@ static int expect_string(const char *actual, const char *expected, const char *c
         return 1;
     }
 
+    return 0;
+}
+
+static int expect_unsigned_decimal_text(const char *actual, const char *context)
+{
+    if (actual == NULL || actual[0] == '\0') {
+        fprintf(stderr, "%s: expected unsigned decimal text, got '%s'\n", context,
+                actual == NULL ? "(null)" : actual);
+        return 1;
+    }
+    for (const char *cursor = actual; *cursor != '\0'; ++cursor) {
+        if (*cursor < '0' || *cursor > '9') {
+            fprintf(stderr, "%s: expected unsigned decimal text, got '%s'\n", context, actual);
+            return 1;
+        }
+    }
     return 0;
 }
 

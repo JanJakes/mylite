@@ -156,6 +156,8 @@ static void dump_statements(const MyliteAst *ast) {
         mylite_ast_flush_statement_view(ast, i);
     const MyliteAstLoadStatement *load_statement =
         mylite_ast_load_statement_view(ast, i);
+    const MyliteAstAccountStatement *account_statement =
+        mylite_ast_account_statement_view(ast, i);
     const MyliteAstDeleteStatement *delete_statement =
         mylite_ast_delete_statement_view(ast, i);
     const MyliteAstInsertStatement *insert_statement =
@@ -1314,6 +1316,90 @@ static void dump_statements(const MyliteAst *ast) {
         if (expression != NULL) {
           dump_expression_tree(expression, 3);
         }
+      }
+    }
+    if (account_statement != NULL) {
+      printf("  account_statement span=%zu..%zu kind=%s if_exists=%d "
+             "if_not_exists=%d require=%d connection_options=%d "
+             "password_or_lock=%d comment_or_attribute=%d resource_group=%d "
+             "for_user=%d random_password=%d accounts=%zu node=%s "
+             "password_len=%zu replacement_len=%zu\n",
+             mylite_ast_account_statement_view_start(account_statement),
+             mylite_ast_account_statement_view_end(account_statement),
+             mylite_account_statement_kind_name(
+                 mylite_ast_account_statement_view_kind(account_statement)),
+             mylite_ast_account_statement_view_has_if_exists(
+                 account_statement),
+             mylite_ast_account_statement_view_has_if_not_exists(
+                 account_statement),
+             mylite_ast_account_statement_view_has_require_clause(
+                 account_statement),
+             mylite_ast_account_statement_view_has_connection_options(
+                 account_statement),
+             mylite_ast_account_statement_view_has_password_or_lock_options(
+                 account_statement),
+             mylite_ast_account_statement_view_has_comment_or_attribute(
+                 account_statement),
+             mylite_ast_account_statement_view_has_resource_group(
+                 account_statement),
+             mylite_ast_account_statement_view_has_for_user(account_statement),
+             mylite_ast_account_statement_view_uses_random_password(
+                 account_statement),
+             mylite_ast_account_statement_view_account_count(
+                 account_statement),
+             node_symbol_or_none(
+                 mylite_ast_account_statement_view_node(account_statement)),
+             mylite_ast_account_statement_view_password_value_length(
+                 account_statement),
+             mylite_ast_account_statement_view_replacement_password_value_length(
+                 account_statement));
+      for (size_t j = 0;
+           j < mylite_ast_account_statement_view_account_count(
+                   account_statement);
+           j++) {
+        const MyliteAstAccount *account =
+            mylite_ast_account_statement_view_account_at(account_statement, j);
+        printf("    account[%zu] span=%zu..%zu current_user=%d host=%d "
+               "auth=%s user=",
+               j, mylite_ast_account_view_start(account),
+               mylite_ast_account_view_end(account),
+               mylite_ast_account_view_is_current_user(account),
+               mylite_ast_account_view_has_explicit_host(account),
+               mylite_account_auth_kind_name(
+                   mylite_ast_account_view_auth_kind(account)));
+        const char *user = mylite_ast_account_view_user_value(account);
+        if (user == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(user,
+                              mylite_ast_account_view_user_value_length(
+                                  account));
+        }
+        fputs(" host=", stdout);
+        const char *host = mylite_ast_account_view_host_value(account);
+        if (host == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(host,
+                              mylite_ast_account_view_host_value_length(
+                                  account));
+        }
+        fputs(" plugin=", stdout);
+        const char *plugin =
+            mylite_ast_account_view_auth_plugin_value(account);
+        if (plugin == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(
+              plugin,
+              mylite_ast_account_view_auth_plugin_value_length(account));
+        }
+        fputs(" auth_string_len=", stdout);
+        printf("%zu hash_len=%zu replacement_len=%zu\n",
+               mylite_ast_account_view_auth_string_value_length(account),
+               mylite_ast_account_view_hash_string_value_length(account),
+               mylite_ast_account_view_replacement_auth_string_value_length(
+                   account));
       }
     }
     if (insert_statement != NULL) {

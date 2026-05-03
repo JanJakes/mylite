@@ -275,16 +275,16 @@ below. The current prototype parses the WordPress MySQL server query corpus with
 
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
-| `ALTER USER` | ❌ | medium | Authentication plugins, passwords, MFA, TLS, resources, lock/expire, comments, attributes, and default roles. |  |
-| `CREATE USER` | ❌ | medium | User creation syntax, IF NOT EXISTS, auth factors, TLS, resources, password options, and comments. |  |
+| `ALTER USER` | ❌ | medium | Authentication plugins, passwords, MFA, TLS, resources, lock/expire, comments, attributes, and default roles. | Parser prototype exposes a typed account-management view with decoded account names, current-user marker, auth kind/plugin/string/hash/replacement values, IF EXISTS marker, and presence flags for TLS require, connection, password/lock, comment/attribute, and resource-group clauses. Runtime account metadata, auth semantics, diagnostics, and privilege checks are not implemented yet. |
+| `CREATE USER` | ❌ | medium | User creation syntax, IF NOT EXISTS, auth factors, TLS, resources, password options, and comments. | Parser prototype exposes a typed account-management view with decoded account names and hosts, IF NOT EXISTS marker, auth kind/plugin/string/hash values, random-password marker, and option-clause presence flags. Runtime account creation, generated random password values, auth semantics, diagnostics, and privilege checks are not implemented yet. |
 | `CREATE ROLE` | ❌ | medium | Role creation syntax and metadata. |  |
-| `DROP USER` | ❌ | medium | User deletion syntax and privilege cleanup. |  |
+| `DROP USER` | ❌ | medium | User deletion syntax and privilege cleanup. | Parser prototype exposes a typed account-management view with decoded user/host list and IF EXISTS marker. Runtime account deletion, privilege cleanup, diagnostics, and privilege checks are not implemented yet. |
 | `DROP ROLE` | ❌ | medium | Role deletion syntax and grant cleanup. |  |
 | `GRANT` | ❌ | medium | Privilege and role grants, WITH GRANT OPTION, PROXY, dynamic privileges, and partial revoke semantics. |  |
 | `RENAME USER` | ❌ | medium | User rename syntax and privilege metadata. |  |
 | `REVOKE` | ❌ | medium | Privilege and role revocation semantics. |  |
 | `SET DEFAULT ROLE` | ❌ | medium | Default role assignment. |  |
-| `SET PASSWORD` | ❌ | medium | Password assignment semantics. |  |
+| `SET PASSWORD` | ❌ | medium | Password assignment semantics. | Parser prototype exposes a typed account-management view with optional FOR user account, decoded password value, and decoded replacement password value. Runtime password assignment, auth semantics, diagnostics, and privilege checks are not implemented yet. |
 | `SET ROLE` | ❌ | medium | Active-role selection. |  |
 | `CREATE RESOURCE GROUP` | ❌ | low | Thread resource group creation syntax. |  |
 | `ALTER RESOURCE GROUP` | ❌ | low | Resource group modification syntax. |  |

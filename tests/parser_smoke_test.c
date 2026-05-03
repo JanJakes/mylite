@@ -209,6 +209,7 @@ static int expect_table_maintenance_statement_view(void);
 static int expect_kill_statement_view(void);
 static int expect_flush_statement_view(void);
 static int expect_load_statement_view(void);
+static int expect_account_statement_view(void);
 static int expect_call_statement_view(void);
 static int expect_do_statement_view(void);
 static int expect_delete_statement_view(void);
@@ -832,6 +833,7 @@ int main(void) {
   failures += expect_kill_statement_view();
   failures += expect_flush_statement_view();
   failures += expect_load_statement_view();
+  failures += expect_account_statement_view();
   failures += expect_call_statement_view();
   failures += expect_do_statement_view();
   failures += expect_delete_statement_view();
@@ -5031,6 +5033,270 @@ static int expect_load_statement_view(void) {
         assignment == NULL ||
         mylite_ast_load_assignment_view_expression(assignment) == NULL) {
       fprintf(stderr, "LOAD XML view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+  return failed;
+}
+
+static int expect_account_statement_view(void) {
+  int failed = 0;
+  {
+    const char *sql =
+        "CREATE USER IF NOT EXISTS 'u1'@'localhost' IDENTIFIED WITH "
+        "mysql_native_password BY 'secret', u2@'%' IDENTIFIED BY RANDOM "
+        "PASSWORD";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "CREATE USER account view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+    const MyliteAstAccountStatement *view =
+        mylite_ast_account_statement_view(ast, 0);
+    const MyliteAstAccount *first =
+        mylite_ast_account_statement_view_account_at(view, 0);
+    const MyliteAstAccount *second =
+        mylite_ast_account_statement_view_account_at(view, 1);
+    if (view == NULL ||
+        mylite_ast_account_statement_view_kind(view) !=
+            MYLITE_ACCOUNT_STATEMENT_CREATE_USER ||
+        !mylite_ast_account_statement_view_has_if_not_exists(view) ||
+        !mylite_ast_account_statement_view_uses_random_password(view) ||
+        mylite_ast_account_statement_view_account_count(view) != 2 ||
+        first == NULL ||
+        mylite_ast_account_view_auth_kind(first) !=
+            MYLITE_ACCOUNT_AUTH_IDENTIFIED_WITH_BY ||
+        !value_matches_when_expected(
+            mylite_ast_account_view_user_value(first),
+            mylite_ast_account_view_user_value_length(first), "u1") ||
+        !value_matches_when_expected(
+            mylite_ast_account_view_host_value(first),
+            mylite_ast_account_view_host_value_length(first), "localhost") ||
+        !value_matches_when_expected(
+            mylite_ast_account_view_auth_plugin_value(first),
+            mylite_ast_account_view_auth_plugin_value_length(first),
+            "mysql_native_password") ||
+        !value_matches_when_expected(
+            mylite_ast_account_view_auth_string_value(first),
+            mylite_ast_account_view_auth_string_value_length(first),
+            "secret") ||
+        second == NULL ||
+        mylite_ast_account_view_auth_kind(second) !=
+            MYLITE_ACCOUNT_AUTH_IDENTIFIED_BY_RANDOM_PASSWORD ||
+        !value_matches_when_expected(
+            mylite_ast_account_view_user_value(second),
+            mylite_ast_account_view_user_value_length(second), "u2") ||
+        !value_matches_when_expected(
+            mylite_ast_account_view_host_value(second),
+            mylite_ast_account_view_host_value_length(second), "%")) {
+      fprintf(stderr, "CREATE USER account view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql = "CREATE USER 'u' IDENTIFIED BY PASSWORD 'hash'";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "CREATE USER password account view parse failed: status=%s "
+              "offset=%zu token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    const MyliteAstAccountStatement *view =
+        mylite_ast_account_statement_view(ast, 0);
+    const MyliteAstAccount *account =
+        mylite_ast_account_statement_view_account_at(view, 0);
+    if (view == NULL ||
+        mylite_ast_account_statement_view_has_if_not_exists(view) ||
+        mylite_ast_account_statement_view_account_count(view) != 1 ||
+        account == NULL ||
+        mylite_ast_account_view_auth_kind(account) !=
+            MYLITE_ACCOUNT_AUTH_IDENTIFIED_BY_PASSWORD ||
+        !value_matches_when_expected(
+            mylite_ast_account_view_user_value(account),
+            mylite_ast_account_view_user_value_length(account), "u") ||
+        !value_matches_when_expected(
+            mylite_ast_account_view_hash_string_value(account),
+            mylite_ast_account_view_hash_string_value_length(account), "hash")) {
+      fprintf(stderr, "CREATE USER password account view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql =
+        "ALTER USER IF EXISTS redqueen@localhost IDENTIFIED BY 'new' "
+        "REPLACE 'old'";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "ALTER USER account view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    const MyliteAstAccountStatement *view =
+        mylite_ast_account_statement_view(ast, 0);
+    const MyliteAstAccount *account =
+        mylite_ast_account_statement_view_account_at(view, 0);
+    if (view == NULL ||
+        mylite_ast_account_statement_view_kind(view) !=
+            MYLITE_ACCOUNT_STATEMENT_ALTER_USER ||
+        !mylite_ast_account_statement_view_has_if_exists(view) ||
+        mylite_ast_account_statement_view_account_count(view) != 1 ||
+        account == NULL ||
+        mylite_ast_account_view_auth_kind(account) !=
+            MYLITE_ACCOUNT_AUTH_IDENTIFIED_BY_REPLACE ||
+        !value_matches_when_expected(
+            mylite_ast_account_view_user_value(account),
+            mylite_ast_account_view_user_value_length(account), "redqueen") ||
+        !value_matches_when_expected(
+            mylite_ast_account_view_host_value(account),
+            mylite_ast_account_view_host_value_length(account), "localhost") ||
+        !value_matches_when_expected(
+            mylite_ast_account_view_auth_string_value(account),
+            mylite_ast_account_view_auth_string_value_length(account), "new") ||
+        !value_matches_when_expected(
+            mylite_ast_account_view_replacement_auth_string_value(account),
+            mylite_ast_account_view_replacement_auth_string_value_length(
+                account),
+            "old")) {
+      fprintf(stderr, "ALTER USER account view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql =
+        "ALTER USER CURRENT_USER() IDENTIFIED WITH caching_sha2_password AS "
+        "0xabcdef REQUIRE SSL WITH MAX_QUERIES_PER_HOUR 1 PASSWORD EXPIRE "
+        "ACCOUNT LOCK ATTRIBUTE '{\"tier\":\"dev\"}'";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "ALTER USER option account view parse failed: status=%s "
+              "offset=%zu token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    const MyliteAstAccountStatement *view =
+        mylite_ast_account_statement_view(ast, 0);
+    const MyliteAstAccount *account =
+        mylite_ast_account_statement_view_account_at(view, 0);
+    if (view == NULL ||
+        !mylite_ast_account_statement_view_has_require_clause(view) ||
+        !mylite_ast_account_statement_view_has_connection_options(view) ||
+        !mylite_ast_account_statement_view_has_password_or_lock_options(view) ||
+        !mylite_ast_account_statement_view_has_comment_or_attribute(view) ||
+        account == NULL ||
+        !mylite_ast_account_view_is_current_user(account) ||
+        mylite_ast_account_view_auth_kind(account) !=
+            MYLITE_ACCOUNT_AUTH_IDENTIFIED_WITH_AS ||
+        !value_matches_when_expected(
+            mylite_ast_account_view_auth_plugin_value(account),
+            mylite_ast_account_view_auth_plugin_value_length(account),
+            "caching_sha2_password") ||
+        !value_matches_when_expected(
+            mylite_ast_account_view_hash_string_value(account),
+            mylite_ast_account_view_hash_string_value_length(account),
+            "0xabcdef")) {
+      fprintf(stderr, "ALTER USER option account view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql = "DROP USER IF EXISTS 'u1'@'localhost', u2";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "DROP USER account view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    const MyliteAstAccountStatement *view =
+        mylite_ast_account_statement_view(ast, 0);
+    const MyliteAstAccount *second =
+        mylite_ast_account_statement_view_account_at(view, 1);
+    if (view == NULL ||
+        mylite_ast_account_statement_view_kind(view) !=
+            MYLITE_ACCOUNT_STATEMENT_DROP_USER ||
+        !mylite_ast_account_statement_view_has_if_exists(view) ||
+        mylite_ast_account_statement_view_account_count(view) != 2 ||
+        second == NULL ||
+        mylite_ast_account_view_has_explicit_host(second) ||
+        !value_matches_when_expected(
+            mylite_ast_account_view_user_value(second),
+            mylite_ast_account_view_user_value_length(second), "u2")) {
+      fprintf(stderr, "DROP USER account view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql =
+        "SET PASSWORD FOR 'usr1'@'localhost' = PASSWORD('x') REPLACE 'old'";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "SET PASSWORD account view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    const MyliteAstAccountStatement *view =
+        mylite_ast_account_statement_view(ast, 0);
+    const MyliteAstAccount *account =
+        mylite_ast_account_statement_view_account_at(view, 0);
+    if (view == NULL ||
+        mylite_ast_account_statement_view_kind(view) !=
+            MYLITE_ACCOUNT_STATEMENT_SET_PASSWORD ||
+        !mylite_ast_account_statement_view_has_for_user(view) ||
+        mylite_ast_account_statement_view_account_count(view) != 1 ||
+        account == NULL ||
+        !value_matches_when_expected(
+            mylite_ast_account_view_user_value(account),
+            mylite_ast_account_view_user_value_length(account), "usr1") ||
+        !value_matches_when_expected(
+            mylite_ast_account_statement_view_password_value(view),
+            mylite_ast_account_statement_view_password_value_length(view),
+            "x") ||
+        !value_matches_when_expected(
+            mylite_ast_account_statement_view_replacement_password_value(view),
+            mylite_ast_account_statement_view_replacement_password_value_length(
+                view),
+            "old")) {
+      fprintf(stderr, "SET PASSWORD account view failed: %s\n", sql);
       failed = 1;
     }
     mylite_ast_free(ast);

@@ -397,6 +397,27 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t load_statement_expression_tree_nodes = 0;
   size_t load_statement_expression_tree_operators = 0;
   size_t load_statement_expression_tree_leaf_values = 0;
+  size_t account_statement_views = 0;
+  size_t account_statement_create_users = 0;
+  size_t account_statement_alter_users = 0;
+  size_t account_statement_drop_users = 0;
+  size_t account_statement_set_passwords = 0;
+  size_t account_statement_if_exists = 0;
+  size_t account_statement_if_not_exists = 0;
+  size_t account_statement_for_users = 0;
+  size_t account_statement_random_passwords = 0;
+  size_t account_statement_password_values = 0;
+  size_t account_statement_replacement_password_values = 0;
+  size_t account_statement_accounts = 0;
+  size_t account_statement_current_users = 0;
+  size_t account_statement_explicit_hosts = 0;
+  size_t account_statement_user_values = 0;
+  size_t account_statement_host_values = 0;
+  size_t account_statement_auth_options = 0;
+  size_t account_statement_auth_plugins = 0;
+  size_t account_statement_auth_strings = 0;
+  size_t account_statement_hash_strings = 0;
+  size_t account_statement_replacement_auth_strings = 0;
   size_t rename_table_views = 0;
   size_t rename_table_pairs = 0;
   size_t set_statement_views = 0;
@@ -2042,6 +2063,93 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                 }
               }
             }
+            const MyliteAstAccountStatement *account_statement =
+                mylite_ast_account_statement_view(ast, i);
+            if (account_statement != NULL) {
+              account_statement_views++;
+              switch (
+                  mylite_ast_account_statement_view_kind(account_statement)) {
+                case MYLITE_ACCOUNT_STATEMENT_CREATE_USER:
+                  account_statement_create_users++;
+                  break;
+                case MYLITE_ACCOUNT_STATEMENT_ALTER_USER:
+                  account_statement_alter_users++;
+                  break;
+                case MYLITE_ACCOUNT_STATEMENT_DROP_USER:
+                  account_statement_drop_users++;
+                  break;
+                case MYLITE_ACCOUNT_STATEMENT_SET_PASSWORD:
+                  account_statement_set_passwords++;
+                  break;
+                default:
+                  break;
+              }
+              if (mylite_ast_account_statement_view_has_if_exists(
+                      account_statement)) {
+                account_statement_if_exists++;
+              }
+              if (mylite_ast_account_statement_view_has_if_not_exists(
+                      account_statement)) {
+                account_statement_if_not_exists++;
+              }
+              if (mylite_ast_account_statement_view_has_for_user(
+                      account_statement)) {
+                account_statement_for_users++;
+              }
+              if (mylite_ast_account_statement_view_uses_random_password(
+                      account_statement)) {
+                account_statement_random_passwords++;
+              }
+              if (mylite_ast_account_statement_view_password_value(
+                      account_statement) != NULL) {
+                account_statement_password_values++;
+              }
+              if (mylite_ast_account_statement_view_replacement_password_value(
+                      account_statement) != NULL) {
+                account_statement_replacement_password_values++;
+              }
+              size_t account_count =
+                  mylite_ast_account_statement_view_account_count(
+                      account_statement);
+              account_statement_accounts += account_count;
+              for (size_t j = 0; j < account_count; j++) {
+                const MyliteAstAccount *account =
+                    mylite_ast_account_statement_view_account_at(
+                        account_statement, j);
+                if (mylite_ast_account_view_is_current_user(account)) {
+                  account_statement_current_users++;
+                }
+                if (mylite_ast_account_view_has_explicit_host(account)) {
+                  account_statement_explicit_hosts++;
+                }
+                if (mylite_ast_account_view_user_value(account) != NULL) {
+                  account_statement_user_values++;
+                }
+                if (mylite_ast_account_view_host_value(account) != NULL) {
+                  account_statement_host_values++;
+                }
+                if (mylite_ast_account_view_auth_kind(account) !=
+                    MYLITE_ACCOUNT_AUTH_NONE) {
+                  account_statement_auth_options++;
+                }
+                if (mylite_ast_account_view_auth_plugin_value(account) !=
+                    NULL) {
+                  account_statement_auth_plugins++;
+                }
+                if (mylite_ast_account_view_auth_string_value(account) !=
+                    NULL) {
+                  account_statement_auth_strings++;
+                }
+                if (mylite_ast_account_view_hash_string_value(account) !=
+                    NULL) {
+                  account_statement_hash_strings++;
+                }
+                if (mylite_ast_account_view_replacement_auth_string_value(
+                        account) != NULL) {
+                  account_statement_replacement_auth_strings++;
+                }
+              }
+            }
             const MyliteAstSetStatement *set_statement =
                 mylite_ast_set_statement_view(ast, i);
             if (set_statement != NULL) {
@@ -2711,6 +2819,27 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_load_statement_expression_tree_nodes=%.2f "
            "avg_load_statement_expression_tree_operators=%.2f "
            "avg_load_statement_expression_tree_leaf_values=%.2f "
+           "avg_account_statement_views=%.2f "
+           "avg_account_statement_create_users=%.2f "
+           "avg_account_statement_alter_users=%.2f "
+           "avg_account_statement_drop_users=%.2f "
+           "avg_account_statement_set_passwords=%.2f "
+           "avg_account_statement_if_exists=%.2f "
+           "avg_account_statement_if_not_exists=%.2f "
+           "avg_account_statement_for_users=%.2f "
+           "avg_account_statement_random_passwords=%.2f "
+           "avg_account_statement_password_values=%.2f "
+           "avg_account_statement_replacement_password_values=%.2f "
+           "avg_account_statement_accounts=%.2f "
+           "avg_account_statement_current_users=%.2f "
+           "avg_account_statement_explicit_hosts=%.2f "
+           "avg_account_statement_user_values=%.2f "
+           "avg_account_statement_host_values=%.2f "
+           "avg_account_statement_auth_options=%.2f "
+           "avg_account_statement_auth_plugins=%.2f "
+           "avg_account_statement_auth_strings=%.2f "
+           "avg_account_statement_hash_strings=%.2f "
+           "avg_account_statement_replacement_auth_strings=%.2f "
            "avg_set_statement_views=%.2f "
            "avg_set_statement_assignments=%.2f "
            "avg_set_assignment_name_values=%.2f "
@@ -3125,6 +3254,29 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)load_statement_expression_tree_nodes / (double)parsed,
            (double)load_statement_expression_tree_operators / (double)parsed,
            (double)load_statement_expression_tree_leaf_values /
+               (double)parsed,
+           (double)account_statement_views / (double)parsed,
+           (double)account_statement_create_users / (double)parsed,
+           (double)account_statement_alter_users / (double)parsed,
+           (double)account_statement_drop_users / (double)parsed,
+           (double)account_statement_set_passwords / (double)parsed,
+           (double)account_statement_if_exists / (double)parsed,
+           (double)account_statement_if_not_exists / (double)parsed,
+           (double)account_statement_for_users / (double)parsed,
+           (double)account_statement_random_passwords / (double)parsed,
+           (double)account_statement_password_values / (double)parsed,
+           (double)account_statement_replacement_password_values /
+               (double)parsed,
+           (double)account_statement_accounts / (double)parsed,
+           (double)account_statement_current_users / (double)parsed,
+           (double)account_statement_explicit_hosts / (double)parsed,
+           (double)account_statement_user_values / (double)parsed,
+           (double)account_statement_host_values / (double)parsed,
+           (double)account_statement_auth_options / (double)parsed,
+           (double)account_statement_auth_plugins / (double)parsed,
+           (double)account_statement_auth_strings / (double)parsed,
+           (double)account_statement_hash_strings / (double)parsed,
+           (double)account_statement_replacement_auth_strings /
                (double)parsed,
            (double)set_statement_views / (double)parsed,
            (double)set_statement_assignments / (double)parsed,

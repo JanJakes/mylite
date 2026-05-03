@@ -135,6 +135,10 @@ expression nodes.
   file/table/charset metadata, duplicate/local/priority flags, partition
   markers, field and line clauses, XML row tags, ignored-row counts, column and
   user-variable lists, SET assignments, and LOAD DATA `WITH` options.
+- `CREATE USER`, `ALTER USER`, `DROP USER`, and `SET PASSWORD` statements
+  expose typed account-management parser views with decoded account names,
+  explicit-host markers, auth-option kind, auth plugin/string/hash values,
+  replacement passwords, statement modifiers, and option-clause presence flags.
 - Transaction-control statements expose begin form, access mode, consistency
   modifiers, `WORK`, completion modifiers, and decoded savepoint names.
 - Temporary syntax recognizers produce a placeholder root node so AST mode can
@@ -269,6 +273,13 @@ expression nodes.
   charset, optional format, field and line strings, XML row tag, ignored-row
   count, ordered column/user-variable items, SET assignment expression handles,
   and LOAD DATA option expression handles
+- typed account-management descriptors with statement kind, `IF EXISTS` /
+  `IF NOT EXISTS`, `FOR` user marker, random-password marker, decoded password
+  and replacement values, ordered account descriptors, current-user marker,
+  explicit host marker, decoded user/host values, auth kind, auth plugin, auth
+  string, hash string, replacement auth string, and presence flags for require,
+  connection, password/lock, comment/attribute, and resource-group option
+  clauses
 - typed transaction-control descriptors with statement kind, begin form,
   TiDB begin mode, access mode, consistency modifiers, `WORK`, completion
   modifiers, savepoint-keyword marker, and decoded savepoint name
@@ -614,6 +625,17 @@ parser-level expression view. File access, LOCAL protocol negotiation, row
 import, conversion warnings, duplicate handling, and security restrictions
 remain semantic/runtime work.
 
+Account-management parser views cover `CREATE USER`, `ALTER USER`, `DROP USER`,
+and `SET PASSWORD`. The view records statement kind, `IF EXISTS` /
+`IF NOT EXISTS`, `FOR` user, random-password use, decoded password and
+replacement values, ordered account descriptors, current-user/builtin-user
+accounts, explicit hosts, decoded account user/host values, auth-option kind,
+decoded auth plugin, decoded auth string, hash string, and replacement auth
+string. It also records whether TLS require clauses, connection limits,
+password/lock clauses, comments/attributes, and resource-group clauses are
+present. Account metadata changes, authentication semantics, generated random
+password values, privilege checks, and diagnostics remain semantic/runtime work.
+
 Transaction-control views cover `BEGIN`, `START TRANSACTION`, `COMMIT`,
 `ROLLBACK`, `SAVEPOINT`, and `RELEASE SAVEPOINT`. `BEGIN`/`START TRANSACTION`
 records the begin form, optional TiDB pessimistic/optimistic markers, MySQL
@@ -704,6 +726,14 @@ Latest LOAD DATA/XML parser-view run on May 3, 2026:
 mode=syntax queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=2.770828 qps=501951 mbps=38.17 avg_us=1.992
 mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.378734 qps=188490 mbps=14.33 avg_us=5.305 avg_nodes=74.5 avg_ast_bytes=11049.7 avg_load_statement_views=0.00 avg_load_statement_data_forms=0.00 avg_load_statement_xml_forms=0.00 avg_load_statement_local_flags=0.00 avg_load_statement_file_values=0.00 avg_load_statement_table_name_values=0.00 avg_load_statement_field_clauses=0.00 avg_load_statement_line_clauses=0.00 avg_load_statement_ignore_rows=0.00 avg_load_statement_row_tags=0.00 avg_load_statement_items=0.00 avg_load_statement_item_values=0.00 avg_load_statement_assignments=0.00 avg_load_statement_assignment_expressions=0.00 avg_load_statement_options=0.00 avg_load_statement_option_values=0.00 avg_load_statement_expression_tree_nodes=0.00 avg_load_statement_expression_tree_operators=0.00 avg_load_statement_expression_tree_leaf_values=0.00
 mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.536452 qps=184546 mbps=14.03 avg_us=5.419 avg_semantic_nodes=5.3 avg_semantic_bytes=4268.0 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_expressions=2.67 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.04
+```
+
+Latest account-management parser-view run on May 3, 2026:
+
+```text
+mode=syntax queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=2.760947 qps=503747 mbps=38.31 avg_us=1.985
+mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.279281 qps=191066 mbps=14.53 avg_us=5.234 avg_nodes=74.5 avg_ast_bytes=11074.0 avg_account_statement_views=0.02 avg_account_statement_create_users=0.01 avg_account_statement_alter_users=0.00 avg_account_statement_drop_users=0.01 avg_account_statement_set_passwords=0.00 avg_account_statement_if_exists=0.00 avg_account_statement_if_not_exists=0.00 avg_account_statement_for_users=0.00 avg_account_statement_random_passwords=0.00 avg_account_statement_password_values=0.00 avg_account_statement_replacement_password_values=0.00 avg_account_statement_accounts=0.03 avg_account_statement_current_users=0.00 avg_account_statement_explicit_hosts=0.02 avg_account_statement_user_values=0.03 avg_account_statement_host_values=0.02 avg_account_statement_auth_options=0.01 avg_account_statement_auth_plugins=0.00 avg_account_statement_auth_strings=0.01 avg_account_statement_hash_strings=0.00 avg_account_statement_replacement_auth_strings=0.00
+mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.417214 qps=187512 mbps=14.26 avg_us=5.333 avg_semantic_nodes=5.3 avg_semantic_bytes=4268.0 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_expressions=2.67 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.04
 ```
 
 Release benchmark result on May 2, 2026:
@@ -813,11 +843,11 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,852 lines, 5,637,339 bytes
 generated parser object: 996K on disk, 905,398 bytes text/data/other
-parser support object: 360K on disk, 209,168 bytes text/data/other
+parser support object: 372K on disk, 215,600 bytes text/data/other
 semantic AST object: 18K on disk, 8,095 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.5M on disk
-mylite-parse: 1.2M on disk
+mylite-parse: 1.3M on disk
 mylite-parser-bench: 1.3M on disk
 ```
 

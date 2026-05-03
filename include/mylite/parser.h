@@ -24,6 +24,8 @@ typedef struct MyliteParseResult {
 typedef struct MyliteAst MyliteAst;
 typedef struct MyliteSemanticAst MyliteSemanticAst;
 typedef struct MyliteSemanticAstNode MyliteSemanticAstNode;
+typedef struct MyliteAstAccount MyliteAstAccount;
+typedef struct MyliteAstAccountStatement MyliteAstAccountStatement;
 typedef struct MyliteAstAlterTable MyliteAstAlterTable;
 typedef struct MyliteAstAlterTableSpec MyliteAstAlterTableSpec;
 typedef struct MyliteAstCreateDatabase MyliteAstCreateDatabase;
@@ -420,6 +422,25 @@ typedef enum MyliteLoadOptionValueKind {
   MYLITE_LOAD_OPTION_VALUE_NONE = 0,
   MYLITE_LOAD_OPTION_VALUE_SIGNED_LITERAL
 } MyliteLoadOptionValueKind;
+
+typedef enum MyliteAccountStatementKind {
+  MYLITE_ACCOUNT_STATEMENT_UNKNOWN = 0,
+  MYLITE_ACCOUNT_STATEMENT_CREATE_USER,
+  MYLITE_ACCOUNT_STATEMENT_ALTER_USER,
+  MYLITE_ACCOUNT_STATEMENT_DROP_USER,
+  MYLITE_ACCOUNT_STATEMENT_SET_PASSWORD
+} MyliteAccountStatementKind;
+
+typedef enum MyliteAccountAuthKind {
+  MYLITE_ACCOUNT_AUTH_NONE = 0,
+  MYLITE_ACCOUNT_AUTH_IDENTIFIED_BY,
+  MYLITE_ACCOUNT_AUTH_IDENTIFIED_WITH,
+  MYLITE_ACCOUNT_AUTH_IDENTIFIED_WITH_BY,
+  MYLITE_ACCOUNT_AUTH_IDENTIFIED_WITH_AS,
+  MYLITE_ACCOUNT_AUTH_IDENTIFIED_BY_PASSWORD,
+  MYLITE_ACCOUNT_AUTH_IDENTIFIED_BY_RANDOM_PASSWORD,
+  MYLITE_ACCOUNT_AUTH_IDENTIFIED_BY_REPLACE
+} MyliteAccountAuthKind;
 
 typedef enum MyliteCreateTableColumnTypeFamily {
   MYLITE_CREATE_TABLE_COLUMN_TYPE_UNKNOWN = 0,
@@ -855,6 +876,9 @@ const char *mylite_load_duplicate_kind_name(MyliteLoadDuplicateKind kind);
 const char *mylite_load_list_item_kind_name(MyliteLoadListItemKind kind);
 const char *mylite_load_option_value_kind_name(
     MyliteLoadOptionValueKind kind);
+const char *mylite_account_statement_kind_name(
+    MyliteAccountStatementKind kind);
+const char *mylite_account_auth_kind_name(MyliteAccountAuthKind kind);
 const char *mylite_expression_kind_name(MyliteExpressionKind kind);
 const char *mylite_expression_literal_kind_name(
     MyliteExpressionLiteralKind kind);
@@ -1053,6 +1077,8 @@ const MyliteAstKillStatement *mylite_ast_kill_statement_view(
 const MyliteAstFlushStatement *mylite_ast_flush_statement_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstLoadStatement *mylite_ast_load_statement_view(
+    const MyliteAst *ast, size_t statement_index);
+const MyliteAstAccountStatement *mylite_ast_account_statement_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstDeleteStatement *mylite_ast_delete_statement_view(
     const MyliteAst *ast, size_t statement_index);
@@ -2477,6 +2503,77 @@ MyliteLoadOptionValueKind mylite_ast_load_option_view_value_kind(
     const MyliteAstLoadOption *option);
 const MyliteAstExpression *mylite_ast_load_option_view_value_expression(
     const MyliteAstLoadOption *option);
+const MyliteAstNode *mylite_ast_account_statement_view_node(
+    const MyliteAstAccountStatement *account_statement);
+size_t mylite_ast_account_statement_view_start(
+    const MyliteAstAccountStatement *account_statement);
+size_t mylite_ast_account_statement_view_end(
+    const MyliteAstAccountStatement *account_statement);
+MyliteAccountStatementKind mylite_ast_account_statement_view_kind(
+    const MyliteAstAccountStatement *account_statement);
+int mylite_ast_account_statement_view_has_if_exists(
+    const MyliteAstAccountStatement *account_statement);
+int mylite_ast_account_statement_view_has_if_not_exists(
+    const MyliteAstAccountStatement *account_statement);
+int mylite_ast_account_statement_view_has_require_clause(
+    const MyliteAstAccountStatement *account_statement);
+int mylite_ast_account_statement_view_has_connection_options(
+    const MyliteAstAccountStatement *account_statement);
+int mylite_ast_account_statement_view_has_password_or_lock_options(
+    const MyliteAstAccountStatement *account_statement);
+int mylite_ast_account_statement_view_has_comment_or_attribute(
+    const MyliteAstAccountStatement *account_statement);
+int mylite_ast_account_statement_view_has_resource_group(
+    const MyliteAstAccountStatement *account_statement);
+int mylite_ast_account_statement_view_has_for_user(
+    const MyliteAstAccountStatement *account_statement);
+int mylite_ast_account_statement_view_uses_random_password(
+    const MyliteAstAccountStatement *account_statement);
+const char *mylite_ast_account_statement_view_password_value(
+    const MyliteAstAccountStatement *account_statement);
+size_t mylite_ast_account_statement_view_password_value_length(
+    const MyliteAstAccountStatement *account_statement);
+const char *mylite_ast_account_statement_view_replacement_password_value(
+    const MyliteAstAccountStatement *account_statement);
+size_t mylite_ast_account_statement_view_replacement_password_value_length(
+    const MyliteAstAccountStatement *account_statement);
+size_t mylite_ast_account_statement_view_account_count(
+    const MyliteAstAccountStatement *account_statement);
+const MyliteAstAccount *mylite_ast_account_statement_view_account_at(
+    const MyliteAstAccountStatement *account_statement, size_t account_index);
+const MyliteAstNode *mylite_ast_account_view_node(
+    const MyliteAstAccount *account);
+size_t mylite_ast_account_view_start(const MyliteAstAccount *account);
+size_t mylite_ast_account_view_end(const MyliteAstAccount *account);
+int mylite_ast_account_view_is_current_user(const MyliteAstAccount *account);
+int mylite_ast_account_view_has_explicit_host(
+    const MyliteAstAccount *account);
+const char *mylite_ast_account_view_user_value(
+    const MyliteAstAccount *account);
+size_t mylite_ast_account_view_user_value_length(
+    const MyliteAstAccount *account);
+const char *mylite_ast_account_view_host_value(
+    const MyliteAstAccount *account);
+size_t mylite_ast_account_view_host_value_length(
+    const MyliteAstAccount *account);
+MyliteAccountAuthKind mylite_ast_account_view_auth_kind(
+    const MyliteAstAccount *account);
+const char *mylite_ast_account_view_auth_plugin_value(
+    const MyliteAstAccount *account);
+size_t mylite_ast_account_view_auth_plugin_value_length(
+    const MyliteAstAccount *account);
+const char *mylite_ast_account_view_auth_string_value(
+    const MyliteAstAccount *account);
+size_t mylite_ast_account_view_auth_string_value_length(
+    const MyliteAstAccount *account);
+const char *mylite_ast_account_view_hash_string_value(
+    const MyliteAstAccount *account);
+size_t mylite_ast_account_view_hash_string_value_length(
+    const MyliteAstAccount *account);
+const char *mylite_ast_account_view_replacement_auth_string_value(
+    const MyliteAstAccount *account);
+size_t mylite_ast_account_view_replacement_auth_string_value_length(
+    const MyliteAstAccount *account);
 const MyliteAstNode *mylite_ast_transaction_statement_view_node(
     const MyliteAstTransactionStatement *transaction_statement);
 size_t mylite_ast_transaction_statement_view_start(

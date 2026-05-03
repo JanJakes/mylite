@@ -1202,6 +1202,67 @@ struct MyliteAstLoadStatement {
   int has_ignore_rows;
 };
 
+struct MyliteAstAccount {
+  const MyliteAstNode *node;
+  const MyliteAstNode *username_node;
+  const MyliteAstNode *auth_node;
+  MyliteAccountAuthKind auth_kind;
+  size_t start;
+  size_t end;
+  size_t user_start;
+  size_t user_end;
+  const char *user_value;
+  size_t user_value_length;
+  size_t host_start;
+  size_t host_end;
+  const char *host_value;
+  size_t host_value_length;
+  size_t auth_plugin_start;
+  size_t auth_plugin_end;
+  const char *auth_plugin_value;
+  size_t auth_plugin_value_length;
+  size_t auth_string_start;
+  size_t auth_string_end;
+  const char *auth_string_value;
+  size_t auth_string_value_length;
+  size_t hash_string_start;
+  size_t hash_string_end;
+  const char *hash_string_value;
+  size_t hash_string_value_length;
+  size_t replacement_auth_string_start;
+  size_t replacement_auth_string_end;
+  const char *replacement_auth_string_value;
+  size_t replacement_auth_string_value_length;
+  int is_current_user;
+  int has_explicit_host;
+};
+
+struct MyliteAstAccountStatement {
+  const MyliteAstNode *node;
+  MyliteAccountStatementKind kind;
+  MyliteAstAccount *accounts;
+  size_t start;
+  size_t end;
+  size_t account_count;
+  size_t password_start;
+  size_t password_end;
+  const char *password_value;
+  size_t password_value_length;
+  size_t replacement_password_start;
+  size_t replacement_password_end;
+  const char *replacement_password_value;
+  size_t replacement_password_value_length;
+  int has_if_exists;
+  int has_if_not_exists;
+  int has_require_clause;
+  int has_connection_options;
+  int has_password_or_lock_options;
+  int has_comment_or_attribute;
+  int has_resource_group;
+  int has_for_user;
+  int uses_random_password;
+};
+
 struct MyliteAstTransactionStatement {
   const MyliteAstNode *node;
   MyliteTransactionStatementKind kind;
@@ -1257,6 +1318,7 @@ typedef struct MyliteAstStatement {
   MyliteAstKillStatement *kill_statement;
   MyliteAstFlushStatement *flush_statement;
   MyliteAstLoadStatement *load_statement;
+  MyliteAstAccountStatement *account_statement;
   MyliteAstDeleteStatement *delete_statement;
   MyliteAstInsertStatement *insert_statement;
   MyliteAstReplaceStatement *replace_statement;
@@ -1908,6 +1970,38 @@ static int mylite_ast_fill_load_options(MyliteAst *ast,
 static int mylite_ast_fill_load_option(MyliteAst *ast,
                                        MyliteAstLoadOption *option,
                                        const MyliteAstNode *node);
+static int mylite_ast_set_account_statement_view(
+    MyliteAst *ast, MyliteAstStatement *statement,
+    const MyliteAstNode *payload);
+static MyliteAccountStatementKind mylite_ast_classify_account_statement(
+    const char *symbol_name, const MyliteAstNode *node);
+static int mylite_ast_set_account_statement_flags(
+    MyliteAstAccountStatement *account_statement);
+static int mylite_ast_set_account_statement_accounts(
+    MyliteAst *ast, MyliteAstAccountStatement *account_statement);
+static const char *mylite_ast_account_statement_account_symbol(
+    const MyliteAstAccountStatement *account_statement);
+static int mylite_ast_fill_account_statement_accounts(
+    MyliteAst *ast, MyliteAstAccountStatement *account_statement,
+    const MyliteAstNode *node, const char *symbol_name, size_t *index);
+static int mylite_ast_fill_account(MyliteAst *ast, MyliteAstAccount *account,
+                                   const MyliteAstNode *node);
+static int mylite_ast_set_account_username(
+    MyliteAst *ast, MyliteAstAccount *account, const MyliteAstNode *username);
+static int mylite_ast_set_account_string_name(
+    MyliteAst *ast, const MyliteAstNode *node, size_t *value_start,
+    size_t *value_end, const char **value, size_t *value_length);
+static int mylite_ast_set_account_auth(
+    MyliteAst *ast, MyliteAstAccount *account, const MyliteAstNode *auth);
+static MyliteAccountAuthKind mylite_ast_classify_account_auth(
+    const MyliteAstNode *auth);
+static int mylite_ast_set_account_auth_values(MyliteAst *ast,
+                                              MyliteAstAccount *account);
+static int mylite_ast_set_account_auth_string_value(
+    MyliteAst *ast, const MyliteAstNode *node, size_t *value_start,
+    size_t *value_end, const char **value, size_t *value_length);
+static int mylite_ast_set_account_statement_passwords(
+    MyliteAst *ast, MyliteAstAccountStatement *account_statement);
 static int mylite_ast_set_prepared_statement_name_value(
     MyliteAst *ast, const MyliteAstNode *node, size_t *name_start,
     size_t *name_end, const char **name_value, size_t *name_value_length);
@@ -2952,6 +3046,45 @@ const char *mylite_load_option_value_kind_name(
       return "none";
     case MYLITE_LOAD_OPTION_VALUE_SIGNED_LITERAL:
       return "signed_literal";
+  }
+  return "unknown";
+}
+
+const char *mylite_account_statement_kind_name(
+    MyliteAccountStatementKind kind) {
+  switch (kind) {
+    case MYLITE_ACCOUNT_STATEMENT_UNKNOWN:
+      return "unknown";
+    case MYLITE_ACCOUNT_STATEMENT_CREATE_USER:
+      return "create_user";
+    case MYLITE_ACCOUNT_STATEMENT_ALTER_USER:
+      return "alter_user";
+    case MYLITE_ACCOUNT_STATEMENT_DROP_USER:
+      return "drop_user";
+    case MYLITE_ACCOUNT_STATEMENT_SET_PASSWORD:
+      return "set_password";
+  }
+  return "unknown";
+}
+
+const char *mylite_account_auth_kind_name(MyliteAccountAuthKind kind) {
+  switch (kind) {
+    case MYLITE_ACCOUNT_AUTH_NONE:
+      return "none";
+    case MYLITE_ACCOUNT_AUTH_IDENTIFIED_BY:
+      return "identified_by";
+    case MYLITE_ACCOUNT_AUTH_IDENTIFIED_WITH:
+      return "identified_with";
+    case MYLITE_ACCOUNT_AUTH_IDENTIFIED_WITH_BY:
+      return "identified_with_by";
+    case MYLITE_ACCOUNT_AUTH_IDENTIFIED_WITH_AS:
+      return "identified_with_as";
+    case MYLITE_ACCOUNT_AUTH_IDENTIFIED_BY_PASSWORD:
+      return "identified_by_password";
+    case MYLITE_ACCOUNT_AUTH_IDENTIFIED_BY_RANDOM_PASSWORD:
+      return "identified_by_random_password";
+    case MYLITE_ACCOUNT_AUTH_IDENTIFIED_BY_REPLACE:
+      return "identified_by_replace";
   }
   return "unknown";
 }
@@ -4221,6 +4354,13 @@ const MyliteAstLoadStatement *mylite_ast_load_statement_view(
   const MyliteAstStatement *statement =
       mylite_ast_statement_at(ast, statement_index);
   return statement == NULL ? NULL : statement->load_statement;
+}
+
+const MyliteAstAccountStatement *mylite_ast_account_statement_view(
+    const MyliteAst *ast, size_t statement_index) {
+  const MyliteAstStatement *statement =
+      mylite_ast_statement_at(ast, statement_index);
+  return statement == NULL ? NULL : statement->account_statement;
 }
 
 const MyliteAstDeleteStatement *mylite_ast_delete_statement_view(
@@ -8108,6 +8248,200 @@ const MyliteAstExpression *mylite_ast_load_option_view_value_expression(
              : &option->value_expression;
 }
 
+const MyliteAstNode *mylite_ast_account_statement_view_node(
+    const MyliteAstAccountStatement *account_statement) {
+  return account_statement == NULL ? NULL : account_statement->node;
+}
+
+size_t mylite_ast_account_statement_view_start(
+    const MyliteAstAccountStatement *account_statement) {
+  return account_statement == NULL ? 0 : account_statement->start;
+}
+
+size_t mylite_ast_account_statement_view_end(
+    const MyliteAstAccountStatement *account_statement) {
+  return account_statement == NULL ? 0 : account_statement->end;
+}
+
+MyliteAccountStatementKind mylite_ast_account_statement_view_kind(
+    const MyliteAstAccountStatement *account_statement) {
+  return account_statement == NULL ? MYLITE_ACCOUNT_STATEMENT_UNKNOWN
+                                   : account_statement->kind;
+}
+
+int mylite_ast_account_statement_view_has_if_exists(
+    const MyliteAstAccountStatement *account_statement) {
+  return account_statement != NULL && account_statement->has_if_exists;
+}
+
+int mylite_ast_account_statement_view_has_if_not_exists(
+    const MyliteAstAccountStatement *account_statement) {
+  return account_statement != NULL && account_statement->has_if_not_exists;
+}
+
+int mylite_ast_account_statement_view_has_require_clause(
+    const MyliteAstAccountStatement *account_statement) {
+  return account_statement != NULL && account_statement->has_require_clause;
+}
+
+int mylite_ast_account_statement_view_has_connection_options(
+    const MyliteAstAccountStatement *account_statement) {
+  return account_statement != NULL && account_statement->has_connection_options;
+}
+
+int mylite_ast_account_statement_view_has_password_or_lock_options(
+    const MyliteAstAccountStatement *account_statement) {
+  return account_statement != NULL &&
+         account_statement->has_password_or_lock_options;
+}
+
+int mylite_ast_account_statement_view_has_comment_or_attribute(
+    const MyliteAstAccountStatement *account_statement) {
+  return account_statement != NULL &&
+         account_statement->has_comment_or_attribute;
+}
+
+int mylite_ast_account_statement_view_has_resource_group(
+    const MyliteAstAccountStatement *account_statement) {
+  return account_statement != NULL && account_statement->has_resource_group;
+}
+
+int mylite_ast_account_statement_view_has_for_user(
+    const MyliteAstAccountStatement *account_statement) {
+  return account_statement != NULL && account_statement->has_for_user;
+}
+
+int mylite_ast_account_statement_view_uses_random_password(
+    const MyliteAstAccountStatement *account_statement) {
+  return account_statement != NULL && account_statement->uses_random_password;
+}
+
+const char *mylite_ast_account_statement_view_password_value(
+    const MyliteAstAccountStatement *account_statement) {
+  return account_statement == NULL ? NULL : account_statement->password_value;
+}
+
+size_t mylite_ast_account_statement_view_password_value_length(
+    const MyliteAstAccountStatement *account_statement) {
+  return account_statement == NULL ? 0 : account_statement->password_value_length;
+}
+
+const char *mylite_ast_account_statement_view_replacement_password_value(
+    const MyliteAstAccountStatement *account_statement) {
+  return account_statement == NULL
+             ? NULL
+             : account_statement->replacement_password_value;
+}
+
+size_t mylite_ast_account_statement_view_replacement_password_value_length(
+    const MyliteAstAccountStatement *account_statement) {
+  return account_statement == NULL
+             ? 0
+             : account_statement->replacement_password_value_length;
+}
+
+size_t mylite_ast_account_statement_view_account_count(
+    const MyliteAstAccountStatement *account_statement) {
+  return account_statement == NULL ? 0 : account_statement->account_count;
+}
+
+const MyliteAstAccount *mylite_ast_account_statement_view_account_at(
+    const MyliteAstAccountStatement *account_statement, size_t account_index) {
+  return account_statement == NULL ||
+                 account_index >= account_statement->account_count
+             ? NULL
+             : &account_statement->accounts[account_index];
+}
+
+const MyliteAstNode *mylite_ast_account_view_node(
+    const MyliteAstAccount *account) {
+  return account == NULL ? NULL : account->node;
+}
+
+size_t mylite_ast_account_view_start(const MyliteAstAccount *account) {
+  return account == NULL ? 0 : account->start;
+}
+
+size_t mylite_ast_account_view_end(const MyliteAstAccount *account) {
+  return account == NULL ? 0 : account->end;
+}
+
+int mylite_ast_account_view_is_current_user(
+    const MyliteAstAccount *account) {
+  return account != NULL && account->is_current_user;
+}
+
+int mylite_ast_account_view_has_explicit_host(
+    const MyliteAstAccount *account) {
+  return account != NULL && account->has_explicit_host;
+}
+
+const char *mylite_ast_account_view_user_value(
+    const MyliteAstAccount *account) {
+  return account == NULL ? NULL : account->user_value;
+}
+
+size_t mylite_ast_account_view_user_value_length(
+    const MyliteAstAccount *account) {
+  return account == NULL ? 0 : account->user_value_length;
+}
+
+const char *mylite_ast_account_view_host_value(
+    const MyliteAstAccount *account) {
+  return account == NULL ? NULL : account->host_value;
+}
+
+size_t mylite_ast_account_view_host_value_length(
+    const MyliteAstAccount *account) {
+  return account == NULL ? 0 : account->host_value_length;
+}
+
+MyliteAccountAuthKind mylite_ast_account_view_auth_kind(
+    const MyliteAstAccount *account) {
+  return account == NULL ? MYLITE_ACCOUNT_AUTH_NONE : account->auth_kind;
+}
+
+const char *mylite_ast_account_view_auth_plugin_value(
+    const MyliteAstAccount *account) {
+  return account == NULL ? NULL : account->auth_plugin_value;
+}
+
+size_t mylite_ast_account_view_auth_plugin_value_length(
+    const MyliteAstAccount *account) {
+  return account == NULL ? 0 : account->auth_plugin_value_length;
+}
+
+const char *mylite_ast_account_view_auth_string_value(
+    const MyliteAstAccount *account) {
+  return account == NULL ? NULL : account->auth_string_value;
+}
+
+size_t mylite_ast_account_view_auth_string_value_length(
+    const MyliteAstAccount *account) {
+  return account == NULL ? 0 : account->auth_string_value_length;
+}
+
+const char *mylite_ast_account_view_hash_string_value(
+    const MyliteAstAccount *account) {
+  return account == NULL ? NULL : account->hash_string_value;
+}
+
+size_t mylite_ast_account_view_hash_string_value_length(
+    const MyliteAstAccount *account) {
+  return account == NULL ? 0 : account->hash_string_value_length;
+}
+
+const char *mylite_ast_account_view_replacement_auth_string_value(
+    const MyliteAstAccount *account) {
+  return account == NULL ? NULL : account->replacement_auth_string_value;
+}
+
+size_t mylite_ast_account_view_replacement_auth_string_value_length(
+    const MyliteAstAccount *account) {
+  return account == NULL ? 0
+                         : account->replacement_auth_string_value_length;
+}
+
 const MyliteAstNode *mylite_ast_transaction_statement_view_node(
     const MyliteAstTransactionStatement *transaction_statement) {
   return transaction_statement == NULL ? NULL : transaction_statement->node;
@@ -11759,6 +12093,11 @@ static int mylite_ast_set_statement_details(MyliteAst *ast,
       strcmp(statement->symbol_name, "nt_mysql_load_xml_stmt") == 0) {
     return mylite_ast_set_load_statement_view(ast, statement, payload);
   }
+  if (strcmp(statement->symbol_name, "nt_create_user_stmt") == 0 ||
+      strcmp(statement->symbol_name, "nt_alter_user_stmt") == 0 ||
+      strcmp(statement->symbol_name, "nt_drop_user_stmt") == 0) {
+    return mylite_ast_set_account_statement_view(ast, statement, payload);
+  }
   if (strcmp(statement->symbol_name, "nt_lock_tables_stmt") == 0 ||
       strcmp(statement->symbol_name, "nt_unlock_tables_stmt") == 0 ||
       strcmp(statement->symbol_name, "nt_mysql_lock_instance_stmt") == 0 ||
@@ -11779,7 +12118,8 @@ static int mylite_ast_set_statement_details(MyliteAst *ast,
   if (strcmp(statement->symbol_name, "nt_set_stmt") == 0 ||
       strcmp(statement->symbol_name, "nt_set_role_stmt") == 0 ||
       strcmp(statement->symbol_name, "nt_set_default_role_stmt") == 0) {
-    return mylite_ast_set_set_statement_view(ast, statement, payload);
+    return mylite_ast_set_set_statement_view(ast, statement, payload) &&
+           mylite_ast_set_account_statement_view(ast, statement, payload);
   }
   if (strcmp(statement->symbol_name, "nt_rename_table_stmt") == 0) {
     return mylite_ast_set_rename_table_view(ast, statement, payload);
@@ -17547,6 +17887,416 @@ static int mylite_ast_fill_load_option(MyliteAst *ast,
                                              option->value_node);
   }
   option->value_kind = MYLITE_LOAD_OPTION_VALUE_NONE;
+  return 1;
+}
+
+static int mylite_ast_set_account_statement_view(
+    MyliteAst *ast, MyliteAstStatement *statement,
+    const MyliteAstNode *payload) {
+  if (ast == NULL || statement == NULL) {
+    return 1;
+  }
+  MyliteAccountStatementKind kind =
+      mylite_ast_classify_account_statement(statement->symbol_name, payload);
+  if (kind == MYLITE_ACCOUNT_STATEMENT_UNKNOWN) {
+    return 1;
+  }
+  MyliteAstAccountStatement *account_statement =
+      mylite_ast_alloc(ast, sizeof(*account_statement));
+  if (account_statement == NULL) {
+    return 0;
+  }
+  account_statement->node = payload == NULL ? statement->node : payload;
+  account_statement->kind = kind;
+  account_statement->start = mylite_ast_node_start(account_statement->node);
+  account_statement->end = mylite_ast_node_end(account_statement->node);
+  if (!mylite_ast_set_account_statement_flags(account_statement) ||
+      !mylite_ast_set_account_statement_accounts(ast, account_statement) ||
+      !mylite_ast_set_account_statement_passwords(ast, account_statement)) {
+    return 0;
+  }
+  statement->account_statement = account_statement;
+  return 1;
+}
+
+static MyliteAccountStatementKind mylite_ast_classify_account_statement(
+    const char *symbol_name, const MyliteAstNode *node) {
+  if (symbol_name == NULL) {
+    return MYLITE_ACCOUNT_STATEMENT_UNKNOWN;
+  }
+  if (strcmp(symbol_name, "nt_create_user_stmt") == 0) {
+    return MYLITE_ACCOUNT_STATEMENT_CREATE_USER;
+  }
+  if (strcmp(symbol_name, "nt_alter_user_stmt") == 0) {
+    return MYLITE_ACCOUNT_STATEMENT_ALTER_USER;
+  }
+  if (strcmp(symbol_name, "nt_drop_user_stmt") == 0) {
+    return MYLITE_ACCOUNT_STATEMENT_DROP_USER;
+  }
+  if (strcmp(symbol_name, "nt_set_stmt") == 0 &&
+      mylite_ast_find_direct_child_token(node, MYLITE_TOK_PASSWORD) != NULL) {
+    return MYLITE_ACCOUNT_STATEMENT_SET_PASSWORD;
+  }
+  return MYLITE_ACCOUNT_STATEMENT_UNKNOWN;
+}
+
+static int mylite_ast_set_account_statement_flags(
+    MyliteAstAccountStatement *account_statement) {
+  if (account_statement == NULL) {
+    return 1;
+  }
+  const MyliteAstNode *if_exists =
+      mylite_ast_find_first_symbol(account_statement->node, "nt_if_exists");
+  account_statement->has_if_exists = if_exists != NULL && if_exists->has_span;
+  if (account_statement->kind == MYLITE_ACCOUNT_STATEMENT_DROP_USER) {
+    account_statement->has_if_exists =
+        mylite_ast_find_direct_child_token(account_statement->node,
+                                           MYLITE_TOK_IF_KWD) != NULL &&
+        mylite_ast_find_direct_child_token(account_statement->node,
+                                           MYLITE_TOK_EXISTS) != NULL;
+  }
+  const MyliteAstNode *if_not_exists =
+      mylite_ast_find_first_symbol(account_statement->node,
+                                   "nt_if_not_exists");
+  account_statement->has_if_not_exists =
+      if_not_exists != NULL && if_not_exists->has_span;
+  const MyliteAstNode *require =
+      mylite_ast_find_first_symbol(account_statement->node,
+                                   "nt_require_clause_opt");
+  account_statement->has_require_clause = require != NULL && require->has_span;
+  const MyliteAstNode *connection =
+      mylite_ast_find_first_symbol(account_statement->node,
+                                   "nt_connection_options");
+  account_statement->has_connection_options =
+      connection != NULL && connection->has_span;
+  const MyliteAstNode *password_or_lock =
+      mylite_ast_find_first_symbol(account_statement->node,
+                                   "nt_password_or_lock_options");
+  account_statement->has_password_or_lock_options =
+      password_or_lock != NULL && password_or_lock->has_span;
+  const MyliteAstNode *comment =
+      mylite_ast_find_first_symbol(account_statement->node,
+                                   "nt_comment_or_attribute_option");
+  account_statement->has_comment_or_attribute =
+      comment != NULL && comment->has_span;
+  const MyliteAstNode *resource =
+      mylite_ast_find_first_symbol(account_statement->node,
+                                   "nt_resource_group_name_option");
+  account_statement->has_resource_group = resource != NULL && resource->has_span;
+  account_statement->has_for_user =
+      account_statement->kind == MYLITE_ACCOUNT_STATEMENT_SET_PASSWORD &&
+      mylite_ast_find_direct_child_token(account_statement->node,
+                                         MYLITE_TOK_FOR_KWD) != NULL;
+  account_statement->uses_random_password =
+      mylite_ast_find_first_token(account_statement->node,
+                                  MYLITE_TOK_RANDOM) != NULL;
+  return 1;
+}
+
+static int mylite_ast_set_account_statement_accounts(
+    MyliteAst *ast, MyliteAstAccountStatement *account_statement) {
+  if (ast == NULL || account_statement == NULL) {
+    return 1;
+  }
+  const char *symbol_name =
+      mylite_ast_account_statement_account_symbol(account_statement);
+  if (symbol_name == NULL) {
+    return 1;
+  }
+  account_statement->account_count =
+      mylite_ast_count_load_nodes(account_statement->node, symbol_name);
+  if (account_statement->account_count == 0) {
+    return 1;
+  }
+  account_statement->accounts =
+      mylite_ast_alloc(ast, account_statement->account_count *
+                                sizeof(*account_statement->accounts));
+  if (account_statement->accounts == NULL) {
+    return 0;
+  }
+  size_t index = 0;
+  return mylite_ast_fill_account_statement_accounts(
+             ast, account_statement, account_statement->node, symbol_name,
+             &index) &&
+         index == account_statement->account_count;
+}
+
+static const char *mylite_ast_account_statement_account_symbol(
+    const MyliteAstAccountStatement *account_statement) {
+  if (account_statement == NULL) {
+    return NULL;
+  }
+  switch (account_statement->kind) {
+    case MYLITE_ACCOUNT_STATEMENT_CREATE_USER:
+    case MYLITE_ACCOUNT_STATEMENT_ALTER_USER:
+      return "nt_user_spec";
+    case MYLITE_ACCOUNT_STATEMENT_DROP_USER:
+    case MYLITE_ACCOUNT_STATEMENT_SET_PASSWORD:
+      return "nt_username";
+    case MYLITE_ACCOUNT_STATEMENT_UNKNOWN:
+      return NULL;
+  }
+  return NULL;
+}
+
+static int mylite_ast_fill_account_statement_accounts(
+    MyliteAst *ast, MyliteAstAccountStatement *account_statement,
+    const MyliteAstNode *node, const char *symbol_name, size_t *index) {
+  if (node == NULL || symbol_name == NULL) {
+    return 1;
+  }
+  if (mylite_ast_expression_is_symbol(node, symbol_name)) {
+    if (index == NULL || *index >= account_statement->account_count ||
+        !mylite_ast_fill_account(ast, &account_statement->accounts[*index],
+                                 node)) {
+      return 0;
+    }
+    (*index)++;
+    return 1;
+  }
+  for (size_t i = 0; i < node->child_count; i++) {
+    if (!mylite_ast_fill_account_statement_accounts(
+            ast, account_statement, node->children[i], symbol_name, index)) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+static int mylite_ast_fill_account(MyliteAst *ast, MyliteAstAccount *account,
+                                   const MyliteAstNode *node) {
+  if (ast == NULL || account == NULL || node == NULL) {
+    return 1;
+  }
+  account->node = node;
+  account->start = mylite_ast_node_start(node);
+  account->end = mylite_ast_node_end(node);
+  account->username_node =
+      mylite_ast_expression_is_symbol(node, "nt_username")
+          ? node
+          : mylite_ast_find_first_symbol(node, "nt_username");
+  account->auth_node = mylite_ast_find_first_symbol(node, "nt_auth_option");
+  return mylite_ast_set_account_username(ast, account,
+                                         account->username_node) &&
+         mylite_ast_set_account_auth(ast, account, account->auth_node);
+}
+
+static int mylite_ast_set_account_username(
+    MyliteAst *ast, MyliteAstAccount *account, const MyliteAstNode *username) {
+  if (ast == NULL || account == NULL || username == NULL) {
+    return 1;
+  }
+  if (mylite_ast_find_first_token(username, MYLITE_TOK_CURRENT_USER) != NULL ||
+      mylite_ast_find_first_token(username, MYLITE_TOK_BUILTIN_USER) != NULL) {
+    account->is_current_user = 1;
+    account->user_start = mylite_ast_node_start(username);
+    account->user_end = mylite_ast_node_end(username);
+    return mylite_ast_copy_source_span(ast, account->user_start,
+                                       account->user_end,
+                                       &account->user_value,
+                                       &account->user_value_length);
+  }
+  const MyliteAstNode *user =
+      mylite_ast_direct_child_symbol(username, 0, "nt_string_name");
+  if (!mylite_ast_set_account_string_name(
+          ast, user, &account->user_start, &account->user_end,
+          &account->user_value, &account->user_value_length)) {
+    return 0;
+  }
+  const MyliteAstNode *host =
+      mylite_ast_direct_child_symbol(username, 2, "nt_string_name");
+  if (host != NULL) {
+    account->has_explicit_host = 1;
+    return mylite_ast_set_account_string_name(
+        ast, host, &account->host_start, &account->host_end,
+        &account->host_value, &account->host_value_length);
+  }
+  const MyliteAstNode *host_token =
+      mylite_ast_find_direct_child_token(username,
+                                         MYLITE_TOK_SINGLE_AT_IDENTIFIER);
+  if (host_token != NULL) {
+    account->has_explicit_host = 1;
+    return mylite_ast_set_user_variable_name_value(
+        ast, host_token, &account->host_start, &account->host_end,
+        &account->host_value, &account->host_value_length);
+  }
+  return 1;
+}
+
+static int mylite_ast_set_account_string_name(
+    MyliteAst *ast, const MyliteAstNode *node, size_t *value_start,
+    size_t *value_end, const char **value, size_t *value_length) {
+  if (ast == NULL || node == NULL || value_start == NULL ||
+      value_end == NULL || value == NULL || value_length == NULL) {
+    return 1;
+  }
+  const MyliteAstNode *token =
+      mylite_ast_find_first_token(node, MYLITE_TOK_STRING_LIT);
+  if (token != NULL) {
+    *value_start = mylite_ast_node_start(token);
+    *value_end = mylite_ast_node_end(token);
+    return mylite_ast_decode_sql_string_literal(ast, *value_start, *value_end,
+                                                value, value_length);
+  }
+  const MyliteAstNode *identifier =
+      mylite_ast_find_first_token(node, MYLITE_TOK_IDENTIFIER);
+  if (identifier == NULL || !identifier->has_span) {
+    if (!node->has_span) {
+      return 1;
+    }
+    *value_start = mylite_ast_node_start(node);
+    *value_end = mylite_ast_node_end(node);
+    return mylite_ast_copy_source_span(ast, *value_start, *value_end, value,
+                                       value_length);
+  }
+  *value_start = mylite_ast_node_start(identifier);
+  *value_end = mylite_ast_node_end(identifier);
+  return mylite_ast_decode_identifier(ast, *value_start, *value_end, value,
+                                      value_length);
+}
+
+static int mylite_ast_set_account_auth(
+    MyliteAst *ast, MyliteAstAccount *account, const MyliteAstNode *auth) {
+  if (ast == NULL || account == NULL || auth == NULL) {
+    return 1;
+  }
+  account->auth_kind = mylite_ast_classify_account_auth(auth);
+  return mylite_ast_set_account_auth_values(ast, account);
+}
+
+static MyliteAccountAuthKind mylite_ast_classify_account_auth(
+    const MyliteAstNode *auth) {
+  if (auth == NULL || !auth->has_span) {
+    return MYLITE_ACCOUNT_AUTH_NONE;
+  }
+  if (mylite_ast_find_first_token(auth, MYLITE_TOK_RANDOM) != NULL) {
+    return MYLITE_ACCOUNT_AUTH_IDENTIFIED_BY_RANDOM_PASSWORD;
+  }
+  if (mylite_ast_find_first_token(auth, MYLITE_TOK_REPLACE) != NULL) {
+    return MYLITE_ACCOUNT_AUTH_IDENTIFIED_BY_REPLACE;
+  }
+  if (mylite_ast_find_first_token(auth, MYLITE_TOK_PASSWORD) != NULL) {
+    return MYLITE_ACCOUNT_AUTH_IDENTIFIED_BY_PASSWORD;
+  }
+  if (mylite_ast_find_first_token(auth, MYLITE_TOK_WITH) != NULL &&
+      mylite_ast_find_first_token(auth, MYLITE_TOK_AS) != NULL) {
+    return MYLITE_ACCOUNT_AUTH_IDENTIFIED_WITH_AS;
+  }
+  if (mylite_ast_find_first_token(auth, MYLITE_TOK_WITH) != NULL &&
+      mylite_ast_find_first_token(auth, MYLITE_TOK_BY) != NULL) {
+    return MYLITE_ACCOUNT_AUTH_IDENTIFIED_WITH_BY;
+  }
+  if (mylite_ast_find_first_token(auth, MYLITE_TOK_WITH) != NULL) {
+    return MYLITE_ACCOUNT_AUTH_IDENTIFIED_WITH;
+  }
+  if (mylite_ast_find_first_token(auth, MYLITE_TOK_BY) != NULL) {
+    return MYLITE_ACCOUNT_AUTH_IDENTIFIED_BY;
+  }
+  return MYLITE_ACCOUNT_AUTH_NONE;
+}
+
+static int mylite_ast_set_account_auth_values(MyliteAst *ast,
+                                              MyliteAstAccount *account) {
+  if (ast == NULL || account == NULL || account->auth_node == NULL) {
+    return 1;
+  }
+  const MyliteAstNode *plugin =
+      mylite_ast_find_first_symbol(account->auth_node, "nt_auth_plugin");
+  if (plugin != NULL &&
+      !mylite_ast_set_account_string_name(
+          ast, plugin, &account->auth_plugin_start,
+          &account->auth_plugin_end, &account->auth_plugin_value,
+          &account->auth_plugin_value_length)) {
+    return 0;
+  }
+  size_t remaining = 0;
+  const MyliteAstNode *auth_string =
+      mylite_ast_find_nth_symbol(account->auth_node, "nt_auth_string",
+                                 &remaining);
+  if (auth_string != NULL &&
+      !mylite_ast_set_account_auth_string_value(
+          ast, auth_string, &account->auth_string_start,
+          &account->auth_string_end, &account->auth_string_value,
+          &account->auth_string_value_length)) {
+    return 0;
+  }
+  remaining = 1;
+  const MyliteAstNode *replacement =
+      mylite_ast_find_nth_symbol(account->auth_node, "nt_auth_string",
+                                 &remaining);
+  if (replacement != NULL &&
+      !mylite_ast_set_account_auth_string_value(
+          ast, replacement, &account->replacement_auth_string_start,
+          &account->replacement_auth_string_end,
+          &account->replacement_auth_string_value,
+          &account->replacement_auth_string_value_length)) {
+    return 0;
+  }
+  const MyliteAstNode *hash =
+      mylite_ast_find_first_symbol(account->auth_node, "nt_hash_string");
+  if (hash != NULL) {
+    return mylite_ast_set_account_auth_string_value(
+        ast, hash, &account->hash_string_start, &account->hash_string_end,
+        &account->hash_string_value, &account->hash_string_value_length);
+  }
+  return 1;
+}
+
+static int mylite_ast_set_account_auth_string_value(
+    MyliteAst *ast, const MyliteAstNode *node, size_t *value_start,
+    size_t *value_end, const char **value, size_t *value_length) {
+  if (ast == NULL || node == NULL || value_start == NULL ||
+      value_end == NULL || value == NULL || value_length == NULL) {
+    return 1;
+  }
+  const MyliteAstNode *token =
+      mylite_ast_find_first_token(node, MYLITE_TOK_STRING_LIT);
+  if (token == NULL) {
+    token = mylite_ast_find_first_token(node, MYLITE_TOK_HEX_LIT);
+  }
+  if (token == NULL || !token->has_span) {
+    return 1;
+  }
+  *value_start = mylite_ast_node_start(token);
+  *value_end = mylite_ast_node_end(token);
+  if (token->token == MYLITE_TOK_STRING_LIT) {
+    return mylite_ast_decode_sql_string_literal(ast, *value_start, *value_end,
+                                                value, value_length);
+  }
+  return mylite_ast_copy_source_span(ast, *value_start, *value_end, value,
+                                     value_length);
+}
+
+static int mylite_ast_set_account_statement_passwords(
+    MyliteAst *ast, MyliteAstAccountStatement *account_statement) {
+  if (ast == NULL || account_statement == NULL ||
+      account_statement->kind != MYLITE_ACCOUNT_STATEMENT_SET_PASSWORD ||
+      account_statement->uses_random_password) {
+    return 1;
+  }
+  size_t remaining = 0;
+  const MyliteAstNode *password =
+      mylite_ast_find_nth_symbol(account_statement->node, "nt_password_opt",
+                                 &remaining);
+  if (password != NULL &&
+      !mylite_ast_set_account_auth_string_value(
+          ast, password, &account_statement->password_start,
+          &account_statement->password_end,
+          &account_statement->password_value,
+          &account_statement->password_value_length)) {
+    return 0;
+  }
+  remaining = 1;
+  const MyliteAstNode *replacement =
+      mylite_ast_find_nth_symbol(account_statement->node, "nt_password_opt",
+                                 &remaining);
+  if (replacement != NULL) {
+    return mylite_ast_set_account_auth_string_value(
+        ast, replacement, &account_statement->replacement_password_start,
+        &account_statement->replacement_password_end,
+        &account_statement->replacement_password_value,
+        &account_statement->replacement_password_value_length);
+  }
   return 1;
 }
 

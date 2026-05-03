@@ -75,6 +75,29 @@ struct locate_search {
     int64_t start_position;
 };
 
+enum field_comparison_mode {
+    FIELD_COMPARISON_STRING = 0,
+    FIELD_COMPARISON_NUMERIC = 1,
+};
+
+struct field_match_input {
+    const struct mylite_expression_value *search;
+    const struct mylite_expression_value *candidates;
+    size_t candidate_count;
+};
+
+struct find_in_set_input {
+    const char *needle;
+    const char *list;
+};
+
+struct text_compare_input {
+    const char *left;
+    size_t left_length;
+    const char *right;
+    size_t right_length;
+};
+
 struct insert_range {
     int64_t position;
     int64_t length;
@@ -143,6 +166,9 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_LPAD = 38,
     MYLITE_SCALAR_FUNCTION_RPAD = 39,
     MYLITE_SCALAR_FUNCTION_QUOTE = 40,
+    MYLITE_SCALAR_FUNCTION_ELT = 41,
+    MYLITE_SCALAR_FUNCTION_FIELD = 42,
+    MYLITE_SCALAR_FUNCTION_FIND_IN_SET = 43,
 };
 
 static int eval_node(const struct mylite_sql_ast_node *node,
@@ -332,6 +358,31 @@ static bool locate_arguments_are_null(const struct mylite_expression_value value
                                       const struct mylite_sql_ast_node *start_node);
 static int set_locate_function_result(struct locate_texts texts, int64_t start,
                                       struct mylite_expression_value *out_value);
+static int eval_elt_function(const struct mylite_sql_ast_node *arguments,
+                             const struct mylite_expression_eval_context *context,
+                             struct mylite_expression_warnings *warnings,
+                             struct mylite_expression_value *out_value);
+static int eval_field_function(const struct mylite_sql_ast_node *arguments,
+                               const struct mylite_expression_eval_context *context,
+                               struct mylite_expression_warnings *warnings,
+                               struct mylite_expression_value *out_value);
+static int eval_field_candidates(const struct mylite_sql_ast_node *arguments,
+                                 const struct mylite_expression_eval_context *context,
+                                 struct mylite_expression_warnings *warnings,
+                                 struct mylite_expression_value *candidates,
+                                 size_t candidate_count);
+static int field_match_position(struct field_match_input input, enum field_comparison_mode mode,
+                                struct mylite_expression_warnings *warnings, int64_t *out_position);
+static enum field_comparison_mode field_comparison_mode_from_values(struct field_match_input input);
+static int field_string_match_position(struct field_match_input input, int64_t *out_position);
+static int field_numeric_match_position(struct field_match_input input,
+                                        struct mylite_expression_warnings *warnings,
+                                        int64_t *out_position);
+static int eval_find_in_set_function(const struct mylite_sql_ast_node *arguments,
+                                     const struct mylite_expression_eval_context *context,
+                                     struct mylite_expression_warnings *warnings,
+                                     struct mylite_expression_value *out_value);
+static int64_t find_in_set_position(struct find_in_set_input input);
 static int eval_mod_function(const struct mylite_sql_ast_node *arguments,
                              const struct mylite_expression_eval_context *context,
                              struct mylite_expression_warnings *warnings,
@@ -464,6 +515,7 @@ static int value_to_string(const struct mylite_expression_value *value, char **o
 static int set_text_value(const char *text, size_t length,
                           struct mylite_expression_value *out_value);
 static int append_text(char **text, size_t *length, const char *addition, size_t addition_length);
+static bool ascii_text_equal_ci(struct text_compare_input input);
 static int utf8_char_count(const char *text, int64_t *out_count);
 static size_t utf8_offset_for_chars(const char *text, int64_t char_count);
 static size_t utf8_first_character_length(const char *text);
@@ -600,16 +652,21 @@ char *mylite_expression_value_to_text(const struct mylite_expression_value *valu
     }
     if (value->kind == MYLITE_EXPRESSION_VALUE_INT64) {
         int length = snprintf(buffer, sizeof(buffer), "%lld", (long long)value->int64_value);
-        return length < 0 ? NULL : copy_span_text(buffer, (size_t)length);
+        return length <= 0 || (size_t)length >= sizeof(buffer)
+                   ? NULL
+                   : copy_span_text(buffer, (size_t)length);
     }
     if (value->kind == MYLITE_EXPRESSION_VALUE_UINT64) {
         int length =
             snprintf(buffer, sizeof(buffer), "%llu", (unsigned long long)value->uint64_value);
-        return length < 0 ? NULL : copy_span_text(buffer, (size_t)length);
+        return length <= 0 || (size_t)length >= sizeof(buffer)
+                   ? NULL
+                   : copy_span_text(buffer, (size_t)length);
     }
 
     int length = snprintf(buffer, sizeof(buffer), "%.4f", value->real_value);
-    return length < 0 ? NULL : copy_span_text(buffer, (size_t)length);
+    return length <= 0 || (size_t)length >= sizeof(buffer) ? NULL
+                                                           : copy_span_text(buffer, (size_t)length);
 }
 
 int64_t mylite_expression_value_to_int64(const struct mylite_expression_value *value)
@@ -740,6 +797,8 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_CONCAT:
         return arity >= 1U;
     case MYLITE_SCALAR_FUNCTION_CONCAT_WS:
+    case MYLITE_SCALAR_FUNCTION_ELT:
+    case MYLITE_SCALAR_FUNCTION_FIELD:
         return arity >= 2U;
     case MYLITE_SCALAR_FUNCTION_LENGTH:
     case MYLITE_SCALAR_FUNCTION_CHAR_LENGTH:
@@ -761,6 +820,7 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_IFNULL:
     case MYLITE_SCALAR_FUNCTION_NULLIF:
     case MYLITE_SCALAR_FUNCTION_INSTR:
+    case MYLITE_SCALAR_FUNCTION_FIND_IN_SET:
         return arity == 2U;
     case MYLITE_SCALAR_FUNCTION_INSERT:
         return arity == 4U;
@@ -1526,6 +1586,12 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
     case MYLITE_SCALAR_FUNCTION_LOCATE:
     case MYLITE_SCALAR_FUNCTION_INSTR:
         return eval_locate_function(function_id, arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_ELT:
+        return eval_elt_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_FIELD:
+        return eval_field_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_FIND_IN_SET:
+        return eval_find_in_set_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_MOD:
         return eval_mod_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_ABS:
@@ -2735,6 +2801,294 @@ static int set_locate_function_result(struct locate_texts texts, int64_t start,
 
         *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
                                                       .int64_value = position};
+    }
+    return 0;
+}
+
+static int eval_elt_function(const struct mylite_sql_ast_node *arguments,
+                             const struct mylite_expression_eval_context *context,
+                             struct mylite_expression_warnings *warnings,
+                             struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value index_value = {0};
+    struct mylite_expression_value selected_value = {0};
+    char *text = NULL;
+    size_t arity = child_count(arguments);
+    int64_t position = 0;
+    int status = eval_node(child_at(arguments, 0U), context, warnings, &index_value);
+
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&index_value)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+
+    status = cast_value_to_signed_integer(&index_value, warnings, &position);
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (position < 1 || (uint64_t)position > (uint64_t)(arity - 1U)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+
+    status = eval_node(child_at(arguments, (size_t)position), context, warnings, &selected_value);
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&selected_value)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    status = value_to_string(&selected_value, &text);
+    if (status == 0) {
+        status = set_text_value(text, strlen(text), out_value);
+    }
+
+cleanup:
+    free(text);
+    mylite_expression_value_deinit(&index_value);
+    mylite_expression_value_deinit(&selected_value);
+    return status;
+}
+
+static int eval_field_function(const struct mylite_sql_ast_node *arguments,
+                               const struct mylite_expression_eval_context *context,
+                               struct mylite_expression_warnings *warnings,
+                               struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value search = {0};
+    struct mylite_expression_value *candidates = NULL;
+    size_t candidate_count = child_count(arguments) - 1U;
+    int64_t position = 0;
+    int status = eval_node(child_at(arguments, 0U), context, warnings, &search);
+
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&search)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
+                                                      .int64_value = 0};
+        goto cleanup;
+    }
+
+    candidates = calloc(candidate_count, sizeof(*candidates));
+    if (candidates == NULL) {
+        status = -1;
+        goto cleanup;
+    }
+
+    status = eval_field_candidates(arguments, context, warnings, candidates, candidate_count);
+    if (status == 0) {
+        struct field_match_input input = {
+            .search = &search,
+            .candidates = candidates,
+            .candidate_count = candidate_count,
+        };
+
+        status = field_match_position(input, field_comparison_mode_from_values(input), warnings,
+                                      &position);
+    }
+    if (status == 0) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
+                                                      .int64_value = position};
+    }
+
+cleanup:
+    if (candidates != NULL) {
+        for (size_t index = 0U; index < candidate_count; ++index) {
+            mylite_expression_value_deinit(&candidates[index]);
+        }
+    }
+    free(candidates);
+    mylite_expression_value_deinit(&search);
+    return status;
+}
+
+static int eval_field_candidates(const struct mylite_sql_ast_node *arguments,
+                                 const struct mylite_expression_eval_context *context,
+                                 struct mylite_expression_warnings *warnings,
+                                 struct mylite_expression_value *candidates, size_t candidate_count)
+{
+    for (size_t index = 0U; index < candidate_count; ++index) {
+        int status =
+            eval_node(child_at(arguments, index + 1U), context, warnings, &candidates[index]);
+
+        if (status != 0) {
+            return status;
+        }
+    }
+    return 0;
+}
+
+static int field_match_position(struct field_match_input input, enum field_comparison_mode mode,
+                                struct mylite_expression_warnings *warnings, int64_t *out_position)
+{
+    *out_position = 0;
+    if (mode == FIELD_COMPARISON_STRING) {
+        return field_string_match_position(input, out_position);
+    }
+    return field_numeric_match_position(input, warnings, out_position);
+}
+
+static enum field_comparison_mode field_comparison_mode_from_values(struct field_match_input input)
+{
+    bool saw_string = input.search->kind == MYLITE_EXPRESSION_VALUE_TEXT;
+    bool saw_numeric = is_numeric_kind(input.search->kind);
+
+    for (size_t index = 0U; index < input.candidate_count; ++index) {
+        if (is_null(&input.candidates[index])) {
+            continue;
+        }
+        saw_string = saw_string || input.candidates[index].kind == MYLITE_EXPRESSION_VALUE_TEXT;
+        saw_numeric = saw_numeric || is_numeric_kind(input.candidates[index].kind);
+    }
+    return saw_string && !saw_numeric ? FIELD_COMPARISON_STRING : FIELD_COMPARISON_NUMERIC;
+}
+
+static int field_string_match_position(struct field_match_input input, int64_t *out_position)
+{
+    char *search_text = NULL;
+    int status = value_to_string(input.search, &search_text);
+
+    if (status != 0) {
+        return status;
+    }
+    for (size_t index = 0U; index < input.candidate_count; ++index) {
+        char *candidate_text = NULL;
+
+        if (is_null(&input.candidates[index])) {
+            continue;
+        }
+        status = value_to_string(&input.candidates[index], &candidate_text);
+        if (status == 0 && ascii_text_equal_ci((struct text_compare_input){
+                               .left = search_text,
+                               .left_length = strlen(search_text),
+                               .right = candidate_text,
+                               .right_length = strlen(candidate_text),
+                           })) {
+            *out_position = (int64_t)index + 1;
+            free(candidate_text);
+            break;
+        }
+        free(candidate_text);
+        if (status != 0) {
+            break;
+        }
+    }
+    free(search_text);
+    return status;
+}
+
+static int field_numeric_match_position(struct field_match_input input,
+                                        struct mylite_expression_warnings *warnings,
+                                        int64_t *out_position)
+{
+    struct numeric_value search_number = {0};
+    int status = value_to_numeric(input.search, warnings, &search_number);
+
+    if (status != 0) {
+        return status;
+    }
+    for (size_t index = 0U; index < input.candidate_count; ++index) {
+        struct numeric_value candidate_number = {0};
+
+        if (is_null(&input.candidates[index])) {
+            continue;
+        }
+        status = value_to_numeric(&input.candidates[index], warnings, &candidate_number);
+        if (status != 0) {
+            return status;
+        }
+        if (search_number.real_value == candidate_number.real_value) {
+            *out_position = (int64_t)index + 1;
+            return 0;
+        }
+    }
+    return 0;
+}
+
+static int eval_find_in_set_function(const struct mylite_sql_ast_node *arguments,
+                                     const struct mylite_expression_eval_context *context,
+                                     struct mylite_expression_warnings *warnings,
+                                     struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value needle_value = {0};
+    struct mylite_expression_value list_value = {0};
+    char *needle = NULL;
+    char *list = NULL;
+    int64_t position = 0;
+    int status = eval_node(child_at(arguments, 0U), context, warnings, &needle_value);
+
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&needle_value)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    status = value_to_string(&needle_value, &needle);
+    if (status != 0) {
+        goto cleanup;
+    }
+
+    status = eval_node(child_at(arguments, 1U), context, warnings, &list_value);
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&list_value)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    status = value_to_string(&list_value, &list);
+    if (status == 0) {
+        position = find_in_set_position((struct find_in_set_input){
+            .needle = needle,
+            .list = list,
+        });
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
+                                                      .int64_value = position};
+    }
+
+cleanup:
+    free(needle);
+    free(list);
+    mylite_expression_value_deinit(&needle_value);
+    mylite_expression_value_deinit(&list_value);
+    return status;
+}
+
+static int64_t find_in_set_position(struct find_in_set_input input)
+{
+    const char *target = input.needle == NULL ? "" : input.needle;
+    const char *source = input.list == NULL ? "" : input.list;
+    size_t target_length = strlen(target);
+    const char *token = source;
+    int64_t position = 1;
+
+    if (source[0] == '\0' || strchr(target, ',') != NULL) {
+        return 0;
+    }
+    for (const char *cursor = source;; ++cursor) {
+        if (*cursor == ',' || *cursor == '\0') {
+            size_t token_length = (size_t)(cursor - token);
+
+            if (ascii_text_equal_ci((struct text_compare_input){
+                    .left = target,
+                    .left_length = target_length,
+                    .right = token,
+                    .right_length = token_length,
+                })) {
+                return position;
+            }
+            if (*cursor == '\0') {
+                break;
+            }
+            token = cursor + 1;
+            ++position;
+        }
     }
     return 0;
 }
@@ -4040,11 +4394,15 @@ static int cast_value_to_string(const struct mylite_expression_value *value, cha
     switch (value->kind) {
     case MYLITE_EXPRESSION_VALUE_INT64:
         length = snprintf(buffer, sizeof(buffer), "%lld", (long long)value->int64_value);
-        *out_text = length < 0 ? NULL : copy_span_text(buffer, (size_t)length);
+        *out_text = length <= 0 || (size_t)length >= sizeof(buffer)
+                        ? NULL
+                        : copy_span_text(buffer, (size_t)length);
         return *out_text == NULL ? -1 : 0;
     case MYLITE_EXPRESSION_VALUE_UINT64:
         length = snprintf(buffer, sizeof(buffer), "%llu", (unsigned long long)value->uint64_value);
-        *out_text = length < 0 ? NULL : copy_span_text(buffer, (size_t)length);
+        *out_text = length <= 0 || (size_t)length >= sizeof(buffer)
+                        ? NULL
+                        : copy_span_text(buffer, (size_t)length);
         return *out_text == NULL ? -1 : 0;
     case MYLITE_EXPRESSION_VALUE_REAL:
         return cast_real_to_string(value->real_value, out_text);
@@ -4157,6 +4515,26 @@ static int append_text(char **text, size_t *length, const char *addition, size_t
     updated[*length] = '\0';
     *text = updated;
     return 0;
+}
+
+static bool ascii_text_equal_ci(struct text_compare_input input)
+{
+    if (input.left == NULL || input.right == NULL) {
+        return false;
+    }
+    if (input.left_length != input.right_length) {
+        return false;
+    }
+    if (strlen(input.left) < input.left_length) {
+        return false;
+    }
+    for (size_t index = 0U; index < input.left_length; ++index) {
+        if (ascii_case_fold((unsigned char)input.left[index]) !=
+            ascii_case_fold((unsigned char)input.right[index])) {
+            return false;
+        }
+    }
+    return true;
 }
 
 static int utf8_char_count(const char *text, int64_t *out_count)
@@ -4459,6 +4837,9 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"RPAD", MYLITE_SCALAR_FUNCTION_RPAD},
         {"INSERT", MYLITE_SCALAR_FUNCTION_INSERT},
         {"QUOTE", MYLITE_SCALAR_FUNCTION_QUOTE},
+        {"ELT", MYLITE_SCALAR_FUNCTION_ELT},
+        {"FIELD", MYLITE_SCALAR_FUNCTION_FIELD},
+        {"FIND_IN_SET", MYLITE_SCALAR_FUNCTION_FIND_IN_SET},
         {"LOCATE", MYLITE_SCALAR_FUNCTION_LOCATE},
         {"POSITION", MYLITE_SCALAR_FUNCTION_LOCATE},
         {"INSTR", MYLITE_SCALAR_FUNCTION_INSTR},
@@ -4521,6 +4902,9 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_LPAD:
     case MYLITE_SCALAR_FUNCTION_RPAD:
     case MYLITE_SCALAR_FUNCTION_QUOTE:
+    case MYLITE_SCALAR_FUNCTION_ELT:
+    case MYLITE_SCALAR_FUNCTION_FIELD:
+    case MYLITE_SCALAR_FUNCTION_FIND_IN_SET:
     case MYLITE_SCALAR_FUNCTION_LOCATE:
     case MYLITE_SCALAR_FUNCTION_INSTR:
     case MYLITE_SCALAR_FUNCTION_ABS:

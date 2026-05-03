@@ -5184,6 +5184,7 @@ static int test_scalar_function_call_syntax(void)
         string_function_item_count = 15,
         padding_function_item_count = 6,
         quote_function_item_count = 2,
+        list_function_item_count = 3,
         coalesce_nested_arg_index = 2,
     };
     struct mylite_sql_parse_result result;
@@ -5387,6 +5388,20 @@ static int test_scalar_function_call_syntax(void)
         expect_function_call(child_at(child_at(select_list, 4U), 0U), "RPAD", 3U, "RPAD call");
     failures += expect_function_call(child_at(child_at(select_list, 5U), 0U), "INSERT", 4U,
                                      "INSERT string function call");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT ELT(2, 'a', 'b'), FIELD('b', 'a', 'b'), "
+                          "FIND_IN_SET('b', 'a,b');",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures +=
+        expect_child_count(select_list, list_function_item_count, "list function select list");
+    failures +=
+        expect_function_call(child_at(child_at(select_list, 0U), 0U), "ELT", 3U, "ELT call");
+    failures +=
+        expect_function_call(child_at(child_at(select_list, 1U), 0U), "FIELD", 3U, "FIELD call");
+    failures += expect_function_call(child_at(child_at(select_list, 2U), 0U), "FIND_IN_SET", 2U,
+                                     "FIND_IN_SET call");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT POSITION('a' IN ('abc'));", MYLITE_SQL_PARSE_OK, &result);

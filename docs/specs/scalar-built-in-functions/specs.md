@@ -28,6 +28,7 @@ In scope for the initial implementation:
   - `TRIM`, `LTRIM`, `RTRIM`
   - `LPAD`, `RPAD`
   - `REPEAT`, `REPLACE`, `REVERSE`
+  - `ELT`, `FIELD`, `FIND_IN_SET`
   - `HEX`, `UNHEX`
 - numeric functions:
   - `ABS`
@@ -105,12 +106,14 @@ by common scalar expressions:
   `CHARACTER_LENGTH`, `LOWER`, `LCASE`, `UPPER`, `UCASE`, `LEFT`, `RIGHT`,
   `REPLACE`, `CONCAT_WS`, `SUBSTRING`, `SUBSTR`, `MID`, `TRIM`, `LTRIM`,
   `RTRIM`, `ASCII`, `ORD`, `LOCATE`, `POSITION`, `INSTR`, `INSERT`, `QUOTE`,
-  `REPEAT`, `SPACE`, `REVERSE`, `LPAD`, and `RPAD`; see
+  `REPEAT`, `SPACE`, `REVERSE`, `LPAD`, `RPAD`, `ELT`, `FIELD`, and
+  `FIND_IN_SET`; see
   `docs/specs/string-functions-substring-trim/specs.md` and
   `docs/specs/string-search-code-functions/specs.md` and
   `docs/specs/string-insert-function/specs.md` and
   `docs/specs/string-quote-function/specs.md` and
-  `docs/specs/string-padding-repeat-functions/specs.md`
+  `docs/specs/string-padding-repeat-functions/specs.md` and
+  `docs/specs/string-list-index-functions/specs.md`
 - numeric functions: `ABS`, `SIGN`, `FLOOR`, `CEIL`, `CEILING`, `MOD`, and
   `PI`
 - conditional/comparison functions: `IF`, `IFNULL`, `NULLIF`, `COALESCE`, and

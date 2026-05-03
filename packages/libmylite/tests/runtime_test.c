@@ -2428,6 +2428,22 @@ static int test_scalar_builtin_functions_execution(void)
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
              MYLITE_FIELD_FLAG_UNSIGNED,
          1},
+        {"elt_value", NULL, NULL, NULL, NULL, NULL, 8U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"elt_oob", NULL, NULL, NULL, NULL, NULL, 8U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"elt_ints", NULL, NULL, NULL, NULL, NULL, 12U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"field_value", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"find_value", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
     };
     static const struct expected_result_metadata nullable_search_metadata[] = {
         {"ascii_null", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
@@ -2444,6 +2460,10 @@ static int test_scalar_builtin_functions_execution(void)
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
              MYLITE_FIELD_FLAG_UNSIGNED,
          1},
+        {"field_null", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"find_null", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
     };
     static const struct expected_result_metadata latin1_metadata[] = {
         {"concat_ws_latin1", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_VAR_STRING, 31U,
@@ -2497,6 +2517,14 @@ static int test_scalar_builtin_functions_execution(void)
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
              MYLITE_FIELD_FLAG_UNSIGNED,
          1},
+        {"elt_latin1", NULL, NULL, NULL, NULL, NULL, 2U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"field_latin1", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"find_latin1", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
     };
     static const struct expected_result_metadata quote_table_metadata[] = {
         {"quote_n", NULL, NULL, NULL, NULL, NULL, 96U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
@@ -2741,6 +2769,56 @@ static int test_scalar_builtin_functions_execution(void)
         "4",
         "'42'",
     };
+    static const char *const elt_columns[] = {
+        "elt_first",      "elt_second",    "elt_zero",       "elt_negative",     "elt_oob",
+        "elt_null_index", "elt_null_item", "elt_real_index", "elt_string_index",
+    };
+    static const char *const elt_values[] = {
+        "a", "b", NULL, NULL, NULL, NULL, NULL, "c", "b",
+    };
+    static const char *const elt_skip_columns[] = {"elt_skip", "find_skip"};
+    static const char *const elt_skip_values[] = {"a", NULL};
+    static const char *const field_columns[] = {
+        "field_hit",
+        "field_miss",
+        "field_null_search",
+        "field_null_candidate",
+        "field_ints",
+        "field_mixed_string_num",
+        "field_utf8",
+        "field_all_strings",
+        "field_int_vs_strings",
+        "field_real_vs_strings",
+        "field_string_decimal",
+        "field_case_default",
+    };
+    static const char *const field_values[] = {
+        "2", "0", "0", "2", "2", "2", "2", "2", "1", "1", "2", "1",
+    };
+    static const char *const field_warning_columns[] = {"field_num_text", "field_string_num"};
+    static const char *const field_warning_values[] = {"1", "0"};
+    static const char *const find_columns[] = {
+        "find_hit",
+        "find_duplicate",
+        "find_miss",
+        "find_null_search",
+        "find_null_list",
+        "find_empty_middle",
+        "find_empty_list",
+        "find_empty_single_comma",
+        "find_empty_double_comma",
+        "find_comma_needle",
+        "find_trailing_empty",
+        "find_empty_trailing",
+        "find_no_trim",
+        "find_utf8",
+        "find_num",
+        "find_string",
+        "find_case_default",
+    };
+    static const char *const find_values[] = {
+        "2", "2", "0", NULL, NULL, "2", "0", "1", "1", "0", "2", "2", "0", "2", "2", "3", "1",
+    };
     static const char *const abs_in_columns[] = {"abs_in"};
     static const char *const abs_in_values[] = {"1"};
     static const char *const projection_columns[] = {"id", "title"};
@@ -2775,6 +2853,10 @@ static int test_scalar_builtin_functions_execution(void)
         "2",
         "'Beta'",
     };
+    static const char *const list_projection_columns[] = {"id", "label", "field_pos", "list_pos"};
+    static const char *const list_projection_values[] = {
+        "2", "two", "2", "1", "1", "one", "1", "2",
+    };
     static const char *const id_column[] = {"id"};
     static const char *const n_column[] = {"n"};
     static const char *const id_2[] = {"2"};
@@ -2787,6 +2869,7 @@ static int test_scalar_builtin_functions_execution(void)
     static const char *const updated_search_values[] = {"2", "x-be", "120"};
     static const char *const updated_insert_values[] = {"1", "a-ha", "1"};
     static const char *const updated_quote_values[] = {"1", "'a-ha'", "1"};
+    static const char *const updated_list_values[] = {"3", NULL, "2"};
     static const char *const all_id_values[] = {"1", "2", "3"};
     static const char *const remaining_values[] = {"1"};
     mylite_db *database = NULL;
@@ -2871,7 +2954,12 @@ static int test_scalar_builtin_functions_execution(void)
                             "RPAD('hi', 5, '.') AS rpad_value, "
                             "INSERT('Quadratic', 3, 4, 'What') AS insert_value, "
                             "QUOTE('Don''t') AS quote_value, "
-                            "QUOTE(42) AS quote_numeric",
+                            "QUOTE(42) AS quote_numeric, "
+                            "ELT(2, 'a', 'bc') AS elt_value, "
+                            "ELT(3, 'a', 'bc') AS elt_oob, "
+                            "ELT(1, 1, 20) AS elt_ints, "
+                            "FIELD('b', 'a', 'b') AS field_value, "
+                            "FIND_IN_SET('b', 'a,b') AS find_value",
                             MYLITE_OK, &stmt);
     failures += expect_result_metadata(
         stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "scalar function metadata");
@@ -2884,7 +2972,9 @@ static int test_scalar_builtin_functions_execution(void)
                             "SELECT ASCII(NULL) AS ascii_null, "
                             "LOCATE('a', NULL) AS locate_null, "
                             "INSERT('abc', NULL, 1, 'x') AS insert_null, "
-                            "QUOTE(NULL) AS quote_null",
+                            "QUOTE(NULL) AS quote_null, "
+                            "FIELD(NULL, 'a') AS field_null, "
+                            "FIND_IN_SET(NULL, 'a') AS find_null",
                             MYLITE_OK, &stmt);
     failures += expect_result_metadata(
         stmt, nullable_search_metadata,
@@ -2908,7 +2998,10 @@ static int test_scalar_builtin_functions_execution(void)
                             "LPAD('hi', 5, '.') AS lpad_latin1, "
                             "RPAD('hi', 5, '.') AS rpad_latin1, "
                             "INSERT('Quadratic', 3, 4, 'What') AS insert_latin1, "
-                            "QUOTE('Don''t') AS quote_latin1",
+                            "QUOTE('Don''t') AS quote_latin1, "
+                            "ELT(2, 'a', 'bc') AS elt_latin1, "
+                            "FIELD('b', 'a', 'b') AS field_latin1, "
+                            "FIND_IN_SET('b', 'a,b') AS find_latin1",
                             MYLITE_OK, &stmt);
     failures += expect_result_metadata(stmt, latin1_metadata,
                                        (int)(sizeof(latin1_metadata) / sizeof(latin1_metadata[0])),
@@ -3126,6 +3219,82 @@ static int test_scalar_builtin_functions_execution(void)
                            quote_columns, (int)(sizeof(quote_columns) / sizeof(quote_columns[0])),
                            quote_values, 1, "string quote scalar values");
 
+    failures += expect_select_rows(database,
+                                   "SELECT ELT(1,'a','b') AS elt_first, "
+                                   "ELT(2,'a','b') AS elt_second, "
+                                   "ELT(0,'a','b') AS elt_zero, "
+                                   "ELT(-1,'a','b') AS elt_negative, "
+                                   "ELT(3,'a','b') AS elt_oob, "
+                                   "ELT(NULL,'a','b') AS elt_null_index, "
+                                   "ELT(1,NULL,'b') AS elt_null_item, "
+                                   "ELT(2.5,'a','b','c') AS elt_real_index, "
+                                   "ELT('2.5','a','b','c') AS elt_string_index",
+                                   elt_columns, (int)(sizeof(elt_columns) / sizeof(elt_columns[0])),
+                                   elt_values, 1, "string list ELT scalar values");
+    failures += expect_int(mylite_warning_count(database), 1, "ELT coercion warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "ELT coercion warning code");
+
+    failures += expect_select_rows(database,
+                                   "SELECT ELT(1,'a',MOD(7,0)) AS elt_skip, "
+                                   "FIND_IN_SET(NULL, MOD(7,0)) AS find_skip",
+                                   elt_skip_columns,
+                                   (int)(sizeof(elt_skip_columns) / sizeof(elt_skip_columns[0])),
+                                   elt_skip_values, 1, "string list short-circuit values");
+    failures += expect_int(mylite_warning_count(database), 0, "string list short-circuit warnings");
+
+    failures +=
+        expect_select_rows(database,
+                           "SELECT FIELD('b','a','b','c') AS field_hit, "
+                           "FIELD('z','a','b','c') AS field_miss, "
+                           "FIELD(NULL,'a',NULL) AS field_null_search, "
+                           "FIELD('a',NULL,'a') AS field_null_candidate, "
+                           "FIELD(2,1,2,3) AS field_ints, "
+                           "FIELD('2',1,2,3) AS field_mixed_string_num, "
+                           "FIELD('\xE6\xB5\xB7','\xE7\x8C\xAB','\xE6\xB5\xB7') AS field_utf8, "
+                           "FIELD('2','02','2') AS field_all_strings, "
+                           "FIELD(2,'02','2') AS field_int_vs_strings, "
+                           "FIELD(2.0,'02','2') AS field_real_vs_strings, "
+                           "FIELD('2.0','2','2.0') AS field_string_decimal, "
+                           "FIELD('A','a') AS field_case_default",
+                           field_columns, (int)(sizeof(field_columns) / sizeof(field_columns[0])),
+                           field_values, 1, "string list FIELD scalar values");
+
+    failures +=
+        expect_select_rows(database,
+                           "SELECT FIELD(0,'a','b') AS field_num_text, "
+                           "FIELD('x',1,2) AS field_string_num",
+                           field_warning_columns,
+                           (int)(sizeof(field_warning_columns) / sizeof(field_warning_columns[0])),
+                           field_warning_values, 1, "FIELD mixed warning values");
+    failures += expect_int(mylite_warning_count(database), 2, "FIELD mixed warning count");
+    for (int index = 0; index < 2; ++index) {
+        failures += expect_int((int)mylite_warning_code(database, index),
+                               mysql_warning_truncated_wrong_value, "FIELD mixed warning code");
+    }
+
+    failures +=
+        expect_select_rows(database,
+                           "SELECT FIND_IN_SET('b','a,b,c') AS find_hit, "
+                           "FIND_IN_SET('a','b,a,a') AS find_duplicate, "
+                           "FIND_IN_SET('z','a,b,c') AS find_miss, "
+                           "FIND_IN_SET(NULL,'a,b') AS find_null_search, "
+                           "FIND_IN_SET('a',NULL) AS find_null_list, "
+                           "FIND_IN_SET('','a,,b') AS find_empty_middle, "
+                           "FIND_IN_SET('', '') AS find_empty_list, "
+                           "FIND_IN_SET('', ',') AS find_empty_single_comma, "
+                           "FIND_IN_SET('', ',,') AS find_empty_double_comma, "
+                           "FIND_IN_SET('a,b','a,b') AS find_comma_needle, "
+                           "FIND_IN_SET('b','a,b,') AS find_trailing_empty, "
+                           "FIND_IN_SET('','a,') AS find_empty_trailing, "
+                           "FIND_IN_SET('a',' a,a ') AS find_no_trim, "
+                           "FIND_IN_SET('\xE6\xB5\xB7','\xE7\x8C\xAB,\xE6\xB5\xB7') AS find_utf8, "
+                           "FIND_IN_SET(2,'1,2,3') AS find_num, "
+                           "FIND_IN_SET('2','1,02,2') AS find_string, "
+                           "FIND_IN_SET('A','a,A') AS find_case_default",
+                           find_columns, (int)(sizeof(find_columns) / sizeof(find_columns[0])),
+                           find_values, 1, "string list FIND_IN_SET scalar values");
+
     failures += expect_select_rows(database, "SELECT ABS(1 IN (1)) AS abs_in", abs_in_columns, 1,
                                    abs_in_values, 1, "function IN predicate argument");
 
@@ -3205,6 +3374,13 @@ static int test_scalar_builtin_functions_execution(void)
                                    "FROM t WHERE ISNULL(s)=0 ORDER BY id",
                                    quote_projection_columns, 2, quote_projection_values, 2,
                                    "table quote function projection");
+    failures += expect_select_rows(database,
+                                   "SELECT id, ELT(id, 'one', 'two', 'three') AS label, "
+                                   "FIELD(s, 'alpha', 'Beta') AS field_pos, "
+                                   "FIND_IN_SET(s, 'Beta,alpha') AS list_pos "
+                                   "FROM t WHERE ISNULL(s)=0 ORDER BY FIELD(s, 'Beta', 'alpha')",
+                                   list_projection_columns, 4, list_projection_values, 2,
+                                   "table list function projection and order");
     failures += expect_select_rows(database, "SELECT id FROM t WHERE LPAD(s, 5, '.')='alpha'",
                                    id_column, 1, n_1, 1, "lpad function where");
     failures += expect_select_rows(database, "SELECT id FROM t WHERE REVERSE(s)='ateB'", id_column,
@@ -3213,6 +3389,13 @@ static int test_scalar_builtin_functions_execution(void)
                                    id_column, 1, id_2, 1, "insert function where");
     failures += expect_select_rows(database, "SELECT id FROM t WHERE QUOTE(s)='''Beta'''",
                                    id_column, 1, id_2, 1, "quote function where");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE FIELD(s, 'Beta') = 1",
+                                   id_column, 1, id_2, 1, "field function where");
+    failures +=
+        expect_select_rows(database, "SELECT id FROM t WHERE FIND_IN_SET(s, 'none,alpha') = 2",
+                           id_column, 1, n_1, 1, "find_in_set function where");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE ELT(id, 'alpha', 'Beta') = s",
+                                   id_column, 1, all_id_values, 2, "elt function where");
     failures += expect_select_rows(database,
                                    "SELECT id FROM t WHERE ISNULL(s)=0 ORDER BY REVERSE(s), id "
                                    "LIMIT 1",
@@ -3273,6 +3456,14 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_select_rows(database, "SELECT id, s, n FROM t WHERE id = 1", id_s_n_columns,
                                    3, updated_quote_values, 1, "updated quote function values");
 
+    failures +=
+        execute_sql_expect_done_affected(database,
+                                         "UPDATE t SET n = FIND_IN_SET('target', 'skip,target') "
+                                         "WHERE FIELD(id, 3, 4) = 1",
+                                         1, "update list function assignment and predicate");
+    failures += expect_select_rows(database, "SELECT id, s, n FROM t WHERE id = 3", id_s_n_columns,
+                                   3, updated_list_values, 1, "updated list function values");
+
     failures += prepare_sql(database, "UPDATE t SET n = 5 WHERE MOD(7,0)", MYLITE_OK, &stmt);
     failures +=
         expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "update function warning promoted");
@@ -3317,6 +3508,13 @@ static int test_scalar_builtin_functions_execution(void)
                                          1, "delete quote function predicate");
     failures += expect_select_rows(database, "SELECT id FROM t ORDER BY id", id_column, 1,
                                    remaining_values, 1, "delete quote function remaining rows");
+    failures += execute_sql(database, "INSERT INTO t (s,n) VALUES ('list-delete',5)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(database,
+                                                 "DELETE FROM t WHERE FIELD(s, 'list-delete') = 1 "
+                                                 "AND FIND_IN_SET('delete', 'keep,delete') = 2",
+                                                 1, "delete list function predicate");
+    failures += expect_select_rows(database, "SELECT id FROM t ORDER BY id", id_column, 1,
+                                   remaining_values, 1, "delete list function remaining rows");
 
     failures += prepare_sql(database, "SELECT SIN(1)", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported scalar function");
@@ -3374,6 +3572,19 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_no_stmt_handle(&stmt, "unsupported instr one arity");
     failures += prepare_sql(database, "SELECT INSTR('a','b','c')", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported instr three arity");
+    failures += prepare_sql(database, "SELECT ELT()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported elt zero arity");
+    failures += prepare_sql(database, "SELECT ELT(1)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported elt one arity");
+    failures += prepare_sql(database, "SELECT FIELD()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported field zero arity");
+    failures += prepare_sql(database, "SELECT FIELD('a')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported field one arity");
+    failures += prepare_sql(database, "SELECT FIND_IN_SET('a')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported find_in_set one arity");
+    failures +=
+        prepare_sql(database, "SELECT FIND_IN_SET('a','a,b','x')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported find_in_set three arity");
     failures += prepare_sql(database, "SELECT POSITION('a')", MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "position ordinary syntax");
     failures += prepare_sql(database, "SELECT LTRIM()", MYLITE_UNSUPPORTED, &stmt);

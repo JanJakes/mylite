@@ -1483,6 +1483,9 @@ size_t mylite_ast_create_table_column_view_default_value_end(
     const MyliteAstCreateTableColumn *column);
 const MyliteAstNode *mylite_ast_create_table_column_view_default_value_node(
     const MyliteAstCreateTableColumn *column);
+const MyliteAstExpression *
+mylite_ast_create_table_column_view_default_value_expression(
+    const MyliteAstCreateTableColumn *column);
 MyliteCreateTableColumnValueKind
 mylite_ast_create_table_column_view_default_value_kind(
     const MyliteAstCreateTableColumn *column);
@@ -1508,6 +1511,9 @@ size_t mylite_ast_create_table_column_view_on_update_value_end(
 const MyliteAstNode *
 mylite_ast_create_table_column_view_on_update_value_node(
     const MyliteAstCreateTableColumn *column);
+const MyliteAstExpression *
+mylite_ast_create_table_column_view_on_update_value_expression(
+    const MyliteAstCreateTableColumn *column);
 MyliteCreateTableColumnValueKind
 mylite_ast_create_table_column_view_on_update_value_kind(
     const MyliteAstCreateTableColumn *column);
@@ -1527,6 +1533,9 @@ size_t mylite_ast_create_table_column_view_generated_expression_end(
     const MyliteAstCreateTableColumn *column);
 const MyliteAstNode *
 mylite_ast_create_table_column_view_generated_expression_node(
+    const MyliteAstCreateTableColumn *column);
+const MyliteAstExpression *
+mylite_ast_create_table_column_view_generated_expression(
     const MyliteAstCreateTableColumn *column);
 size_t mylite_ast_create_table_column_view_generated_storage_start(
     const MyliteAstCreateTableColumn *column);
@@ -1561,6 +1570,9 @@ size_t mylite_ast_create_table_column_view_check_expression_end(
     const MyliteAstCreateTableColumn *column);
 const MyliteAstNode *
 mylite_ast_create_table_column_view_check_expression_node(
+    const MyliteAstCreateTableColumn *column);
+const MyliteAstExpression *
+mylite_ast_create_table_column_view_check_expression(
     const MyliteAstCreateTableColumn *column);
 MyliteCreateTableCheckEnforcement
 mylite_ast_create_table_column_view_check_enforcement(
@@ -1664,6 +1676,10 @@ size_t mylite_ast_create_table_key_view_check_expression_start(
     const MyliteAstCreateTableKey *key);
 size_t mylite_ast_create_table_key_view_check_expression_end(
     const MyliteAstCreateTableKey *key);
+const MyliteAstNode *mylite_ast_create_table_key_view_check_expression_node(
+    const MyliteAstCreateTableKey *key);
+const MyliteAstExpression *mylite_ast_create_table_key_view_check_expression(
+    const MyliteAstCreateTableKey *key);
 MyliteCreateTableCheckEnforcement
 mylite_ast_create_table_key_view_check_enforcement(
     const MyliteAstCreateTableKey *key);
@@ -1712,6 +1728,10 @@ size_t mylite_ast_create_table_key_part_view_name_value_length(
 size_t mylite_ast_create_table_key_part_view_expression_start(
     const MyliteAstCreateTableKeyPart *part);
 size_t mylite_ast_create_table_key_part_view_expression_end(
+    const MyliteAstCreateTableKeyPart *part);
+const MyliteAstNode *mylite_ast_create_table_key_part_view_expression_node(
+    const MyliteAstCreateTableKeyPart *part);
+const MyliteAstExpression *mylite_ast_create_table_key_part_view_expression(
     const MyliteAstCreateTableKeyPart *part);
 size_t mylite_ast_create_table_key_part_view_prefix_start(
     const MyliteAstCreateTableKeyPart *part);

@@ -39,6 +39,25 @@ typedef enum MyliteAstCreateTableColumnTypeShapeFlag {
   MYLITE_AST_CREATE_TABLE_COLUMN_TYPE_SHAPE_FSP = 1u << 3
 } MyliteAstCreateTableColumnTypeShapeFlag;
 
+struct MyliteAstExpression {
+  const MyliteAstNode *node;
+  MyliteExpressionKind kind;
+  MyliteExpressionLiteralKind literal_kind;
+  MyliteExpressionOperatorKind operator_kind;
+  size_t start;
+  size_t end;
+  size_t operator_start;
+  size_t operator_end;
+  size_t value_start;
+  size_t value_end;
+  const char *value;
+  size_t value_length;
+  MyliteAstExpression *children;
+  size_t child_count;
+  unsigned long long unsigned_integer_value;
+  int has_unsigned_integer_value;
+};
+
 struct MyliteAstCreateTableColumnTypeElement {
   const char *value;
   size_t value_length;
@@ -107,6 +126,7 @@ struct MyliteAstCreateTableColumn {
   size_t default_value_start;
   size_t default_value_end;
   const MyliteAstNode *default_value_node;
+  MyliteAstExpression default_value_expression;
   const char *default_value;
   size_t default_value_length;
   unsigned long long default_unsigned_integer_value;
@@ -117,6 +137,7 @@ struct MyliteAstCreateTableColumn {
   size_t on_update_value_start;
   size_t on_update_value_end;
   const MyliteAstNode *on_update_value_node;
+  MyliteAstExpression on_update_value_expression;
   const char *on_update_value;
   size_t on_update_value_length;
   size_t generated_start;
@@ -125,6 +146,7 @@ struct MyliteAstCreateTableColumn {
   size_t generated_expression_start;
   size_t generated_expression_end;
   const MyliteAstNode *generated_expression_node;
+  MyliteAstExpression generated_expression;
   size_t generated_storage_start;
   size_t generated_storage_end;
   const MyliteAstNode *generated_storage_node;
@@ -141,6 +163,7 @@ struct MyliteAstCreateTableColumn {
   size_t check_expression_start;
   size_t check_expression_end;
   const MyliteAstNode *check_expression_node;
+  MyliteAstExpression check_expression;
   MyliteCreateTableCheckEnforcement check_enforcement;
   size_t check_enforcement_start;
   size_t check_enforcement_end;
@@ -161,6 +184,8 @@ struct MyliteAstCreateTableKeyPart {
   size_t name_value_length;
   size_t expression_start;
   size_t expression_end;
+  const MyliteAstNode *expression_node;
+  MyliteAstExpression expression;
   size_t prefix_start;
   size_t prefix_end;
   size_t prefix_value_start;
@@ -226,6 +251,8 @@ struct MyliteAstCreateTableKey {
   size_t foreign_on_update_end;
   size_t check_expression_start;
   size_t check_expression_end;
+  const MyliteAstNode *check_expression_node;
+  MyliteAstExpression check_expression;
   MyliteCreateTableCheckEnforcement check_enforcement;
   size_t check_enforcement_start;
   size_t check_enforcement_end;
@@ -425,25 +452,6 @@ struct MyliteAstDropView {
   size_t start;
   size_t end;
   int has_if_exists;
-};
-
-struct MyliteAstExpression {
-  const MyliteAstNode *node;
-  MyliteExpressionKind kind;
-  MyliteExpressionLiteralKind literal_kind;
-  MyliteExpressionOperatorKind operator_kind;
-  size_t start;
-  size_t end;
-  size_t operator_start;
-  size_t operator_end;
-  size_t value_start;
-  size_t value_end;
-  const char *value;
-  size_t value_length;
-  MyliteAstExpression *children;
-  size_t child_count;
-  unsigned long long unsigned_integer_value;
-  int has_unsigned_integer_value;
 };
 
 struct MyliteAstSetAssignment {
@@ -960,6 +968,8 @@ static int mylite_ast_fill_create_table_column(
     const MyliteAstNode *node);
 static int mylite_ast_set_create_table_column_metadata(
     MyliteAst *ast, MyliteAstCreateTableColumn *column);
+static int mylite_ast_set_create_table_column_expression_views(
+    MyliteAst *ast, MyliteAstCreateTableColumn *column);
 static void mylite_ast_set_create_table_column_nullability(
     MyliteAstCreateTableColumn *column);
 static void mylite_ast_set_create_table_column_generated_storage(
@@ -1111,8 +1121,9 @@ static int mylite_ast_set_create_table_key_reference(
     const MyliteAstNode *constraint_elem);
 static int mylite_ast_set_create_table_key_referenced_table_values(
     MyliteAst *ast, MyliteAstCreateTableKey *key);
-static void mylite_ast_set_create_table_key_check(
-    MyliteAstCreateTableKey *key, const MyliteAstNode *constraint_elem);
+static int mylite_ast_set_create_table_key_check(
+    MyliteAst *ast, MyliteAstCreateTableKey *key,
+    const MyliteAstNode *constraint_elem);
 static MyliteCreateTableForeignMatchKind mylite_ast_classify_foreign_match(
     const MyliteAstNode *node);
 static MyliteCreateTableForeignAction mylite_ast_classify_foreign_action(
@@ -1132,6 +1143,8 @@ static void mylite_ast_fill_index_part_specs(MyliteAstCreateTableKeyPart *parts,
                                              const MyliteAstNode *node,
                                              size_t *index);
 static int mylite_ast_set_create_table_key_part_name_values(
+    MyliteAst *ast, MyliteAstCreateTableKeyPart *parts, size_t count);
+static int mylite_ast_set_create_table_key_part_expression_views(
     MyliteAst *ast, MyliteAstCreateTableKeyPart *parts, size_t count);
 static void mylite_ast_fill_key_part(MyliteAstCreateTableKeyPart *part,
                                      const MyliteAstNode *node);
@@ -4780,6 +4793,14 @@ const MyliteAstNode *mylite_ast_create_table_column_view_default_value_node(
   return column == NULL ? NULL : column->default_value_node;
 }
 
+const MyliteAstExpression *
+mylite_ast_create_table_column_view_default_value_expression(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL || column->default_value_node == NULL
+             ? NULL
+             : &column->default_value_expression;
+}
+
 MyliteCreateTableColumnValueKind
 mylite_ast_create_table_column_view_default_value_kind(
     const MyliteAstCreateTableColumn *column) {
@@ -4839,6 +4860,14 @@ mylite_ast_create_table_column_view_on_update_value_node(
   return column == NULL ? NULL : column->on_update_value_node;
 }
 
+const MyliteAstExpression *
+mylite_ast_create_table_column_view_on_update_value_expression(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL || column->on_update_value_node == NULL
+             ? NULL
+             : &column->on_update_value_expression;
+}
+
 MyliteCreateTableColumnValueKind
 mylite_ast_create_table_column_view_on_update_value_kind(
     const MyliteAstCreateTableColumn *column) {
@@ -4885,6 +4914,14 @@ const MyliteAstNode *
 mylite_ast_create_table_column_view_generated_expression_node(
     const MyliteAstCreateTableColumn *column) {
   return column == NULL ? NULL : column->generated_expression_node;
+}
+
+const MyliteAstExpression *
+mylite_ast_create_table_column_view_generated_expression(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL || column->generated_expression_node == NULL
+             ? NULL
+             : &column->generated_expression;
 }
 
 size_t mylite_ast_create_table_column_view_generated_storage_start(
@@ -4967,6 +5004,14 @@ const MyliteAstNode *
 mylite_ast_create_table_column_view_check_expression_node(
     const MyliteAstCreateTableColumn *column) {
   return column == NULL ? NULL : column->check_expression_node;
+}
+
+const MyliteAstExpression *
+mylite_ast_create_table_column_view_check_expression(
+    const MyliteAstCreateTableColumn *column) {
+  return column == NULL || column->check_expression_node == NULL
+             ? NULL
+             : &column->check_expression;
 }
 
 MyliteCreateTableCheckEnforcement
@@ -5227,6 +5272,18 @@ size_t mylite_ast_create_table_key_view_check_expression_end(
   return key == NULL ? 0 : key->check_expression_end;
 }
 
+const MyliteAstNode *mylite_ast_create_table_key_view_check_expression_node(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL ? NULL : key->check_expression_node;
+}
+
+const MyliteAstExpression *mylite_ast_create_table_key_view_check_expression(
+    const MyliteAstCreateTableKey *key) {
+  return key == NULL || key->check_expression_node == NULL
+             ? NULL
+             : &key->check_expression;
+}
+
 MyliteCreateTableCheckEnforcement
 mylite_ast_create_table_key_view_check_enforcement(
     const MyliteAstCreateTableKey *key) {
@@ -5356,6 +5413,17 @@ size_t mylite_ast_create_table_key_part_view_expression_start(
 size_t mylite_ast_create_table_key_part_view_expression_end(
     const MyliteAstCreateTableKeyPart *part) {
   return part == NULL ? 0 : part->expression_end;
+}
+
+const MyliteAstNode *mylite_ast_create_table_key_part_view_expression_node(
+    const MyliteAstCreateTableKeyPart *part) {
+  return part == NULL ? NULL : part->expression_node;
+}
+
+const MyliteAstExpression *mylite_ast_create_table_key_part_view_expression(
+    const MyliteAstCreateTableKeyPart *part) {
+  return part == NULL || part->expression_node == NULL ? NULL
+                                                       : &part->expression;
 }
 
 size_t mylite_ast_create_table_key_part_view_prefix_start(
@@ -9338,12 +9406,18 @@ static const MyliteAstNode *mylite_ast_expression_payload(
     static const char *const wrappers[] = {
         "nt_set_expr",
         "nt_expr_or_default",
+        "nt_default_value_expr",
         "nt_expression",
         "nt_bool_pri",
         "nt_predicate_expr",
         "nt_bit_expr",
         "nt_simple_expr",
         "nt_simple_ident",
+        "nt_mysql_default_operand",
+        "nt_signed_literal",
+        "nt_now_sym_option_fraction_parentheses",
+        "nt_now_sym_option_fraction",
+        "nt_now_sym",
         "nt_literal",
         "nt_string_literal",
         "nt_charset_name_or_default",
@@ -10818,13 +10892,44 @@ static int mylite_ast_set_create_table_column_metadata(
     MyliteAst *ast, MyliteAstCreateTableColumn *column) {
   mylite_ast_set_create_table_column_nullability(column);
   mylite_ast_set_create_table_column_generated_storage(column);
-  return mylite_ast_set_create_table_column_type_value_metadata(ast, column) &&
+  return mylite_ast_set_create_table_column_expression_views(ast, column) &&
+         mylite_ast_set_create_table_column_type_value_metadata(ast, column) &&
          mylite_ast_set_create_table_column_default_value_metadata(ast,
                                                                    column) &&
          mylite_ast_set_create_table_column_on_update_value_metadata(ast,
                                                                      column) &&
          mylite_ast_set_create_table_column_comment_value_metadata(ast,
                                                                    column);
+}
+
+static int mylite_ast_set_create_table_column_expression_views(
+    MyliteAst *ast, MyliteAstCreateTableColumn *column) {
+  if (ast == NULL || column == NULL) {
+    return 1;
+  }
+  if (column->default_value_node != NULL &&
+      !mylite_ast_set_expression_summary(
+          ast, &column->default_value_expression,
+          column->default_value_node)) {
+    return 0;
+  }
+  if (column->on_update_value_node != NULL &&
+      !mylite_ast_set_expression_summary(
+          ast, &column->on_update_value_expression,
+          column->on_update_value_node)) {
+    return 0;
+  }
+  if (column->generated_expression_node != NULL &&
+      !mylite_ast_set_expression_summary(ast, &column->generated_expression,
+                                         column->generated_expression_node)) {
+    return 0;
+  }
+  if (column->check_expression_node != NULL &&
+      !mylite_ast_set_expression_summary(ast, &column->check_expression,
+                                         column->check_expression_node)) {
+    return 0;
+  }
+  return 1;
 }
 
 static void mylite_ast_set_create_table_column_nullability(
@@ -12358,7 +12463,9 @@ static int mylite_ast_fill_create_table_key(MyliteAst *ast,
       return 0;
     }
   } else if (key->kind == MYLITE_CREATE_TABLE_KEY_CHECK) {
-    mylite_ast_set_create_table_key_check(key, elem);
+    if (!mylite_ast_set_create_table_key_check(ast, key, elem)) {
+      return 0;
+    }
   }
   mylite_ast_set_create_table_key_summary(key);
   return 1;
@@ -12565,13 +12672,19 @@ static int mylite_ast_set_create_table_key_referenced_table_values(
                                       &key->referenced_table_name_value_length);
 }
 
-static void mylite_ast_set_create_table_key_check(
-    MyliteAstCreateTableKey *key, const MyliteAstNode *constraint_elem) {
+static int mylite_ast_set_create_table_key_check(
+    MyliteAst *ast, MyliteAstCreateTableKey *key,
+    const MyliteAstNode *constraint_elem) {
   const MyliteAstNode *expression =
       mylite_ast_find_first_symbol(constraint_elem, "nt_expression");
   if (expression != NULL && expression->has_span) {
+    key->check_expression_node = expression;
     key->check_expression_start = mylite_ast_node_start(expression);
     key->check_expression_end = mylite_ast_node_end(expression);
+    if (!mylite_ast_set_expression_summary(ast, &key->check_expression,
+                                           expression)) {
+      return 0;
+    }
   }
 
   const MyliteAstNode *enforcement =
@@ -12581,6 +12694,7 @@ static void mylite_ast_set_create_table_key_check(
     key->check_enforcement_start = mylite_ast_node_start(enforcement);
     key->check_enforcement_end = mylite_ast_node_end(enforcement);
   }
+  return 1;
 }
 
 static MyliteCreateTableForeignMatchKind mylite_ast_classify_foreign_match(
@@ -12652,6 +12766,8 @@ static int mylite_ast_set_create_table_key_parts(MyliteAst *ast,
   size_t index = 0;
   mylite_ast_fill_index_part_specs(parts, count, list, &index);
   if (index != count ||
+      !mylite_ast_set_create_table_key_part_expression_views(ast, parts,
+                                                             count) ||
       !mylite_ast_set_create_table_key_part_name_values(ast, parts, count)) {
     return 0;
   }
@@ -12740,6 +12856,21 @@ static int mylite_ast_set_create_table_key_part_name_values(
   return 1;
 }
 
+static int mylite_ast_set_create_table_key_part_expression_views(
+    MyliteAst *ast, MyliteAstCreateTableKeyPart *parts, size_t count) {
+  if (parts == NULL) {
+    return 1;
+  }
+  for (size_t i = 0; i < count; i++) {
+    if (parts[i].expression_node != NULL &&
+        !mylite_ast_set_expression_summary(ast, &parts[i].expression,
+                                           parts[i].expression_node)) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
 static void mylite_ast_fill_key_part(MyliteAstCreateTableKeyPart *part,
                                      const MyliteAstNode *node) {
   part->start = mylite_ast_node_start(node);
@@ -12756,6 +12887,7 @@ static void mylite_ast_fill_key_part(MyliteAstCreateTableKeyPart *part,
         mylite_ast_find_first_symbol(node, "nt_expression");
     if (expression != NULL && expression->has_span) {
       part->kind = MYLITE_CREATE_TABLE_KEY_PART_EXPRESSION;
+      part->expression_node = expression;
       part->expression_start = mylite_ast_node_start(expression);
       part->expression_end = mylite_ast_node_end(expression);
     }

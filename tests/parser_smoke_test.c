@@ -186,6 +186,7 @@ static int expect_create_table_key_options(
 static int expect_create_table_options(const char *sql,
                                        const ExpectedCreateTableOption *options,
                                        size_t option_count);
+static int expect_create_table_expression_views(void);
 static int expect_alter_table_view(void);
 static int expect_create_database_view(void);
 static int expect_create_index_view(void);
@@ -788,6 +789,7 @@ int main(void) {
       "COMMENT 'pk' CHECK (id > 0), KEY `k``x` (id(3) DESC) COMMENT "
       "'hello') ENGINE=InnoDB AUTO_INCREMENT=42 COMMENT='table comment'",
       "`db``x`.`t``y`", "`db``x`", "`t``y`", "db`x", "t`y", 1, 1, 3);
+  failures += expect_create_table_expression_views();
   failures += expect_alter_table_view();
   failures += expect_create_database_view();
   failures += expect_create_index_view();
@@ -2906,6 +2908,145 @@ static int expect_create_table_options(const char *sql,
               mylite_ast_create_table_option_value_end(ast, 0, i));
       failed = 1;
     }
+  }
+
+  mylite_ast_free(ast);
+  return failed;
+}
+
+static int expect_create_table_expression_views(void) {
+  const char *sql =
+      "CREATE TABLE t ("
+      "a INT DEFAULT (1 + 2), "
+      "b INT GENERATED ALWAYS AS (a + 1) STORED, "
+      "c INT CHECK (c > 0), "
+      "d TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, "
+      "KEY k ((a + 1)), "
+      "CHECK (a < b))";
+  MyliteParseResult result;
+  MyliteAst *ast = NULL;
+  MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "CREATE TABLE expression view parse failed: status=%s offset=%zu "
+            "token=%d message=%s\n",
+            mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return 1;
+  }
+
+  const MyliteAstCreateTable *create_table =
+      mylite_ast_create_table_view(ast, 0);
+  const MyliteAstCreateTableColumn *default_column =
+      create_table == NULL ? NULL
+                           : mylite_ast_create_table_view_column_at(
+                                 create_table, 0);
+  const MyliteAstCreateTableColumn *generated_column =
+      create_table == NULL ? NULL
+                           : mylite_ast_create_table_view_column_at(
+                                 create_table, 1);
+  const MyliteAstCreateTableColumn *check_column =
+      create_table == NULL ? NULL
+                           : mylite_ast_create_table_view_column_at(
+                                 create_table, 2);
+  const MyliteAstCreateTableColumn *timestamp_column =
+      create_table == NULL ? NULL
+                           : mylite_ast_create_table_view_column_at(
+                                 create_table, 3);
+  const MyliteAstCreateTableKey *functional_key =
+      create_table == NULL ? NULL
+                           : mylite_ast_create_table_view_key_at(
+                                 create_table, 0);
+  const MyliteAstCreateTableKey *table_check =
+      create_table == NULL ? NULL
+                           : mylite_ast_create_table_view_key_at(
+                                 create_table, 1);
+  const MyliteAstCreateTableKeyPart *functional_part =
+      functional_key == NULL ? NULL
+                             : mylite_ast_create_table_key_view_column_at(
+                                   functional_key, 0);
+  const MyliteAstExpression *default_expression =
+      mylite_ast_create_table_column_view_default_value_expression(
+          default_column);
+  const MyliteAstExpression *default_inner =
+      mylite_ast_expression_view_child_at(default_expression, 0);
+  const MyliteAstExpression *default_left =
+      mylite_ast_expression_view_child_at(default_inner, 0);
+  const MyliteAstExpression *default_right =
+      mylite_ast_expression_view_child_at(default_inner, 1);
+  const MyliteAstExpression *generated_expression =
+      mylite_ast_create_table_column_view_generated_expression(
+          generated_column);
+  const MyliteAstExpression *generated_left =
+      mylite_ast_expression_view_child_at(generated_expression, 0);
+  const MyliteAstExpression *generated_right =
+      mylite_ast_expression_view_child_at(generated_expression, 1);
+  const MyliteAstExpression *column_check_expression =
+      mylite_ast_create_table_column_view_check_expression(check_column);
+  const MyliteAstExpression *timestamp_default =
+      mylite_ast_create_table_column_view_default_value_expression(
+          timestamp_column);
+  const MyliteAstExpression *timestamp_on_update =
+      mylite_ast_create_table_column_view_on_update_value_expression(
+          timestamp_column);
+  const MyliteAstExpression *functional_expression =
+      mylite_ast_create_table_key_part_view_expression(functional_part);
+  const MyliteAstExpression *table_check_expression =
+      mylite_ast_create_table_key_view_check_expression(table_check);
+  int failed = 0;
+
+  if (create_table == NULL ||
+      mylite_ast_create_table_view_column_count(create_table) != 4 ||
+      mylite_ast_create_table_view_key_count(create_table) != 2 ||
+      default_expression == NULL ||
+      mylite_ast_expression_view_kind(default_expression) !=
+          MYLITE_EXPRESSION_PARENTHESIZED ||
+      default_inner == NULL ||
+      mylite_ast_expression_view_kind(default_inner) != MYLITE_EXPRESSION_BINARY ||
+      mylite_ast_expression_view_operator_kind(default_inner) !=
+          MYLITE_EXPRESSION_OPERATOR_ADD ||
+      default_left == NULL ||
+      mylite_ast_expression_view_unsigned_integer_value(default_left) != 1 ||
+      default_right == NULL ||
+      mylite_ast_expression_view_unsigned_integer_value(default_right) != 2 ||
+      generated_expression == NULL ||
+      mylite_ast_expression_view_kind(generated_expression) !=
+          MYLITE_EXPRESSION_BINARY ||
+      mylite_ast_expression_view_operator_kind(generated_expression) !=
+          MYLITE_EXPRESSION_OPERATOR_ADD ||
+      generated_left == NULL ||
+      mylite_ast_expression_view_kind(generated_left) !=
+          MYLITE_EXPRESSION_IDENTIFIER ||
+      !value_matches_when_expected(
+          mylite_ast_expression_view_value(generated_left),
+          mylite_ast_expression_view_value_length(generated_left), "a") ||
+      generated_right == NULL ||
+      mylite_ast_expression_view_unsigned_integer_value(generated_right) != 1 ||
+      column_check_expression == NULL ||
+      mylite_ast_expression_view_kind(column_check_expression) !=
+          MYLITE_EXPRESSION_BINARY ||
+      mylite_ast_expression_view_operator_kind(column_check_expression) !=
+          MYLITE_EXPRESSION_OPERATOR_GT ||
+      timestamp_default == NULL ||
+      !span_matches(sql, mylite_ast_expression_view_start(timestamp_default),
+                    mylite_ast_expression_view_end(timestamp_default),
+                    "CURRENT_TIMESTAMP") ||
+      timestamp_on_update == NULL ||
+      !span_matches(sql, mylite_ast_expression_view_start(timestamp_on_update),
+                    mylite_ast_expression_view_end(timestamp_on_update),
+                    "CURRENT_TIMESTAMP") ||
+      functional_expression == NULL ||
+      mylite_ast_expression_view_kind(functional_expression) !=
+          MYLITE_EXPRESSION_BINARY ||
+      mylite_ast_expression_view_operator_kind(functional_expression) !=
+          MYLITE_EXPRESSION_OPERATOR_ADD ||
+      table_check_expression == NULL ||
+      mylite_ast_expression_view_kind(table_check_expression) !=
+          MYLITE_EXPRESSION_BINARY ||
+      mylite_ast_expression_view_operator_kind(table_check_expression) !=
+          MYLITE_EXPRESSION_OPERATOR_LT) {
+    fprintf(stderr, "CREATE TABLE expression view failed: %s\n", sql);
+    failed = 1;
   }
 
   mylite_ast_free(ast);

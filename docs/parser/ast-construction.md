@@ -34,7 +34,9 @@ expression nodes.
   enum/set element values, exact type-attribute spans, decoded charset and
   collation values, selected option detail spans, CST node anchors, coarse type
   family, column option flags, declared nullability, generated storage mode,
-  and parser-level value metadata for defaults, `ON UPDATE`, and comments.
+  parser-level value metadata for defaults, `ON UPDATE`, and comments, and
+  recursive expression views for default, `ON UPDATE`, generated-column, and
+  inline `CHECK` expressions.
 - `CREATE TABLE` statements expose typed table key and constraint descriptors
   for primary keys, secondary indexes, unique indexes, fulltext indexes, spatial
   indexes, foreign keys, and check constraints.
@@ -42,7 +44,8 @@ expression nodes.
   decoded constraint/key/key-part/referenced-table/referenced-column names,
   index type/options, key-level index type, visibility, decoded key-option
   values, foreign-key match/actions, check expression, and check enforcement
-  spans.
+  spans, plus recursive expression views for functional key parts and table
+  `CHECK` constraints.
 - `CREATE TABLE` statements expose typed table-option descriptors for common
   options such as engine, charset, collation, row format, comment,
   auto-increment, tablespace, storage, directory, and attribute clauses. Table
@@ -113,12 +116,14 @@ expression nodes.
   enum/set element counts and spans, decoded regular string-literal enum/set
   element values, exact type-attribute spans, decoded charset/collation/comment
   values, default and `ON UPDATE` value kinds, declared nullability, generated
-  storage mode, and option flags
+  storage mode, option flags, and recursive expression-view handles for default,
+  `ON UPDATE`, generated, and inline check expressions
 - typed `CREATE TABLE` key descriptors with kind, full constraint/index span,
   constraint name, key name, local key parts, referenced table, referenced
   schema/name, referenced key parts, index options, key-level index type,
   visibility, decoded key-option values, foreign actions, and check expression
-  details, plus decoded values for identifier-bearing fields
+  details, plus decoded values for identifier-bearing fields and recursive
+  expression-view handles for functional key parts and table checks
 - typed `CREATE TABLE` table-option descriptors with kind, full option span,
   option-name span, value span, value kind, decoded string/identifier values,
   parsed unsigned integers, and list/raw payload spans
@@ -135,9 +140,10 @@ expression nodes.
   operator kind, decoded assignment names, value CST anchors/spans, and optional
   extended value spans for `SET NAMES ... COLLATE ...`, plus expression-view
   handles for assignment values
-- expression descriptors with kind, literal kind, operator kind, span, operator
-  span, value span, decoded string/identifier/function-name values, raw values,
-  parsed unsigned integer values where applicable, and recursive child handles
+- expression descriptors reused by `SET` and DDL expression anchors, with kind,
+  literal kind, operator kind, span, operator span, value span, decoded
+  string/identifier/function-name values, raw values, parsed unsigned integer
+  values where applicable, and recursive child handles
 - typed `USE` descriptors with decoded database name
 - typed `PREPARE` descriptors with decoded statement name, source kind, source
   span, and decoded source string or user-variable name
@@ -236,9 +242,12 @@ charset value, not as the `BINARY` attribute. Column options now summarize
 declared nullability, generated storage mode, decoded charset/collation/comment
 values, and value kinds for defaults and `ON UPDATE`, including `NULL`,
 unsigned decimal integers, `CURRENT_TIMESTAMP`, decoded string literals, and
-raw expression text. The next layer must resolve exact MySQL type semantics,
-SQL-mode-sensitive expression and literal values, expression trees, metadata
-defaults, partitions, and `CREATE TABLE ... SELECT`.
+raw expression text. Defaults, `ON UPDATE`, generated expressions, and inline
+checks also expose recursive parser-level expression views for common
+literal/identifier/function-call/unary/binary/parenthesized shapes. The next
+layer must resolve exact MySQL type semantics, SQL-mode-sensitive expression
+and literal values, semantic expression nodes, metadata defaults, partitions,
+and `CREATE TABLE ... SELECT`.
 
 Column descriptors keep direct CST node anchors for the type node, option list,
 default value, `ON UPDATE` value, generated expression/storage, comment option,
@@ -248,7 +257,10 @@ searching the whole column definition again. The semantic `CREATE TABLE` view
 now exposes those column details through the column handle, including nested
 type-element handles for `ENUM` and `SET`, typed default and `ON UPDATE` value
 metadata, declared nullability, generated storage mode, and decoded option
-values.
+values. It also exposes parser-level expression handles for default, `ON
+UPDATE`, generated-column, and inline check expressions so typed AST
+construction can reuse the recursive expression view instead of rescanning the
+CST.
 
 The `CREATE TABLE` key view covers table-level primary keys, indexes, unique
 keys, fulltext keys, spatial keys, foreign keys, and check constraints. It
@@ -264,11 +276,12 @@ names, visibility, secondary-engine attributes, and `WHERE` spans. Key handles
 also expose compact summaries for key-level index type, visibility, comment,
 parser, and key-block-size so metadata construction can avoid rescanning options
 for common cases. Foreign keys expose `MATCH`, `ON DELETE`, and `ON UPDATE`;
-check constraints expose expression and enforcement spans. The view does not
-yet normalize these details into final metadata records or generate missing
-constraint names. The semantic `CREATE TABLE` view now exposes key-part and
-key-option handles directly from each key handle, so typed AST construction no
-longer needs to re-index through the statement-level compatibility accessors.
+check constraints expose expression and enforcement spans. Functional key parts
+and table checks also expose recursive parser-level expression views. The view
+does not yet normalize these details into final metadata records or generate
+missing constraint names. The semantic `CREATE TABLE` view now exposes key-part
+and key-option handles directly from each key handle, so typed AST construction
+no longer needs to re-index through the statement-level compatibility accessors.
 
 The `CREATE TABLE` table-option view covers the option list after the table
 element list. It classifies common MySQL table options and exposes the original
@@ -389,6 +402,13 @@ mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=14.2200
 mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=23.858651 qps=291471 mbps=22.17 avg_us=3.431 avg_nodes=74.5 avg_ast_bytes=10258.6 avg_set_assignment_value_expressions=0.08 avg_set_assignment_expression_values=0.07 avg_set_assignment_expression_unsigned_integers=0.02 avg_set_assignment_expression_literals=0.05 avg_set_assignment_expression_function_calls=0.00 avg_set_assignment_expression_defaults=0.01 avg_set_assignment_expression_tree_nodes=0.09 avg_set_assignment_expression_tree_operators=0.00 avg_set_assignment_expression_tree_leaf_values=0.08
 ```
 
+Latest DDL expression-view run on the same corpus:
+
+```text
+mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=14.064650 qps=494438 mbps=37.60 avg_us=2.022
+mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=23.975336 qps=290052 mbps=22.06 avg_us=3.448 avg_nodes=74.5 avg_ast_bytes=10458.0 avg_create_table_view_column_expression_roots=0.06 avg_create_table_view_column_expression_tree_nodes=0.07 avg_create_table_view_column_expression_tree_operators=0.00 avg_create_table_view_column_expression_tree_leaf_values=0.06 avg_create_table_view_key_expression_roots=0.00 avg_create_table_view_key_expression_tree_nodes=0.00 avg_create_table_view_key_expression_tree_operators=0.00 avg_create_table_view_key_expression_tree_leaf_values=0.00 avg_set_assignment_expression_tree_nodes=0.09 avg_set_assignment_expression_tree_operators=0.00 avg_set_assignment_expression_tree_leaf_values=0.08
+```
+
 Before semantic actions were generated, syntax-only parsing measured about
 `711k queries/sec` on the same corpus. The current syntax-only path still runs
 the generated reduce actions, but with AST building disabled, so it avoids arena
@@ -399,7 +419,7 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,852 lines, 5,637,339 bytes
 generated parser object: 996K on disk, 905,398 bytes text/data/other
-parser support object: 234K on disk, 137,988 bytes text/data/other
+parser support object: 235K on disk, 138,834 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.3M on disk
 mylite-parse: 1.1M on disk
@@ -410,8 +430,8 @@ mylite-parse: 1.1M on disk
 - Replace temporary recognizer placeholder roots with real grammar productions
   or explicit typed placeholder statements.
 - Extend semantic `CREATE TABLE` AST nodes from the current view handles into
-  concrete column, key, table-option, default/generated/check expression, and
-  data-type metadata nodes.
+  concrete column, key, table-option, data-type, and semantic expression
+  metadata nodes.
 - Normalize parser-derived DDL summaries into MySQL metadata-ready structures,
   including generated names for unnamed constraints and SQL-mode-sensitive
   literal/expression handling.

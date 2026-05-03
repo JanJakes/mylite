@@ -1543,6 +1543,30 @@ static void dump_create_table_view_handles(
       print_escaped_bytes(name_value, name_value_length);
     }
     fputc('\n', stdout);
+    const MyliteAstExpression *default_expression =
+        mylite_ast_create_table_column_view_default_value_expression(column);
+    if (default_expression != NULL) {
+      printf("      create_table.column[%zu].default_expression\n", i);
+      dump_expression_tree(default_expression, 4);
+    }
+    const MyliteAstExpression *on_update_expression =
+        mylite_ast_create_table_column_view_on_update_value_expression(column);
+    if (on_update_expression != NULL) {
+      printf("      create_table.column[%zu].on_update_expression\n", i);
+      dump_expression_tree(on_update_expression, 4);
+    }
+    const MyliteAstExpression *generated_expression =
+        mylite_ast_create_table_column_view_generated_expression(column);
+    if (generated_expression != NULL) {
+      printf("      create_table.column[%zu].generated_expression\n", i);
+      dump_expression_tree(generated_expression, 4);
+    }
+    const MyliteAstExpression *check_expression =
+        mylite_ast_create_table_column_view_check_expression(column);
+    if (check_expression != NULL) {
+      printf("      create_table.column[%zu].check_expression\n", i);
+      dump_expression_tree(check_expression, 4);
+    }
     for (size_t j = 0;
          j < mylite_ast_create_table_column_view_type_element_count(column);
          j++) {
@@ -1602,6 +1626,12 @@ static void dump_create_table_view_handles(
       print_escaped_bytes(name_value, name_value_length);
     }
     fputc('\n', stdout);
+    const MyliteAstExpression *check_expression =
+        mylite_ast_create_table_key_view_check_expression(key);
+    if (check_expression != NULL) {
+      printf("      create_table.key[%zu].check_expression\n", i);
+      dump_expression_tree(check_expression, 4);
+    }
     for (size_t j = 0; j < mylite_ast_create_table_key_view_column_count(key);
          j++) {
       const MyliteAstCreateTableKeyPart *part =
@@ -1638,6 +1668,12 @@ static void dump_create_table_view_handles(
         print_escaped_bytes(part_name_value, part_name_value_length);
       }
       fputc('\n', stdout);
+      const MyliteAstExpression *part_expression =
+          mylite_ast_create_table_key_part_view_expression(part);
+      if (part_expression != NULL) {
+        printf("        create_table.key[%zu].column[%zu].expression\n", i, j);
+        dump_expression_tree(part_expression, 5);
+      }
     }
     for (size_t j = 0;
          j < mylite_ast_create_table_key_view_referenced_column_count(key);

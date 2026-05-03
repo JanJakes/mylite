@@ -64,7 +64,9 @@ optional generic parse tree with typed statement, target, and initial
 parser-level storage-class, decoded column-name, numeric type-parameter,
 semantic type-shape, exact type-attribute span, enum/set element-span/value,
 decoded column option values, default and `ON UPDATE` value-kind summaries,
-declared nullability, generated storage, key/constraint-detail with decoded
+declared nullability, generated storage, recursive parser-level expression
+views for column defaults, `ON UPDATE`, generated expressions, inline checks,
+functional key parts, and table checks, key/constraint-detail with decoded
 identifier names, key-level index type, visibility, decoded key-option values,
 column-detail handles, key-part/key-option handles, table-option
 descriptor/value views, and compact table-option/key/column summaries. It also
@@ -385,10 +387,10 @@ below. The current prototype parses the WordPress MySQL server query corpus with
 
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
-| Column definition grammar | ❌ | top | Type, nullability, defaults, visibility, comments, storage, format, references, and constraints. | Parser prototype accepts corpus coverage and exposes source spans for column names, type names, parameters, enum/set elements, type attributes, defaults, `ON UPDATE`, generated columns, comments, inline checks, and inline references. It also decodes column names and regular string-literal enum/set element values, classifies exact column type kind for recognized MySQL type tokens and common aliases, and keeps CST node anchors for type/options/value roots. Semantic metadata construction is not implemented yet. |
+| Column definition grammar | ❌ | top | Type, nullability, defaults, visibility, comments, storage, format, references, and constraints. | Parser prototype accepts corpus coverage and exposes source spans for column names, type names, parameters, enum/set elements, type attributes, defaults, `ON UPDATE`, generated columns, comments, inline checks, and inline references. It also decodes column names and regular string-literal enum/set element values, classifies exact column type kind for recognized MySQL type tokens and common aliases, keeps CST node anchors for type/options/value roots, and exposes recursive parser-level expression views for default, `ON UPDATE`, generated, and inline check expressions. Semantic metadata construction is not implemented yet. |
 | Silent column specification changes | ❌ | high | MySQL automatic rewrites of column specifications and SHOW CREATE output. |  |
-| Default expressions | ❌ | top | Literal and expression defaults, CURRENT_TIMESTAMP variants, and error cases. | Parser exposes default clause/value spans for column definitions; semantic expression AST, validation, metadata, and runtime behavior are not implemented yet. |
-| Generated columns | ❌ | high | Virtual/stored generated columns, dependencies, indexes, and metadata. | Parser exposes generated clause, expression, and storage-mode spans for column definitions, including `AS (...)` without explicit `GENERATED ALWAYS`; semantic dependency and runtime behavior are not implemented yet. |
+| Default expressions | ❌ | top | Literal and expression defaults, CURRENT_TIMESTAMP variants, and error cases. | Parser exposes default clause/value spans, value-kind summaries, and recursive parser-level expression views for column definitions; semantic expression AST, validation, metadata, and runtime behavior are not implemented yet. |
+| Generated columns | ❌ | high | Virtual/stored generated columns, dependencies, indexes, and metadata. | Parser exposes generated clause, expression, storage-mode spans, and recursive parser-level expression views for column definitions, including `AS (...)` without explicit `GENERATED ALWAYS`; semantic dependency and runtime behavior are not implemented yet. |
 | Invisible columns | ❌ | medium | Implicit column lists, SELECT * behavior, and metadata flags. |  |
 | Generated invisible primary keys | ❌ | low | MySQL-generated invisible primary key behavior, metadata, and dump/replication interactions. |  |
 | AUTO_INCREMENT columns | ❌ | top | Allocation, persistence, lock modes, explicit values, and overflow behavior. |  |
@@ -397,12 +399,12 @@ below. The current prototype parses the WordPress MySQL server query corpus with
 | Nonunique indexes | ❌ | top | BTREE/HASH clauses, visibility, comments, and parser options. |  |
 | Descending indexes | ❌ | high | DESC key-part syntax and ordering semantics. |  |
 | Prefix indexes | ❌ | top | Prefix length parsing, byte/character semantics, and limits. |  |
-| Functional key parts | ❌ | high | Expression key parts and metadata. |  |
+| Functional key parts | ❌ | high | Expression key parts and metadata. | Parser exposes functional key-part spans and recursive parser-level expression views; metadata and runtime behavior are not implemented yet. |
 | Multi-valued indexes | ❌ | medium | JSON array multi-valued index syntax, casts, optimizer behavior, and metadata. |  |
 | FULLTEXT indexes | ❌ | high | Index DDL, parser options, MATCH metadata, and embedded search behavior. |  |
 | SPATIAL indexes | ❌ | medium | Geometry column requirements and spatial metadata. |  |
 | Foreign keys | ❌ | high | Definition, matching, cascades, restrict/no action, set null/default, checks, and metadata. |  |
-| CHECK constraints | ❌ | high | Expression validation, enforcement, names, and metadata. |  |
+| CHECK constraints | ❌ | high | Expression validation, enforcement, names, and metadata. | Parser exposes inline/table check expression and enforcement spans plus recursive parser-level expression views; validation, generated names, metadata, and runtime behavior are not implemented yet. |
 | Constraint naming | ❌ | top | Generated names, duplicate handling, schema scope, and SHOW CREATE output. |  |
 | Table options: engine | ❌ | top | ENGINE, SECONDARY_ENGINE, engine attributes, and unsupported-engine diagnostics. |  |
 | Table options: charset/collation | ❌ | top | DEFAULT CHARACTER SET, COLLATE, and conversion-sensitive metadata. |  |

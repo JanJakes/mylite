@@ -93,6 +93,10 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t create_table_view_column_generated_storage_kinds = 0;
   size_t create_table_view_column_type_nodes = 0;
   size_t create_table_view_column_options_nodes = 0;
+  size_t create_table_view_column_expression_roots = 0;
+  size_t create_table_view_column_expression_tree_nodes = 0;
+  size_t create_table_view_column_expression_tree_operators = 0;
+  size_t create_table_view_column_expression_tree_leaf_values = 0;
   size_t create_table_view_key_handles = 0;
   size_t create_table_view_named_keys = 0;
   size_t create_table_view_key_index_types = 0;
@@ -105,6 +109,10 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t create_table_view_ordered_key_columns = 0;
   size_t create_table_view_prefixed_key_columns = 0;
   size_t create_table_view_expression_key_columns = 0;
+  size_t create_table_view_key_expression_roots = 0;
+  size_t create_table_view_key_expression_tree_nodes = 0;
+  size_t create_table_view_key_expression_tree_operators = 0;
+  size_t create_table_view_key_expression_tree_leaf_values = 0;
   size_t create_table_view_referenced_column_handles = 0;
   size_t create_table_view_named_referenced_columns = 0;
   size_t create_table_view_key_option_handles = 0;
@@ -414,6 +422,28 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                     NULL) {
                   create_table_view_column_options_nodes++;
                 }
+                const MyliteAstExpression *column_expressions[] = {
+                    mylite_ast_create_table_column_view_default_value_expression(
+                        column),
+                    mylite_ast_create_table_column_view_on_update_value_expression(
+                        column),
+                    mylite_ast_create_table_column_view_generated_expression(
+                        column),
+                    mylite_ast_create_table_column_view_check_expression(
+                        column)};
+                for (size_t l = 0;
+                     l < sizeof(column_expressions) /
+                             sizeof(column_expressions[0]);
+                     l++) {
+                  if (column_expressions[l] != NULL) {
+                    create_table_view_column_expression_roots++;
+                    count_expression_tree(
+                        column_expressions[l],
+                        &create_table_view_column_expression_tree_nodes,
+                        &create_table_view_column_expression_tree_operators,
+                        &create_table_view_column_expression_tree_leaf_values);
+                  }
+                }
               }
               for (size_t k = 0;
                    k < mylite_ast_create_table_view_key_count(create_table);
@@ -446,6 +476,16 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                         key)) {
                   create_table_view_key_block_sizes++;
                 }
+                const MyliteAstExpression *key_check_expression =
+                    mylite_ast_create_table_key_view_check_expression(key);
+                if (key_check_expression != NULL) {
+                  create_table_view_key_expression_roots++;
+                  count_expression_tree(
+                      key_check_expression,
+                      &create_table_view_key_expression_tree_nodes,
+                      &create_table_view_key_expression_tree_operators,
+                      &create_table_view_key_expression_tree_leaf_values);
+                }
                 for (size_t l = 0;
                      l < mylite_ast_create_table_key_view_column_count(key);
                      l++) {
@@ -473,6 +513,16 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                       mylite_ast_create_table_key_part_view_expression_end(
                           part)) {
                     create_table_view_expression_key_columns++;
+                  }
+                  const MyliteAstExpression *part_expression =
+                      mylite_ast_create_table_key_part_view_expression(part);
+                  if (part_expression != NULL) {
+                    create_table_view_key_expression_roots++;
+                    count_expression_tree(
+                        part_expression,
+                        &create_table_view_key_expression_tree_nodes,
+                        &create_table_view_key_expression_tree_operators,
+                        &create_table_view_key_expression_tree_leaf_values);
                   }
                 }
                 for (size_t l = 0;
@@ -1193,6 +1243,10 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_create_table_view_column_generated_storage_kinds=%.2f "
            "avg_create_table_view_column_type_nodes=%.2f "
            "avg_create_table_view_column_options_nodes=%.2f "
+           "avg_create_table_view_column_expression_roots=%.2f "
+           "avg_create_table_view_column_expression_tree_nodes=%.2f "
+           "avg_create_table_view_column_expression_tree_operators=%.2f "
+           "avg_create_table_view_column_expression_tree_leaf_values=%.2f "
            "avg_create_table_view_key_handles=%.2f "
            "avg_create_table_view_named_keys=%.2f "
            "avg_create_table_view_key_index_types=%.2f "
@@ -1205,6 +1259,10 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_create_table_view_ordered_key_columns=%.2f "
            "avg_create_table_view_prefixed_key_columns=%.2f "
            "avg_create_table_view_expression_key_columns=%.2f "
+           "avg_create_table_view_key_expression_roots=%.2f "
+           "avg_create_table_view_key_expression_tree_nodes=%.2f "
+           "avg_create_table_view_key_expression_tree_operators=%.2f "
+           "avg_create_table_view_key_expression_tree_leaf_values=%.2f "
            "avg_create_table_view_referenced_column_handles=%.2f "
            "avg_create_table_view_named_referenced_columns=%.2f "
            "avg_create_table_view_key_option_handles=%.2f "
@@ -1370,6 +1428,13 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                (double)parsed,
            (double)create_table_view_column_type_nodes / (double)parsed,
            (double)create_table_view_column_options_nodes / (double)parsed,
+           (double)create_table_view_column_expression_roots / (double)parsed,
+           (double)create_table_view_column_expression_tree_nodes /
+               (double)parsed,
+           (double)create_table_view_column_expression_tree_operators /
+               (double)parsed,
+           (double)create_table_view_column_expression_tree_leaf_values /
+               (double)parsed,
            (double)create_table_view_key_handles / (double)parsed,
            (double)create_table_view_named_keys / (double)parsed,
            (double)create_table_view_key_index_types / (double)parsed,
@@ -1382,6 +1447,13 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)create_table_view_ordered_key_columns / (double)parsed,
            (double)create_table_view_prefixed_key_columns / (double)parsed,
            (double)create_table_view_expression_key_columns / (double)parsed,
+           (double)create_table_view_key_expression_roots / (double)parsed,
+           (double)create_table_view_key_expression_tree_nodes /
+               (double)parsed,
+           (double)create_table_view_key_expression_tree_operators /
+               (double)parsed,
+           (double)create_table_view_key_expression_tree_leaf_values /
+               (double)parsed,
            (double)create_table_view_referenced_column_handles /
                (double)parsed,
            (double)create_table_view_named_referenced_columns / (double)parsed,

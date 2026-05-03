@@ -138,6 +138,8 @@ static const char mylite_mysql_utf8mb3_charset_name[] = "utf8mb3";
 static const char mylite_mysql_utf8mb3_general_ci_collation_name[] = "utf8mb3_general_ci";
 static const char mylite_mysql_ascii_charset_name[] = "ascii";
 static const char mylite_mysql_ascii_general_ci_collation_name[] = "ascii_general_ci";
+static const uint64_t mylite_embedded_connection_id = 1U;
+static const char mylite_embedded_identity[] = "mylite@localhost";
 static const int mylite_mysql_coercibility_implicit = 2;
 static const int mylite_mysql_coercibility_system_constant = 3;
 static const int mylite_mysql_coercibility_coercible = 4;
@@ -168,6 +170,7 @@ static const uint64_t mylite_mysql_ord_function_display_length = 21U;
 static const uint64_t mylite_mysql_schema_function_display_length = 256U;
 static const uint64_t mylite_mysql_version_function_display_length = 20U;
 static const uint64_t mylite_mysql_session_integer_function_display_length = 21U;
+static const uint64_t mylite_mysql_identity_function_display_chars = 288U;
 static const uint64_t mylite_mysql_charset_collation_function_display_chars = 64U;
 static const uint64_t mylite_mysql_coercibility_function_display_length = 10U;
 static const uint64_t mylite_mysql_pi_function_display_length = 8U;
@@ -1329,6 +1332,7 @@ struct mylite_db {
     char *error_message;
     struct mylite_expression_warnings warnings;
     char *selected_schema;
+    uint64_t connection_id;
     uint64_t last_insert_id;
     int64_t previous_row_count;
     enum mylite_transaction_access_mode transaction_access_mode;
@@ -5374,6 +5378,7 @@ static int open_sqlite_database(const char *filename, int flags, const char *vfs
         return MYLITE_NOMEM;
     }
     database->status_started_at = time(NULL);
+    database->connection_id = mylite_embedded_connection_id;
 
     rc = sqlite3_open_v2(filename, &database->sqlite, flags, vfs_name);
     if (rc != SQLITE_OK) {
@@ -10641,7 +10646,38 @@ static bool infer_session_function_descriptor(mylite_db *database,
         };
         return true;
     }
+    if (ascii_span_equal_ci(name->span, "USER") ||
+        ascii_span_equal_ci(name->span, "SESSION_USER") ||
+        ascii_span_equal_ci(name->span, "SYSTEM_USER") ||
+        ascii_span_equal_ci(name->span, "CURRENT_USER")) {
+        uint64_t max_bytes_per_character = connection_character_max_length(database);
+        uint64_t length =
+            max_bytes_per_character > UINT64_MAX / mylite_mysql_identity_function_display_chars
+                ? mylite_mysql_long_text_length
+                : mylite_mysql_identity_function_display_chars * max_bytes_per_character;
+
+        *out_descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_VAR_STRING,
+            .flags = 0U,
+            .length = length,
+            .decimals = mylite_mysql_not_fixed_decimals,
+            .charset_id = field_descriptor_connection_charset_id(database),
+            .nullable = true,
+        };
+        return true;
+    }
     if (ascii_span_equal_ci(name->span, "LAST_INSERT_ID")) {
+        *out_descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_LONGLONG,
+            .flags = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED |
+                     MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+            .length = mylite_mysql_session_integer_function_display_length,
+            .charset_id = mylite_mysql_binary_charset_id,
+            .nullable = false,
+        };
+        return true;
+    }
+    if (ascii_span_equal_ci(name->span, "CONNECTION_ID")) {
         *out_descriptor = (struct mylite_field_descriptor){
             .type = MYLITE_FIELD_TYPE_LONGLONG,
             .flags = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED |
@@ -26045,6 +26081,17 @@ static int evaluate_statement_session_function(
                                                       .int64_value = database->previous_row_count};
         return 0;
     }
+    if (ascii_span_equal_ci(name->span, "CONNECTION_ID")) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_UINT64,
+                                                      .uint64_value = database->connection_id};
+        return 0;
+    }
+    if (ascii_span_equal_ci(name->span, "USER") ||
+        ascii_span_equal_ci(name->span, "SESSION_USER") ||
+        ascii_span_equal_ci(name->span, "SYSTEM_USER") ||
+        ascii_span_equal_ci(name->span, "CURRENT_USER")) {
+        return set_session_text_function_value(database, mylite_embedded_identity, out_value);
+    }
     if (function_name_is_charset_collation_introspection(name)) {
         return evaluate_charset_collation_function(stmt, function_call, expression_context,
                                                    warnings, table, out_value);
@@ -26366,6 +26413,13 @@ static int infer_function_collation_info(mylite_db *database,
         *out_info = utf8mb3_general_collation_info(mylite_mysql_coercibility_system_constant);
         return MYLITE_OK;
     }
+    if (name != NULL && (ascii_span_equal_ci(name->span, "USER") ||
+                         ascii_span_equal_ci(name->span, "SESSION_USER") ||
+                         ascii_span_equal_ci(name->span, "SYSTEM_USER") ||
+                         ascii_span_equal_ci(name->span, "CURRENT_USER"))) {
+        *out_info = utf8mb3_general_collation_info(mylite_mysql_coercibility_system_constant);
+        return MYLITE_OK;
+    }
     if (name != NULL && ascii_span_equal_ci(name->span, "IF")) {
         return infer_function_arguments_collation_info(database, context, arguments, 1U, false,
                                                        out_info);
@@ -26460,7 +26514,8 @@ function_name_has_binary_numeric_collation_result(const struct mylite_sql_ast_no
     }
     if (ascii_span_equal_ci(name->span, "PI") || ascii_span_equal_ci(name->span, "MOD") ||
         ascii_span_equal_ci(name->span, "ISNULL") ||
-        ascii_span_equal_ci(name->span, "LAST_INSERT_ID")) {
+        ascii_span_equal_ci(name->span, "LAST_INSERT_ID") ||
+        ascii_span_equal_ci(name->span, "CONNECTION_ID")) {
         return true;
     }
     return ascii_span_equal_ci(name->span, "ROW_COUNT");

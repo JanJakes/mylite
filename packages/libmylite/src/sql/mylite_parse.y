@@ -3117,6 +3117,9 @@ primary_expression(A) ::= current_timestamp_value(B). {
 primary_expression(A) ::= bare_temporal_function(B). {
     A = B;
 }
+primary_expression(A) ::= bare_current_user_function(B). {
+    A = B;
+}
 primary_expression(A) ::= subquery(B). {
     A = mylite_sql_parser_make_scalar_subquery_expression(state, B);
 }
@@ -3261,6 +3264,10 @@ bare_temporal_function(A) ::= UTC_TIME(T). {
     A = mylite_sql_parser_make_bare_function_call(state, T);
 }
 bare_temporal_function(A) ::= UTC_TIMESTAMP(T). {
+    A = mylite_sql_parser_make_bare_function_call(state, T);
+}
+
+bare_current_user_function(A) ::= CURRENT_USER(T). {
     A = mylite_sql_parser_make_bare_function_call(state, T);
 }
 

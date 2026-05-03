@@ -129,6 +129,9 @@ by common scalar expressions:
 - session information functions: `DATABASE`, `SCHEMA`, `VERSION`,
   `LAST_INSERT_ID`, and `ROW_COUNT`; see
   `docs/specs/session-information-functions/specs.md`
+- session identity functions: `CONNECTION_ID`, `USER`, `SESSION_USER`,
+  `SYSTEM_USER`, and `CURRENT_USER` / bare `CURRENT_USER`; see
+  `docs/specs/session-identity-functions/specs.md`
 
 These functions are implemented in no-table scalar `SELECT`, one-table
 `SELECT` projection, `WHERE`, and `ORDER BY` expressions, and the existing
@@ -150,7 +153,8 @@ selected result metadata.
 
 This checkpoint intentionally does not yet implement `INSERT ... VALUES` or
 `INSERT ... SET` function expressions, temporal functions, information
-functions outside the session-state slice, aggregate/window functions, JSON,
+functions outside the session-state and session-identity slices,
+aggregate/window functions, JSON,
 regular expressions, spatial, full-text, encryption, loadable functions,
 complete binary-string semantics for all scalar functions, exact
 exact-versus-approximate numeric preservation for every expression path, or
@@ -394,8 +398,10 @@ Representative runtime results:
 | `DATABASE()` | selected schema, or `NULL` when no default schema is selected |
 | `SCHEMA()` | synonym for `DATABASE()` |
 | `VERSION()` | MyLite runtime version from `mylite_version()` |
-| `USER()` | client-supplied user and host string |
-| `CURRENT_USER()` | authenticated user and host string |
+| `USER()` | MyLite embedded client identity; see the session identity spec |
+| `SESSION_USER()` | synonym for `USER()` |
+| `SYSTEM_USER()` | synonym for `USER()` |
+| `CURRENT_USER()`, `CURRENT_USER` | MyLite embedded authenticated identity; currently same value as `USER()` |
 | `LAST_INSERT_ID()` | first automatically generated id from the most recent successful insert |
 | `CONNECTION_ID() IS NOT NULL` | `1` |
 | `ROW_COUNT()` after the fixture insert | `3` |
@@ -464,6 +470,8 @@ Verified `mysql --column-type-info -vvv` examples:
 | `VERSION() AS version_value` | `VAR_STRING` | `20` | `31` | `utf8mb4_0900_ai_ci` | `NOT_NULL` |
 | `LAST_INSERT_ID() AS last_insert_id_value` | `LONGLONG` | `21` | `0` | `binary` | `NOT_NULL UNSIGNED BINARY NUM` |
 | `CONNECTION_ID() AS connection_id_value` | `LONGLONG` | `21` | `0` | `binary` | `NOT_NULL UNSIGNED BINARY NUM` |
+| `USER() AS user_value` | `VAR_STRING` | `1152` | `31` | `utf8mb4_0900_ai_ci` | nullable |
+| `CURRENT_USER AS current_user_value` | `VAR_STRING` | `1152` | `31` | `utf8mb4_0900_ai_ci` | nullable |
 
 Implementation should assert metadata through symbolic MyLite/MySQL field
 types, flags, decimals, charset id, and nullability rather than relying on raw
@@ -628,9 +636,10 @@ for results, metadata, warnings, errors, type conversion, and edge cases.
   metadata in `version_comment` or related variables.
 - `CONNECTION_ID()` returns a stable per-handle unsigned integer. It need not
   represent an operating-system thread.
-- `CURRENT_USER()` and `USER()` may initially use the same embedded connection
-  identity when MyLite has no authentication layer, but the distinction must
-  remain modeled in session state for future protocol/auth work.
+- `CURRENT_USER()` / bare `CURRENT_USER` and `USER()` use the same documented
+  embedded identity until MyLite has authentication, definer, and invoker
+  state. The distinction remains modeled in the function registry for future
+  protocol/auth work.
 - `CHARSET()`, `COLLATION()`, and `COERCIBILITY()` are implemented by the
   dedicated charset/collation introspection slice for the current descriptor
   and AST-visible subset. Full collation coercion, introducers, and explicit

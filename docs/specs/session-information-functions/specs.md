@@ -24,9 +24,11 @@ time schema, row-count, and insert-id state.
 
 Out of scope:
 
-- `USER()`, `SESSION_USER()`, `SYSTEM_USER()`, `CURRENT_USER()`,
-  `CONNECTION_ID()`, `FOUND_ROWS()`, `CHARSET()`, `COLLATION()`,
-  `CURRENT_ROLE()`, and other information functions.
+- `FOUND_ROWS()`, `CHARSET()`, `COLLATION()`, `CURRENT_ROLE()`, and other
+  information functions. The identity functions `USER()`, `SESSION_USER()`,
+  `SYSTEM_USER()`, `CURRENT_USER()` / `CURRENT_USER`, and `CONNECTION_ID()`
+  are covered by
+  [`session-identity-functions`](../session-identity-functions/specs.md).
 - Stored routine default-database semantics. MyLite does not yet implement
   stored routines, so `DATABASE()` and `SCHEMA()` read only the connection's
   selected schema.

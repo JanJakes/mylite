@@ -142,6 +142,8 @@ static void dump_statements(const MyliteAst *ast) {
         mylite_ast_execute_statement_view(ast, i);
     const MyliteAstDeallocateStatement *deallocate_statement =
         mylite_ast_deallocate_statement_view(ast, i);
+    const MyliteAstExplainStatement *explain_statement =
+        mylite_ast_explain_statement_view(ast, i);
     const MyliteAstDeleteStatement *delete_statement =
         mylite_ast_delete_statement_view(ast, i);
     const MyliteAstInsertStatement *insert_statement =
@@ -723,6 +725,79 @@ static void dump_statements(const MyliteAst *ast) {
         fputs("none", stdout);
       } else {
         print_escaped_bytes(name, name_length);
+      }
+      fputc('\n', stdout);
+    }
+    if (explain_statement != NULL) {
+      printf("  explain_statement span=%zu..%zu kind=%s format=%s analyze=%d "
+             "statement=%zu..%zu connection_id=%d:%llu id_span=%zu..%zu "
+             "table=%zu..%zu column=%zu..%zu node=%s statement_node=%s\n",
+             mylite_ast_explain_statement_view_start(explain_statement),
+             mylite_ast_explain_statement_view_end(explain_statement),
+             mylite_explain_statement_kind_name(
+                 mylite_ast_explain_statement_view_kind(explain_statement)),
+             mylite_explain_format_kind_name(
+                 mylite_ast_explain_statement_view_format_kind(
+                     explain_statement)),
+             mylite_ast_explain_statement_view_has_analyze(explain_statement),
+             mylite_ast_explain_statement_view_statement_start(
+                 explain_statement),
+             mylite_ast_explain_statement_view_statement_end(
+                 explain_statement),
+             mylite_ast_explain_statement_view_has_connection_id(
+                 explain_statement),
+             mylite_ast_explain_statement_view_connection_id(explain_statement),
+             mylite_ast_explain_statement_view_connection_id_start(
+                 explain_statement),
+             mylite_ast_explain_statement_view_connection_id_end(
+                 explain_statement),
+             mylite_ast_explain_statement_view_table_start(explain_statement),
+             mylite_ast_explain_statement_view_table_end(explain_statement),
+             mylite_ast_explain_statement_view_column_start(explain_statement),
+             mylite_ast_explain_statement_view_column_end(explain_statement),
+             node_symbol_or_none(
+                 mylite_ast_explain_statement_view_node(explain_statement)),
+             node_symbol_or_none(
+                 mylite_ast_explain_statement_view_statement_node(
+                     explain_statement)));
+      printf("    explain_table.schema len=%zu value=",
+             mylite_ast_explain_statement_view_table_schema_value_length(
+                 explain_statement));
+      const char *schema =
+          mylite_ast_explain_statement_view_table_schema_value(
+              explain_statement);
+      if (schema == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(
+            schema,
+            mylite_ast_explain_statement_view_table_schema_value_length(
+                explain_statement));
+      }
+      printf(" name_len=%zu value=",
+             mylite_ast_explain_statement_view_table_name_value_length(
+                 explain_statement));
+      const char *name =
+          mylite_ast_explain_statement_view_table_name_value(explain_statement);
+      if (name == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(
+            name, mylite_ast_explain_statement_view_table_name_value_length(
+                      explain_statement));
+      }
+      printf(" column_len=%zu value=",
+             mylite_ast_explain_statement_view_column_value_length(
+                 explain_statement));
+      const char *column =
+          mylite_ast_explain_statement_view_column_value(explain_statement);
+      if (column == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(
+            column,
+            mylite_ast_explain_statement_view_column_value_length(
+                explain_statement));
       }
       fputc('\n', stdout);
     }

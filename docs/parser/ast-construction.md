@@ -110,6 +110,10 @@ expression nodes.
 - `PREPARE`, `EXECUTE`, and `DEALLOCATE` statements expose typed decoded
   prepared-statement handles, source descriptors, ordered `USING` user-variable
   descriptors, and deallocate/drop mode.
+- `EXPLAIN` and `DESCRIBE` statements expose typed parser views for query,
+  analyze, for-connection, and table-description forms, including format kind,
+  explained statement anchors, parsed connection IDs, and decoded table/column
+  names.
 - Transaction-control statements expose begin form, access mode, consistency
   modifiers, `WORK`, completion modifiers, and decoded savepoint names.
 - Temporary syntax recognizers produce a placeholder root node so AST mode can
@@ -219,6 +223,9 @@ expression nodes.
   `USING` user variables
 - typed `DEALLOCATE` descriptors with decoded statement name and
   `DEALLOCATE`/`DROP PREPARE` mode
+- typed `EXPLAIN`/`DESCRIBE` descriptors with statement form, format kind,
+  `ANALYZE` marker, explained statement CST anchor/span, parsed connection ID,
+  decoded table schema/name, and decoded optional column name
 - typed transaction-control descriptors with statement kind, begin form,
   TiDB begin mode, access mode, consistency modifiers, `WORK`, completion
   modifiers, savepoint-keyword marker, and decoded savepoint name
@@ -500,6 +507,16 @@ the decoded statement handle and mode. These are parser-level descriptors only;
 they do not yet validate parameter marker rules, maintain the per-connection
 prepared-statement registry, or execute prepared statements.
 
+Diagnostic parser views now cover `EXPLAIN` and its `DESCRIBE`/`DESC`
+synonyms. The view distinguishes ordinary explained statements,
+`EXPLAIN ANALYZE`, `EXPLAIN FOR CONNECTION`, and table-description forms. It
+records `FORMAT=TRADITIONAL|JSON|TREE`, anchors the explained statement subtree
+without classifying that nested statement yet, parses the connection ID for the
+for-connection form, and decodes table schema/name plus optional column name
+for `DESCRIBE table [column]`. The view intentionally matches only direct
+`EXPLAIN` children for modifiers, so keywords inside the explained query do not
+change the outer diagnostic statement classification.
+
 Transaction-control views cover `BEGIN`, `START TRANSACTION`, `COMMIT`,
 `ROLLBACK`, `SAVEPOINT`, and `RELEASE SAVEPOINT`. `BEGIN`/`START TRANSACTION`
 records the begin form, optional TiDB pessimistic/optimistic markers, MySQL
@@ -540,6 +557,13 @@ mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=13.8989
 mode=ast-only queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=34.466127 qps=201766 mbps=15.34 avg_us=4.956 avg_nodes=74.5 avg_ast_bytes=10893.3 avg_statements=1.00
 mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=35.078568 qps=198244 mbps=15.08 avg_us=5.044 avg_nodes=74.5 avg_ast_bytes=10893.3
 mode=semantic queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=36.172590 qps=192248 mbps=14.62 avg_us=5.202 avg_semantic_nodes=5.3 avg_semantic_bytes=4268.0 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_expressions=2.67 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.03
+```
+
+Latest EXPLAIN/DESCRIBE parser-view run on May 3, 2026:
+
+```text
+mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.310846 qps=190241 mbps=14.47 avg_us=5.257 avg_nodes=74.5 avg_ast_bytes=10905.4 avg_explain_statement_views=0.05 avg_explain_statement_query_forms=0.05 avg_explain_statement_analyze_forms=0.00 avg_explain_statement_for_connection_forms=0.00 avg_explain_statement_table_forms=0.00 avg_explain_statement_format_values=0.01 avg_explain_statement_statement_nodes=0.05 avg_explain_statement_connection_ids=0.00 avg_explain_statement_table_name_values=0.00 avg_explain_statement_column_values=0.00
+mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.491807 qps=185645 mbps=14.12 avg_us=5.387 avg_semantic_nodes=5.3 avg_semantic_bytes=4268.0 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_expressions=2.67 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.03
 ```
 
 Release benchmark result on May 2, 2026:

@@ -202,6 +202,7 @@ static int expect_drop_database_view(void);
 static int expect_drop_index_view(void);
 static int expect_drop_table_view(void);
 static int expect_drop_view_view(void);
+static int expect_explain_statement_view(void);
 static int expect_call_statement_view(void);
 static int expect_do_statement_view(void);
 static int expect_delete_statement_view(void);
@@ -818,6 +819,7 @@ int main(void) {
   failures += expect_drop_index_view();
   failures += expect_drop_table_view();
   failures += expect_drop_view_view();
+  failures += expect_explain_statement_view();
   failures += expect_call_statement_view();
   failures += expect_do_statement_view();
   failures += expect_delete_statement_view();
@@ -4074,6 +4076,200 @@ static int expect_replace_statement_view(void) {
     mylite_ast_free(ast);
   }
 
+  return failed;
+}
+
+static int expect_explain_statement_view(void) {
+  int failed = 0;
+  {
+    const char *sql = "EXPLAIN FORMAT=tree SELECT a FROM t";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "EXPLAIN query view parse failed: status=%s offset=%zu token=%d "
+              "message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+    const MyliteAstExplainStatement *view =
+        mylite_ast_explain_statement_view(ast, 0);
+    if (view == NULL ||
+        mylite_ast_explain_statement_view_kind(view) !=
+            MYLITE_EXPLAIN_STATEMENT_QUERY ||
+        mylite_ast_explain_statement_view_format_kind(view) !=
+            MYLITE_EXPLAIN_FORMAT_TREE ||
+        mylite_ast_explain_statement_view_has_analyze(view) ||
+        mylite_ast_explain_statement_view_statement_node(view) == NULL ||
+        !span_matches(sql,
+                      mylite_ast_explain_statement_view_statement_start(view),
+                      mylite_ast_explain_statement_view_statement_end(view),
+                      "SELECT a FROM t")) {
+      fprintf(stderr, "EXPLAIN query view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql = "EXPLAIN ANALYZE SELECT 1";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "EXPLAIN ANALYZE view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    const MyliteAstExplainStatement *view =
+        mylite_ast_explain_statement_view(ast, 0);
+    if (view == NULL ||
+        mylite_ast_explain_statement_view_kind(view) !=
+            MYLITE_EXPLAIN_STATEMENT_ANALYZE ||
+        !mylite_ast_explain_statement_view_has_analyze(view) ||
+        !span_matches(sql,
+                      mylite_ast_explain_statement_view_statement_start(view),
+                      mylite_ast_explain_statement_view_statement_end(view),
+                      "SELECT 1")) {
+      fprintf(stderr, "EXPLAIN ANALYZE view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql = "EXPLAIN ANALYZE FORMAT=tree SELECT 1";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "EXPLAIN ANALYZE FORMAT view parse failed: status=%s "
+              "offset=%zu token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    const MyliteAstExplainStatement *view =
+        mylite_ast_explain_statement_view(ast, 0);
+    if (view == NULL ||
+        mylite_ast_explain_statement_view_kind(view) !=
+            MYLITE_EXPLAIN_STATEMENT_ANALYZE ||
+        mylite_ast_explain_statement_view_format_kind(view) !=
+            MYLITE_EXPLAIN_FORMAT_TREE ||
+        !mylite_ast_explain_statement_view_has_analyze(view) ||
+        !span_matches(sql,
+                      mylite_ast_explain_statement_view_statement_start(view),
+                      mylite_ast_explain_statement_view_statement_end(view),
+                      "SELECT 1")) {
+      fprintf(stderr, "EXPLAIN ANALYZE FORMAT view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql = "EXPLAIN FOR CONNECTION 123";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "EXPLAIN FOR CONNECTION view parse failed: status=%s "
+              "offset=%zu token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    const MyliteAstExplainStatement *view =
+        mylite_ast_explain_statement_view(ast, 0);
+    if (view == NULL ||
+        mylite_ast_explain_statement_view_kind(view) !=
+            MYLITE_EXPLAIN_STATEMENT_FOR_CONNECTION ||
+        !mylite_ast_explain_statement_view_has_connection_id(view) ||
+        mylite_ast_explain_statement_view_connection_id(view) != 123 ||
+        !span_matches(sql,
+                      mylite_ast_explain_statement_view_connection_id_start(view),
+                      mylite_ast_explain_statement_view_connection_id_end(view),
+                      "123")) {
+      fprintf(stderr, "EXPLAIN FOR CONNECTION view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql = "EXPLAIN FORMAT=json FOR CONNECTION 123";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "EXPLAIN FORMAT FOR CONNECTION view parse failed: status=%s "
+              "offset=%zu token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    const MyliteAstExplainStatement *view =
+        mylite_ast_explain_statement_view(ast, 0);
+    if (view == NULL ||
+        mylite_ast_explain_statement_view_kind(view) !=
+            MYLITE_EXPLAIN_STATEMENT_FOR_CONNECTION ||
+        mylite_ast_explain_statement_view_format_kind(view) !=
+            MYLITE_EXPLAIN_FORMAT_JSON ||
+        !mylite_ast_explain_statement_view_has_connection_id(view) ||
+        mylite_ast_explain_statement_view_connection_id(view) != 123 ||
+        !span_matches(sql,
+                      mylite_ast_explain_statement_view_connection_id_start(view),
+                      mylite_ast_explain_statement_view_connection_id_end(view),
+                      "123")) {
+      fprintf(stderr, "EXPLAIN FORMAT FOR CONNECTION view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql = "DESCRIBE `db``x`.`t``y` `c``z`";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "DESCRIBE view parse failed: status=%s offset=%zu token=%d "
+              "message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    const MyliteAstExplainStatement *view =
+        mylite_ast_explain_statement_view(ast, 0);
+    if (view == NULL ||
+        mylite_ast_explain_statement_view_kind(view) !=
+            MYLITE_EXPLAIN_STATEMENT_TABLE ||
+        !value_matches_when_expected(
+            mylite_ast_explain_statement_view_table_schema_value(view),
+            mylite_ast_explain_statement_view_table_schema_value_length(view),
+            "db`x") ||
+        !value_matches_when_expected(
+            mylite_ast_explain_statement_view_table_name_value(view),
+            mylite_ast_explain_statement_view_table_name_value_length(view),
+            "t`y") ||
+        !value_matches_when_expected(
+            mylite_ast_explain_statement_view_column_value(view),
+            mylite_ast_explain_statement_view_column_value_length(view),
+            "c`z")) {
+      fprintf(stderr, "DESCRIBE table view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
   return failed;
 }
 

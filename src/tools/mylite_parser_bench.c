@@ -314,6 +314,16 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t deallocate_statement_views = 0;
   size_t deallocate_statement_name_values = 0;
   size_t deallocate_statement_modes = 0;
+  size_t explain_statement_views = 0;
+  size_t explain_statement_query_forms = 0;
+  size_t explain_statement_analyze_forms = 0;
+  size_t explain_statement_for_connection_forms = 0;
+  size_t explain_statement_table_forms = 0;
+  size_t explain_statement_format_values = 0;
+  size_t explain_statement_statement_nodes = 0;
+  size_t explain_statement_connection_ids = 0;
+  size_t explain_statement_table_name_values = 0;
+  size_t explain_statement_column_values = 0;
   size_t rename_table_views = 0;
   size_t rename_table_pairs = 0;
   size_t set_statement_views = 0;
@@ -1561,6 +1571,49 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                 deallocate_statement_modes++;
               }
             }
+            const MyliteAstExplainStatement *explain_statement =
+                mylite_ast_explain_statement_view(ast, i);
+            if (explain_statement != NULL) {
+              explain_statement_views++;
+              switch (mylite_ast_explain_statement_view_kind(
+                  explain_statement)) {
+                case MYLITE_EXPLAIN_STATEMENT_QUERY:
+                  explain_statement_query_forms++;
+                  break;
+                case MYLITE_EXPLAIN_STATEMENT_ANALYZE:
+                  explain_statement_analyze_forms++;
+                  break;
+                case MYLITE_EXPLAIN_STATEMENT_FOR_CONNECTION:
+                  explain_statement_for_connection_forms++;
+                  break;
+                case MYLITE_EXPLAIN_STATEMENT_TABLE:
+                  explain_statement_table_forms++;
+                  break;
+                case MYLITE_EXPLAIN_STATEMENT_UNKNOWN:
+                  break;
+              }
+              if (mylite_ast_explain_statement_view_format_kind(
+                      explain_statement) !=
+                  MYLITE_EXPLAIN_FORMAT_UNSPECIFIED) {
+                explain_statement_format_values++;
+              }
+              if (mylite_ast_explain_statement_view_statement_node(
+                      explain_statement) != NULL) {
+                explain_statement_statement_nodes++;
+              }
+              if (mylite_ast_explain_statement_view_has_connection_id(
+                      explain_statement)) {
+                explain_statement_connection_ids++;
+              }
+              if (mylite_ast_explain_statement_view_table_name_value(
+                      explain_statement) != NULL) {
+                explain_statement_table_name_values++;
+              }
+              if (mylite_ast_explain_statement_view_column_value(
+                      explain_statement) != NULL) {
+                explain_statement_column_values++;
+              }
+            }
             const MyliteAstSetStatement *set_statement =
                 mylite_ast_set_statement_view(ast, i);
             if (set_statement != NULL) {
@@ -2147,6 +2200,16 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_deallocate_statement_views=%.2f "
            "avg_deallocate_statement_name_values=%.2f "
            "avg_deallocate_statement_modes=%.2f "
+           "avg_explain_statement_views=%.2f "
+           "avg_explain_statement_query_forms=%.2f "
+           "avg_explain_statement_analyze_forms=%.2f "
+           "avg_explain_statement_for_connection_forms=%.2f "
+           "avg_explain_statement_table_forms=%.2f "
+           "avg_explain_statement_format_values=%.2f "
+           "avg_explain_statement_statement_nodes=%.2f "
+           "avg_explain_statement_connection_ids=%.2f "
+           "avg_explain_statement_table_name_values=%.2f "
+           "avg_explain_statement_column_values=%.2f "
            "avg_set_statement_views=%.2f "
            "avg_set_statement_assignments=%.2f "
            "avg_set_assignment_name_values=%.2f "
@@ -2475,6 +2538,16 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)deallocate_statement_views / (double)parsed,
            (double)deallocate_statement_name_values / (double)parsed,
            (double)deallocate_statement_modes / (double)parsed,
+           (double)explain_statement_views / (double)parsed,
+           (double)explain_statement_query_forms / (double)parsed,
+           (double)explain_statement_analyze_forms / (double)parsed,
+           (double)explain_statement_for_connection_forms / (double)parsed,
+           (double)explain_statement_table_forms / (double)parsed,
+           (double)explain_statement_format_values / (double)parsed,
+           (double)explain_statement_statement_nodes / (double)parsed,
+           (double)explain_statement_connection_ids / (double)parsed,
+           (double)explain_statement_table_name_values / (double)parsed,
+           (double)explain_statement_column_values / (double)parsed,
            (double)set_statement_views / (double)parsed,
            (double)set_statement_assignments / (double)parsed,
            (double)set_assignment_name_values / (double)parsed,

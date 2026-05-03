@@ -899,6 +899,36 @@ struct MyliteAstDeallocateStatement {
   size_t name_value_length;
 };
 
+struct MyliteAstExplainStatement {
+  const MyliteAstNode *node;
+  const MyliteAstNode *statement_node;
+  MyliteExplainStatementKind kind;
+  MyliteExplainFormatKind format_kind;
+  size_t start;
+  size_t end;
+  size_t connection_id_start;
+  size_t connection_id_end;
+  unsigned long long connection_id;
+  int has_connection_id;
+  size_t statement_start;
+  size_t statement_end;
+  size_t table_start;
+  size_t table_end;
+  size_t table_schema_start;
+  size_t table_schema_end;
+  const char *table_schema_value;
+  size_t table_schema_value_length;
+  size_t table_name_start;
+  size_t table_name_end;
+  const char *table_name_value;
+  size_t table_name_value_length;
+  size_t column_start;
+  size_t column_end;
+  const char *column_value;
+  size_t column_value_length;
+  int has_analyze;
+};
+
 struct MyliteAstTransactionStatement {
   const MyliteAstNode *node;
   MyliteTransactionStatementKind kind;
@@ -947,6 +977,7 @@ typedef struct MyliteAstStatement {
   MyliteAstPrepareStatement *prepare_statement;
   MyliteAstExecuteStatement *execute_statement;
   MyliteAstDeallocateStatement *deallocate_statement;
+  MyliteAstExplainStatement *explain_statement;
   MyliteAstDeleteStatement *delete_statement;
   MyliteAstInsertStatement *insert_statement;
   MyliteAstReplaceStatement *replace_statement;
@@ -1404,6 +1435,22 @@ static int mylite_ast_set_deallocate_statement_view(
     const MyliteAstNode *payload);
 static MyliteDeallocateStatementMode mylite_ast_classify_deallocate_statement_mode(
     const MyliteAstNode *node);
+static int mylite_ast_set_explain_statement_view(
+    MyliteAst *ast, MyliteAstStatement *statement,
+    const MyliteAstNode *payload);
+static MyliteExplainStatementKind mylite_ast_classify_explain_statement(
+    const MyliteAstNode *payload);
+static MyliteExplainFormatKind mylite_ast_explain_format_kind(
+    const MyliteAstNode *payload);
+static int mylite_ast_set_explain_connection_id(
+    MyliteAst *ast, MyliteAstExplainStatement *explain_statement,
+    const MyliteAstNode *payload);
+static int mylite_ast_set_explain_table(
+    MyliteAst *ast, MyliteAstExplainStatement *explain_statement,
+    const MyliteAstNode *payload);
+static int mylite_ast_set_explain_column(
+    MyliteAst *ast, MyliteAstExplainStatement *explain_statement,
+    const MyliteAstNode *payload);
 static int mylite_ast_set_prepared_statement_name_value(
     MyliteAst *ast, const MyliteAstNode *node, size_t *name_start,
     size_t *name_end, const char **name_value, size_t *name_value_length);
@@ -1682,6 +1729,8 @@ static const MyliteAstNode *mylite_ast_find_first_token_after(
     const MyliteAstNode *node, int token, size_t min_start);
 static const MyliteAstNode *mylite_ast_direct_child_token(
     const MyliteAstNode *node, size_t child_index, int token);
+static const MyliteAstNode *mylite_ast_find_direct_child_token(
+    const MyliteAstNode *node, int token);
 static void mylite_ast_set_create_table_column_option_details(
     MyliteAstCreateTableColumn *column, const MyliteAstNode *options);
 static void mylite_ast_set_create_table_column_option_detail(
@@ -2137,6 +2186,37 @@ const char *mylite_update_priority_name(MyliteUpdatePriority priority) {
       return "high";
     case MYLITE_UPDATE_PRIORITY_DELAYED:
       return "delayed";
+  }
+  return "unknown";
+}
+
+const char *mylite_explain_statement_kind_name(
+    MyliteExplainStatementKind kind) {
+  switch (kind) {
+    case MYLITE_EXPLAIN_STATEMENT_UNKNOWN:
+      return "unknown";
+    case MYLITE_EXPLAIN_STATEMENT_QUERY:
+      return "query";
+    case MYLITE_EXPLAIN_STATEMENT_ANALYZE:
+      return "analyze";
+    case MYLITE_EXPLAIN_STATEMENT_FOR_CONNECTION:
+      return "for_connection";
+    case MYLITE_EXPLAIN_STATEMENT_TABLE:
+      return "table";
+  }
+  return "unknown";
+}
+
+const char *mylite_explain_format_kind_name(MyliteExplainFormatKind kind) {
+  switch (kind) {
+    case MYLITE_EXPLAIN_FORMAT_UNSPECIFIED:
+      return "unspecified";
+    case MYLITE_EXPLAIN_FORMAT_TRADITIONAL:
+      return "traditional";
+    case MYLITE_EXPLAIN_FORMAT_JSON:
+      return "json";
+    case MYLITE_EXPLAIN_FORMAT_TREE:
+      return "tree";
   }
   return "unknown";
 }
@@ -3356,6 +3436,13 @@ const MyliteAstDeallocateStatement *mylite_ast_deallocate_statement_view(
   const MyliteAstStatement *statement =
       mylite_ast_statement_at(ast, statement_index);
   return statement == NULL ? NULL : statement->deallocate_statement;
+}
+
+const MyliteAstExplainStatement *mylite_ast_explain_statement_view(
+    const MyliteAst *ast, size_t statement_index) {
+  const MyliteAstStatement *statement =
+      mylite_ast_statement_at(ast, statement_index);
+  return statement == NULL ? NULL : statement->explain_statement;
 }
 
 const MyliteAstDeleteStatement *mylite_ast_delete_statement_view(
@@ -6192,6 +6279,125 @@ size_t mylite_ast_deallocate_statement_view_name_value_length(
     const MyliteAstDeallocateStatement *deallocate_statement) {
   return deallocate_statement == NULL ? 0
                                       : deallocate_statement->name_value_length;
+}
+
+const MyliteAstNode *mylite_ast_explain_statement_view_node(
+    const MyliteAstExplainStatement *explain_statement) {
+  return explain_statement == NULL ? NULL : explain_statement->node;
+}
+
+size_t mylite_ast_explain_statement_view_start(
+    const MyliteAstExplainStatement *explain_statement) {
+  return explain_statement == NULL ? 0 : explain_statement->start;
+}
+
+size_t mylite_ast_explain_statement_view_end(
+    const MyliteAstExplainStatement *explain_statement) {
+  return explain_statement == NULL ? 0 : explain_statement->end;
+}
+
+MyliteExplainStatementKind mylite_ast_explain_statement_view_kind(
+    const MyliteAstExplainStatement *explain_statement) {
+  return explain_statement == NULL ? MYLITE_EXPLAIN_STATEMENT_UNKNOWN
+                                   : explain_statement->kind;
+}
+
+MyliteExplainFormatKind mylite_ast_explain_statement_view_format_kind(
+    const MyliteAstExplainStatement *explain_statement) {
+  return explain_statement == NULL ? MYLITE_EXPLAIN_FORMAT_UNSPECIFIED
+                                   : explain_statement->format_kind;
+}
+
+int mylite_ast_explain_statement_view_has_analyze(
+    const MyliteAstExplainStatement *explain_statement) {
+  return explain_statement != NULL && explain_statement->has_analyze;
+}
+
+size_t mylite_ast_explain_statement_view_connection_id_start(
+    const MyliteAstExplainStatement *explain_statement) {
+  return explain_statement == NULL ? 0 : explain_statement->connection_id_start;
+}
+
+size_t mylite_ast_explain_statement_view_connection_id_end(
+    const MyliteAstExplainStatement *explain_statement) {
+  return explain_statement == NULL ? 0 : explain_statement->connection_id_end;
+}
+
+int mylite_ast_explain_statement_view_has_connection_id(
+    const MyliteAstExplainStatement *explain_statement) {
+  return explain_statement != NULL && explain_statement->has_connection_id;
+}
+
+unsigned long long mylite_ast_explain_statement_view_connection_id(
+    const MyliteAstExplainStatement *explain_statement) {
+  return explain_statement == NULL ? 0 : explain_statement->connection_id;
+}
+
+const MyliteAstNode *mylite_ast_explain_statement_view_statement_node(
+    const MyliteAstExplainStatement *explain_statement) {
+  return explain_statement == NULL ? NULL : explain_statement->statement_node;
+}
+
+size_t mylite_ast_explain_statement_view_statement_start(
+    const MyliteAstExplainStatement *explain_statement) {
+  return explain_statement == NULL ? 0 : explain_statement->statement_start;
+}
+
+size_t mylite_ast_explain_statement_view_statement_end(
+    const MyliteAstExplainStatement *explain_statement) {
+  return explain_statement == NULL ? 0 : explain_statement->statement_end;
+}
+
+size_t mylite_ast_explain_statement_view_table_start(
+    const MyliteAstExplainStatement *explain_statement) {
+  return explain_statement == NULL ? 0 : explain_statement->table_start;
+}
+
+size_t mylite_ast_explain_statement_view_table_end(
+    const MyliteAstExplainStatement *explain_statement) {
+  return explain_statement == NULL ? 0 : explain_statement->table_end;
+}
+
+const char *mylite_ast_explain_statement_view_table_schema_value(
+    const MyliteAstExplainStatement *explain_statement) {
+  return explain_statement == NULL ? NULL : explain_statement->table_schema_value;
+}
+
+size_t mylite_ast_explain_statement_view_table_schema_value_length(
+    const MyliteAstExplainStatement *explain_statement) {
+  return explain_statement == NULL ? 0
+                                   : explain_statement->table_schema_value_length;
+}
+
+const char *mylite_ast_explain_statement_view_table_name_value(
+    const MyliteAstExplainStatement *explain_statement) {
+  return explain_statement == NULL ? NULL : explain_statement->table_name_value;
+}
+
+size_t mylite_ast_explain_statement_view_table_name_value_length(
+    const MyliteAstExplainStatement *explain_statement) {
+  return explain_statement == NULL ? 0
+                                   : explain_statement->table_name_value_length;
+}
+
+size_t mylite_ast_explain_statement_view_column_start(
+    const MyliteAstExplainStatement *explain_statement) {
+  return explain_statement == NULL ? 0 : explain_statement->column_start;
+}
+
+size_t mylite_ast_explain_statement_view_column_end(
+    const MyliteAstExplainStatement *explain_statement) {
+  return explain_statement == NULL ? 0 : explain_statement->column_end;
+}
+
+const char *mylite_ast_explain_statement_view_column_value(
+    const MyliteAstExplainStatement *explain_statement) {
+  return explain_statement == NULL ? NULL : explain_statement->column_value;
+}
+
+size_t mylite_ast_explain_statement_view_column_value_length(
+    const MyliteAstExplainStatement *explain_statement) {
+  return explain_statement == NULL ? 0 : explain_statement->column_value_length;
 }
 
 const MyliteAstNode *mylite_ast_transaction_statement_view_node(
@@ -9831,6 +10037,9 @@ static int mylite_ast_set_statement_details(MyliteAst *ast,
   }
   if (strcmp(statement->symbol_name, "nt_deallocate_stmt") == 0) {
     return mylite_ast_set_deallocate_statement_view(ast, statement, payload);
+  }
+  if (strcmp(statement->symbol_name, "nt_explain_stmt") == 0) {
+    return mylite_ast_set_explain_statement_view(ast, statement, payload);
   }
   if (strcmp(statement->symbol_name, "nt_set_stmt") == 0 ||
       strcmp(statement->symbol_name, "nt_set_role_stmt") == 0 ||
@@ -13556,6 +13765,165 @@ static MyliteDeallocateStatementMode mylite_ast_classify_deallocate_statement_mo
   return MYLITE_DEALLOCATE_STATEMENT_MODE_UNKNOWN;
 }
 
+static int mylite_ast_set_explain_statement_view(
+    MyliteAst *ast, MyliteAstStatement *statement,
+    const MyliteAstNode *payload) {
+  if (ast == NULL || statement == NULL) {
+    return 1;
+  }
+  MyliteAstExplainStatement *explain_statement =
+      mylite_ast_alloc(ast, sizeof(*explain_statement));
+  if (explain_statement == NULL) {
+    return 0;
+  }
+  explain_statement->node = payload == NULL ? statement->node : payload;
+  explain_statement->start = mylite_ast_node_start(explain_statement->node);
+  explain_statement->end = mylite_ast_node_end(explain_statement->node);
+  explain_statement->kind =
+      mylite_ast_classify_explain_statement(explain_statement->node);
+  explain_statement->format_kind =
+      mylite_ast_explain_format_kind(explain_statement->node);
+  explain_statement->has_analyze =
+      mylite_ast_find_direct_child_token(explain_statement->node,
+                                         MYLITE_TOK_ANALYZE) != NULL;
+  explain_statement->statement_node = mylite_ast_insert_direct_child_symbol(
+      explain_statement->node, "nt_explainable_stmt");
+  if (explain_statement->statement_node != NULL) {
+    explain_statement->statement_start =
+        mylite_ast_node_start(explain_statement->statement_node);
+    explain_statement->statement_end =
+        mylite_ast_node_end(explain_statement->statement_node);
+  }
+  if (!mylite_ast_set_explain_connection_id(ast, explain_statement,
+                                            explain_statement->node) ||
+      !mylite_ast_set_explain_table(ast, explain_statement,
+                                    explain_statement->node) ||
+      !mylite_ast_set_explain_column(ast, explain_statement,
+                                     explain_statement->node)) {
+    return 0;
+  }
+  statement->explain_statement = explain_statement;
+  return 1;
+}
+
+static MyliteExplainStatementKind mylite_ast_classify_explain_statement(
+    const MyliteAstNode *payload) {
+  if (payload == NULL) {
+    return MYLITE_EXPLAIN_STATEMENT_UNKNOWN;
+  }
+  if (mylite_ast_find_direct_child_token(payload, MYLITE_TOK_CONNECTION) !=
+      NULL) {
+    return MYLITE_EXPLAIN_STATEMENT_FOR_CONNECTION;
+  }
+  if (mylite_ast_insert_direct_child_symbol(payload, "nt_table_name") != NULL) {
+    return MYLITE_EXPLAIN_STATEMENT_TABLE;
+  }
+  if (mylite_ast_find_direct_child_token(payload, MYLITE_TOK_ANALYZE) != NULL) {
+    return MYLITE_EXPLAIN_STATEMENT_ANALYZE;
+  }
+  if (mylite_ast_insert_direct_child_symbol(payload,
+                                            "nt_explainable_stmt") != NULL) {
+    return MYLITE_EXPLAIN_STATEMENT_QUERY;
+  }
+  return MYLITE_EXPLAIN_STATEMENT_UNKNOWN;
+}
+
+static MyliteExplainFormatKind mylite_ast_explain_format_kind(
+    const MyliteAstNode *payload) {
+  const MyliteAstNode *format =
+      mylite_ast_insert_direct_child_symbol(payload, "nt_explain_format_type");
+  if (mylite_ast_find_first_token(format, MYLITE_TOK_TRADITIONAL) != NULL) {
+    return MYLITE_EXPLAIN_FORMAT_TRADITIONAL;
+  }
+  if (mylite_ast_find_first_token(format, MYLITE_TOK_JSON_TYPE) != NULL) {
+    return MYLITE_EXPLAIN_FORMAT_JSON;
+  }
+  if (mylite_ast_find_first_token(format, MYLITE_TOK_TREE) != NULL) {
+    return MYLITE_EXPLAIN_FORMAT_TREE;
+  }
+  return MYLITE_EXPLAIN_FORMAT_UNSPECIFIED;
+}
+
+static int mylite_ast_set_explain_connection_id(
+    MyliteAst *ast, MyliteAstExplainStatement *explain_statement,
+    const MyliteAstNode *payload) {
+  if (ast == NULL || explain_statement == NULL || payload == NULL) {
+    return 1;
+  }
+  const MyliteAstNode *connection_id =
+      mylite_ast_insert_direct_child_symbol(payload, "nt_num");
+  if (connection_id == NULL) {
+    return 1;
+  }
+  explain_statement->connection_id_start = mylite_ast_node_start(connection_id);
+  explain_statement->connection_id_end = mylite_ast_node_end(connection_id);
+  explain_statement->has_connection_id = mylite_ast_parse_unsigned_integer_value(
+      ast->source, explain_statement->connection_id_start,
+      explain_statement->connection_id_end,
+      &explain_statement->connection_id);
+  return 1;
+}
+
+static int mylite_ast_set_explain_table(
+    MyliteAst *ast, MyliteAstExplainStatement *explain_statement,
+    const MyliteAstNode *payload) {
+  if (ast == NULL || explain_statement == NULL || payload == NULL) {
+    return 1;
+  }
+  const MyliteAstNode *table =
+      mylite_ast_insert_direct_child_symbol(payload, "nt_table_name");
+  if (table == NULL) {
+    return 1;
+  }
+  explain_statement->table_start = mylite_ast_node_start(table);
+  explain_statement->table_end = mylite_ast_node_end(table);
+  mylite_ast_set_table_name_span_parts(table,
+                                       &explain_statement->table_schema_start,
+                                       &explain_statement->table_schema_end,
+                                       &explain_statement->table_name_start,
+                                       &explain_statement->table_name_end);
+  if (explain_statement->table_schema_start !=
+          explain_statement->table_schema_end &&
+      !mylite_ast_decode_identifier(
+          ast, explain_statement->table_schema_start,
+          explain_statement->table_schema_end,
+          &explain_statement->table_schema_value,
+          &explain_statement->table_schema_value_length)) {
+    return 0;
+  }
+  if (explain_statement->table_name_start !=
+      explain_statement->table_name_end) {
+    return mylite_ast_decode_identifier(
+        ast, explain_statement->table_name_start,
+        explain_statement->table_name_end, &explain_statement->table_name_value,
+        &explain_statement->table_name_value_length);
+  }
+  return 1;
+}
+
+static int mylite_ast_set_explain_column(
+    MyliteAst *ast, MyliteAstExplainStatement *explain_statement,
+    const MyliteAstNode *payload) {
+  if (ast == NULL || explain_statement == NULL || payload == NULL) {
+    return 1;
+  }
+  const MyliteAstNode *column =
+      mylite_ast_insert_direct_child_symbol(payload, "nt_column_name");
+  if (column == NULL) {
+    return 1;
+  }
+  const MyliteAstNode *identifier = mylite_ast_find_identifier_for_name(column);
+  explain_statement->column_start = mylite_ast_node_start(column);
+  explain_statement->column_end = mylite_ast_node_end(column);
+  if (identifier == NULL) {
+    return 1;
+  }
+  return mylite_ast_decode_identifier(
+      ast, mylite_ast_node_start(identifier), mylite_ast_node_end(identifier),
+      &explain_statement->column_value,
+      &explain_statement->column_value_length);
+}
+
 static int mylite_ast_set_prepared_statement_name_value(
     MyliteAst *ast, const MyliteAstNode *node, size_t *name_start,
     size_t *name_end, const char **name_value, size_t *name_value_length) {
@@ -16466,6 +16834,21 @@ static const MyliteAstNode *mylite_ast_direct_child_token(
     return NULL;
   }
   return child;
+}
+
+static const MyliteAstNode *mylite_ast_find_direct_child_token(
+    const MyliteAstNode *node, int token) {
+  if (node == NULL) {
+    return NULL;
+  }
+  for (size_t i = 0; i < node->child_count; i++) {
+    const MyliteAstNode *child =
+        mylite_ast_direct_child_token(node, i, token);
+    if (child != NULL) {
+      return child;
+    }
+  }
+  return NULL;
 }
 
 static const MyliteAstNode *mylite_ast_direct_child_symbol(

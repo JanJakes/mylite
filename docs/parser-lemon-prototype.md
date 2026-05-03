@@ -484,11 +484,11 @@ token sink:
 - Embedded stored-program cursor statements validate `OPEN`, `FETCH`, and
   `CLOSE` arity, including `FETCH [[NEXT] FROM] cursor INTO target [, ...]`.
 - `DECLARE`, `FETCH [[NEXT] FROM] ... INTO`, and named signal conditions use
-  the shared identifier grammar for local names, with numeric MySQL error codes
-  and five-character `SQLSTATE [VALUE]` literals for condition declarations and
-  handler conditions. Handler bodies recognize compound blocks and stored
-  program starts for flow-control, cursor, DML, diagnostics, and return
-  statements.
+  the shared identifier grammar for local names, with unsigned decimal,
+  lowercase-hex, and quoted-hex MySQL error codes plus five-character
+  `SQLSTATE [VALUE]` literals for condition declarations and handler
+  conditions. Handler bodies recognize compound blocks and stored program
+  starts for flow-control, cursor, DML, diagnostics, and return statements.
 - Local-variable `DECLARE` statements validate `DEFAULT` expression tails.
 - Cursor `DECLARE` statements validate `SELECT`, `TABLE`, `VALUES`, `WITH`,
   and parenthesized query bodies, including CTE wrappers before the outer query
@@ -510,9 +510,11 @@ token sink:
   dotted identifier values. Embedded stored-program bodies validate assignment
   separators and diagnostics item names.
 - `SIGNAL` and `RESIGNAL` recognize five-character `SQLSTATE [VALUE]` literals
-  and condition item assignments with numeric `MYSQL_ERRNO`, literal/simple,
-  user-variable, system-variable, and dotted local identifier values; embedded
-  stored-program bodies reuse `SET` assignment expression validation.
+  and condition item assignments with MySQL-shaped simple `MYSQL_ERRNO`
+  values, including unsigned numeric/string/hex/bit literals, local/user/system
+  variables, and dotted identifiers while rejecting signed, `DEFAULT`,
+  parenthesized, and operator expressions; embedded stored-program bodies reuse
+  `SET` assignment expression validation.
 - `SET NAMES` and `SET CHARACTER SET` recognize charset/collation names using
   the shared identifier grammar, `BINARY`, `DEFAULT`, optional collation, and
   comma-following variable assignments.

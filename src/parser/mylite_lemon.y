@@ -4131,9 +4131,34 @@ signal_condition_item_name ::= SCHEMA_NAME.
 signal_condition_item_name ::= SUBCLASS_ORIGIN.
 signal_condition_item_name ::= TABLE_NAME.
 
-signal_mysql_errno_value ::= BOOLEAN_NUMBER.
-signal_mysql_errno_value ::= FACTOR_NUMBER.
-signal_mysql_errno_value ::= NUMBER_LITERAL.
+signal_mysql_errno_value ::= signal_mysql_errno_literal.
+signal_mysql_errno_value ::= signal_mysql_errno_identifier_part.
+signal_mysql_errno_value ::= user_variable_name.
+signal_mysql_errno_value ::= AT_EMPTY set_variable_part.
+signal_mysql_errno_value ::= AT_EMPTY set_variable_part DOT set_variable_part.
+signal_mysql_errno_value ::= AT_EMPTY set_variable_part DOT set_variable_part DOT set_variable_part.
+signal_mysql_errno_value ::= signal_mysql_errno_identifier_part DOT signal_mysql_errno_identifier_part.
+signal_mysql_errno_value ::= signal_mysql_errno_identifier_part DOT signal_mysql_errno_identifier_part DOT signal_mysql_errno_identifier_part.
+signal_mysql_errno_value ::= DEFAULT(A). {
+  mylite_parser_reject(ctx, A, "invalid SIGNAL MYSQL_ERRNO value");
+}
+
+signal_mysql_errno_literal ::= BOOLEAN_NUMBER(A). {
+  mylite_parser_require_unsigned_number_literal(ctx, A);
+}
+signal_mysql_errno_literal ::= FACTOR_NUMBER(A). {
+  mylite_parser_require_unsigned_number_literal(ctx, A);
+}
+signal_mysql_errno_literal ::= NUMBER_LITERAL(A). {
+  mylite_parser_require_unsigned_number_literal(ctx, A);
+}
+signal_mysql_errno_literal ::= DOT unsigned_decimal_fraction.
+signal_mysql_errno_literal ::= string_literal.
+
+signal_mysql_errno_identifier_part ::= ATOM(A). {
+  mylite_parser_require_name_atom(ctx, A);
+}
+signal_mysql_errno_identifier_part ::= LABEL.
 
 signal_information_value ::= ATOM.
 signal_information_value ::= LABEL.
@@ -4810,9 +4835,10 @@ declare_type_start ::= LABEL.
 declare_condition_value ::= declare_condition_number_value.
 declare_condition_value ::= SQLSTATE signal_sqlstate_value_tail SQLSTATE_VALUE.
 
-declare_condition_number_value ::= BOOLEAN_NUMBER.
-declare_condition_number_value ::= FACTOR_NUMBER.
-declare_condition_number_value ::= NUMBER_LITERAL.
+declare_condition_number_value ::= unsigned_decimal_or_lower_hex_value.
+declare_condition_number_value ::= STRING_LITERAL(A). {
+  mylite_parser_require_quoted_hex_literal(ctx, A);
+}
 
 declare_handler_action ::= CONTINUE.
 declare_handler_action ::= EXIT.

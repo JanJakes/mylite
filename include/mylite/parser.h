@@ -116,7 +116,8 @@ typedef enum MyliteSemanticNodeKind {
   MYLITE_SEMANTIC_NODE_EXPRESSION = 4,
   MYLITE_SEMANTIC_NODE_DESCRIPTOR = 5,
   MYLITE_SEMANTIC_NODE_CLAUSE = 6,
-  MYLITE_SEMANTIC_NODE_DATA_TYPE = 7
+  MYLITE_SEMANTIC_NODE_DATA_TYPE = 7,
+  MYLITE_SEMANTIC_NODE_DATA_TYPE_ELEMENT = 8
 } MyliteSemanticNodeKind;
 
 typedef enum MyliteSemanticClauseKind {
@@ -1173,6 +1174,11 @@ mylite_semantic_ast_node_data_type_storage_class(
     const MyliteSemanticAstNode *node);
 unsigned int mylite_semantic_ast_node_data_type_flags(
     const MyliteSemanticAstNode *node);
+size_t mylite_semantic_ast_node_data_type_numeric_parameter_count(
+    const MyliteSemanticAstNode *node);
+unsigned long long
+mylite_semantic_ast_node_data_type_numeric_parameter_at(
+    const MyliteSemanticAstNode *node, size_t parameter_index);
 MyliteExpressionKind mylite_semantic_ast_node_expression_kind(
     const MyliteSemanticAstNode *node);
 MyliteExpressionLiteralKind mylite_semantic_ast_node_expression_literal_kind(

@@ -66,7 +66,7 @@ def main() -> int:
             sys.stderr.write(completed.stdout)
             failures += 1
 
-    sql = "CREATE TABLE t (a INT DEFAULT 1)\n"
+    sql = "CREATE TABLE t (a INT DEFAULT 1, b DECIMAL(10,2), c ENUM('x','y'))\n"
     completed = subprocess.run(
         [args.parser, "--semantic"],
         input=sql,
@@ -85,7 +85,10 @@ def main() -> int:
         "data_type_family=numeric",
         "data_type_kind=int",
         "storage_class=integer",
+        "numeric_params=2:10,2",
+        "semantic kind=data_type_element",
         'value="INT"',
+        'value="x"',
     )
     for needle in required:
         if needle not in completed.stdout:

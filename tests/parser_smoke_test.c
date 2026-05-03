@@ -157,6 +157,8 @@ typedef struct SemanticCounts {
   size_t descriptors;
   size_t clauses;
   size_t data_types;
+  size_t data_type_numeric_parameters;
+  size_t data_type_elements;
   size_t expressions;
   size_t operators;
   size_t leaf_values;
@@ -7580,16 +7582,72 @@ static int expect_semantic_ast_materialization(void) {
           mylite_semantic_ast_node_value_length(key_descriptor), "k") ||
       ddl_counts.targets != 1 || ddl_counts.descriptors < 7 ||
       ddl_counts.clauses != 0 || ddl_counts.data_types != 4 ||
+      ddl_counts.data_type_numeric_parameters != 0 ||
+      ddl_counts.data_type_elements != 0 ||
       ddl_counts.expressions < 6 || ddl_counts.operators < 5 ||
       ddl_counts.leaf_values < 8) {
     fprintf(stderr,
             "semantic AST DDL shape mismatch: nodes=%zu targets=%zu "
-            "descriptors=%zu clauses=%zu data_types=%zu expressions=%zu "
-            "operators=%zu leaf_values=%zu\n",
+            "descriptors=%zu clauses=%zu data_types=%zu "
+            "data_type_numeric_parameters=%zu data_type_elements=%zu "
+            "expressions=%zu operators=%zu leaf_values=%zu\n",
             mylite_semantic_ast_node_count(semantic_ast), ddl_counts.targets,
             ddl_counts.descriptors, ddl_counts.clauses,
-            ddl_counts.data_types, ddl_counts.expressions, ddl_counts.operators,
+            ddl_counts.data_types, ddl_counts.data_type_numeric_parameters,
+            ddl_counts.data_type_elements, ddl_counts.expressions,
+            ddl_counts.operators,
             ddl_counts.leaf_values);
+    failed = 1;
+  }
+  mylite_semantic_ast_free(semantic_ast);
+
+  const char *type_sql =
+      "CREATE TABLE type_t (a DECIMAL(10,2), b ENUM('x','y'))";
+  semantic_ast = NULL;
+  status = mylite_parse_sql_semantic_ast(type_sql, &semantic_ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "semantic AST type parse failed: status=%s offset=%zu token=%d "
+            "message=%s\n",
+            mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return failed + 1;
+  }
+
+  root = mylite_semantic_ast_root(semantic_ast);
+  statement = mylite_semantic_ast_node_child_at(root, 0);
+  column_descriptor = first_semantic_child_with_descriptor_kind(
+      statement, MYLITE_SEMANTIC_DESCRIPTOR_COLUMN);
+  data_type = first_semantic_child_with_kind(column_descriptor,
+                                            MYLITE_SEMANTIC_NODE_DATA_TYPE);
+  SemanticCounts type_counts = {0};
+  count_semantic_nodes(root, &type_counts);
+  if (statement == NULL ||
+      mylite_semantic_ast_node_statement_kind(statement) !=
+          MYLITE_STATEMENT_CREATE ||
+      data_type == NULL ||
+      mylite_semantic_ast_node_data_type_kind(data_type) !=
+          MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_DECIMAL ||
+      mylite_semantic_ast_node_data_type_numeric_parameter_count(data_type) !=
+          2 ||
+      mylite_semantic_ast_node_data_type_numeric_parameter_at(data_type, 0) !=
+          10 ||
+      mylite_semantic_ast_node_data_type_numeric_parameter_at(data_type, 1) !=
+          2 ||
+      !value_matches_when_expected(mylite_semantic_ast_node_value(data_type),
+                                   mylite_semantic_ast_node_value_length(
+                                       data_type),
+                                   "DECIMAL") ||
+      type_counts.data_types != 2 ||
+      type_counts.data_type_numeric_parameters != 2 ||
+      type_counts.data_type_elements != 2) {
+    fprintf(stderr,
+            "semantic AST type shape mismatch: nodes=%zu data_types=%zu "
+            "numeric_parameters=%zu elements=%zu\n",
+            mylite_semantic_ast_node_count(semantic_ast),
+            type_counts.data_types,
+            type_counts.data_type_numeric_parameters,
+            type_counts.data_type_elements);
     failed = 1;
   }
   mylite_semantic_ast_free(semantic_ast);
@@ -7797,6 +7855,12 @@ static void count_semantic_nodes(const MyliteSemanticAstNode *node,
   }
   if (mylite_semantic_ast_node_kind(node) == MYLITE_SEMANTIC_NODE_DATA_TYPE) {
     counts->data_types++;
+    counts->data_type_numeric_parameters +=
+        mylite_semantic_ast_node_data_type_numeric_parameter_count(node);
+  }
+  if (mylite_semantic_ast_node_kind(node) ==
+      MYLITE_SEMANTIC_NODE_DATA_TYPE_ELEMENT) {
+    counts->data_type_elements++;
   }
   if (mylite_semantic_ast_node_kind(node) == MYLITE_SEMANTIC_NODE_EXPRESSION) {
     counts->expressions++;

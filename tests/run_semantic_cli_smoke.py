@@ -29,6 +29,8 @@ def main() -> int:
         "target_kind=table",
         "semantic kind=source",
         "source_kind=values",
+        "semantic kind=row",
+        "row_index=0",
         "descriptor_kind=column",
         'value="a"',
         "children=1 descriptor_kind=value",

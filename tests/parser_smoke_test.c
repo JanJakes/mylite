@@ -157,6 +157,7 @@ typedef struct SemanticCounts {
   size_t queries;
   size_t table_references;
   size_t sources;
+  size_t rows;
   size_t descriptors;
   size_t clauses;
   size_t data_types;
@@ -7469,9 +7470,11 @@ static int expect_semantic_ast_materialization(void) {
   const MyliteSemanticAstNode *assignment_descriptor =
       first_semantic_child_with_descriptor_kind(
           statement, MYLITE_SEMANTIC_DESCRIPTOR_ASSIGNMENT);
+  const MyliteSemanticAstNode *row =
+      first_semantic_child_with_kind(source, MYLITE_SEMANTIC_NODE_ROW);
   const MyliteSemanticAstNode *value_descriptor =
       first_semantic_child_with_descriptor_kind(
-          source, MYLITE_SEMANTIC_DESCRIPTOR_VALUE);
+          row, MYLITE_SEMANTIC_DESCRIPTOR_VALUE);
   const MyliteSemanticAstNode *direct_value_descriptor =
       first_semantic_child_with_descriptor_kind(
           statement, MYLITE_SEMANTIC_DESCRIPTOR_VALUE);
@@ -7500,7 +7503,10 @@ static int expect_semantic_ast_materialization(void) {
       source == NULL ||
       mylite_semantic_ast_node_source_kind(source) !=
           MYLITE_SEMANTIC_SOURCE_VALUES ||
-      mylite_semantic_ast_node_child_count(source) != 4 ||
+      mylite_semantic_ast_node_child_count(source) != 2 ||
+      row == NULL ||
+      mylite_semantic_ast_node_row_index(row) != 0 ||
+      mylite_semantic_ast_node_child_count(row) != 2 ||
       column_descriptor == NULL ||
       mylite_semantic_ast_node_descriptor_kind(column_descriptor) !=
           MYLITE_SEMANTIC_DESCRIPTOR_COLUMN ||
@@ -7515,7 +7521,7 @@ static int expect_semantic_ast_materialization(void) {
       value_descriptor == NULL ||
       mylite_semantic_ast_node_child_count(value_descriptor) != 1 ||
       direct_value_descriptor != NULL || direct_expression != NULL ||
-      counts.targets != 1 || counts.sources != 1 ||
+      counts.targets != 1 || counts.sources != 1 || counts.rows != 2 ||
       counts.descriptors < 7 || counts.clauses != 0 ||
       counts.expressions < 7 || counts.operators < 1 ||
       counts.leaf_values < 5 ||
@@ -7523,11 +7529,11 @@ static int expect_semantic_ast_materialization(void) {
       mylite_semantic_ast_allocated_bytes(semantic_ast) == 0) {
     fprintf(stderr,
             "semantic AST DML shape mismatch: nodes=%zu bytes=%zu "
-            "targets=%zu sources=%zu descriptors=%zu clauses=%zu "
+            "targets=%zu sources=%zu rows=%zu descriptors=%zu clauses=%zu "
             "expressions=%zu operators=%zu leaf_values=%zu\n",
             mylite_semantic_ast_node_count(semantic_ast),
             mylite_semantic_ast_allocated_bytes(semantic_ast), counts.targets,
-            counts.sources, counts.descriptors, counts.clauses,
+            counts.sources, counts.rows, counts.descriptors, counts.clauses,
             counts.expressions, counts.operators, counts.leaf_values);
     failed = 1;
   }
@@ -7570,6 +7576,7 @@ static int expect_semantic_ast_materialization(void) {
           mylite_semantic_ast_node_value(source_assignment),
           mylite_semantic_ast_node_value_length(source_assignment), "a") ||
       direct_assignment != NULL || insert_set_counts.sources != 1 ||
+      insert_set_counts.rows != 0 ||
       insert_set_counts.descriptors != 2 ||
       insert_set_counts.expressions < 4 ||
       insert_set_counts.operators < 1 ||
@@ -7603,10 +7610,11 @@ static int expect_semantic_ast_materialization(void) {
   statement = mylite_semantic_ast_node_child_at(root, 0);
   source = first_semantic_child_with_kind(statement,
                                          MYLITE_SEMANTIC_NODE_SOURCE);
+  row = first_semantic_child_with_kind(source, MYLITE_SEMANTIC_NODE_ROW);
   column_descriptor = first_semantic_child_with_descriptor_kind(
       statement, MYLITE_SEMANTIC_DESCRIPTOR_COLUMN);
   value_descriptor = first_semantic_child_with_descriptor_kind(
-      source, MYLITE_SEMANTIC_DESCRIPTOR_VALUE);
+      row, MYLITE_SEMANTIC_DESCRIPTOR_VALUE);
   direct_value_descriptor = first_semantic_child_with_descriptor_kind(
       statement, MYLITE_SEMANTIC_DESCRIPTOR_VALUE);
   SemanticCounts replace_values_counts = {0};
@@ -7617,7 +7625,10 @@ static int expect_semantic_ast_materialization(void) {
       source == NULL ||
       mylite_semantic_ast_node_source_kind(source) !=
           MYLITE_SEMANTIC_SOURCE_VALUES ||
-      mylite_semantic_ast_node_child_count(source) != 4 ||
+      mylite_semantic_ast_node_child_count(source) != 2 ||
+      row == NULL ||
+      mylite_semantic_ast_node_row_index(row) != 0 ||
+      mylite_semantic_ast_node_child_count(row) != 2 ||
       column_descriptor == NULL ||
       !value_matches_when_expected(
           mylite_semantic_ast_node_value(column_descriptor),
@@ -7625,17 +7636,19 @@ static int expect_semantic_ast_materialization(void) {
       value_descriptor == NULL ||
       mylite_semantic_ast_node_child_count(value_descriptor) != 1 ||
       direct_value_descriptor != NULL || replace_values_counts.sources != 1 ||
+      replace_values_counts.rows != 2 ||
       replace_values_counts.descriptors != 6 ||
       replace_values_counts.expressions < 6 ||
       replace_values_counts.operators < 1 ||
       replace_values_counts.leaf_values < 4) {
     fprintf(stderr,
             "semantic AST REPLACE VALUES shape mismatch: nodes=%zu "
-            "sources=%zu descriptors=%zu expressions=%zu operators=%zu "
+            "sources=%zu rows=%zu descriptors=%zu expressions=%zu operators=%zu "
             "leaf_values=%zu\n",
             mylite_semantic_ast_node_count(semantic_ast),
-            replace_values_counts.sources, replace_values_counts.descriptors,
-            replace_values_counts.expressions, replace_values_counts.operators,
+            replace_values_counts.sources, replace_values_counts.rows,
+            replace_values_counts.descriptors, replace_values_counts.expressions,
+            replace_values_counts.operators,
             replace_values_counts.leaf_values);
     failed = 1;
   }
@@ -7748,9 +7761,10 @@ static int expect_semantic_ast_materialization(void) {
   root = mylite_semantic_ast_root(semantic_ast);
   statement = mylite_semantic_ast_node_child_at(root, 0);
   query = first_semantic_child_with_kind(statement, MYLITE_SEMANTIC_NODE_QUERY);
+  row = first_semantic_child_with_kind(query, MYLITE_SEMANTIC_NODE_ROW);
   const MyliteSemanticAstNode *query_value =
       first_semantic_child_with_descriptor_kind(
-          query, MYLITE_SEMANTIC_DESCRIPTOR_VALUE);
+          row, MYLITE_SEMANTIC_DESCRIPTOR_VALUE);
   const MyliteSemanticAstNode *direct_value =
       first_semantic_child_with_descriptor_kind(
           statement, MYLITE_SEMANTIC_DESCRIPTOR_VALUE);
@@ -7768,11 +7782,15 @@ static int expect_semantic_ast_materialization(void) {
           MYLITE_STATEMENT_SELECT ||
       query == NULL ||
       mylite_semantic_ast_node_query_block_count(query) != 0 ||
+      row == NULL ||
+      mylite_semantic_ast_node_row_index(row) != 0 ||
+      mylite_semantic_ast_node_child_count(row) != 2 ||
       query_value == NULL ||
       mylite_semantic_ast_node_child_count(query_value) != 1 ||
       direct_value != NULL || direct_clause != NULL ||
       order_by_clause == NULL || limit_clause == NULL ||
       values_query_counts.queries != 1 ||
+      values_query_counts.rows != 2 ||
       values_query_counts.descriptors != 4 ||
       values_query_counts.clauses != 2 ||
       values_query_counts.expressions < 6 ||
@@ -7780,12 +7798,13 @@ static int expect_semantic_ast_materialization(void) {
       values_query_counts.leaf_values < 4) {
     fprintf(stderr,
             "semantic AST VALUES query shape mismatch: nodes=%zu "
-            "queries=%zu descriptors=%zu clauses=%zu expressions=%zu "
+            "queries=%zu rows=%zu descriptors=%zu clauses=%zu expressions=%zu "
             "operators=%zu leaf_values=%zu\n",
             mylite_semantic_ast_node_count(semantic_ast),
-            values_query_counts.queries, values_query_counts.descriptors,
-            values_query_counts.clauses, values_query_counts.expressions,
-            values_query_counts.operators, values_query_counts.leaf_values);
+            values_query_counts.queries, values_query_counts.rows,
+            values_query_counts.descriptors, values_query_counts.clauses,
+            values_query_counts.expressions, values_query_counts.operators,
+            values_query_counts.leaf_values);
     failed = 1;
   }
   mylite_semantic_ast_free(semantic_ast);
@@ -8151,6 +8170,9 @@ static void count_semantic_nodes(const MyliteSemanticAstNode *node,
   }
   if (mylite_semantic_ast_node_kind(node) == MYLITE_SEMANTIC_NODE_SOURCE) {
     counts->sources++;
+  }
+  if (mylite_semantic_ast_node_kind(node) == MYLITE_SEMANTIC_NODE_ROW) {
+    counts->rows++;
   }
   if (mylite_semantic_ast_node_kind(node) == MYLITE_SEMANTIC_NODE_DESCRIPTOR) {
     counts->descriptors++;

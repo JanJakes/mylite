@@ -3195,6 +3195,8 @@ static void dump_semantic_node(const MyliteSemanticAstNode *node,
     printf(" source_kind=%s",
            mylite_semantic_source_kind_name(
                mylite_semantic_ast_node_source_kind(node)));
+  } else if (kind == MYLITE_SEMANTIC_NODE_ROW) {
+    printf(" row_index=%zu", mylite_semantic_ast_node_row_index(node));
   } else if (kind == MYLITE_SEMANTIC_NODE_DESCRIPTOR) {
     printf(" descriptor_kind=%s",
            mylite_semantic_descriptor_kind_name(
@@ -3273,6 +3275,8 @@ static const char *semantic_node_kind_name(MyliteSemanticNodeKind kind) {
     return "table_reference";
   case MYLITE_SEMANTIC_NODE_SOURCE:
     return "source";
+  case MYLITE_SEMANTIC_NODE_ROW:
+    return "row";
   }
   return "unknown";
 }

@@ -20,6 +20,7 @@ struct MyliteSemanticAstNode {
   int query_has_with_clause;
   int query_has_set_operation;
   MyliteSemanticSourceKind source_kind;
+  size_t row_index;
   MyliteSemanticClauseKind clause_kind;
   MyliteSemanticDescriptorKind descriptor_kind;
   MyliteCreateTableColumnTypeFamily data_type_family;
@@ -144,6 +145,9 @@ static int mylite_semantic_ast_append_values_descriptors(
 static int mylite_semantic_ast_append_values_clauses(
     MyliteSemanticAst *ast, MyliteSemanticAstNode *query, size_t *child_index,
     const MyliteAstValuesStatement *values_statement);
+static MyliteSemanticAstNode *mylite_semantic_ast_materialize_row(
+    MyliteSemanticAst *ast, size_t row_index, size_t start, size_t end,
+    size_t child_count);
 static MyliteSemanticAstNode *mylite_semantic_ast_materialize_table_reference(
     MyliteSemanticAst *ast, size_t start, size_t end);
 static MyliteSemanticAstNode *mylite_semantic_ast_materialize_target(
@@ -358,6 +362,10 @@ const char *mylite_semantic_source_kind_name(MyliteSemanticSourceKind kind) {
 MyliteSemanticSourceKind mylite_semantic_ast_node_source_kind(
     const MyliteSemanticAstNode *node) {
   return node == NULL ? MYLITE_SEMANTIC_SOURCE_UNKNOWN : node->source_kind;
+}
+
+size_t mylite_semantic_ast_node_row_index(const MyliteSemanticAstNode *node) {
+  return node == NULL ? 0 : node->row_index;
 }
 
 const char *mylite_semantic_data_type_attribute_kind_name(
@@ -1069,7 +1077,7 @@ static size_t mylite_semantic_ast_count_insert_source_children(
     const MyliteAstInsertStatement *insert_statement) {
   switch (mylite_ast_insert_statement_view_source_kind(insert_statement)) {
   case MYLITE_INSERT_SOURCE_VALUES:
-    return mylite_ast_insert_statement_view_value_count(insert_statement);
+    return mylite_ast_insert_statement_view_value_row_count(insert_statement);
   case MYLITE_INSERT_SOURCE_SET:
     return mylite_ast_insert_statement_view_set_assignment_count(
         insert_statement);
@@ -1107,18 +1115,75 @@ static int mylite_semantic_ast_fill_insert_source_children(
 static int mylite_semantic_ast_append_insert_value_descriptors(
     MyliteSemanticAst *ast, MyliteSemanticAstNode *source,
     size_t *child_index, const MyliteAstInsertStatement *insert_statement) {
+  size_t row_count =
+      mylite_ast_insert_statement_view_value_row_count(insert_statement);
+  if (row_count == 0) {
+    return 1;
+  }
+  if (row_count > ~(size_t)0 / (4 * sizeof(size_t))) {
+    return 0;
+  }
+  size_t *row_counts = calloc(row_count * 4, sizeof(*row_counts));
+  if (row_counts == NULL) {
+    return 0;
+  }
+  size_t *row_starts = row_counts + row_count;
+  size_t *row_ends = row_starts + row_count;
+  size_t *row_child_indexes = row_ends + row_count;
+
   for (size_t i = 0;
        i < mylite_ast_insert_statement_view_value_count(insert_statement); i++) {
     const MyliteAstInsertValue *value =
         mylite_ast_insert_statement_view_value_at(insert_statement, i);
-    if (!mylite_semantic_ast_append_descriptor_with_expression_child(
-            ast, source, child_index, MYLITE_SEMANTIC_DESCRIPTOR_VALUE,
-            mylite_ast_insert_value_view_start(value),
-            mylite_ast_insert_value_view_end(value), NULL, 0,
-            mylite_ast_insert_value_view_expression(value))) {
+    size_t row_index = mylite_ast_insert_value_view_row_index(value);
+    if (row_index >= row_count) {
+      free(row_counts);
+      return 0;
+    }
+    if (row_counts[row_index] == 0) {
+      row_starts[row_index] = mylite_ast_insert_value_view_start(value);
+    }
+    row_counts[row_index]++;
+    row_ends[row_index] = mylite_ast_insert_value_view_end(value);
+  }
+
+  size_t row_child_offset = *child_index;
+  for (size_t i = 0; i < row_count; i++) {
+    MyliteSemanticAstNode *row = mylite_semantic_ast_materialize_row(
+        ast, i, row_starts[i], row_ends[i], row_counts[i]);
+    if (row == NULL ||
+        !mylite_semantic_ast_append_child(source, child_index, row)) {
+      free(row_counts);
       return 0;
     }
   }
+
+  for (size_t i = 0;
+       i < mylite_ast_insert_statement_view_value_count(insert_statement); i++) {
+    const MyliteAstInsertValue *value =
+        mylite_ast_insert_statement_view_value_at(insert_statement, i);
+    size_t row_index = mylite_ast_insert_value_view_row_index(value);
+    MyliteSemanticAstNode *row = source->children[row_child_offset + row_index];
+    if (!mylite_semantic_ast_append_descriptor_with_expression_child(
+            ast, row, &row_child_indexes[row_index],
+            MYLITE_SEMANTIC_DESCRIPTOR_VALUE,
+            mylite_ast_insert_value_view_start(value),
+            mylite_ast_insert_value_view_end(value), NULL, 0,
+            mylite_ast_insert_value_view_expression(value))) {
+      free(row_counts);
+      return 0;
+    }
+  }
+
+  for (size_t i = 0; i < row_count; i++) {
+    if (row_child_indexes[i] !=
+        source->children[row_child_offset + i]->child_count) {
+      free(row_counts);
+      return 0;
+    }
+  }
+
+  free(row_counts);
   return 1;
 }
 
@@ -1167,7 +1232,7 @@ static size_t mylite_semantic_ast_count_replace_source_children(
     const MyliteAstReplaceStatement *replace_statement) {
   switch (mylite_ast_replace_statement_view_source_kind(replace_statement)) {
   case MYLITE_REPLACE_SOURCE_VALUES:
-    return mylite_ast_replace_statement_view_value_count(replace_statement);
+    return mylite_ast_replace_statement_view_value_row_count(replace_statement);
   case MYLITE_REPLACE_SOURCE_SET:
     return mylite_ast_replace_statement_view_set_assignment_count(
         replace_statement);
@@ -1205,19 +1270,77 @@ static int mylite_semantic_ast_fill_replace_source_children(
 static int mylite_semantic_ast_append_replace_value_descriptors(
     MyliteSemanticAst *ast, MyliteSemanticAstNode *source,
     size_t *child_index, const MyliteAstReplaceStatement *replace_statement) {
+  size_t row_count =
+      mylite_ast_replace_statement_view_value_row_count(replace_statement);
+  if (row_count == 0) {
+    return 1;
+  }
+  if (row_count > ~(size_t)0 / (4 * sizeof(size_t))) {
+    return 0;
+  }
+  size_t *row_counts = calloc(row_count * 4, sizeof(*row_counts));
+  if (row_counts == NULL) {
+    return 0;
+  }
+  size_t *row_starts = row_counts + row_count;
+  size_t *row_ends = row_starts + row_count;
+  size_t *row_child_indexes = row_ends + row_count;
+
   for (size_t i = 0;
        i < mylite_ast_replace_statement_view_value_count(replace_statement);
        i++) {
     const MyliteAstReplaceValue *value =
         mylite_ast_replace_statement_view_value_at(replace_statement, i);
-    if (!mylite_semantic_ast_append_descriptor_with_expression_child(
-            ast, source, child_index, MYLITE_SEMANTIC_DESCRIPTOR_VALUE,
-            mylite_ast_replace_value_view_start(value),
-            mylite_ast_replace_value_view_end(value), NULL, 0,
-            mylite_ast_replace_value_view_expression(value))) {
+    size_t row_index = mylite_ast_replace_value_view_row_index(value);
+    if (row_index >= row_count) {
+      free(row_counts);
+      return 0;
+    }
+    if (row_counts[row_index] == 0) {
+      row_starts[row_index] = mylite_ast_replace_value_view_start(value);
+    }
+    row_counts[row_index]++;
+    row_ends[row_index] = mylite_ast_replace_value_view_end(value);
+  }
+
+  size_t row_child_offset = *child_index;
+  for (size_t i = 0; i < row_count; i++) {
+    MyliteSemanticAstNode *row = mylite_semantic_ast_materialize_row(
+        ast, i, row_starts[i], row_ends[i], row_counts[i]);
+    if (row == NULL ||
+        !mylite_semantic_ast_append_child(source, child_index, row)) {
+      free(row_counts);
       return 0;
     }
   }
+
+  for (size_t i = 0;
+       i < mylite_ast_replace_statement_view_value_count(replace_statement);
+       i++) {
+    const MyliteAstReplaceValue *value =
+        mylite_ast_replace_statement_view_value_at(replace_statement, i);
+    size_t row_index = mylite_ast_replace_value_view_row_index(value);
+    MyliteSemanticAstNode *row = source->children[row_child_offset + row_index];
+    if (!mylite_semantic_ast_append_descriptor_with_expression_child(
+            ast, row, &row_child_indexes[row_index],
+            MYLITE_SEMANTIC_DESCRIPTOR_VALUE,
+            mylite_ast_replace_value_view_start(value),
+            mylite_ast_replace_value_view_end(value), NULL, 0,
+            mylite_ast_replace_value_view_expression(value))) {
+      free(row_counts);
+      return 0;
+    }
+  }
+
+  for (size_t i = 0; i < row_count; i++) {
+    if (row_child_indexes[i] !=
+        source->children[row_child_offset + i]->child_count) {
+      free(row_counts);
+      return 0;
+    }
+  }
+
+  free(row_counts);
   return 1;
 }
 
@@ -1499,7 +1622,7 @@ static MyliteSemanticAstNode *mylite_semantic_ast_materialize_values_query(
 
 static size_t mylite_semantic_ast_count_values_query_children(
     const MyliteAstValuesStatement *values_statement) {
-  return mylite_ast_values_statement_view_value_count(values_statement) +
+  return mylite_ast_values_statement_view_row_count(values_statement) +
          mylite_semantic_ast_count_values_query_clauses(values_statement);
 }
 
@@ -1539,19 +1662,77 @@ static int mylite_semantic_ast_fill_values_query_children(
 static int mylite_semantic_ast_append_values_descriptors(
     MyliteSemanticAst *ast, MyliteSemanticAstNode *query,
     size_t *child_index, const MyliteAstValuesStatement *values_statement) {
+  size_t row_count =
+      mylite_ast_values_statement_view_row_count(values_statement);
+  if (row_count == 0) {
+    return 1;
+  }
+  if (row_count > ~(size_t)0 / (4 * sizeof(size_t))) {
+    return 0;
+  }
+  size_t *row_counts = calloc(row_count * 4, sizeof(*row_counts));
+  if (row_counts == NULL) {
+    return 0;
+  }
+  size_t *row_starts = row_counts + row_count;
+  size_t *row_ends = row_starts + row_count;
+  size_t *row_child_indexes = row_ends + row_count;
+
   for (size_t i = 0;
        i < mylite_ast_values_statement_view_value_count(values_statement);
        i++) {
     const MyliteAstValuesValue *value =
         mylite_ast_values_statement_view_value_at(values_statement, i);
-    if (!mylite_semantic_ast_append_descriptor_with_expression_child(
-            ast, query, child_index, MYLITE_SEMANTIC_DESCRIPTOR_VALUE,
-            mylite_ast_values_value_view_start(value),
-            mylite_ast_values_value_view_end(value), NULL, 0,
-            mylite_ast_values_value_view_expression(value))) {
+    size_t row_index = mylite_ast_values_value_view_row_index(value);
+    if (row_index >= row_count) {
+      free(row_counts);
+      return 0;
+    }
+    if (row_counts[row_index] == 0) {
+      row_starts[row_index] = mylite_ast_values_value_view_start(value);
+    }
+    row_counts[row_index]++;
+    row_ends[row_index] = mylite_ast_values_value_view_end(value);
+  }
+
+  size_t row_child_offset = *child_index;
+  for (size_t i = 0; i < row_count; i++) {
+    MyliteSemanticAstNode *row = mylite_semantic_ast_materialize_row(
+        ast, i, row_starts[i], row_ends[i], row_counts[i]);
+    if (row == NULL ||
+        !mylite_semantic_ast_append_child(query, child_index, row)) {
+      free(row_counts);
       return 0;
     }
   }
+
+  for (size_t i = 0;
+       i < mylite_ast_values_statement_view_value_count(values_statement);
+       i++) {
+    const MyliteAstValuesValue *value =
+        mylite_ast_values_statement_view_value_at(values_statement, i);
+    size_t row_index = mylite_ast_values_value_view_row_index(value);
+    MyliteSemanticAstNode *row = query->children[row_child_offset + row_index];
+    if (!mylite_semantic_ast_append_descriptor_with_expression_child(
+            ast, row, &row_child_indexes[row_index],
+            MYLITE_SEMANTIC_DESCRIPTOR_VALUE,
+            mylite_ast_values_value_view_start(value),
+            mylite_ast_values_value_view_end(value), NULL, 0,
+            mylite_ast_values_value_view_expression(value))) {
+      free(row_counts);
+      return 0;
+    }
+  }
+
+  for (size_t i = 0; i < row_count; i++) {
+    if (row_child_indexes[i] !=
+        query->children[row_child_offset + i]->child_count) {
+      free(row_counts);
+      return 0;
+    }
+  }
+
+  free(row_counts);
   return 1;
 }
 
@@ -1580,6 +1761,21 @@ static int mylite_semantic_ast_append_values_clauses(
       ast, query, child_index, MYLITE_SEMANTIC_CLAUSE_LOCKING,
       mylite_ast_values_statement_view_lock_start(values_statement),
       mylite_ast_values_statement_view_lock_end(values_statement));
+}
+
+static MyliteSemanticAstNode *mylite_semantic_ast_materialize_row(
+    MyliteSemanticAst *ast, size_t row_index, size_t start, size_t end,
+    size_t child_count) {
+  MyliteSemanticAstNode *row =
+      mylite_semantic_ast_new_node(ast, MYLITE_SEMANTIC_NODE_ROW, start, end);
+  if (row == NULL) {
+    return NULL;
+  }
+  row->row_index = row_index;
+  if (!mylite_semantic_ast_set_node_child_count(ast, row, child_count)) {
+    return NULL;
+  }
+  return row;
 }
 
 static MyliteSemanticAstNode *mylite_semantic_ast_materialize_table_reference(

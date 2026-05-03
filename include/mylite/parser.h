@@ -121,7 +121,8 @@ typedef enum MyliteSemanticNodeKind {
   MYLITE_SEMANTIC_NODE_DATA_TYPE_ATTRIBUTE = 9,
   MYLITE_SEMANTIC_NODE_QUERY = 10,
   MYLITE_SEMANTIC_NODE_TABLE_REFERENCE = 11,
-  MYLITE_SEMANTIC_NODE_SOURCE = 12
+  MYLITE_SEMANTIC_NODE_SOURCE = 12,
+  MYLITE_SEMANTIC_NODE_ROW = 13
 } MyliteSemanticNodeKind;
 
 typedef enum MyliteSemanticSourceKind {
@@ -1191,6 +1192,7 @@ int mylite_semantic_ast_node_query_has_set_operation(
     const MyliteSemanticAstNode *node);
 MyliteSemanticSourceKind mylite_semantic_ast_node_source_kind(
     const MyliteSemanticAstNode *node);
+size_t mylite_semantic_ast_node_row_index(const MyliteSemanticAstNode *node);
 MyliteSemanticClauseKind mylite_semantic_ast_node_clause_kind(
     const MyliteSemanticAstNode *node);
 MyliteSemanticDescriptorKind mylite_semantic_ast_node_descriptor_kind(

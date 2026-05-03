@@ -271,7 +271,9 @@ token sink:
   `ALGORITHM=1/2` values, non-empty `VALUES LESS THAN (...)` and `VALUES IN
   (...)` lists, required values for explicit `RANGE`/`LIST` partitions,
   `VALUES LESS THAN MAXVALUE`, and malformed/trailing partition definition
-  commas. No-definition and
+  commas, plus explicit partition options for `ENGINE`/`STORAGE ENGINE`,
+  `COMMENT`, `DATA DIRECTORY`, `INDEX DIRECTORY`, `MAX_ROWS`, `MIN_ROWS`,
+  `TABLESPACE`, and `NODEGROUP` with MySQL-shaped value tokens. No-definition and
   post-definition CTAS forms are recognized explicitly with table/partition options, including
   `IGNORE`/`REPLACE` duplicate-handling modifiers, and no-definition
   table-option forms must include a query body. Direct CTAS query bodies validate

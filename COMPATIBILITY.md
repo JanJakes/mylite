@@ -438,7 +438,7 @@ while preserving common MySQL expression forms.
 | `PARTITION BY KEY` | ❌ | medium | Key partition syntax and default key selection. | Parser recognizes key column lists, including MySQL's syntax-valid empty list, validates comma-separated identifier lists, rejects expression/prefix/direction forms, and recognizes `ALGORITHM=1/2` with decimal, lowercase-hex, or quoted-hex values. |
 | `PARTITION BY LINEAR KEY` | ❌ | medium | Linear key partition syntax. | Parser recognizes the `LINEAR KEY` method with the same column-list and algorithm validation as `KEY`. |
 | Subpartitioning | ❌ | low | HASH/KEY subpartition syntax and metadata. | Parser recognizes `SUBPARTITION BY HASH/KEY` method tails and `SUBPARTITIONS` counts using the same method-list validators. |
-| Partition options | ❌ | low | ENGINE, COMMENT, DATA/INDEX DIRECTORY, MAX_ROWS, MIN_ROWS, TABLESPACE, and nodegroup syntax. |  |
+| Partition options | ❌ | low | ENGINE, COMMENT, DATA/INDEX DIRECTORY, MAX_ROWS, MIN_ROWS, TABLESPACE, and nodegroup syntax. | Parser recognizes explicit partition options for `ENGINE`/`STORAGE ENGINE`, `COMMENT`, `DATA DIRECTORY`, `INDEX DIRECTORY`, `MAX_ROWS`, `MIN_ROWS`, `TABLESPACE`, and `NODEGROUP`, including optional equals where MySQL accepts it, string-literal text values with quoted hex/bit rejection, identifier-valued tablespaces, and unsigned integer/lowercase-hex/quoted-hex row and nodegroup numbers. |
 
 ## 4. Type System, Literals, and Conversion
 

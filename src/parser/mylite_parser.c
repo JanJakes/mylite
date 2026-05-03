@@ -329,6 +329,10 @@ static int create_table_partition_key_name_token(int token_id,
                                                  MyliteToken token);
 static int create_table_partition_key_algorithm_value_token(int token_id,
                                                             MyliteToken token);
+static int create_table_partition_option_engine_value_token(int token_id,
+                                                            MyliteToken token);
+static int create_table_partition_option_number_token(int token_id,
+                                                      MyliteToken token);
 static void validate_alter_table_option_values(MyliteParseContext *ctx,
                                                MyliteToken start);
 static int create_table_tail_option_value_token(
@@ -13473,6 +13477,16 @@ static void validate_create_table_partition_definitions_from(
     CREATE_TABLE_PARTITION_VALUES_EXPECT_THAN,
     CREATE_TABLE_PARTITION_VALUES_EXPECT_VALUE
   };
+  enum {
+    CREATE_TABLE_PARTITION_OPTION_NONE,
+    CREATE_TABLE_PARTITION_OPTION_AFTER_DATA,
+    CREATE_TABLE_PARTITION_OPTION_AFTER_INDEX,
+    CREATE_TABLE_PARTITION_OPTION_AFTER_STORAGE,
+    CREATE_TABLE_PARTITION_OPTION_EXPECT_ENGINE,
+    CREATE_TABLE_PARTITION_OPTION_EXPECT_NAME,
+    CREATE_TABLE_PARTITION_OPTION_EXPECT_NUMBER,
+    CREATE_TABLE_PARTITION_OPTION_EXPECT_STRING
+  };
   MyliteLexer lexer;
   MyliteToken token;
   MyliteToken pending_token = start;
@@ -13483,6 +13497,8 @@ static void validate_create_table_partition_definitions_from(
   int values_state = CREATE_TABLE_PARTITION_VALUES_NONE;
   int values_allow_maxvalue = 0;
   int partition_values_seen = 0;
+  int option_state = CREATE_TABLE_PARTITION_OPTION_NONE;
+  int option_saw_equals = 0;
 
   mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
   while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
@@ -13504,6 +13520,7 @@ static void validate_create_table_partition_definitions_from(
 
     if (depth == 1 && token_id == ML_RP) {
       if (values_state != CREATE_TABLE_PARTITION_VALUES_NONE ||
+          option_state != CREATE_TABLE_PARTITION_OPTION_NONE ||
           (values_required && !partition_values_seen) ||
           list_state != CREATE_TABLE_PARTITION_DEFS_IN_PARTITION) {
         mylite_parser_reject(ctx, pending_token,
@@ -13514,6 +13531,7 @@ static void validate_create_table_partition_definitions_from(
 
     if (depth == 1 && token_id == ML_COMMA) {
       if (values_state != CREATE_TABLE_PARTITION_VALUES_NONE ||
+          option_state != CREATE_TABLE_PARTITION_OPTION_NONE ||
           (values_required && !partition_values_seen) ||
           list_state != CREATE_TABLE_PARTITION_DEFS_IN_PARTITION) {
         mylite_parser_reject(ctx, token,
@@ -13522,6 +13540,8 @@ static void validate_create_table_partition_definitions_from(
       }
       list_state = CREATE_TABLE_PARTITION_DEFS_NEED_PARTITION;
       partition_values_seen = 0;
+      option_state = CREATE_TABLE_PARTITION_OPTION_NONE;
+      option_saw_equals = 0;
       pending_token = token;
       continue;
     }
@@ -13535,12 +13555,70 @@ static void validate_create_table_partition_definitions_from(
       }
       list_state = CREATE_TABLE_PARTITION_DEFS_IN_PARTITION;
       partition_values_seen = 0;
+      option_state = CREATE_TABLE_PARTITION_OPTION_NONE;
+      option_saw_equals = 0;
       continue;
     }
 
     if (depth == 1 &&
         list_state != CREATE_TABLE_PARTITION_DEFS_IN_PARTITION) {
       mylite_parser_reject(ctx, token,
+                           "malformed CREATE TABLE partition definitions");
+      return;
+    }
+
+    if (depth == 1 &&
+        option_state != CREATE_TABLE_PARTITION_OPTION_NONE) {
+      if (option_state == CREATE_TABLE_PARTITION_OPTION_AFTER_DATA ||
+          option_state == CREATE_TABLE_PARTITION_OPTION_AFTER_INDEX) {
+        if (token_id != ML_DIRECTORY) {
+          mylite_parser_reject(ctx, pending_token,
+                               "malformed CREATE TABLE partition definitions");
+          return;
+        }
+        option_state = CREATE_TABLE_PARTITION_OPTION_EXPECT_STRING;
+        option_saw_equals = 0;
+        continue;
+      }
+      if (option_state == CREATE_TABLE_PARTITION_OPTION_AFTER_STORAGE) {
+        if (token_id != ML_ENGINE) {
+          mylite_parser_reject(ctx, pending_token,
+                               "malformed CREATE TABLE partition definitions");
+          return;
+        }
+        option_state = CREATE_TABLE_PARTITION_OPTION_EXPECT_ENGINE;
+        option_saw_equals = 0;
+        continue;
+      }
+      if (token_id == ML_EQUALS && !option_saw_equals) {
+        option_saw_equals = 1;
+        continue;
+      }
+      if (option_state == CREATE_TABLE_PARTITION_OPTION_EXPECT_ENGINE &&
+          create_table_partition_option_engine_value_token(token_id, token)) {
+        option_state = CREATE_TABLE_PARTITION_OPTION_NONE;
+        option_saw_equals = 0;
+        continue;
+      }
+      if (option_state == CREATE_TABLE_PARTITION_OPTION_EXPECT_NAME &&
+          create_table_partition_key_name_token(token_id, token)) {
+        option_state = CREATE_TABLE_PARTITION_OPTION_NONE;
+        option_saw_equals = 0;
+        continue;
+      }
+      if (option_state == CREATE_TABLE_PARTITION_OPTION_EXPECT_NUMBER &&
+          create_table_partition_option_number_token(token_id, token)) {
+        option_state = CREATE_TABLE_PARTITION_OPTION_NONE;
+        option_saw_equals = 0;
+        continue;
+      }
+      if (option_state == CREATE_TABLE_PARTITION_OPTION_EXPECT_STRING &&
+          create_table_tail_option_string_token(token_id, token)) {
+        option_state = CREATE_TABLE_PARTITION_OPTION_NONE;
+        option_saw_equals = 0;
+        continue;
+      }
+      mylite_parser_reject(ctx, pending_token,
                            "malformed CREATE TABLE partition definitions");
       return;
     }
@@ -13603,6 +13681,53 @@ static void validate_create_table_partition_definitions_from(
       continue;
     }
 
+    if (depth == 1 &&
+        values_state == CREATE_TABLE_PARTITION_VALUES_NONE) {
+      if (token_id == ML_DATA) {
+        option_state = CREATE_TABLE_PARTITION_OPTION_AFTER_DATA;
+        option_saw_equals = 0;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_INDEX) {
+        option_state = CREATE_TABLE_PARTITION_OPTION_AFTER_INDEX;
+        option_saw_equals = 0;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_STORAGE) {
+        option_state = CREATE_TABLE_PARTITION_OPTION_AFTER_STORAGE;
+        option_saw_equals = 0;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_ENGINE) {
+        option_state = CREATE_TABLE_PARTITION_OPTION_EXPECT_ENGINE;
+        option_saw_equals = 0;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_TABLESPACE) {
+        option_state = CREATE_TABLE_PARTITION_OPTION_EXPECT_NAME;
+        option_saw_equals = 0;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_MAX_ROWS || token_id == ML_MIN_ROWS ||
+          token_id == ML_NODEGROUP) {
+        option_state = CREATE_TABLE_PARTITION_OPTION_EXPECT_NUMBER;
+        option_saw_equals = 0;
+        pending_token = token;
+        continue;
+      }
+      if (token_id == ML_COMMENT) {
+        option_state = CREATE_TABLE_PARTITION_OPTION_EXPECT_STRING;
+        option_saw_equals = 0;
+        pending_token = token;
+        continue;
+      }
+    }
+
     if (token_opens_nested_expression(token_id)) {
       depth++;
       continue;
@@ -13617,6 +13742,7 @@ static void validate_create_table_partition_definitions_from(
   if (saw_list &&
       (depth > 0 ||
        values_state != CREATE_TABLE_PARTITION_VALUES_NONE ||
+       option_state != CREATE_TABLE_PARTITION_OPTION_NONE ||
        (values_required && !partition_values_seen) ||
        list_state != CREATE_TABLE_PARTITION_DEFS_IN_PARTITION)) {
     mylite_parser_reject(ctx, pending_token,
@@ -13651,6 +13777,26 @@ static int create_table_partition_key_algorithm_value_token(
   }
 
   return 0;
+}
+
+static int create_table_partition_option_engine_value_token(
+    int token_id, MyliteToken token) {
+  return create_table_tail_option_value_token(CREATE_TABLE_OPTION_VALUE_NAME,
+                                              token_id, token);
+}
+
+static int create_table_partition_option_number_token(int token_id,
+                                                      MyliteToken token) {
+  unsigned long value;
+
+  if (token_id != ML_BOOLEAN_NUMBER && token_id != ML_FACTOR_NUMBER &&
+      token_id != ML_NUMBER_LITERAL && token_id != ML_STRING_LITERAL) {
+    return 0;
+  }
+
+  return token_is_plain_unsigned_integer(token, &value) ||
+         token_lower_hex_literal_value(token, &value) ||
+         token_quoted_hex_literal_value(token, &value);
 }
 
 static int create_table_tail_option_value_token(

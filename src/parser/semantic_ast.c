@@ -126,9 +126,9 @@ static int mylite_semantic_ast_append_select_projection_descriptors(
 static int mylite_semantic_ast_append_select_clauses(
     MyliteSemanticAst *ast, MyliteSemanticAstNode *query, size_t *child_index,
     const MyliteAstSelectStatement *select_statement);
-static int mylite_semantic_ast_append_select_from_clause_child(
-    MyliteSemanticAst *ast, MyliteSemanticAstNode *query, size_t *child_index,
-    size_t start, size_t end);
+static int mylite_semantic_ast_append_table_reference_clause_child(
+    MyliteSemanticAst *ast, MyliteSemanticAstNode *parent, size_t *child_index,
+    MyliteSemanticClauseKind kind, size_t start, size_t end);
 static MyliteSemanticAstNode *mylite_semantic_ast_materialize_values_query(
     MyliteSemanticAst *ast, const MyliteAstValuesStatement *values_statement);
 static size_t mylite_semantic_ast_count_values_query_children(
@@ -1400,8 +1400,8 @@ static int mylite_semantic_ast_append_select_projection_descriptors(
 static int mylite_semantic_ast_append_select_clauses(
     MyliteSemanticAst *ast, MyliteSemanticAstNode *query, size_t *child_index,
     const MyliteAstSelectStatement *select_statement) {
-  if (!mylite_semantic_ast_append_select_from_clause_child(
-          ast, query, child_index,
+  if (!mylite_semantic_ast_append_table_reference_clause_child(
+          ast, query, child_index, MYLITE_SEMANTIC_CLAUSE_FROM,
           mylite_ast_select_statement_view_from_start(select_statement),
           mylite_ast_select_statement_view_from_end(select_statement))) {
     return 0;
@@ -1451,15 +1451,15 @@ static int mylite_semantic_ast_append_select_clauses(
       mylite_ast_select_statement_view_lock_end(select_statement));
 }
 
-static int mylite_semantic_ast_append_select_from_clause_child(
-    MyliteSemanticAst *ast, MyliteSemanticAstNode *query, size_t *child_index,
-    size_t start, size_t end) {
+static int mylite_semantic_ast_append_table_reference_clause_child(
+    MyliteSemanticAst *ast, MyliteSemanticAstNode *parent, size_t *child_index,
+    MyliteSemanticClauseKind kind, size_t start, size_t end) {
   if (mylite_semantic_ast_count_clause_span(start, end) == 0) {
     return 1;
   }
 
   MyliteSemanticAstNode *clause = mylite_semantic_ast_materialize_clause(
-      ast, MYLITE_SEMANTIC_CLAUSE_FROM, start, end, NULL);
+      ast, kind, start, end, NULL);
   if (clause == NULL ||
       !mylite_semantic_ast_set_node_child_count(ast, clause, 1)) {
     return 0;
@@ -1473,7 +1473,7 @@ static int mylite_semantic_ast_append_select_from_clause_child(
     return 0;
   }
 
-  return mylite_semantic_ast_append_child(query, child_index, clause);
+  return mylite_semantic_ast_append_child(parent, child_index, clause);
 }
 
 static MyliteSemanticAstNode *mylite_semantic_ast_materialize_values_query(
@@ -2536,7 +2536,7 @@ static int mylite_semantic_ast_fill_statement_clauses(
   const MyliteAstUpdateStatement *update_statement =
       mylite_ast_update_statement_view(parser_ast, statement_index);
   if (update_statement != NULL) {
-    if (!mylite_semantic_ast_append_clause_span_child(
+    if (!mylite_semantic_ast_append_table_reference_clause_child(
             ast, statement, child_index,
             MYLITE_SEMANTIC_CLAUSE_TABLE_REFERENCE,
             mylite_ast_update_statement_view_table_reference_start(
@@ -2563,7 +2563,7 @@ static int mylite_semantic_ast_fill_statement_clauses(
   const MyliteAstDeleteStatement *delete_statement =
       mylite_ast_delete_statement_view(parser_ast, statement_index);
   if (delete_statement != NULL) {
-    if (!mylite_semantic_ast_append_clause_span_child(
+    if (!mylite_semantic_ast_append_table_reference_clause_child(
             ast, statement, child_index,
             MYLITE_SEMANTIC_CLAUSE_TABLE_REFERENCE,
             mylite_ast_delete_statement_view_table_reference_start(

@@ -8004,7 +8004,7 @@ static int expect_semantic_ast_materialization(void) {
           sizeof(values_structural_clauses[0]));
 
   const ExpectedSemanticClause update_clauses[] = {
-      {MYLITE_SEMANTIC_CLAUSE_TABLE_REFERENCE, 0},
+      {MYLITE_SEMANTIC_CLAUSE_TABLE_REFERENCE, 1},
       {MYLITE_SEMANTIC_CLAUSE_WHERE, 1},
   };
   failed += expect_semantic_clauses(
@@ -8012,7 +8012,7 @@ static int expect_semantic_ast_materialization(void) {
       sizeof(update_clauses) / sizeof(update_clauses[0]));
 
   const ExpectedSemanticClause delete_clauses[] = {
-      {MYLITE_SEMANTIC_CLAUSE_TABLE_REFERENCE, 0},
+      {MYLITE_SEMANTIC_CLAUSE_TABLE_REFERENCE, 1},
       {MYLITE_SEMANTIC_CLAUSE_WHERE, 1},
   };
   failed += expect_semantic_clauses(
@@ -8107,7 +8107,9 @@ static int expect_semantic_clauses(const char *label, const char *sql,
     if (clauses[clause_index].child_count > 0 &&
         mylite_semantic_ast_node_kind(
             mylite_semantic_ast_node_child_at(child, 0)) !=
-            (clauses[clause_index].kind == MYLITE_SEMANTIC_CLAUSE_FROM
+            (clauses[clause_index].kind == MYLITE_SEMANTIC_CLAUSE_FROM ||
+                     clauses[clause_index].kind ==
+                         MYLITE_SEMANTIC_CLAUSE_TABLE_REFERENCE
                  ? MYLITE_SEMANTIC_NODE_TABLE_REFERENCE
                  : MYLITE_SEMANTIC_NODE_EXPRESSION)) {
       failed = 1;

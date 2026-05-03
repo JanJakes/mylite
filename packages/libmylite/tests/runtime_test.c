@@ -258,6 +258,7 @@ static int test_exp_scalar_function_execution(mylite_db *database);
 static int test_logarithm_scalar_function_execution(mylite_db *database);
 static int test_sqrt_scalar_function_execution(mylite_db *database);
 static int test_trigonometric_scalar_function_execution(mylite_db *database);
+static int test_angle_conversion_scalar_function_execution(mylite_db *database);
 static int test_uuid_scalar_functions(mylite_db *database);
 static int test_inet_ipv4_functions_execution(void);
 static int test_charset_collation_functions_execution(void);
@@ -4040,6 +4041,8 @@ static int test_scalar_builtin_functions_execution(void)
 
     failures += test_trigonometric_scalar_function_execution(database);
 
+    failures += test_angle_conversion_scalar_function_execution(database);
+
     failures += test_uuid_scalar_functions(database);
 
     failures +=
@@ -7109,6 +7112,338 @@ static int test_trigonometric_scalar_function_execution(mylite_db *database)
     failures += expect_no_stmt_handle(&stmt, "TAN zero arity unsupported");
     failures += prepare_sql(database, "SELECT TAN(1,2)", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "TAN two arity unsupported");
+
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_angle_conversion_scalar_function_execution(mylite_db *database)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const struct expected_result_metadata angle_metadata[] = {
+        {"deg_one", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"deg_null", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"rad_warn", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+    };
+    static const struct expected_result_metadata angle_table_metadata[] = {
+        {"deg_x", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"deg_n", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"rad_s", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+    };
+    static const char *const angle_columns[] = {
+        "deg_pi",       "deg_half_pi", "deg_neg_pi", "deg_one",     "deg_zero", "deg_neg_zero",
+        "deg_null",     "rad_180",     "rad_90",     "rad_neg_180", "rad_one",  "rad_zero",
+        "rad_neg_zero", "rad_null",    "deg_under",  "rad_under",   "rad_huge", "rad_neg_huge",
+    };
+    static const char *const angle_values[] = {
+        "180",
+        "90",
+        "-180",
+        "57.29577951308232",
+        "0",
+        "0",
+        NULL,
+        "3.141592653589793",
+        "1.5707963267948966",
+        "-3.141592653589793",
+        "0.017453292519943295",
+        "0",
+        "0",
+        NULL,
+        "0",
+        "0",
+        "1.7453292519943295e306",
+        "-1.7453292519943295e306",
+    };
+    static const char *const warning_columns[] = {
+        "deg_trail", "deg_foo",   "deg_empty",  "deg_space",  "deg_dot",
+        "deg_plus",  "deg_minus", "deg_hex",    "deg_spaced", "rad_trail",
+        "rad_foo",   "rad_empty", "rad_space",  "rad_dot",    "rad_plus",
+        "rad_minus", "rad_hex",   "rad_spaced", "rad_over",   "rad_neg_over",
+    };
+    static const char *const warning_values[] = {
+        "57.29577951308232",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "1432.3944878270581",
+        "0.017453292519943295",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0.4363323129985824",
+        "3.1375664143845866e306",
+        "-3.1375664143845866e306",
+    };
+    static const char *const angle_projection_columns[] = {"id", "d", "r"};
+    static const char *const angle_projection_values[] = {
+        "3",
+        "0",
+        "0",
+        "1",
+        "57.29577951308232",
+        "0.017453292519943295",
+        "2",
+        "180",
+        "0.05483113556160755",
+        "4",
+        "5156.620156177409",
+        "1.5707963267948966",
+    };
+    static const char *const id_column[] = {"id"};
+    static const char *const selected_id_values[] = {"2", "4"};
+    static const char *const updated_id_values[] = {"1", "2"};
+    static const char *const all_id_values[] = {"1", "2", "3", "4", "5"};
+    static const char *const remaining_values[] = {"2", "3", "4", "5"};
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_select_rows(database,
+                           "SELECT DEGREES(PI()) AS deg_pi, "
+                           "DEGREES(PI()/2) AS deg_half_pi, "
+                           "DEGREES(-PI()) AS deg_neg_pi, "
+                           "DEGREES(1) AS deg_one, "
+                           "DEGREES(0) AS deg_zero, "
+                           "DEGREES(-0.0) AS deg_neg_zero, "
+                           "DEGREES(NULL) AS deg_null, "
+                           "RADIANS(180) AS rad_180, "
+                           "RADIANS(90) AS rad_90, "
+                           "RADIANS(-180) AS rad_neg_180, "
+                           "RADIANS(1) AS rad_one, "
+                           "RADIANS(0) AS rad_zero, "
+                           "RADIANS(-0.0) AS rad_neg_zero, "
+                           "RADIANS(NULL) AS rad_null, "
+                           "DEGREES(1e-9999) AS deg_under, "
+                           "RADIANS(1e-9999) AS rad_under, "
+                           "RADIANS(1e308) AS rad_huge, "
+                           "RADIANS(-1e308) AS rad_neg_huge",
+                           angle_columns, (int)(sizeof(angle_columns) / sizeof(angle_columns[0])),
+                           angle_values, 1, "angle conversion scalar values");
+    failures += expect_int(mylite_warning_count(database), 0, "angle conversion scalar warnings");
+
+    failures += expect_select_rows(database,
+                                   "SELECT DEGREES('1x') AS deg_trail, "
+                                   "DEGREES('foo') AS deg_foo, "
+                                   "DEGREES('') AS deg_empty, "
+                                   "DEGREES(' ') AS deg_space, "
+                                   "DEGREES('.') AS deg_dot, "
+                                   "DEGREES('+') AS deg_plus, "
+                                   "DEGREES('-') AS deg_minus, "
+                                   "DEGREES('0x10') AS deg_hex, "
+                                   "DEGREES('  2.5e1 ') AS deg_spaced, "
+                                   "RADIANS('1x') AS rad_trail, "
+                                   "RADIANS('foo') AS rad_foo, "
+                                   "RADIANS('') AS rad_empty, "
+                                   "RADIANS(' ') AS rad_space, "
+                                   "RADIANS('.') AS rad_dot, "
+                                   "RADIANS('+') AS rad_plus, "
+                                   "RADIANS('-') AS rad_minus, "
+                                   "RADIANS('0x10') AS rad_hex, "
+                                   "RADIANS('  2.5e1 ') AS rad_spaced, "
+                                   "RADIANS('1e309') AS rad_over, "
+                                   "RADIANS('-1e309') AS rad_neg_over",
+                                   warning_columns,
+                                   (int)(sizeof(warning_columns) / sizeof(warning_columns[0])),
+                                   warning_values, 1, "angle conversion string warning values");
+    failures += expect_int(mylite_warning_count(database), 14, "angle conversion warning count");
+    for (int index = 0; index < 14; ++index) {
+        failures +=
+            expect_int((int)mylite_warning_code(database, index),
+                       mysql_warning_truncated_wrong_value, "angle conversion warning code");
+    }
+    failures +=
+        expect_contains(mylite_warning_message(database, 0), "1x", "DEGREES trailing warning");
+    failures += expect_contains(mylite_warning_message(database, 1), "foo", "DEGREES bad warning");
+    failures += expect_contains(mylite_warning_message(database, 5), "0x10", "DEGREES hex warning");
+    failures +=
+        expect_contains(mylite_warning_message(database, 12), "1e309", "RADIANS overflow warning");
+    failures += expect_contains(mylite_warning_message(database, 13), "-1e309",
+                                "RADIANS negative overflow warning");
+
+    failures += expect_prepare_error(database, "SELECT DEGREES(1e308)", MYLITE_EXEC_ERROR,
+                                     "DOUBLE value is out of range in 'degrees()'",
+                                     "DEGREES numeric overflow");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "DEGREES numeric overflow warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_out_of_range,
+                           "DEGREES numeric overflow warning code");
+    failures += expect_prepare_error(database, "SELECT DEGREES(-1e308)", MYLITE_EXEC_ERROR,
+                                     "DOUBLE value is out of range in 'degrees()'",
+                                     "DEGREES negative numeric overflow");
+    failures += expect_int(mylite_warning_count(database), 1,
+                           "DEGREES negative numeric overflow warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_out_of_range,
+                           "DEGREES negative numeric overflow warning code");
+    failures += expect_prepare_error(database, "SELECT DEGREES('1e309')", MYLITE_EXEC_ERROR,
+                                     "DOUBLE value is out of range in 'degrees()'",
+                                     "DEGREES text overflow");
+    failures +=
+        expect_int(mylite_warning_count(database), 2, "DEGREES text overflow warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_truncated_wrong_value,
+                   "DEGREES text overflow warning code");
+    failures += expect_int((int)mylite_warning_code(database, 1), mysql_warning_out_of_range,
+                           "DEGREES text overflow error code");
+    failures += expect_prepare_error(database, "SELECT DEGREES('-1e309')", MYLITE_EXEC_ERROR,
+                                     "DOUBLE value is out of range in 'degrees()'",
+                                     "DEGREES negative text overflow");
+    failures += expect_int(mylite_warning_count(database), 2,
+                           "DEGREES negative text overflow warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_truncated_wrong_value,
+                   "DEGREES negative text overflow warning code");
+    failures += expect_int((int)mylite_warning_code(database, 1), mysql_warning_out_of_range,
+                           "DEGREES negative text overflow error code");
+
+    failures += prepare_sql(database,
+                            "SELECT DEGREES(1) AS deg_one, "
+                            "DEGREES(NULL) AS deg_null, "
+                            "RADIANS('1x') AS rad_warn",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, angle_metadata,
+                                       (int)(sizeof(angle_metadata) / sizeof(angle_metadata[0])),
+                                       "angle conversion scalar metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "angle conversion metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "angle conversion metadata done");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "angle conversion metadata warning count");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database,
+                            "CREATE TABLE angle_sites ("
+                            "id INT PRIMARY KEY, "
+                            "x DOUBLE NOT NULL, "
+                            "n DOUBLE NULL, "
+                            "s VARCHAR(32) NOT NULL)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO angle_sites VALUES "
+                            "(1,1,NULL,'1x'),"
+                            "(2,3.141592653589793,1,'foo'),"
+                            "(3,0,NULL,''),"
+                            "(4,90,0,'2'),"
+                            "(5,1e308,NULL,'3')",
+                            MYLITE_DONE);
+
+    failures += prepare_sql(database,
+                            "SELECT DEGREES(x) AS deg_x, DEGREES(n) AS deg_n, "
+                            "RADIANS(s) AS rad_s FROM angle_sites LIMIT 0",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, angle_table_metadata,
+        (int)(sizeof(angle_table_metadata) / sizeof(angle_table_metadata[0])),
+        "angle conversion table metadata");
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_DONE, "angle conversion table metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_select_rows(database,
+                                   "SELECT id, DEGREES(x) AS d, RADIANS(x) AS r "
+                                   "FROM angle_sites WHERE id < 5 "
+                                   "ORDER BY RADIANS(x), id",
+                                   angle_projection_columns, 3, angle_projection_values, 4,
+                                   "angle conversion table projection order");
+    failures += expect_int(mylite_warning_count(database), 0, "angle table projection warnings");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT id FROM angle_sites "
+                           "WHERE id < 5 AND (DEGREES(n) > 0 OR RADIANS(x) > 1) ORDER BY id",
+                           id_column, 1, selected_id_values, 2, "angle conversion WHERE");
+    failures += expect_int(mylite_warning_count(database), 0, "angle conversion WHERE warnings");
+
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE angle_sites SET x = RADIANS(x) WHERE id IN (1,2)", 2,
+        "angle conversion update assignment");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT id FROM angle_sites "
+                           "WHERE (id = 1 AND x > 0.017 AND x < 0.018) "
+                           "OR (id = 2 AND x > 0.054 AND x < 0.055) "
+                           "ORDER BY id",
+                           id_column, 1, updated_id_values, 2, "angle conversion updated values");
+    failures += expect_int(mylite_warning_count(database), 0, "angle update warning count");
+
+    failures += prepare_sql(database, "UPDATE angle_sites SET x = RADIANS('1x') WHERE id = 1",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Truncated incorrect DOUBLE value",
+                                  "RADIANS update warning promoted");
+    failures += expect_int(mylite_warning_count(database), 1, "RADIANS update warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "RADIANS update warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM angle_sites ORDER BY id", id_column, 1,
+                                   all_id_values, 5, "RADIANS update rollback rows");
+
+    failures += prepare_sql(database, "UPDATE angle_sites SET x = DEGREES(x) WHERE id = 5",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "DOUBLE value is out of range in 'degrees()'",
+                                  "DEGREES update overflow error");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "DEGREES update overflow warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_out_of_range,
+                           "DEGREES update overflow warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM angle_sites ORDER BY id", id_column, 1,
+                                   all_id_values, 5, "DEGREES update overflow rollback rows");
+
+    failures += prepare_sql(database, "DELETE FROM angle_sites WHERE id = 5 AND DEGREES(x) > 0",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "DOUBLE value is out of range in 'degrees()'",
+                                  "DEGREES delete overflow error");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "DEGREES delete overflow warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_out_of_range,
+                           "DEGREES delete overflow warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM angle_sites ORDER BY id", id_column, 1,
+                                   all_id_values, 5, "DEGREES delete overflow rollback rows");
+
+    failures +=
+        prepare_sql(database, "DELETE FROM angle_sites WHERE DEGREES(s) > 0", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Truncated incorrect DOUBLE value",
+                                  "DEGREES delete warning promoted");
+    failures += expect_int(mylite_warning_count(database), 1, "DEGREES delete warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "DEGREES delete warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM angle_sites ORDER BY id", id_column, 1,
+                                   all_id_values, 5, "DEGREES delete rollback rows");
+
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM angle_sites WHERE id = 1 AND RADIANS(x) > 0", 1,
+        "angle conversion delete predicate");
+    failures += expect_select_rows(database, "SELECT id FROM angle_sites ORDER BY id", id_column, 1,
+                                   remaining_values, 4, "angle conversion delete remaining rows");
+
+    failures += prepare_sql(database, "SELECT DEGREES()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "DEGREES zero arity unsupported");
+    failures += prepare_sql(database, "SELECT DEGREES(1,2)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "DEGREES two arity unsupported");
+    failures += prepare_sql(database, "SELECT RADIANS()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "RADIANS zero arity unsupported");
+    failures += prepare_sql(database, "SELECT RADIANS(1,2)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "RADIANS two arity unsupported");
 
     // NOLINTEND(readability-magic-numbers)
     return failures;

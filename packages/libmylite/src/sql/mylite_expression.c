@@ -109,6 +109,7 @@ enum {
 
 static const char mylite_pi_text[] = "3.141593";
 static const double mylite_pi_double_value = 3.141592653589793238462643383279502884;
+static const double mylite_angle_straight_degrees = 180.0;
 static const uint64_t mylite_expression_int64_min_magnitude = (uint64_t)INT64_MAX + UINT64_C(1);
 static const uint64_t mylite_expression_ipv4_u32_max = UINT32_MAX;
 static const uint32_t mylite_expression_crc32_initial = UINT32_C(0xFFFFFFFF);
@@ -382,6 +383,13 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_SIN = 76,
     MYLITE_SCALAR_FUNCTION_COS = 77,
     MYLITE_SCALAR_FUNCTION_TAN = 78,
+    MYLITE_SCALAR_FUNCTION_DEGREES = 79,
+    MYLITE_SCALAR_FUNCTION_RADIANS = 80,
+};
+
+struct angle_conversion_input {
+    enum mylite_scalar_function_id function_id;
+    double input;
 };
 
 static int eval_node(const struct mylite_sql_ast_node *node,
@@ -875,6 +883,19 @@ static int eval_trigonometric_function(enum mylite_scalar_function_id function_i
                                        const struct mylite_expression_eval_context *context,
                                        struct mylite_expression_warnings *warnings,
                                        struct mylite_expression_value *out_value);
+static int eval_angle_conversion_function(enum mylite_scalar_function_id function_id,
+                                          const struct mylite_sql_ast_node *arguments,
+                                          const struct mylite_expression_eval_context *context,
+                                          struct mylite_expression_warnings *warnings,
+                                          struct mylite_expression_value *out_value);
+static int eval_angle_conversion_argument(const struct mylite_sql_ast_node *argument_node,
+                                          const struct mylite_expression_eval_context *context,
+                                          struct mylite_expression_warnings *warnings,
+                                          struct mylite_expression_value *argument,
+                                          struct numeric_value *number, bool *out_null_result);
+static int angle_conversion_result(struct angle_conversion_input conversion, double *out_result);
+static bool angle_conversion_result_is_out_of_range(double result);
+static const char *angle_conversion_function_name(enum mylite_scalar_function_id function_id);
 static bool trigonometric_pi_expression_value(const struct mylite_sql_ast_node *node,
                                               double *out_value);
 static bool trigonometric_pi_expression_value_impl(const struct mylite_sql_ast_node *node,
@@ -1084,6 +1105,8 @@ static int append_cast_truncation_warning(struct mylite_expression_warnings *war
                                           const char *type_name, const char *text);
 static int append_power_out_of_range_error(struct mylite_expression_warnings *warnings);
 static int append_exp_out_of_range_error(struct mylite_expression_warnings *warnings);
+static int append_angle_conversion_out_of_range_error(struct mylite_expression_warnings *warnings,
+                                                      const char *function_name);
 static int append_invalid_logarithm_warning(struct mylite_expression_warnings *warnings);
 static int append_char_truncation_warning(struct mylite_expression_warnings *warnings,
                                           uint64_t length, const char *text);
@@ -1403,6 +1426,8 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_SIN:
     case MYLITE_SCALAR_FUNCTION_COS:
     case MYLITE_SCALAR_FUNCTION_TAN:
+    case MYLITE_SCALAR_FUNCTION_DEGREES:
+    case MYLITE_SCALAR_FUNCTION_RADIANS:
     case MYLITE_SCALAR_FUNCTION_ISNULL:
         return arity == 1U;
     case MYLITE_SCALAR_FUNCTION_LOG:
@@ -2247,6 +2272,9 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
     case MYLITE_SCALAR_FUNCTION_COS:
     case MYLITE_SCALAR_FUNCTION_TAN:
         return eval_trigonometric_function(function_id, arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_DEGREES:
+    case MYLITE_SCALAR_FUNCTION_RADIANS:
+        return eval_angle_conversion_function(function_id, arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_ABS:
     case MYLITE_SCALAR_FUNCTION_SIGN:
     case MYLITE_SCALAR_FUNCTION_FLOOR:
@@ -5263,6 +5291,8 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_SIN:
     case MYLITE_SCALAR_FUNCTION_COS:
     case MYLITE_SCALAR_FUNCTION_TAN:
+    case MYLITE_SCALAR_FUNCTION_DEGREES:
+    case MYLITE_SCALAR_FUNCTION_RADIANS:
     case MYLITE_SCALAR_FUNCTION_MOD:
     case MYLITE_SCALAR_FUNCTION_PI:
     case MYLITE_SCALAR_FUNCTION_IF:
@@ -7018,6 +7048,187 @@ static int eval_trigonometric_function(enum mylite_scalar_function_id function_i
 cleanup:
     mylite_expression_value_deinit(&argument);
     return status;
+}
+
+static int eval_angle_conversion_function(enum mylite_scalar_function_id function_id,
+                                          const struct mylite_sql_ast_node *arguments,
+                                          const struct mylite_expression_eval_context *context,
+                                          struct mylite_expression_warnings *warnings,
+                                          struct mylite_expression_value *out_value)
+{
+    const struct mylite_sql_ast_node *argument_node = child_at(arguments, 0U);
+    struct mylite_expression_value argument = {0};
+    struct numeric_value number = {0};
+    double result = 0.0;
+    bool null_result = false;
+    int status = eval_angle_conversion_argument(argument_node, context, warnings, &argument,
+                                                &number, &null_result);
+
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (null_result) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+
+    status = angle_conversion_result(
+        (struct angle_conversion_input){.function_id = function_id, .input = number.real_value},
+        &result);
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (angle_conversion_result_is_out_of_range(result)) {
+        status = append_angle_conversion_out_of_range_error(
+            warnings, angle_conversion_function_name(function_id));
+        if (status == 0) {
+            status = MYLITE_EXEC_ERROR;
+        }
+        goto cleanup;
+    }
+    if (result == 0.0) {
+        result = 0.0;
+    }
+
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_REAL,
+        .real_value = result,
+        .compact_real_text = true,
+    };
+
+cleanup:
+    mylite_expression_value_deinit(&argument);
+    return status;
+}
+
+static int eval_angle_conversion_argument(const struct mylite_sql_ast_node *argument_node,
+                                          const struct mylite_expression_eval_context *context,
+                                          struct mylite_expression_warnings *warnings,
+                                          struct mylite_expression_value *argument,
+                                          struct numeric_value *number, bool *out_null_result)
+{
+    int status = 0;
+
+    *out_null_result = false;
+    if (trigonometric_pi_expression_value(argument_node, &number->real_value)) {
+        return 0;
+    }
+
+    status = eval_node(argument_node, context, warnings, argument);
+    if (status != 0) {
+        return status;
+    }
+    if (is_null(argument)) {
+        *out_null_result = true;
+        return 0;
+    }
+    return value_to_numeric(argument, warnings, number);
+}
+
+static int angle_conversion_result(struct angle_conversion_input conversion, double *out_result)
+{
+    switch (conversion.function_id) {
+    case MYLITE_SCALAR_FUNCTION_DEGREES:
+        *out_result = (conversion.input * mylite_angle_straight_degrees) / mylite_pi_double_value;
+        return 0;
+    case MYLITE_SCALAR_FUNCTION_RADIANS:
+        *out_result = (conversion.input / mylite_angle_straight_degrees) * mylite_pi_double_value;
+        return 0;
+    case MYLITE_SCALAR_FUNCTION_UNKNOWN:
+    case MYLITE_SCALAR_FUNCTION_CONCAT:
+    case MYLITE_SCALAR_FUNCTION_CONCAT_WS:
+    case MYLITE_SCALAR_FUNCTION_LENGTH:
+    case MYLITE_SCALAR_FUNCTION_CHAR_LENGTH:
+    case MYLITE_SCALAR_FUNCTION_ASCII:
+    case MYLITE_SCALAR_FUNCTION_ORD:
+    case MYLITE_SCALAR_FUNCTION_LOWER:
+    case MYLITE_SCALAR_FUNCTION_UPPER:
+    case MYLITE_SCALAR_FUNCTION_LEFT:
+    case MYLITE_SCALAR_FUNCTION_RIGHT:
+    case MYLITE_SCALAR_FUNCTION_SUBSTRING:
+    case MYLITE_SCALAR_FUNCTION_SUBSTRING_INDEX:
+    case MYLITE_SCALAR_FUNCTION_TRIM:
+    case MYLITE_SCALAR_FUNCTION_LTRIM:
+    case MYLITE_SCALAR_FUNCTION_RTRIM:
+    case MYLITE_SCALAR_FUNCTION_REPLACE:
+    case MYLITE_SCALAR_FUNCTION_INSERT:
+    case MYLITE_SCALAR_FUNCTION_REPEAT:
+    case MYLITE_SCALAR_FUNCTION_SPACE:
+    case MYLITE_SCALAR_FUNCTION_REVERSE:
+    case MYLITE_SCALAR_FUNCTION_LPAD:
+    case MYLITE_SCALAR_FUNCTION_RPAD:
+    case MYLITE_SCALAR_FUNCTION_QUOTE:
+    case MYLITE_SCALAR_FUNCTION_ELT:
+    case MYLITE_SCALAR_FUNCTION_FIELD:
+    case MYLITE_SCALAR_FUNCTION_FIND_IN_SET:
+    case MYLITE_SCALAR_FUNCTION_MAKE_SET:
+    case MYLITE_SCALAR_FUNCTION_CHAR:
+    case MYLITE_SCALAR_FUNCTION_CHARSET:
+    case MYLITE_SCALAR_FUNCTION_COLLATION:
+    case MYLITE_SCALAR_FUNCTION_COERCIBILITY:
+    case MYLITE_SCALAR_FUNCTION_HEX:
+    case MYLITE_SCALAR_FUNCTION_UNHEX:
+    case MYLITE_SCALAR_FUNCTION_TO_BASE64:
+    case MYLITE_SCALAR_FUNCTION_FROM_BASE64:
+    case MYLITE_SCALAR_FUNCTION_BIN:
+    case MYLITE_SCALAR_FUNCTION_OCT:
+    case MYLITE_SCALAR_FUNCTION_CONV:
+    case MYLITE_SCALAR_FUNCTION_LOCATE:
+    case MYLITE_SCALAR_FUNCTION_INSTR:
+    case MYLITE_SCALAR_FUNCTION_ABS:
+    case MYLITE_SCALAR_FUNCTION_SIGN:
+    case MYLITE_SCALAR_FUNCTION_FLOOR:
+    case MYLITE_SCALAR_FUNCTION_CEIL:
+    case MYLITE_SCALAR_FUNCTION_ROUND:
+    case MYLITE_SCALAR_FUNCTION_EXP:
+    case MYLITE_SCALAR_FUNCTION_LN:
+    case MYLITE_SCALAR_FUNCTION_LOG:
+    case MYLITE_SCALAR_FUNCTION_LOG2:
+    case MYLITE_SCALAR_FUNCTION_LOG10:
+    case MYLITE_SCALAR_FUNCTION_POWER:
+    case MYLITE_SCALAR_FUNCTION_SQRT:
+    case MYLITE_SCALAR_FUNCTION_SIN:
+    case MYLITE_SCALAR_FUNCTION_COS:
+    case MYLITE_SCALAR_FUNCTION_TAN:
+    case MYLITE_SCALAR_FUNCTION_MOD:
+    case MYLITE_SCALAR_FUNCTION_PI:
+    case MYLITE_SCALAR_FUNCTION_IF:
+    case MYLITE_SCALAR_FUNCTION_IFNULL:
+    case MYLITE_SCALAR_FUNCTION_NULLIF:
+    case MYLITE_SCALAR_FUNCTION_COALESCE:
+    case MYLITE_SCALAR_FUNCTION_ISNULL:
+    case MYLITE_SCALAR_FUNCTION_DATABASE:
+    case MYLITE_SCALAR_FUNCTION_SCHEMA:
+    case MYLITE_SCALAR_FUNCTION_VERSION:
+    case MYLITE_SCALAR_FUNCTION_LAST_INSERT_ID:
+    case MYLITE_SCALAR_FUNCTION_ROW_COUNT:
+    case MYLITE_SCALAR_FUNCTION_CONNECTION_ID:
+    case MYLITE_SCALAR_FUNCTION_USER:
+    case MYLITE_SCALAR_FUNCTION_CURRENT_USER:
+    case MYLITE_SCALAR_FUNCTION_BIT_COUNT:
+    case MYLITE_SCALAR_FUNCTION_BIT_LENGTH:
+    case MYLITE_SCALAR_FUNCTION_CRC32:
+    case MYLITE_SCALAR_FUNCTION_INET_ATON:
+    case MYLITE_SCALAR_FUNCTION_INET_NTOA:
+    case MYLITE_SCALAR_FUNCTION_IS_UUID:
+    case MYLITE_SCALAR_FUNCTION_UUID_TO_BIN:
+    case MYLITE_SCALAR_FUNCTION_BIN_TO_UUID:
+        return -1;
+    }
+    return -1;
+}
+
+static bool angle_conversion_result_is_out_of_range(double result)
+{
+    return isnan(result) || isinf(result);
+}
+
+static const char *angle_conversion_function_name(enum mylite_scalar_function_id function_id)
+{
+    if (function_id == MYLITE_SCALAR_FUNCTION_DEGREES) {
+        return "degrees";
+    }
+    return "radians";
 }
 
 static bool trigonometric_pi_expression_value(const struct mylite_sql_ast_node *node,
@@ -9421,6 +9632,20 @@ static int append_exp_out_of_range_error(struct mylite_expression_warnings *warn
         "DOUBLE value is out of range in 'exp()'");
 }
 
+static int append_angle_conversion_out_of_range_error(struct mylite_expression_warnings *warnings,
+                                                      const char *function_name)
+{
+    char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
+    int length = snprintf(message, sizeof(message), "DOUBLE value is out of range in '%s()'",
+                          function_name == NULL ? "" : function_name);
+
+    if (length < 0) {
+        return -1;
+    }
+    return mylite_expression_warnings_append_condition(
+        warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, MYLITE_WARNING_OUT_OF_RANGE, message);
+}
+
 static int append_invalid_logarithm_warning(struct mylite_expression_warnings *warnings)
 {
     return append_warning(warnings, MYLITE_WARNING_INVALID_ARGUMENT_FOR_LOGARITHM,
@@ -9652,6 +9877,8 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"SIN", MYLITE_SCALAR_FUNCTION_SIN},
         {"COS", MYLITE_SCALAR_FUNCTION_COS},
         {"TAN", MYLITE_SCALAR_FUNCTION_TAN},
+        {"DEGREES", MYLITE_SCALAR_FUNCTION_DEGREES},
+        {"RADIANS", MYLITE_SCALAR_FUNCTION_RADIANS},
         {"MOD", MYLITE_SCALAR_FUNCTION_MOD},
         {"PI", MYLITE_SCALAR_FUNCTION_PI},
         {"IF", MYLITE_SCALAR_FUNCTION_IF},
@@ -9763,6 +9990,8 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_SIN:
     case MYLITE_SCALAR_FUNCTION_COS:
     case MYLITE_SCALAR_FUNCTION_TAN:
+    case MYLITE_SCALAR_FUNCTION_DEGREES:
+    case MYLITE_SCALAR_FUNCTION_RADIANS:
     case MYLITE_SCALAR_FUNCTION_MOD:
     case MYLITE_SCALAR_FUNCTION_PI:
     case MYLITE_SCALAR_FUNCTION_IF:

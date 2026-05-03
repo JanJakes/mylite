@@ -52,6 +52,7 @@ In scope for the initial implementation:
   - `POW`, `POWER`
   - `SQRT`
   - `SIN`, `COS`, `TAN`
+  - `DEGREES`, `RADIANS`
   - `MOD`
   - `CONV`
   - `PI`
@@ -139,7 +140,7 @@ by common scalar expressions:
   `docs/specs/uuid-conversion-functions/specs.md`
 - numeric functions: `ABS`, `SIGN`, `FLOOR`, `CEIL`, `CEILING`, `MOD`,
   `ROUND`, `EXP`, `LN`, `LOG`, `LOG2`, `LOG10`, `POW`, `POWER`, `SQRT`,
-  `SIN`, `COS`, `TAN`,
+  `SIN`, `COS`, `TAN`, `DEGREES`, `RADIANS`,
   `CONV`, `BIT_COUNT`, `BIT_LENGTH`, `CRC32`, `INET_ATON`, `INET_NTOA`, and
   `PI`; see
   `docs/specs/round-function/specs.md` and
@@ -148,6 +149,7 @@ by common scalar expressions:
   `docs/specs/power-functions/specs.md` and
   `docs/specs/sqrt-function/specs.md` and
   `docs/specs/trigonometric-basic-functions/specs.md` and
+  `docs/specs/angle-conversion-functions/specs.md` and
   `docs/specs/numeric-base-conversion-functions/specs.md` and
   `docs/specs/bit-utility-functions/specs.md` and
   `docs/specs/crc32-function/specs.md` and
@@ -185,9 +187,10 @@ UUID text validation, UUID string-to-binary and binary-to-string conversion,
 optional UUID time-part swap flags,
 `MOD(..., 0)` warnings, `EXP()` overflow behavior, logarithm invalid-domain
 warnings, `SQRT()` domain behavior, `SIN()` / `COS()` / `TAN()` radian
-semantics and text conversion, table projection, filters, ordering,
-update assignment expressions, delete predicates, unsupported functions,
-unsupported arity, and selected result metadata.
+semantics and text conversion, `DEGREES()` / `RADIANS()` conversion semantics,
+`DEGREES()` overflow behavior, table projection, filters, ordering, update
+assignment expressions, delete predicates, unsupported functions, unsupported
+arity, and selected result metadata.
 
 This checkpoint intentionally does not yet implement `INSERT ... VALUES` or
 `INSERT ... SET` function expressions, temporal functions, information
@@ -350,6 +353,9 @@ Representative runtime results:
 | `COS(1)` | `0.5403023058681398` | none |
 | `TAN(1)` | `1.5574077246549023` | none |
 | `TAN('1x')` | `1.5574077246549023` | warning 1292, truncated incorrect double value |
+| `DEGREES(PI())` | `180` | none |
+| `RADIANS(180)` | `3.141592653589793` | none |
+| `DEGREES(1e308)` | error | 1690 / `22003`, out of range |
 | `MOD(7, 3)` | `1` | none |
 | `SQRT('foo')` | `0` | warning 1292, truncated incorrect double value |
 | `ABS(-9223372036854775808)` | error | 1690 / `22003`, out of range |
@@ -510,6 +516,8 @@ Verified `mysql --column-type-info -vvv` examples:
 | `SIN(1) AS sin_value` | `DOUBLE` | `23` | `31` | `binary` | `BINARY NUM` |
 | `COS(NULL) AS cos_null` | `DOUBLE` | `23` | `31` | `binary` | `BINARY NUM` |
 | `TAN('1x') AS tan_warn` | `DOUBLE` | `23` | `31` | `binary` | `BINARY NUM` |
+| `DEGREES(1) AS deg_value` | `DOUBLE` | `23` | `31` | `binary` | `NOT_NULL BINARY NUM` |
+| `RADIANS(NULL) AS rad_null` | `DOUBLE` | `23` | `31` | `binary` | `BINARY NUM` |
 | `IF(1,'yes','no') AS if_value` | `VAR_STRING` | `12` | `31` | `utf8mb4_0900_ai_ci` | `NOT_NULL` |
 | `IFNULL(NULL,'fallback') AS ifnull_value` | `VAR_STRING` | `32` | `31` | `utf8mb4_0900_ai_ci` | `NOT_NULL` |
 | `COALESCE(NULL,1.25) AS coalesce_value` | `NEWDECIMAL` | `5` | `2` | `binary` | `NOT_NULL BINARY NUM` |
@@ -770,6 +778,8 @@ SELECT
   SIN(1),
   COS(1),
   TAN(1),
+  DEGREES(PI()),
+  RADIANS(180),
   MOD(7, 3);
 ```
 

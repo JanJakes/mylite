@@ -248,6 +248,7 @@ static int test_select_integer_literal(void);
 static int test_select_integer_literal_with_semicolon(void);
 static int test_expression_operator_foundation(void);
 static int test_scalar_builtin_functions_execution(void);
+static int test_session_information_functions_execution(void);
 static int test_case_expression_execution(void);
 static int test_cast_expression_execution(void);
 static int test_aggregate_grouping_execution(void);
@@ -433,6 +434,7 @@ int main(void)
     failures += test_select_integer_literal_with_semicolon();
     failures += test_expression_operator_foundation();
     failures += test_scalar_builtin_functions_execution();
+    failures += test_session_information_functions_execution();
     failures += test_case_expression_execution();
     failures += test_cast_expression_execution();
     failures += test_aggregate_grouping_execution();
@@ -2529,6 +2531,230 @@ static int test_scalar_builtin_functions_execution(void)
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_session_information_functions_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const initial_columns[] = {"db_name", "schema_name", "version_text",
+                                                  "last_id", "row_count"};
+    static const char *const schema_columns[] = {"db_name", "schema_name", "row_count"};
+    static const char *const last_row_columns[] = {"last_id", "row_count"};
+    static const char *const last_id_pair_columns[] = {"last_id", "current_id"};
+    static const char *const row_count_column[] = {"row_count"};
+    static const char *const table_projection_columns[] = {"id", "db_name", "version_text",
+                                                           "last_id", "row_count"};
+    static const char *const metadata_columns[] = {"db_name", "schema_name", "version_text",
+                                                   "last_id", "set_id",      "row_count"};
+    static const char *const initial_values[] = {NULL, NULL, NULL, "0", "0"};
+    static const char *const schema_values[] = {"mylite_info_funcs", "mylite_info_funcs", "0"};
+    static const char *const prepared_schema_values[] = {"mylite_info_funcs_2"};
+    static const char *const insert_state_values[] = {"1", "3"};
+    static const char *const update_state_values[] = {"2", "1"};
+    static const char *const delete_row_count[] = {"1"};
+    static const char *const select_row_count[] = {"-1"};
+    static const char *const explicit_insert_values[] = {"1", "1"};
+    static const char *const prepared_last_id_values[] = {"456"};
+    static const char *const prepared_row_count_values[] = {"2"};
+    static const char *const explicit_set_values[] = {"123", "123"};
+    static const char *const null_set_values[] = {NULL, "0"};
+    static const char *const negative_set_values[] = {"18446744073709551611",
+                                                      "18446744073709551611"};
+    static const char *const dropped_schema_value[] = {NULL};
+    static const struct expected_result_metadata metadata[] = {
+        {"db_name", NULL, NULL, NULL, NULL, NULL, 256U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, 1},
+        {"schema_name", NULL, NULL, NULL, NULL, NULL, 256U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U, MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, 1},
+        {"version_text", NULL, NULL, NULL, NULL, NULL, 20U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         MYLITE_FIELD_FLAG_NOT_NULL, MYLITE_FIELD_FLAG_BINARY, 0},
+        {"last_id", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY |
+             MYLITE_FIELD_FLAG_NUM,
+         0U, 0},
+        {"set_id", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY |
+             MYLITE_FIELD_FLAG_NUM,
+         0U, 0},
+        {"row_count", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+    };
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open session functions database");
+
+    failures += prepare_sql(database,
+                            "SELECT DATABASE() AS db_name, SCHEMA() AS schema_name, "
+                            "VERSION() AS version_text, LAST_INSERT_ID() AS last_id, "
+                            "ROW_COUNT() AS row_count",
+                            MYLITE_OK, &stmt);
+    failures += expect_column_names(stmt, initial_columns, 5, "initial session columns");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "initial session row");
+    failures += expect_null_text(mylite_column_text(stmt, 0), "initial database null");
+    failures += expect_null_text(mylite_column_text(stmt, 1), "initial schema null");
+    failures += expect_string(mylite_column_text(stmt, 2), mylite_version(), "version function");
+    failures += expect_string(mylite_column_text(stmt, 3), initial_values[3], "initial last id");
+    failures += expect_string(mylite_column_text(stmt, 4), initial_values[4], "initial row count");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "initial session done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE DATABASE mylite_info_funcs", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_info_funcs", MYLITE_DONE);
+    failures += expect_select_rows(database,
+                                   "SELECT DATABASE() AS db_name, SCHEMA() AS schema_name, "
+                                   "ROW_COUNT() AS row_count",
+                                   schema_columns, 3, schema_values, 1, "selected schema values");
+    failures += prepare_sql(database, "SELECT DATABASE() AS db_name", MYLITE_OK, &stmt);
+    failures += execute_sql(database, "CREATE DATABASE mylite_info_funcs_2", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_info_funcs_2", MYLITE_DONE);
+    failures +=
+        expect_column_names(stmt, (const char *const[]){"db_name"}, 1, "prepared database columns");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "prepared database row");
+    failures += expect_string(mylite_column_text(stmt, 0), prepared_schema_values[0],
+                              "prepared database uses execution schema");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "prepared database done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "USE mylite_info_funcs", MYLITE_DONE);
+
+    failures += execute_sql(database,
+                            "CREATE TABLE ai ("
+                            "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, "
+                            "v INT)",
+                            MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database, "INSERT INTO ai(v) VALUES (10),(20),(30)", 3, "insert ai rows");
+    failures +=
+        expect_select_rows(database, "SELECT LAST_INSERT_ID() AS last_id, ROW_COUNT() AS row_count",
+                           last_row_columns, 2, insert_state_values, 1, "insert session state");
+
+    failures += expect_select_rows(database, "SELECT id FROM ai ORDER BY id LIMIT 1",
+                                   (const char *const[]){"id"}, 1, (const char *const[]){"1"}, 1,
+                                   "table select row count transition source");
+    failures += expect_select_rows(database, "SELECT ROW_COUNT() AS row_count", row_count_column, 1,
+                                   select_row_count, 1, "row count after result set");
+
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE ai SET v = v + 1 WHERE id IN (1,2)", 2, "update ai rows");
+    failures += expect_select_rows(database,
+                                   "SELECT ROW_COUNT() AS row_count, "
+                                   "LAST_INSERT_ID() AS last_id",
+                                   (const char *const[]){"row_count", "last_id"}, 2,
+                                   update_state_values, 1, "update session state");
+
+    failures += execute_sql_expect_done_affected(database, "DELETE FROM ai WHERE id = 3", 1,
+                                                 "delete ai row");
+    failures += expect_select_rows(database, "SELECT ROW_COUNT() AS row_count", row_count_column, 1,
+                                   delete_row_count, 1, "delete row count");
+
+    failures += execute_sql_expect_done_affected(database, "INSERT INTO ai(id,v) VALUES (10,100)",
+                                                 1, "explicit auto increment insert");
+    failures += expect_select_rows(
+        database, "SELECT LAST_INSERT_ID() AS last_id, ROW_COUNT() AS row_count", last_row_columns,
+        2, explicit_insert_values, 1, "explicit insert session state");
+    failures += prepare_sql(database, "SELECT LAST_INSERT_ID(456) AS last_id", MYLITE_OK, &stmt);
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), 1,
+                             "prepared last insert id does not mutate before step");
+    failures += expect_column_names(stmt, (const char *const[]){"last_id"}, 1,
+                                    "prepared last insert id columns");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "prepared last insert id row");
+    failures += expect_string(mylite_column_text(stmt, 0), prepared_last_id_values[0],
+                              "prepared last insert id value");
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), 456,
+                             "prepared last insert id mutates at step");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "prepared last insert id done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "SELECT ROW_COUNT() AS row_count", MYLITE_OK, &stmt);
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE ai SET v = v + 1 WHERE id IN (1,2)", 2, "row count interleaved update");
+    failures += expect_column_names(stmt, row_count_column, 1, "prepared row count columns");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "prepared row count row");
+    failures += expect_string(mylite_column_text(stmt, 0), prepared_row_count_values[0],
+                              "prepared row count uses execution state");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "prepared row count done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_select_rows(database,
+                                   "SELECT LAST_INSERT_ID(123) AS last_id, "
+                                   "LAST_INSERT_ID() AS current_id",
+                                   last_id_pair_columns, 2, explicit_set_values, 1,
+                                   "explicit last insert id set");
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), 123,
+                             "public last insert id after explicit set");
+    failures += expect_select_rows(database, "SELECT ROW_COUNT() AS row_count", row_count_column, 1,
+                                   select_row_count, 1, "row count after explicit set select");
+
+    failures += expect_select_rows(database,
+                                   "SELECT LAST_INSERT_ID(NULL) AS last_id, "
+                                   "LAST_INSERT_ID() AS current_id",
+                                   last_id_pair_columns, 2, null_set_values, 1,
+                                   "last insert id null reset");
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), 0,
+                             "public last insert id after null reset");
+    failures += expect_select_rows(database,
+                                   "SELECT LAST_INSERT_ID(-5) AS last_id, "
+                                   "LAST_INSERT_ID() AS current_id",
+                                   last_id_pair_columns, 2, negative_set_values, 1,
+                                   "last insert id negative wrap");
+
+    failures += prepare_sql(database,
+                            "SELECT id, DATABASE() AS db_name, VERSION() AS version_text, "
+                            "LAST_INSERT_ID() AS last_id, ROW_COUNT() AS row_count "
+                            "FROM ai WHERE id = 1",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_column_names(stmt, table_projection_columns, 5, "table session projection columns");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "table session projection row");
+    failures += expect_string(mylite_column_text(stmt, 0), "1", "table projection id");
+    failures += expect_string(mylite_column_text(stmt, 1), "mylite_info_funcs",
+                              "table projection database");
+    failures +=
+        expect_string(mylite_column_text(stmt, 2), mylite_version(), "table projection version");
+    failures += expect_string(mylite_column_text(stmt, 3), "18446744073709551611",
+                              "table projection last id");
+    failures += expect_string(mylite_column_text(stmt, 4), "-1", "table projection row count");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "table session projection done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
+    failures += prepare_sql(database,
+                            "SELECT DATABASE() AS db_name, SCHEMA() AS schema_name, "
+                            "VERSION() AS version_text, LAST_INSERT_ID() AS last_id, "
+                            "LAST_INSERT_ID(NULL) AS set_id, ROW_COUNT() AS row_count",
+                            MYLITE_OK, &stmt);
+    failures += expect_column_names(stmt, metadata_columns, 6, "session metadata columns");
+    failures += expect_result_metadata(stmt, metadata, 6, "session function metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "session metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "session metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT DATABASE(1)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "database arity rejected");
+    failures += prepare_sql(database, "SELECT SCHEMA(1)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "schema arity rejected");
+    failures += prepare_sql(database, "SELECT VERSION(1)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "version arity rejected");
+    failures += prepare_sql(database, "SELECT LAST_INSERT_ID(1,2)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "last insert id arity rejected");
+    failures += prepare_sql(database, "SELECT ROW_COUNT(1)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "row count arity rejected");
+
+    failures += execute_sql(database, "DROP DATABASE mylite_info_funcs", MYLITE_DONE);
+    failures += expect_select_rows(database, "SELECT DATABASE() AS db_name",
+                                   (const char *const[]){"db_name"}, 1, dropped_schema_value, 1,
+                                   "database after drop selected schema");
+
+    mylite_close(database);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
     return failures;
 }
 

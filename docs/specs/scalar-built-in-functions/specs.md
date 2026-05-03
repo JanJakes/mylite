@@ -107,6 +107,9 @@ by common scalar expressions:
   `PI`
 - conditional/comparison functions: `IF`, `IFNULL`, `NULLIF`, `COALESCE`, and
   `ISNULL`
+- session information functions: `DATABASE`, `SCHEMA`, `VERSION`,
+  `LAST_INSERT_ID`, and `ROW_COUNT`; see
+  `docs/specs/session-information-functions/specs.md`
 
 These functions are implemented in no-table scalar `SELECT`, one-table
 `SELECT` projection, `WHERE`, and `ORDER BY` expressions, and the existing
@@ -118,9 +121,10 @@ functions, unsupported arity, and selected result metadata.
 
 This checkpoint intentionally does not yet implement `INSERT ... VALUES` or
 `INSERT ... SET` function expressions, temporal functions, information
-functions, aggregate/window functions, JSON, regular expressions, spatial,
-full-text, encryption, loadable functions, or exact MySQL error-code reporting
-for unsupported functions and argument-count mismatches.
+functions outside the session-state slice, aggregate/window functions, JSON,
+regular expressions, spatial, full-text, encryption, loadable functions, or
+exact MySQL error-code reporting for unsupported functions and argument-count
+mismatches.
 
 ## Sources
 
@@ -351,7 +355,7 @@ Representative runtime results:
 | --- | --- |
 | `DATABASE()` | selected schema, or `NULL` when no default schema is selected |
 | `SCHEMA()` | synonym for `DATABASE()` |
-| `VERSION()` | `8.4.9` for MyLite's MySQL compatibility target |
+| `VERSION()` | MyLite runtime version from `mylite_version()` |
 | `USER()` | client-supplied user and host string |
 | `CURRENT_USER()` | authenticated user and host string |
 | `LAST_INSERT_ID()` | first automatically generated id from the most recent successful insert |
@@ -579,9 +583,9 @@ for results, metadata, warnings, errors, type conversion, and edge cases.
 
 ## Compatibility decisions
 
-- `VERSION()` returns the MySQL compatibility target string `8.4.9` for now,
-  matching the repository target. A later server/protocol task can decide
-  whether to expose a MyLite suffix in `version_comment` instead.
+- `VERSION()` returns `mylite_version()` for the embedded runtime. A later
+  server/protocol task can decide whether to expose additional MyLite build
+  metadata in `version_comment` or related variables.
 - `CONNECTION_ID()` returns a stable per-handle unsigned integer. It need not
   represent an operating-system thread.
 - `CURRENT_USER()` and `USER()` may initially use the same embedded connection
@@ -831,8 +835,8 @@ and `LIMIT 0` queries for:
 - numeric functions: `ABS`, `ROUND`, `POW`, `SQRT`
 - conditional/comparison functions: `IF`, `IFNULL`, `COALESCE`, `GREATEST`
 - temporal functions: `NOW(6)`, `CURDATE`, `DATEDIFF`, `DATE_ADD`
-- information functions: `DATABASE`, `VERSION`, `LAST_INSERT_ID`,
-  `CONNECTION_ID`
+- information functions: `DATABASE`, `SCHEMA`, `VERSION`, `LAST_INSERT_ID`,
+  `ROW_COUNT`, `CONNECTION_ID`
 
 Expected metadata is listed in the result metadata section above.
 
@@ -847,7 +851,9 @@ Suggested implementation order:
 3. Extend `mylite_expression_eval_with_context` so all current expression
    call sites can evaluate supported function calls.
 4. Add statement timestamp, session timezone, user/current-user, connection id,
-   last-insert-id, and row-count access to the expression context.
+   last-insert-id, and row-count access to the expression context. The
+   session-information-functions slice implements selected-schema,
+   last-insert-id, and previous-row-count access.
 5. Extend expression metadata inference for each in-scope function.
 6. Add MySQL-runtime comparison tests before claiming support in
    `COMPATIBILITY.md`.

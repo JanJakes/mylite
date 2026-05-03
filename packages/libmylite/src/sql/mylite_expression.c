@@ -72,6 +72,11 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_NULLIF = 17,
     MYLITE_SCALAR_FUNCTION_COALESCE = 18,
     MYLITE_SCALAR_FUNCTION_ISNULL = 19,
+    MYLITE_SCALAR_FUNCTION_DATABASE = 20,
+    MYLITE_SCALAR_FUNCTION_SCHEMA = 21,
+    MYLITE_SCALAR_FUNCTION_VERSION = 22,
+    MYLITE_SCALAR_FUNCTION_LAST_INSERT_ID = 23,
+    MYLITE_SCALAR_FUNCTION_ROW_COUNT = 24,
 };
 
 static int eval_node(const struct mylite_sql_ast_node *node,
@@ -316,9 +321,12 @@ unwrap_parenthesized_node(const struct mylite_sql_ast_node *node);
 static const struct mylite_sql_ast_node *child_at(const struct mylite_sql_ast_node *node,
                                                   size_t index);
 static size_t child_count(const struct mylite_sql_ast_node *node);
+static bool expression_is_supported_no_table(const struct mylite_sql_ast_node *expression,
+                                             bool require_cacheable);
 static enum mylite_scalar_function_id scalar_function_id(const struct mylite_sql_ast_node *node);
 static enum mylite_scalar_function_id
 scalar_function_id_from_span(struct mylite_sql_source_span span);
+static bool scalar_function_depends_on_session(enum mylite_scalar_function_id function_id);
 static bool ascii_span_equals(struct mylite_sql_source_span span, const char *text);
 static bool is_null(const struct mylite_expression_value *value);
 static bool is_numeric_kind(enum mylite_expression_value_kind kind);
@@ -480,6 +488,17 @@ int mylite_expression_value_truth(const struct mylite_expression_value *value,
 
 bool mylite_expression_is_supported_no_table(const struct mylite_sql_ast_node *expression)
 {
+    return expression_is_supported_no_table(expression, false);
+}
+
+bool mylite_expression_is_cacheable_no_table(const struct mylite_sql_ast_node *expression)
+{
+    return expression_is_supported_no_table(expression, true);
+}
+
+static bool expression_is_supported_no_table(const struct mylite_sql_ast_node *expression,
+                                             bool require_cacheable)
+{
     if (expression == NULL) {
         return false;
     }
@@ -511,21 +530,25 @@ bool mylite_expression_is_supported_no_table(const struct mylite_sql_ast_node *e
     case MYLITE_SQL_AST_CASE_WHEN:
         for (const struct mylite_sql_ast_node *child = expression->first_child; child != NULL;
              child = child->next_sibling) {
-            if (!mylite_expression_is_supported_no_table(child)) {
+            if (!expression_is_supported_no_table(child, require_cacheable)) {
                 return false;
             }
         }
         return true;
     case MYLITE_SQL_AST_CAST_EXPRESSION:
-        return mylite_expression_is_supported_no_table(child_at(expression, 0U));
+        return expression_is_supported_no_table(child_at(expression, 0U), require_cacheable);
     case MYLITE_SQL_AST_FUNCTION_CALL:
         if (!mylite_expression_is_supported_function_call(expression)) {
+            return false;
+        }
+        if (require_cacheable &&
+            scalar_function_depends_on_session(scalar_function_id(expression))) {
             return false;
         }
         for (const struct mylite_sql_ast_node *child =
                  child_at(expression, 1U) == NULL ? NULL : child_at(expression, 1U)->first_child;
              child != NULL; child = child->next_sibling) {
-            if (!mylite_expression_is_supported_no_table(child)) {
+            if (!expression_is_supported_no_table(child, require_cacheable)) {
                 return false;
             }
         }
@@ -572,7 +595,13 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_IF:
         return arity == 3U;
     case MYLITE_SCALAR_FUNCTION_PI:
+    case MYLITE_SCALAR_FUNCTION_DATABASE:
+    case MYLITE_SCALAR_FUNCTION_SCHEMA:
+    case MYLITE_SCALAR_FUNCTION_VERSION:
+    case MYLITE_SCALAR_FUNCTION_ROW_COUNT:
         return arity == 0U;
+    case MYLITE_SCALAR_FUNCTION_LAST_INSERT_ID:
+        return arity == 0U || arity == 1U;
     case MYLITE_SCALAR_FUNCTION_COALESCE:
         return arity >= 1U;
     case MYLITE_SCALAR_FUNCTION_UNKNOWN:
@@ -596,7 +625,7 @@ static int eval_node(const struct mylite_sql_ast_node *node,
         }
     }
     if (context != NULL && context->eval_constant != NULL &&
-        mylite_expression_is_supported_no_table(node)) {
+        mylite_expression_is_cacheable_no_table(node)) {
         return context->eval_constant(context->user_data, node, warnings, out_value);
     }
 
@@ -1303,6 +1332,15 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_coalesce_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_ISNULL:
         return eval_isnull_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_DATABASE:
+    case MYLITE_SCALAR_FUNCTION_SCHEMA:
+    case MYLITE_SCALAR_FUNCTION_VERSION:
+    case MYLITE_SCALAR_FUNCTION_LAST_INSERT_ID:
+    case MYLITE_SCALAR_FUNCTION_ROW_COUNT:
+        return context == NULL || context->eval_session_function == NULL
+                   ? -1
+                   : context->eval_session_function(context->user_data, node, context, warnings,
+                                                    out_value);
     case MYLITE_SCALAR_FUNCTION_UNKNOWN:
         break;
     }
@@ -3195,6 +3233,11 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"NULLIF", MYLITE_SCALAR_FUNCTION_NULLIF},
         {"COALESCE", MYLITE_SCALAR_FUNCTION_COALESCE},
         {"ISNULL", MYLITE_SCALAR_FUNCTION_ISNULL},
+        {"DATABASE", MYLITE_SCALAR_FUNCTION_DATABASE},
+        {"SCHEMA", MYLITE_SCALAR_FUNCTION_SCHEMA},
+        {"VERSION", MYLITE_SCALAR_FUNCTION_VERSION},
+        {"LAST_INSERT_ID", MYLITE_SCALAR_FUNCTION_LAST_INSERT_ID},
+        {"ROW_COUNT", MYLITE_SCALAR_FUNCTION_ROW_COUNT},
     };
 
     for (size_t index = 0U; index < sizeof(functions) / sizeof(functions[0]); ++index) {
@@ -3203,6 +3246,40 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         }
     }
     return MYLITE_SCALAR_FUNCTION_UNKNOWN;
+}
+
+static bool scalar_function_depends_on_session(enum mylite_scalar_function_id function_id)
+{
+    switch (function_id) {
+    case MYLITE_SCALAR_FUNCTION_DATABASE:
+    case MYLITE_SCALAR_FUNCTION_SCHEMA:
+    case MYLITE_SCALAR_FUNCTION_VERSION:
+    case MYLITE_SCALAR_FUNCTION_LAST_INSERT_ID:
+    case MYLITE_SCALAR_FUNCTION_ROW_COUNT:
+        return true;
+    case MYLITE_SCALAR_FUNCTION_UNKNOWN:
+    case MYLITE_SCALAR_FUNCTION_CONCAT:
+    case MYLITE_SCALAR_FUNCTION_LENGTH:
+    case MYLITE_SCALAR_FUNCTION_CHAR_LENGTH:
+    case MYLITE_SCALAR_FUNCTION_LOWER:
+    case MYLITE_SCALAR_FUNCTION_UPPER:
+    case MYLITE_SCALAR_FUNCTION_LEFT:
+    case MYLITE_SCALAR_FUNCTION_RIGHT:
+    case MYLITE_SCALAR_FUNCTION_REPLACE:
+    case MYLITE_SCALAR_FUNCTION_ABS:
+    case MYLITE_SCALAR_FUNCTION_SIGN:
+    case MYLITE_SCALAR_FUNCTION_FLOOR:
+    case MYLITE_SCALAR_FUNCTION_CEIL:
+    case MYLITE_SCALAR_FUNCTION_MOD:
+    case MYLITE_SCALAR_FUNCTION_PI:
+    case MYLITE_SCALAR_FUNCTION_IF:
+    case MYLITE_SCALAR_FUNCTION_IFNULL:
+    case MYLITE_SCALAR_FUNCTION_NULLIF:
+    case MYLITE_SCALAR_FUNCTION_COALESCE:
+    case MYLITE_SCALAR_FUNCTION_ISNULL:
+        return false;
+    }
+    return false;
 }
 
 static bool ascii_span_equals(struct mylite_sql_source_span span, const char *text)

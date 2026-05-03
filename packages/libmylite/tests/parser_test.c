@@ -5180,7 +5180,7 @@ static int test_scalar_function_call_syntax(void)
 {
     // NOLINTBEGIN(readability-magic-numbers)
     enum {
-        expected_select_item_count = 9,
+        expected_select_item_count = 13,
         coalesce_nested_arg_index = 2,
     };
     struct mylite_sql_parse_result result;
@@ -5191,7 +5191,8 @@ static int test_scalar_function_call_syntax(void)
     int failures = 0;
 
     failures += parse_sql("SELECT CONCAT('a','b') AS joined, PI() pi_value, "
-                          "COALESCE(NULL, 1, CONCAT('x','y')), DATABASE(), SCHEMA(), IF(1, 2, 3), "
+                          "COALESCE(NULL, 1, CONCAT('x','y')), DATABASE(), SCHEMA(), VERSION(), "
+                          "LAST_INSERT_ID(), LAST_INSERT_ID(5), ROW_COUNT(), IF(1, 2, 3), "
                           "LEFT('abc', 1), RIGHT('abc', 1), REPLACE('a','a','b') FROM DUAL;",
                           MYLITE_SQL_PARSE_OK, &result);
     select_list = child_at(child_at(result.root, 0U), 0U);
@@ -5218,12 +5219,20 @@ static int test_scalar_function_call_syntax(void)
                                      "DATABASE call");
     failures +=
         expect_function_call(child_at(child_at(select_list, 4U), 0U), "SCHEMA", 0U, "SCHEMA call");
-    failures += expect_function_call(child_at(child_at(select_list, 5U), 0U), "IF", 3U, "IF call");
+    failures += expect_function_call(child_at(child_at(select_list, 5U), 0U), "VERSION", 0U,
+                                     "VERSION call");
+    failures += expect_function_call(child_at(child_at(select_list, 6U), 0U), "LAST_INSERT_ID", 0U,
+                                     "LAST_INSERT_ID no-arg call");
+    failures += expect_function_call(child_at(child_at(select_list, 7U), 0U), "LAST_INSERT_ID", 1U,
+                                     "LAST_INSERT_ID one-arg call");
+    failures += expect_function_call(child_at(child_at(select_list, 8U), 0U), "ROW_COUNT", 0U,
+                                     "ROW_COUNT call");
+    failures += expect_function_call(child_at(child_at(select_list, 9U), 0U), "IF", 3U, "IF call");
     failures +=
-        expect_function_call(child_at(child_at(select_list, 6U), 0U), "LEFT", 2U, "LEFT call");
+        expect_function_call(child_at(child_at(select_list, 10U), 0U), "LEFT", 2U, "LEFT call");
     failures +=
-        expect_function_call(child_at(child_at(select_list, 7U), 0U), "RIGHT", 2U, "RIGHT call");
-    failures += expect_function_call(child_at(child_at(select_list, 8U), 0U), "REPLACE", 3U,
+        expect_function_call(child_at(child_at(select_list, 11U), 0U), "RIGHT", 2U, "RIGHT call");
+    failures += expect_function_call(child_at(child_at(select_list, 12U), 0U), "REPLACE", 3U,
                                      "REPLACE call");
     mylite_sql_parse_result_deinit(&result);
 

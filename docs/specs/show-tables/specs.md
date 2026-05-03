@@ -121,7 +121,7 @@ Rows:
 
 - User schemas are backed by `__mylite_table_catalog`.
 - `information_schema` additionally exposes MyLite's current metadata views:
-  `SCHEMATA`, `TABLES`, `COLUMNS`, and `STATISTICS`.
+  `SCHEMATA`, `TABLES`, `COLUMNS`, `ENGINES`, and `STATISTICS`.
 - User-created views are deferred and therefore not listed until view metadata
   exists.
 - `SHOW TABLES` returns only table/view names.

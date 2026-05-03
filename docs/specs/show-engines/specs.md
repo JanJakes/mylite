@@ -10,11 +10,14 @@ introspection statement:
 
 Deferred surfaces:
 
-- `INFORMATION_SCHEMA.ENGINES`
 - full MySQL build-dependent engine catalog
 - `SHOW ENGINE ...` singular diagnostic/status statements
 - storage-engine status counters
 - privilege differences, if future MySQL behavior requires them
+
+`INFORMATION_SCHEMA.ENGINES` is implemented by the separate
+[INFORMATION_SCHEMA.ENGINES](../information-schema-engines/specs.md) slice and
+shares the storage-engine registry described here.
 
 MySQL does not accept `LIKE`, `WHERE`, or `LIMIT` clauses for this statement.
 MyLite must keep those forms as syntax errors, not parsed unsupported filters.
@@ -190,5 +193,6 @@ Runtime coverage:
 - MyLite's `InnoDB` row is a compatibility facade over SQLite-backed storage.
   It does not imply MySQL InnoDB internals, row locks, foreign-key enforcement,
   tablespaces, redo/undo logs, or XA.
-- `INFORMATION_SCHEMA.ENGINES` remains deferred even though MySQL exposes the
-  same underlying information there.
+- `INFORMATION_SCHEMA.ENGINES` shares this registry but keeps the current
+  MyLite information-schema limitation: only wildcard selection is supported
+  until broader metadata-table `SELECT` processing lands.

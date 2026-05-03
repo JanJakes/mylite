@@ -57,6 +57,7 @@ enum mylite_information_schema_table {
     MYLITE_INFORMATION_SCHEMA_TABLES = 2,
     MYLITE_INFORMATION_SCHEMA_COLUMNS = 3,
     MYLITE_INFORMATION_SCHEMA_STATISTICS = 4,
+    MYLITE_INFORMATION_SCHEMA_ENGINES = 5,
 };
 
 enum mylite_mysql_condition_code {
@@ -1174,6 +1175,15 @@ struct mylite_storage_engine_row {
     const char *savepoints;
 };
 
+struct mylite_storage_engine_columns {
+    const char *engine;
+    const char *support;
+    const char *comment;
+    const char *transactions;
+    const char *xa;
+    const char *savepoints;
+};
+
 struct mylite_show_engines_metadata_column {
     const char *name;
     uint64_t length;
@@ -1319,6 +1329,17 @@ struct mylite_stmt {
     bool use_default_connection_charset;
 };
 
+static const struct mylite_storage_engine_row mylite_storage_engine_registry[] = {
+    {"InnoDB", "DEFAULT", "MyLite SQLite-backed transactional engine facade", "YES", "NO", "YES"},
+    {"MEMORY", "NO", "In-memory tables are not supported by MyLite", NULL, NULL, NULL},
+    {"MyISAM", "NO", "MyISAM tables are not supported by MyLite", NULL, NULL, NULL},
+    {"FEDERATED", "NO", "Federated tables are not supported by MyLite", NULL, NULL, NULL},
+    {"MRG_MYISAM", "NO", "Merge MyISAM tables are not supported by MyLite", NULL, NULL, NULL},
+    {"BLACKHOLE", "NO", "Blackhole tables are not supported by MyLite", NULL, NULL, NULL},
+    {"CSV", "NO", "CSV-backed tables are not supported by MyLite", NULL, NULL, NULL},
+    {"ARCHIVE", "NO", "Archive tables are not supported by MyLite", NULL, NULL, NULL},
+};
+
 static const char schema_catalog_sql[] = "CREATE TABLE IF NOT EXISTS __mylite_schema_catalog("
                                          "name TEXT PRIMARY KEY COLLATE BINARY,"
                                          "default_character_set TEXT NOT NULL,"
@@ -1431,6 +1452,7 @@ static const char information_schema_tables_sql[] =
     "SELECT 'SCHEMATA' AS table_name "
     "UNION ALL SELECT 'TABLES' "
     "UNION ALL SELECT 'COLUMNS' "
+    "UNION ALL SELECT 'ENGINES' "
     "UNION ALL SELECT 'STATISTICS') "
     "UNION ALL "
     "SELECT table_catalog AS TABLE_CATALOG,"
@@ -1581,8 +1603,12 @@ static void append_show_status_integer_row(sqlite3_str *sql, bool *first, const 
                                            uint64_t value);
 static int prepare_show_engines_statement(mylite_db *database, mylite_stmt **out_stmt);
 static int show_engines_sql(mylite_db *database, char **out_sql);
-static void append_show_engines_row(sqlite3_str *sql, bool *first,
-                                    const struct mylite_storage_engine_row *engine);
+static int information_schema_engines_sql(mylite_db *database, char **out_sql);
+static int storage_engines_sql(mylite_db *database,
+                               const struct mylite_storage_engine_columns *columns, char **out_sql);
+static void append_storage_engine_row(sqlite3_str *sql, bool *first,
+                                      const struct mylite_storage_engine_columns *columns,
+                                      const struct mylite_storage_engine_row *engine);
 static int attach_show_engines_result_metadata(mylite_db *database, mylite_stmt *stmt);
 static struct mylite_field_descriptor show_engines_field_descriptor(uint64_t length, bool nullable);
 static int prepare_show_character_set_statement(mylite_db *database,
@@ -3913,10 +3939,12 @@ static int set_selected_schema(mylite_db *database, const char *schema_name);
 static void clear_selected_schema_if_matches(mylite_db *database, const char *schema_name);
 static int information_schema_table_from_select(const struct mylite_sql_ast_node *statement,
                                                 enum mylite_information_schema_table *out_table);
-static bool select_list_is_wildcard(const struct mylite_sql_ast_node *select_list);
+static bool select_list_is_unqualified_wildcard(const struct mylite_sql_ast_node *select_list);
 static int
 information_schema_table_from_from_clause(const struct mylite_sql_ast_node *from_clause,
                                           enum mylite_information_schema_table *out_table);
+static int information_schema_from_clause_references_table(const struct mylite_sql_ast_node *node,
+                                                           bool *out_references_table);
 static int
 information_schema_table_from_qualified_name(const struct mylite_sql_ast_node *identifier,
                                              enum mylite_information_schema_table *out_table);
@@ -6298,17 +6326,25 @@ static int prepare_show_engines_statement(mylite_db *database, mylite_stmt **out
 
 static int show_engines_sql(mylite_db *database, char **out_sql)
 {
-    static const struct mylite_storage_engine_row engines[] = {
-        {"InnoDB", "DEFAULT", "MyLite SQLite-backed transactional engine facade", "YES", "NO",
-         "YES"},
-        {"MEMORY", "NO", "In-memory tables are not supported by MyLite", NULL, NULL, NULL},
-        {"MyISAM", "NO", "MyISAM tables are not supported by MyLite", NULL, NULL, NULL},
-        {"FEDERATED", "NO", "Federated tables are not supported by MyLite", NULL, NULL, NULL},
-        {"MRG_MYISAM", "NO", "Merge MyISAM tables are not supported by MyLite", NULL, NULL, NULL},
-        {"BLACKHOLE", "NO", "Blackhole tables are not supported by MyLite", NULL, NULL, NULL},
-        {"CSV", "NO", "CSV-backed tables are not supported by MyLite", NULL, NULL, NULL},
-        {"ARCHIVE", "NO", "Archive tables are not supported by MyLite", NULL, NULL, NULL},
+    static const struct mylite_storage_engine_columns columns = {
+        "Engine", "Support", "Comment", "Transactions", "XA", "Savepoints",
     };
+
+    return storage_engines_sql(database, &columns, out_sql);
+}
+
+static int information_schema_engines_sql(mylite_db *database, char **out_sql)
+{
+    static const struct mylite_storage_engine_columns columns = {
+        "ENGINE", "SUPPORT", "COMMENT", "TRANSACTIONS", "XA", "SAVEPOINTS",
+    };
+
+    return storage_engines_sql(database, &columns, out_sql);
+}
+
+static int storage_engines_sql(mylite_db *database,
+                               const struct mylite_storage_engine_columns *columns, char **out_sql)
+{
     sqlite3_str *sql = sqlite3_str_new(database->sqlite);
     bool first = true;
 
@@ -6317,10 +6353,13 @@ static int show_engines_sql(mylite_db *database, char **out_sql)
         return MYLITE_NOMEM;
     }
 
-    sqlite3_str_appendall(sql,
-                          "SELECT Engine, Support, Comment, Transactions, XA, Savepoints FROM (");
-    for (size_t index = 0U; index < sizeof(engines) / sizeof(engines[0]); ++index) {
-        append_show_engines_row(sql, &first, &engines[index]);
+    sqlite3_str_appendf(sql, "SELECT \"%w\", \"%w\", \"%w\", \"%w\", \"%w\", \"%w\" FROM (",
+                        columns->engine, columns->support, columns->comment, columns->transactions,
+                        columns->xa, columns->savepoints);
+    for (size_t index = 0U;
+         index < sizeof(mylite_storage_engine_registry) / sizeof(mylite_storage_engine_registry[0]);
+         ++index) {
+        append_storage_engine_row(sql, &first, columns, &mylite_storage_engine_registry[index]);
     }
     sqlite3_str_appendall(sql, ")");
 
@@ -6328,29 +6367,31 @@ static int show_engines_sql(mylite_db *database, char **out_sql)
     return *out_sql == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
 
-static void append_show_engines_row(sqlite3_str *sql, bool *first,
-                                    const struct mylite_storage_engine_row *engine)
+static void append_storage_engine_row(sqlite3_str *sql, bool *first,
+                                      const struct mylite_storage_engine_columns *columns,
+                                      const struct mylite_storage_engine_row *engine)
 {
     if (!*first) {
         sqlite3_str_appendall(sql, " UNION ALL ");
     }
 
-    sqlite3_str_appendf(sql, "SELECT %Q AS \"Engine\", %Q AS \"Support\", %Q AS \"Comment\", ",
-                        engine->engine, engine->support, engine->comment);
+    sqlite3_str_appendf(sql, "SELECT %Q AS \"%w\", %Q AS \"%w\", %Q AS \"%w\", ", engine->engine,
+                        columns->engine, engine->support, columns->support, engine->comment,
+                        columns->comment);
     if (engine->transactions == NULL) {
-        sqlite3_str_appendall(sql, "NULL AS \"Transactions\", ");
+        sqlite3_str_appendf(sql, "NULL AS \"%w\", ", columns->transactions);
     } else {
-        sqlite3_str_appendf(sql, "%Q AS \"Transactions\", ", engine->transactions);
+        sqlite3_str_appendf(sql, "%Q AS \"%w\", ", engine->transactions, columns->transactions);
     }
     if (engine->xa == NULL) {
-        sqlite3_str_appendall(sql, "NULL AS \"XA\", ");
+        sqlite3_str_appendf(sql, "NULL AS \"%w\", ", columns->xa);
     } else {
-        sqlite3_str_appendf(sql, "%Q AS \"XA\", ", engine->xa);
+        sqlite3_str_appendf(sql, "%Q AS \"%w\", ", engine->xa, columns->xa);
     }
     if (engine->savepoints == NULL) {
-        sqlite3_str_appendall(sql, "NULL AS \"Savepoints\"");
+        sqlite3_str_appendf(sql, "NULL AS \"%w\"", columns->savepoints);
     } else {
-        sqlite3_str_appendf(sql, "%Q AS \"Savepoints\"", engine->savepoints);
+        sqlite3_str_appendf(sql, "%Q AS \"%w\"", engine->savepoints, columns->savepoints);
     }
     *first = false;
 }
@@ -6795,6 +6836,7 @@ static char *show_tables_sql(mylite_db *database, const struct mylite_show_table
         "SELECT 'SCHEMATA' AS table_name "
         "UNION ALL SELECT 'TABLES' "
         "UNION ALL SELECT 'COLUMNS' "
+        "UNION ALL SELECT 'ENGINES' "
         "UNION ALL SELECT 'STATISTICS') "
         "UNION ALL "
         "SELECT table_schema AS TABLE_SCHEMA, table_name AS TABLE_NAME, table_type AS TABLE_TYPE "
@@ -8009,14 +8051,27 @@ static int prepare_information_schema_select_statement(mylite_db *database,
                                                        mylite_stmt **out_stmt)
 {
     enum mylite_information_schema_table table = MYLITE_INFORMATION_SCHEMA_NONE;
+    char *sqlite_sql = NULL;
     const char *sql = NULL;
     int status = information_schema_table_from_select(statement, &table);
 
+    *out_stmt = NULL;
     if (status != MYLITE_OK) {
         return status;
     }
     if (table == MYLITE_INFORMATION_SCHEMA_NONE) {
         return MYLITE_UNSUPPORTED;
+    }
+    if (table == MYLITE_INFORMATION_SCHEMA_ENGINES) {
+        status = information_schema_engines_sql(database, &sqlite_sql);
+        if (status == MYLITE_OK) {
+            status = prepare_sqlite_statement(database, sqlite_sql, out_stmt);
+        }
+        sqlite3_free(sqlite_sql);
+        if (status == MYLITE_NOMEM) {
+            (void)set_error_message(database, "out of memory");
+        }
+        return status;
     }
 
     sql = information_schema_table_sql(table);
@@ -31840,7 +31895,7 @@ static int information_schema_table_from_select(const struct mylite_sql_ast_node
     if (child_at(statement, 2U) != NULL) {
         return MYLITE_UNSUPPORTED;
     }
-    if (!select_list_is_wildcard(select_list)) {
+    if (!select_list_is_unqualified_wildcard(select_list)) {
         return MYLITE_UNSUPPORTED;
     }
 
@@ -31848,7 +31903,7 @@ static int information_schema_table_from_select(const struct mylite_sql_ast_node
     return MYLITE_OK;
 }
 
-static bool select_list_is_wildcard(const struct mylite_sql_ast_node *select_list)
+static bool select_list_is_unqualified_wildcard(const struct mylite_sql_ast_node *select_list)
 {
     const struct mylite_sql_ast_node *select_item = child_at(select_list, 0U);
     const struct mylite_sql_ast_node *expression = child_at(select_item, 0U);
@@ -31856,7 +31911,7 @@ static bool select_list_is_wildcard(const struct mylite_sql_ast_node *select_lis
     if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST ||
         select_item == NULL || select_item->next_sibling != NULL ||
         select_item->kind != MYLITE_SQL_AST_SELECT_ITEM || expression == NULL ||
-        expression->kind != MYLITE_SQL_AST_WILDCARD) {
+        expression->kind != MYLITE_SQL_AST_WILDCARD || child_at(expression, 0U) != NULL) {
         return false;
     }
     return true;
@@ -31867,13 +31922,63 @@ information_schema_table_from_from_clause(const struct mylite_sql_ast_node *from
                                           enum mylite_information_schema_table *out_table)
 {
     const struct mylite_sql_ast_node *identifier = child_at(from_clause, 0U);
+    bool references_table = false;
+    int status = MYLITE_OK;
 
     *out_table = MYLITE_INFORMATION_SCHEMA_NONE;
-    if (from_clause == NULL || from_clause->kind != MYLITE_SQL_AST_FROM_TABLE) {
+    if (from_clause == NULL) {
+        return MYLITE_OK;
+    }
+    if (from_clause->kind != MYLITE_SQL_AST_FROM_TABLE) {
+        status = information_schema_from_clause_references_table(from_clause, &references_table);
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        if (references_table) {
+            return MYLITE_UNSUPPORTED;
+        }
         return MYLITE_OK;
     }
 
-    return information_schema_table_from_qualified_name(identifier, out_table);
+    status = information_schema_table_from_qualified_name(identifier, out_table);
+    if (status != MYLITE_OK || *out_table == MYLITE_INFORMATION_SCHEMA_NONE) {
+        return status;
+    }
+    if (child_at(from_clause, 1U) != NULL) {
+        return MYLITE_UNSUPPORTED;
+    }
+    return MYLITE_OK;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int information_schema_from_clause_references_table(const struct mylite_sql_ast_node *node,
+                                                           bool *out_references_table)
+{
+    enum mylite_information_schema_table table = MYLITE_INFORMATION_SCHEMA_NONE;
+    int status = MYLITE_OK;
+
+    if (node == NULL) {
+        return MYLITE_OK;
+    }
+
+    if (node->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        status = information_schema_table_from_qualified_name(node, &table);
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        if (table != MYLITE_INFORMATION_SCHEMA_NONE) {
+            *out_references_table = true;
+        }
+    }
+
+    for (const struct mylite_sql_ast_node *child = node->first_child; child != NULL;
+         child = child->next_sibling) {
+        status = information_schema_from_clause_references_table(child, out_references_table);
+        if (status != MYLITE_OK || *out_references_table) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
 }
 
 static int
@@ -31928,6 +32033,9 @@ static enum mylite_information_schema_table information_schema_table_from_name(c
     if (ascii_case_equal(name, "statistics")) {
         return MYLITE_INFORMATION_SCHEMA_STATISTICS;
     }
+    if (ascii_case_equal(name, "engines")) {
+        return MYLITE_INFORMATION_SCHEMA_ENGINES;
+    }
     return MYLITE_INFORMATION_SCHEMA_NONE;
 }
 
@@ -31942,6 +32050,7 @@ static const char *information_schema_table_sql(enum mylite_information_schema_t
         return information_schema_columns_sql;
     case MYLITE_INFORMATION_SCHEMA_STATISTICS:
         return information_schema_statistics_sql;
+    case MYLITE_INFORMATION_SCHEMA_ENGINES:
     case MYLITE_INFORMATION_SCHEMA_NONE:
         return NULL;
     }

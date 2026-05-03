@@ -10,7 +10,8 @@ level application surfaces.
 1. [x] Schema selection and database lifecycle: `CREATE DATABASE`, `USE`,
        `ALTER DATABASE`, `DROP DATABASE`, and `SHOW DATABASES`.
 2. [x] Core metadata catalog: internal schema/table/column/index storage plus
-       `INFORMATION_SCHEMA.SCHEMATA`, `TABLES`, `COLUMNS`, and `STATISTICS`.
+       `INFORMATION_SCHEMA.SCHEMATA`, `TABLES`, `COLUMNS`, `ENGINES`, and
+       `STATISTICS`.
 3. [x] Character set and collation foundation: `utf8mb4`, `utf8mb3`, `latin1`,
        `binary`, default charset/collation tracking, `SET NAMES`, and
        `SET CHARACTER SET`.
@@ -210,15 +211,19 @@ level application surfaces.
        nondiagnostic clearing, `InnoDB` as the default MyLite SQLite-backed
        transactional facade, common unsupported MySQL engines reported as
        `Support=NO` with nullable capability columns, and MySQL-compatible
-       syntax rejection for `LIKE`, `WHERE`, and `LIMIT`. Full
-       build-dependent engine catalog breadth and `INFORMATION_SCHEMA.ENGINES`
-       remain deferred. Specs:
+       syntax rejection for `LIKE`, `WHERE`, and `LIMIT`. The first
+       `INFORMATION_SCHEMA.ENGINES` slice shares that registry for wildcard
+       selection with exact uppercase columns and case-insensitive quoted name
+       resolution; projections, filters, ordering, limits, aliases, joins, and
+       aggregates remain deferred. Full build-dependent engine catalog breadth
+       remains deferred. Specs:
        [SHOW TABLES](../show-tables/specs.md),
        [SHOW COLUMNS](../show-columns/specs.md),
        [SHOW INDEX](../show-index/specs.md),
        [DESCRIBE / DESC table metadata](../describe-table/specs.md),
        [SHOW CREATE TABLE](../show-create-table/specs.md),
-       [SHOW ENGINES](../show-engines/specs.md).
+       [SHOW ENGINES](../show-engines/specs.md),
+       [INFORMATION_SCHEMA.ENGINES](../information-schema-engines/specs.md).
 40. [ ] `SHOW VARIABLES`, `SHOW STATUS`, `SHOW WARNINGS`, `SHOW ERRORS`, and
        count variants: session state, diagnostics, filtering, and metadata.
        The diagnostic `SHOW WARNINGS` / `SHOW ERRORS` slice is specified for

@@ -5336,7 +5336,7 @@ static int test_information_schema_select(void)
     int failures = 0;
 
     failures +=
-        parse_sql("SELECT * FROM INFORMATION_SCHEMA.SCHEMATA;", MYLITE_SQL_PARSE_OK, &result);
+        parse_sql("SELECT * FROM INFORMATION_SCHEMA.ENGINES;", MYLITE_SQL_PARSE_OK, &result);
     select = child_at(result.root, 0U);
     from_table = child_at(select, 1U);
     qualified = child_at(from_table, 0U);
@@ -5346,18 +5346,48 @@ static int test_information_schema_select(void)
                             "information schema table name");
     failures += expect_span_text(child_at(qualified, 0U), "INFORMATION_SCHEMA",
                                  "information schema qualifier");
-    failures += expect_span_text(child_at(qualified, 1U), "SCHEMATA", "information schema table");
+    failures += expect_span_text(child_at(qualified, 1U), "ENGINES", "information schema table");
     mylite_sql_parse_result_deinit(&result);
 
     failures +=
-        parse_sql("SELECT * FROM `information_schema`.`STATISTICS`;", MYLITE_SQL_PARSE_OK, &result);
+        parse_sql("SELECT * FROM information_schema.engines;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    from_table = child_at(select, 1U);
+    qualified = child_at(from_table, 0U);
+    failures += expect_span_text(child_at(qualified, 0U), "information_schema",
+                                 "lower information schema qualifier");
+    failures +=
+        expect_span_text(child_at(qualified, 1U), "engines", "lower information schema table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT * FROM Information_Schema.EnGiNeS;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    from_table = child_at(select, 1U);
+    qualified = child_at(from_table, 0U);
+    failures += expect_span_text(child_at(qualified, 0U), "Information_Schema",
+                                 "mixed information schema qualifier");
+    failures +=
+        expect_span_text(child_at(qualified, 1U), "EnGiNeS", "mixed information schema table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT * FROM `information_schema`.`ENGINES`;", MYLITE_SQL_PARSE_OK, &result);
     select = child_at(result.root, 0U);
     from_table = child_at(select, 1U);
     qualified = child_at(from_table, 0U);
     failures += expect_span_text(child_at(qualified, 0U), "`information_schema`",
                                  "quoted information schema qualifier");
-    failures += expect_span_text(child_at(qualified, 1U), "`STATISTICS`",
-                                 "quoted information schema table");
+    failures +=
+        expect_span_text(child_at(qualified, 1U), "`ENGINES`", "quoted information schema table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT * FROM INFORMATION_SCHEMA.SCHEMATA;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT * FROM `information_schema`.`STATISTICS`;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA;",
@@ -5368,6 +5398,16 @@ static int test_information_schema_select(void)
                           MYLITE_SQL_PARSE_OK, &result);
     failures += expect_node(child_at(child_at(result.root, 0U), 2U), MYLITE_SQL_AST_WHERE_CLAUSE,
                             "information schema where clause");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT ENGINE FROM INFORMATION_SCHEMA.ENGINES;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT * FROM INFORMATION_SCHEMA.ENGINES WHERE ENGINE = 'InnoDB';",
+                          MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(child_at(child_at(result.root, 0U), 2U), MYLITE_SQL_AST_WHERE_CLAUSE,
+                            "information schema engines where clause");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

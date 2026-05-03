@@ -15,7 +15,7 @@ enum {
     tables_column_count = 21,
     columns_column_count = 22,
     statistics_column_count = 18,
-    information_schema_view_count = 4,
+    information_schema_view_count = 5,
     schemata_catalog_column = 0,
     schemata_name_column = 1,
     schemata_character_set_column = 2,
@@ -215,6 +215,7 @@ static int test_aggregate_grouping_execution(void);
 static int test_schema_lifecycle(void);
 static int test_character_set_collation_foundation(void);
 static int test_core_metadata_catalog(void);
+static int test_information_schema_engines_execution(void);
 static int test_mylite_file_preamble_and_vfs_payload(void);
 static int test_mylite_open_rejects_plain_sqlite(void);
 static int test_unsupported_statement(void);
@@ -373,6 +374,7 @@ int main(void)
     failures += test_schema_lifecycle();
     failures += test_character_set_collation_foundation();
     failures += test_core_metadata_catalog();
+    failures += test_information_schema_engines_execution();
     failures += test_mylite_file_preamble_and_vfs_payload();
     failures += test_mylite_open_rejects_plain_sqlite();
     failures += test_unsupported_statement();
@@ -848,6 +850,90 @@ static int test_core_metadata_catalog(void)
     }
 
     mylite_close(database);
+    return failures;
+}
+
+static int test_information_schema_engines_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const columns[] = {"ENGINE",       "SUPPORT", "COMMENT",
+                                          "TRANSACTIONS", "XA",      "SAVEPOINTS"};
+    static const char *const show_tables_columns[] = {"Tables_in_information_schema (ENGINES)",
+                                                      "Table_type"};
+    static const char *const show_tables_values[] = {"ENGINES", "SYSTEM VIEW"};
+    static const char *const values[] = {
+        "InnoDB",     "DEFAULT", "MyLite SQLite-backed transactional engine facade",
+        "YES",        "NO",      "YES",
+        "MEMORY",     "NO",      "In-memory tables are not supported by MyLite",
+        NULL,         NULL,      NULL,
+        "MyISAM",     "NO",      "MyISAM tables are not supported by MyLite",
+        NULL,         NULL,      NULL,
+        "FEDERATED",  "NO",      "Federated tables are not supported by MyLite",
+        NULL,         NULL,      NULL,
+        "MRG_MYISAM", "NO",      "Merge MyISAM tables are not supported by MyLite",
+        NULL,         NULL,      NULL,
+        "BLACKHOLE",  "NO",      "Blackhole tables are not supported by MyLite",
+        NULL,         NULL,      NULL,
+        "CSV",        "NO",      "CSV-backed tables are not supported by MyLite",
+        NULL,         NULL,      NULL,
+        "ARCHIVE",    "NO",      "Archive tables are not supported by MyLite",
+        NULL,         NULL,      NULL,
+    };
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open information schema engines");
+
+    failures += expect_select_rows(database, "SELECT * FROM INFORMATION_SCHEMA.ENGINES", columns, 6,
+                                   values, 8, "information schema engines registry");
+    failures += expect_select_rows(database, "SELECT * FROM information_schema.engines", columns, 6,
+                                   values, 8, "information schema engines lower-case");
+    failures += expect_select_rows(database, "SELECT * FROM Information_Schema.EnGiNeS", columns, 6,
+                                   values, 8, "information schema engines mixed-case");
+    failures += expect_select_rows(database, "SELECT * FROM `information_schema`.`ENGINES`",
+                                   columns, 6, values, 8, "information schema engines quoted");
+
+    failures += expect_information_schema_tables_views(database);
+    failures += expect_select_rows(
+        database, "SHOW FULL TABLES FROM information_schema LIKE 'engines'", show_tables_columns, 2,
+        show_tables_values, 1, "show tables information schema engines");
+
+    failures += prepare_sql(database, "SELECT ENGINE FROM INFORMATION_SCHEMA.ENGINES",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema engines projection");
+    failures +=
+        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.ENGINES WHERE ENGINE = 'InnoDB'",
+                    MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema engines where");
+    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.ENGINES ORDER BY ENGINE",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema engines order by");
+    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.ENGINES LIMIT 1",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema engines limit");
+    failures += prepare_sql(database, "SELECT COUNT(*) FROM INFORMATION_SCHEMA.ENGINES",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema engines count");
+    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.ENGINES AS e",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema engines AS alias");
+    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.ENGINES e",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema engines bare alias");
+    failures +=
+        prepare_sql(database, "SELECT INFORMATION_SCHEMA.ENGINES.* FROM INFORMATION_SCHEMA.ENGINES",
+                    MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema engines qualified wildcard");
+    failures += prepare_sql(database,
+                            "SELECT * FROM INFORMATION_SCHEMA.ENGINES JOIN "
+                            "INFORMATION_SCHEMA.TABLES",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema engines join");
+
+    mylite_close(database);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
     return failures;
 }
 
@@ -12053,10 +12139,7 @@ static int expect_no_information_schema_schemata_row(mylite_db *database, const 
 static int expect_information_schema_tables_views(mylite_db *database)
 {
     static const char *const expected_tables[] = {
-        "COLUMNS",
-        "SCHEMATA",
-        "STATISTICS",
-        "TABLES",
+        "COLUMNS", "ENGINES", "SCHEMATA", "STATISTICS", "TABLES",
     };
     mylite_stmt *stmt = NULL;
     int failures =

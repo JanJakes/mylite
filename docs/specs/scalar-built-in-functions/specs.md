@@ -104,11 +104,12 @@ by common scalar expressions:
 - string functions: `CONCAT`, `LENGTH`, `OCTET_LENGTH`, `CHAR_LENGTH`,
   `CHARACTER_LENGTH`, `LOWER`, `LCASE`, `UPPER`, `UCASE`, `LEFT`, `RIGHT`,
   `REPLACE`, `CONCAT_WS`, `SUBSTRING`, `SUBSTR`, `MID`, `TRIM`, `LTRIM`,
-  `RTRIM`, `ASCII`, `ORD`, `LOCATE`, `POSITION`, `INSTR`, `INSERT`, `REPEAT`,
-  `SPACE`, `REVERSE`, `LPAD`, and `RPAD`; see
+  `RTRIM`, `ASCII`, `ORD`, `LOCATE`, `POSITION`, `INSTR`, `INSERT`, `QUOTE`,
+  `REPEAT`, `SPACE`, `REVERSE`, `LPAD`, and `RPAD`; see
   `docs/specs/string-functions-substring-trim/specs.md` and
   `docs/specs/string-search-code-functions/specs.md` and
   `docs/specs/string-insert-function/specs.md` and
+  `docs/specs/string-quote-function/specs.md` and
   `docs/specs/string-padding-repeat-functions/specs.md`
 - numeric functions: `ABS`, `SIGN`, `FLOOR`, `CEIL`, `CEILING`, `MOD`, and
   `PI`
@@ -125,8 +126,8 @@ runtime tests for scalar rows, NULL propagation, UTF-8 length and substring
 handling, zero and negative `LEFT`/`RIGHT` counts, `SUBSTRING` `FROM` / `FOR`
 syntax, trim direction syntax, byte-based `ASCII`, packed-byte `ORD`,
 `LOCATE` / `POSITION` / `INSTR` search positions, start-position edges,
-`INSERT` string splicing, padding, repetition, spaces, UTF-8 reversal,
-empty pad strings,
+`INSERT` string splicing, `QUOTE` SQL-literal escaping, `QUOTE` numeric-source
+metadata, padding, repetition, spaces, UTF-8 reversal, empty pad strings,
 `MOD(..., 0)` warnings, table projection, filters, ordering, update assignment
 expressions, delete predicates, unsupported functions, unsupported arity, and
 selected result metadata.
@@ -650,6 +651,8 @@ SELECT
   POSITION('ph' IN 'alpha') AS position_value,
   INSTR('alpha', 'z') AS instr_miss,
   REPLACE('a.b.b', 'b', 'x') AS replaced,
+  QUOTE('Don''t') AS quoted_text,
+  QUOTE(NULL) AS quoted_null,
   REPEAT('xy', -1) AS repeat_neg,
   LPAD('hi', 5, '.') AS lpad_value,
   TRIM(LEADING 'x' FROM 'xxhix') AS trim_leading,
@@ -661,7 +664,7 @@ Expected row:
 
 ```text
 0, NULL, 2, 6, NULL, a,,b, ab, def, bcd, ef, 3, 0,
-a.x.x, empty string, ...hi, hix, 417A, Az
+a.x.x, 'Don\'t', NULL text, empty string, ...hi, hix, 417A, Az
 ```
 
 ### Numeric results and warnings

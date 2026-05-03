@@ -26,6 +26,7 @@ enum {
     MYLITE_EXPRESSION_ORD_BYTE_BASE = 256,
     MYLITE_UTF8_CONTINUATION_MASK = 0xC0U,
     MYLITE_UTF8_CONTINUATION_MARKER = 0x80U,
+    MYLITE_ASCII_CONTROL_Z = 0x1A,
 };
 
 static const char mylite_pi_text[] = "3.141593";
@@ -141,6 +142,7 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_REVERSE = 37,
     MYLITE_SCALAR_FUNCTION_LPAD = 38,
     MYLITE_SCALAR_FUNCTION_RPAD = 39,
+    MYLITE_SCALAR_FUNCTION_QUOTE = 40,
 };
 
 static int eval_node(const struct mylite_sql_ast_node *node,
@@ -284,6 +286,11 @@ static int eval_insert_nonnull_argument(const struct mylite_sql_ast_node *argume
 static void insert_operands_deinit(struct insert_operands *operands);
 static int insert_text_value(struct insert_text_input input,
                              struct mylite_expression_value *out_value);
+static int eval_quote_function(const struct mylite_sql_ast_node *arguments,
+                               const struct mylite_expression_eval_context *context,
+                               struct mylite_expression_warnings *warnings,
+                               struct mylite_expression_value *out_value);
+static int quote_text_value(const char *text, struct mylite_expression_value *out_value);
 static int eval_repeat_function(const struct mylite_sql_ast_node *arguments,
                                 const struct mylite_expression_eval_context *context,
                                 struct mylite_expression_warnings *warnings,
@@ -771,6 +778,7 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
         return arity == 2U;
     case MYLITE_SCALAR_FUNCTION_SPACE:
     case MYLITE_SCALAR_FUNCTION_REVERSE:
+    case MYLITE_SCALAR_FUNCTION_QUOTE:
         return arity == 1U;
     case MYLITE_SCALAR_FUNCTION_PI:
     case MYLITE_SCALAR_FUNCTION_DATABASE:
@@ -1504,6 +1512,8 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_replace_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_INSERT:
         return eval_insert_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_QUOTE:
+        return eval_quote_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_REPEAT:
         return eval_repeat_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_SPACE:
@@ -2234,6 +2244,73 @@ static int insert_text_value(struct insert_text_input input,
     }
     free(result);
     return status;
+}
+
+static int eval_quote_function(const struct mylite_sql_ast_node *arguments,
+                               const struct mylite_expression_eval_context *context,
+                               struct mylite_expression_warnings *warnings,
+                               struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value value = {0};
+    char *text = NULL;
+    int status = eval_node(arguments->first_child, context, warnings, &value);
+
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&value)) {
+        status = set_text_value("NULL", 4U, out_value);
+        goto cleanup;
+    }
+
+    status = value_to_string(&value, &text);
+    if (status == 0) {
+        status = quote_text_value(text, out_value);
+    }
+
+cleanup:
+    free(text);
+    mylite_expression_value_deinit(&value);
+    return status;
+}
+
+static int quote_text_value(const char *text, struct mylite_expression_value *out_value)
+{
+    const unsigned char *source = (const unsigned char *)(text == NULL ? "" : text);
+    char *result = copy_span_text("'", 1U);
+    size_t result_length = 1U;
+    int status = 0;
+
+    if (result == NULL) {
+        return -1;
+    }
+    for (; *source != '\0'; ++source) {
+        char escaped[2] = {'\\', (char)*source};
+
+        if (*source == '\'' || *source == '\\') {
+            status = append_text(&result, &result_length, escaped, sizeof(escaped));
+        } else if (*source == MYLITE_ASCII_CONTROL_Z) {
+            escaped[1] = 'Z';
+            status = append_text(&result, &result_length, escaped, sizeof(escaped));
+        } else {
+            const char character = (char)*source;
+
+            status = append_text(&result, &result_length, &character, 1U);
+        }
+        if (status != 0) {
+            free(result);
+            return status;
+        }
+    }
+    status = append_text(&result, &result_length, "'", 1U);
+    if (status != 0) {
+        free(result);
+        return status;
+    }
+
+    out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
+    out_value->text_value = result;
+    return 0;
 }
 
 static int eval_repeat_function(const struct mylite_sql_ast_node *arguments,
@@ -4381,6 +4458,7 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"LPAD", MYLITE_SCALAR_FUNCTION_LPAD},
         {"RPAD", MYLITE_SCALAR_FUNCTION_RPAD},
         {"INSERT", MYLITE_SCALAR_FUNCTION_INSERT},
+        {"QUOTE", MYLITE_SCALAR_FUNCTION_QUOTE},
         {"LOCATE", MYLITE_SCALAR_FUNCTION_LOCATE},
         {"POSITION", MYLITE_SCALAR_FUNCTION_LOCATE},
         {"INSTR", MYLITE_SCALAR_FUNCTION_INSTR},
@@ -4442,6 +4520,7 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_REVERSE:
     case MYLITE_SCALAR_FUNCTION_LPAD:
     case MYLITE_SCALAR_FUNCTION_RPAD:
+    case MYLITE_SCALAR_FUNCTION_QUOTE:
     case MYLITE_SCALAR_FUNCTION_LOCATE:
     case MYLITE_SCALAR_FUNCTION_INSTR:
     case MYLITE_SCALAR_FUNCTION_ABS:

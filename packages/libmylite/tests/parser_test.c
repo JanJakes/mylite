@@ -5183,6 +5183,7 @@ static int test_scalar_function_call_syntax(void)
         expected_select_item_count = 13,
         string_function_item_count = 15,
         padding_function_item_count = 6,
+        quote_function_item_count = 2,
         coalesce_nested_arg_index = 2,
     };
     struct mylite_sql_parse_result result;
@@ -5356,6 +5357,15 @@ static int test_scalar_function_call_syntax(void)
     failures += expect_span_text(child_at(arguments, 1U), "'alpha'", "POSITION source");
     failures +=
         expect_function_call(child_at(child_at(select_list, 5U), 0U), "INSTR", 2U, "INSTR call");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT QUOTE('Don''t'), QUOTE(NULL);", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_child_count(select_list, quote_function_item_count, "quote function list");
+    failures +=
+        expect_function_call(child_at(child_at(select_list, 0U), 0U), "QUOTE", 1U, "QUOTE call");
+    failures += expect_function_call(child_at(child_at(select_list, 1U), 0U), "QUOTE", 1U,
+                                     "QUOTE NULL call");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT REPEAT('ab', 3), SPACE(3), REVERSE('abc'), "

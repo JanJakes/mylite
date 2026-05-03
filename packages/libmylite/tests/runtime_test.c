@@ -2418,6 +2418,16 @@ static int test_scalar_builtin_functions_execution(void)
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
              MYLITE_FIELD_FLAG_UNSIGNED,
          1},
+        {"quote_value", NULL, NULL, NULL, NULL, NULL, 48U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"quote_numeric", NULL, NULL, NULL, NULL, NULL, 32U, MYLITE_FIELD_TYPE_VAR_STRING, 31U,
+         255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
     };
     static const struct expected_result_metadata nullable_search_metadata[] = {
         {"ascii_null", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
@@ -2425,6 +2435,11 @@ static int test_scalar_builtin_functions_execution(void)
         {"locate_null", NULL, NULL, NULL, NULL, NULL, 11U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
          MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
         {"insert_null", NULL, NULL, NULL, NULL, NULL, 16U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"quote_null", NULL, NULL, NULL, NULL, NULL, 16U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
          0U,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
              MYLITE_FIELD_FLAG_UNSIGNED,
@@ -2474,6 +2489,21 @@ static int test_scalar_builtin_functions_execution(void)
          1},
         {"insert_latin1", NULL, NULL, NULL, NULL, NULL, 13U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U,
          0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"quote_latin1", NULL, NULL, NULL, NULL, NULL, 12U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+    };
+    static const struct expected_result_metadata quote_table_metadata[] = {
+        {"quote_n", NULL, NULL, NULL, NULL, NULL, 96U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"quote_s", NULL, NULL, NULL, NULL, NULL, 168U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
              MYLITE_FIELD_FLAG_UNSIGNED,
          1},
@@ -2694,6 +2724,23 @@ static int test_scalar_builtin_functions_execution(void)
     };
     static const char *const insert_null_short_circuit_columns[] = {"null_replacement"};
     static const char *const insert_null_short_circuit_values[] = {NULL};
+    static const char *const quote_columns[] = {
+        "plain", "empty_q",   "apostrophe",   "backslash",   "ctrl_z",       "controls",
+        "utf8",  "null_text", "null_is_null", "null_length", "numeric_text",
+    };
+    static const char *const quote_values[] = {
+        "'plain'",
+        "''",
+        "'Don\\'t'",
+        "'back\\\\slash'",
+        "'\\Z'",
+        "'line\ntab\tcr\rend'",
+        "\x27\xE6\xB5\xB7\xE8\xB1\x9A\x27",
+        "NULL",
+        "0",
+        "4",
+        "'42'",
+    };
     static const char *const abs_in_columns[] = {"abs_in"};
     static const char *const abs_in_values[] = {"1"};
     static const char *const projection_columns[] = {"id", "title"};
@@ -2721,6 +2768,13 @@ static int test_scalar_builtin_functions_execution(void)
         "2",
         "B-a",
     };
+    static const char *const quote_projection_columns[] = {"id", "quoted"};
+    static const char *const quote_projection_values[] = {
+        "1",
+        "'alpha'",
+        "2",
+        "'Beta'",
+    };
     static const char *const id_column[] = {"id"};
     static const char *const n_column[] = {"n"};
     static const char *const id_2[] = {"2"};
@@ -2732,6 +2786,7 @@ static int test_scalar_builtin_functions_execution(void)
     static const char *const updated_padding_values[] = {"2", "x-be", "6"};
     static const char *const updated_search_values[] = {"2", "x-be", "120"};
     static const char *const updated_insert_values[] = {"1", "a-ha", "1"};
+    static const char *const updated_quote_values[] = {"1", "'a-ha'", "1"};
     static const char *const all_id_values[] = {"1", "2", "3"};
     static const char *const remaining_values[] = {"1"};
     mylite_db *database = NULL;
@@ -2814,7 +2869,9 @@ static int test_scalar_builtin_functions_execution(void)
                             "REVERSE('abc') AS reverse_value, "
                             "LPAD('hi', 5, '.') AS lpad_value, "
                             "RPAD('hi', 5, '.') AS rpad_value, "
-                            "INSERT('Quadratic', 3, 4, 'What') AS insert_value",
+                            "INSERT('Quadratic', 3, 4, 'What') AS insert_value, "
+                            "QUOTE('Don''t') AS quote_value, "
+                            "QUOTE(42) AS quote_numeric",
                             MYLITE_OK, &stmt);
     failures += expect_result_metadata(
         stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "scalar function metadata");
@@ -2826,7 +2883,8 @@ static int test_scalar_builtin_functions_execution(void)
     failures += prepare_sql(database,
                             "SELECT ASCII(NULL) AS ascii_null, "
                             "LOCATE('a', NULL) AS locate_null, "
-                            "INSERT('abc', NULL, 1, 'x') AS insert_null",
+                            "INSERT('abc', NULL, 1, 'x') AS insert_null, "
+                            "QUOTE(NULL) AS quote_null",
                             MYLITE_OK, &stmt);
     failures += expect_result_metadata(
         stmt, nullable_search_metadata,
@@ -2849,7 +2907,8 @@ static int test_scalar_builtin_functions_execution(void)
                             "REVERSE('abc') AS reverse_latin1, "
                             "LPAD('hi', 5, '.') AS lpad_latin1, "
                             "RPAD('hi', 5, '.') AS rpad_latin1, "
-                            "INSERT('Quadratic', 3, 4, 'What') AS insert_latin1",
+                            "INSERT('Quadratic', 3, 4, 'What') AS insert_latin1, "
+                            "QUOTE('Don''t') AS quote_latin1",
                             MYLITE_OK, &stmt);
     failures += expect_result_metadata(stmt, latin1_metadata,
                                        (int)(sizeof(latin1_metadata) / sizeof(latin1_metadata[0])),
@@ -3051,6 +3110,22 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_int(mylite_warning_count(database), 0,
                            "string insert null short-circuit warning count");
 
+    failures +=
+        expect_select_rows(database,
+                           "SELECT QUOTE('plain') AS plain, "
+                           "QUOTE('') AS empty_q, "
+                           "QUOTE('Don''t') AS apostrophe, "
+                           "QUOTE('back\\\\slash') AS backslash, "
+                           "QUOTE('\\Z') AS ctrl_z, "
+                           "QUOTE('line\\ntab\\tcr\\rend') AS controls, "
+                           "QUOTE('\xE6\xB5\xB7\xE8\xB1\x9A') AS utf8, "
+                           "QUOTE(NULL) AS null_text, "
+                           "QUOTE(NULL) IS NULL AS null_is_null, "
+                           "LENGTH(QUOTE(NULL)) AS null_length, "
+                           "QUOTE(42) AS numeric_text",
+                           quote_columns, (int)(sizeof(quote_columns) / sizeof(quote_columns[0])),
+                           quote_values, 1, "string quote scalar values");
+
     failures += expect_select_rows(database, "SELECT ABS(1 IN (1)) AS abs_in", abs_in_columns, 1,
                                    abs_in_values, 1, "function IN predicate argument");
 
@@ -3077,6 +3152,14 @@ static int test_scalar_builtin_functions_execution(void)
                             "INSERT INTO t (s,n) VALUES "
                             "('alpha',1),('Beta',-2),(NULL,NULL)",
                             MYLITE_DONE);
+    failures += prepare_sql(database, "SELECT QUOTE(n) AS quote_n, QUOTE(s) AS quote_s FROM t",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, quote_table_metadata,
+        (int)(sizeof(quote_table_metadata) / sizeof(quote_table_metadata[0])),
+        "table quote function metadata");
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += expect_select_rows(database,
                                    "SELECT id, CONCAT(UPPER(LEFT(s,1)), "
                                    "RIGHT(s,LENGTH(s)-1)) AS title "
@@ -3117,12 +3200,19 @@ static int test_scalar_builtin_functions_execution(void)
                                    "FROM t WHERE ISNULL(s)=0 ORDER BY id",
                                    insert_projection_columns, 2, insert_projection_values, 2,
                                    "table insert function projection");
+    failures += expect_select_rows(database,
+                                   "SELECT id, QUOTE(s) AS quoted "
+                                   "FROM t WHERE ISNULL(s)=0 ORDER BY id",
+                                   quote_projection_columns, 2, quote_projection_values, 2,
+                                   "table quote function projection");
     failures += expect_select_rows(database, "SELECT id FROM t WHERE LPAD(s, 5, '.')='alpha'",
                                    id_column, 1, n_1, 1, "lpad function where");
     failures += expect_select_rows(database, "SELECT id FROM t WHERE REVERSE(s)='ateB'", id_column,
                                    1, id_2, 1, "reverse function where");
     failures += expect_select_rows(database, "SELECT id FROM t WHERE INSERT(s, 2, 2, '-')='B-a'",
                                    id_column, 1, id_2, 1, "insert function where");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE QUOTE(s)='''Beta'''",
+                                   id_column, 1, id_2, 1, "quote function where");
     failures += expect_select_rows(database,
                                    "SELECT id FROM t WHERE ISNULL(s)=0 ORDER BY REVERSE(s), id "
                                    "LIMIT 1",
@@ -3131,6 +3221,10 @@ static int test_scalar_builtin_functions_execution(void)
                                    "SELECT id FROM t WHERE ISNULL(s)=0 "
                                    "ORDER BY INSERT(LOWER(s), 2, 0, 'z'), id LIMIT 1",
                                    id_column, 1, n_1, 1, "insert function order");
+    failures += expect_select_rows(database,
+                                   "SELECT id FROM t WHERE ISNULL(s)=0 "
+                                   "ORDER BY QUOTE(s), id LIMIT 1",
+                                   id_column, 1, n_1, 1, "quote function order");
     failures += expect_select_rows(database, "SELECT id FROM t ORDER BY COALESCE(n,0), id LIMIT 1",
                                    id_column, 1, id_2, 1, "table function order");
     failures += expect_select_rows(
@@ -3173,6 +3267,12 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_select_rows(database, "SELECT id, s, n FROM t WHERE id = 1", id_s_n_columns,
                                    3, updated_insert_values, 1, "updated insert function values");
 
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE t SET s = QUOTE(s) WHERE QUOTE(s) = '''a-ha'''", 1,
+        "update quote function assignment and predicate");
+    failures += expect_select_rows(database, "SELECT id, s, n FROM t WHERE id = 1", id_s_n_columns,
+                                   3, updated_quote_values, 1, "updated quote function values");
+
     failures += prepare_sql(database, "UPDATE t SET n = 5 WHERE MOD(7,0)", MYLITE_OK, &stmt);
     failures +=
         expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "update function warning promoted");
@@ -3211,6 +3311,12 @@ static int test_scalar_builtin_functions_execution(void)
         "delete search function predicate");
     failures += expect_select_rows(database, "SELECT id FROM t ORDER BY id", id_column, 1,
                                    remaining_values, 1, "delete function remaining rows");
+    failures += execute_sql(database, "INSERT INTO t (s,n) VALUES ('quote-me',4)", MYLITE_DONE);
+    failures +=
+        execute_sql_expect_done_affected(database, "DELETE FROM t WHERE QUOTE(s) = '''quote-me'''",
+                                         1, "delete quote function predicate");
+    failures += expect_select_rows(database, "SELECT id FROM t ORDER BY id", id_column, 1,
+                                   remaining_values, 1, "delete quote function remaining rows");
 
     failures += prepare_sql(database, "SELECT SIN(1)", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported scalar function");
@@ -3238,6 +3344,10 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_no_stmt_handle(&stmt, "insert three arity syntax");
     failures += prepare_sql(database, "SELECT INSERT('a',1,1,'x','y')", MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "insert five arity syntax");
+    failures += prepare_sql(database, "SELECT QUOTE()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported quote zero arity");
+    failures += prepare_sql(database, "SELECT QUOTE('a','b')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported quote two arity");
     failures += prepare_sql(database, "SELECT SPACE()", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported space zero arity");
     failures += prepare_sql(database, "SELECT SPACE(1,2)", MYLITE_UNSUPPORTED, &stmt);

@@ -27,6 +27,11 @@ enum {
     MYLITE_EXPRESSION_ORD_BYTE_BASE = 256,
     MYLITE_EXPRESSION_HEX_ALPHA_OFFSET = 10,
     MYLITE_EXPRESSION_HEX_LOW_NIBBLE_MASK = 0x0FU,
+    MYLITE_EXPRESSION_BINARY_BASE = 2,
+    MYLITE_EXPRESSION_OCTAL_BASE = 8,
+    MYLITE_EXPRESSION_MIN_BASE = 2,
+    MYLITE_EXPRESSION_MAX_BASE = 36,
+    MYLITE_EXPRESSION_BASE_CONVERSION_BUFFER_SIZE = 66,
     MYLITE_UTF8_CONTINUATION_MASK = 0xC0U,
     MYLITE_UTF8_CONTINUATION_MARKER = 0x80U,
     MYLITE_ASCII_CONTROL_Z = 0x1A,
@@ -127,6 +132,25 @@ struct cast_integer_parse {
     bool overflow;
 };
 
+struct base_conversion_parse {
+    uint64_t bits;
+    bool saw_digit;
+    bool overflow;
+};
+
+struct base_conversion_parse_input {
+    const char *text;
+    size_t text_length;
+    uint64_t from_base;
+    bool signed_input;
+};
+
+struct base_conversion_format_input {
+    uint64_t bits;
+    uint64_t to_base;
+    bool signed_output;
+};
+
 enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_UNKNOWN = 0,
     MYLITE_SCALAR_FUNCTION_CONCAT = 1,
@@ -175,6 +199,9 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_MAKE_SET = 44,
     MYLITE_SCALAR_FUNCTION_HEX = 45,
     MYLITE_SCALAR_FUNCTION_UNHEX = 46,
+    MYLITE_SCALAR_FUNCTION_BIN = 47,
+    MYLITE_SCALAR_FUNCTION_OCT = 48,
+    MYLITE_SCALAR_FUNCTION_CONV = 49,
 };
 
 static int eval_node(const struct mylite_sql_ast_node *node,
@@ -426,6 +453,49 @@ static int unhex_text_value(const char *text, size_t text_length,
 static int append_unhex_warning(struct mylite_expression_warnings *warnings, const char *text,
                                 size_t text_length);
 static int hex_digit_value(unsigned char character);
+static int eval_base_conversion_function(enum mylite_scalar_function_id function_id,
+                                         const struct mylite_sql_ast_node *arguments,
+                                         const struct mylite_expression_eval_context *context,
+                                         struct mylite_expression_warnings *warnings,
+                                         struct mylite_expression_value *out_value);
+static int eval_bin_oct_function(const struct mylite_sql_ast_node *argument, uint64_t to_base,
+                                 const struct mylite_expression_eval_context *context,
+                                 struct mylite_expression_warnings *warnings,
+                                 struct mylite_expression_value *out_value);
+static int eval_conv_function(const struct mylite_sql_ast_node *arguments,
+                              const struct mylite_expression_eval_context *context,
+                              struct mylite_expression_warnings *warnings,
+                              struct mylite_expression_value *out_value);
+static int eval_conv_conversion(const struct mylite_expression_value *number, int64_t from_base,
+                                const struct mylite_sql_ast_node *number_argument, int64_t to_base,
+                                struct mylite_expression_warnings *warnings,
+                                struct mylite_expression_value *out_value);
+static bool base_conversion_abs_base(int64_t base, uint64_t *out_abs_base);
+static int base_argument_to_signed_integer(const struct mylite_expression_value *value,
+                                           const struct mylite_sql_ast_node *argument,
+                                           struct mylite_expression_warnings *warnings,
+                                           int64_t *out_base);
+static bool base_argument_uses_exact_rounding(const struct mylite_sql_ast_node *argument);
+static int base_conversion_input_to_text(const struct mylite_expression_value *value,
+                                         const struct mylite_sql_ast_node *argument,
+                                         char **out_text, size_t *out_length);
+static int base_conversion_real_to_text(double value, char **out_text, size_t *out_length);
+static int base_conversion_exact_numeric_literal_to_text(const struct mylite_sql_ast_node *argument,
+                                                         char **out_text, size_t *out_length,
+                                                         bool *out_matched);
+static int copy_base_conversion_literal_text(char sign, const struct mylite_sql_ast_node *literal,
+                                             char **out_text, size_t *out_length);
+static int parse_base_conversion_input(const char *text, size_t text_length, uint64_t from_base,
+                                       bool signed_input,
+                                       struct mylite_expression_warnings *warnings,
+                                       uint64_t *out_bits);
+static struct base_conversion_parse
+parse_base_conversion_digits(struct base_conversion_parse_input input);
+static int append_base_conversion_warning(struct mylite_expression_warnings *warnings,
+                                          const char *text, size_t text_length);
+static int base_digit_value(unsigned char character);
+static int set_base_conversion_value(struct base_conversion_format_input input,
+                                     struct mylite_expression_value *out_value);
 static int eval_mod_function(const struct mylite_sql_ast_node *arguments,
                              const struct mylite_expression_eval_context *context,
                              struct mylite_expression_warnings *warnings,
@@ -856,6 +926,8 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_ORD:
     case MYLITE_SCALAR_FUNCTION_HEX:
     case MYLITE_SCALAR_FUNCTION_UNHEX:
+    case MYLITE_SCALAR_FUNCTION_BIN:
+    case MYLITE_SCALAR_FUNCTION_OCT:
     case MYLITE_SCALAR_FUNCTION_ABS:
     case MYLITE_SCALAR_FUNCTION_SIGN:
     case MYLITE_SCALAR_FUNCTION_FLOOR:
@@ -881,6 +953,7 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_IF:
     case MYLITE_SCALAR_FUNCTION_LPAD:
     case MYLITE_SCALAR_FUNCTION_RPAD:
+    case MYLITE_SCALAR_FUNCTION_CONV:
         return arity == 3U;
     case MYLITE_SCALAR_FUNCTION_REPEAT:
         return arity == 2U;
@@ -1646,6 +1719,10 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_hex_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_UNHEX:
         return eval_unhex_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_BIN:
+    case MYLITE_SCALAR_FUNCTION_OCT:
+    case MYLITE_SCALAR_FUNCTION_CONV:
+        return eval_base_conversion_function(function_id, arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_MOD:
         return eval_mod_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_ABS:
@@ -3565,6 +3642,511 @@ static int hex_digit_value(unsigned char character)
     return -1;
 }
 
+static int eval_base_conversion_function(enum mylite_scalar_function_id function_id,
+                                         const struct mylite_sql_ast_node *arguments,
+                                         const struct mylite_expression_eval_context *context,
+                                         struct mylite_expression_warnings *warnings,
+                                         struct mylite_expression_value *out_value)
+{
+    switch (function_id) {
+    case MYLITE_SCALAR_FUNCTION_BIN:
+        return eval_bin_oct_function(child_at(arguments, 0U), MYLITE_EXPRESSION_BINARY_BASE,
+                                     context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_OCT:
+        return eval_bin_oct_function(child_at(arguments, 0U), MYLITE_EXPRESSION_OCTAL_BASE, context,
+                                     warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_CONV:
+        return eval_conv_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_UNKNOWN:
+    case MYLITE_SCALAR_FUNCTION_CONCAT:
+    case MYLITE_SCALAR_FUNCTION_CONCAT_WS:
+    case MYLITE_SCALAR_FUNCTION_LENGTH:
+    case MYLITE_SCALAR_FUNCTION_CHAR_LENGTH:
+    case MYLITE_SCALAR_FUNCTION_LOWER:
+    case MYLITE_SCALAR_FUNCTION_UPPER:
+    case MYLITE_SCALAR_FUNCTION_LEFT:
+    case MYLITE_SCALAR_FUNCTION_RIGHT:
+    case MYLITE_SCALAR_FUNCTION_SUBSTRING:
+    case MYLITE_SCALAR_FUNCTION_TRIM:
+    case MYLITE_SCALAR_FUNCTION_LTRIM:
+    case MYLITE_SCALAR_FUNCTION_RTRIM:
+    case MYLITE_SCALAR_FUNCTION_REPLACE:
+    case MYLITE_SCALAR_FUNCTION_ABS:
+    case MYLITE_SCALAR_FUNCTION_SIGN:
+    case MYLITE_SCALAR_FUNCTION_FLOOR:
+    case MYLITE_SCALAR_FUNCTION_CEIL:
+    case MYLITE_SCALAR_FUNCTION_MOD:
+    case MYLITE_SCALAR_FUNCTION_PI:
+    case MYLITE_SCALAR_FUNCTION_IF:
+    case MYLITE_SCALAR_FUNCTION_IFNULL:
+    case MYLITE_SCALAR_FUNCTION_NULLIF:
+    case MYLITE_SCALAR_FUNCTION_COALESCE:
+    case MYLITE_SCALAR_FUNCTION_ISNULL:
+    case MYLITE_SCALAR_FUNCTION_DATABASE:
+    case MYLITE_SCALAR_FUNCTION_SCHEMA:
+    case MYLITE_SCALAR_FUNCTION_VERSION:
+    case MYLITE_SCALAR_FUNCTION_LAST_INSERT_ID:
+    case MYLITE_SCALAR_FUNCTION_ROW_COUNT:
+    case MYLITE_SCALAR_FUNCTION_ASCII:
+    case MYLITE_SCALAR_FUNCTION_ORD:
+    case MYLITE_SCALAR_FUNCTION_LOCATE:
+    case MYLITE_SCALAR_FUNCTION_INSTR:
+    case MYLITE_SCALAR_FUNCTION_INSERT:
+    case MYLITE_SCALAR_FUNCTION_REPEAT:
+    case MYLITE_SCALAR_FUNCTION_SPACE:
+    case MYLITE_SCALAR_FUNCTION_REVERSE:
+    case MYLITE_SCALAR_FUNCTION_LPAD:
+    case MYLITE_SCALAR_FUNCTION_RPAD:
+    case MYLITE_SCALAR_FUNCTION_QUOTE:
+    case MYLITE_SCALAR_FUNCTION_ELT:
+    case MYLITE_SCALAR_FUNCTION_FIELD:
+    case MYLITE_SCALAR_FUNCTION_FIND_IN_SET:
+    case MYLITE_SCALAR_FUNCTION_MAKE_SET:
+    case MYLITE_SCALAR_FUNCTION_HEX:
+    case MYLITE_SCALAR_FUNCTION_UNHEX:
+        return -1;
+    }
+    return -1;
+}
+
+static int eval_bin_oct_function(const struct mylite_sql_ast_node *argument, uint64_t to_base,
+                                 const struct mylite_expression_eval_context *context,
+                                 struct mylite_expression_warnings *warnings,
+                                 struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value value = {0};
+    char *text = NULL;
+    size_t text_length = 0U;
+    uint64_t bits = 0U;
+    int status = eval_node(argument, context, warnings, &value);
+
+    if (status != 0) {
+        return status;
+    }
+    if (is_null(&value)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        mylite_expression_value_deinit(&value);
+        return 0;
+    }
+    status = base_conversion_input_to_text(&value, argument, &text, &text_length);
+    if (status == 0 && text_length == 0U) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+    } else if (status == 0) {
+        status = parse_base_conversion_input(text, text_length, MYLITE_EXPRESSION_DECIMAL_BASE,
+                                             false, warnings, &bits);
+        if (status == 0) {
+            status = set_base_conversion_value(
+                (struct base_conversion_format_input){
+                    .bits = bits,
+                    .to_base = to_base,
+                    .signed_output = false,
+                },
+                out_value);
+        }
+    }
+    free(text);
+    mylite_expression_value_deinit(&value);
+    return status;
+}
+
+static int eval_conv_function(const struct mylite_sql_ast_node *arguments,
+                              const struct mylite_expression_eval_context *context,
+                              struct mylite_expression_warnings *warnings,
+                              struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value number = {0};
+    struct mylite_expression_value from = {0};
+    struct mylite_expression_value to_value = {0};
+    int64_t from_base = 0;
+    int64_t to_base = 0;
+    int status = eval_node(child_at(arguments, 0U), context, warnings, &number);
+
+    if (status == 0) {
+        status = eval_node(child_at(arguments, 1U), context, warnings, &from);
+    }
+    if (status == 0) {
+        status = eval_node(child_at(arguments, 2U), context, warnings, &to_value);
+    }
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&number) || is_null(&from) || is_null(&to_value)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+
+    status = base_argument_to_signed_integer(&from, child_at(arguments, 1U), warnings, &from_base);
+    if (status == 0) {
+        status =
+            base_argument_to_signed_integer(&to_value, child_at(arguments, 2U), warnings, &to_base);
+    }
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (!base_conversion_abs_base(from_base, &(uint64_t){0}) ||
+        !base_conversion_abs_base(to_base, &(uint64_t){0})) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    status = eval_conv_conversion(&number, from_base, child_at(arguments, 0U), to_base, warnings,
+                                  out_value);
+
+cleanup:
+    mylite_expression_value_deinit(&number);
+    mylite_expression_value_deinit(&from);
+    mylite_expression_value_deinit(&to_value);
+    return status;
+}
+
+static int eval_conv_conversion(const struct mylite_expression_value *number, int64_t from_base,
+                                const struct mylite_sql_ast_node *number_argument, int64_t to_base,
+                                struct mylite_expression_warnings *warnings,
+                                struct mylite_expression_value *out_value)
+{
+    char *text = NULL;
+    size_t text_length = 0U;
+    uint64_t from_base_abs = 0U;
+    uint64_t to_base_abs = 0U;
+    uint64_t bits = 0U;
+    int status = 0;
+
+    if (!base_conversion_abs_base(from_base, &from_base_abs) ||
+        !base_conversion_abs_base(to_base, &to_base_abs)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        return 0;
+    }
+
+    status = base_conversion_input_to_text(number, number_argument, &text, &text_length);
+    if (status == 0 && text_length == 0U) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+    } else if (status == 0) {
+        status = parse_base_conversion_input(text, text_length, from_base_abs, from_base < 0,
+                                             warnings, &bits);
+        if (status == 0) {
+            status = set_base_conversion_value(
+                (struct base_conversion_format_input){
+                    .bits = bits,
+                    .to_base = to_base_abs,
+                    .signed_output = to_base < 0,
+                },
+                out_value);
+        }
+    }
+    free(text);
+    return status;
+}
+
+static bool base_conversion_abs_base(int64_t base, uint64_t *out_abs_base)
+{
+    if (base >= MYLITE_EXPRESSION_MIN_BASE && base <= MYLITE_EXPRESSION_MAX_BASE) {
+        *out_abs_base = (uint64_t)base;
+        return true;
+    }
+    if (base <= -MYLITE_EXPRESSION_MIN_BASE && base >= -MYLITE_EXPRESSION_MAX_BASE) {
+        *out_abs_base = (uint64_t)-base;
+        return true;
+    }
+    return false;
+}
+
+static int base_argument_to_signed_integer(const struct mylite_expression_value *value,
+                                           const struct mylite_sql_ast_node *argument,
+                                           struct mylite_expression_warnings *warnings,
+                                           int64_t *out_base)
+{
+    if (value == NULL || out_base == NULL) {
+        return -1;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_REAL) {
+        *out_base = base_argument_uses_exact_rounding(argument)
+                        ? cast_real_to_signed_integer(value->real_value)
+                        : cast_real_to_signed_integer_half_even(value->real_value);
+        return 0;
+    }
+    return cast_value_to_signed_integer(value, warnings, out_base);
+}
+
+static bool base_argument_uses_exact_rounding(const struct mylite_sql_ast_node *argument)
+{
+    while (argument != NULL && argument->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
+        argument = child_at(argument, 0U);
+    }
+    if (argument == NULL) {
+        return false;
+    }
+    if (argument->kind == MYLITE_SQL_AST_LITERAL) {
+        return argument->literal_kind == MYLITE_SQL_AST_LITERAL_DECIMAL;
+    }
+    if (argument->kind == MYLITE_SQL_AST_UNARY_EXPRESSION &&
+        (argument->operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ||
+         argument->operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE)) {
+        return base_argument_uses_exact_rounding(child_at(argument, 0U));
+    }
+    return false;
+}
+
+static int base_conversion_input_to_text(const struct mylite_expression_value *value,
+                                         const struct mylite_sql_ast_node *argument,
+                                         char **out_text, size_t *out_length)
+{
+    char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
+    bool matched_literal = false;
+    int length = 0;
+
+    if (value == NULL || out_text == NULL || out_length == NULL) {
+        return -1;
+    }
+    *out_text = NULL;
+    *out_length = 0U;
+
+    {
+        int status = base_conversion_exact_numeric_literal_to_text(argument, out_text, out_length,
+                                                                   &matched_literal);
+
+        if (status != 0 || matched_literal) {
+            return status;
+        }
+    }
+
+    switch (value->kind) {
+    case MYLITE_EXPRESSION_VALUE_INT64:
+        length = snprintf(buffer, sizeof(buffer), "%lld", (long long)value->int64_value);
+        break;
+    case MYLITE_EXPRESSION_VALUE_UINT64:
+        length = snprintf(buffer, sizeof(buffer), "%llu", (unsigned long long)value->uint64_value);
+        break;
+    case MYLITE_EXPRESSION_VALUE_REAL:
+        return base_conversion_real_to_text(value->real_value, out_text, out_length);
+    case MYLITE_EXPRESSION_VALUE_TEXT:
+        *out_length = value->text_value == NULL ? 0U : value->text_length;
+        *out_text = copy_span_text(value->text_value == NULL ? "" : value->text_value, *out_length);
+        return *out_text == NULL ? -1 : 0;
+    case MYLITE_EXPRESSION_VALUE_NULL:
+        return -1;
+    }
+
+    if (length < 0 || (size_t)length >= sizeof(buffer)) {
+        return -1;
+    }
+    *out_text = copy_span_text(buffer, (size_t)length);
+    if (*out_text == NULL) {
+        return -1;
+    }
+    *out_length = (size_t)length;
+    return 0;
+}
+
+static int base_conversion_real_to_text(double value, char **out_text, size_t *out_length)
+{
+    int status = cast_real_to_string(value, out_text);
+
+    if (status == 0) {
+        *out_length = strlen(*out_text);
+    }
+    return status;
+}
+
+static int base_conversion_exact_numeric_literal_to_text(const struct mylite_sql_ast_node *argument,
+                                                         char **out_text, size_t *out_length,
+                                                         bool *out_matched)
+{
+    char sign = '\0';
+
+    if (out_matched == NULL) {
+        return -1;
+    }
+    *out_matched = false;
+    while (argument != NULL && argument->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
+        argument = child_at(argument, 0U);
+    }
+    if (argument != NULL && argument->kind == MYLITE_SQL_AST_UNARY_EXPRESSION &&
+        (argument->operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ||
+         argument->operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE)) {
+        sign = argument->operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE ? '-' : '+';
+        argument = child_at(argument, 0U);
+        while (argument != NULL && argument->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
+            argument = child_at(argument, 0U);
+        }
+    }
+    if (argument == NULL || argument->kind != MYLITE_SQL_AST_LITERAL ||
+        (argument->literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER &&
+         argument->literal_kind != MYLITE_SQL_AST_LITERAL_DECIMAL)) {
+        return 0;
+    }
+
+    *out_matched = true;
+    return copy_base_conversion_literal_text(sign, argument, out_text, out_length);
+}
+
+static int copy_base_conversion_literal_text(char sign, const struct mylite_sql_ast_node *literal,
+                                             char **out_text, size_t *out_length)
+{
+    const char *text = literal->span.text == NULL ? "" : literal->span.text;
+    size_t text_length = literal->span.length;
+    size_t sign_length = sign == '\0' ? 0U : 1U;
+    bool prepend_zero = literal->literal_kind == MYLITE_SQL_AST_LITERAL_DECIMAL &&
+                        text_length > 0U && text[0] == '.';
+    size_t output_length = sign_length + (prepend_zero ? 1U : 0U) + text_length;
+    char *copy = malloc(output_length + 1U);
+    size_t offset = 0U;
+
+    if (copy == NULL) {
+        return -1;
+    }
+    if (sign != '\0') {
+        copy[offset++] = sign;
+    }
+    if (prepend_zero) {
+        copy[offset++] = '0';
+    }
+    memcpy(copy + offset, text, text_length);
+    offset += text_length;
+    copy[offset] = '\0';
+    *out_text = copy;
+    *out_length = output_length;
+    return 0;
+}
+
+static int parse_base_conversion_input(const char *text, size_t text_length, uint64_t from_base,
+                                       bool signed_input,
+                                       struct mylite_expression_warnings *warnings,
+                                       uint64_t *out_bits)
+{
+    struct base_conversion_parse parsed =
+        parse_base_conversion_digits((struct base_conversion_parse_input){
+            .text = text,
+            .text_length = text_length,
+            .from_base = from_base,
+            .signed_input = signed_input,
+        });
+
+    if (out_bits == NULL) {
+        return -1;
+    }
+    *out_bits = parsed.bits;
+    if (!parsed.saw_digit || parsed.overflow) {
+        return append_base_conversion_warning(warnings, text, text_length);
+    }
+    return 0;
+}
+
+static struct base_conversion_parse
+parse_base_conversion_digits(struct base_conversion_parse_input input)
+{
+    const unsigned char *source = (const unsigned char *)(input.text == NULL ? "" : input.text);
+    size_t index = 0U;
+    uint64_t magnitude = 0U;
+    bool negative = false;
+    struct base_conversion_parse parsed = {0};
+
+    while (index < input.text_length && isspace(source[index])) {
+        ++index;
+    }
+    if (index < input.text_length && (source[index] == '+' || source[index] == '-')) {
+        negative = source[index] == '-';
+        ++index;
+    }
+
+    while (index < input.text_length) {
+        int digit = base_digit_value(source[index]);
+        uint64_t limit = UINT64_MAX;
+
+        if (input.signed_input) {
+            limit = negative ? mylite_expression_int64_min_magnitude : (uint64_t)INT64_MAX;
+        }
+
+        if (digit < 0 || (uint64_t)digit >= input.from_base) {
+            break;
+        }
+        parsed.saw_digit = true;
+        if (magnitude > (limit - (uint64_t)digit) / input.from_base) {
+            magnitude = limit;
+            parsed.overflow = true;
+        } else if (!parsed.overflow) {
+            magnitude = (magnitude * input.from_base) + (uint64_t)digit;
+        }
+        ++index;
+    }
+
+    if (!parsed.saw_digit || (parsed.overflow && negative && !input.signed_input)) {
+        parsed.bits = 0U;
+    } else {
+        parsed.bits = negative ? unsigned_complement_from_magnitude(magnitude) : magnitude;
+    }
+    return parsed;
+}
+
+static int append_base_conversion_warning(struct mylite_expression_warnings *warnings,
+                                          const char *text, size_t text_length)
+{
+    char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
+    int preview = text_length > MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
+                      ? MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
+                      : (int)text_length;
+    int length = snprintf(message, sizeof(message), "Truncated incorrect DECIMAL value: '%.*s'",
+                          preview, text == NULL ? "" : text);
+
+    if (length < 0) {
+        return -1;
+    }
+    return append_warning(warnings, MYLITE_WARNING_TRUNCATED_WRONG_VALUE, message);
+}
+
+static int base_digit_value(unsigned char character)
+{
+    if (character >= '0' && character <= '9') {
+        return character - '0';
+    }
+    if (character >= 'A' && character <= 'Z') {
+        return (character - 'A') + MYLITE_EXPRESSION_HEX_ALPHA_OFFSET;
+    }
+    if (character >= 'a' && character <= 'z') {
+        return (character - 'a') + MYLITE_EXPRESSION_HEX_ALPHA_OFFSET;
+    }
+    return -1;
+}
+
+static int set_base_conversion_value(struct base_conversion_format_input input,
+                                     struct mylite_expression_value *out_value)
+{
+    static const char digits[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    char reversed[MYLITE_EXPRESSION_BASE_CONVERSION_BUFFER_SIZE];
+    char result[MYLITE_EXPRESSION_BASE_CONVERSION_BUFFER_SIZE];
+    uint64_t magnitude = input.bits;
+    size_t reversed_length = 0U;
+    size_t result_length = 0U;
+    bool negative = false;
+
+    if (input.signed_output) {
+        int64_t signed_value = signed_integer_from_uint64(input.bits);
+
+        if (signed_value < 0) {
+            negative = true;
+            magnitude = signed_value == INT64_MIN ? mylite_expression_int64_min_magnitude
+                                                  : (uint64_t)-signed_value;
+        } else {
+            magnitude = (uint64_t)signed_value;
+        }
+    }
+
+    do {
+        reversed[reversed_length++] = digits[magnitude % input.to_base];
+        magnitude /= input.to_base;
+    } while (magnitude != 0U && reversed_length < sizeof(reversed));
+
+    if (negative) {
+        result[result_length++] = '-';
+    }
+    while (reversed_length != 0U && result_length + 1U < sizeof(result)) {
+        result[result_length++] = reversed[--reversed_length];
+    }
+    if (reversed_length != 0U) {
+        return -1;
+    }
+    result[result_length] = '\0';
+    return set_text_value(result, result_length, out_value);
+}
+
 static int eval_mod_function(const struct mylite_sql_ast_node *arguments,
                              const struct mylite_expression_eval_context *context,
                              struct mylite_expression_warnings *warnings,
@@ -5345,6 +5927,9 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"MAKE_SET", MYLITE_SCALAR_FUNCTION_MAKE_SET},
         {"HEX", MYLITE_SCALAR_FUNCTION_HEX},
         {"UNHEX", MYLITE_SCALAR_FUNCTION_UNHEX},
+        {"BIN", MYLITE_SCALAR_FUNCTION_BIN},
+        {"OCT", MYLITE_SCALAR_FUNCTION_OCT},
+        {"CONV", MYLITE_SCALAR_FUNCTION_CONV},
         {"LOCATE", MYLITE_SCALAR_FUNCTION_LOCATE},
         {"POSITION", MYLITE_SCALAR_FUNCTION_LOCATE},
         {"INSTR", MYLITE_SCALAR_FUNCTION_INSTR},
@@ -5413,6 +5998,9 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_MAKE_SET:
     case MYLITE_SCALAR_FUNCTION_HEX:
     case MYLITE_SCALAR_FUNCTION_UNHEX:
+    case MYLITE_SCALAR_FUNCTION_BIN:
+    case MYLITE_SCALAR_FUNCTION_OCT:
+    case MYLITE_SCALAR_FUNCTION_CONV:
     case MYLITE_SCALAR_FUNCTION_LOCATE:
     case MYLITE_SCALAR_FUNCTION_INSTR:
     case MYLITE_SCALAR_FUNCTION_ABS:

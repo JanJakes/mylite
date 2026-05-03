@@ -5184,7 +5184,7 @@ static int test_scalar_function_call_syntax(void)
         string_function_item_count = 15,
         padding_function_item_count = 6,
         quote_function_item_count = 2,
-        list_function_item_count = 6,
+        list_function_item_count = 9,
         coalesce_nested_arg_index = 2,
     };
     struct mylite_sql_parse_result result;
@@ -5392,7 +5392,7 @@ static int test_scalar_function_call_syntax(void)
 
     failures += parse_sql("SELECT ELT(2, 'a', 'b'), FIELD('b', 'a', 'b'), "
                           "FIND_IN_SET('b', 'a,b'), MAKE_SET(3, 'a', 'b'), "
-                          "HEX('Az'), UNHEX('417a');",
+                          "HEX('Az'), UNHEX('417a'), BIN(12), OCT(12), CONV('a',16,2);",
                           MYLITE_SQL_PARSE_OK, &result);
     select_list = child_at(child_at(result.root, 0U), 0U);
     failures +=
@@ -5409,6 +5409,12 @@ static int test_scalar_function_call_syntax(void)
         expect_function_call(child_at(child_at(select_list, 4U), 0U), "HEX", 1U, "HEX call");
     failures +=
         expect_function_call(child_at(child_at(select_list, 5U), 0U), "UNHEX", 1U, "UNHEX call");
+    failures +=
+        expect_function_call(child_at(child_at(select_list, 6U), 0U), "BIN", 1U, "BIN call");
+    failures +=
+        expect_function_call(child_at(child_at(select_list, 7U), 0U), "OCT", 1U, "OCT call");
+    failures +=
+        expect_function_call(child_at(child_at(select_list, 8U), 0U), "CONV", 3U, "CONV call");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT POSITION('a' IN ('abc'));", MYLITE_SQL_PARSE_OK, &result);

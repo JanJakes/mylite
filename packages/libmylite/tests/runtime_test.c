@@ -2478,6 +2478,41 @@ static int test_scalar_builtin_functions_execution(void)
          MYLITE_FIELD_FLAG_BINARY,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
     };
+    static const struct expected_result_metadata base_metadata[] = {
+        {"bin_int", NULL, NULL, NULL, NULL, NULL, 260U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"oct_int", NULL, NULL, NULL, NULL, NULL, 260U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"conv_text", NULL, NULL, NULL, NULL, NULL, 260U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"conv_null", NULL, NULL, NULL, NULL, NULL, 260U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"bin_null", NULL, NULL, NULL, NULL, NULL, 260U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"oct_null", NULL, NULL, NULL, NULL, NULL, 260U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"conv_bad_base", NULL, NULL, NULL, NULL, NULL, 260U, MYLITE_FIELD_TYPE_VAR_STRING, 31U,
+         255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+    };
     static const struct expected_result_metadata nullable_search_metadata[] = {
         {"ascii_null", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
          MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
@@ -2588,6 +2623,24 @@ static int test_scalar_builtin_functions_execution(void)
          MYLITE_FIELD_FLAG_BINARY,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
     };
+    static const struct expected_result_metadata base_latin1_metadata[] = {
+        {"bin_int", NULL, NULL, NULL, NULL, NULL, 65U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"oct_int", NULL, NULL, NULL, NULL, NULL, 65U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"conv_text", NULL, NULL, NULL, NULL, NULL, 65U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"conv_null", NULL, NULL, NULL, NULL, NULL, 65U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+    };
     static const struct expected_result_metadata quote_table_metadata[] = {
         {"quote_n", NULL, NULL, NULL, NULL, NULL, 96U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
@@ -2613,6 +2666,20 @@ static int test_scalar_builtin_functions_execution(void)
         {"unhex_n", NULL, NULL, NULL, NULL, NULL, 6U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
          MYLITE_FIELD_FLAG_BINARY,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+    };
+    static const struct expected_result_metadata base_table_metadata[] = {
+        {"bin_s", NULL, NULL, NULL, NULL, NULL, 260U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"oct_n", NULL, NULL, NULL, NULL, NULL, 260U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"conv_h", NULL, NULL, NULL, NULL, NULL, 260U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
     };
     static const char *const edge_columns[] = {
         "left_zero", "left_negative", "right_zero", "right_negative", "replace_empty",
@@ -2979,6 +3046,126 @@ static int test_scalar_builtin_functions_execution(void)
         "4100FF",
         "3",
     };
+    static const char *const base_columns[] = {
+        "bin_null",
+        "oct_null",
+        "conv_null_n",
+        "conv_null_from",
+        "conv_null_to",
+        "bin_zero",
+        "bin_int",
+        "oct_int",
+        "conv_alpha",
+        "conv_mixed",
+        "conv_base36",
+        "bin_negative",
+        "oct_negative",
+        "conv_negative_signed",
+        "conv_negative_digit",
+        "conv_max_unsigned",
+        "conv_unsigned_signed",
+        "conv_sign_bit_signed",
+        "conv_signed_min",
+        "conv_digit_z",
+        "conv_trailing_invalid",
+        "conv_leading_plus",
+        "conv_leading_minus",
+        "conv_invalid_digit_stop",
+        "conv_empty",
+        "bin_empty",
+        "oct_empty",
+        "conv_decimal",
+        "conv_negative_decimal",
+        "bin_float",
+        "oct_float",
+        "conv_exact_from_base",
+        "conv_approx_from_base",
+        "conv_exact_to_base",
+        "conv_approx_to_base",
+        "conv_negative_unsigned_boundary",
+        "conv_float_over",
+        "bin_float_over",
+        "conv_negative_float_over",
+        "conv_float_uint64_text",
+        "conv_leading_dot_decimal",
+    };
+    static const char *const base_values[] = {
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "0",
+        "1100",
+        "14",
+        "1010",
+        "172",
+        "A",
+        "1111111111111111111111111111111111111111111111111111111111111111",
+        "1777777777777777777777",
+        "-1",
+        "-H",
+        "FFFFFFFFFFFFFFFF",
+        "-1",
+        "-9223372036854775808",
+        "-9223372036854775808",
+        "35",
+        "1",
+        "31",
+        "18446744073709551585",
+        "2",
+        NULL,
+        NULL,
+        NULL,
+        "C",
+        "-C",
+        "1100",
+        "14",
+        "1011",
+        "1010",
+        "101",
+        "1010",
+        "1",
+        "1",
+        "1",
+        "FFFFFFFFFFFFFFFF",
+        "1",
+        "0",
+    };
+    static const char *const base_warning_columns[] = {
+        "bin_bad",
+        "oct_space",
+        "conv_bad",
+        "conv_overflow",
+        "conv_signed_ff_over",
+        "conv_signed_high_over",
+        "conv_neg_unsigned_over",
+        "conv_int_over",
+        "bin_int_over",
+        "conv_neg_int_over",
+        "conv_long_overflow",
+        "conv_from_tail",
+        "conv_from_bad",
+        "conv_to_tail",
+        "conv_to_bad",
+    };
+    static const char *const base_warning_values[] = {
+        "0",
+        "0",
+        "0",
+        "FFFFFFFFFFFFFFFF",
+        "9223372036854775807",
+        "9223372036854775807",
+        "0",
+        "FFFFFFFFFFFFFFFF",
+        "1111111111111111111111111111111111111111111111111111111111111111",
+        "0",
+        "FFFFFFFFFFFFFFFF",
+        "1010",
+        NULL,
+        "1010",
+        NULL,
+    };
     static const char *const unhex_warning_columns[] = {"invalid_chars", "space_chars", "real_text",
                                                         "negative_num", "negative_float"};
     static const char *const unhex_warning_values[] = {"1", "1", "1", "1", "1"};
@@ -3025,6 +3212,10 @@ static int test_scalar_builtin_functions_execution(void)
     static const char *const hex_site_projection_values[] = {
         "2", "4265", "4265", "FFFFFFFFFFFFFFFF", "1", "417A", "417A", "FF",
     };
+    static const char *const base_site_projection_columns[] = {"id", "bin_s", "oct_n", "conv_h"};
+    static const char *const base_site_projection_values[] = {
+        "2", "1111", "1777777777777777777777", "15", "1", "1100", "377", "10",
+    };
     static const char *const id_column[] = {"id"};
     static const char *const n_column[] = {"n"};
     static const char *const id_2[] = {"2"};
@@ -3040,6 +3231,9 @@ static int test_scalar_builtin_functions_execution(void)
     static const char *const updated_list_values[] = {"3", NULL, "2"};
     static const char *const unchanged_hex_values[] = {"1", "Az", "255"};
     static const char *const updated_hex_values[] = {"2", "6265", "-1"};
+    static const char *const unchanged_base_values[] = {"1", "12", "255"};
+    static const char *const updated_base_values[] = {"1", "FF", "255"};
+    static const char *const base_remaining_values[] = {"1", "2"};
     static const char *const updated_make_order_values[] = {"2", "a", "99"};
     static const char *const updated_hex_order_values[] = {"2", "61", "99"};
     static const char *const make_order_remaining_values[] = {"1", "3"};
@@ -3168,6 +3362,27 @@ static int test_scalar_builtin_functions_execution(void)
     stmt = NULL;
 
     failures += prepare_sql(database,
+                            "SELECT BIN(12) AS bin_int, "
+                            "OCT(12) AS oct_int, "
+                            "CONV('a',16,2) AS conv_text, "
+                            "CONV(NULL,10,2) AS conv_null, "
+                            "BIN(NULL) AS bin_null, "
+                            "OCT(NULL) AS oct_null, "
+                            "CONV(10,1,2) AS conv_bad_base",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, base_metadata,
+                                       (int)(sizeof(base_metadata) / sizeof(base_metadata[0])),
+                                       "base conversion utf8mb4 metadata");
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_ROW, "base conversion utf8mb4 metadata row");
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "base conversion utf8mb4 metadata warnings");
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_DONE, "base conversion utf8mb4 metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
                             "SELECT ASCII(NULL) AS ascii_null, "
                             "LOCATE('a', NULL) AS locate_null, "
                             "INSERT('abc', NULL, 1, 'x') AS insert_null, "
@@ -3232,6 +3447,21 @@ static int test_scalar_builtin_functions_execution(void)
         expect_int((int)mylite_warning_code(database, 0), mysql_warning_incorrect_string_value,
                    "hex/unhex latin1 metadata warning code");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "hex/unhex latin1 metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database,
+                            "SELECT BIN(12) AS bin_int, "
+                            "OCT(12) AS oct_int, "
+                            "CONV('a',16,2) AS conv_text, "
+                            "CONV(NULL,10,2) AS conv_null",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, base_latin1_metadata,
+        (int)(sizeof(base_latin1_metadata) / sizeof(base_latin1_metadata[0])),
+        "base conversion latin1 metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "base conversion latin1 metadata row");
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_DONE, "base conversion latin1 metadata done");
     mylite_finalize(stmt);
     stmt = NULL;
     failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
@@ -3623,6 +3853,89 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_contains(mylite_warning_message(database, 0), "function unhex",
                                 "UNHEX invalid warning message");
 
+    failures +=
+        expect_select_rows(database,
+                           "SELECT BIN(NULL) AS bin_null, "
+                           "OCT(NULL) AS oct_null, "
+                           "CONV(NULL,10,2) AS conv_null_n, "
+                           "CONV(10,NULL,2) AS conv_null_from, "
+                           "CONV(10,10,NULL) AS conv_null_to, "
+                           "BIN(0) AS bin_zero, "
+                           "BIN(12) AS bin_int, "
+                           "OCT(12) AS oct_int, "
+                           "CONV('a',16,2) AS conv_alpha, "
+                           "CONV('6E',18,8) AS conv_mixed, "
+                           "CONV(10,10,36) AS conv_base36, "
+                           "BIN(-1) AS bin_negative, "
+                           "OCT(-1) AS oct_negative, "
+                           "CONV(-1,10,-2) AS conv_negative_signed, "
+                           "CONV(-17,10,-18) AS conv_negative_digit, "
+                           "CONV(18446744073709551615,10,16) AS conv_max_unsigned, "
+                           "CONV('FFFFFFFFFFFFFFFF',16,-10) AS conv_unsigned_signed, "
+                           "CONV('8000000000000000',16,-10) AS conv_sign_bit_signed, "
+                           "CONV('-8000000000000000',-16,-10) AS conv_signed_min, "
+                           "CONV('z',36,10) AS conv_digit_z, "
+                           "CONV('1z',10,10) AS conv_trailing_invalid, "
+                           "CONV('  +1f',16,10) AS conv_leading_plus, "
+                           "CONV('  -1f',16,10) AS conv_leading_minus, "
+                           "CONV('102',2,10) AS conv_invalid_digit_stop, "
+                           "CONV('',10,2) AS conv_empty, "
+                           "BIN('') AS bin_empty, "
+                           "OCT('') AS oct_empty, "
+                           "CONV(12.9,10,16) AS conv_decimal, "
+                           "CONV(-12.9,10,-16) AS conv_negative_decimal, "
+                           "BIN(12.9E0) AS bin_float, "
+                           "OCT(12.9E0) AS oct_float, "
+                           "CONV(10,10.5,2) AS conv_exact_from_base, "
+                           "CONV(10,10.5E0,2) AS conv_approx_from_base, "
+                           "CONV(10,10,2.5) AS conv_exact_to_base, "
+                           "CONV(10,10,2.5E0) AS conv_approx_to_base, "
+                           "CONV('-18446744073709551615',10,16) "
+                           "AS conv_negative_unsigned_boundary, "
+                           "CONV(1e20,10,16) AS conv_float_over, "
+                           "BIN(1e20) AS bin_float_over, "
+                           "CONV(-1e20,10,16) AS conv_negative_float_over, "
+                           "CONV(18446744073709551616E0,10,16) "
+                           "AS conv_float_uint64_text, "
+                           "CONV(.9,10,16) AS conv_leading_dot_decimal",
+                           base_columns, (int)(sizeof(base_columns) / sizeof(base_columns[0])),
+                           base_values, 1, "numeric base conversion scalar values");
+
+    failures += expect_select_rows(
+        database,
+        "SELECT BIN('x12') AS bin_bad, "
+        "OCT(' ') AS oct_space, "
+        "CONV('z1',10,10) AS conv_bad, "
+        "CONV('18446744073709551616',10,16) AS conv_overflow, "
+        "CONV('FFFFFFFFFFFFFFFF',-16,10) AS conv_signed_ff_over, "
+        "CONV('8000000000000000',-16,10) AS conv_signed_high_over, "
+        "CONV('-18446744073709551616',10,16) AS conv_neg_unsigned_over, "
+        "CONV(18446744073709551616,10,16) AS conv_int_over, "
+        "BIN(18446744073709551616) AS bin_int_over, "
+        "CONV(-18446744073709551616,10,16) AS conv_neg_int_over, "
+        "CONV('184467440737095516160000',10,16) AS conv_long_overflow, "
+        "CONV(10,'10x',2) AS conv_from_tail, "
+        "CONV(10,'x10',2) AS conv_from_bad, "
+        "CONV(10,10,'2x') AS conv_to_tail, "
+        "CONV(10,10,'x2') AS conv_to_bad",
+        base_warning_columns, (int)(sizeof(base_warning_columns) / sizeof(base_warning_columns[0])),
+        base_warning_values, 1, "numeric base conversion warning values");
+    failures += expect_int(mylite_warning_count(database),
+                           (int)(sizeof(base_warning_columns) / sizeof(base_warning_columns[0])),
+                           "numeric base conversion warning count");
+    for (int index = 0;
+         index < (int)(sizeof(base_warning_columns) / sizeof(base_warning_columns[0])); ++index) {
+        failures +=
+            expect_int((int)mylite_warning_code(database, index),
+                       mysql_warning_truncated_wrong_value, "numeric base conversion warning code");
+    }
+    failures +=
+        expect_contains(mylite_warning_message(database, 0), "Truncated incorrect DECIMAL value",
+                        "numeric base conversion decimal warning message");
+    failures +=
+        expect_contains(mylite_warning_message(database, 11), "Truncated incorrect INTEGER value",
+                        "numeric base conversion integer warning message");
+
     failures += expect_select_rows(database, "SELECT ABS(1 IN (1)) AS abs_in", abs_in_columns, 1,
                                    abs_in_values, 1, "function IN predicate argument");
 
@@ -3664,6 +3977,16 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_result_metadata(
         stmt, hex_table_metadata, (int)(sizeof(hex_table_metadata) / sizeof(hex_table_metadata[0])),
         "table hex/unhex function metadata");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database,
+                            "SELECT BIN(s) AS bin_s, OCT(n) AS oct_n, "
+                            "CONV(s,10,16) AS conv_h FROM t",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_result_metadata(stmt, base_table_metadata,
+                               (int)(sizeof(base_table_metadata) / sizeof(base_table_metadata[0])),
+                               "table numeric base conversion metadata");
     mylite_finalize(stmt);
     stmt = NULL;
     failures += expect_select_rows(database,
@@ -3735,6 +4058,22 @@ static int test_scalar_builtin_functions_execution(void)
                                    "table hex/unhex projection where and order");
     failures += expect_select_rows(database, "SELECT id FROM hex_sites WHERE HEX(UNHEX(h))='417A'",
                                    id_column, 1, n_1, 1, "hex/unhex function where");
+    failures += execute_sql(database,
+                            "CREATE TABLE base_sites "
+                            "(id INT PRIMARY KEY, s VARCHAR(20), h VARCHAR(20), n BIGINT)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO base_sites VALUES "
+                            "(1,'12','A',255),(2,'15','F',-1),(3,'','0',0)",
+                            MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id, BIN(s) AS bin_s, OCT(n) AS oct_n, CONV(h,16,10) AS conv_h "
+        "FROM base_sites WHERE CONV(s,10,2) IS NOT NULL ORDER BY CONV(h,16,10) DESC, id",
+        base_site_projection_columns, 4, base_site_projection_values, 2,
+        "table numeric base conversion projection where and order");
+    failures += expect_select_rows(database, "SELECT id FROM base_sites WHERE BIN(s)='1100'",
+                                   id_column, 1, n_1, 1, "numeric base conversion where");
     failures += expect_select_rows(database, "SELECT id FROM t WHERE LPAD(s, 5, '.')='alpha'",
                                    id_column, 1, n_1, 1, "lpad function where");
     failures += expect_select_rows(database, "SELECT id FROM t WHERE REVERSE(s)='ateB'", id_column,
@@ -3864,6 +4203,49 @@ static int test_scalar_builtin_functions_execution(void)
         "delete hex/unhex function predicate");
     failures += expect_select_rows(database, "SELECT id FROM hex_sites WHERE h IS NOT NULL",
                                    id_column, 1, id_2, 1, "delete hex/unhex remaining rows");
+
+    failures += prepare_sql(database, "UPDATE base_sites SET n = BIN('x12') WHERE id = 1",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "update BIN warning promoted");
+    failures += expect_contains(mylite_error_message(database), "Truncated incorrect DECIMAL value",
+                                "update BIN warning error");
+    failures += expect_int(mylite_warning_count(database), 1, "update BIN warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "update BIN warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_select_rows(database, "SELECT id, s, n FROM base_sites WHERE id = 1", id_s_n_columns,
+                           3, unchanged_base_values, 1, "update BIN warning unchanged");
+
+    failures += prepare_sql(database, "DELETE FROM base_sites WHERE CONV('x12',10,2) = '0'",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "delete CONV warning promoted");
+    failures += expect_contains(mylite_error_message(database), "Truncated incorrect DECIMAL value",
+                                "delete CONV warning error");
+    failures += expect_int(mylite_warning_count(database), 1, "delete CONV warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "delete CONV warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM base_sites ORDER BY id", id_column, 1,
+                                   all_id_values, 3, "delete CONV warning unchanged");
+
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE base_sites SET s = CONV(n,10,16) WHERE BIN(id) = '1'", 1,
+        "update numeric base conversion assignment and predicate");
+    failures +=
+        expect_select_rows(database, "SELECT id, s, n FROM base_sites WHERE id = 1", id_s_n_columns,
+                           3, updated_base_values, 1, "updated numeric base conversion values");
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE base_sites SET n = 9 ORDER BY CONV(h,16,10), id LIMIT 1", 1,
+        "update numeric base conversion order key");
+    failures +=
+        execute_sql_expect_done_affected(database, "DELETE FROM base_sites WHERE OCT(n)='11'", 1,
+                                         "delete numeric base conversion predicate");
+    failures += expect_select_rows(database, "SELECT id FROM base_sites ORDER BY id", id_column, 1,
+                                   base_remaining_values, 2,
+                                   "delete numeric base conversion remaining rows");
 
     failures += execute_sql(database,
                             "CREATE TABLE make_order "
@@ -4055,6 +4437,18 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_no_stmt_handle(&stmt, "unsupported unhex zero arity");
     failures += prepare_sql(database, "SELECT UNHEX('41','42')", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported unhex two arity");
+    failures += prepare_sql(database, "SELECT BIN()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported bin zero arity");
+    failures += prepare_sql(database, "SELECT BIN(1,2)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported bin two arity");
+    failures += prepare_sql(database, "SELECT OCT()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported oct zero arity");
+    failures += prepare_sql(database, "SELECT OCT(1,2)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported oct two arity");
+    failures += prepare_sql(database, "SELECT CONV(1,10)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported conv two arity");
+    failures += prepare_sql(database, "SELECT CONV(1,10,2,3)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported conv four arity");
     failures += prepare_sql(database, "SELECT POSITION('a')", MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "position ordinary syntax");
     failures += prepare_sql(database, "SELECT LTRIM()", MYLITE_UNSUPPORTED, &stmt);

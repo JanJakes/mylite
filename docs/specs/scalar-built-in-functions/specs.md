@@ -31,6 +31,7 @@ In scope for the initial implementation:
   - `ELT`, `FIELD`, `FIND_IN_SET`
   - `MAKE_SET`
   - `HEX`, `UNHEX`
+  - `BIN`, `OCT`
 - numeric functions:
   - `ABS`
   - `SIGN`
@@ -40,6 +41,7 @@ In scope for the initial implementation:
   - `POW`, `POWER`
   - `SQRT`
   - `MOD`
+  - `CONV`
   - `PI`
 - temporal functions:
   - `NOW`, `LOCALTIME`, `LOCALTIMESTAMP`, `CURRENT_TIMESTAMP`
@@ -108,7 +110,7 @@ by common scalar expressions:
   `REPLACE`, `CONCAT_WS`, `SUBSTRING`, `SUBSTR`, `MID`, `TRIM`, `LTRIM`,
   `RTRIM`, `ASCII`, `ORD`, `LOCATE`, `POSITION`, `INSTR`, `INSERT`, `QUOTE`,
   `REPEAT`, `SPACE`, `REVERSE`, `LPAD`, `RPAD`, `ELT`, `FIELD`,
-  `FIND_IN_SET`, `MAKE_SET`, `HEX`, and `UNHEX`; see
+  `FIND_IN_SET`, `MAKE_SET`, `HEX`, `UNHEX`, `BIN`, and `OCT`; see
   `docs/specs/string-functions-substring-trim/specs.md` and
   `docs/specs/string-search-code-functions/specs.md` and
   `docs/specs/string-insert-function/specs.md` and
@@ -116,9 +118,11 @@ by common scalar expressions:
   `docs/specs/string-padding-repeat-functions/specs.md` and
   `docs/specs/string-list-index-functions/specs.md` and
   `docs/specs/string-make-set-function/specs.md` and
-  `docs/specs/string-hex-unhex-functions/specs.md`
-- numeric functions: `ABS`, `SIGN`, `FLOOR`, `CEIL`, `CEILING`, `MOD`, and
-  `PI`
+  `docs/specs/string-hex-unhex-functions/specs.md` and
+  `docs/specs/numeric-base-conversion-functions/specs.md`
+- numeric functions: `ABS`, `SIGN`, `FLOOR`, `CEIL`, `CEILING`, `MOD`,
+  `CONV`, and `PI`; see
+  `docs/specs/numeric-base-conversion-functions/specs.md`
 - conditional/comparison functions: `IF`, `IFNULL`, `NULLIF`, `COALESCE`, and
   `ISNULL`
 - session information functions: `DATABASE`, `SCHEMA`, `VERSION`,
@@ -136,6 +140,8 @@ syntax, trim direction syntax, byte-based `ASCII`, packed-byte `ORD`,
 metadata, padding, repetition, spaces, UTF-8 reversal, empty pad strings,
 hex encoding, binary-string hex decoding, embedded-NUL byte lengths for
 `UNHEX()` results, invalid `UNHEX()` warnings,
+binary/octal/arbitrary-base conversion, invalid base ranges, base-conversion
+string parsing warnings,
 `MOD(..., 0)` warnings, table projection, filters, ordering, update assignment
 expressions, delete predicates, unsupported functions, unsupported arity, and
 selected result metadata.

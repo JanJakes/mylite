@@ -149,6 +149,7 @@ static const uint64_t mylite_mysql_ascii_function_display_length = 3U;
 static const uint64_t mylite_mysql_search_function_display_length = 11U;
 static const uint64_t mylite_mysql_list_index_function_display_length = 3U;
 static const uint64_t mylite_mysql_hex_numeric_result_chars = 16U;
+static const uint64_t mylite_mysql_base_conversion_result_chars = 65U;
 static const uint64_t mylite_mysql_integer_function_display_length = 21U;
 static const uint64_t mylite_mysql_ord_function_display_length = 21U;
 static const uint64_t mylite_mysql_schema_function_display_length = 256U;
@@ -2063,6 +2064,10 @@ static int infer_hex_unhex_function_descriptor(mylite_db *database,
                                                const struct mylite_sql_ast_node *expression,
                                                struct mylite_field_descriptor *out_descriptor,
                                                bool *out_matched);
+static bool
+infer_base_conversion_function_descriptor(mylite_db *database,
+                                          const struct mylite_sql_ast_node *name,
+                                          struct mylite_field_descriptor *out_descriptor);
 // NOLINTNEXTLINE(misc-no-recursion)
 static int infer_hex_function_descriptor(mylite_db *database, const struct mylite_select_plan *plan,
                                          const struct mylite_sql_ast_node *expression,
@@ -2128,6 +2133,7 @@ static bool function_name_is_quote(const struct mylite_sql_ast_node *name);
 static bool function_name_is_insert(const struct mylite_sql_ast_node *name);
 static bool function_name_is_hex(const struct mylite_sql_ast_node *name);
 static bool function_name_is_unhex(const struct mylite_sql_ast_node *name);
+static bool function_name_has_base_conversion_result(const struct mylite_sql_ast_node *name);
 static bool function_name_is_concat_ws(const struct mylite_sql_ast_node *name);
 static bool function_name_uses_trim_source_length(const struct mylite_sql_ast_node *name);
 static int infer_aggregate_expression_descriptor(mylite_db *database,
@@ -10371,6 +10377,9 @@ static int infer_function_expression_descriptor(mylite_db *database,
     if (infer_session_function_descriptor(database, name, out_descriptor)) {
         return MYLITE_OK;
     }
+    if (infer_base_conversion_function_descriptor(database, name, out_descriptor)) {
+        return MYLITE_OK;
+    }
     status = infer_hex_unhex_function_descriptor(database, plan, expression, out_descriptor,
                                                  &matched_hex_unhex);
     if (status != MYLITE_OK || matched_hex_unhex) {
@@ -10571,6 +10580,32 @@ static int infer_make_set_function_descriptor(mylite_db *database,
     };
     field_descriptor_set_nullable(out_descriptor, nullable);
     return MYLITE_OK;
+}
+
+static bool
+infer_base_conversion_function_descriptor(mylite_db *database,
+                                          const struct mylite_sql_ast_node *name,
+                                          struct mylite_field_descriptor *out_descriptor)
+{
+    uint64_t max_bytes_per_character = connection_character_max_length(database);
+    uint64_t length =
+        max_bytes_per_character > UINT64_MAX / mylite_mysql_base_conversion_result_chars
+            ? mylite_mysql_long_text_length
+            : mylite_mysql_base_conversion_result_chars * max_bytes_per_character;
+
+    if (!function_name_has_base_conversion_result(name)) {
+        return false;
+    }
+    *out_descriptor = (struct mylite_field_descriptor){
+        .type = MYLITE_FIELD_TYPE_VAR_STRING,
+        .flags = 0U,
+        .length = length,
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = field_descriptor_connection_charset_id(database),
+        .nullable = true,
+    };
+    field_descriptor_set_nullable(out_descriptor, true);
+    return true;
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
@@ -11734,6 +11769,13 @@ static bool function_name_is_hex(const struct mylite_sql_ast_node *name)
 static bool function_name_is_unhex(const struct mylite_sql_ast_node *name)
 {
     static const char *const names[] = {"UNHEX"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_has_base_conversion_result(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"BIN", "OCT", "CONV"};
 
     return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }

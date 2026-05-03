@@ -197,6 +197,7 @@ static int test_alter_table_key_operations_execution(void);
 static int test_rename_table_execution(void);
 static int test_truncate_table_execution(void);
 static int test_show_tables_execution(void);
+static int test_show_columns_execution(void);
 static int test_insert_values_execution(void);
 static int test_insert_set_execution(void);
 static int test_replace_execution(void);
@@ -333,6 +334,7 @@ int main(void)
     failures += test_rename_table_execution();
     failures += test_truncate_table_execution();
     failures += test_show_tables_execution();
+    failures += test_show_columns_execution();
     failures += test_insert_values_execution();
     failures += test_insert_set_execution();
     failures += test_replace_execution();
@@ -4706,6 +4708,180 @@ static int test_show_tables_execution(void)
 
     mylite_close(database);
 
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
+    return failures;
+}
+
+static int test_show_columns_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const standard_columns[] = {"Field", "Type",    "Null",
+                                                   "Key",   "Default", "Extra"};
+    static const char *const full_columns[] = {"Field",   "Type",  "Collation",  "Null",   "Key",
+                                               "Default", "Extra", "Privileges", "Comment"};
+    static const char *const b_columns[] = {"Field", "Type", "Null", "Key", "Default", "Extra"};
+    static const char *const meta_values[] = {
+        "id",     "int",           "NO",  "PRI", NULL,   "auto_increment",
+        "name",   "varchar(20)",   "NO",  "MUL", "",     "",
+        "amount", "decimal(10,2)", "YES", "UNI", "0.00", "",
+        "flag",   "tinyint",       "YES", "",    NULL,   "",
+        "hidden", "int",           "YES", "",    NULL,   "INVISIBLE",
+        "a_1",    "int",           "YES", "",    NULL,   "",
+    };
+    static const char *const full_values[] = {
+        "id",
+        "int",
+        NULL,
+        "NO",
+        "PRI",
+        NULL,
+        "auto_increment",
+        "select,insert,update,references",
+        "",
+        "name",
+        "varchar(20)",
+        "utf8mb4_0900_ai_ci",
+        "NO",
+        "MUL",
+        "",
+        "",
+        "select,insert,update,references",
+        "Name comment",
+        "amount",
+        "decimal(10,2)",
+        NULL,
+        "YES",
+        "UNI",
+        "0.00",
+        "",
+        "select,insert,update,references",
+        "",
+        "flag",
+        "tinyint",
+        NULL,
+        "YES",
+        "",
+        NULL,
+        "",
+        "select,insert,update,references",
+        "",
+        "hidden",
+        "int",
+        NULL,
+        "YES",
+        "",
+        NULL,
+        "INVISIBLE",
+        "select,insert,update,references",
+        "",
+        "a_1",
+        "int",
+        NULL,
+        "YES",
+        "",
+        NULL,
+        "",
+        "select,insert,update,references",
+        "",
+    };
+    static const char *const name_values[] = {"name", "varchar(20)", "NO", "MUL", "", ""};
+    static const char *const escaped_values[] = {"a_1", "int", "YES", "", NULL, ""};
+    static const char *const b_values[] = {"code", "int", "YES", "", NULL, ""};
+    static const char *const override_values[] = {"override_col", "int", "YES", "", NULL, ""};
+    static const char *const keyword_fields_values[] = {"fields", "int", "YES", "", NULL, ""};
+    static const char *const keyword_columns_values[] = {"columns", "int", "YES", "", NULL, ""};
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open show columns database");
+    failures +=
+        expect_prepare_error(database, "SHOW COLUMNS FROM meta", MYLITE_EXEC_ERROR,
+                             "No database selected", "show columns requires selected schema");
+
+    failures += execute_sql(database, "CREATE DATABASE mylite_show_columns_a", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE DATABASE mylite_show_columns_b", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_show_columns_a", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE meta ("
+                            "id INT NOT NULL AUTO_INCREMENT, "
+                            "name VARCHAR(20) NOT NULL DEFAULT '' COMMENT 'Name comment', "
+                            "amount DECIMAL(10,2) DEFAULT 0.00, "
+                            "flag TINYINT NULL, "
+                            "hidden INT INVISIBLE, "
+                            "a_1 INT, "
+                            "PRIMARY KEY (id), KEY name_idx (name), "
+                            "UNIQUE KEY amount_unique (amount))",
+                            MYLITE_DONE);
+
+    failures += expect_select_rows(database, "SHOW COLUMNS FROM meta", standard_columns, 6,
+                                   meta_values, 6, "show columns selected schema");
+    failures += expect_select_rows(database, "SHOW FIELDS FROM meta", standard_columns, 6,
+                                   meta_values, 6, "show fields synonym");
+    failures += expect_select_rows(database, "SHOW FULL COLUMNS FROM meta", full_columns, 9,
+                                   full_values, 6, "show full columns selected schema");
+    failures += expect_select_rows(database, "SHOW EXTENDED COLUMNS FROM meta", standard_columns, 6,
+                                   meta_values, 6, "show extended columns current no-op");
+    failures += expect_select_rows(database, "SHOW FULL FIELDS IN meta", full_columns, 9,
+                                   full_values, 6, "show full fields selected schema");
+    failures += expect_select_rows(database, "SHOW COLUMNS FROM meta LIKE 'name'", standard_columns,
+                                   6, name_values, 1, "show columns like name");
+    failures += expect_select_rows(database, "SHOW COLUMNS FROM meta LIKE 'Name'", standard_columns,
+                                   6, name_values, 1, "show columns like is case-insensitive");
+    failures +=
+        expect_select_rows(database, "SHOW COLUMNS FROM meta LIKE 'a\\_%'", standard_columns, 6,
+                           escaped_values, 1, "show columns escaped underscore");
+    failures += expect_select_rows(database, "SHOW COLUMNS FROM meta LIKE 'missing%'",
+                                   standard_columns, 6, NULL, 0, "show columns empty like result");
+    failures += expect_prepare_error(database, "SHOW COLUMNS FROM meta WHERE Field = 'name'",
+                                     MYLITE_UNSUPPORTED, "SHOW COLUMNS WHERE is not supported",
+                                     "show columns where is parsed but unsupported");
+
+    failures += execute_sql(database, "CREATE TABLE mylite_show_columns_b.in_table (code INT)",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE mylite_show_columns_b.meta (override_col INT)",
+                            MYLITE_DONE);
+    failures +=
+        expect_select_rows(database, "SHOW COLUMNS FROM in_table FROM mylite_show_columns_b",
+                           b_columns, 6, b_values, 1, "show columns from schema");
+    failures += expect_select_rows(database,
+                                   "SHOW COLUMNS FROM in_table FROM mylite_show_columns_b "
+                                   "LIKE 'co%'",
+                                   b_columns, 6, b_values, 1, "show columns explicit schema like");
+    failures += expect_select_rows(database, "SHOW COLUMNS IN in_table IN mylite_show_columns_b",
+                                   b_columns, 6, b_values, 1, "show columns in schema");
+    failures += expect_select_rows(database, "SHOW FIELDS FROM mylite_show_columns_b.in_table",
+                                   b_columns, 6, b_values, 1, "show fields qualified table");
+    failures += expect_select_rows(
+        database, "SHOW COLUMNS FROM mylite_show_columns_a.meta FROM mylite_show_columns_b",
+        b_columns, 6, override_values, 1, "show columns explicit schema overrides qualifier");
+    failures += expect_prepare_error(database, "SHOW COLUMNS FROM in_table FROM missing_columns_db",
+                                     MYLITE_EXEC_ERROR, "Unknown database",
+                                     "show columns rejects missing schema");
+    failures +=
+        expect_prepare_error(database, "SHOW COLUMNS FROM missing_columns_table", MYLITE_EXEC_ERROR,
+                             "doesn't exist", "show columns rejects missing table");
+    failures += expect_prepare_error(database, "SHOW COLUMNS FROM COLUMNS FROM information_schema",
+                                     MYLITE_UNSUPPORTED,
+                                     "SHOW COLUMNS for information_schema tables is not supported",
+                                     "show columns information schema unsupported");
+    failures += expect_prepare_error(
+        database, "SHOW COLUMNS FROM missing_info FROM information_schema", MYLITE_EXEC_ERROR,
+        "Unknown table 'MISSING_INFO' in information_schema",
+        "show columns unknown information schema table");
+
+    failures += execute_sql(database,
+                            "CREATE TABLE columns (fields INT, columns INT, "
+                            "extended INT, full INT)",
+                            MYLITE_DONE);
+    failures +=
+        expect_select_rows(database, "SHOW COLUMNS FROM columns LIKE 'FIELDS'", standard_columns, 6,
+                           keyword_fields_values, 1, "show columns keyword field name");
+    failures +=
+        expect_select_rows(database, "SHOW FIELDS FROM columns LIKE 'columns'", standard_columns, 6,
+                           keyword_columns_values, 1, "show fields keyword column name");
+
+    mylite_close(database);
     // NOLINTEND(readability-function-size,readability-magic-numbers)
     return failures;
 }

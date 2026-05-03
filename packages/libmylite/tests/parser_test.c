@@ -22,6 +22,7 @@ static int test_alter_table_key_constraint_operations_syntax(void);
 static int test_rename_table_syntax(void);
 static int test_truncate_table_syntax(void);
 static int test_show_tables_syntax(void);
+static int test_show_columns_syntax(void);
 static int test_drop_table_syntax(void);
 static int test_insert_values_syntax(void);
 static int test_insert_set_syntax(void);
@@ -160,6 +161,7 @@ int main(void)
     failures += test_rename_table_syntax();
     failures += test_truncate_table_syntax();
     failures += test_show_tables_syntax();
+    failures += test_show_columns_syntax();
     failures += test_drop_table_syntax();
     failures += test_insert_values_syntax();
     failures += test_insert_set_syntax();
@@ -2928,6 +2930,133 @@ static int test_show_tables_syntax(void)
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SHOW FULL FULL TABLES;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_show_columns_syntax(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *table_name = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SHOW COLUMNS FROM t; SHOW FIELDS IN t; SHOW FULL COLUMNS FROM t; "
+                          "SHOW FULL FIELDS FROM t FROM app; "
+                          "SHOW EXTENDED COLUMNS FROM t; "
+                          "SHOW EXTENDED FULL FIELDS IN app.t LIKE 'a%'; "
+                          "SHOW COLUMNS FROM app.t; "
+                          "SHOW COLUMNS FROM t WHERE Field = 'name'; "
+                          "SHOW FULL COLUMNS FROM t FROM app LIKE 'id%';",
+                          MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_child_count(result.root, 9U, "show columns script count");
+
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT, "show columns");
+    failures += expect_bool(statement->show_columns_full, false, "show columns full marker");
+    failures +=
+        expect_bool(statement->show_columns_extended, false, "show columns extended marker");
+    failures += expect_child_count(statement, 1U, "show columns child count");
+    failures += expect_span_text(child_at(statement, 0U), "t", "show columns table name");
+
+    statement = child_at(result.root, 1U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT, "show fields");
+    failures += expect_child_count(statement, 1U, "show fields child count");
+    failures += expect_span_text(child_at(statement, 0U), "t", "show fields table name");
+
+    statement = child_at(result.root, 2U);
+    failures += expect_bool(statement->show_columns_full, true, "show full columns marker");
+    failures +=
+        expect_bool(statement->show_columns_extended, false, "show full columns extended marker");
+    failures += expect_child_count(statement, 1U, "show full columns child count");
+
+    statement = child_at(result.root, 3U);
+    failures += expect_bool(statement->show_columns_full, true, "show full fields marker");
+    failures += expect_child_count(statement, 2U, "show full fields child count");
+    failures += expect_span_text(child_at(statement, 0U), "t", "show full fields table");
+    failures += expect_span_text(child_at(statement, 1U), "app", "show full fields schema");
+
+    statement = child_at(result.root, 4U);
+    failures += expect_bool(statement->show_columns_extended, true, "show extended columns marker");
+    failures +=
+        expect_bool(statement->show_columns_full, false, "show extended columns full marker");
+
+    statement = child_at(result.root, 5U);
+    failures +=
+        expect_bool(statement->show_columns_extended, true, "show extended full fields marker");
+    failures +=
+        expect_bool(statement->show_columns_full, true, "show extended full fields full marker");
+    failures += expect_child_count(statement, 2U, "show extended full fields child count");
+    table_name = child_at(statement, 0U);
+    failures += expect_node(table_name, MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+                            "show columns qualified table");
+    failures += expect_span_text(child_at(table_name, 0U), "app", "show columns qualified schema");
+    failures += expect_span_text(child_at(table_name, 1U), "t", "show columns qualified table");
+    failures += expect_literal(child_at(statement, 1U), MYLITE_SQL_AST_LITERAL_STRING,
+                               "show columns like pattern");
+    failures += expect_span_text(child_at(statement, 1U), "'a%'", "show columns like pattern text");
+
+    statement = child_at(result.root, 6U);
+    table_name = child_at(statement, 0U);
+    failures += expect_node(table_name, MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+                            "show columns db table target");
+    failures += expect_span_text(child_at(table_name, 0U), "app", "show columns db target schema");
+    failures += expect_span_text(child_at(table_name, 1U), "t", "show columns db target table");
+
+    statement = child_at(result.root, 7U);
+    failures += expect_child_count(statement, 2U, "show columns where child count");
+    failures += expect_node(child_at(statement, 1U), MYLITE_SQL_AST_WHERE_CLAUSE,
+                            "show columns where clause");
+
+    statement = child_at(result.root, 8U);
+    failures += expect_bool(statement->show_columns_full, true,
+                            "show columns explicit schema like full marker");
+    failures += expect_child_count(statement, 3U, "show columns explicit schema like child count");
+    failures +=
+        expect_span_text(child_at(statement, 0U), "t", "show columns explicit schema like table");
+    failures += expect_span_text(child_at(statement, 1U), "app",
+                                 "show columns explicit schema like schema");
+    failures += expect_literal(child_at(statement, 2U), MYLITE_SQL_AST_LITERAL_STRING,
+                               "show columns explicit schema like pattern");
+    failures += expect_span_text(child_at(statement, 2U), "'id%'",
+                                 "show columns explicit schema like pattern text");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE columns (fields INT, columns INT, extended INT, "
+                          "full INT);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_child_count(result.root, 1U, "show columns keyword identifiers");
+    failures += expect_span_text(child_at(child_at(result.root, 0U), 0U), "columns",
+                                 "columns keyword as table name");
+    table_name = child_at(child_at(result.root, 0U), 1U);
+    failures += expect_span_text(child_at(child_at(table_name, 0U), 0U), "fields",
+                                 "fields keyword as column name");
+    failures += expect_span_text(child_at(child_at(table_name, 1U), 0U), "columns",
+                                 "columns keyword as column name");
+    failures += expect_span_text(child_at(child_at(table_name, 2U), 0U), "extended",
+                                 "extended keyword as column name");
+    failures += expect_span_text(child_at(child_at(table_name, 3U), 0U), "full",
+                                 "full keyword as column name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW COLUMNS;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW COLUMNS FROM t LIKE 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW COLUMNS FROM t LIKE 'a%' WHERE TRUE;",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW FULL FULL COLUMNS FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW COLUMNS FROM t FROM app FROM other;", MYLITE_SQL_PARSE_SYNTAX_ERROR,
+                          &result);
     mylite_sql_parse_result_deinit(&result);
 
     // NOLINTEND(readability-magic-numbers)

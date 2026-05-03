@@ -163,9 +163,17 @@ level application surfaces.
        selected/missing-schema diagnostics. `EXTENDED` is currently a no-op
        because MyLite has no hidden failed-ALTER table catalog; `WHERE`
        filtering is parsed and rejected as unsupported until SHOW expression
-       filtering lands. Temporary tables, user views, privilege filtering, and
-       broader metadata statements remain deferred. Spec:
-       [SHOW TABLES](../show-tables/specs.md).
+       filtering lands. The first `SHOW COLUMNS` / `SHOW FIELDS` slice is also
+       specified and implemented for supported persistent base tables, including
+       `EXTENDED`, `FULL`, `FROM`/`IN`, `db.table`, `LIKE`, `WHERE` grammar,
+       `FIELDS` synonym support, non-`FULL` and `FULL` result-set shapes,
+       catalog-backed column metadata, and selected-schema, missing-schema, and
+       missing-table diagnostics. `SHOW COLUMNS WHERE` and system-view column
+       descriptions are parsed but currently return unsupported diagnostics.
+       Temporary tables, user views, privilege filtering, hidden storage-engine
+       columns, and broader metadata statements remain deferred. Specs:
+       [SHOW TABLES](../show-tables/specs.md),
+       [SHOW COLUMNS](../show-columns/specs.md).
 40. [ ] `SHOW VARIABLES`, `SHOW STATUS`, `SHOW WARNINGS`, `SHOW ERRORS`, and
        count variants: session state, diagnostics, filtering, and metadata.
 41. [ ] User and system variables: `SET`, user-variable storage, system-variable

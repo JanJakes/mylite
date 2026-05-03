@@ -131,6 +131,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_RENAME_TABLE_PAIR = 120,
     MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT = 121,
     MYLITE_SQL_AST_SHOW_TABLES_STATEMENT = 122,
+    MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT = 123,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -523,6 +524,8 @@ struct mylite_sql_ast_node {
     bool transaction_consistent_snapshot;
     bool show_tables_extended;
     bool show_tables_full;
+    bool show_columns_extended;
+    bool show_columns_full;
 };
 
 struct mylite_sql_ast {
@@ -629,6 +632,8 @@ void mylite_sql_ast_node_set_subquery_quantifier(
     struct mylite_sql_ast_node *node, enum mylite_sql_ast_subquery_quantifier quantifier);
 void mylite_sql_ast_node_set_show_tables_extended(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_show_tables_full(struct mylite_sql_ast_node *node);
+void mylite_sql_ast_node_set_show_columns_extended(struct mylite_sql_ast_node *node);
+void mylite_sql_ast_node_set_show_columns_full(struct mylite_sql_ast_node *node);
 
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node);
 

@@ -356,6 +356,20 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t table_maintenance_statement_targets = 0;
   size_t table_maintenance_statement_target_name_values = 0;
   size_t table_maintenance_statement_option_flags = 0;
+  size_t replication_statement_views = 0;
+  size_t replication_statement_change_sources = 0;
+  size_t replication_statement_change_masters = 0;
+  size_t replication_statement_start_forms = 0;
+  size_t replication_statement_stop_forms = 0;
+  size_t replication_statement_reset_forms = 0;
+  size_t replication_statement_show_forms = 0;
+  size_t replication_statement_purge_forms = 0;
+  size_t replication_statement_channels = 0;
+  size_t replication_statement_all_flags = 0;
+  size_t replication_statement_options = 0;
+  size_t replication_statement_option_name_values = 0;
+  size_t replication_statement_option_string_values = 0;
+  size_t replication_statement_option_integer_lists = 0;
   size_t kill_statement_views = 0;
   size_t kill_statement_queries = 0;
   size_t kill_statement_tidb_extensions = 0;
@@ -1917,6 +1931,80 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                 if (mylite_ast_table_maintenance_target_view_name_value(
                         target) != NULL) {
                   table_maintenance_statement_target_name_values++;
+                }
+              }
+            }
+            const MyliteAstReplicationStatement *replication_statement =
+                mylite_ast_replication_statement_view(ast, i);
+            if (replication_statement != NULL) {
+              replication_statement_views++;
+              switch (mylite_ast_replication_statement_view_kind(
+                  replication_statement)) {
+                case MYLITE_REPLICATION_STATEMENT_CHANGE_REPLICATION_SOURCE:
+                  replication_statement_change_sources++;
+                  break;
+                case MYLITE_REPLICATION_STATEMENT_CHANGE_MASTER:
+                  replication_statement_change_masters++;
+                  break;
+                case MYLITE_REPLICATION_STATEMENT_START_REPLICA:
+                case MYLITE_REPLICATION_STATEMENT_START_SLAVE:
+                  replication_statement_start_forms++;
+                  break;
+                case MYLITE_REPLICATION_STATEMENT_STOP_REPLICA:
+                case MYLITE_REPLICATION_STATEMENT_STOP_SLAVE:
+                  replication_statement_stop_forms++;
+                  break;
+                case MYLITE_REPLICATION_STATEMENT_RESET_MASTER:
+                case MYLITE_REPLICATION_STATEMENT_RESET_BINARY_LOGS_AND_GTIDS:
+                case MYLITE_REPLICATION_STATEMENT_RESET_REPLICA:
+                case MYLITE_REPLICATION_STATEMENT_RESET_SLAVE:
+                case MYLITE_REPLICATION_STATEMENT_RESET_SOURCE:
+                  replication_statement_reset_forms++;
+                  break;
+                case MYLITE_REPLICATION_STATEMENT_SHOW_MASTER_STATUS:
+                case MYLITE_REPLICATION_STATEMENT_SHOW_BINARY_LOG_STATUS:
+                case MYLITE_REPLICATION_STATEMENT_SHOW_REPLICA_STATUS:
+                case MYLITE_REPLICATION_STATEMENT_SHOW_SLAVE_STATUS:
+                case MYLITE_REPLICATION_STATEMENT_SHOW_REPLICA_HOSTS:
+                case MYLITE_REPLICATION_STATEMENT_SHOW_SLAVE_HOSTS:
+                  replication_statement_show_forms++;
+                  break;
+                case MYLITE_REPLICATION_STATEMENT_PURGE_BINARY_LOGS:
+                case MYLITE_REPLICATION_STATEMENT_PURGE_MASTER_LOGS:
+                  replication_statement_purge_forms++;
+                  break;
+                default:
+                  break;
+              }
+              if (mylite_ast_replication_statement_view_has_channel(
+                      replication_statement)) {
+                replication_statement_channels++;
+              }
+              if (mylite_ast_replication_statement_view_has_all(
+                      replication_statement)) {
+                replication_statement_all_flags++;
+              }
+              size_t option_count =
+                  mylite_ast_replication_statement_view_option_count(
+                      replication_statement);
+              replication_statement_options += option_count;
+              for (size_t j = 0; j < option_count; j++) {
+                const MyliteAstReplicationOption *option =
+                    mylite_ast_replication_statement_view_option_at(
+                        replication_statement, j);
+                if (mylite_ast_replication_option_view_name_value(option) !=
+                    NULL) {
+                  replication_statement_option_name_values++;
+                }
+                switch (mylite_ast_replication_option_view_value_kind(option)) {
+                  case MYLITE_REPLICATION_OPTION_VALUE_STRING:
+                    replication_statement_option_string_values++;
+                    break;
+                  case MYLITE_REPLICATION_OPTION_VALUE_INTEGER_LIST:
+                    replication_statement_option_integer_lists++;
+                    break;
+                  default:
+                    break;
                 }
               }
             }
@@ -3585,6 +3673,35 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)key_column_name_values / (double)parsed,
            (double)key_referenced_column_name_values / (double)parsed,
            (double)key_options / (double)parsed, (double)options / (double)parsed);
+    printf(" avg_replication_statement_views=%.2f "
+           "avg_replication_statement_change_sources=%.2f "
+           "avg_replication_statement_change_masters=%.2f "
+           "avg_replication_statement_start_forms=%.2f "
+           "avg_replication_statement_stop_forms=%.2f "
+           "avg_replication_statement_reset_forms=%.2f "
+           "avg_replication_statement_show_forms=%.2f "
+           "avg_replication_statement_purge_forms=%.2f "
+           "avg_replication_statement_channels=%.2f "
+           "avg_replication_statement_all_flags=%.2f "
+           "avg_replication_statement_options=%.2f "
+           "avg_replication_statement_option_name_values=%.2f "
+           "avg_replication_statement_option_string_values=%.2f "
+           "avg_replication_statement_option_integer_lists=%.2f",
+           (double)replication_statement_views / (double)parsed,
+           (double)replication_statement_change_sources / (double)parsed,
+           (double)replication_statement_change_masters / (double)parsed,
+           (double)replication_statement_start_forms / (double)parsed,
+           (double)replication_statement_stop_forms / (double)parsed,
+           (double)replication_statement_reset_forms / (double)parsed,
+           (double)replication_statement_show_forms / (double)parsed,
+           (double)replication_statement_purge_forms / (double)parsed,
+           (double)replication_statement_channels / (double)parsed,
+           (double)replication_statement_all_flags / (double)parsed,
+           (double)replication_statement_options / (double)parsed,
+           (double)replication_statement_option_name_values / (double)parsed,
+           (double)replication_statement_option_string_values / (double)parsed,
+           (double)replication_statement_option_integer_lists /
+               (double)parsed);
     printf(" avg_column_name_values=%.2f "
            "avg_column_defaults=%.2f avg_column_on_updates=%.2f "
            "avg_column_generated=%.2f avg_column_checks=%.2f "

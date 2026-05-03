@@ -150,6 +150,8 @@ static void dump_statements(const MyliteAst *ast) {
         mylite_ast_lock_statement_view(ast, i);
     const MyliteAstTableMaintenanceStatement *maintenance_statement =
         mylite_ast_table_maintenance_statement_view(ast, i);
+    const MyliteAstReplicationStatement *replication_statement =
+        mylite_ast_replication_statement_view(ast, i);
     const MyliteAstKillStatement *kill_statement =
         mylite_ast_kill_statement_view(ast, i);
     const MyliteAstFlushStatement *flush_statement =
@@ -1024,6 +1026,73 @@ static void dump_statements(const MyliteAst *ast) {
           fputs("none", stdout);
         } else {
           print_escaped_bytes(name, name_length);
+        }
+        fputc('\n', stdout);
+      }
+    }
+    if (replication_statement != NULL) {
+      printf("  replication_statement span=%zu..%zu kind=%s channel=%d "
+             "all=%d options=%zu node=%s channel_value=",
+             mylite_ast_replication_statement_view_start(
+                 replication_statement),
+             mylite_ast_replication_statement_view_end(
+                 replication_statement),
+             mylite_replication_statement_kind_name(
+                 mylite_ast_replication_statement_view_kind(
+                     replication_statement)),
+             mylite_ast_replication_statement_view_has_channel(
+                 replication_statement),
+             mylite_ast_replication_statement_view_has_all(
+                 replication_statement),
+             mylite_ast_replication_statement_view_option_count(
+                 replication_statement),
+             node_symbol_or_none(
+                 mylite_ast_replication_statement_view_node(
+                     replication_statement)));
+      const char *channel =
+          mylite_ast_replication_statement_view_channel_value(
+              replication_statement);
+      if (channel == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(
+            channel,
+            mylite_ast_replication_statement_view_channel_value_length(
+                replication_statement));
+      }
+      fputc('\n', stdout);
+      for (size_t j = 0;
+           j < mylite_ast_replication_statement_view_option_count(
+                   replication_statement);
+           j++) {
+        const MyliteAstReplicationOption *option =
+            mylite_ast_replication_statement_view_option_at(
+                replication_statement, j);
+        printf("    replication_option[%zu] span=%zu..%zu value_kind=%s "
+               "ints=%zu name=",
+               j, mylite_ast_replication_option_view_start(option),
+               mylite_ast_replication_option_view_end(option),
+               mylite_replication_option_value_kind_name(
+                   mylite_ast_replication_option_view_value_kind(option)),
+               mylite_ast_replication_option_view_integer_count(option));
+        const char *name =
+            mylite_ast_replication_option_view_name_value(option);
+        if (name == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(
+              name,
+              mylite_ast_replication_option_view_name_value_length(option));
+        }
+        fputs(" value=", stdout);
+        const char *value =
+            mylite_ast_replication_option_view_value(option);
+        if (value == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(
+              value,
+              mylite_ast_replication_option_view_value_length(option));
         }
         fputc('\n', stdout);
       }

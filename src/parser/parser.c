@@ -1030,6 +1030,38 @@ struct MyliteAstTableMaintenanceStatement {
   int has_use_frm;
 };
 
+struct MyliteAstReplicationOption {
+  const MyliteAstNode *node;
+  const MyliteAstNode *value_node;
+  MyliteReplicationOptionValueKind value_kind;
+  size_t start;
+  size_t end;
+  size_t name_start;
+  size_t name_end;
+  const char *name_value;
+  size_t name_value_length;
+  size_t value_start;
+  size_t value_end;
+  const char *value;
+  size_t value_length;
+  size_t integer_count;
+};
+
+struct MyliteAstReplicationStatement {
+  const MyliteAstNode *node;
+  MyliteReplicationStatementKind kind;
+  MyliteAstReplicationOption *options;
+  size_t start;
+  size_t end;
+  size_t option_count;
+  size_t channel_start;
+  size_t channel_end;
+  const char *channel_value;
+  size_t channel_value_length;
+  int has_channel;
+  int has_all;
+};
+
 struct MyliteAstKillStatement {
   const MyliteAstNode *node;
   const MyliteAstNode *target_node;
@@ -1380,6 +1412,7 @@ typedef struct MyliteAstStatement {
   MyliteAstShowStatement *show_statement;
   MyliteAstLockStatement *lock_statement;
   MyliteAstTableMaintenanceStatement *table_maintenance_statement;
+  MyliteAstReplicationStatement *replication_statement;
   MyliteAstKillStatement *kill_statement;
   MyliteAstFlushStatement *flush_statement;
   MyliteAstLoadStatement *load_statement;
@@ -1920,6 +1953,27 @@ static int mylite_ast_fill_table_maintenance_targets(
     size_t target_count, const MyliteAstNode *node, size_t *index);
 static int mylite_ast_fill_table_maintenance_target(
     MyliteAst *ast, MyliteAstTableMaintenanceTarget *target,
+    const MyliteAstNode *node);
+static int mylite_ast_set_replication_statement_view(
+    MyliteAst *ast, MyliteAstStatement *statement,
+    const MyliteAstNode *payload);
+static MyliteReplicationStatementKind mylite_ast_classify_replication_statement(
+    const char *symbol_name, const MyliteAstNode *payload);
+static int mylite_ast_set_replication_statement_channel(
+    MyliteAst *ast, MyliteAstReplicationStatement *replication_statement);
+static int mylite_ast_set_replication_options(
+    MyliteAst *ast, MyliteAstReplicationStatement *replication_statement);
+static int mylite_ast_fill_replication_options(
+    MyliteAst *ast, MyliteAstReplicationStatement *replication_statement,
+    const MyliteAstNode *node, size_t *index);
+static int mylite_ast_fill_replication_option(
+    MyliteAst *ast, MyliteAstReplicationOption *option,
+    const MyliteAstNode *node);
+static MyliteReplicationOptionValueKind
+mylite_ast_classify_replication_option_value(const MyliteAstNode *value_node);
+static int mylite_ast_set_replication_option_value(
+    MyliteAst *ast, MyliteAstReplicationOption *option);
+static size_t mylite_ast_count_replication_int_literals(
     const MyliteAstNode *node);
 static int mylite_ast_set_kill_statement_view(MyliteAst *ast,
                                               MyliteAstStatement *statement,
@@ -3037,6 +3091,86 @@ const char *mylite_table_maintenance_kind_name(
       return "repair";
     case MYLITE_TABLE_MAINTENANCE_CHECKSUM:
       return "checksum";
+  }
+  return "unknown";
+}
+
+const char *mylite_replication_statement_kind_name(
+    MyliteReplicationStatementKind kind) {
+  switch (kind) {
+    case MYLITE_REPLICATION_STATEMENT_UNKNOWN:
+      return "unknown";
+    case MYLITE_REPLICATION_STATEMENT_CHANGE_REPLICATION_SOURCE:
+      return "change_replication_source";
+    case MYLITE_REPLICATION_STATEMENT_CHANGE_MASTER:
+      return "change_master";
+    case MYLITE_REPLICATION_STATEMENT_START_REPLICA:
+      return "start_replica";
+    case MYLITE_REPLICATION_STATEMENT_START_SLAVE:
+      return "start_slave";
+    case MYLITE_REPLICATION_STATEMENT_STOP_REPLICA:
+      return "stop_replica";
+    case MYLITE_REPLICATION_STATEMENT_STOP_SLAVE:
+      return "stop_slave";
+    case MYLITE_REPLICATION_STATEMENT_RESET_MASTER:
+      return "reset_master";
+    case MYLITE_REPLICATION_STATEMENT_RESET_BINARY_LOGS_AND_GTIDS:
+      return "reset_binary_logs_and_gtids";
+    case MYLITE_REPLICATION_STATEMENT_RESET_REPLICA:
+      return "reset_replica";
+    case MYLITE_REPLICATION_STATEMENT_RESET_SLAVE:
+      return "reset_slave";
+    case MYLITE_REPLICATION_STATEMENT_RESET_SOURCE:
+      return "reset_source";
+    case MYLITE_REPLICATION_STATEMENT_SHOW_MASTER_STATUS:
+      return "show_master_status";
+    case MYLITE_REPLICATION_STATEMENT_SHOW_BINARY_LOG_STATUS:
+      return "show_binary_log_status";
+    case MYLITE_REPLICATION_STATEMENT_SHOW_REPLICA_STATUS:
+      return "show_replica_status";
+    case MYLITE_REPLICATION_STATEMENT_SHOW_SLAVE_STATUS:
+      return "show_slave_status";
+    case MYLITE_REPLICATION_STATEMENT_SHOW_REPLICA_HOSTS:
+      return "show_replica_hosts";
+    case MYLITE_REPLICATION_STATEMENT_SHOW_SLAVE_HOSTS:
+      return "show_slave_hosts";
+    case MYLITE_REPLICATION_STATEMENT_PURGE_BINARY_LOGS:
+      return "purge_binary_logs";
+    case MYLITE_REPLICATION_STATEMENT_PURGE_MASTER_LOGS:
+      return "purge_master_logs";
+  }
+  return "unknown";
+}
+
+const char *mylite_replication_option_value_kind_name(
+    MyliteReplicationOptionValueKind kind) {
+  switch (kind) {
+    case MYLITE_REPLICATION_OPTION_VALUE_UNKNOWN:
+      return "unknown";
+    case MYLITE_REPLICATION_OPTION_VALUE_STRING:
+      return "string";
+    case MYLITE_REPLICATION_OPTION_VALUE_UNSIGNED_INTEGER:
+      return "unsigned_integer";
+    case MYLITE_REPLICATION_OPTION_VALUE_FLOAT:
+      return "float";
+    case MYLITE_REPLICATION_OPTION_VALUE_HEX:
+      return "hex";
+    case MYLITE_REPLICATION_OPTION_VALUE_BIT:
+      return "bit";
+    case MYLITE_REPLICATION_OPTION_VALUE_NULL:
+      return "null";
+    case MYLITE_REPLICATION_OPTION_VALUE_TRUE:
+      return "true";
+    case MYLITE_REPLICATION_OPTION_VALUE_FALSE:
+      return "false";
+    case MYLITE_REPLICATION_OPTION_VALUE_IDENTIFIER:
+      return "identifier";
+    case MYLITE_REPLICATION_OPTION_VALUE_INTEGER_LIST:
+      return "integer_list";
+    case MYLITE_REPLICATION_OPTION_VALUE_EXPRESSION:
+      return "expression";
+    case MYLITE_REPLICATION_OPTION_VALUE_RAW:
+      return "raw";
   }
   return "unknown";
 }
@@ -4561,6 +4695,13 @@ mylite_ast_table_maintenance_statement_view(const MyliteAst *ast,
   const MyliteAstStatement *statement =
       mylite_ast_statement_at(ast, statement_index);
   return statement == NULL ? NULL : statement->table_maintenance_statement;
+}
+
+const MyliteAstReplicationStatement *mylite_ast_replication_statement_view(
+    const MyliteAst *ast, size_t statement_index) {
+  const MyliteAstStatement *statement =
+      mylite_ast_statement_at(ast, statement_index);
+  return statement == NULL ? NULL : statement->replication_statement;
 }
 
 const MyliteAstKillStatement *mylite_ast_kill_statement_view(
@@ -7931,6 +8072,110 @@ const char *mylite_ast_table_maintenance_target_view_name_value(
 size_t mylite_ast_table_maintenance_target_view_name_value_length(
     const MyliteAstTableMaintenanceTarget *target) {
   return target == NULL ? 0 : target->name_value_length;
+}
+
+const MyliteAstNode *mylite_ast_replication_statement_view_node(
+    const MyliteAstReplicationStatement *replication_statement) {
+  return replication_statement == NULL ? NULL : replication_statement->node;
+}
+
+size_t mylite_ast_replication_statement_view_start(
+    const MyliteAstReplicationStatement *replication_statement) {
+  return replication_statement == NULL ? 0 : replication_statement->start;
+}
+
+size_t mylite_ast_replication_statement_view_end(
+    const MyliteAstReplicationStatement *replication_statement) {
+  return replication_statement == NULL ? 0 : replication_statement->end;
+}
+
+MyliteReplicationStatementKind mylite_ast_replication_statement_view_kind(
+    const MyliteAstReplicationStatement *replication_statement) {
+  return replication_statement == NULL ? MYLITE_REPLICATION_STATEMENT_UNKNOWN
+                                       : replication_statement->kind;
+}
+
+int mylite_ast_replication_statement_view_has_channel(
+    const MyliteAstReplicationStatement *replication_statement) {
+  return replication_statement != NULL && replication_statement->has_channel;
+}
+
+const char *mylite_ast_replication_statement_view_channel_value(
+    const MyliteAstReplicationStatement *replication_statement) {
+  return replication_statement == NULL ? NULL : replication_statement->channel_value;
+}
+
+size_t mylite_ast_replication_statement_view_channel_value_length(
+    const MyliteAstReplicationStatement *replication_statement) {
+  return replication_statement == NULL ? 0
+                                       : replication_statement->channel_value_length;
+}
+
+int mylite_ast_replication_statement_view_has_all(
+    const MyliteAstReplicationStatement *replication_statement) {
+  return replication_statement != NULL && replication_statement->has_all;
+}
+
+size_t mylite_ast_replication_statement_view_option_count(
+    const MyliteAstReplicationStatement *replication_statement) {
+  return replication_statement == NULL ? 0 : replication_statement->option_count;
+}
+
+const MyliteAstReplicationOption *
+mylite_ast_replication_statement_view_option_at(
+    const MyliteAstReplicationStatement *replication_statement,
+    size_t option_index) {
+  return replication_statement == NULL ||
+                 option_index >= replication_statement->option_count
+             ? NULL
+             : &replication_statement->options[option_index];
+}
+
+const MyliteAstNode *mylite_ast_replication_option_view_node(
+    const MyliteAstReplicationOption *option) {
+  return option == NULL ? NULL : option->node;
+}
+
+size_t mylite_ast_replication_option_view_start(
+    const MyliteAstReplicationOption *option) {
+  return option == NULL ? 0 : option->start;
+}
+
+size_t mylite_ast_replication_option_view_end(
+    const MyliteAstReplicationOption *option) {
+  return option == NULL ? 0 : option->end;
+}
+
+const char *mylite_ast_replication_option_view_name_value(
+    const MyliteAstReplicationOption *option) {
+  return option == NULL ? NULL : option->name_value;
+}
+
+size_t mylite_ast_replication_option_view_name_value_length(
+    const MyliteAstReplicationOption *option) {
+  return option == NULL ? 0 : option->name_value_length;
+}
+
+MyliteReplicationOptionValueKind
+mylite_ast_replication_option_view_value_kind(
+    const MyliteAstReplicationOption *option) {
+  return option == NULL ? MYLITE_REPLICATION_OPTION_VALUE_UNKNOWN
+                        : option->value_kind;
+}
+
+const char *mylite_ast_replication_option_view_value(
+    const MyliteAstReplicationOption *option) {
+  return option == NULL ? NULL : option->value;
+}
+
+size_t mylite_ast_replication_option_view_value_length(
+    const MyliteAstReplicationOption *option) {
+  return option == NULL ? 0 : option->value_length;
+}
+
+size_t mylite_ast_replication_option_view_integer_count(
+    const MyliteAstReplicationOption *option) {
+  return option == NULL ? 0 : option->integer_count;
 }
 
 const MyliteAstNode *mylite_ast_kill_statement_view_node(
@@ -12573,7 +12818,8 @@ static int mylite_ast_set_statement_details(MyliteAst *ast,
   }
   if (strcmp(statement->symbol_name, "nt_show_stmt") == 0) {
     return mylite_ast_set_show_statement_view(ast, statement, payload) &&
-           mylite_ast_set_role_statement_view(ast, statement, payload);
+           mylite_ast_set_role_statement_view(ast, statement, payload) &&
+           mylite_ast_set_replication_statement_view(ast, statement, payload);
   }
   if (strcmp(statement->symbol_name, "nt_flush_stmt") == 0) {
     return mylite_ast_set_flush_statement_view(ast, statement, payload);
@@ -12607,6 +12853,12 @@ static int mylite_ast_set_statement_details(MyliteAst *ast,
       strcmp(statement->symbol_name, "nt_mysql_checksum_table_stmt") == 0) {
     return mylite_ast_set_table_maintenance_statement_view(ast, statement,
                                                            payload);
+  }
+  if (strcmp(statement->symbol_name, "nt_mysql_change_replication_stmt") == 0 ||
+      strcmp(statement->symbol_name, "nt_mysql_replication_control_stmt") == 0 ||
+      strcmp(statement->symbol_name, "nt_mysql_reset_stmt") == 0 ||
+      strcmp(statement->symbol_name, "nt_mysql_purge_logs_stmt") == 0) {
+    return mylite_ast_set_replication_statement_view(ast, statement, payload);
   }
   if (strcmp(statement->symbol_name, "nt_kill_stmt") == 0) {
     return mylite_ast_set_kill_statement_view(ast, statement, payload);
@@ -17198,6 +17450,327 @@ static int mylite_ast_fill_table_maintenance_target(
                                         &target->name_value_length);
   }
   return 1;
+}
+
+static int mylite_ast_set_replication_statement_view(
+    MyliteAst *ast, MyliteAstStatement *statement,
+    const MyliteAstNode *payload) {
+  if (ast == NULL || statement == NULL) {
+    return 1;
+  }
+  MyliteReplicationStatementKind kind =
+      mylite_ast_classify_replication_statement(statement->symbol_name, payload);
+  if (kind == MYLITE_REPLICATION_STATEMENT_UNKNOWN) {
+    return 1;
+  }
+  MyliteAstReplicationStatement *replication_statement =
+      mylite_ast_alloc(ast, sizeof(*replication_statement));
+  if (replication_statement == NULL) {
+    return 0;
+  }
+  replication_statement->node = payload == NULL ? statement->node : payload;
+  replication_statement->kind = kind;
+  replication_statement->start =
+      mylite_ast_node_start(replication_statement->node);
+  replication_statement->end = mylite_ast_node_end(replication_statement->node);
+  replication_statement->has_all =
+      (kind == MYLITE_REPLICATION_STATEMENT_RESET_REPLICA ||
+       kind == MYLITE_REPLICATION_STATEMENT_RESET_SLAVE ||
+       kind == MYLITE_REPLICATION_STATEMENT_RESET_SOURCE) &&
+      mylite_ast_find_first_token(replication_statement->node,
+                                  MYLITE_TOK_ALL) != NULL;
+  if (!mylite_ast_set_replication_statement_channel(
+          ast, replication_statement) ||
+      !mylite_ast_set_replication_options(ast, replication_statement)) {
+    return 0;
+  }
+  statement->replication_statement = replication_statement;
+  return 1;
+}
+
+static MyliteReplicationStatementKind mylite_ast_classify_replication_statement(
+    const char *symbol_name, const MyliteAstNode *payload) {
+  if (symbol_name == NULL || payload == NULL) {
+    return MYLITE_REPLICATION_STATEMENT_UNKNOWN;
+  }
+  if (strcmp(symbol_name, "nt_mysql_change_replication_stmt") == 0) {
+    return mylite_ast_find_direct_child_token(payload, MYLITE_TOK_REPLICATION) != NULL
+               ? MYLITE_REPLICATION_STATEMENT_CHANGE_REPLICATION_SOURCE
+               : MYLITE_REPLICATION_STATEMENT_CHANGE_MASTER;
+  }
+  if (strcmp(symbol_name, "nt_mysql_replication_control_stmt") == 0) {
+    int starts =
+        mylite_ast_find_direct_child_token(payload, MYLITE_TOK_START) != NULL;
+    int replica =
+        mylite_ast_find_direct_child_token(payload, MYLITE_TOK_REPLICA) != NULL;
+    if (starts && replica) {
+      return MYLITE_REPLICATION_STATEMENT_START_REPLICA;
+    }
+    if (starts) {
+      return MYLITE_REPLICATION_STATEMENT_START_SLAVE;
+    }
+    return replica ? MYLITE_REPLICATION_STATEMENT_STOP_REPLICA
+                   : MYLITE_REPLICATION_STATEMENT_STOP_SLAVE;
+  }
+  if (strcmp(symbol_name, "nt_mysql_reset_stmt") == 0) {
+    if (mylite_ast_find_direct_child_token(payload, MYLITE_TOK_MASTER) != NULL) {
+      return MYLITE_REPLICATION_STATEMENT_RESET_MASTER;
+    }
+    if (mylite_ast_find_direct_child_token(payload,
+                                           MYLITE_TOK_BINARY_TYPE) != NULL) {
+      return MYLITE_REPLICATION_STATEMENT_RESET_BINARY_LOGS_AND_GTIDS;
+    }
+    if (mylite_ast_find_direct_child_token(payload, MYLITE_TOK_REPLICA) != NULL) {
+      return MYLITE_REPLICATION_STATEMENT_RESET_REPLICA;
+    }
+    if (mylite_ast_find_direct_child_token(payload, MYLITE_TOK_SLAVE) != NULL) {
+      return MYLITE_REPLICATION_STATEMENT_RESET_SLAVE;
+    }
+    if (mylite_ast_find_direct_child_token(payload, MYLITE_TOK_SOURCE) != NULL) {
+      return MYLITE_REPLICATION_STATEMENT_RESET_SOURCE;
+    }
+    return MYLITE_REPLICATION_STATEMENT_UNKNOWN;
+  }
+  if (strcmp(symbol_name, "nt_show_stmt") == 0) {
+    if (mylite_ast_find_direct_child_token(payload, MYLITE_TOK_MASTER) != NULL &&
+        mylite_ast_find_direct_child_token(payload, MYLITE_TOK_STATUS) != NULL) {
+      return MYLITE_REPLICATION_STATEMENT_SHOW_MASTER_STATUS;
+    }
+    if (mylite_ast_find_direct_child_token(payload,
+                                           MYLITE_TOK_BINARY_TYPE) != NULL &&
+        mylite_ast_find_direct_child_token(payload, MYLITE_TOK_STATUS) != NULL) {
+      return MYLITE_REPLICATION_STATEMENT_SHOW_BINARY_LOG_STATUS;
+    }
+    const MyliteAstNode *replica =
+        mylite_ast_find_first_symbol(payload, "nt_replica");
+    if (replica != NULL &&
+        mylite_ast_find_direct_child_token(payload, MYLITE_TOK_STATUS) != NULL) {
+      return mylite_ast_find_direct_child_token(replica,
+                                                MYLITE_TOK_REPLICA) != NULL
+                 ? MYLITE_REPLICATION_STATEMENT_SHOW_REPLICA_STATUS
+                 : MYLITE_REPLICATION_STATEMENT_SHOW_SLAVE_STATUS;
+    }
+    if (replica != NULL &&
+        mylite_ast_find_direct_child_token(payload, MYLITE_TOK_HOSTS) != NULL) {
+      return mylite_ast_find_direct_child_token(replica,
+                                                MYLITE_TOK_REPLICA) != NULL
+                 ? MYLITE_REPLICATION_STATEMENT_SHOW_REPLICA_HOSTS
+                 : MYLITE_REPLICATION_STATEMENT_SHOW_SLAVE_HOSTS;
+    }
+    return MYLITE_REPLICATION_STATEMENT_UNKNOWN;
+  }
+  if (strcmp(symbol_name, "nt_mysql_purge_logs_stmt") == 0) {
+    const MyliteAstNode *log_type =
+        mylite_ast_find_first_symbol(payload, "nt_mysql_binary_or_master");
+    return mylite_ast_find_first_token(log_type, MYLITE_TOK_MASTER) != NULL
+               ? MYLITE_REPLICATION_STATEMENT_PURGE_MASTER_LOGS
+               : MYLITE_REPLICATION_STATEMENT_PURGE_BINARY_LOGS;
+  }
+  return MYLITE_REPLICATION_STATEMENT_UNKNOWN;
+}
+
+static int mylite_ast_set_replication_statement_channel(
+    MyliteAst *ast, MyliteAstReplicationStatement *replication_statement) {
+  if (ast == NULL || replication_statement == NULL ||
+      replication_statement->node == NULL) {
+    return 1;
+  }
+  const MyliteAstNode *channel =
+      mylite_ast_find_direct_child_token(replication_statement->node,
+                                         MYLITE_TOK_STRING_LIT);
+  if (channel == NULL) {
+    return 1;
+  }
+  replication_statement->has_channel = 1;
+  replication_statement->channel_start = mylite_ast_node_start(channel);
+  replication_statement->channel_end = mylite_ast_node_end(channel);
+  return mylite_ast_decode_sql_string_literal(
+      ast, replication_statement->channel_start,
+      replication_statement->channel_end,
+      &replication_statement->channel_value,
+      &replication_statement->channel_value_length);
+}
+
+static int mylite_ast_set_replication_options(
+    MyliteAst *ast, MyliteAstReplicationStatement *replication_statement) {
+  if (ast == NULL || replication_statement == NULL ||
+      replication_statement->node == NULL) {
+    return 1;
+  }
+  const MyliteAstNode *options =
+      mylite_ast_find_first_symbol(replication_statement->node,
+                                   "nt_mysql_replication_option_list");
+  if (options == NULL) {
+    return 1;
+  }
+  replication_statement->option_count =
+      mylite_ast_count_load_nodes(options, "nt_mysql_replication_option");
+  if (replication_statement->option_count == 0) {
+    return 1;
+  }
+  replication_statement->options =
+      mylite_ast_alloc(ast, replication_statement->option_count *
+                                sizeof(*replication_statement->options));
+  if (replication_statement->options == NULL) {
+    return 0;
+  }
+  size_t index = 0;
+  return mylite_ast_fill_replication_options(
+             ast, replication_statement, options, &index) &&
+         index == replication_statement->option_count;
+}
+
+static int mylite_ast_fill_replication_options(
+    MyliteAst *ast, MyliteAstReplicationStatement *replication_statement,
+    const MyliteAstNode *node, size_t *index) {
+  if (node == NULL) {
+    return 1;
+  }
+  if (mylite_ast_expression_is_symbol(node, "nt_mysql_replication_option")) {
+    if (index == NULL || *index >= replication_statement->option_count ||
+        !mylite_ast_fill_replication_option(
+            ast, &replication_statement->options[*index], node)) {
+      return 0;
+    }
+    (*index)++;
+    return 1;
+  }
+  for (size_t i = 0; i < node->child_count; i++) {
+    if (!mylite_ast_fill_replication_options(
+            ast, replication_statement, node->children[i], index)) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+static int mylite_ast_fill_replication_option(
+    MyliteAst *ast, MyliteAstReplicationOption *option,
+    const MyliteAstNode *node) {
+  if (ast == NULL || option == NULL || node == NULL) {
+    return 1;
+  }
+  option->node = node;
+  option->start = mylite_ast_node_start(node);
+  option->end = mylite_ast_node_end(node);
+  const MyliteAstNode *name =
+      mylite_ast_direct_child_symbol(node, 0, "nt_identifier");
+  if (name != NULL) {
+    option->name_start = mylite_ast_node_start(name);
+    option->name_end = mylite_ast_node_end(name);
+    if (!mylite_ast_decode_identifier(ast, option->name_start,
+                                      option->name_end, &option->name_value,
+                                      &option->name_value_length)) {
+      return 0;
+    }
+  }
+  option->value_node =
+      mylite_ast_direct_child_symbol(node, 2,
+                                     "nt_mysql_replication_option_value");
+  option->value_kind =
+      mylite_ast_classify_replication_option_value(option->value_node);
+  return mylite_ast_set_replication_option_value(ast, option);
+}
+
+static MyliteReplicationOptionValueKind
+mylite_ast_classify_replication_option_value(const MyliteAstNode *value_node) {
+  if (value_node == NULL || !value_node->has_span) {
+    return MYLITE_REPLICATION_OPTION_VALUE_UNKNOWN;
+  }
+  if (mylite_ast_find_direct_child_token(value_node, MYLITE_TOK_LPAREN) !=
+      NULL) {
+    return MYLITE_REPLICATION_OPTION_VALUE_INTEGER_LIST;
+  }
+  const MyliteAstNode *scalar =
+      mylite_ast_find_first_symbol(value_node,
+                                   "nt_mysql_replication_scalar_value");
+  if (scalar == NULL) {
+    return MYLITE_REPLICATION_OPTION_VALUE_RAW;
+  }
+  if (mylite_ast_find_first_token(scalar, MYLITE_TOK_STRING_LIT) != NULL) {
+    return MYLITE_REPLICATION_OPTION_VALUE_STRING;
+  }
+  if (mylite_ast_find_first_token(scalar, MYLITE_TOK_INT_LIT) != NULL) {
+    return MYLITE_REPLICATION_OPTION_VALUE_UNSIGNED_INTEGER;
+  }
+  if (mylite_ast_find_first_token(scalar, MYLITE_TOK_FLOAT_LIT) != NULL ||
+      mylite_ast_find_first_token(scalar, MYLITE_TOK_DEC_LIT) != NULL) {
+    return MYLITE_REPLICATION_OPTION_VALUE_FLOAT;
+  }
+  if (mylite_ast_find_first_token(scalar, MYLITE_TOK_HEX_LIT) != NULL) {
+    return MYLITE_REPLICATION_OPTION_VALUE_HEX;
+  }
+  if (mylite_ast_find_first_token(scalar, MYLITE_TOK_BIT_LIT) != NULL) {
+    return MYLITE_REPLICATION_OPTION_VALUE_BIT;
+  }
+  if (mylite_ast_find_first_token(scalar, MYLITE_TOK_NULL) != NULL) {
+    return MYLITE_REPLICATION_OPTION_VALUE_NULL;
+  }
+  if (mylite_ast_find_first_token(scalar, MYLITE_TOK_TRUE_KWD) != NULL) {
+    return MYLITE_REPLICATION_OPTION_VALUE_TRUE;
+  }
+  if (mylite_ast_find_first_token(scalar, MYLITE_TOK_FALSE_KWD) != NULL) {
+    return MYLITE_REPLICATION_OPTION_VALUE_FALSE;
+  }
+  if (mylite_ast_find_first_symbol(scalar, "nt_identifier") != NULL) {
+    return MYLITE_REPLICATION_OPTION_VALUE_IDENTIFIER;
+  }
+  return MYLITE_REPLICATION_OPTION_VALUE_RAW;
+}
+
+static int mylite_ast_set_replication_option_value(
+    MyliteAst *ast, MyliteAstReplicationOption *option) {
+  if (ast == NULL || option == NULL || option->value_node == NULL ||
+      !option->value_node->has_span) {
+    return 1;
+  }
+  option->value_start = mylite_ast_node_start(option->value_node);
+  option->value_end = mylite_ast_node_end(option->value_node);
+  option->integer_count =
+      option->value_kind == MYLITE_REPLICATION_OPTION_VALUE_INTEGER_LIST
+          ? mylite_ast_count_replication_int_literals(option->value_node)
+          : 0;
+
+  if (option->value_kind == MYLITE_REPLICATION_OPTION_VALUE_STRING) {
+    const MyliteAstNode *token =
+        mylite_ast_find_first_token(option->value_node, MYLITE_TOK_STRING_LIT);
+    if (token != NULL) {
+      option->value_start = mylite_ast_node_start(token);
+      option->value_end = mylite_ast_node_end(token);
+      return mylite_ast_decode_sql_string_literal(
+          ast, option->value_start, option->value_end, &option->value,
+          &option->value_length);
+    }
+  }
+  if (option->value_kind == MYLITE_REPLICATION_OPTION_VALUE_IDENTIFIER) {
+    const MyliteAstNode *identifier =
+        mylite_ast_find_first_symbol(option->value_node, "nt_identifier");
+    if (identifier != NULL) {
+      option->value_start = mylite_ast_node_start(identifier);
+      option->value_end = mylite_ast_node_end(identifier);
+      return mylite_ast_decode_identifier(ast, option->value_start,
+                                          option->value_end, &option->value,
+                                          &option->value_length);
+    }
+  }
+  return mylite_ast_copy_source_span(ast, option->value_start,
+                                     option->value_end, &option->value,
+                                     &option->value_length);
+}
+
+static size_t mylite_ast_count_replication_int_literals(
+    const MyliteAstNode *node) {
+  if (node == NULL) {
+    return 0;
+  }
+  if (node->kind == MYLITE_AST_NODE_TOKEN && node->token == MYLITE_TOK_INT_LIT) {
+    return 1;
+  }
+  size_t count = 0;
+  for (size_t i = 0; i < node->child_count; i++) {
+    count += mylite_ast_count_replication_int_literals(node->children[i]);
+  }
+  return count;
 }
 
 static int mylite_ast_set_kill_statement_view(MyliteAst *ast,

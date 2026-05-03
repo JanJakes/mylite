@@ -116,6 +116,10 @@ source kind and decoded source value, ordered
 `EXECUTE ... USING` user variables, and `DEALLOCATE`/`DROP PREPARE` mode.
 Transaction-control views currently cover begin form, access mode, consistency
 modifiers, completion modifiers, `WORK`, and decoded savepoint names. The
+replication/admin views currently cover `CHANGE REPLICATION SOURCE TO`,
+`CHANGE MASTER TO`, replica/slave start/stop/reset forms, binary-log reset and
+purge forms, and replication/binary-log status `SHOW` forms, including channel
+strings and replication option descriptors. The
 `ALTER TABLE` view currently covers decoded target tables, ordered coarse
 operation specs,
 operation names, nested rename/exchange table targets, reused table-option
@@ -237,14 +241,14 @@ below. The current prototype parses the WordPress MySQL server query corpus with
 | `XA ROLLBACK` | ❌ | low | XA rollback. |  |
 | `XA RECOVER` | ❌ | low | XA recovery result-set metadata. |  |
 | `BINLOG` | ❌ | low | Base64 binary log event statement syntax and embedded-compatible diagnostics. |  |
-| `PURGE BINARY LOGS` | ❌ | low | Binary log purge syntax. |  |
-| `RESET BINARY LOGS AND GTIDS` | ❌ | low | Binary log and GTID reset syntax. |  |
+| `PURGE BINARY LOGS` | ❌ | low | Binary log purge syntax. | Parser prototype exposes typed replication/admin statement kind for `PURGE BINARY LOGS` and legacy `PURGE MASTER LOGS`; binary-log state and diagnostics are not implemented yet. |
+| `RESET BINARY LOGS AND GTIDS` | ❌ | low | Binary log and GTID reset syntax. | Parser prototype exposes typed replication/admin statement kind. Binary-log/GTID state and diagnostics are not implemented yet. |
 | `SET sql_log_bin` | ❌ | low | Session binary logging toggle and privilege semantics. |  |
 | `CHANGE REPLICATION FILTER` | ❌ | low | Replication filter syntax and diagnostics. |  |
-| `CHANGE REPLICATION SOURCE TO` | ❌ | low | Source connection/channel options and diagnostics. |  |
-| `RESET REPLICA` | ❌ | low | Replica metadata reset syntax. |  |
-| `START REPLICA` | ❌ | low | Replica start syntax, channels, threads, and until conditions. |  |
-| `STOP REPLICA` | ❌ | low | Replica stop syntax and channel handling. |  |
+| `CHANGE REPLICATION SOURCE TO` | ❌ | low | Source connection/channel options and diagnostics. | Parser prototype exposes typed replication/admin views for `CHANGE REPLICATION SOURCE TO` and legacy `CHANGE MASTER TO`, including decoded channel strings, ordered option names, scalar value kinds, and integer-list option counts. Runtime source metadata, replication behavior, privilege checks, warnings, and diagnostics are not implemented yet. |
+| `RESET REPLICA` | ❌ | low | Replica metadata reset syntax. | Parser prototype exposes typed replication/admin views for `RESET REPLICA`, `RESET SLAVE`, `RESET SOURCE`, and `ALL` markers. Runtime replica/source metadata and diagnostics are not implemented yet. |
+| `START REPLICA` | ❌ | low | Replica start syntax, channels, threads, and until conditions. | Parser prototype exposes typed replication/admin statement kind for supported grammar-backed `START REPLICA` / legacy `START SLAVE` forms. Runtime replication state, channel handling, privilege checks, warnings, and diagnostics are not implemented yet. |
+| `STOP REPLICA` | ❌ | low | Replica stop syntax and channel handling. | Parser prototype exposes typed replication/admin statement kind for supported grammar-backed `STOP REPLICA` / legacy `STOP SLAVE` forms. Runtime replication state, channel handling, privilege checks, warnings, and diagnostics are not implemented yet. |
 | `START GROUP_REPLICATION` | ❌ | low | Group Replication start syntax and user credentials. |  |
 | `STOP GROUP_REPLICATION` | ❌ | low | Group Replication stop syntax. |  |
 | `PREPARE` | ❌ | high | Prepare from literal or user variable, parameter marker rules, and errors. | Parser view exposes decoded statement name, source kind, and decoded source string/user-variable value. |
@@ -320,7 +324,7 @@ below. The current prototype parses the WordPress MySQL server query corpus with
 
 | SHOW statement | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
-| `SHOW BINARY LOG STATUS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
+| `SHOW BINARY LOG STATUS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Parser prototype exposes typed replication/admin statement kind. Binary-log status rows, privileges, and diagnostics are not implemented yet. |
 | `SHOW BINARY LOGS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW BINLOG EVENTS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW CHARACTER SET` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
@@ -348,7 +352,7 @@ below. The current prototype parses the WordPress MySQL server query corpus with
 | `SHOW FUNCTION STATUS` | ❌ | medium | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW GRANTS` | ❌ | high | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Parser prototype exposes a typed role-state view for `SHOW GRANTS`, including optional FOR user, decoded user/host, optional USING role list, decoded role names/hosts, and role-clause markers. Runtime privilege lookup, result-set text, ordering, current-user visibility, warnings, and diagnostics are not implemented yet. |
 | `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
-| `SHOW MASTER STATUS` | ❌ | low | No longer supported in MySQL 8.4; match parser/diagnostic behavior rather than returning binary-log status rows. | Replacement statement is `SHOW BINARY LOG STATUS`. |
+| `SHOW MASTER STATUS` | ❌ | low | No longer supported in MySQL 8.4; match parser/diagnostic behavior rather than returning binary-log status rows. | Parser prototype classifies the legacy form separately from `SHOW BINARY LOG STATUS`. Runtime diagnostic behavior is not implemented yet. |
 | `SHOW OPEN TABLES` | ❌ | high | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW PARSE_TREE` | ❌ | low | JSON parse-tree result for the MySQL 8.4.9 grammar when enabled; syntax error when built without `WITH_SHOW_PARSE_TREE`. | Conditional debug/development surface. |
 | `SHOW PLUGINS` | ❌ | medium | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
@@ -359,7 +363,7 @@ below. The current prototype parses the WordPress MySQL server query corpus with
 | `SHOW PROFILE` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW PROFILES` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW RELAYLOG EVENTS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
-| `SHOW REPLICA STATUS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
+| `SHOW REPLICA STATUS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. | Parser prototype exposes typed replication/admin views for `SHOW REPLICA STATUS`, legacy `SHOW SLAVE STATUS`, `SHOW REPLICA HOSTS`, and legacy `SHOW SLAVE HOSTS`. Runtime status rows, privileges, warnings, and diagnostics are not implemented yet. |
 | `SHOW REPLICAS` | ❌ | low | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW STATUS` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |
 | `SHOW TABLE STATUS` | ❌ | top | Result-set shape, filtering, LIKE/WHERE clauses where supported, privileges, and MySQL 8.4 deprecation/removal behavior. |  |

@@ -544,7 +544,7 @@ def render_lemon_grammar(
         rule_id += 1
 
     for line in render_mysql_overlay_rules(used_terminals):
-        if "::=" in line and line.strip().endswith("."):
+        if "::=" in line:
             lines.append(render_overlay_lemon_rule(line, rule_id))
             rule_id += 1
         else:
@@ -564,12 +564,12 @@ def render_lemon_rule(
 
 
 def render_overlay_lemon_rule(line: str, rule_id: int) -> str:
-    match = re.match(r"^(\w+)\s+::=\s*(.*?)\.$", line.strip())
+    match = re.match(r"^(\w+)\s+::=\s*(.*?)\.\s*(?:\[(\w+)\])?$", line.strip())
     if match is None:
         raise ValueError(f"cannot render overlay rule {line!r}")
     lhs = match.group(1)
     rhs = match.group(2).split() if match.group(2) else []
-    return render_lemon_rule(lhs, rhs, None, rule_id)
+    return render_lemon_rule(lhs, rhs, match.group(3), rule_id)
 
 
 def render_reduce_action(lhs: str, child_count: int, rule_id: int, root: bool) -> str:

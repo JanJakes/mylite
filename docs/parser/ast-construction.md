@@ -146,6 +146,12 @@ expression nodes.
 - `SET ROLE`, `SET DEFAULT ROLE`, and `SHOW GRANTS` expose typed role-state
   parser views with role option kind, decoded role names and hosts, decoded
   users, `FOR` user marker, and `USING` role marker.
+- `CHANGE REPLICATION SOURCE TO`, `CHANGE MASTER TO`, replica/slave
+  start/stop/reset forms, binary-log reset/purge forms, and
+  replication/binary-log status `SHOW` forms expose typed replication/admin
+  parser views with statement kind, decoded channel strings, `ALL` markers,
+  ordered option names, value-kind classification, decoded scalar values, and
+  integer-list counts.
 - Transaction-control statements expose begin form, access mode, consistency
   modifiers, `WORK`, completion modifiers, and decoded savepoint names.
 - Temporary syntax recognizers produce a placeholder root node so AST mode can
@@ -296,6 +302,10 @@ expression nodes.
   (`DEFAULT`, `NONE`, `ALL`, `ALL EXCEPT`, regular list), ordered decoded role
   names and optional hosts, decoded target users, `FOR` user marker, and `USING`
   roles marker
+- typed replication/admin descriptors with statement kind, decoded channel
+  strings, `ALL` markers, ordered source-option descriptors, option names,
+  option value kind, decoded scalar values, raw/list values, and integer-list
+  counts
 - typed transaction-control descriptors with statement kind, begin form,
   TiDB begin mode, access mode, consistency modifiers, `WORK`, completion
   modifiers, savepoint-keyword marker, and decoded savepoint name
@@ -670,6 +680,17 @@ optional role hosts, decoded target users, `SHOW GRANTS FOR` user marker, and
 changes, privilege checks, result-set construction, warnings, and diagnostics
 remain semantic/runtime work.
 
+Replication/admin parser views cover `CHANGE REPLICATION SOURCE TO`, legacy
+`CHANGE MASTER TO`, `START`/`STOP` replica and slave forms, `RESET` master,
+binary-log/GTID, replica/slave/source forms, `PURGE BINARY`/`MASTER LOGS`, and
+replication/binary-log status `SHOW` forms. The view records statement kind,
+decoded `FOR CHANNEL` strings, `ALL` markers for reset forms, ordered
+replication option descriptors, decoded option names, scalar value kind,
+decoded string/identifier values, raw numeric/list values, and integer-list
+counts. Replication metadata, binary-log state, channel handling, privilege
+checks, result-set construction, warnings, and diagnostics remain
+semantic/runtime work.
+
 Transaction-control views cover `BEGIN`, `START TRANSACTION`, `COMMIT`,
 `ROLLBACK`, `SAVEPOINT`, and `RELEASE SAVEPOINT`. `BEGIN`/`START TRANSACTION`
 records the begin form, optional TiDB pessimistic/optimistic markers, MySQL
@@ -786,6 +807,14 @@ mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.437276 qp
 mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.643262 qps=181967 mbps=13.84 avg_us=5.496 avg_semantic_nodes=5.3 avg_semantic_bytes=4268.0 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_expressions=2.67 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.04
 ```
 
+Latest replication/admin parser-view run on May 3, 2026:
+
+```text
+mode=syntax queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=2.786763 qps=499081 mbps=37.96 avg_us=2.004
+mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.337179 qps=189558 mbps=14.42 avg_us=5.275 avg_nodes=74.5 avg_ast_bytes=11083.8 avg_replication_statement_views=0.00 avg_replication_statement_change_sources=0.00 avg_replication_statement_change_masters=0.00 avg_replication_statement_start_forms=0.00 avg_replication_statement_stop_forms=0.00 avg_replication_statement_reset_forms=0.00 avg_replication_statement_show_forms=0.00 avg_replication_statement_purge_forms=0.00 avg_replication_statement_channels=0.00 avg_replication_statement_all_flags=0.00 avg_replication_statement_options=0.00 avg_replication_statement_option_name_values=0.00 avg_replication_statement_option_string_values=0.00 avg_replication_statement_option_integer_lists=0.00
+mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.424682 qps=187324 mbps=14.25 avg_us=5.338 avg_semantic_nodes=5.3 avg_semantic_bytes=4268.0 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_expressions=2.67 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.04
+```
+
 Release benchmark result on May 2, 2026:
 
 ```text
@@ -891,9 +920,9 @@ allocation while paying some action-call overhead.
 Current release build size on the same machine:
 
 ```text
-generated parser C: 72,852 lines, 5,637,339 bytes
-generated parser object: 996K on disk, 905,398 bytes text/data/other
-parser support object: 389K on disk, 225,219 bytes text/data/other
+generated parser C: 72,876 lines, 5,639,543 bytes
+generated parser object: 997K on disk, 905,630 bytes text/data/other
+parser support object: 398K on disk, 230,445 bytes text/data/other
 semantic AST object: 18K on disk, 8,095 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.5M on disk

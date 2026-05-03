@@ -206,6 +206,7 @@ static int expect_explain_statement_view(void);
 static int expect_show_statement_view(void);
 static int expect_lock_statement_view(void);
 static int expect_table_maintenance_statement_view(void);
+static int expect_replication_statement_view(void);
 static int expect_kill_statement_view(void);
 static int expect_flush_statement_view(void);
 static int expect_load_statement_view(void);
@@ -832,6 +833,7 @@ int main(void) {
   failures += expect_show_statement_view();
   failures += expect_lock_statement_view();
   failures += expect_table_maintenance_statement_view();
+  failures += expect_replication_statement_view();
   failures += expect_kill_statement_view();
   failures += expect_flush_statement_view();
   failures += expect_load_statement_view();
@@ -4614,6 +4616,161 @@ static int expect_table_maintenance_statement_view(void) {
     }
     mylite_ast_free(ast);
   }
+  return failed;
+}
+
+static int expect_replication_statement_view(void) {
+  int failed = 0;
+  {
+    const char *sql =
+        "CHANGE REPLICATION SOURCE TO SOURCE_PASSWORD='secret', "
+        "IGNORE_SERVER_IDS=(99,100) FOR CHANNEL 'chan_jackie'";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "CHANGE REPLICATION SOURCE view parse failed: status=%s "
+              "offset=%zu token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+    const MyliteAstReplicationStatement *view =
+        mylite_ast_replication_statement_view(ast, 0);
+    const MyliteAstReplicationOption *password =
+        mylite_ast_replication_statement_view_option_at(view, 0);
+    const MyliteAstReplicationOption *ignore_ids =
+        mylite_ast_replication_statement_view_option_at(view, 1);
+    if (view == NULL ||
+        mylite_ast_replication_statement_view_kind(view) !=
+            MYLITE_REPLICATION_STATEMENT_CHANGE_REPLICATION_SOURCE ||
+        !mylite_ast_replication_statement_view_has_channel(view) ||
+        !value_matches_when_expected(
+            mylite_ast_replication_statement_view_channel_value(view),
+            mylite_ast_replication_statement_view_channel_value_length(view),
+            "chan_jackie") ||
+        mylite_ast_replication_statement_view_option_count(view) != 2 ||
+        password == NULL || ignore_ids == NULL ||
+        !value_matches_when_expected(
+            mylite_ast_replication_option_view_name_value(password),
+            mylite_ast_replication_option_view_name_value_length(password),
+            "SOURCE_PASSWORD") ||
+        mylite_ast_replication_option_view_value_kind(password) !=
+            MYLITE_REPLICATION_OPTION_VALUE_STRING ||
+        !value_matches_when_expected(
+            mylite_ast_replication_option_view_value(password),
+            mylite_ast_replication_option_view_value_length(password),
+            "secret") ||
+        !value_matches_when_expected(
+            mylite_ast_replication_option_view_name_value(ignore_ids),
+            mylite_ast_replication_option_view_name_value_length(ignore_ids),
+            "IGNORE_SERVER_IDS") ||
+        mylite_ast_replication_option_view_value_kind(ignore_ids) !=
+            MYLITE_REPLICATION_OPTION_VALUE_INTEGER_LIST ||
+        mylite_ast_replication_option_view_integer_count(ignore_ids) != 2 ||
+        !value_matches_when_expected(
+            mylite_ast_replication_option_view_value(ignore_ids),
+            mylite_ast_replication_option_view_value_length(ignore_ids),
+            "(99,100)")) {
+      fprintf(stderr, "CHANGE REPLICATION SOURCE view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql =
+        "CHANGE MASTER TO MASTER_HOST='127.0.0.1', MASTER_PORT=3307";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "CHANGE MASTER view parse failed: status=%s offset=%zu token=%d "
+              "message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    const MyliteAstReplicationStatement *view =
+        mylite_ast_replication_statement_view(ast, 0);
+    const MyliteAstReplicationOption *host =
+        mylite_ast_replication_statement_view_option_at(view, 0);
+    const MyliteAstReplicationOption *port =
+        mylite_ast_replication_statement_view_option_at(view, 1);
+    if (view == NULL ||
+        mylite_ast_replication_statement_view_kind(view) !=
+            MYLITE_REPLICATION_STATEMENT_CHANGE_MASTER ||
+        mylite_ast_replication_statement_view_has_channel(view) ||
+        mylite_ast_replication_statement_view_option_count(view) != 2 ||
+        host == NULL || port == NULL ||
+        !value_matches_when_expected(
+            mylite_ast_replication_option_view_name_value(host),
+            mylite_ast_replication_option_view_name_value_length(host),
+            "MASTER_HOST") ||
+        mylite_ast_replication_option_view_value_kind(host) !=
+            MYLITE_REPLICATION_OPTION_VALUE_STRING ||
+        !value_matches_when_expected(
+            mylite_ast_replication_option_view_value(host),
+            mylite_ast_replication_option_view_value_length(host),
+            "127.0.0.1") ||
+        !value_matches_when_expected(
+            mylite_ast_replication_option_view_name_value(port),
+            mylite_ast_replication_option_view_name_value_length(port),
+            "MASTER_PORT") ||
+        mylite_ast_replication_option_view_value_kind(port) !=
+            MYLITE_REPLICATION_OPTION_VALUE_UNSIGNED_INTEGER ||
+        !value_matches_when_expected(
+            mylite_ast_replication_option_view_value(port),
+            mylite_ast_replication_option_view_value_length(port), "3307")) {
+      fprintf(stderr, "CHANGE MASTER view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql =
+        "START REPLICA; STOP SLAVE; RESET REPLICA ALL; "
+        "SHOW REPLICA STATUS; SHOW SLAVE HOSTS; "
+        "RESET BINARY LOGS AND GTIDS";
+    const MyliteReplicationStatementKind expected[] = {
+        MYLITE_REPLICATION_STATEMENT_START_REPLICA,
+        MYLITE_REPLICATION_STATEMENT_STOP_SLAVE,
+        MYLITE_REPLICATION_STATEMENT_RESET_REPLICA,
+        MYLITE_REPLICATION_STATEMENT_SHOW_REPLICA_STATUS,
+        MYLITE_REPLICATION_STATEMENT_SHOW_SLAVE_HOSTS,
+        MYLITE_REPLICATION_STATEMENT_RESET_BINARY_LOGS_AND_GTIDS};
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "replication control view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    if (mylite_ast_statement_count(ast) !=
+        sizeof(expected) / sizeof(expected[0])) {
+      fprintf(stderr, "replication control statement count failed: %s\n", sql);
+      failed = 1;
+    }
+    for (size_t i = 0; i < sizeof(expected) / sizeof(expected[0]); i++) {
+      const MyliteAstReplicationStatement *view =
+          mylite_ast_replication_statement_view(ast, i);
+      if (view == NULL ||
+          mylite_ast_replication_statement_view_kind(view) != expected[i] ||
+          (i == 2 && !mylite_ast_replication_statement_view_has_all(view))) {
+        fprintf(stderr, "replication control view[%zu] failed: %s\n", i, sql);
+        failed = 1;
+      }
+    }
+    mylite_ast_free(ast);
+  }
+
   return failed;
 }
 

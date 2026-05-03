@@ -28,6 +28,8 @@ typedef struct MyliteAstAccount MyliteAstAccount;
 typedef struct MyliteAstAccountStatement MyliteAstAccountStatement;
 typedef struct MyliteAstPrivilegeItem MyliteAstPrivilegeItem;
 typedef struct MyliteAstPrivilegeStatement MyliteAstPrivilegeStatement;
+typedef struct MyliteAstReplicationOption MyliteAstReplicationOption;
+typedef struct MyliteAstReplicationStatement MyliteAstReplicationStatement;
 typedef struct MyliteAstRoleName MyliteAstRoleName;
 typedef struct MyliteAstRoleStatement MyliteAstRoleStatement;
 typedef struct MyliteAstAlterTable MyliteAstAlterTable;
@@ -356,6 +358,45 @@ typedef enum MyliteTableMaintenanceKind {
   MYLITE_TABLE_MAINTENANCE_REPAIR,
   MYLITE_TABLE_MAINTENANCE_CHECKSUM
 } MyliteTableMaintenanceKind;
+
+typedef enum MyliteReplicationStatementKind {
+  MYLITE_REPLICATION_STATEMENT_UNKNOWN = 0,
+  MYLITE_REPLICATION_STATEMENT_CHANGE_REPLICATION_SOURCE,
+  MYLITE_REPLICATION_STATEMENT_CHANGE_MASTER,
+  MYLITE_REPLICATION_STATEMENT_START_REPLICA,
+  MYLITE_REPLICATION_STATEMENT_START_SLAVE,
+  MYLITE_REPLICATION_STATEMENT_STOP_REPLICA,
+  MYLITE_REPLICATION_STATEMENT_STOP_SLAVE,
+  MYLITE_REPLICATION_STATEMENT_RESET_MASTER,
+  MYLITE_REPLICATION_STATEMENT_RESET_BINARY_LOGS_AND_GTIDS,
+  MYLITE_REPLICATION_STATEMENT_RESET_REPLICA,
+  MYLITE_REPLICATION_STATEMENT_RESET_SLAVE,
+  MYLITE_REPLICATION_STATEMENT_RESET_SOURCE,
+  MYLITE_REPLICATION_STATEMENT_SHOW_MASTER_STATUS,
+  MYLITE_REPLICATION_STATEMENT_SHOW_BINARY_LOG_STATUS,
+  MYLITE_REPLICATION_STATEMENT_SHOW_REPLICA_STATUS,
+  MYLITE_REPLICATION_STATEMENT_SHOW_SLAVE_STATUS,
+  MYLITE_REPLICATION_STATEMENT_SHOW_REPLICA_HOSTS,
+  MYLITE_REPLICATION_STATEMENT_SHOW_SLAVE_HOSTS,
+  MYLITE_REPLICATION_STATEMENT_PURGE_BINARY_LOGS,
+  MYLITE_REPLICATION_STATEMENT_PURGE_MASTER_LOGS
+} MyliteReplicationStatementKind;
+
+typedef enum MyliteReplicationOptionValueKind {
+  MYLITE_REPLICATION_OPTION_VALUE_UNKNOWN = 0,
+  MYLITE_REPLICATION_OPTION_VALUE_STRING,
+  MYLITE_REPLICATION_OPTION_VALUE_UNSIGNED_INTEGER,
+  MYLITE_REPLICATION_OPTION_VALUE_FLOAT,
+  MYLITE_REPLICATION_OPTION_VALUE_HEX,
+  MYLITE_REPLICATION_OPTION_VALUE_BIT,
+  MYLITE_REPLICATION_OPTION_VALUE_NULL,
+  MYLITE_REPLICATION_OPTION_VALUE_TRUE,
+  MYLITE_REPLICATION_OPTION_VALUE_FALSE,
+  MYLITE_REPLICATION_OPTION_VALUE_IDENTIFIER,
+  MYLITE_REPLICATION_OPTION_VALUE_INTEGER_LIST,
+  MYLITE_REPLICATION_OPTION_VALUE_EXPRESSION,
+  MYLITE_REPLICATION_OPTION_VALUE_RAW
+} MyliteReplicationOptionValueKind;
 
 typedef enum MyliteKillStatementKind {
   MYLITE_KILL_STATEMENT_UNKNOWN = 0,
@@ -917,6 +958,10 @@ const char *mylite_lock_statement_kind_name(MyliteLockStatementKind kind);
 const char *mylite_table_lock_mode_name(MyliteTableLockMode mode);
 const char *mylite_table_maintenance_kind_name(
     MyliteTableMaintenanceKind kind);
+const char *mylite_replication_statement_kind_name(
+    MyliteReplicationStatementKind kind);
+const char *mylite_replication_option_value_kind_name(
+    MyliteReplicationOptionValueKind kind);
 const char *mylite_kill_statement_kind_name(MyliteKillStatementKind kind);
 const char *mylite_kill_target_kind_name(MyliteKillTargetKind kind);
 const char *mylite_flush_statement_kind_name(MyliteFlushStatementKind kind);
@@ -1131,6 +1176,8 @@ const MyliteAstLockStatement *mylite_ast_lock_statement_view(
 const MyliteAstTableMaintenanceStatement *
 mylite_ast_table_maintenance_statement_view(const MyliteAst *ast,
                                             size_t statement_index);
+const MyliteAstReplicationStatement *mylite_ast_replication_statement_view(
+    const MyliteAst *ast, size_t statement_index);
 const MyliteAstKillStatement *mylite_ast_kill_statement_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstFlushStatement *mylite_ast_flush_statement_view(
@@ -2361,6 +2408,47 @@ const char *mylite_ast_table_maintenance_target_view_name_value(
     const MyliteAstTableMaintenanceTarget *target);
 size_t mylite_ast_table_maintenance_target_view_name_value_length(
     const MyliteAstTableMaintenanceTarget *target);
+const MyliteAstNode *mylite_ast_replication_statement_view_node(
+    const MyliteAstReplicationStatement *replication_statement);
+size_t mylite_ast_replication_statement_view_start(
+    const MyliteAstReplicationStatement *replication_statement);
+size_t mylite_ast_replication_statement_view_end(
+    const MyliteAstReplicationStatement *replication_statement);
+MyliteReplicationStatementKind mylite_ast_replication_statement_view_kind(
+    const MyliteAstReplicationStatement *replication_statement);
+int mylite_ast_replication_statement_view_has_channel(
+    const MyliteAstReplicationStatement *replication_statement);
+const char *mylite_ast_replication_statement_view_channel_value(
+    const MyliteAstReplicationStatement *replication_statement);
+size_t mylite_ast_replication_statement_view_channel_value_length(
+    const MyliteAstReplicationStatement *replication_statement);
+int mylite_ast_replication_statement_view_has_all(
+    const MyliteAstReplicationStatement *replication_statement);
+size_t mylite_ast_replication_statement_view_option_count(
+    const MyliteAstReplicationStatement *replication_statement);
+const MyliteAstReplicationOption *
+mylite_ast_replication_statement_view_option_at(
+    const MyliteAstReplicationStatement *replication_statement,
+    size_t option_index);
+const MyliteAstNode *mylite_ast_replication_option_view_node(
+    const MyliteAstReplicationOption *option);
+size_t mylite_ast_replication_option_view_start(
+    const MyliteAstReplicationOption *option);
+size_t mylite_ast_replication_option_view_end(
+    const MyliteAstReplicationOption *option);
+const char *mylite_ast_replication_option_view_name_value(
+    const MyliteAstReplicationOption *option);
+size_t mylite_ast_replication_option_view_name_value_length(
+    const MyliteAstReplicationOption *option);
+MyliteReplicationOptionValueKind
+mylite_ast_replication_option_view_value_kind(
+    const MyliteAstReplicationOption *option);
+const char *mylite_ast_replication_option_view_value(
+    const MyliteAstReplicationOption *option);
+size_t mylite_ast_replication_option_view_value_length(
+    const MyliteAstReplicationOption *option);
+size_t mylite_ast_replication_option_view_integer_count(
+    const MyliteAstReplicationOption *option);
 const MyliteAstNode *mylite_ast_kill_statement_view_node(
     const MyliteAstKillStatement *kill_statement);
 size_t mylite_ast_kill_statement_view_start(

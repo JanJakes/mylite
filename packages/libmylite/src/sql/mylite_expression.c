@@ -34,6 +34,12 @@ enum {
     MYLITE_EXPRESSION_MIN_BASE = 2,
     MYLITE_EXPRESSION_MAX_BASE = 36,
     MYLITE_EXPRESSION_BASE_CONVERSION_BUFFER_SIZE = 66,
+    MYLITE_EXPRESSION_IPV4_PART_COUNT = 4,
+    MYLITE_EXPRESSION_IPV4_OCTET_MAX = 255,
+    MYLITE_EXPRESSION_IPV4_FIRST_OCTET_SHIFT = 24,
+    MYLITE_EXPRESSION_IPV4_SECOND_OCTET_SHIFT = 16,
+    MYLITE_EXPRESSION_IPV4_THIRD_OCTET_SHIFT = 8,
+    MYLITE_EXPRESSION_IPV4_NTOA_BUFFER_SIZE = 16,
     MYLITE_EXPRESSION_CHAR_VALUE_BYTES = 4,
     MYLITE_EXPRESSION_CHAR_SHIFT_8 = 8,
     MYLITE_EXPRESSION_CHAR_SHIFT_16 = 16,
@@ -69,6 +75,7 @@ enum {
 
 static const char mylite_pi_text[] = "3.141593";
 static const uint64_t mylite_expression_int64_min_magnitude = (uint64_t)INT64_MAX + UINT64_C(1);
+static const uint64_t mylite_expression_ipv4_u32_max = UINT32_MAX;
 static const double mylite_expression_round_half = 0.5;
 
 struct numeric_value {
@@ -219,6 +226,11 @@ struct base_conversion_format_input {
     bool signed_output;
 };
 
+struct inet_aton_parse {
+    uint64_t parts[MYLITE_EXPRESSION_IPV4_PART_COUNT];
+    size_t part_count;
+};
+
 enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_UNKNOWN = 0,
     MYLITE_SCALAR_FUNCTION_CONCAT = 1,
@@ -279,6 +291,8 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_CURRENT_USER = 56,
     MYLITE_SCALAR_FUNCTION_BIT_COUNT = 57,
     MYLITE_SCALAR_FUNCTION_BIT_LENGTH = 58,
+    MYLITE_SCALAR_FUNCTION_INET_ATON = 59,
+    MYLITE_SCALAR_FUNCTION_INET_NTOA = 60,
 };
 
 static int eval_node(const struct mylite_sql_ast_node *node,
@@ -581,6 +595,39 @@ static int eval_bit_length_function(const struct mylite_sql_ast_node *arguments,
                                     const struct mylite_expression_eval_context *context,
                                     struct mylite_expression_warnings *warnings,
                                     struct mylite_expression_value *out_value);
+static int eval_inet_aton_function(const struct mylite_sql_ast_node *arguments,
+                                   const struct mylite_expression_eval_context *context,
+                                   struct mylite_expression_warnings *warnings,
+                                   struct mylite_expression_value *out_value);
+static int eval_inet_ntoa_function(const struct mylite_sql_ast_node *arguments,
+                                   const struct mylite_expression_eval_context *context,
+                                   struct mylite_expression_warnings *warnings,
+                                   struct mylite_expression_value *out_value);
+static int inet_aton_input_to_text(const struct mylite_expression_value *value, char **out_text,
+                                   size_t *out_length, bool *out_was_text);
+static bool parse_inet_aton_text(const char *text, size_t text_length, uint64_t *out_address);
+static bool parse_inet_aton_parts(const char *text, size_t text_length,
+                                  struct inet_aton_parse *out_parse);
+static bool inet_aton_part_limit(size_t part_count, size_t part_index, uint64_t *out_limit);
+static int append_inet_aton_warning(struct mylite_expression_warnings *warnings, const char *text,
+                                    size_t text_length, bool was_text);
+static int inet_ntoa_value_to_address(const struct mylite_expression_value *value,
+                                      const struct mylite_sql_ast_node *argument,
+                                      struct mylite_expression_warnings *warnings,
+                                      uint32_t *out_address);
+static int inet_ntoa_text_to_address(const char *text, struct mylite_expression_warnings *warnings,
+                                     uint32_t *out_address);
+static int append_inet_ntoa_range_warning(struct mylite_expression_warnings *warnings,
+                                          const struct mylite_expression_value *value,
+                                          const struct mylite_sql_ast_node *argument);
+static int append_inet_ntoa_negative_magnitude_warning(struct mylite_expression_warnings *warnings,
+                                                       uint64_t magnitude);
+static int
+append_inet_ntoa_negative_integer_span_warning(struct mylite_expression_warnings *warnings,
+                                               const char *text, bool *out_handled);
+static int append_inet_ntoa_range_text_warning(struct mylite_expression_warnings *warnings,
+                                               const char *text);
+static int set_inet_ntoa_result(uint32_t address, struct mylite_expression_value *out_value);
 static int eval_bin_oct_function(const struct mylite_sql_ast_node *argument, uint64_t to_base,
                                  const struct mylite_expression_eval_context *context,
                                  struct mylite_expression_warnings *warnings,
@@ -1061,6 +1108,8 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_COERCIBILITY:
     case MYLITE_SCALAR_FUNCTION_BIT_COUNT:
     case MYLITE_SCALAR_FUNCTION_BIT_LENGTH:
+    case MYLITE_SCALAR_FUNCTION_INET_ATON:
+    case MYLITE_SCALAR_FUNCTION_INET_NTOA:
     case MYLITE_SCALAR_FUNCTION_ABS:
     case MYLITE_SCALAR_FUNCTION_SIGN:
     case MYLITE_SCALAR_FUNCTION_FLOOR:
@@ -1865,6 +1914,10 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_bit_count_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_BIT_LENGTH:
         return eval_bit_length_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_INET_ATON:
+        return eval_inet_aton_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_INET_NTOA:
+        return eval_inet_ntoa_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_MOD:
         return eval_mod_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_ABS:
@@ -4335,6 +4388,8 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_UNHEX:
     case MYLITE_SCALAR_FUNCTION_BIT_COUNT:
     case MYLITE_SCALAR_FUNCTION_BIT_LENGTH:
+    case MYLITE_SCALAR_FUNCTION_INET_ATON:
+    case MYLITE_SCALAR_FUNCTION_INET_NTOA:
         return -1;
     }
     return -1;
@@ -4467,6 +4522,371 @@ static int eval_bit_length_function(const struct mylite_sql_ast_node *arguments,
                                                                  MYLITE_EXPRESSION_BITS_PER_BYTE};
     free(text);
     return 0;
+}
+
+static int eval_inet_aton_function(const struct mylite_sql_ast_node *arguments,
+                                   const struct mylite_expression_eval_context *context,
+                                   struct mylite_expression_warnings *warnings,
+                                   struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value value = {0};
+    char *text = NULL;
+    size_t text_length = 0U;
+    bool was_text = false;
+    uint64_t address = 0U;
+    int status = eval_node(child_at(arguments, 0U), context, warnings, &value);
+
+    if (status != 0) {
+        return status;
+    }
+    if (is_null(&value)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        mylite_expression_value_deinit(&value);
+        return 0;
+    }
+
+    status = inet_aton_input_to_text(&value, &text, &text_length, &was_text);
+    if (status == 0 && parse_inet_aton_text(text, text_length, &address)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_UINT64,
+                                                      .uint64_value = address};
+    } else if (status == 0) {
+        status = append_inet_aton_warning(warnings, text, text_length, was_text);
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+    }
+
+    free(text);
+    mylite_expression_value_deinit(&value);
+    return status;
+}
+
+static int eval_inet_ntoa_function(const struct mylite_sql_ast_node *arguments,
+                                   const struct mylite_expression_eval_context *context,
+                                   struct mylite_expression_warnings *warnings,
+                                   struct mylite_expression_value *out_value)
+{
+    const struct mylite_sql_ast_node *argument = child_at(arguments, 0U);
+    struct mylite_expression_value value = {0};
+    uint32_t address = 0U;
+    int status = eval_node(argument, context, warnings, &value);
+
+    if (status != 0) {
+        return status;
+    }
+    if (is_null(&value)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        mylite_expression_value_deinit(&value);
+        return 0;
+    }
+
+    status = inet_ntoa_value_to_address(&value, argument, warnings, &address);
+    if (status == 0) {
+        status = set_inet_ntoa_result(address, out_value);
+    } else if (status > 0) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        status = 0;
+    }
+    mylite_expression_value_deinit(&value);
+    return status;
+}
+
+static int inet_aton_input_to_text(const struct mylite_expression_value *value, char **out_text,
+                                   size_t *out_length, bool *out_was_text)
+{
+    if (value == NULL || out_text == NULL || out_length == NULL || out_was_text == NULL) {
+        return -1;
+    }
+    *out_was_text = value->kind == MYLITE_EXPRESSION_VALUE_TEXT;
+    if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+        return value_to_string_with_length(value, out_text, out_length);
+    }
+    if (cast_value_to_string(value, out_text) != 0) {
+        return -1;
+    }
+    *out_length = strlen(*out_text);
+    return 0;
+}
+
+static bool parse_inet_aton_text(const char *text, size_t text_length, uint64_t *out_address)
+{
+    struct inet_aton_parse parsed = {0};
+    uint64_t address = 0U;
+
+    if (out_address == NULL || !parse_inet_aton_parts(text, text_length, &parsed)) {
+        return false;
+    }
+    for (size_t index = 0U; index < parsed.part_count; ++index) {
+        uint64_t limit = 0U;
+
+        if (!inet_aton_part_limit(parsed.part_count, index, &limit) ||
+            parsed.parts[index] > limit) {
+            return false;
+        }
+    }
+
+    switch (parsed.part_count) {
+    case 1U:
+        address = parsed.parts[0];
+        break;
+    case 2U:
+        address = (parsed.parts[0] << MYLITE_EXPRESSION_IPV4_FIRST_OCTET_SHIFT) | parsed.parts[1];
+        break;
+    case 3U:
+        address = (parsed.parts[0] << MYLITE_EXPRESSION_IPV4_FIRST_OCTET_SHIFT) |
+                  (parsed.parts[1] << MYLITE_EXPRESSION_IPV4_SECOND_OCTET_SHIFT) | parsed.parts[2];
+        break;
+    case 4U:
+        address = (parsed.parts[0] << MYLITE_EXPRESSION_IPV4_FIRST_OCTET_SHIFT) |
+                  (parsed.parts[1] << MYLITE_EXPRESSION_IPV4_SECOND_OCTET_SHIFT) |
+                  (parsed.parts[2] << MYLITE_EXPRESSION_IPV4_THIRD_OCTET_SHIFT) | parsed.parts[3];
+        break;
+    default:
+        return false;
+    }
+    *out_address = address;
+    return true;
+}
+
+static bool parse_inet_aton_parts(const char *text, size_t text_length,
+                                  struct inet_aton_parse *out_parse)
+{
+    uint64_t value = 0U;
+    bool saw_any_digit = false;
+    bool saw_digit = false;
+
+    if (text == NULL || out_parse == NULL || text_length == 0U) {
+        return false;
+    }
+    *out_parse = (struct inet_aton_parse){0};
+    for (size_t index = 0U; index < text_length; ++index) {
+        unsigned char character = (unsigned char)text[index];
+
+        if (isdigit(character)) {
+            uint64_t digit = (uint64_t)(character - '0');
+
+            if (value > (UINT64_MAX - digit) / (uint64_t)MYLITE_EXPRESSION_DECIMAL_BASE) {
+                return false;
+            }
+            value = (value * (uint64_t)MYLITE_EXPRESSION_DECIMAL_BASE) + digit;
+            saw_any_digit = true;
+            saw_digit = true;
+        } else if (character == '.') {
+            if (out_parse->part_count >= MYLITE_EXPRESSION_IPV4_PART_COUNT) {
+                return false;
+            }
+            out_parse->parts[out_parse->part_count++] = value;
+            value = 0U;
+            saw_digit = false;
+        } else {
+            return false;
+        }
+    }
+    if (!saw_any_digit || !saw_digit ||
+        out_parse->part_count >= MYLITE_EXPRESSION_IPV4_PART_COUNT) {
+        return false;
+    }
+    out_parse->parts[out_parse->part_count++] = value;
+    return true;
+}
+
+static bool inet_aton_part_limit(size_t part_count, size_t part_index, uint64_t *out_limit)
+{
+    if (out_limit == NULL || part_count == 0U || part_count > MYLITE_EXPRESSION_IPV4_PART_COUNT ||
+        part_index >= part_count) {
+        return false;
+    }
+    *out_limit = MYLITE_EXPRESSION_IPV4_OCTET_MAX;
+    return true;
+}
+
+static int append_inet_aton_warning(struct mylite_expression_warnings *warnings, const char *text,
+                                    size_t text_length, bool was_text)
+{
+    char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
+    int preview = text_length > MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
+                      ? MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
+                      : (int)text_length;
+    int length = was_text ? snprintf(message, sizeof(message),
+                                     "Incorrect string value: ''%.*s'' for function inet_aton",
+                                     preview, text == NULL ? "" : text)
+                          : snprintf(message, sizeof(message),
+                                     "Incorrect string value: '%.*s' for function inet_aton",
+                                     preview, text == NULL ? "" : text);
+
+    if (length < 0) {
+        return -1;
+    }
+    return append_warning(warnings, MYLITE_WARNING_INCORRECT_STRING_VALUE, message);
+}
+
+static int inet_ntoa_value_to_address(const struct mylite_expression_value *value,
+                                      const struct mylite_sql_ast_node *argument,
+                                      struct mylite_expression_warnings *warnings,
+                                      uint32_t *out_address)
+{
+    if (value == NULL || out_address == NULL) {
+        return -1;
+    }
+
+    switch (value->kind) {
+    case MYLITE_EXPRESSION_VALUE_INT64:
+        if (value->int64_value < 0 ||
+            value->int64_value > (int64_t)mylite_expression_ipv4_u32_max) {
+            return append_inet_ntoa_range_warning(warnings, value, argument) == 0 ? 1 : -1;
+        }
+        *out_address = (uint32_t)value->int64_value;
+        return 0;
+    case MYLITE_EXPRESSION_VALUE_UINT64:
+        if (value->uint64_value > mylite_expression_ipv4_u32_max) {
+            return append_inet_ntoa_range_warning(warnings, value, argument) == 0 ? 1 : -1;
+        }
+        *out_address = (uint32_t)value->uint64_value;
+        return 0;
+    case MYLITE_EXPRESSION_VALUE_REAL: {
+        int64_t rounded = cast_real_to_signed_integer(value->real_value);
+
+        if (rounded < 0 || rounded > (int64_t)mylite_expression_ipv4_u32_max) {
+            return append_inet_ntoa_range_warning(warnings, value, argument) == 0 ? 1 : -1;
+        }
+        *out_address = (uint32_t)rounded;
+        return 0;
+    }
+    case MYLITE_EXPRESSION_VALUE_TEXT:
+        return inet_ntoa_text_to_address(value->text_value == NULL ? "" : value->text_value,
+                                         warnings, out_address);
+    case MYLITE_EXPRESSION_VALUE_NULL:
+        break;
+    }
+    return -1;
+}
+
+static int inet_ntoa_text_to_address(const char *text, struct mylite_expression_warnings *warnings,
+                                     uint32_t *out_address)
+{
+    struct cast_integer_parse parsed = parse_cast_integer_text(text);
+    bool truncated = !parsed.saw_digit || parsed.trailing_garbage || parsed.overflow;
+
+    if (out_address == NULL) {
+        return -1;
+    }
+    if (truncated) {
+        int status = append_cast_truncation_warning(warnings, "INTEGER", text);
+
+        if (status != 0) {
+            return status;
+        }
+    }
+    if (!parsed.saw_digit) {
+        *out_address = 0U;
+        return 0;
+    }
+    if (parsed.negative || parsed.magnitude > mylite_expression_ipv4_u32_max) {
+        return append_inet_ntoa_range_text_warning(warnings, text) == 0 ? 1 : -1;
+    }
+    *out_address = (uint32_t)parsed.magnitude;
+    return 0;
+}
+
+static int append_inet_ntoa_range_warning(struct mylite_expression_warnings *warnings,
+                                          const struct mylite_expression_value *value,
+                                          const struct mylite_sql_ast_node *argument)
+{
+    char *text = NULL;
+    int status = 0;
+
+    if (value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_INT64 && value->int64_value < 0) {
+        uint64_t magnitude = (uint64_t)(-(value->int64_value + 1)) + 1U;
+        return append_inet_ntoa_negative_magnitude_warning(warnings, magnitude);
+    }
+
+    if (value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_REAL && argument != NULL) {
+        bool handled = false;
+
+        text = copy_span_text(argument->span.text, argument->span.length);
+        status = text == NULL ? -1 : 0;
+        if (status == 0 && value->real_value < 0.0) {
+            status = append_inet_ntoa_negative_integer_span_warning(warnings, text, &handled);
+        }
+        if (status != 0 || handled) {
+            free(text);
+            return status;
+        }
+    } else if (value != NULL) {
+        status = cast_value_to_string(value, &text);
+    }
+    if (status != 0) {
+        return status;
+    }
+    status = append_inet_ntoa_range_text_warning(warnings, text == NULL ? "" : text);
+    free(text);
+    return status;
+}
+
+static int append_inet_ntoa_negative_magnitude_warning(struct mylite_expression_warnings *warnings,
+                                                       uint64_t magnitude)
+{
+    char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
+    int length = snprintf(buffer, sizeof(buffer), "-(%llu)", (unsigned long long)magnitude);
+
+    if (length < 0 || (size_t)length >= sizeof(buffer)) {
+        return -1;
+    }
+    return append_inet_ntoa_range_text_warning(warnings, buffer);
+}
+
+static int
+append_inet_ntoa_negative_integer_span_warning(struct mylite_expression_warnings *warnings,
+                                               const char *text, bool *out_handled)
+{
+    if (out_handled == NULL) {
+        return -1;
+    }
+    *out_handled = false;
+    if (text == NULL || text[0] != '-' || text[1] == '\0') {
+        return 0;
+    }
+    for (const char *scan = text + 1; *scan != '\0'; ++scan) {
+        if (!isdigit((unsigned char)*scan)) {
+            return 0;
+        }
+    }
+    *out_handled = true;
+    {
+        char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
+        int length = snprintf(buffer, sizeof(buffer), "-(%s)", text + 1);
+
+        if (length < 0 || (size_t)length >= sizeof(buffer)) {
+            return -1;
+        }
+        return append_inet_ntoa_range_text_warning(warnings, buffer);
+    }
+}
+
+static int append_inet_ntoa_range_text_warning(struct mylite_expression_warnings *warnings,
+                                               const char *text)
+{
+    char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
+    int length =
+        snprintf(message, sizeof(message), "Incorrect integer value: '%.*s' for function inet_ntoa",
+                 MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW, text == NULL ? "" : text);
+
+    if (length < 0) {
+        return -1;
+    }
+    return append_warning(warnings, MYLITE_WARNING_INCORRECT_STRING_VALUE, message);
+}
+
+static int set_inet_ntoa_result(uint32_t address, struct mylite_expression_value *out_value)
+{
+    char text[MYLITE_EXPRESSION_IPV4_NTOA_BUFFER_SIZE];
+    int length =
+        snprintf(text, sizeof(text), "%u.%u.%u.%u", (unsigned int)((address >> 24U) & 0xFFU),
+                 (unsigned int)((address >> 16U) & 0xFFU), (unsigned int)((address >> 8U) & 0xFFU),
+                 (unsigned int)(address & 0xFFU));
+
+    if (length < 0 || (size_t)length >= sizeof(text)) {
+        return -1;
+    }
+    return set_text_value(text, (size_t)length, out_value);
 }
 
 static int eval_bin_oct_function(const struct mylite_sql_ast_node *argument, uint64_t to_base,
@@ -6721,6 +7141,8 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"CURRENT_USER", MYLITE_SCALAR_FUNCTION_CURRENT_USER},
         {"BIT_COUNT", MYLITE_SCALAR_FUNCTION_BIT_COUNT},
         {"BIT_LENGTH", MYLITE_SCALAR_FUNCTION_BIT_LENGTH},
+        {"INET_ATON", MYLITE_SCALAR_FUNCTION_INET_ATON},
+        {"INET_NTOA", MYLITE_SCALAR_FUNCTION_INET_NTOA},
     };
 
     for (size_t index = 0U; index < sizeof(functions) / sizeof(functions[0]); ++index) {
@@ -6781,6 +7203,8 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_CONV:
     case MYLITE_SCALAR_FUNCTION_BIT_COUNT:
     case MYLITE_SCALAR_FUNCTION_BIT_LENGTH:
+    case MYLITE_SCALAR_FUNCTION_INET_ATON:
+    case MYLITE_SCALAR_FUNCTION_INET_NTOA:
     case MYLITE_SCALAR_FUNCTION_LOCATE:
     case MYLITE_SCALAR_FUNCTION_INSTR:
     case MYLITE_SCALAR_FUNCTION_ABS:

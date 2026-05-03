@@ -250,6 +250,7 @@ static int test_select_integer_literal(void);
 static int test_select_integer_literal_with_semicolon(void);
 static int test_expression_operator_foundation(void);
 static int test_scalar_builtin_functions_execution(void);
+static int test_inet_ipv4_functions_execution(void);
 static int test_charset_collation_functions_execution(void);
 static int test_session_information_functions_execution(void);
 static int test_case_expression_execution(void);
@@ -437,6 +438,7 @@ int main(void)
     failures += test_select_integer_literal_with_semicolon();
     failures += test_expression_operator_foundation();
     failures += test_scalar_builtin_functions_execution();
+    failures += test_inet_ipv4_functions_execution();
     failures += test_charset_collation_functions_execution();
     failures += test_session_information_functions_execution();
     failures += test_case_expression_execution();
@@ -4874,6 +4876,253 @@ static int test_scalar_builtin_functions_execution(void)
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_inet_ipv4_functions_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const scalar_columns[] = {
+        "aton_full",       "aton_private",      "aton_three",          "aton_two",
+        "aton_one",        "aton_numeric_one",  "aton_decimal",        "aton_short_127",
+        "aton_short_0",    "aton_middle_empty", "aton_multiple_empty", "aton_leading_empty",
+        "aton_empty_quad", "aton_max",          "aton_null",           "ntoa_loopback",
+        "ntoa_private",    "ntoa_max",          "ntoa_null",           "ntoa_string",
+        "ntoa_bad_string", "ntoa_decimal_str",  "ntoa_decimal",        "ntoa_spaces",
+    };
+    static const char *const scalar_values[] = {
+        "2130706433", "167773449",  "167772165", "167772160", "10",       "10",
+        "16777218",   "2130706433", "1",         "16777218",  "16777218", "1",
+        "16908291",   "4294967295", NULL,        "127.0.0.1", "10.0.5.9", "255.255.255.255",
+        NULL,         "127.0.0.1",  "0.0.0.0",   "0.0.0.1",   "0.0.0.2",  "0.0.0.1",
+    };
+    static const char *const invalid_aton_columns[] = {
+        "empty_ip",      "suffix_ip",      "high_octet",    "too_many",
+        "leading_space", "trailing_space", "negative_ip",   "one_part_256",
+        "numeric_256",   "one_part_large", "numeric_large", "trailing_dot",
+        "five_parts",    "leading_five",   "embedded_five", "only_dots",
+    };
+    static const char *const invalid_aton_values[] = {
+        NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+        NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    };
+    static const char *const invalid_ntoa_columns[] = {"too_high", "negative_num", "trailing_high",
+                                                       "min_signed"};
+    static const char *const invalid_ntoa_values[] = {NULL, NULL, NULL, NULL};
+    static const struct expected_result_metadata utf8mb4_metadata[] = {
+        {"aton", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"ntoa", NULL, NULL, NULL, NULL, NULL, 124U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 1},
+    };
+    static const struct expected_result_metadata latin1_metadata[] = {
+        {"aton", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"ntoa", NULL, NULL, NULL, NULL, NULL, 31U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 1},
+    };
+    static const char *const projection_columns[] = {"id", "aton", "ntoa"};
+    static const char *const projection_values[] = {
+        "1", "2130706433", "127.0.0.1", "2", "167773449", "10.0.5.9",
+        "3", "167772165",  "10.0.0.5",  "4", "10",        "0.0.0.10",
+    };
+    static const char *const id_column[] = {"id"};
+    static const char *const where_ids[] = {"2", "3"};
+    static const char *const order_ids[] = {"4", "3", "2", "1"};
+    static const char *const update_columns[] = {"id", "ip_num", "marker"};
+    static const char *const update_values[] = {
+        "1", "2130706433", "127.0.0.1", "2", "167773449", "10.0.5.9",
+        "3", "167772165",  "10.0.0.5",  "4", "10",        "0.0.0.10",
+    };
+    static const char *const remaining_ids[] = {"1", "3", "4"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open INET database");
+    failures += execute_sql(database, "CREATE DATABASE inet_funcs DEFAULT CHARACTER SET utf8mb4",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "USE inet_funcs", MYLITE_DONE);
+    failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
+
+    failures += expect_select_rows(
+        database,
+        "SELECT INET_ATON('127.0.0.1') AS aton_full, "
+        "INET_ATON('10.0.5.9') AS aton_private, INET_ATON('10.0.5') AS aton_three, "
+        "INET_ATON('10.0') AS aton_two, INET_ATON('10') AS aton_one, "
+        "INET_ATON(10) AS aton_numeric_one, INET_ATON(1.2) AS aton_decimal, "
+        "inet_aton('127.1') AS aton_short_127, INET_ATON('0.1') AS aton_short_0, "
+        "INET_ATON('1..2') AS aton_middle_empty, "
+        "INET_ATON('1...2') AS aton_multiple_empty, "
+        "INET_ATON('.1') AS aton_leading_empty, INET_ATON('1.2..3') AS aton_empty_quad, "
+        "INET_ATON('255.255.255.255') AS aton_max, INET_ATON(NULL) AS aton_null, "
+        "INET_NTOA(2130706433) AS ntoa_loopback, INET_NTOA(167773449) AS ntoa_private, "
+        "INET_NTOA(4294967295) AS ntoa_max, INET_NTOA(NULL) AS ntoa_null, "
+        "inet_ntoa('2130706433') AS ntoa_string, INET_NTOA('x') AS ntoa_bad_string, "
+        "INET_NTOA('1.9') AS ntoa_decimal_str, INET_NTOA(1.9) AS ntoa_decimal, "
+        "INET_NTOA(' 1 ') AS ntoa_spaces",
+        scalar_columns, (int)(sizeof(scalar_columns) / sizeof(scalar_columns[0])), scalar_values, 1,
+        "INET scalar values");
+    failures += expect_int(mylite_warning_count(database), 2, "INET scalar warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "INET scalar bad string warning");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 1), mysql_warning_truncated_wrong_value,
+                   "INET scalar decimal string warning");
+
+    failures += expect_select_rows(
+        database,
+        "SELECT INET_ATON('') AS empty_ip, INET_ATON('127.0.0.1x') AS suffix_ip, "
+        "INET_ATON('127.0.0.256') AS high_octet, INET_ATON('1.2.3.4.5') AS too_many, "
+        "INET_ATON(' 127.0.0.1') AS leading_space, "
+        "INET_ATON('127.0.0.1 ') AS trailing_space, INET_ATON('-1') AS negative_ip, "
+        "INET_ATON('256') AS one_part_256, INET_ATON(256) AS numeric_256, "
+        "INET_ATON('2130706433') AS one_part_large, "
+        "INET_ATON(2130706433) AS numeric_large, INET_ATON('1.') AS trailing_dot, "
+        "INET_ATON('1....2') AS five_parts, INET_ATON('....1') AS leading_five, "
+        "INET_ATON('1.2...3') AS embedded_five, INET_ATON('...') AS only_dots",
+        invalid_aton_columns, (int)(sizeof(invalid_aton_columns) / sizeof(invalid_aton_columns[0])),
+        invalid_aton_values, 1, "INET_ATON invalid values");
+    failures += expect_int(mylite_warning_count(database), 16, "INET_ATON invalid warning count");
+    for (int index = 0; index < 16; ++index) {
+        failures +=
+            expect_int((int)mylite_warning_code(database, index),
+                       mysql_warning_incorrect_string_value, "INET_ATON invalid warning code");
+    }
+    failures += expect_string(mylite_warning_message(database, 7),
+                              "Incorrect string value: ''256'' for function inet_aton",
+                              "INET_ATON string one-part warning message");
+    failures += expect_string(mylite_warning_message(database, 8),
+                              "Incorrect string value: '256' for function inet_aton",
+                              "INET_ATON numeric one-part warning message");
+    failures += expect_string(mylite_warning_message(database, 9),
+                              "Incorrect string value: ''2130706433'' for function inet_aton",
+                              "INET_ATON string large one-part warning message");
+    failures += expect_string(mylite_warning_message(database, 10),
+                              "Incorrect string value: '2130706433' for function inet_aton",
+                              "INET_ATON numeric large one-part warning message");
+
+    failures += expect_select_rows(
+        database,
+        "SELECT INET_NTOA(4294967296) AS too_high, INET_NTOA(-1) AS negative_num, "
+        "INET_NTOA('4294967296x') AS trailing_high, "
+        "INET_NTOA(-9223372036854775808) AS min_signed",
+        invalid_ntoa_columns, (int)(sizeof(invalid_ntoa_columns) / sizeof(invalid_ntoa_columns[0])),
+        invalid_ntoa_values, 1, "INET_NTOA invalid values");
+    failures += expect_int(mylite_warning_count(database), 5, "INET_NTOA invalid warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_incorrect_string_value, "INET_NTOA too high warning code");
+    failures += expect_int((int)mylite_warning_code(database, 1),
+                           mysql_warning_incorrect_string_value, "INET_NTOA negative warning code");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 2), mysql_warning_truncated_wrong_value,
+                   "INET_NTOA trailing high truncation warning code");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 3), mysql_warning_incorrect_string_value,
+                   "INET_NTOA trailing high range warning code");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 4), mysql_warning_incorrect_string_value,
+                   "INET_NTOA min signed warning code");
+    failures +=
+        expect_string(mylite_warning_message(database, 4),
+                      "Incorrect integer value: '-(9223372036854775808)' for function inet_ntoa",
+                      "INET_NTOA min signed warning message");
+
+    failures += prepare_sql(database,
+                            "SELECT INET_ATON('127.0.0.1') AS aton, "
+                            "INET_NTOA(2130706433) AS ntoa",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, utf8mb4_metadata, 2, "INET utf8mb4 metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "INET utf8mb4 metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "INET utf8mb4 metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "SET NAMES latin1", MYLITE_DONE);
+    failures += prepare_sql(database,
+                            "SELECT INET_ATON('127.0.0.1') AS aton, "
+                            "INET_NTOA(2130706433) AS ntoa",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, latin1_metadata, 2, "INET latin1 metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "INET latin1 metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "INET latin1 metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
+
+    failures += execute_sql(database,
+                            "CREATE TABLE inet_t ("
+                            "id INT PRIMARY KEY, ip VARCHAR(20), "
+                            "ip_num BIGINT UNSIGNED, marker VARCHAR(20))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO inet_t (id, ip, ip_num, marker) VALUES "
+                            "(1,'127.0.0.1',2130706433,NULL),"
+                            "(2,'10.0.5.9',167773449,NULL),"
+                            "(3,'10.0.5',167772165,NULL),"
+                            "(4,'10',10,NULL)",
+                            MYLITE_DONE);
+    failures +=
+        expect_select_rows(database,
+                           "SELECT id, INET_ATON(ip) AS aton, INET_NTOA(ip_num) AS ntoa "
+                           "FROM inet_t ORDER BY id",
+                           projection_columns, 3, projection_values, 4, "INET table projection");
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM inet_t WHERE INET_ATON(ip) BETWEEN INET_ATON('10.0.0.0') "
+        "AND INET_ATON('10.0.255.255') ORDER BY id",
+        id_column, 1, where_ids, 2, "INET table WHERE");
+    failures += expect_select_rows(database, "SELECT id FROM inet_t ORDER BY INET_ATON(ip), id",
+                                   id_column, 1, order_ids, 4, "INET table ORDER BY");
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE inet_t SET ip_num = INET_ATON(ip), marker = INET_NTOA(INET_ATON(ip))", 4,
+        "INET update assignments");
+    failures += expect_select_rows(database, "SELECT id, ip_num, marker FROM inet_t ORDER BY id",
+                                   update_columns, 3, update_values, 4, "INET update values");
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE inet_t SET marker = 'loopback' WHERE INET_NTOA(ip_num) = '127.0.0.1'", 1,
+        "INET update predicate");
+    failures += execute_sql_expect_done_affected(database,
+                                                 "DELETE FROM inet_t "
+                                                 "WHERE INET_NTOA(ip_num) = '10.0.5.9'",
+                                                 1, "INET delete predicate");
+    failures += expect_select_rows(database, "SELECT id FROM inet_t ORDER BY id", id_column, 1,
+                                   remaining_ids, 3, "INET delete remaining rows");
+
+    failures += prepare_sql(database, "UPDATE inet_t SET ip_num = INET_ATON('127.0.0.256')",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "INET_ATON update warning promoted");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_incorrect_string_value, "INET_ATON update warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "DELETE FROM inet_t WHERE INET_NTOA(4294967296) IS NULL",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "INET_NTOA delete warning promoted");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_incorrect_string_value, "INET_NTOA delete warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM inet_t ORDER BY id", id_column, 1,
+                                   remaining_ids, 3, "INET failed DML leaves rows");
+
+    failures += prepare_sql(database, "SELECT INET_ATON()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "INET_ATON zero arity rejected");
+    failures +=
+        prepare_sql(database, "SELECT INET_ATON('127.0.0.1','x')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "INET_ATON two arity rejected");
+    failures += prepare_sql(database, "SELECT INET_NTOA()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "INET_NTOA zero arity rejected");
+    failures += prepare_sql(database, "SELECT INET_NTOA(1,2)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "INET_NTOA two arity rejected");
+
+    mylite_close(database);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
     return failures;
 }
 

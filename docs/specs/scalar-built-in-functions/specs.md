@@ -37,6 +37,8 @@ In scope for the initial implementation:
   - `ABS`
   - `BIT_COUNT`
   - `BIT_LENGTH`
+  - `INET_ATON`
+  - `INET_NTOA`
   - `SIGN`
   - `ROUND`
   - `TRUNCATE`
@@ -124,9 +126,10 @@ by common scalar expressions:
   `docs/specs/string-hex-unhex-functions/specs.md` and
   `docs/specs/numeric-base-conversion-functions/specs.md`
 - numeric functions: `ABS`, `SIGN`, `FLOOR`, `CEIL`, `CEILING`, `MOD`,
-  `CONV`, `BIT_COUNT`, `BIT_LENGTH`, and `PI`; see
+  `CONV`, `BIT_COUNT`, `BIT_LENGTH`, `INET_ATON`, `INET_NTOA`, and `PI`; see
   `docs/specs/numeric-base-conversion-functions/specs.md` and
-  `docs/specs/bit-utility-functions/specs.md`
+  `docs/specs/bit-utility-functions/specs.md` and
+  `docs/specs/inet-ipv4-functions/specs.md`
 - conditional/comparison functions: `IF`, `IFNULL`, `NULLIF`, `COALESCE`, and
   `ISNULL`
 - session information functions: `DATABASE`, `SCHEMA`, `VERSION`,
@@ -150,6 +153,8 @@ hex encoding, binary-string hex decoding, embedded-NUL byte lengths for
 `UNHEX()` results, invalid `UNHEX()` warnings,
 binary/octal/arbitrary-base conversion, invalid base ranges, base-conversion
 string parsing warnings,
+IPv4 network-address conversion, short IPv4 forms, invalid IPv4 warnings,
+`INET_NTOA()` bounds and string-integer truncation warnings,
 `MOD(..., 0)` warnings, table projection, filters, ordering, update assignment
 expressions, delete predicates, unsupported functions, unsupported arity, and
 selected result metadata.

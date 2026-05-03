@@ -17,7 +17,8 @@ enum {
     columns_column_count = 22,
     statistics_column_count = 18,
     table_constraints_column_count = 7,
-    information_schema_view_count = 10,
+    key_column_usage_column_count = 12,
+    information_schema_view_count = 11,
     schemata_catalog_column = 0,
     schemata_name_column = 1,
     schemata_character_set_column = 2,
@@ -72,6 +73,18 @@ enum {
     table_constraints_table_name_column = 4,
     table_constraints_type_column = 5,
     table_constraints_enforced_column = 6,
+    key_column_usage_catalog_column = 0,
+    key_column_usage_schema_column = 1,
+    key_column_usage_name_column = 2,
+    key_column_usage_table_catalog_column = 3,
+    key_column_usage_table_schema_column = 4,
+    key_column_usage_table_name_column = 5,
+    key_column_usage_column_name_column = 6,
+    key_column_usage_ordinal_column = 7,
+    key_column_usage_position_in_unique_column = 8,
+    key_column_usage_referenced_schema_column = 9,
+    key_column_usage_referenced_table_column = 10,
+    key_column_usage_referenced_column_column = 11,
     information_schema_table_version = 10,
     simple_create_table_version = 10,
     simple_create_auto_increment = 10,
@@ -205,6 +218,14 @@ struct expected_table_constraints_row {
     const char *constraint_type;
 };
 
+struct expected_key_column_usage_row {
+    const char *schema_name;
+    const char *table_name;
+    const char *constraint_name;
+    const char *column_name;
+    int64_t ordinal_position;
+};
+
 struct expected_result_metadata {
     const char *name;
     const char *schema_name;
@@ -237,6 +258,7 @@ static int test_information_schema_collations_execution(void);
 static int test_information_schema_collation_character_set_applicability_execution(void);
 static int test_information_schema_keywords_execution(void);
 static int test_information_schema_table_constraints_execution(void);
+static int test_information_schema_key_column_usage_execution(void);
 static int test_mylite_file_preamble_and_vfs_payload(void);
 static int test_mylite_open_rejects_plain_sqlite(void);
 static int test_unsupported_statement(void);
@@ -338,6 +360,11 @@ static int expect_information_schema_table_constraints_row(
 static int expect_no_information_schema_table_constraints_row(mylite_db *database,
                                                               const char *table_name,
                                                               const char *constraint_name);
+static int expect_information_schema_key_column_usage_row(
+    mylite_db *database, const struct expected_key_column_usage_row *expected);
+static int expect_no_information_schema_key_column_usage_row(mylite_db *database,
+                                                             const char *table_name,
+                                                             const char *constraint_name);
 static int
 expect_information_schema_table_collation(mylite_db *database,
                                           const struct expected_table_collation *expected);
@@ -410,6 +437,7 @@ int main(void)
     failures += test_information_schema_collation_character_set_applicability_execution();
     failures += test_information_schema_keywords_execution();
     failures += test_information_schema_table_constraints_execution();
+    failures += test_information_schema_key_column_usage_execution();
     failures += test_mylite_file_preamble_and_vfs_payload();
     failures += test_mylite_open_rejects_plain_sqlite();
     failures += test_unsupported_statement();
@@ -1611,6 +1639,250 @@ static int test_information_schema_table_constraints_execution(void)
                             "INFORMATION_SCHEMA.TABLES",
                             MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "information schema table constraints join");
+
+    mylite_close(database);
+    mylite_finalize(stmt);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
+    return failures;
+}
+
+static int test_information_schema_key_column_usage_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const columns[] = {
+        "CONSTRAINT_CATALOG",
+        "CONSTRAINT_SCHEMA",
+        "CONSTRAINT_NAME",
+        "TABLE_CATALOG",
+        "TABLE_SCHEMA",
+        "TABLE_NAME",
+        "COLUMN_NAME",
+        "ORDINAL_POSITION",
+        "POSITION_IN_UNIQUE_CONSTRAINT",
+        "REFERENCED_TABLE_SCHEMA",
+        "REFERENCED_TABLE_NAME",
+        "REFERENCED_COLUMN_NAME",
+    };
+    static const char *const show_tables_name_columns[] = {
+        "Tables_in_information_schema (KEY_COLUMN_USAGE)"};
+    static const char *const show_tables_columns[] = {
+        "Tables_in_information_schema (KEY_COLUMN_USAGE)", "Table_type"};
+    static const char *const show_tables_name_values[] = {"KEY_COLUMN_USAGE"};
+    static const char *const show_tables_values[] = {"KEY_COLUMN_USAGE", "SYSTEM VIEW"};
+    static const char *const values[] = {
+        "def",
+        "mylite_key_column_usage",
+        "PRIMARY",
+        "def",
+        "mylite_key_column_usage",
+        "key_column_usage_fixture",
+        "id",
+        "1",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "def",
+        "mylite_key_column_usage",
+        "PRIMARY",
+        "def",
+        "mylite_key_column_usage",
+        "key_column_usage_fixture",
+        "part",
+        "2",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "def",
+        "mylite_key_column_usage",
+        "code",
+        "def",
+        "mylite_key_column_usage",
+        "key_column_usage_fixture",
+        "code",
+        "1",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "def",
+        "mylite_key_column_usage",
+        "uq_name_category",
+        "def",
+        "mylite_key_column_usage",
+        "key_column_usage_fixture",
+        "name",
+        "1",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "def",
+        "mylite_key_column_usage",
+        "uq_name_category",
+        "def",
+        "mylite_key_column_usage",
+        "key_column_usage_fixture",
+        "category",
+        "2",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "def",
+        "mylite_key_column_usage",
+        "uq_prefix",
+        "def",
+        "mylite_key_column_usage",
+        "key_column_usage_fixture",
+        "slug",
+        "1",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "def",
+        "mylite_key_column_usage",
+        "uq_prefix",
+        "def",
+        "mylite_key_column_usage",
+        "key_column_usage_fixture",
+        "note",
+        "2",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+    };
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK,
+                              "open information schema key column usage");
+
+    failures += expect_empty_information_schema_table(
+        database, "SELECT * FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE", columns,
+        key_column_usage_column_count);
+
+    failures += execute_sql(database, "CREATE DATABASE mylite_key_column_usage", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_key_column_usage", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE key_column_usage_fixture ("
+                            "id INT,"
+                            "part INT,"
+                            "code INT UNIQUE,"
+                            "name VARCHAR(20),"
+                            "category VARCHAR(20),"
+                            "slug VARCHAR(20),"
+                            "note VARCHAR(20),"
+                            "PRIMARY KEY (id, part),"
+                            "UNIQUE KEY uq_name_category (name, category),"
+                            "UNIQUE KEY uq_prefix (slug(4), note DESC),"
+                            "KEY idx_name (name))",
+                            MYLITE_DONE);
+
+    failures += expect_select_rows(database, "SELECT * FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE",
+                                   columns, key_column_usage_column_count, values, 7,
+                                   "information schema key column usage rows");
+    failures += expect_select_rows(database, "SELECT * FROM information_schema.key_column_usage",
+                                   columns, key_column_usage_column_count, values, 7,
+                                   "information schema key column usage lower-case");
+    failures += expect_select_rows(database, "SELECT * FROM Information_Schema.Key_Column_Usage",
+                                   columns, key_column_usage_column_count, values, 7,
+                                   "information schema key column usage mixed-case");
+    failures += expect_select_rows(
+        database, "SELECT * FROM `information_schema`.`KEY_COLUMN_USAGE`", columns,
+        key_column_usage_column_count, values, 7, "information schema key column usage quoted");
+
+    failures += expect_no_information_schema_key_column_usage_row(
+        database, "key_column_usage_fixture", "idx_name");
+    failures += expect_information_schema_tables_views(database);
+    failures +=
+        expect_select_rows(database, "SHOW TABLES FROM information_schema LIKE 'key_column_usage'",
+                           show_tables_name_columns, 1, show_tables_name_values, 1,
+                           "show tables information schema key column usage");
+    failures += expect_select_rows(
+        database, "SHOW FULL TABLES FROM information_schema LIKE 'key_column_usage'",
+        show_tables_columns, 2, show_tables_values, 1,
+        "show full tables information schema key column usage");
+
+    failures += execute_sql(database, "DROP INDEX uq_name_category ON key_column_usage_fixture",
+                            MYLITE_DONE);
+    failures += expect_no_information_schema_key_column_usage_row(
+        database, "key_column_usage_fixture", "uq_name_category");
+    failures += expect_information_schema_key_column_usage_row(
+        database, &(const struct expected_key_column_usage_row){
+                      .schema_name = "mylite_key_column_usage",
+                      .table_name = "key_column_usage_fixture",
+                      .constraint_name = "code",
+                      .column_name = "code",
+                      .ordinal_position = 1,
+                  });
+
+    failures += execute_sql(database,
+                            "ALTER TABLE key_column_usage_fixture RENAME INDEX code TO "
+                            "code_renamed",
+                            MYLITE_DONE);
+    failures += expect_no_information_schema_key_column_usage_row(
+        database, "key_column_usage_fixture", "code");
+    failures += expect_information_schema_key_column_usage_row(
+        database, &(const struct expected_key_column_usage_row){
+                      .schema_name = "mylite_key_column_usage",
+                      .table_name = "key_column_usage_fixture",
+                      .constraint_name = "code_renamed",
+                      .column_name = "code",
+                      .ordinal_position = 1,
+                  });
+
+    failures +=
+        execute_sql(database, "ALTER TABLE key_column_usage_fixture DROP PRIMARY KEY", MYLITE_DONE);
+    failures += expect_no_information_schema_key_column_usage_row(
+        database, "key_column_usage_fixture", "PRIMARY");
+
+    failures +=
+        prepare_sql(database, "SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE",
+                    MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema key column usage projection");
+    failures += prepare_sql(database, "SELECT DISTINCT * FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema key column usage distinct");
+    failures += prepare_sql(database, "SELECT ALL * FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema key column usage explicit all");
+    failures += prepare_sql(database,
+                            "SELECT * FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE "
+                            "CONSTRAINT_NAME = 'PRIMARY'",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema key column usage where");
+    failures += prepare_sql(
+        database, "SELECT * FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE ORDER BY CONSTRAINT_NAME",
+        MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema key column usage order by");
+    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE LIMIT 1",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema key column usage limit");
+    failures += prepare_sql(database, "SELECT COUNT(*) FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema key column usage count");
+    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema key column usage AS alias");
+    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema key column usage bare alias");
+    failures += prepare_sql(database,
+                            "SELECT INFORMATION_SCHEMA.KEY_COLUMN_USAGE.* FROM "
+                            "INFORMATION_SCHEMA.KEY_COLUMN_USAGE",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures +=
+        expect_no_stmt_handle(&stmt, "information schema key column usage qualified wildcard");
+    failures += prepare_sql(database,
+                            "SELECT * FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE JOIN "
+                            "INFORMATION_SCHEMA.TABLES",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema key column usage join");
 
     mylite_close(database);
     mylite_finalize(stmt);
@@ -12820,11 +13092,12 @@ static int expect_no_information_schema_schemata_row(mylite_db *database, const 
 static int expect_information_schema_tables_views(mylite_db *database)
 {
     static const char *const expected_tables[] = {
-        "CHARACTER_SETS", "COLLATION_CHARACTER_SET_APPLICABILITY",
-        "COLLATIONS",     "COLUMNS",
-        "ENGINES",        "SCHEMATA",
-        "KEYWORDS",       "STATISTICS",
-        "TABLES",         "TABLE_CONSTRAINTS",
+        "CHARACTER_SETS",    "COLLATION_CHARACTER_SET_APPLICABILITY",
+        "COLLATIONS",        "COLUMNS",
+        "ENGINES",           "SCHEMATA",
+        "KEYWORDS",          "KEY_COLUMN_USAGE",
+        "STATISTICS",        "TABLES",
+        "TABLE_CONSTRAINTS",
     };
     mylite_stmt *stmt = NULL;
     int failures =
@@ -13390,6 +13663,116 @@ static int expect_no_information_schema_table_constraints_row(mylite_db *databas
             strcmp(current_constraint_name, constraint_name) == 0) {
             fprintf(stderr,
                     "table constraints unexpectedly returned row for table '%s' constraint '%s'\n",
+                    table_name, constraint_name);
+            failures = 1;
+            break;
+        }
+    }
+
+    mylite_finalize(stmt);
+    return failures;
+}
+
+static int
+expect_information_schema_key_column_usage_row(mylite_db *database,
+                                               const struct expected_key_column_usage_row *expected)
+{
+    mylite_stmt *stmt = NULL;
+    int failures = prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE",
+                               MYLITE_OK, &stmt);
+    int saw_row = 0;
+
+    while (failures == 0) {
+        int status = mylite_step(stmt);
+        const char *schema_name = NULL;
+        const char *table_name = NULL;
+        const char *constraint_name = NULL;
+        const char *column_name = NULL;
+        int64_t ordinal_position = 0;
+
+        if (status == MYLITE_DONE) {
+            break;
+        }
+        failures += expect_status(status, MYLITE_ROW, "key column usage row");
+        if (failures != 0) {
+            break;
+        }
+
+        schema_name = mylite_column_text(stmt, key_column_usage_schema_column);
+        table_name = mylite_column_text(stmt, key_column_usage_table_name_column);
+        constraint_name = mylite_column_text(stmt, key_column_usage_name_column);
+        column_name = mylite_column_text(stmt, key_column_usage_column_name_column);
+        ordinal_position = mylite_column_int64(stmt, key_column_usage_ordinal_column);
+        if (strcmp(schema_name, expected->schema_name) != 0 ||
+            strcmp(table_name, expected->table_name) != 0 ||
+            strcmp(constraint_name, expected->constraint_name) != 0 ||
+            strcmp(column_name, expected->column_name) != 0 ||
+            ordinal_position != expected->ordinal_position) {
+            continue;
+        }
+
+        saw_row = 1;
+        failures += expect_string(mylite_column_text(stmt, key_column_usage_catalog_column), "def",
+                                  "key column usage constraint catalog");
+        failures += expect_string(mylite_column_text(stmt, key_column_usage_table_catalog_column),
+                                  "def", "key column usage table catalog");
+        failures += expect_string(mylite_column_text(stmt, key_column_usage_table_schema_column),
+                                  expected->schema_name, "key column usage table schema");
+        failures +=
+            expect_null_text(mylite_column_text(stmt, key_column_usage_position_in_unique_column),
+                             "key column usage position in unique");
+        failures +=
+            expect_null_text(mylite_column_text(stmt, key_column_usage_referenced_schema_column),
+                             "key column usage referenced schema");
+        failures +=
+            expect_null_text(mylite_column_text(stmt, key_column_usage_referenced_table_column),
+                             "key column usage referenced table");
+        failures +=
+            expect_null_text(mylite_column_text(stmt, key_column_usage_referenced_column_column),
+                             "key column usage referenced column");
+        break;
+    }
+
+    if (!saw_row) {
+        fprintf(stderr,
+                "key column usage did not return row for %s.%s constraint '%s' column '%s' "
+                "ordinal %" PRId64 "\n",
+                expected->schema_name, expected->table_name, expected->constraint_name,
+                expected->column_name, expected->ordinal_position);
+        failures = 1;
+    }
+
+    mylite_finalize(stmt);
+    return failures;
+}
+
+static int expect_no_information_schema_key_column_usage_row(mylite_db *database,
+                                                             const char *table_name,
+                                                             const char *constraint_name)
+{
+    mylite_stmt *stmt = NULL;
+    int failures = prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE",
+                               MYLITE_OK, &stmt);
+
+    while (failures == 0) {
+        int status = mylite_step(stmt);
+        const char *current_table_name = NULL;
+        const char *current_constraint_name = NULL;
+
+        if (status == MYLITE_DONE) {
+            break;
+        }
+        failures += expect_status(status, MYLITE_ROW, "key column usage row");
+        if (failures != 0) {
+            break;
+        }
+
+        current_table_name = mylite_column_text(stmt, key_column_usage_table_name_column);
+        current_constraint_name = mylite_column_text(stmt, key_column_usage_name_column);
+        if (strcmp(current_table_name, table_name) == 0 &&
+            strcmp(current_constraint_name, constraint_name) == 0) {
+            fprintf(stderr,
+                    "key column usage unexpectedly returned row for table '%s' constraint '%s'\n",
                     table_name, constraint_name);
             failures = 1;
             break;

@@ -29,7 +29,8 @@ MyLite:
 - schema-qualified and selected-schema table resolution
 - metadata updates in the internal column/index catalogs,
   `INFORMATION_SCHEMA.STATISTICS`, `INFORMATION_SCHEMA.TABLE_CONSTRAINTS`, and
-  future key-column, CHECK, and foreign-key constraint metadata tables
+  `INFORMATION_SCHEMA.KEY_COLUMN_USAGE`, with CHECK and foreign-key constraint
+  metadata deferred until those catalogs exist
 - duplicate validation, dependency validation, warning records, affected rows,
   diagnostics, statement atomicity, and deferred implicit-commit boundaries
 
@@ -707,8 +708,9 @@ Information schema:
 - `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` exposes primary and unique constraints
   from `__mylite_index_catalog` for supported key DDL. CHECK and foreign-key
   rows should be added when those underlying catalogs exist.
-- `INFORMATION_SCHEMA.KEY_COLUMN_USAGE` should expose primary, unique, and
-  foreign-key key parts with constraint-relative ordinals.
+- `INFORMATION_SCHEMA.KEY_COLUMN_USAGE` exposes primary and unique key parts
+  from `__mylite_index_catalog` for supported key DDL. Foreign-key rows should
+  be added when those underlying catalogs exist.
 - `INFORMATION_SCHEMA.CHECK_CONSTRAINTS` should expose CHECK constraint names
   and clauses when CHECK catalog support lands.
 
@@ -868,6 +870,8 @@ fixtures should create and drop isolated schemas.
 - Runtime comparison tests:
   - `INFORMATION_SCHEMA.STATISTICS` rows after add, drop, rename, and
     visibility changes
+  - `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` and `KEY_COLUMN_USAGE` rows after
+    primary/unique add, drop, and rename operations
   - `INFORMATION_SCHEMA.COLUMNS` nullability and key markers after primary-key
     changes
   - DML duplicate behavior after adding and dropping unique indexes

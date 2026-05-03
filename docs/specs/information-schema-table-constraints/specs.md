@@ -259,8 +259,8 @@ Runtime coverage:
   validation, enforcement flags, and `INFORMATION_SCHEMA.CHECK_CONSTRAINTS`.
 - Foreign-key constraints are omitted until MyLite has foreign-key catalogs,
   referential actions, enforcement, and `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS`.
-- `KEY_COLUMN_USAGE` remains deferred, so key-part ordinals are visible through
-  `INFORMATION_SCHEMA.STATISTICS` but not through the constraint-specific table.
+- Key-part ordinals for primary and unique constraints are exposed by
+  [INFORMATION_SCHEMA.KEY_COLUMN_USAGE](../information-schema-key-column-usage/specs.md).
 - General information-schema projections, filters, ordering, limits, aliases,
   joins, aggregates, privilege filtering, and exact MySQL field metadata remain
   deferred.

@@ -232,7 +232,11 @@ level application surfaces.
        `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` slice exposes primary-key and
        unique constraints from `__mylite_index_catalog`, including the exact
        seven-column result shape, deterministic row ordering, supported key-DDL
-       side effects, and the same wildcard-only policy. Full
+       side effects, and the same wildcard-only policy. The first
+       `INFORMATION_SCHEMA.KEY_COLUMN_USAGE` slice exposes primary-key and
+       unique key-part rows from `__mylite_index_catalog`, including composite
+       key ordinals, supported key-DDL side effects, nonunique/expression-only
+       exclusion, and the same wildcard-only policy. Full
        build-dependent engine catalog breadth, full MySQL character-set
        catalog breadth, full MySQL collation catalog breadth, exact MySQL
        keyword catalog completeness, CHECK and foreign-key constraint rows, and
@@ -249,6 +253,7 @@ level application surfaces.
        [INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY](../information-schema-collation-character-set-applicability/specs.md),
        [INFORMATION_SCHEMA.COLLATIONS](../information-schema-collations/specs.md),
        [INFORMATION_SCHEMA.TABLE_CONSTRAINTS](../information-schema-table-constraints/specs.md),
+       [INFORMATION_SCHEMA.KEY_COLUMN_USAGE](../information-schema-key-column-usage/specs.md),
        [INFORMATION_SCHEMA.KEYWORDS](../information-schema-keywords/specs.md).
 40. [ ] `SHOW VARIABLES`, `SHOW STATUS`, `SHOW WARNINGS`, `SHOW ERRORS`, and
        count variants: session state, diagnostics, filtering, and metadata.

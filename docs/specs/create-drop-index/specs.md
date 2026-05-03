@@ -12,8 +12,9 @@ Full feature surface:
   [algorithm_option | lock_option] ...`
 - `DROP INDEX index_name ON table_name [algorithm_option | lock_option] ...`
 - schema-qualified and selected-schema table resolution
-- metadata updates in `__mylite_index_catalog` and
-  `INFORMATION_SCHEMA.STATISTICS`
+- metadata updates in `__mylite_index_catalog`,
+  `INFORMATION_SCHEMA.STATISTICS`, and constraint metadata views derived from
+  unique-index rows
 - nonunique, unique, full-text, and spatial index classes
 - identifier key parts with optional prefix length and `ASC` or `DESC`
 - later-position index type, deprecated earlier-position index type, and
@@ -72,6 +73,10 @@ Deferred from the first slice:
   https://dev.mysql.com/doc/refman/8.4/en/invisible-indexes.html
 - MySQL 8.4 Reference Manual, `INFORMATION_SCHEMA.STATISTICS` table:
   https://dev.mysql.com/doc/refman/8.4/en/information-schema-statistics-table.html
+- MySQL 8.4 Reference Manual, `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` table:
+  https://dev.mysql.com/doc/refman/8.4/en/information-schema-table-constraints-table.html
+- MySQL 8.4 Reference Manual, `INFORMATION_SCHEMA.KEY_COLUMN_USAGE` table:
+  https://dev.mysql.com/doc/refman/8.4/en/information-schema-key-column-usage-table.html
 - MySQL 8.4 Reference Manual, statements that cause implicit commits:
   https://dev.mysql.com/doc/refman/8.4/en/implicit-commit.html
 - MySQL 8.4 Reference Manual, atomic DDL:
@@ -303,6 +308,13 @@ row per key part:
   method where applicable
 - `INDEX_COMMENT` from `COMMENT`
 - `IS_VISIBLE='YES'` or `'NO'`
+
+Successful standalone unique index creation also appears in the first
+`INFORMATION_SCHEMA.TABLE_CONSTRAINTS` slice as a unique constraint and in
+`INFORMATION_SCHEMA.KEY_COLUMN_USAGE` as one row per column key part. Both views
+derive those rows from `__mylite_index_catalog`; nonunique indexes do not
+produce constraint rows. Successful `DROP INDEX` removes the same derived rows
+when the dropped index is unique.
 
 Dropping an index removes all statistics rows for that index. If the dropped
 index is unique, later writes no longer treat it as a duplicate-key conflict
@@ -644,7 +656,9 @@ Runtime tests for the first executable slice:
 - duplicate redundant-index warning 1831
 - `USING HASH` note 3502 under the InnoDB-compatible table model
 - metadata rows in `INFORMATION_SCHEMA.STATISTICS` for nonunique, unique,
-  prefix, order, comment, visibility, and effective index type
+  prefix, order, comment, visibility, and effective index type, plus
+  `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` and
+  `INFORMATION_SCHEMA.KEY_COLUMN_USAGE` rows for unique indexes
 - unique-index enforcement for `INSERT`, `INSERT ... SET`, ODKU, `REPLACE`,
   and `UPDATE`
 - nullable unique-key parts

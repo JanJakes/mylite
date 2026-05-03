@@ -64,6 +64,7 @@ enum mylite_information_schema_table {
     MYLITE_INFORMATION_SCHEMA_COLLATION_CHARACTER_SET_APPLICABILITY = 8,
     MYLITE_INFORMATION_SCHEMA_KEYWORDS = 9,
     MYLITE_INFORMATION_SCHEMA_TABLE_CONSTRAINTS = 10,
+    MYLITE_INFORMATION_SCHEMA_KEY_COLUMN_USAGE = 11,
 };
 
 enum mylite_mysql_condition_code {
@@ -1463,6 +1464,7 @@ static const char information_schema_tables_sql[] =
     "UNION ALL SELECT 'COLUMNS' "
     "UNION ALL SELECT 'ENGINES' "
     "UNION ALL SELECT 'KEYWORDS' "
+    "UNION ALL SELECT 'KEY_COLUMN_USAGE' "
     "UNION ALL SELECT 'STATISTICS' "
     "UNION ALL SELECT 'TABLE_CONSTRAINTS') "
     "UNION ALL "
@@ -1559,6 +1561,47 @@ static const char information_schema_table_constraints_sql[] =
     "GROUP BY table_schema, table_name, index_name) "
     "ORDER BY TABLE_SCHEMA COLLATE BINARY, TABLE_NAME COLLATE BINARY, "
     "constraint_order, first_rowid";
+static const char information_schema_key_column_usage_sql[] =
+    "SELECT CONSTRAINT_CATALOG,"
+    "CONSTRAINT_SCHEMA,"
+    "CONSTRAINT_NAME,"
+    "TABLE_CATALOG,"
+    "TABLE_SCHEMA,"
+    "TABLE_NAME,"
+    "COLUMN_NAME,"
+    "ORDINAL_POSITION,"
+    "POSITION_IN_UNIQUE_CONSTRAINT,"
+    "REFERENCED_TABLE_SCHEMA,"
+    "REFERENCED_TABLE_NAME,"
+    "REFERENCED_COLUMN_NAME "
+    "FROM ("
+    "SELECT 'def' AS CONSTRAINT_CATALOG,"
+    "i.table_schema AS CONSTRAINT_SCHEMA,"
+    "CASE WHEN i.index_name = 'PRIMARY' THEN 'PRIMARY' ELSE i.index_name END AS CONSTRAINT_NAME,"
+    "'def' AS TABLE_CATALOG,"
+    "i.table_schema AS TABLE_SCHEMA,"
+    "i.table_name AS TABLE_NAME,"
+    "i.column_name AS COLUMN_NAME,"
+    "i.seq_in_index AS ORDINAL_POSITION,"
+    "CAST(NULL AS INTEGER) AS POSITION_IN_UNIQUE_CONSTRAINT,"
+    "CAST(NULL AS TEXT) AS REFERENCED_TABLE_SCHEMA,"
+    "CAST(NULL AS TEXT) AS REFERENCED_TABLE_NAME,"
+    "CAST(NULL AS TEXT) AS REFERENCED_COLUMN_NAME,"
+    "CASE WHEN i.index_name = 'PRIMARY' THEN 0 ELSE 1 END AS constraint_order,"
+    "logical_index.first_rowid AS first_rowid "
+    "FROM __mylite_index_catalog AS i "
+    "JOIN ("
+    "SELECT table_schema, table_name, index_name, MIN(rowid) AS first_rowid "
+    "FROM __mylite_index_catalog "
+    "WHERE non_unique = 0 "
+    "GROUP BY table_schema, table_name, index_name"
+    ") AS logical_index "
+    "ON logical_index.table_schema = i.table_schema "
+    "AND logical_index.table_name = i.table_name "
+    "AND logical_index.index_name = i.index_name "
+    "WHERE i.non_unique = 0 AND i.column_name IS NOT NULL) "
+    "ORDER BY TABLE_SCHEMA COLLATE BINARY, TABLE_NAME COLLATE BINARY, "
+    "constraint_order, first_rowid, ORDINAL_POSITION";
 
 static int open_sqlite_database(const char *filename, int flags, const char *vfs_name,
                                 mylite_db **out_db);
@@ -7036,6 +7079,7 @@ static char *show_tables_sql(mylite_db *database, const struct mylite_show_table
         "UNION ALL SELECT 'COLUMNS' "
         "UNION ALL SELECT 'ENGINES' "
         "UNION ALL SELECT 'KEYWORDS' "
+        "UNION ALL SELECT 'KEY_COLUMN_USAGE' "
         "UNION ALL SELECT 'STATISTICS' "
         "UNION ALL SELECT 'TABLE_CONSTRAINTS') "
         "UNION ALL "
@@ -8302,6 +8346,7 @@ static int information_schema_dynamic_table_sql(mylite_db *database,
     case MYLITE_INFORMATION_SCHEMA_COLUMNS:
     case MYLITE_INFORMATION_SCHEMA_STATISTICS:
     case MYLITE_INFORMATION_SCHEMA_TABLE_CONSTRAINTS:
+    case MYLITE_INFORMATION_SCHEMA_KEY_COLUMN_USAGE:
     case MYLITE_INFORMATION_SCHEMA_NONE:
         return MYLITE_UNSUPPORTED;
     }
@@ -32281,6 +32326,9 @@ static enum mylite_information_schema_table information_schema_table_from_name(c
     if (ascii_case_equal(name, "table_constraints")) {
         return MYLITE_INFORMATION_SCHEMA_TABLE_CONSTRAINTS;
     }
+    if (ascii_case_equal(name, "key_column_usage")) {
+        return MYLITE_INFORMATION_SCHEMA_KEY_COLUMN_USAGE;
+    }
     return MYLITE_INFORMATION_SCHEMA_NONE;
 }
 
@@ -32297,6 +32345,8 @@ static const char *information_schema_table_sql(enum mylite_information_schema_t
         return information_schema_statistics_sql;
     case MYLITE_INFORMATION_SCHEMA_TABLE_CONSTRAINTS:
         return information_schema_table_constraints_sql;
+    case MYLITE_INFORMATION_SCHEMA_KEY_COLUMN_USAGE:
+        return information_schema_key_column_usage_sql;
     case MYLITE_INFORMATION_SCHEMA_ENGINES:
     case MYLITE_INFORMATION_SCHEMA_CHARACTER_SETS:
     case MYLITE_INFORMATION_SCHEMA_COLLATIONS:

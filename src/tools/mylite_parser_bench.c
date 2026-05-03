@@ -20,6 +20,7 @@ static void count_expression_tree(const MyliteAstExpression *expression,
 static void count_semantic_tree(const MyliteSemanticAstNode *node,
                                 size_t *targets, size_t *descriptors,
                                 size_t *clauses,
+                                size_t *structural_clauses,
                                 size_t *expressions, size_t *operators,
                                 size_t *leaf_values,
                                 size_t *descriptor_expressions,
@@ -567,6 +568,7 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t semantic_targets = 0;
   size_t semantic_descriptors = 0;
   size_t semantic_clauses = 0;
+  size_t semantic_structural_clauses = 0;
   size_t semantic_expressions = 0;
   size_t semantic_expression_operators = 0;
   size_t semantic_expression_leaf_values = 0;
@@ -2828,6 +2830,7 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
           count_semantic_tree(mylite_semantic_ast_root(semantic_ast),
                               &semantic_targets, &semantic_descriptors,
                               &semantic_clauses,
+                              &semantic_structural_clauses,
                               &semantic_expressions,
                               &semantic_expression_operators,
                               &semantic_expression_leaf_values,
@@ -3874,6 +3877,7 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_semantic_statements=%.2f avg_semantic_targets=%.2f "
            "avg_semantic_descriptors=%.2f "
            "avg_semantic_clauses=%.2f "
+           "avg_semantic_structural_clauses=%.2f "
            "avg_semantic_expressions=%.2f "
            "avg_semantic_expression_operators=%.2f "
            "avg_semantic_expression_leaf_values=%.2f "
@@ -3886,6 +3890,7 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)semantic_targets / (double)parsed,
            (double)semantic_descriptors / (double)parsed,
            (double)semantic_clauses / (double)parsed,
+           (double)semantic_structural_clauses / (double)parsed,
            (double)semantic_expressions / (double)parsed,
            (double)semantic_expression_operators / (double)parsed,
            (double)semantic_expression_leaf_values / (double)parsed,
@@ -3929,6 +3934,7 @@ static void count_expression_tree(const MyliteAstExpression *expression,
 static void count_semantic_tree(const MyliteSemanticAstNode *node,
                                 size_t *targets, size_t *descriptors,
                                 size_t *clauses,
+                                size_t *structural_clauses,
                                 size_t *expressions, size_t *operators,
                                 size_t *leaf_values,
                                 size_t *descriptor_expressions,
@@ -3947,8 +3953,14 @@ static void count_semantic_tree(const MyliteSemanticAstNode *node,
       descriptors != NULL) {
     (*descriptors)++;
   }
-  if (kind == MYLITE_SEMANTIC_NODE_CLAUSE && clauses != NULL) {
-    (*clauses)++;
+  if (kind == MYLITE_SEMANTIC_NODE_CLAUSE) {
+    if (clauses != NULL) {
+      (*clauses)++;
+    }
+    if (structural_clauses != NULL &&
+        mylite_semantic_ast_node_child_count(node) == 0) {
+      (*structural_clauses)++;
+    }
   }
   if (kind == MYLITE_SEMANTIC_NODE_EXPRESSION) {
     if (expressions != NULL) {
@@ -3980,8 +3992,8 @@ static void count_semantic_tree(const MyliteSemanticAstNode *node,
 
   for (size_t i = 0; i < mylite_semantic_ast_node_child_count(node); i++) {
     count_semantic_tree(mylite_semantic_ast_node_child_at(node, i), targets,
-                        descriptors, clauses, expressions, operators,
-                        leaf_values, descriptor_expressions,
+                        descriptors, clauses, structural_clauses, expressions,
+                        operators, leaf_values, descriptor_expressions,
                         clause_expressions, statement_expressions, kind);
   }
 }

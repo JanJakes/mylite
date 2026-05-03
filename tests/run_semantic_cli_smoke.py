@@ -55,6 +55,7 @@ def main() -> int:
         "semantic_statements=1",
         "statement_kind=select",
         "semantic kind=clause",
+        "clause_kind=from",
         "clause_kind=where",
         "expression_kind=binary",
         "operator=eq",

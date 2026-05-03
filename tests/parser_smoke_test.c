@@ -161,6 +161,11 @@ typedef struct SemanticCounts {
   size_t leaf_values;
 } SemanticCounts;
 
+typedef struct ExpectedSemanticClause {
+  MyliteSemanticClauseKind kind;
+  size_t child_count;
+} ExpectedSemanticClause;
+
 static int expect_parse_ok(const char *sql);
 static int expect_ast_ok(const char *sql, const char *root_symbol);
 static int expect_ast_statements(const char *sql, size_t count,
@@ -233,8 +238,8 @@ static int expect_update_statement_view(void);
 static int expect_use_database_view(void);
 static int expect_semantic_ast_materialization(void);
 static int expect_semantic_clauses(const char *label, const char *sql,
-                                   const MyliteSemanticClauseKind *kinds,
-                                   size_t kind_count);
+                                   const ExpectedSemanticClause *clauses,
+                                   size_t clause_count);
 static void count_semantic_nodes(const MyliteSemanticAstNode *node,
                                  SemanticCounts *counts);
 static const MyliteSemanticAstNode *first_semantic_child_with_kind(
@@ -7610,38 +7615,55 @@ static int expect_semantic_ast_materialization(void) {
   }
   mylite_semantic_ast_free(semantic_ast);
 
-  const MyliteSemanticClauseKind select_clauses[] = {
-      MYLITE_SEMANTIC_CLAUSE_WHERE,
-      MYLITE_SEMANTIC_CLAUSE_HAVING,
+  const ExpectedSemanticClause select_clauses[] = {
+      {MYLITE_SEMANTIC_CLAUSE_FROM, 0},
+      {MYLITE_SEMANTIC_CLAUSE_WHERE, 1},
+      {MYLITE_SEMANTIC_CLAUSE_GROUP_BY, 0},
+      {MYLITE_SEMANTIC_CLAUSE_HAVING, 1},
   };
   failed += expect_semantic_clauses(
       "SELECT clauses",
       "SELECT a FROM t WHERE a > 1 GROUP BY a HAVING a < 10",
       select_clauses, sizeof(select_clauses) / sizeof(select_clauses[0]));
 
-  const MyliteSemanticClauseKind update_clauses[] = {
-      MYLITE_SEMANTIC_CLAUSE_WHERE,
+  const ExpectedSemanticClause select_structural_clauses[] = {
+      {MYLITE_SEMANTIC_CLAUSE_FROM, 0},
+      {MYLITE_SEMANTIC_CLAUSE_ORDER_BY, 0},
+      {MYLITE_SEMANTIC_CLAUSE_LIMIT, 0},
+      {MYLITE_SEMANTIC_CLAUSE_LOCKING, 0},
+  };
+  failed += expect_semantic_clauses(
+      "SELECT structural clauses",
+      "SELECT a FROM t ORDER BY a LIMIT 1 FOR UPDATE",
+      select_structural_clauses,
+      sizeof(select_structural_clauses) /
+          sizeof(select_structural_clauses[0]));
+
+  const ExpectedSemanticClause update_clauses[] = {
+      {MYLITE_SEMANTIC_CLAUSE_TABLE_REFERENCE, 0},
+      {MYLITE_SEMANTIC_CLAUSE_WHERE, 1},
   };
   failed += expect_semantic_clauses(
       "UPDATE clauses", "UPDATE t SET a = 1 WHERE b = 2", update_clauses,
       sizeof(update_clauses) / sizeof(update_clauses[0]));
 
-  const MyliteSemanticClauseKind delete_clauses[] = {
-      MYLITE_SEMANTIC_CLAUSE_WHERE,
+  const ExpectedSemanticClause delete_clauses[] = {
+      {MYLITE_SEMANTIC_CLAUSE_TABLE_REFERENCE, 0},
+      {MYLITE_SEMANTIC_CLAUSE_WHERE, 1},
   };
   failed += expect_semantic_clauses(
       "DELETE clauses", "DELETE FROM t WHERE a = 1", delete_clauses,
       sizeof(delete_clauses) / sizeof(delete_clauses[0]));
 
-  const MyliteSemanticClauseKind show_like_clauses[] = {
-      MYLITE_SEMANTIC_CLAUSE_SHOW_LIKE,
+  const ExpectedSemanticClause show_like_clauses[] = {
+      {MYLITE_SEMANTIC_CLAUSE_SHOW_LIKE, 1},
   };
   failed += expect_semantic_clauses(
       "SHOW LIKE clauses", "SHOW TABLES LIKE 't%'", show_like_clauses,
       sizeof(show_like_clauses) / sizeof(show_like_clauses[0]));
 
-  const MyliteSemanticClauseKind show_where_clauses[] = {
-      MYLITE_SEMANTIC_CLAUSE_SHOW_WHERE,
+  const ExpectedSemanticClause show_where_clauses[] = {
+      {MYLITE_SEMANTIC_CLAUSE_SHOW_WHERE, 1},
   };
   failed += expect_semantic_clauses(
       "SHOW WHERE clauses",
@@ -7649,24 +7671,24 @@ static int expect_semantic_ast_materialization(void) {
       show_where_clauses,
       sizeof(show_where_clauses) / sizeof(show_where_clauses[0]));
 
-  const MyliteSemanticClauseKind call_clauses[] = {
-      MYLITE_SEMANTIC_CLAUSE_CALL_ARGUMENT,
-      MYLITE_SEMANTIC_CLAUSE_CALL_ARGUMENT,
+  const ExpectedSemanticClause call_clauses[] = {
+      {MYLITE_SEMANTIC_CLAUSE_CALL_ARGUMENT, 1},
+      {MYLITE_SEMANTIC_CLAUSE_CALL_ARGUMENT, 1},
   };
   failed += expect_semantic_clauses(
       "CALL clauses", "CALL p(1, a + 2)", call_clauses,
       sizeof(call_clauses) / sizeof(call_clauses[0]));
 
-  const MyliteSemanticClauseKind do_clauses[] = {
-      MYLITE_SEMANTIC_CLAUSE_DO_EXPRESSION,
-      MYLITE_SEMANTIC_CLAUSE_DO_EXPRESSION,
+  const ExpectedSemanticClause do_clauses[] = {
+      {MYLITE_SEMANTIC_CLAUSE_DO_EXPRESSION, 1},
+      {MYLITE_SEMANTIC_CLAUSE_DO_EXPRESSION, 1},
   };
   failed += expect_semantic_clauses(
       "DO clauses", "DO 1, a + 2", do_clauses,
       sizeof(do_clauses) / sizeof(do_clauses[0]));
 
-  const MyliteSemanticClauseKind kill_clauses[] = {
-      MYLITE_SEMANTIC_CLAUSE_KILL_TARGET,
+  const ExpectedSemanticClause kill_clauses[] = {
+      {MYLITE_SEMANTIC_CLAUSE_KILL_TARGET, 1},
   };
   failed += expect_semantic_clauses(
       "KILL clauses", "KILL CONNECTION_ID()", kill_clauses,
@@ -7675,8 +7697,8 @@ static int expect_semantic_ast_materialization(void) {
 }
 
 static int expect_semantic_clauses(const char *label, const char *sql,
-                                   const MyliteSemanticClauseKind *kinds,
-                                   size_t kind_count) {
+                                   const ExpectedSemanticClause *clauses,
+                                   size_t clause_count) {
   MyliteParseResult result;
   MyliteSemanticAst *semantic_ast = NULL;
   MyliteParseStatus status =
@@ -7707,9 +7729,15 @@ static int expect_semantic_clauses(const char *label, const char *sql,
     if (mylite_semantic_ast_node_kind(child) != MYLITE_SEMANTIC_NODE_CLAUSE) {
       continue;
     }
-    if (clause_index >= kind_count ||
-        mylite_semantic_ast_node_clause_kind(child) != kinds[clause_index] ||
-        mylite_semantic_ast_node_child_count(child) != 1 ||
+    if (clause_index >= clause_count ||
+        mylite_semantic_ast_node_clause_kind(child) !=
+            clauses[clause_index].kind ||
+        mylite_semantic_ast_node_child_count(child) !=
+            clauses[clause_index].child_count) {
+      failed = 1;
+      break;
+    }
+    if (clauses[clause_index].child_count > 0 &&
         mylite_semantic_ast_node_kind(
             mylite_semantic_ast_node_child_at(child, 0)) !=
             MYLITE_SEMANTIC_NODE_EXPRESSION) {
@@ -7720,8 +7748,7 @@ static int expect_semantic_clauses(const char *label, const char *sql,
   }
 
   if (root == NULL || statement == NULL || direct_expression != NULL ||
-      clause_index != kind_count || counts.clauses != kind_count ||
-      counts.expressions < kind_count) {
+      clause_index != clause_count || counts.clauses != clause_count) {
     failed = 1;
   }
 
@@ -7729,7 +7756,7 @@ static int expect_semantic_clauses(const char *label, const char *sql,
     fprintf(stderr,
             "%s shape mismatch: clauses=%zu/%zu total_clauses=%zu "
             "expressions=%zu sql=%s\n",
-            label, clause_index, kind_count, counts.clauses,
+            label, clause_index, clause_count, counts.clauses,
             counts.expressions, sql);
   }
   mylite_semantic_ast_free(semantic_ast);

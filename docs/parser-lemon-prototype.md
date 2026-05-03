@@ -498,7 +498,9 @@ token sink:
   savepoint names using the shared identifier grammar.
 - XA statements recognize string, hex, and binary XID parts while rejecting
   bare decimal XID literals.
-- Stored-program label and cursor references use the shared identifier grammar.
+- Stored-program label declarations accept unquoted `label:` and quoted
+  identifier-plus-colon forms, including in trigger and handler bodies. Label
+  and cursor references use the shared identifier grammar.
 - Compound `BEGIN ... END` blocks and `LOOP ... END LOOP` bodies are recognized
   with optional labels and preserved nested statement tails.
 - Embedded stored-program `LEAVE` and `ITERATE` statements validate their

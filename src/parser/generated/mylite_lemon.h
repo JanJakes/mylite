@@ -307,11 +307,11 @@
 #define ML_SOURCE_ZSTD_COMPRESSION_LEVEL  307
 #define ML_INTO                           308
 #define ML_SEMI                           309
-#define ML_LABEL                          310
-#define ML_BEGIN                          311
-#define ML_LOOP                           312
-#define ML_REPEAT                         313
-#define ML_WHILE                          314
+#define ML_BEGIN                          310
+#define ML_LOOP                           311
+#define ML_REPEAT                         312
+#define ML_WHILE                          313
+#define ML_LABEL                          314
 #define ML_SELECT                         315
 #define ML_STAR                           316
 #define ML_ALL                            317

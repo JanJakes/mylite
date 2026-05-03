@@ -149,7 +149,7 @@ statement ::= case_statement.
 statement ::= declare_statement.
 statement ::= end_statement.
 statement ::= parenthesized_statement.
-statement ::= LABEL labeled_statement_start(A) statement_tail. {
+statement ::= stored_program_label_decl labeled_statement_start(A) statement_tail. {
   mylite_parser_record_statement(ctx, A);
 }
 statement ::= permissive_start(A) statement_tail. {
@@ -160,6 +160,9 @@ labeled_statement_start(A) ::= BEGIN. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 labeled_statement_start(A) ::= LOOP. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 labeled_statement_start(A) ::= REPEAT. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
 labeled_statement_start(A) ::= WHILE. { A = MYLITE_STATEMENT_STORED_PROGRAM; }
+
+stored_program_label_decl ::= LABEL.
+stored_program_label_decl ::= QUOTED_ID COLON.
 
 select_statement ::= SELECT select_tail. {
   mylite_parser_validate_select_statement(ctx);
@@ -624,7 +627,7 @@ create_trigger_statement_start ::= GET.
 create_trigger_statement_start ::= IF.
 create_trigger_statement_start ::= INSERT.
 create_trigger_statement_start ::= ITERATE.
-create_trigger_statement_start ::= LABEL.
+create_trigger_statement_start ::= stored_program_label_decl.
 create_trigger_statement_start ::= LEAVE.
 create_trigger_statement_start ::= LOOP.
 create_trigger_statement_start ::= OPEN.
@@ -674,14 +677,13 @@ create_function_body_start ::= RETURN.
 create_procedure_tail ::= procedure_signature create_procedure_tail_start statement_tail.
 
 create_procedure_tail_start ::= keyword_not_select_clause.
-create_procedure_tail_start ::= LABEL.
+create_procedure_tail_start ::= stored_program_label_decl.
 create_procedure_tail_start ::= COMMENT.
 create_procedure_tail_start ::= CONTAINS.
 create_procedure_tail_start ::= DETERMINISTIC.
 create_procedure_tail_start ::= LANGUAGE.
 create_procedure_tail_start ::= MODIFIES.
 create_procedure_tail_start ::= NOT.
-create_procedure_tail_start ::= QUOTED_ID.
 create_procedure_tail_start ::= READS.
 
 function_signature ::= LP RP.
@@ -1842,13 +1844,12 @@ alter_event_schedule_token ::= WHERE.
 alter_event_schedule_token ::= LP alter_event_schedule_nested RP.
 
 event_statement_start ::= keyword_not_select_clause.
-event_statement_start ::= LABEL.
+event_statement_start ::= stored_program_label_decl.
 event_statement_start ::= COMMENT.
 event_statement_start ::= DETERMINISTIC.
 event_statement_start ::= LANGUAGE.
 event_statement_start ::= MODIFIES.
 event_statement_start ::= NOT.
-event_statement_start ::= QUOTED_ID.
 event_statement_start ::= READS.
 
 alter_resource_group_actions ::= .
@@ -4913,7 +4914,7 @@ declare_handler_statement_start ::= GET.
 declare_handler_statement_start ::= IF.
 declare_handler_statement_start ::= INSERT.
 declare_handler_statement_start ::= ITERATE.
-declare_handler_statement_start ::= LABEL.
+declare_handler_statement_start ::= stored_program_label_decl.
 declare_handler_statement_start ::= LEAVE.
 declare_handler_statement_start ::= LOOP.
 declare_handler_statement_start ::= OPEN.

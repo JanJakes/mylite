@@ -4,6 +4,25 @@
 
 static bool ascii_case_equal(const char *left, const char *right);
 
+static const struct mylite_charset character_sets[] = {
+    {.name = "binary",
+     .description = "Binary pseudo charset",
+     .default_collation = "binary",
+     .max_length = 1},
+    {.name = "latin1",
+     .description = "cp1252 West European",
+     .default_collation = "latin1_swedish_ci",
+     .max_length = 1},
+    {.name = "utf8mb3",
+     .description = "UTF-8 Unicode",
+     .default_collation = "utf8mb3_general_ci",
+     .max_length = 3},
+    {.name = "utf8mb4",
+     .description = "UTF-8 Unicode",
+     .default_collation = "utf8mb4_0900_ai_ci",
+     .max_length = 4},
+};
+
 const char *mylite_charset_default_name(void)
 {
     return "utf8mb4";
@@ -14,16 +33,22 @@ const char *mylite_charset_default_collation_name(void)
     return "utf8mb4_0900_ai_ci";
 }
 
+size_t mylite_charset_count(void)
+{
+    return sizeof(character_sets) / sizeof(character_sets[0]);
+}
+
+const struct mylite_charset *mylite_charset_at(size_t index)
+{
+    if (index >= mylite_charset_count()) {
+        return NULL;
+    }
+    return &character_sets[index];
+}
+
 const struct mylite_charset *mylite_charset_lookup(const char *name)
 {
-    static const struct mylite_charset character_sets[] = {
-        {.name = "binary", .default_collation = "binary", .max_length = 1},
-        {.name = "latin1", .default_collation = "latin1_swedish_ci", .max_length = 1},
-        {.name = "utf8mb3", .default_collation = "utf8mb3_general_ci", .max_length = 3},
-        {.name = "utf8mb4", .default_collation = "utf8mb4_0900_ai_ci", .max_length = 4},
-    };
-
-    for (size_t index = 0U; index < sizeof(character_sets) / sizeof(character_sets[0]); ++index) {
+    for (size_t index = 0U; index < mylite_charset_count(); ++index) {
         if (ascii_case_equal(name, character_sets[index].name)) {
             return &character_sets[index];
         }

@@ -641,6 +641,9 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_status_statement(
 struct mylite_sql_parser_show_status_scope
 mylite_sql_parser_make_show_status_scope(struct mylite_sql_token token,
                                          enum mylite_sql_ast_show_status_scope scope);
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_character_set_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token show_token,
+    struct mylite_sql_token character_set_token, struct mylite_sql_ast_node *filter);
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_tables_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_parser_show_tables_tokens tokens,
     struct mylite_sql_ast_node *schema_name, struct mylite_sql_ast_node *filter);

@@ -936,6 +936,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "show_variables_statement";
     case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:
         return "show_status_statement";
+    case MYLITE_SQL_AST_SHOW_CHARACTER_SET_STATEMENT:
+        return "show_character_set_statement";
     }
 
     return "unknown";

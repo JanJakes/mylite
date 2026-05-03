@@ -225,6 +225,7 @@ static int test_rename_table_execution(void);
 static int test_truncate_table_execution(void);
 static int test_show_variables_execution(void);
 static int test_show_status_execution(void);
+static int test_show_character_set_execution(void);
 static int test_show_tables_execution(void);
 static int test_show_columns_execution(void);
 static int test_show_index_execution(void);
@@ -271,6 +272,8 @@ static int expect_show_status_catalog_rows(mylite_db *database,
                                            const struct show_status_catalog_expectation *expected);
 static int expect_show_status_numeric_rows(mylite_db *database,
                                            const struct show_status_numeric_expectation *expected);
+static int expect_show_character_set_maxlen_int64(mylite_db *database, const char *sql,
+                                                  int64_t expected, const char *context);
 static int expect_select_row_count(mylite_db *database, const char *sql, int row_count,
                                    const char *context);
 static int expect_information_schema_schemata_row(mylite_db *database,
@@ -375,6 +378,7 @@ int main(void)
     failures += test_truncate_table_execution();
     failures += test_show_variables_execution();
     failures += test_show_status_execution();
+    failures += test_show_character_set_execution();
     failures += test_show_tables_execution();
     failures += test_show_columns_execution();
     failures += test_show_index_execution();
@@ -5130,6 +5134,119 @@ static int expect_show_status_numeric_rows(mylite_db *database,
     }
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, expected->context);
     failures += expect_int64(mylite_affected_rows(stmt), -1, expected->context);
+    mylite_finalize(stmt);
+    return failures;
+}
+
+static int test_show_character_set_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const columns[] = {"Charset", "Description", "Default collation", "Maxlen"};
+    static const char *const diagnostics_columns[] = {"Level", "Code", "Message"};
+    static const char *const error_count_column[] = {"@@session.error_count"};
+    static const char *const zero_count[] = {"0"};
+    static const char *const one_count[] = {"1"};
+    static const char *const all_values[] = {
+        "binary",
+        "Binary pseudo charset",
+        "binary",
+        "1",
+        "latin1",
+        "cp1252 West European",
+        "latin1_swedish_ci",
+        "1",
+        "utf8mb3",
+        "UTF-8 Unicode",
+        "utf8mb3_general_ci",
+        "3",
+        "utf8mb4",
+        "UTF-8 Unicode",
+        "utf8mb4_0900_ai_ci",
+        "4",
+    };
+    static const char *const utf8_values[] = {
+        "utf8mb3", "UTF-8 Unicode", "utf8mb3_general_ci", "3",
+        "utf8mb4", "UTF-8 Unicode", "utf8mb4_0900_ai_ci", "4",
+    };
+    static const char *const binary_values[] = {"binary", "Binary pseudo charset", "binary", "1"};
+    static const char *const latin1_values[] = {"latin1", "cp1252 West European",
+                                                "latin1_swedish_ci", "1"};
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open show character set");
+
+    failures += expect_select_rows(database, "SHOW CHARACTER SET", columns, 4, all_values, 4,
+                                   "show character set supported catalog");
+    failures += expect_select_rows(database, "SHOW CHARSET", columns, 4, all_values, 4,
+                                   "show charset synonym");
+    failures += expect_select_rows(database, "SHOW CHAR SET", columns, 4, all_values, 4,
+                                   "show char set synonym");
+    failures += expect_select_rows(database, "SHOW CHARACTER SET LIKE 'utf8%'", columns, 4,
+                                   utf8_values, 2, "show character set utf8 wildcard");
+    failures += expect_select_rows(database, "SHOW CHARACTER SET LIKE 'UTF8%'", columns, 4,
+                                   utf8_values, 2, "show character set like is case-insensitive");
+    failures += expect_select_rows(database, "SHOW CHARSET LIKE 'utf8%'", columns, 4, utf8_values,
+                                   2, "show charset like synonym");
+    failures += expect_select_rows(database, "SHOW CHAR SET LIKE 'utf8%'", columns, 4, utf8_values,
+                                   2, "show char set like synonym");
+    failures += expect_select_rows(database, "SHOW CHARACTER SET LIKE 'utf8\\_mb%'", columns, 4,
+                                   NULL, 0, "show character set escaped underscore");
+    failures += expect_select_rows(database, "SHOW CHARACTER SET LIKE 'utf8_mb%'", columns, 4, NULL,
+                                   0, "show character set unescaped underscore miss");
+    failures += expect_select_rows(database, "SHOW CHARACTER SET LIKE 'binary'", columns, 4,
+                                   binary_values, 1, "show character set binary row");
+    failures += expect_select_rows(database, "SHOW CHARACTER SET LIKE 'latin%'", columns, 4,
+                                   latin1_values, 1, "show character set latin subset");
+    failures += expect_select_rows(database, "SHOW CHARACTER SET LIKE 'filename'", columns, 4, NULL,
+                                   0, "show character set hides filename");
+    failures += expect_show_character_set_maxlen_int64(database, "SHOW CHARACTER SET LIKE 'binary'",
+                                                       1, "show character set maxlen is integer");
+
+    failures +=
+        expect_prepare_error(database, "SHOW CHARACTER SET WHERE Charset = 'utf8mb4'",
+                             MYLITE_UNSUPPORTED, "SHOW CHARACTER SET WHERE is not supported",
+                             "show character set where is parsed but unsupported");
+    failures +=
+        expect_prepare_error(database, "SHOW CHARACTER SET WHERE `Default collation` = 'binary'",
+                             MYLITE_UNSUPPORTED, "SHOW CHARACTER SET WHERE is not supported",
+                             "show character set where default collation unsupported");
+    failures += expect_prepare_error(database, "SHOW CHARACTER SET LIKE 1", MYLITE_PARSE_ERROR,
+                                     "syntax_error", "show character set non-string like syntax");
+    failures += expect_prepare_error(database, "SHOW CHARACTER SET LIMIT 1", MYLITE_PARSE_ERROR,
+                                     "syntax_error", "show character set limit syntax");
+
+    failures += execute_sql(database, "CREATE DATABASE mylite_show_character_set", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_show_character_set", MYLITE_DONE);
+    failures +=
+        expect_prepare_error(database, "SELECT * FROM missing_show_character_set_table",
+                             MYLITE_EXEC_ERROR, "doesn't exist", "show character set error source");
+    failures += expect_select_rows(database, "SHOW COUNT(*) ERRORS", error_count_column, 1,
+                                   one_count, 1, "show character set source error count");
+    failures += expect_select_rows(database, "SHOW CHARACTER SET LIKE 'utf8%'", columns, 4,
+                                   utf8_values, 2, "show character set clears diagnostics");
+    failures += expect_select_rows(database, "SHOW COUNT(*) ERRORS", error_count_column, 1,
+                                   zero_count, 1, "show character set cleared error count");
+    failures += expect_select_rows(database, "SHOW ERRORS", diagnostics_columns, 3, NULL, 0,
+                                   "show character set cleared diagnostics");
+
+    mylite_close(database);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
+    return failures;
+}
+
+static int expect_show_character_set_maxlen_int64(mylite_db *database, const char *sql,
+                                                  int64_t expected, const char *context)
+{
+    static const char *const columns[] = {"Charset", "Description", "Default collation", "Maxlen"};
+    mylite_stmt *stmt = NULL;
+    int failures = prepare_sql(database, sql, MYLITE_OK, &stmt);
+
+    failures += expect_column_names(stmt, columns, 4, context);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, context);
+    failures += expect_int64(mylite_column_int64(stmt, 3), expected, context);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, context);
+    failures += expect_int64(mylite_affected_rows(stmt), -1, context);
     mylite_finalize(stmt);
     return failures;
 }

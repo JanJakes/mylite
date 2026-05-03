@@ -229,10 +229,18 @@ level application surfaces.
        connection/thread/uptime rows, documented zero placeholders for common
        `Questions` and `Com_*` counters, same-value session/global behavior
        where MyLite has no separate mutable global state, and a clear
-       unsupported diagnostic for parsed `WHERE` filters. Specs:
+       unsupported diagnostic for parsed `WHERE` filters. The first
+       `SHOW CHARACTER SET` / `SHOW CHARSET` slice is specified for
+       `SHOW {CHARACTER SET|CHARSET}` plus the MySQL-runtime-accepted
+       `SHOW CHAR SET` spelling, including exact `Charset` / `Description` /
+       `Default collation` / `Maxlen` metadata, supported MyLite charset
+       registry rows, case-insensitive `LIKE` filtering with escapes, numeric
+       `Maxlen`, nondiagnostic clearing, and a clear unsupported diagnostic
+       for parsed `WHERE` filters. Specs:
        [SHOW diagnostics](../show-diagnostics/specs.md),
        [SHOW VARIABLES](../show-variables/specs.md),
-       [SHOW STATUS](../show-status/specs.md).
+       [SHOW STATUS](../show-status/specs.md),
+       [SHOW CHARACTER SET](../show-character-set/specs.md).
 41. [ ] User and system variables: `SET`, user-variable storage, system-variable
        validation, scope, charset/collation metadata, and expression use.
 42. [ ] Prepared statements: `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`,

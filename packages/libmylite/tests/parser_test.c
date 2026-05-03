@@ -23,6 +23,7 @@ static int test_rename_table_syntax(void);
 static int test_truncate_table_syntax(void);
 static int test_show_variables_syntax(void);
 static int test_show_status_syntax(void);
+static int test_show_character_set_syntax(void);
 static int test_show_tables_syntax(void);
 static int test_show_columns_syntax(void);
 static int test_show_index_syntax(void);
@@ -168,6 +169,7 @@ int main(void)
     failures += test_truncate_table_syntax();
     failures += test_show_variables_syntax();
     failures += test_show_status_syntax();
+    failures += test_show_character_set_syntax();
     failures += test_show_tables_syntax();
     failures += test_show_columns_syntax();
     failures += test_show_index_syntax();
@@ -3051,6 +3053,81 @@ static int test_show_status_syntax(void)
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SHOW STATUS GLOBAL;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_show_character_set_syntax(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SHOW CHARACTER SET; SHOW CHARSET; SHOW CHAR SET; "
+                          "SHOW CHARACTER SET LIKE 'utf8%'; "
+                          "SHOW CHARSET LIKE 'binary'; "
+                          "SHOW CHAR SET WHERE Charset = 'utf8mb4'; "
+                          "SHOW CHARACTER SET WHERE `Default collation` = 'binary';",
+                          MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_child_count(result.root, 7U, "show character set script count");
+
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_CHARACTER_SET_STATEMENT, "show character set");
+    failures += expect_child_count(statement, 0U, "show character set child count");
+
+    statement = child_at(result.root, 1U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_CHARACTER_SET_STATEMENT, "show charset");
+    failures += expect_child_count(statement, 0U, "show charset child count");
+
+    statement = child_at(result.root, 2U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_CHARACTER_SET_STATEMENT, "show char set");
+    failures += expect_child_count(statement, 0U, "show char set child count");
+
+    statement = child_at(result.root, 3U);
+    failures += expect_child_count(statement, 1U, "show character set like child count");
+    failures += expect_literal(child_at(statement, 0U), MYLITE_SQL_AST_LITERAL_STRING,
+                               "show character set like pattern");
+    failures += expect_span_text(child_at(statement, 0U), "'utf8%'",
+                                 "show character set like pattern text");
+
+    statement = child_at(result.root, 4U);
+    failures += expect_child_count(statement, 1U, "show charset like child count");
+    failures +=
+        expect_span_text(child_at(statement, 0U), "'binary'", "show charset like pattern text");
+
+    statement = child_at(result.root, 5U);
+    failures += expect_child_count(statement, 1U, "show char set where child count");
+    failures += expect_node(child_at(statement, 0U), MYLITE_SQL_AST_WHERE_CLAUSE,
+                            "show char set where clause");
+
+    statement = child_at(result.root, 6U);
+    failures += expect_child_count(statement, 1U, "show character set where child count");
+    failures += expect_node(child_at(statement, 0U), MYLITE_SQL_AST_WHERE_CLAUSE,
+                            "show character set where default collation clause");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE charset (charset INT);", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_child_count(result.root, 1U, "show charset keyword identifiers");
+    failures += expect_span_text(child_at(child_at(result.root, 0U), 0U), "charset",
+                                 "charset keyword as table name");
+    statement = child_at(child_at(result.root, 0U), 1U);
+    failures += expect_span_text(child_at(child_at(statement, 0U), 0U), "charset",
+                                 "charset keyword as column name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW CHARACTER SET LIKE 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW CHARACTER SET LIKE 'a%' WHERE TRUE;", MYLITE_SQL_PARSE_SYNTAX_ERROR,
+                          &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW CHARACTER SET LIMIT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     // NOLINTEND(readability-magic-numbers)

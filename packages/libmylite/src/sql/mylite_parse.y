@@ -43,6 +43,8 @@
 %type opt_show_variables_filter { struct mylite_sql_ast_node * }
 %type opt_show_status_scope { struct mylite_sql_parser_show_status_scope }
 %type opt_show_status_filter { struct mylite_sql_ast_node * }
+%type show_character_set_keyword { struct mylite_sql_token }
+%type opt_show_character_set_filter { struct mylite_sql_ast_node * }
 %type opt_show_tables_schema { struct mylite_sql_ast_node * }
 %type opt_show_tables_filter { struct mylite_sql_ast_node * }
 %type show_columns_keyword { struct mylite_sql_token }
@@ -197,6 +199,9 @@ statement(A) ::= show_variables_statement(B). {
     A = B;
 }
 statement(A) ::= show_status_statement(B). {
+    A = B;
+}
+statement(A) ::= show_character_set_statement(B). {
     A = B;
 }
 statement(A) ::= show_tables_statement(B). {
@@ -1036,6 +1041,31 @@ opt_show_status_filter(A) ::= LIKE STRING(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
 }
 opt_show_status_filter(A) ::= where_clause(B). {
+    A = B;
+}
+
+show_character_set_statement(A) ::= SHOW(T) show_character_set_keyword(K)
+        opt_show_character_set_filter(F). {
+    A = mylite_sql_parser_make_show_character_set_statement(state, T, K, F);
+}
+
+show_character_set_keyword(A) ::= CHARACTER SET(T). {
+    A = T;
+}
+show_character_set_keyword(A) ::= CHAR SET(T). {
+    A = T;
+}
+show_character_set_keyword(A) ::= CHARSET(T). {
+    A = T;
+}
+
+opt_show_character_set_filter(A) ::= . {
+    A = NULL;
+}
+opt_show_character_set_filter(A) ::= LIKE STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+opt_show_character_set_filter(A) ::= where_clause(B). {
     A = B;
 }
 

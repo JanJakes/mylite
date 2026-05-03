@@ -148,6 +148,8 @@ static void dump_statements(const MyliteAst *ast) {
         mylite_ast_show_statement_view(ast, i);
     const MyliteAstLockStatement *lock_statement =
         mylite_ast_lock_statement_view(ast, i);
+    const MyliteAstTableMaintenanceStatement *maintenance_statement =
+        mylite_ast_table_maintenance_statement_view(ast, i);
     const MyliteAstDeleteStatement *delete_statement =
         mylite_ast_delete_statement_view(ast, i);
     const MyliteAstInsertStatement *insert_statement =
@@ -949,6 +951,67 @@ static void dump_statements(const MyliteAst *ast) {
           fputs("none", stdout);
         } else {
           print_escaped_bytes(alias, alias_length);
+        }
+        fputc('\n', stdout);
+      }
+    }
+    if (maintenance_statement != NULL) {
+      printf("  table_maintenance span=%zu..%zu kind=%s targets=%zu "
+             "no_write_to_binlog=%d quick=%d extended=%d changed=%d fast=%d "
+             "medium=%d use_frm=%d node=%s\n",
+             mylite_ast_table_maintenance_statement_view_start(
+                 maintenance_statement),
+             mylite_ast_table_maintenance_statement_view_end(
+                 maintenance_statement),
+             mylite_table_maintenance_kind_name(
+                 mylite_ast_table_maintenance_statement_view_kind(
+                     maintenance_statement)),
+             mylite_ast_table_maintenance_statement_view_target_count(
+                 maintenance_statement),
+             mylite_ast_table_maintenance_statement_view_has_no_write_to_binlog(
+                 maintenance_statement),
+             mylite_ast_table_maintenance_statement_view_has_quick(
+                 maintenance_statement),
+             mylite_ast_table_maintenance_statement_view_has_extended(
+                 maintenance_statement),
+             mylite_ast_table_maintenance_statement_view_has_changed(
+                 maintenance_statement),
+             mylite_ast_table_maintenance_statement_view_has_fast(
+                 maintenance_statement),
+             mylite_ast_table_maintenance_statement_view_has_medium(
+                 maintenance_statement),
+             mylite_ast_table_maintenance_statement_view_has_use_frm(
+                 maintenance_statement),
+             node_symbol_or_none(
+                 mylite_ast_table_maintenance_statement_view_node(
+                     maintenance_statement)));
+      for (size_t j = 0;
+           j < mylite_ast_table_maintenance_statement_view_target_count(
+                   maintenance_statement);
+           j++) {
+        const MyliteAstTableMaintenanceTarget *target =
+            mylite_ast_table_maintenance_statement_view_target_at(
+                maintenance_statement, j);
+        printf("    maintenance_target[%zu] span=%zu..%zu table=", j,
+               mylite_ast_table_maintenance_target_view_start(target),
+               mylite_ast_table_maintenance_target_view_end(target));
+        const char *schema =
+            mylite_ast_table_maintenance_target_view_schema_value(target);
+        size_t schema_length =
+            mylite_ast_table_maintenance_target_view_schema_value_length(
+                target);
+        if (schema != NULL) {
+          print_escaped_bytes(schema, schema_length);
+          fputc('.', stdout);
+        }
+        const char *name =
+            mylite_ast_table_maintenance_target_view_name_value(target);
+        size_t name_length =
+            mylite_ast_table_maintenance_target_view_name_value_length(target);
+        if (name == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(name, name_length);
         }
         fputc('\n', stdout);
       }

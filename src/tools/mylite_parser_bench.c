@@ -352,6 +352,10 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t lock_statement_table_name_values = 0;
   size_t lock_statement_alias_values = 0;
   size_t lock_statement_known_modes = 0;
+  size_t table_maintenance_statement_views = 0;
+  size_t table_maintenance_statement_targets = 0;
+  size_t table_maintenance_statement_target_name_values = 0;
+  size_t table_maintenance_statement_option_flags = 0;
   size_t rename_table_views = 0;
   size_t rename_table_pairs = 0;
   size_t set_statement_views = 0;
@@ -1784,6 +1788,40 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                 }
               }
             }
+            const MyliteAstTableMaintenanceStatement *maintenance_statement =
+                mylite_ast_table_maintenance_statement_view(ast, i);
+            if (maintenance_statement != NULL) {
+              table_maintenance_statement_views++;
+              size_t target_count =
+                  mylite_ast_table_maintenance_statement_view_target_count(
+                      maintenance_statement);
+              table_maintenance_statement_targets += target_count;
+              if (mylite_ast_table_maintenance_statement_view_has_no_write_to_binlog(
+                      maintenance_statement) ||
+                  mylite_ast_table_maintenance_statement_view_has_quick(
+                      maintenance_statement) ||
+                  mylite_ast_table_maintenance_statement_view_has_extended(
+                      maintenance_statement) ||
+                  mylite_ast_table_maintenance_statement_view_has_changed(
+                      maintenance_statement) ||
+                  mylite_ast_table_maintenance_statement_view_has_fast(
+                      maintenance_statement) ||
+                  mylite_ast_table_maintenance_statement_view_has_medium(
+                      maintenance_statement) ||
+                  mylite_ast_table_maintenance_statement_view_has_use_frm(
+                      maintenance_statement)) {
+                table_maintenance_statement_option_flags++;
+              }
+              for (size_t j = 0; j < target_count; j++) {
+                const MyliteAstTableMaintenanceTarget *target =
+                    mylite_ast_table_maintenance_statement_view_target_at(
+                        maintenance_statement, j);
+                if (mylite_ast_table_maintenance_target_view_name_value(
+                        target) != NULL) {
+                  table_maintenance_statement_target_name_values++;
+                }
+              }
+            }
             const MyliteAstSetStatement *set_statement =
                 mylite_ast_set_statement_view(ast, i);
             if (set_statement != NULL) {
@@ -2408,6 +2446,10 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_lock_statement_table_name_values=%.2f "
            "avg_lock_statement_alias_values=%.2f "
            "avg_lock_statement_known_modes=%.2f "
+           "avg_table_maintenance_statement_views=%.2f "
+           "avg_table_maintenance_statement_targets=%.2f "
+           "avg_table_maintenance_statement_target_name_values=%.2f "
+           "avg_table_maintenance_statement_option_flags=%.2f "
            "avg_set_statement_views=%.2f "
            "avg_set_statement_assignments=%.2f "
            "avg_set_assignment_name_values=%.2f "
@@ -2775,6 +2817,11 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)lock_statement_table_name_values / (double)parsed,
            (double)lock_statement_alias_values / (double)parsed,
            (double)lock_statement_known_modes / (double)parsed,
+           (double)table_maintenance_statement_views / (double)parsed,
+           (double)table_maintenance_statement_targets / (double)parsed,
+           (double)table_maintenance_statement_target_name_values /
+               (double)parsed,
+           (double)table_maintenance_statement_option_flags / (double)parsed,
            (double)set_statement_views / (double)parsed,
            (double)set_statement_assignments / (double)parsed,
            (double)set_assignment_name_values / (double)parsed,

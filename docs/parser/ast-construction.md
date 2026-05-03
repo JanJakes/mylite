@@ -122,6 +122,9 @@ expression nodes.
   expose typed lock statement views. `LOCK TABLES` also exposes ordered table
   lock descriptors with decoded table/schema names, optional aliases, and lock
   modes.
+- `ANALYZE TABLE`, `OPTIMIZE TABLE`, `REPAIR TABLE`, and `CHECKSUM TABLE`
+  expose typed table-maintenance statement views with decoded table targets and
+  statement option flags.
 - Transaction-control statements expose begin form, access mode, consistency
   modifiers, `WORK`, completion modifiers, and decoded savepoint names.
 - Temporary syntax recognizers produce a placeholder root node so AST mode can
@@ -240,6 +243,9 @@ expression nodes.
 - typed lock descriptors with statement form, table-lock count, decoded
   table/schema names, optional aliases, and `READ`/`READ LOCAL`/`WRITE`/`WRITE
   LOCAL`/`LOW_PRIORITY WRITE` modes
+- typed table-maintenance descriptors with statement kind, ordered decoded
+  table targets, `NO_WRITE_TO_BINLOG`, `QUICK`, `EXTENDED`, `CHANGED`, `FAST`,
+  `MEDIUM`, and `USE_FRM` option flags
 - typed transaction-control descriptors with statement kind, begin form,
   TiDB begin mode, access mode, consistency modifiers, `WORK`, completion
   modifiers, savepoint-keyword marker, and decoded savepoint name
@@ -550,6 +556,14 @@ classification for `READ`, `READ LOCAL`, `WRITE`, `WRITE LOCAL`, and
 locking, connection-level ownership, and stats-lock effects remain later
 semantic/runtime work.
 
+Table-maintenance parser views cover `ANALYZE TABLE`, `OPTIMIZE TABLE`,
+`REPAIR TABLE`, and `CHECKSUM TABLE`. The view records statement kind, ordered
+decoded target tables, and grammar-level option flags including
+`NO_WRITE_TO_BINLOG`, `QUICK`, `EXTENDED`, `CHANGED`, `FAST`, `MEDIUM`, and
+`USE_FRM`. This stays at the parser layer: table existence, storage-engine
+behavior, statistics refresh, checksum result rows, binlog effects, and warning
+or error semantics remain runtime work.
+
 Transaction-control views cover `BEGIN`, `START TRANSACTION`, `COMMIT`,
 `ROLLBACK`, `SAVEPOINT`, and `RELEASE SAVEPOINT`. `BEGIN`/`START TRANSACTION`
 records the begin form, optional TiDB pessimistic/optimistic markers, MySQL
@@ -611,6 +625,13 @@ Latest lock parser-view run on May 3, 2026:
 ```text
 mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.391203 qps=188172 mbps=14.31 avg_us=5.314 avg_nodes=74.5 avg_ast_bytes=10912.5 avg_lock_statement_views=0.00 avg_lock_statement_lock_tables=0.00 avg_lock_statement_unlock_tables=0.00 avg_lock_statement_instance_forms=0.00 avg_lock_statement_stats_forms=0.00 avg_lock_statement_table_locks=0.00 avg_lock_statement_table_name_values=0.00 avg_lock_statement_alias_values=0.00 avg_lock_statement_known_modes=0.00
 mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.510324 qps=185188 mbps=14.08 avg_us=5.400 avg_semantic_nodes=5.3 avg_semantic_bytes=4268.0 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_expressions=2.67 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.03
+```
+
+Latest table-maintenance parser-view run on May 3, 2026:
+
+```text
+mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.645747 qps=181908 mbps=13.83 avg_us=5.497 avg_nodes=74.5 avg_ast_bytes=10915.5 avg_table_maintenance_statement_views=0.01 avg_table_maintenance_statement_targets=0.01 avg_table_maintenance_statement_target_name_values=0.01 avg_table_maintenance_statement_option_flags=0.00
+mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.848676 qps=177204 mbps=13.48 avg_us=5.643 avg_semantic_nodes=5.3 avg_semantic_bytes=4268.0 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_expressions=2.67 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.03
 ```
 
 Release benchmark result on May 2, 2026:
@@ -720,7 +741,7 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,852 lines, 5,637,339 bytes
 generated parser object: 996K on disk, 905,398 bytes text/data/other
-parser support object: 301K on disk, 175,892 bytes text/data/other
+parser support object: 329K on disk, 191,708 bytes text/data/other
 semantic AST object: 18K on disk, 8,095 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.4M on disk

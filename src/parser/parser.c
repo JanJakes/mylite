@@ -1000,6 +1000,36 @@ struct MyliteAstLockStatement {
   size_t table_lock_count;
 };
 
+struct MyliteAstTableMaintenanceTarget {
+  const MyliteAstNode *node;
+  size_t start;
+  size_t end;
+  size_t schema_start;
+  size_t schema_end;
+  const char *schema_value;
+  size_t schema_value_length;
+  size_t name_start;
+  size_t name_end;
+  const char *name_value;
+  size_t name_value_length;
+};
+
+struct MyliteAstTableMaintenanceStatement {
+  const MyliteAstNode *node;
+  MyliteTableMaintenanceKind kind;
+  size_t start;
+  size_t end;
+  MyliteAstTableMaintenanceTarget *targets;
+  size_t target_count;
+  int has_no_write_to_binlog;
+  int has_quick;
+  int has_extended;
+  int has_changed;
+  int has_fast;
+  int has_medium;
+  int has_use_frm;
+};
+
 struct MyliteAstTransactionStatement {
   const MyliteAstNode *node;
   MyliteTransactionStatementKind kind;
@@ -1051,6 +1081,7 @@ typedef struct MyliteAstStatement {
   MyliteAstExplainStatement *explain_statement;
   MyliteAstShowStatement *show_statement;
   MyliteAstLockStatement *lock_statement;
+  MyliteAstTableMaintenanceStatement *table_maintenance_statement;
   MyliteAstDeleteStatement *delete_statement;
   MyliteAstInsertStatement *insert_statement;
   MyliteAstReplaceStatement *replace_statement;
@@ -1569,6 +1600,22 @@ static int mylite_ast_fill_table_lock(MyliteAst *ast,
 static MyliteTableLockMode mylite_ast_table_lock_mode(
     const MyliteAstNode *node);
 static const MyliteAstNode *mylite_ast_table_lock_alias_node(
+    const MyliteAstNode *node);
+static int mylite_ast_set_table_maintenance_statement_view(
+    MyliteAst *ast, MyliteAstStatement *statement,
+    const MyliteAstNode *payload);
+static MyliteTableMaintenanceKind mylite_ast_classify_table_maintenance(
+    const char *symbol_name);
+static int mylite_ast_set_table_maintenance_targets(
+    MyliteAst *ast, MyliteAstTableMaintenanceStatement *maintenance_statement,
+    const MyliteAstNode *payload);
+static size_t mylite_ast_count_table_maintenance_targets(
+    const MyliteAstNode *node);
+static int mylite_ast_fill_table_maintenance_targets(
+    MyliteAst *ast, MyliteAstTableMaintenanceTarget *targets,
+    size_t target_count, const MyliteAstNode *node, size_t *index);
+static int mylite_ast_fill_table_maintenance_target(
+    MyliteAst *ast, MyliteAstTableMaintenanceTarget *target,
     const MyliteAstNode *node);
 static int mylite_ast_set_prepared_statement_name_value(
     MyliteAst *ast, const MyliteAstNode *node, size_t *name_start,
@@ -2456,6 +2503,23 @@ const char *mylite_table_lock_mode_name(MyliteTableLockMode mode) {
       return "write_local";
     case MYLITE_TABLE_LOCK_MODE_LOW_PRIORITY_WRITE:
       return "low_priority_write";
+  }
+  return "unknown";
+}
+
+const char *mylite_table_maintenance_kind_name(
+    MyliteTableMaintenanceKind kind) {
+  switch (kind) {
+    case MYLITE_TABLE_MAINTENANCE_UNKNOWN:
+      return "unknown";
+    case MYLITE_TABLE_MAINTENANCE_ANALYZE:
+      return "analyze";
+    case MYLITE_TABLE_MAINTENANCE_OPTIMIZE:
+      return "optimize";
+    case MYLITE_TABLE_MAINTENANCE_REPAIR:
+      return "repair";
+    case MYLITE_TABLE_MAINTENANCE_CHECKSUM:
+      return "checksum";
   }
   return "unknown";
 }
@@ -3696,6 +3760,14 @@ const MyliteAstLockStatement *mylite_ast_lock_statement_view(
   const MyliteAstStatement *statement =
       mylite_ast_statement_at(ast, statement_index);
   return statement == NULL ? NULL : statement->lock_statement;
+}
+
+const MyliteAstTableMaintenanceStatement *
+mylite_ast_table_maintenance_statement_view(const MyliteAst *ast,
+                                            size_t statement_index) {
+  const MyliteAstStatement *statement =
+      mylite_ast_statement_at(ast, statement_index);
+  return statement == NULL ? NULL : statement->table_maintenance_statement;
 }
 
 const MyliteAstDeleteStatement *mylite_ast_delete_statement_view(
@@ -6916,6 +6988,114 @@ const char *mylite_ast_table_lock_view_alias_value(
 size_t mylite_ast_table_lock_view_alias_value_length(
     const MyliteAstTableLock *table_lock) {
   return table_lock == NULL ? 0 : table_lock->alias_value_length;
+}
+
+const MyliteAstNode *mylite_ast_table_maintenance_statement_view_node(
+    const MyliteAstTableMaintenanceStatement *maintenance_statement) {
+  return maintenance_statement == NULL ? NULL : maintenance_statement->node;
+}
+
+size_t mylite_ast_table_maintenance_statement_view_start(
+    const MyliteAstTableMaintenanceStatement *maintenance_statement) {
+  return maintenance_statement == NULL ? 0 : maintenance_statement->start;
+}
+
+size_t mylite_ast_table_maintenance_statement_view_end(
+    const MyliteAstTableMaintenanceStatement *maintenance_statement) {
+  return maintenance_statement == NULL ? 0 : maintenance_statement->end;
+}
+
+MyliteTableMaintenanceKind
+mylite_ast_table_maintenance_statement_view_kind(
+    const MyliteAstTableMaintenanceStatement *maintenance_statement) {
+  return maintenance_statement == NULL ? MYLITE_TABLE_MAINTENANCE_UNKNOWN
+                                       : maintenance_statement->kind;
+}
+
+int mylite_ast_table_maintenance_statement_view_has_no_write_to_binlog(
+    const MyliteAstTableMaintenanceStatement *maintenance_statement) {
+  return maintenance_statement != NULL &&
+         maintenance_statement->has_no_write_to_binlog;
+}
+
+int mylite_ast_table_maintenance_statement_view_has_quick(
+    const MyliteAstTableMaintenanceStatement *maintenance_statement) {
+  return maintenance_statement != NULL && maintenance_statement->has_quick;
+}
+
+int mylite_ast_table_maintenance_statement_view_has_extended(
+    const MyliteAstTableMaintenanceStatement *maintenance_statement) {
+  return maintenance_statement != NULL && maintenance_statement->has_extended;
+}
+
+int mylite_ast_table_maintenance_statement_view_has_changed(
+    const MyliteAstTableMaintenanceStatement *maintenance_statement) {
+  return maintenance_statement != NULL && maintenance_statement->has_changed;
+}
+
+int mylite_ast_table_maintenance_statement_view_has_fast(
+    const MyliteAstTableMaintenanceStatement *maintenance_statement) {
+  return maintenance_statement != NULL && maintenance_statement->has_fast;
+}
+
+int mylite_ast_table_maintenance_statement_view_has_medium(
+    const MyliteAstTableMaintenanceStatement *maintenance_statement) {
+  return maintenance_statement != NULL && maintenance_statement->has_medium;
+}
+
+int mylite_ast_table_maintenance_statement_view_has_use_frm(
+    const MyliteAstTableMaintenanceStatement *maintenance_statement) {
+  return maintenance_statement != NULL && maintenance_statement->has_use_frm;
+}
+
+size_t mylite_ast_table_maintenance_statement_view_target_count(
+    const MyliteAstTableMaintenanceStatement *maintenance_statement) {
+  return maintenance_statement == NULL ? 0 : maintenance_statement->target_count;
+}
+
+const MyliteAstTableMaintenanceTarget *
+mylite_ast_table_maintenance_statement_view_target_at(
+    const MyliteAstTableMaintenanceStatement *maintenance_statement,
+    size_t target_index) {
+  return maintenance_statement == NULL ||
+                 target_index >= maintenance_statement->target_count
+             ? NULL
+             : &maintenance_statement->targets[target_index];
+}
+
+const MyliteAstNode *mylite_ast_table_maintenance_target_view_node(
+    const MyliteAstTableMaintenanceTarget *target) {
+  return target == NULL ? NULL : target->node;
+}
+
+size_t mylite_ast_table_maintenance_target_view_start(
+    const MyliteAstTableMaintenanceTarget *target) {
+  return target == NULL ? 0 : target->start;
+}
+
+size_t mylite_ast_table_maintenance_target_view_end(
+    const MyliteAstTableMaintenanceTarget *target) {
+  return target == NULL ? 0 : target->end;
+}
+
+const char *mylite_ast_table_maintenance_target_view_schema_value(
+    const MyliteAstTableMaintenanceTarget *target) {
+  return target == NULL ? NULL : target->schema_value;
+}
+
+size_t mylite_ast_table_maintenance_target_view_schema_value_length(
+    const MyliteAstTableMaintenanceTarget *target) {
+  return target == NULL ? 0 : target->schema_value_length;
+}
+
+const char *mylite_ast_table_maintenance_target_view_name_value(
+    const MyliteAstTableMaintenanceTarget *target) {
+  return target == NULL ? NULL : target->name_value;
+}
+
+size_t mylite_ast_table_maintenance_target_view_name_value_length(
+    const MyliteAstTableMaintenanceTarget *target) {
+  return target == NULL ? 0 : target->name_value_length;
 }
 
 const MyliteAstNode *mylite_ast_transaction_statement_view_node(
@@ -10568,6 +10748,13 @@ static int mylite_ast_set_statement_details(MyliteAst *ast,
       strcmp(statement->symbol_name, "nt_lock_stats_stmt") == 0 ||
       strcmp(statement->symbol_name, "nt_unlock_stats_stmt") == 0) {
     return mylite_ast_set_lock_statement_view(ast, statement, payload);
+  }
+  if (strcmp(statement->symbol_name, "nt_analyze_table_stmt") == 0 ||
+      strcmp(statement->symbol_name, "nt_optimize_table_stmt") == 0 ||
+      strcmp(statement->symbol_name, "nt_mysql_repair_table_stmt") == 0 ||
+      strcmp(statement->symbol_name, "nt_mysql_checksum_table_stmt") == 0) {
+    return mylite_ast_set_table_maintenance_statement_view(ast, statement,
+                                                           payload);
   }
   if (strcmp(statement->symbol_name, "nt_set_stmt") == 0 ||
       strcmp(statement->symbol_name, "nt_set_role_stmt") == 0 ||
@@ -14996,6 +15183,164 @@ static const MyliteAstNode *mylite_ast_table_lock_alias_node(
     return mylite_ast_direct_child_symbol(node, 1, "nt_identifier");
   }
   return NULL;
+}
+
+static int mylite_ast_set_table_maintenance_statement_view(
+    MyliteAst *ast, MyliteAstStatement *statement,
+    const MyliteAstNode *payload) {
+  if (ast == NULL || statement == NULL) {
+    return 1;
+  }
+  MyliteAstTableMaintenanceStatement *maintenance_statement =
+      mylite_ast_alloc(ast, sizeof(*maintenance_statement));
+  if (maintenance_statement == NULL) {
+    return 0;
+  }
+  maintenance_statement->node = payload == NULL ? statement->node : payload;
+  maintenance_statement->start =
+      mylite_ast_node_start(maintenance_statement->node);
+  maintenance_statement->end = mylite_ast_node_end(maintenance_statement->node);
+  maintenance_statement->kind =
+      mylite_ast_classify_table_maintenance(statement->symbol_name);
+  maintenance_statement->has_no_write_to_binlog =
+      mylite_ast_find_first_token(maintenance_statement->node,
+                                  MYLITE_TOK_NO_WRITE_TO_BIN_LOG) != NULL;
+  maintenance_statement->has_quick =
+      mylite_ast_find_first_token(maintenance_statement->node,
+                                  MYLITE_TOK_QUICK) != NULL;
+  maintenance_statement->has_extended =
+      mylite_ast_find_first_token(maintenance_statement->node,
+                                  MYLITE_TOK_EXTENDED) != NULL;
+  maintenance_statement->has_changed =
+      mylite_ast_find_first_token(maintenance_statement->node,
+                                  MYLITE_TOK_CHANGED) != NULL;
+  maintenance_statement->has_fast =
+      mylite_ast_find_first_token(maintenance_statement->node,
+                                  MYLITE_TOK_FAST) != NULL;
+  maintenance_statement->has_medium =
+      mylite_ast_find_first_token(maintenance_statement->node,
+                                  MYLITE_TOK_MEDIUM) != NULL;
+  maintenance_statement->has_use_frm =
+      mylite_ast_find_first_token(maintenance_statement->node,
+                                  MYLITE_TOK_USE_FRM) != NULL;
+  if (!mylite_ast_set_table_maintenance_targets(
+          ast, maintenance_statement, maintenance_statement->node)) {
+    return 0;
+  }
+  statement->table_maintenance_statement = maintenance_statement;
+  return 1;
+}
+
+static MyliteTableMaintenanceKind mylite_ast_classify_table_maintenance(
+    const char *symbol_name) {
+  if (symbol_name == NULL) {
+    return MYLITE_TABLE_MAINTENANCE_UNKNOWN;
+  }
+  if (strcmp(symbol_name, "nt_analyze_table_stmt") == 0) {
+    return MYLITE_TABLE_MAINTENANCE_ANALYZE;
+  }
+  if (strcmp(symbol_name, "nt_optimize_table_stmt") == 0) {
+    return MYLITE_TABLE_MAINTENANCE_OPTIMIZE;
+  }
+  if (strcmp(symbol_name, "nt_mysql_repair_table_stmt") == 0) {
+    return MYLITE_TABLE_MAINTENANCE_REPAIR;
+  }
+  if (strcmp(symbol_name, "nt_mysql_checksum_table_stmt") == 0) {
+    return MYLITE_TABLE_MAINTENANCE_CHECKSUM;
+  }
+  return MYLITE_TABLE_MAINTENANCE_UNKNOWN;
+}
+
+static int mylite_ast_set_table_maintenance_targets(
+    MyliteAst *ast, MyliteAstTableMaintenanceStatement *maintenance_statement,
+    const MyliteAstNode *payload) {
+  if (ast == NULL || maintenance_statement == NULL || payload == NULL) {
+    return 1;
+  }
+  maintenance_statement->target_count =
+      mylite_ast_count_table_maintenance_targets(payload);
+  if (maintenance_statement->target_count == 0) {
+    return 1;
+  }
+  maintenance_statement->targets =
+      mylite_ast_alloc(ast, maintenance_statement->target_count *
+                                sizeof(*maintenance_statement->targets));
+  if (maintenance_statement->targets == NULL) {
+    return 0;
+  }
+  size_t index = 0;
+  return mylite_ast_fill_table_maintenance_targets(
+             ast, maintenance_statement->targets,
+             maintenance_statement->target_count, payload, &index) &&
+         index == maintenance_statement->target_count;
+}
+
+static size_t mylite_ast_count_table_maintenance_targets(
+    const MyliteAstNode *node) {
+  if (node == NULL) {
+    return 0;
+  }
+  if (node->symbol_name != NULL &&
+      strcmp(node->symbol_name, "nt_table_name") == 0) {
+    return 1;
+  }
+  size_t count = 0;
+  for (size_t i = 0; i < node->child_count; i++) {
+    count += mylite_ast_count_table_maintenance_targets(node->children[i]);
+  }
+  return count;
+}
+
+static int mylite_ast_fill_table_maintenance_targets(
+    MyliteAst *ast, MyliteAstTableMaintenanceTarget *targets,
+    size_t target_count, const MyliteAstNode *node, size_t *index) {
+  if (node == NULL) {
+    return 1;
+  }
+  if (node->symbol_name != NULL &&
+      strcmp(node->symbol_name, "nt_table_name") == 0) {
+    if (index == NULL || *index >= target_count ||
+        !mylite_ast_fill_table_maintenance_target(ast, &targets[*index],
+                                                  node)) {
+      return 0;
+    }
+    (*index)++;
+    return 1;
+  }
+  for (size_t i = 0; i < node->child_count; i++) {
+    if (!mylite_ast_fill_table_maintenance_targets(
+            ast, targets, target_count, node->children[i], index)) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+static int mylite_ast_fill_table_maintenance_target(
+    MyliteAst *ast, MyliteAstTableMaintenanceTarget *target,
+    const MyliteAstNode *node) {
+  if (ast == NULL || target == NULL || node == NULL) {
+    return 1;
+  }
+  target->node = node;
+  target->start = mylite_ast_node_start(node);
+  target->end = mylite_ast_node_end(node);
+  mylite_ast_set_table_name_span_parts(node, &target->schema_start,
+                                       &target->schema_end,
+                                       &target->name_start,
+                                       &target->name_end);
+  if (target->schema_start != target->schema_end &&
+      !mylite_ast_decode_identifier(ast, target->schema_start,
+                                    target->schema_end, &target->schema_value,
+                                    &target->schema_value_length)) {
+    return 0;
+  }
+  if (target->name_start != target->name_end) {
+    return mylite_ast_decode_identifier(ast, target->name_start,
+                                        target->name_end, &target->name_value,
+                                        &target->name_value_length);
+  }
+  return 1;
 }
 
 static int mylite_ast_set_prepared_statement_name_value(

@@ -205,6 +205,7 @@ static int expect_drop_view_view(void);
 static int expect_explain_statement_view(void);
 static int expect_show_statement_view(void);
 static int expect_lock_statement_view(void);
+static int expect_table_maintenance_statement_view(void);
 static int expect_call_statement_view(void);
 static int expect_do_statement_view(void);
 static int expect_delete_statement_view(void);
@@ -824,6 +825,7 @@ int main(void) {
   failures += expect_explain_statement_view();
   failures += expect_show_statement_view();
   failures += expect_lock_statement_view();
+  failures += expect_table_maintenance_statement_view();
   failures += expect_call_statement_view();
   failures += expect_do_statement_view();
   failures += expect_delete_statement_view();
@@ -4522,6 +4524,80 @@ static int expect_lock_statement_view(void) {
         mylite_ast_lock_statement_view_kind(view) !=
             MYLITE_LOCK_STATEMENT_LOCK_INSTANCE) {
       fprintf(stderr, "LOCK INSTANCE view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+  return failed;
+}
+
+static int expect_table_maintenance_statement_view(void) {
+  int failed = 0;
+  {
+    const char *sql = "ANALYZE NO_WRITE_TO_BINLOG TABLE `db``x`.`t``y`, t2";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "ANALYZE TABLE view parse failed: status=%s offset=%zu token=%d "
+              "message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+    const MyliteAstTableMaintenanceStatement *view =
+        mylite_ast_table_maintenance_statement_view(ast, 0);
+    const MyliteAstTableMaintenanceTarget *first =
+        mylite_ast_table_maintenance_statement_view_target_at(view, 0);
+    const MyliteAstTableMaintenanceTarget *second =
+        mylite_ast_table_maintenance_statement_view_target_at(view, 1);
+    if (view == NULL ||
+        mylite_ast_table_maintenance_statement_view_kind(view) !=
+            MYLITE_TABLE_MAINTENANCE_ANALYZE ||
+        !mylite_ast_table_maintenance_statement_view_has_no_write_to_binlog(
+            view) ||
+        mylite_ast_table_maintenance_statement_view_target_count(view) != 2 ||
+        first == NULL || second == NULL ||
+        !value_matches_when_expected(
+            mylite_ast_table_maintenance_target_view_schema_value(first),
+            mylite_ast_table_maintenance_target_view_schema_value_length(first),
+            "db`x") ||
+        !value_matches_when_expected(
+            mylite_ast_table_maintenance_target_view_name_value(first),
+            mylite_ast_table_maintenance_target_view_name_value_length(first),
+            "t`y") ||
+        !value_matches_when_expected(
+            mylite_ast_table_maintenance_target_view_name_value(second),
+            mylite_ast_table_maintenance_target_view_name_value_length(second),
+            "t2")) {
+      fprintf(stderr, "ANALYZE TABLE view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql = "REPAIR TABLE t QUICK";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "REPAIR TABLE view parse failed: status=%s offset=%zu token=%d "
+              "message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    const MyliteAstTableMaintenanceStatement *view =
+        mylite_ast_table_maintenance_statement_view(ast, 0);
+    if (view == NULL ||
+        mylite_ast_table_maintenance_statement_view_kind(view) !=
+            MYLITE_TABLE_MAINTENANCE_REPAIR ||
+        !mylite_ast_table_maintenance_statement_view_has_quick(view) ||
+        mylite_ast_table_maintenance_statement_view_target_count(view) != 1) {
+      fprintf(stderr, "REPAIR TABLE view failed: %s\n", sql);
       failed = 1;
     }
     mylite_ast_free(ast);

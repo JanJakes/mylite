@@ -70,6 +70,10 @@ typedef struct MyliteAstShowStatement MyliteAstShowStatement;
 typedef struct MyliteAstSetAssignment MyliteAstSetAssignment;
 typedef struct MyliteAstSetStatement MyliteAstSetStatement;
 typedef struct MyliteAstTableLock MyliteAstTableLock;
+typedef struct MyliteAstTableMaintenanceStatement
+    MyliteAstTableMaintenanceStatement;
+typedef struct MyliteAstTableMaintenanceTarget
+    MyliteAstTableMaintenanceTarget;
 typedef struct MyliteAstTruncateTable MyliteAstTruncateTable;
 typedef struct MyliteAstTransactionStatement MyliteAstTransactionStatement;
 typedef struct MyliteAstUpdateAssignment MyliteAstUpdateAssignment;
@@ -330,6 +334,14 @@ typedef enum MyliteTableLockMode {
   MYLITE_TABLE_LOCK_MODE_WRITE_LOCAL,
   MYLITE_TABLE_LOCK_MODE_LOW_PRIORITY_WRITE
 } MyliteTableLockMode;
+
+typedef enum MyliteTableMaintenanceKind {
+  MYLITE_TABLE_MAINTENANCE_UNKNOWN = 0,
+  MYLITE_TABLE_MAINTENANCE_ANALYZE,
+  MYLITE_TABLE_MAINTENANCE_OPTIMIZE,
+  MYLITE_TABLE_MAINTENANCE_REPAIR,
+  MYLITE_TABLE_MAINTENANCE_CHECKSUM
+} MyliteTableMaintenanceKind;
 
 typedef enum MyliteCreateTableColumnTypeFamily {
   MYLITE_CREATE_TABLE_COLUMN_TYPE_UNKNOWN = 0,
@@ -753,6 +765,8 @@ const char *mylite_show_statement_kind_name(MyliteShowStatementKind kind);
 const char *mylite_show_scope_name(MyliteShowScope scope);
 const char *mylite_lock_statement_kind_name(MyliteLockStatementKind kind);
 const char *mylite_table_lock_mode_name(MyliteTableLockMode mode);
+const char *mylite_table_maintenance_kind_name(
+    MyliteTableMaintenanceKind kind);
 const char *mylite_expression_kind_name(MyliteExpressionKind kind);
 const char *mylite_expression_literal_kind_name(
     MyliteExpressionLiteralKind kind);
@@ -943,6 +957,9 @@ const MyliteAstShowStatement *mylite_ast_show_statement_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstLockStatement *mylite_ast_lock_statement_view(
     const MyliteAst *ast, size_t statement_index);
+const MyliteAstTableMaintenanceStatement *
+mylite_ast_table_maintenance_statement_view(const MyliteAst *ast,
+                                            size_t statement_index);
 const MyliteAstDeleteStatement *mylite_ast_delete_statement_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstReplaceStatement *mylite_ast_replace_statement_view(
@@ -2118,6 +2135,49 @@ const char *mylite_ast_table_lock_view_alias_value(
     const MyliteAstTableLock *table_lock);
 size_t mylite_ast_table_lock_view_alias_value_length(
     const MyliteAstTableLock *table_lock);
+const MyliteAstNode *mylite_ast_table_maintenance_statement_view_node(
+    const MyliteAstTableMaintenanceStatement *maintenance_statement);
+size_t mylite_ast_table_maintenance_statement_view_start(
+    const MyliteAstTableMaintenanceStatement *maintenance_statement);
+size_t mylite_ast_table_maintenance_statement_view_end(
+    const MyliteAstTableMaintenanceStatement *maintenance_statement);
+MyliteTableMaintenanceKind
+mylite_ast_table_maintenance_statement_view_kind(
+    const MyliteAstTableMaintenanceStatement *maintenance_statement);
+int mylite_ast_table_maintenance_statement_view_has_no_write_to_binlog(
+    const MyliteAstTableMaintenanceStatement *maintenance_statement);
+int mylite_ast_table_maintenance_statement_view_has_quick(
+    const MyliteAstTableMaintenanceStatement *maintenance_statement);
+int mylite_ast_table_maintenance_statement_view_has_extended(
+    const MyliteAstTableMaintenanceStatement *maintenance_statement);
+int mylite_ast_table_maintenance_statement_view_has_changed(
+    const MyliteAstTableMaintenanceStatement *maintenance_statement);
+int mylite_ast_table_maintenance_statement_view_has_fast(
+    const MyliteAstTableMaintenanceStatement *maintenance_statement);
+int mylite_ast_table_maintenance_statement_view_has_medium(
+    const MyliteAstTableMaintenanceStatement *maintenance_statement);
+int mylite_ast_table_maintenance_statement_view_has_use_frm(
+    const MyliteAstTableMaintenanceStatement *maintenance_statement);
+size_t mylite_ast_table_maintenance_statement_view_target_count(
+    const MyliteAstTableMaintenanceStatement *maintenance_statement);
+const MyliteAstTableMaintenanceTarget *
+mylite_ast_table_maintenance_statement_view_target_at(
+    const MyliteAstTableMaintenanceStatement *maintenance_statement,
+    size_t target_index);
+const MyliteAstNode *mylite_ast_table_maintenance_target_view_node(
+    const MyliteAstTableMaintenanceTarget *target);
+size_t mylite_ast_table_maintenance_target_view_start(
+    const MyliteAstTableMaintenanceTarget *target);
+size_t mylite_ast_table_maintenance_target_view_end(
+    const MyliteAstTableMaintenanceTarget *target);
+const char *mylite_ast_table_maintenance_target_view_schema_value(
+    const MyliteAstTableMaintenanceTarget *target);
+size_t mylite_ast_table_maintenance_target_view_schema_value_length(
+    const MyliteAstTableMaintenanceTarget *target);
+const char *mylite_ast_table_maintenance_target_view_name_value(
+    const MyliteAstTableMaintenanceTarget *target);
+size_t mylite_ast_table_maintenance_target_view_name_value_length(
+    const MyliteAstTableMaintenanceTarget *target);
 const MyliteAstNode *mylite_ast_transaction_statement_view_node(
     const MyliteAstTransactionStatement *transaction_statement);
 size_t mylite_ast_transaction_statement_view_start(

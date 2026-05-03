@@ -23,6 +23,10 @@ tests are implemented for the subset described here. Full DDL implicit-commit
 retrofits and direct transaction system variables remain deferred as documented
 below.
 
+The experimental `BEGIN CONCURRENT` extension is specified separately in
+`docs/specs/sqlite-begin-concurrent-prototype/specs.md`. It is not part of
+MySQL-compatible Task 21 behavior.
+
 Out of scope for Task 21:
 
 - `SAVEPOINT`, `ROLLBACK TO SAVEPOINT`, and `RELEASE SAVEPOINT`; these are

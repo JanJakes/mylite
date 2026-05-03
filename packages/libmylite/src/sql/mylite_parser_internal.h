@@ -593,8 +593,10 @@ struct mylite_sql_ast_node *
 mylite_sql_parser_make_start_transaction_statement(struct mylite_sql_parser_state *state,
                                                    struct mylite_sql_token start_token,
                                                    struct mylite_sql_ast_node *characteristics);
-struct mylite_sql_ast_node *mylite_sql_parser_make_begin_transaction_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_parser_statement_tokens tokens);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_begin_transaction_statement(struct mylite_sql_parser_state *state,
+                                                   struct mylite_sql_parser_statement_tokens tokens,
+                                                   bool concurrent);
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_transaction_characteristic_list(struct mylite_sql_parser_state *state,
                                                        struct mylite_sql_ast_node *characteristic);

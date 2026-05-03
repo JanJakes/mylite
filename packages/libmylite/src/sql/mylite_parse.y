@@ -101,7 +101,7 @@
 %right LOGICAL_NOT.
 %right KEY.
 %fallback IDENTIFIER AFTER AUTO_INCREMENT BEGIN BOOL BOOLEAN BTREE CHAIN CHARSET COLLATION
-    COLUMN_FORMAT COMMENT COMMIT CONSISTENT COUNT DATE DATETIME DISK DYNAMIC ENGINE
+    COLUMN_FORMAT COMMENT COMMIT CONCURRENT CONSISTENT COUNT DATE DATETIME DISK DYNAMIC ENGINE
     ENGINES ENGINE_ATTRIBUTE ENCRYPTION ERRORS FIRST FIXED HASH INSTANT INVISIBLE KEY_BLOCK_SIZE
     MEMORY MODIFY NCHAR NO NVARCHAR OFFSET ONLY ROLLBACK SAVEPOINT SECONDARY_ENGINE_ATTRIBUTE
     SIGNED SNAPSHOT START STORAGE TEMPORARY TEXT TIME TIMESTAMP TRANSACTION TYPE VISIBLE VALUE
@@ -912,7 +912,11 @@ transaction_characteristic(A) ::= WITH(T) CONSISTENT SNAPSHOT(S). {
 
 begin_transaction_statement(A) ::= BEGIN(T) opt_work(W). {
     A = mylite_sql_parser_make_begin_transaction_statement(
-        state, (struct mylite_sql_parser_statement_tokens){.start = T, .end = W});
+        state, (struct mylite_sql_parser_statement_tokens){.start = T, .end = W}, false);
+}
+begin_transaction_statement(A) ::= BEGIN(T) CONCURRENT(C). {
+    A = mylite_sql_parser_make_begin_transaction_statement(
+        state, (struct mylite_sql_parser_statement_tokens){.start = T, .end = C}, true);
 }
 
 commit_statement(A) ::= COMMIT(T) opt_work(W) opt_transaction_completion(C). {

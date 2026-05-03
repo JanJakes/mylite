@@ -11,6 +11,10 @@ Sidecar `-journal`, `-wal`, and `-shm` files are allowed in this experiment.
 They are delegated to SQLite's native VFS rather than embedded into the
 `.mylite` file.
 
+The `sqlite-begin-concurrent-prototype` experiment currently requests WAL mode
+for file-backed `mylite_open()` handles, so `-wal` and `-shm` sidecars are
+expected during ordinary prototype execution.
+
 ## Sources
 
 - SQLite Database File Format:

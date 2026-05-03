@@ -2264,15 +2264,24 @@ mylite_sql_parser_make_start_transaction_statement(struct mylite_sql_parser_stat
 
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_begin_transaction_statement(struct mylite_sql_parser_state *state,
-                                                   struct mylite_sql_parser_statement_tokens tokens)
+                                                   struct mylite_sql_parser_statement_tokens tokens,
+                                                   bool concurrent)
 {
     struct mylite_sql_source_span span = span_from_token(&tokens.start);
+    struct mylite_sql_ast_node *statement = NULL;
 
     if (tokens.end.text != NULL) {
         span = span_join(span, span_from_token(&tokens.end));
     }
 
-    return make_node(state, MYLITE_SQL_AST_BEGIN_TRANSACTION_STATEMENT, span);
+    statement = make_node(state, MYLITE_SQL_AST_BEGIN_TRANSACTION_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+    if (concurrent) {
+        mylite_sql_ast_node_set_transaction_concurrent(statement);
+    }
+    return statement;
 }
 
 struct mylite_sql_ast_node *
@@ -5639,6 +5648,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"COLUMNS", MYLITE_SQL_PARSE_COLUMNS},
         {"COMMENT", MYLITE_SQL_PARSE_COMMENT},
         {"COMMIT", MYLITE_SQL_PARSE_COMMIT},
+        {"CONCURRENT", MYLITE_SQL_PARSE_CONCURRENT},
         {"CONSISTENT", MYLITE_SQL_PARSE_CONSISTENT},
         {"CONSTRAINT", MYLITE_SQL_PARSE_CONSTRAINT},
         {"COPY", MYLITE_SQL_PARSE_COPY},

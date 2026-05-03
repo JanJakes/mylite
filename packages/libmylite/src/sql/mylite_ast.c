@@ -488,6 +488,15 @@ void mylite_sql_ast_node_set_transaction_consistent_snapshot(struct mylite_sql_a
     node->transaction_consistent_snapshot = true;
 }
 
+void mylite_sql_ast_node_set_transaction_concurrent(struct mylite_sql_ast_node *node)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->transaction_concurrent = true;
+}
+
 void mylite_sql_ast_node_set_transaction_completion(struct mylite_sql_ast_node *node,
                                                     enum mylite_sql_ast_transaction_chain chain,
                                                     enum mylite_sql_ast_transaction_release release)

@@ -485,6 +485,7 @@ struct mylite_transaction_plan {
     enum mylite_transaction_completion_release completion_release;
     bool has_access_mode;
     bool consistent_snapshot;
+    bool concurrent;
 };
 
 struct mylite_savepoint_plan {
@@ -1300,6 +1301,7 @@ struct mylite_db {
     enum mylite_transaction_access_mode transaction_access_mode;
     bool transaction_active;
     bool transaction_consistent_snapshot;
+    bool transaction_concurrent;
     bool transaction_released;
     time_t status_started_at;
     struct mylite_savepoint_state savepoints;
@@ -1648,7 +1650,8 @@ static const char information_schema_referential_constraints_sql[] =
     "WHERE 0";
 
 static int open_sqlite_database(const char *filename, int flags, const char *vfs_name,
-                                mylite_db **out_db);
+                                bool file_backed, mylite_db **out_db);
+static int configure_file_backed_sqlite_database(mylite_db *database);
 static int initialize_schema_catalog(mylite_db *database);
 static int seed_system_schema(mylite_db *database, const char *name, const char *character_set,
                               const char *collation);
@@ -2776,7 +2779,7 @@ static int execute_commit_statement(mylite_stmt *stmt);
 static int execute_rollback_statement(mylite_stmt *stmt);
 static int finish_transaction_completion(mylite_stmt *stmt,
                                          enum mylite_transaction_access_mode chain_access_mode,
-                                         bool chain_consistent_snapshot);
+                                         bool chain_consistent_snapshot, bool chain_concurrent);
 static int execute_savepoint_statement(mylite_stmt *stmt);
 static int execute_rollback_to_savepoint_statement(mylite_stmt *stmt);
 static int execute_release_savepoint_statement(mylite_stmt *stmt);
@@ -4531,7 +4534,7 @@ static const char *create_table_column_extra(const struct mylite_create_table_co
 static const char *index_collation_for_order(enum mylite_sql_ast_key_part_order order);
 static int begin_explicit_transaction(mylite_db *database,
                                       enum mylite_transaction_access_mode access_mode,
-                                      bool consistent_snapshot);
+                                      bool consistent_snapshot, bool concurrent);
 static int commit_explicit_transaction(mylite_db *database);
 static int rollback_explicit_transaction(mylite_db *database);
 static int create_user_savepoint(mylite_db *database, const char *name,
@@ -4722,7 +4725,7 @@ int mylite_open(const char *filename, mylite_db **out_db)
     }
 
     return open_sqlite_database(filename, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
-                                mylite_vfs_name(), out_db);
+                                mylite_vfs_name(), true, out_db);
 }
 
 int mylite_open_memory(mylite_db **out_db)
@@ -4732,7 +4735,8 @@ int mylite_open_memory(mylite_db **out_db)
     }
 
     return open_sqlite_database(
-        ":memory:", SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_MEMORY, NULL, out_db);
+        ":memory:", SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_MEMORY, NULL, false,
+        out_db);
 }
 
 void mylite_close(mylite_db *database)
@@ -5148,10 +5152,11 @@ static void record_statement_row_count(mylite_stmt *stmt)
 }
 
 static int open_sqlite_database(const char *filename, int flags, const char *vfs_name,
-                                mylite_db **out_db)
+                                bool file_backed, mylite_db **out_db)
 {
     mylite_db *database = calloc(1U, sizeof(*database));
     int rc = SQLITE_OK;
+    int status = MYLITE_OK;
 
     *out_db = NULL;
     if (database == NULL) {
@@ -5166,17 +5171,58 @@ static int open_sqlite_database(const char *filename, int flags, const char *vfs
         return MYLITE_SQLITE_ERROR;
     }
 
-    rc = initialize_schema_catalog(database);
-    if (rc != MYLITE_OK) {
+    if (file_backed) {
+        status = configure_file_backed_sqlite_database(database);
+        if (status != MYLITE_OK) {
+            sqlite3_close(database->sqlite);
+            free(database->error_message);
+            free(database);
+            return status;
+        }
+    }
+
+    status = initialize_schema_catalog(database);
+    if (status != MYLITE_OK) {
         sqlite3_close(database->sqlite);
         free(database->error_message);
         free(database);
-        return rc;
+        return status;
     }
 
     (void)set_default_connection_state(database);
     *out_db = database;
     return MYLITE_OK;
+}
+
+static int configure_file_backed_sqlite_database(mylite_db *database)
+{
+    sqlite3_stmt *stmt = NULL;
+    int rc = sqlite3_prepare_v2(database->sqlite, "PRAGMA journal_mode=WAL", -1, &stmt, NULL);
+
+    if (rc != SQLITE_OK) {
+        return set_sqlite_error(database);
+    }
+
+    rc = sqlite3_step(stmt);
+    if (rc == SQLITE_ROW) {
+        const unsigned char *mode = sqlite3_column_text(stmt, 0);
+
+        if (mode == NULL || sqlite3_stricmp((const char *)mode, "wal") != 0) {
+            (void)sqlite3_finalize(stmt);
+            if (set_error_message(database,
+                                  "SQLite did not enable WAL mode for BEGIN CONCURRENT") ==
+                MYLITE_NOMEM) {
+                return MYLITE_NOMEM;
+            }
+            return MYLITE_SQLITE_ERROR;
+        }
+    } else {
+        (void)sqlite3_finalize(stmt);
+        return set_sqlite_error(database);
+    }
+
+    rc = sqlite3_finalize(stmt);
+    return rc == SQLITE_OK ? MYLITE_OK : set_sqlite_error(database);
 }
 
 static int initialize_schema_catalog(mylite_db *database)
@@ -17641,7 +17687,7 @@ static int execute_start_transaction_statement(mylite_stmt *stmt)
     }
 
     status = begin_explicit_transaction(stmt->database, access_mode,
-                                        stmt->transaction.consistent_snapshot);
+                                        stmt->transaction.consistent_snapshot, false);
     if (status != MYLITE_OK) {
         stmt->affected_rows = -1;
         return status;
@@ -17663,8 +17709,8 @@ static int execute_begin_transaction_statement(mylite_stmt *stmt)
         }
     }
 
-    status =
-        begin_explicit_transaction(stmt->database, MYLITE_TRANSACTION_ACCESS_READ_WRITE, false);
+    status = begin_explicit_transaction(stmt->database, MYLITE_TRANSACTION_ACCESS_READ_WRITE, false,
+                                        stmt->transaction.concurrent);
     if (status != MYLITE_OK) {
         stmt->affected_rows = -1;
         return status;
@@ -17678,6 +17724,7 @@ static int execute_commit_statement(mylite_stmt *stmt)
 {
     enum mylite_transaction_access_mode chain_access_mode = stmt->database->transaction_access_mode;
     bool chain_consistent_snapshot = stmt->database->transaction_consistent_snapshot;
+    bool chain_concurrent = stmt->database->transaction_concurrent;
     int status = MYLITE_OK;
 
     if (stmt->database->transaction_active) {
@@ -17688,7 +17735,8 @@ static int execute_commit_statement(mylite_stmt *stmt)
         }
     }
 
-    status = finish_transaction_completion(stmt, chain_access_mode, chain_consistent_snapshot);
+    status = finish_transaction_completion(stmt, chain_access_mode, chain_consistent_snapshot,
+                                           chain_concurrent);
     stmt->affected_rows = status == MYLITE_OK ? 0 : -1;
     return status;
 }
@@ -17697,6 +17745,7 @@ static int execute_rollback_statement(mylite_stmt *stmt)
 {
     enum mylite_transaction_access_mode chain_access_mode = stmt->database->transaction_access_mode;
     bool chain_consistent_snapshot = stmt->database->transaction_consistent_snapshot;
+    bool chain_concurrent = stmt->database->transaction_concurrent;
     int status = MYLITE_OK;
 
     if (stmt->database->transaction_active) {
@@ -17707,20 +17756,21 @@ static int execute_rollback_statement(mylite_stmt *stmt)
         }
     }
 
-    status = finish_transaction_completion(stmt, chain_access_mode, chain_consistent_snapshot);
+    status = finish_transaction_completion(stmt, chain_access_mode, chain_consistent_snapshot,
+                                           chain_concurrent);
     stmt->affected_rows = status == MYLITE_OK ? 0 : -1;
     return status;
 }
 
 static int finish_transaction_completion(mylite_stmt *stmt,
                                          enum mylite_transaction_access_mode chain_access_mode,
-                                         bool chain_consistent_snapshot)
+                                         bool chain_consistent_snapshot, bool chain_concurrent)
 {
     int status = MYLITE_OK;
 
     if (stmt->transaction.completion_chain == MYLITE_TRANSACTION_COMPLETION_CHAIN_YES) {
         status = begin_explicit_transaction(stmt->database, chain_access_mode,
-                                            chain_consistent_snapshot);
+                                            chain_consistent_snapshot, chain_concurrent);
         if (status != MYLITE_OK) {
             return status;
         }
@@ -33897,6 +33947,9 @@ static int copy_transaction_statement(const struct mylite_sql_ast_node *statemen
     stmt->transaction.access_mode = MYLITE_TRANSACTION_ACCESS_READ_WRITE;
     stmt->transaction.completion_chain = MYLITE_TRANSACTION_COMPLETION_CHAIN_DEFAULT;
     stmt->transaction.completion_release = MYLITE_TRANSACTION_COMPLETION_RELEASE_DEFAULT;
+    stmt->transaction.has_access_mode = false;
+    stmt->transaction.consistent_snapshot = false;
+    stmt->transaction.concurrent = false;
 
     if (statement->kind == MYLITE_SQL_AST_START_TRANSACTION_STATEMENT) {
         characteristics = child_at(statement, 0U);
@@ -33915,6 +33968,11 @@ static int copy_transaction_statement(const struct mylite_sql_ast_node *statemen
                 stmt->transaction.consistent_snapshot = true;
             }
         }
+        return MYLITE_OK;
+    }
+
+    if (statement->kind == MYLITE_SQL_AST_BEGIN_TRANSACTION_STATEMENT) {
+        stmt->transaction.concurrent = statement->transaction_concurrent;
         return MYLITE_OK;
     }
 
@@ -38053,9 +38111,15 @@ static const char *index_collation_for_order(enum mylite_sql_ast_key_part_order 
 
 static int begin_explicit_transaction(mylite_db *database,
                                       enum mylite_transaction_access_mode access_mode,
-                                      bool consistent_snapshot)
+                                      bool consistent_snapshot, bool concurrent)
 {
-    int rc = sqlite3_exec(database->sqlite, "BEGIN DEFERRED", NULL, NULL, NULL);
+    const char *sql = "BEGIN DEFERRED";
+    int rc = SQLITE_OK;
+
+    if (concurrent) {
+        sql = "BEGIN CONCURRENT";
+    }
+    rc = sqlite3_exec(database->sqlite, sql, NULL, NULL, NULL);
 
     if (rc != SQLITE_OK) {
         return set_sqlite_error(database);
@@ -38064,6 +38128,7 @@ static int begin_explicit_transaction(mylite_db *database,
     database->transaction_active = true;
     database->transaction_access_mode = access_mode;
     database->transaction_consistent_snapshot = consistent_snapshot;
+    database->transaction_concurrent = concurrent;
     return MYLITE_OK;
 }
 
@@ -38078,6 +38143,7 @@ static int commit_explicit_transaction(mylite_db *database)
     database->transaction_active = false;
     database->transaction_access_mode = MYLITE_TRANSACTION_ACCESS_READ_WRITE;
     database->transaction_consistent_snapshot = false;
+    database->transaction_concurrent = false;
     clear_user_savepoints(database);
     clear_pending_auto_increments(database);
     return MYLITE_OK;
@@ -38095,6 +38161,7 @@ static int rollback_explicit_transaction(mylite_db *database)
     database->transaction_active = false;
     database->transaction_access_mode = MYLITE_TRANSACTION_ACCESS_READ_WRITE;
     database->transaction_consistent_snapshot = false;
+    database->transaction_concurrent = false;
     status = reapply_pending_auto_increments(database);
     clear_user_savepoints(database);
     clear_pending_auto_increments(database);

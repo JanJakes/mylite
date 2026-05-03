@@ -305,6 +305,7 @@ static int test_result_metadata_expression_labels_execution(void);
 static int test_update_single_table_execution(void);
 static int test_delete_single_table_execution(void);
 static int test_transaction_statements_execution(void);
+static int test_begin_concurrent_execution(void);
 static int test_savepoint_execution(void);
 static int test_parse_error(void);
 static int prepare_sql(mylite_db *database, const char *sql, int expected_status,
@@ -491,6 +492,7 @@ int main(void)
     failures += test_update_single_table_execution();
     failures += test_delete_single_table_execution();
     failures += test_transaction_statements_execution();
+    failures += test_begin_concurrent_execution();
     failures += test_savepoint_execution();
     failures += test_parse_error();
 
@@ -13435,6 +13437,76 @@ static int test_transaction_statements_execution(void)
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_begin_concurrent_execution(void)
+{
+    const char *path = MYLITE_RUNTIME_TEST_FILE_PATH;
+    static const char *id_v_columns[] = {"id", "v"};
+    static const char *committed_values[] = {"1", "10"};
+    sqlite3 *sqlite = NULL;
+    sqlite3_stmt *sqlite_stmt = NULL;
+    mylite_db *setup = NULL;
+    mylite_db *writer_a = NULL;
+    mylite_db *writer_b = NULL;
+    int failures = 0;
+    int rc = SQLITE_OK;
+
+    remove_runtime_test_files();
+    failures += expect_status(mylite_open(path, &setup), MYLITE_OK, "open begin concurrent setup");
+    failures += execute_sql(setup, "CREATE DATABASE concurrent_db", MYLITE_DONE);
+    failures += execute_sql(setup, "USE concurrent_db", MYLITE_DONE);
+    failures += execute_sql(setup, "CREATE TABLE tx (id INT PRIMARY KEY, v INT)", MYLITE_DONE);
+    mylite_close(setup);
+    setup = NULL;
+
+    failures += expect_sqlite_status(
+        sqlite3_open_v2(path, &sqlite, SQLITE_OPEN_READWRITE, mylite_vfs_name()), SQLITE_OK,
+        "open begin concurrent sqlite");
+    if (sqlite != NULL) {
+        rc = sqlite3_prepare_v2(sqlite, "PRAGMA journal_mode", -1, &sqlite_stmt, NULL);
+        failures += expect_sqlite_status(rc, SQLITE_OK, "prepare journal mode pragma");
+        if (rc == SQLITE_OK) {
+            failures += expect_sqlite_status(sqlite3_step(sqlite_stmt), SQLITE_ROW,
+                                             "step journal mode pragma");
+            failures += expect_string((const char *)sqlite3_column_text(sqlite_stmt, 0), "wal",
+                                      "begin concurrent journal mode");
+        }
+        sqlite3_finalize(sqlite_stmt);
+        sqlite3_close(sqlite);
+        sqlite = NULL;
+        sqlite_stmt = NULL;
+    }
+
+    failures += expect_status(mylite_open(path, &writer_a), MYLITE_OK, "open begin concurrent a");
+    failures += expect_status(mylite_open(path, &writer_b), MYLITE_OK, "open begin concurrent b");
+    failures += execute_sql(writer_a, "USE concurrent_db", MYLITE_DONE);
+    failures += execute_sql(writer_b, "USE concurrent_db", MYLITE_DONE);
+
+    failures += execute_sql(writer_a, "BEGIN CONCURRENT", MYLITE_DONE);
+    failures += execute_sql(writer_b, "BEGIN CONCURRENT", MYLITE_DONE);
+    failures += execute_sql(writer_a, "INSERT INTO tx VALUES (1, 10)", MYLITE_DONE);
+    failures += execute_sql(writer_b, "INSERT INTO tx VALUES (1000, 20)", MYLITE_DONE);
+    failures += execute_sql(writer_a, "COMMIT", MYLITE_DONE);
+    failures += execute_sql(writer_b, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_rows(writer_a, "SELECT id, v FROM tx ORDER BY id", id_v_columns, 2,
+                                   committed_values, 1, "begin concurrent committed row");
+
+    failures += execute_sql(writer_a, "BEGIN CONCURRENT", MYLITE_DONE);
+    failures += execute_sql(writer_a, "INSERT INTO tx VALUES (2, 20)", MYLITE_DONE);
+    failures += execute_sql(writer_a, "COMMIT AND CHAIN", MYLITE_DONE);
+    failures += execute_sql(writer_a, "INSERT INTO tx VALUES (3, 30)", MYLITE_DONE);
+    failures += execute_sql(writer_b, "BEGIN CONCURRENT", MYLITE_DONE);
+    failures += execute_sql(writer_b, "INSERT INTO tx VALUES (2000, 40)", MYLITE_DONE);
+    failures += execute_sql(writer_a, "ROLLBACK", MYLITE_DONE);
+    failures += execute_sql(writer_b, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_row_count(writer_a, "SELECT id FROM tx WHERE id IN (3, 2000)", 0,
+                                        "begin concurrent chained transaction rolls back");
+
+    mylite_close(writer_b);
+    mylite_close(writer_a);
+    remove_runtime_test_files();
     return failures;
 }
 

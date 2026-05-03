@@ -4804,10 +4804,11 @@ static int test_transaction_statement_syntax(void)
                                                "second read only characteristic");
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("CREATE TABLE transaction_keyword_names ("
-                          "begin INT, chain INT, commit INT, consistent INT, no INT, "
-                          "rollback INT, snapshot INT, start INT, transaction INT, work INT);",
-                          MYLITE_SQL_PARSE_OK, &result);
+    failures +=
+        parse_sql("CREATE TABLE transaction_keyword_names ("
+                  "begin INT, chain INT, commit INT, concurrent INT, consistent INT, no INT, "
+                  "rollback INT, snapshot INT, start INT, transaction INT, work INT);",
+                  MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("BEGIN; BEGIN WORK; COMMIT; COMMIT WORK; ROLLBACK; ROLLBACK WORK",
@@ -4824,6 +4825,17 @@ static int test_transaction_statement_syntax(void)
                             "rollback statement");
     failures += expect_node(child_at(result.root, rollback_work_statement_index),
                             MYLITE_SQL_AST_ROLLBACK_STATEMENT, "rollback work statement");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("BEGIN CONCURRENT", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_BEGIN_TRANSACTION_STATEMENT,
+                            "begin concurrent transaction");
+    if (statement == NULL || !statement->transaction_concurrent) {
+        fprintf(stderr, "begin concurrent flag was not set\n");
+        failures = 1;
+    }
+    failures += expect_span_text(statement, "BEGIN CONCURRENT", "begin concurrent span");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("COMMIT AND CHAIN; COMMIT AND CHAIN NO RELEASE; "
@@ -4903,6 +4915,10 @@ static int test_transaction_statement_syntax(void)
     failures += parse_sql("BEGIN READ ONLY", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("BEGIN WORK READ ONLY", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("BEGIN CONCURRENT WORK", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("START TRANSACTION CONCURRENT", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("COMMIT CHAIN", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);

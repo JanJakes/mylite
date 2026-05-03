@@ -841,6 +841,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "rename_table_pair_list";
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
         return "rename_table_pair";
+    case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
+        return "truncate_table_statement";
     }
 
     return "unknown";

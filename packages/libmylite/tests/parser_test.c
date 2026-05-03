@@ -20,6 +20,7 @@ static int test_create_drop_index_syntax(void);
 static int test_alter_table_column_operations_syntax(void);
 static int test_alter_table_key_constraint_operations_syntax(void);
 static int test_rename_table_syntax(void);
+static int test_truncate_table_syntax(void);
 static int test_drop_table_syntax(void);
 static int test_insert_values_syntax(void);
 static int test_insert_set_syntax(void);
@@ -156,6 +157,7 @@ int main(void)
     failures += test_alter_table_column_operations_syntax();
     failures += test_alter_table_key_constraint_operations_syntax();
     failures += test_rename_table_syntax();
+    failures += test_truncate_table_syntax();
     failures += test_drop_table_syntax();
     failures += test_insert_values_syntax();
     failures += test_insert_set_syntax();
@@ -2760,6 +2762,75 @@ static int test_rename_table_syntax(void)
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("RENAME TABLE t u;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_truncate_table_syntax(void)
+{
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("TRUNCATE TABLE app.old_name; TRUNCATE old_name; "
+                          "TRUNCATE TABLE `app`.`old`;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_child_count(result.root, 3U, "truncate script count");
+
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT, "truncate table statement");
+    failures += expect_child_count(statement, 1U, "truncate child count");
+    failures += expect_node(child_at(statement, 0U), MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+                            "truncate qualified target");
+    failures +=
+        expect_span_text(child_at(child_at(statement, 0U), 0U), "app", "truncate target schema");
+    failures += expect_span_text(child_at(child_at(statement, 0U), 1U), "old_name",
+                                 "truncate target table");
+
+    statement = child_at(result.root, 1U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT, "truncate bare statement");
+    failures +=
+        expect_node(child_at(statement, 0U), MYLITE_SQL_AST_IDENTIFIER, "truncate bare target");
+    failures += expect_span_text(child_at(statement, 0U), "old_name", "truncate bare table");
+
+    statement = child_at(result.root, 2U);
+    failures += expect_node(child_at(statement, 0U), MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+                            "truncate quoted qualified target");
+    failures +=
+        expect_span_text(child_at(child_at(statement, 0U), 0U), "`app`", "truncate quoted schema");
+    failures +=
+        expect_span_text(child_at(child_at(statement, 0U), 1U), "`old`", "truncate quoted table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE truncate (id INT); TRUNCATE TABLE truncate; "
+                          "SELECT TRUNCATE(1.234, 2);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_child_count(result.root, 3U, "truncate keyword identifier script count");
+    statement = child_at(result.root, 1U);
+    failures += expect_node(statement, MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT,
+                            "truncate keyword identifier statement");
+    failures += expect_node(child_at(statement, 0U), MYLITE_SQL_AST_IDENTIFIER,
+                            "truncate keyword identifier target");
+    failures +=
+        expect_span_text(child_at(statement, 0U), "truncate", "truncate keyword identifier table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("TRUNCATE TABLE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("TRUNCATE TABLE t, u;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("TRUNCATE TABLE IF EXISTS t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("TRUNCATE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("TRUNCATE TABLE t TO u;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

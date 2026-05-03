@@ -144,7 +144,16 @@ level application surfaces.
        views, triggers, foreign keys, privileges, metadata locks, and implicit
        commits remain deferred. Spec: [RENAME TABLE](../rename-table/specs.md).
 38. [ ] `TRUNCATE TABLE`: DDL-like delete, auto-increment reset, foreign-key
-       restrictions, implicit commits, and affected-row behavior.
+       restrictions, implicit commits, and affected-row behavior. First
+       executable slice is implemented for supported MyLite base tables,
+       including parser coverage, selected-schema and schema-qualified
+       resolution, physical row removal while preserving the table object,
+       table/column/index metadata preservation, `AUTO_INCREMENT` reset,
+       affected rows `0`, deterministic diagnostics, and statement atomicity.
+       Temporary tables, foreign-key restrictions, triggers, locks, partitions,
+       privileges, Performance Schema summary-table behavior, and implicit
+       commits remain deferred. Spec:
+       [TRUNCATE TABLE](../truncate-table/specs.md).
 39. [ ] `SHOW TABLES`, `SHOW COLUMNS`, `SHOW INDEX`, `DESCRIBE`, and
        `SHOW CREATE TABLE`: result-set shape, filtering, metadata formatting,
        and warnings.

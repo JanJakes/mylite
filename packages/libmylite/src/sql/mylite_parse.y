@@ -6,6 +6,7 @@
 %type opt_insert_ignore { struct mylite_sql_token }
 %type opt_replace_modifier { struct mylite_sql_parser_replace_modifier }
 %type opt_column { struct mylite_sql_token }
+%type opt_table { struct mylite_sql_token }
 %type opt_temporary { struct mylite_sql_token }
 %type opt_drop_table_mode { struct mylite_sql_token }
 %type insert_values_keyword { struct mylite_sql_token }
@@ -129,6 +130,9 @@ statement(A) ::= drop_table_statement(B). {
 statement(A) ::= rename_table_statement(B). {
     A = B;
 }
+statement(A) ::= truncate_table_statement(B). {
+    A = B;
+}
 statement(A) ::= insert_values_statement(B). {
     A = B;
 }
@@ -232,6 +236,10 @@ drop_table_statement(A) ::= DROP(T) opt_temporary(U) TABLE opt_if_exists(B) drop
 
 rename_table_statement(A) ::= RENAME(T) TABLE rename_table_pair_list(P). {
     A = mylite_sql_parser_make_rename_table_statement(state, T, P);
+}
+
+truncate_table_statement(A) ::= TRUNCATE(T) opt_table table_name(N). {
+    A = mylite_sql_parser_make_truncate_table_statement(state, T, N);
 }
 
 alter_table_statement(A) ::= ALTER(T) TABLE table_name(B) alter_table_item_list(C). {
@@ -524,6 +532,13 @@ opt_temporary(A) ::= . {
     A = (struct mylite_sql_token){0};
 }
 opt_temporary(A) ::= TEMPORARY(T). {
+    A = T;
+}
+
+opt_table(A) ::= . {
+    A = (struct mylite_sql_token){0};
+}
+opt_table(A) ::= TABLE(T). {
     A = T;
 }
 
@@ -3025,5 +3040,8 @@ nonreserved_identifier_keyword(A) ::= PARSER(T). {
     A = T;
 }
 nonreserved_identifier_keyword(A) ::= SHARED(T). {
+    A = T;
+}
+nonreserved_identifier_keyword(A) ::= TRUNCATE(T). {
     A = T;
 }

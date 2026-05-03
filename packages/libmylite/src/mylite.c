@@ -48,6 +48,7 @@ enum mylite_stmt_kind {
     MYLITE_STMT_DROP_INDEX = 26,
     MYLITE_STMT_ALTER_TABLE = 27,
     MYLITE_STMT_RENAME_TABLE = 28,
+    MYLITE_STMT_TRUNCATE_TABLE = 29,
 };
 
 enum mylite_information_schema_table {
@@ -273,6 +274,11 @@ struct mylite_rename_table_target {
 struct mylite_rename_table_plan {
     struct mylite_rename_table_target *targets;
     size_t target_count;
+};
+
+struct mylite_truncate_table_plan {
+    char *schema_name;
+    char *table_name;
 };
 
 enum mylite_alter_table_action_kind {
@@ -1176,6 +1182,7 @@ struct mylite_stmt {
     struct mylite_create_table_plan create_table;
     struct mylite_drop_table_plan drop_table;
     struct mylite_rename_table_plan rename_table;
+    struct mylite_truncate_table_plan truncate_table;
     struct mylite_alter_table_plan alter_table;
     struct mylite_index_ddl_plan index_ddl;
     struct mylite_insert_values_plan insert_values;
@@ -1415,6 +1422,9 @@ static int prepare_drop_table_statement(mylite_db *database,
 static int prepare_rename_table_statement(mylite_db *database,
                                           const struct mylite_sql_ast_node *statement,
                                           mylite_stmt **out_stmt);
+static int prepare_truncate_table_statement(mylite_db *database,
+                                            const struct mylite_sql_ast_node *statement,
+                                            mylite_stmt **out_stmt);
 static int prepare_alter_table_statement(mylite_db *database,
                                          const struct mylite_sql_ast_node *statement,
                                          mylite_stmt **out_stmt);
@@ -2309,6 +2319,7 @@ static int execute_set_character_set_statement(mylite_stmt *stmt);
 static int execute_create_table_statement(mylite_stmt *stmt);
 static int execute_drop_table_statement(mylite_stmt *stmt);
 static int execute_rename_table_statement(mylite_stmt *stmt);
+static int execute_truncate_table_statement(mylite_stmt *stmt);
 static int execute_alter_table_statement(mylite_stmt *stmt);
 static int execute_create_index_statement(mylite_stmt *stmt);
 static int execute_drop_index_statement(mylite_stmt *stmt);
@@ -2958,6 +2969,12 @@ static int rewrite_rename_table_catalog_row(mylite_db *database, const char *sql
                                             const struct mylite_rename_table_target *target);
 static int rewrite_rename_table_index_catalog(mylite_db *database,
                                               const struct mylite_rename_table_target *target);
+static int validate_truncate_table_plan(mylite_stmt *stmt);
+static int resolve_truncate_table_name(mylite_stmt *stmt);
+static int validate_truncate_table_target(mylite_stmt *stmt);
+static int truncate_table_transaction(mylite_stmt *stmt);
+static int delete_truncate_table_rows(mylite_stmt *stmt);
+static int reset_truncate_table_auto_increment(mylite_stmt *stmt);
 static bool alter_table_has_table_rename_action(const mylite_stmt *stmt);
 static int execute_alter_table_rename_statement(mylite_stmt *stmt);
 static int add_alter_table_rename_target(mylite_stmt *stmt);
@@ -3670,6 +3687,8 @@ static int copy_rename_table_name(const struct mylite_sql_ast_node *table_name,
                                   char **out_schema_name, char **out_table_name);
 static int add_rename_table_target(struct mylite_rename_table_plan *plan,
                                    struct mylite_rename_table_target target);
+static int copy_truncate_table_statement(const struct mylite_sql_ast_node *statement,
+                                         mylite_stmt *stmt);
 static int copy_alter_table_statement(const struct mylite_sql_ast_node *statement,
                                       mylite_stmt *stmt);
 static int copy_alter_table_item(const struct mylite_sql_ast_node *item,
@@ -4107,6 +4126,7 @@ static void create_table_options_deinit(struct mylite_create_table_options *opti
 static void create_table_plan_deinit(struct mylite_create_table_plan *plan);
 static void drop_table_plan_deinit(struct mylite_drop_table_plan *plan);
 static void rename_table_plan_deinit(struct mylite_rename_table_plan *plan);
+static void truncate_table_plan_deinit(struct mylite_truncate_table_plan *plan);
 static void alter_table_plan_deinit(struct mylite_alter_table_plan *plan);
 static void alter_table_action_deinit(struct mylite_alter_table_action *action);
 static void alter_table_model_deinit(struct mylite_alter_table_model *model);
@@ -4305,6 +4325,7 @@ void mylite_finalize(mylite_stmt *stmt)
     create_table_plan_deinit(&stmt->create_table);
     drop_table_plan_deinit(&stmt->drop_table);
     rename_table_plan_deinit(&stmt->rename_table);
+    truncate_table_plan_deinit(&stmt->truncate_table);
     alter_table_plan_deinit(&stmt->alter_table);
     index_ddl_plan_deinit(&stmt->index_ddl);
     insert_values_plan_deinit(&stmt->insert_values);
@@ -4721,6 +4742,8 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
             return prepare_drop_table_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
             return prepare_rename_table_statement(database, statement, out_stmt);
+        case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
+            return prepare_truncate_table_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_ALTER_TABLE_STATEMENT:
             return prepare_alter_table_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
@@ -4952,6 +4975,7 @@ static int prepare_schema_lifecycle_statement(mylite_db *database,
     case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
     case MYLITE_SQL_AST_ALTER_TABLE_STATEMENT:
@@ -5090,6 +5114,7 @@ static int prepare_connection_charset_statement(mylite_db *database,
     case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
     case MYLITE_SQL_AST_ALTER_TABLE_STATEMENT:
@@ -5176,6 +5201,13 @@ static int prepare_rename_table_statement(mylite_db *database,
                                           mylite_stmt **out_stmt)
 {
     return prepare_custom_statement(database, MYLITE_STMT_RENAME_TABLE, statement, out_stmt);
+}
+
+static int prepare_truncate_table_statement(mylite_db *database,
+                                            const struct mylite_sql_ast_node *statement,
+                                            mylite_stmt **out_stmt)
+{
+    return prepare_custom_statement(database, MYLITE_STMT_TRUNCATE_TABLE, statement, out_stmt);
 }
 
 static int prepare_alter_table_statement(mylite_db *database,
@@ -5386,6 +5418,7 @@ static int prepare_transaction_statement(mylite_db *database,
     case MYLITE_SQL_AST_TABLE_OPTION:
     case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
     case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
@@ -6493,6 +6526,7 @@ static int infer_expression_descriptor(mylite_db *database, const struct mylite_
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION:
     case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION:
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
@@ -9438,6 +9472,7 @@ static int bind_select_predicate_expression_in_clause(mylite_db *database,
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION:
     case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION:
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
@@ -10130,6 +10165,7 @@ static int bind_select_aggregate_aware_expression(mylite_db *database,
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION:
     case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION:
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
@@ -10682,6 +10718,7 @@ static int bind_select_order_expression(mylite_db *database,
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION:
     case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION:
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
@@ -11389,6 +11426,7 @@ static bool select_expression_is_group_invariant( // NOLINT(misc-no-recursion)
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION:
     case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION:
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
@@ -14008,6 +14046,9 @@ static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind k
     case MYLITE_STMT_RENAME_TABLE:
         status = copy_rename_table_statement(statement, stmt);
         break;
+    case MYLITE_STMT_TRUNCATE_TABLE:
+        status = copy_truncate_table_statement(statement, stmt);
+        break;
     case MYLITE_STMT_ALTER_TABLE:
         status = copy_alter_table_statement(statement, stmt);
         break;
@@ -14139,6 +14180,9 @@ static int execute_custom_statement(mylite_stmt *stmt)
         break;
     case MYLITE_STMT_RENAME_TABLE:
         status = execute_rename_table_statement(stmt);
+        break;
+    case MYLITE_STMT_TRUNCATE_TABLE:
+        status = execute_truncate_table_statement(stmt);
         break;
     case MYLITE_STMT_ALTER_TABLE:
         status = execute_alter_table_statement(stmt);
@@ -15476,6 +15520,152 @@ static int rewrite_rename_table_index_catalog(mylite_db *database,
     rc = sqlite3_step(update);
     sqlite3_finalize(update);
     return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(database);
+}
+
+static int execute_truncate_table_statement(mylite_stmt *stmt)
+{
+    int status = validate_truncate_table_plan(stmt);
+
+    stmt->affected_rows = 0;
+    if (status == MYLITE_OK) {
+        status = truncate_table_transaction(stmt);
+    }
+    if (status != MYLITE_OK) {
+        stmt->affected_rows = -1;
+    }
+    return status;
+}
+
+static int validate_truncate_table_plan(mylite_stmt *stmt)
+{
+    int status = resolve_truncate_table_name(stmt);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    return validate_truncate_table_target(stmt);
+}
+
+static int resolve_truncate_table_name(mylite_stmt *stmt)
+{
+    const char *selected_schema = stmt->database->selected_schema;
+
+    if (stmt->truncate_table.table_name == NULL) {
+        return MYLITE_UNSUPPORTED;
+    }
+    if (stmt->truncate_table.schema_name != NULL) {
+        return MYLITE_OK;
+    }
+    if (selected_schema == NULL || selected_schema[0] == '\0') {
+        (void)set_error_message(stmt->database, "No database selected");
+        return MYLITE_EXEC_ERROR;
+    }
+
+    stmt->truncate_table.schema_name = copy_nonempty_cstring(selected_schema);
+    if (stmt->truncate_table.schema_name == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    return MYLITE_OK;
+}
+
+static int validate_truncate_table_target(mylite_stmt *stmt)
+{
+    struct mylite_schema_presence presence;
+    bool exists = false;
+    int status = schema_exists(stmt->database, stmt->truncate_table.schema_name, &presence);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (presence.is_system) {
+        (void)set_error_message_parts(stmt->database, "Access to system schema '",
+                                      stmt->truncate_table.schema_name, "' is rejected.");
+        return MYLITE_EXEC_ERROR;
+    }
+    if (!presence.exists) {
+        return set_table_doesnt_exist_error(stmt->database, stmt->truncate_table.schema_name,
+                                            stmt->truncate_table.table_name);
+    }
+
+    status = table_exists(stmt->database, stmt->truncate_table.schema_name,
+                          stmt->truncate_table.table_name, &exists);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (!exists) {
+        return set_table_doesnt_exist_error(stmt->database, stmt->truncate_table.schema_name,
+                                            stmt->truncate_table.table_name);
+    }
+    return MYLITE_OK;
+}
+
+static int truncate_table_transaction(mylite_stmt *stmt)
+{
+    struct mylite_statement_atomicity atomicity = {0};
+    int status = begin_statement_atomicity(stmt->database, &atomicity);
+
+    if (status == MYLITE_OK) {
+        status = delete_truncate_table_rows(stmt);
+    }
+    if (status == MYLITE_OK) {
+        status = reset_truncate_table_auto_increment(stmt);
+    }
+    if (status == MYLITE_OK) {
+        status = commit_statement_atomicity(stmt->database, &atomicity);
+        if (status == MYLITE_OK) {
+            stmt->affected_rows = 0;
+            return MYLITE_OK;
+        }
+    }
+
+    rollback_statement_atomicity(stmt->database, &atomicity);
+    return status;
+}
+
+static int delete_truncate_table_rows(mylite_stmt *stmt)
+{
+    char *physical_name =
+        physical_table_name(stmt->truncate_table.schema_name, stmt->truncate_table.table_name);
+    char *sql = NULL;
+    int rc = SQLITE_OK;
+
+    if (physical_name == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    sql = sqlite3_mprintf("DELETE FROM \"%w\"", physical_name);
+    free(physical_name);
+    if (sql == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    rc = sqlite3_exec(stmt->database->sqlite, sql, NULL, NULL, NULL);
+    sqlite3_free(sql);
+    return rc == SQLITE_OK ? MYLITE_OK : set_sqlite_error(stmt->database);
+}
+
+static int reset_truncate_table_auto_increment(mylite_stmt *stmt)
+{
+    sqlite3_stmt *update = NULL;
+    static const char sql[] = "UPDATE __mylite_table_catalog SET auto_increment = NULL "
+                              "WHERE table_schema = ? AND table_name = ?";
+    int rc = sqlite3_prepare_v3(stmt->database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &update,
+                                NULL);
+
+    if (rc != SQLITE_OK) {
+        return set_sqlite_error(stmt->database);
+    }
+
+    sqlite3_bind_text(update, 1, stmt->truncate_table.schema_name, -1,
+                      sqlite_transient_destructor());
+    sqlite3_bind_text(update, 2, stmt->truncate_table.table_name, -1,
+                      sqlite_transient_destructor());
+    rc = sqlite3_step(update);
+    sqlite3_finalize(update);
+    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(stmt->database);
 }
 
 static bool alter_table_has_table_rename_action(const mylite_stmt *stmt)
@@ -19224,6 +19414,7 @@ static int bind_update_predicate_expression(mylite_stmt *stmt,
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION:
     case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION:
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
@@ -20683,6 +20874,7 @@ static int bind_delete_predicate_expression(mylite_stmt *stmt,
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION:
     case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION:
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
@@ -21299,6 +21491,7 @@ static int execute_union_operand_statement(mylite_stmt *operand)
     case MYLITE_STMT_CREATE_TABLE:
     case MYLITE_STMT_DROP_TABLE:
     case MYLITE_STMT_RENAME_TABLE:
+    case MYLITE_STMT_TRUNCATE_TABLE:
     case MYLITE_STMT_ALTER_TABLE:
     case MYLITE_STMT_CREATE_INDEX:
     case MYLITE_STMT_DROP_INDEX:
@@ -29151,6 +29344,7 @@ static int copy_schema_options(const struct mylite_sql_ast_node *statement,
     case MYLITE_STMT_CREATE_TABLE:
     case MYLITE_STMT_DROP_TABLE:
     case MYLITE_STMT_RENAME_TABLE:
+    case MYLITE_STMT_TRUNCATE_TABLE:
     case MYLITE_STMT_ALTER_TABLE:
     case MYLITE_STMT_CREATE_INDEX:
     case MYLITE_STMT_DROP_INDEX:
@@ -29330,6 +29524,13 @@ static int add_rename_table_target(struct mylite_rename_table_plan *plan,
     plan->targets = targets;
     plan->targets[plan->target_count++] = target;
     return MYLITE_OK;
+}
+
+static int copy_truncate_table_statement(const struct mylite_sql_ast_node *statement,
+                                         mylite_stmt *stmt)
+{
+    return copy_rename_table_name(child_at(statement, 0U), &stmt->truncate_table.schema_name,
+                                  &stmt->truncate_table.table_name);
 }
 
 static int copy_alter_table_statement(const struct mylite_sql_ast_node *statement,
@@ -32214,6 +32415,7 @@ static int copy_insert_simple_value(const struct mylite_sql_ast_node *value_node
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION:
     case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION:
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
     case MYLITE_SQL_AST_WHERE_CLAUSE:
@@ -34647,7 +34849,8 @@ static bool write_statement_kind(enum mylite_stmt_kind kind)
     if (kind == MYLITE_STMT_INSERT_VALUES || kind == MYLITE_STMT_INSERT_SET ||
         kind == MYLITE_STMT_REPLACE_VALUES || kind == MYLITE_STMT_REPLACE_SET ||
         kind == MYLITE_STMT_UPDATE || kind == MYLITE_STMT_DELETE ||
-        kind == MYLITE_STMT_ALTER_TABLE || kind == MYLITE_STMT_RENAME_TABLE) {
+        kind == MYLITE_STMT_ALTER_TABLE || kind == MYLITE_STMT_RENAME_TABLE ||
+        kind == MYLITE_STMT_TRUNCATE_TABLE) {
         return true;
     }
     return false;
@@ -35129,6 +35332,17 @@ static void rename_table_plan_deinit(struct mylite_rename_table_plan *plan)
     }
     free(plan->targets);
     *plan = (struct mylite_rename_table_plan){0};
+}
+
+static void truncate_table_plan_deinit(struct mylite_truncate_table_plan *plan)
+{
+    if (plan == NULL) {
+        return;
+    }
+
+    free(plan->schema_name);
+    free(plan->table_name);
+    *plan = (struct mylite_truncate_table_plan){0};
 }
 
 static void alter_table_plan_deinit(struct mylite_alter_table_plan *plan)

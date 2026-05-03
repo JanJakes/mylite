@@ -965,6 +965,27 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_rename_table_pair(
     return pair;
 }
 
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_truncate_table_statement(struct mylite_sql_parser_state *state,
+                                                struct mylite_sql_token truncate_token,
+                                                struct mylite_sql_ast_node *table_name)
+{
+    struct mylite_sql_source_span span = span_from_token(&truncate_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (table_name != NULL) {
+        span = span_join(span, table_name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, table_name);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_token alter_token,
     struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *items)
@@ -5407,6 +5428,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"TO", MYLITE_SQL_PARSE_TO},
         {"TRANSACTION", MYLITE_SQL_PARSE_TRANSACTION},
         {"TRUE", MYLITE_SQL_PARSE_TRUE},
+        {"TRUNCATE", MYLITE_SQL_PARSE_TRUNCATE},
         {"TYPE", MYLITE_SQL_PARSE_TYPE},
         {"UNIQUE", MYLITE_SQL_PARSE_UNIQUE},
         {"UNION", MYLITE_SQL_PARSE_UNION},

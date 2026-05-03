@@ -129,6 +129,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_RENAME_TABLE_STATEMENT = 118,
     MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST = 119,
     MYLITE_SQL_AST_RENAME_TABLE_PAIR = 120,
+    MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT = 121,
 };
 
 enum mylite_sql_ast_literal_kind {

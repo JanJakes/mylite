@@ -195,6 +195,7 @@ static int test_create_drop_index_execution(void);
 static int test_alter_table_column_operations_execution(void);
 static int test_alter_table_key_operations_execution(void);
 static int test_rename_table_execution(void);
+static int test_truncate_table_execution(void);
 static int test_insert_values_execution(void);
 static int test_insert_set_execution(void);
 static int test_replace_execution(void);
@@ -329,6 +330,7 @@ int main(void)
     failures += test_alter_table_column_operations_execution();
     failures += test_alter_table_key_operations_execution();
     failures += test_rename_table_execution();
+    failures += test_truncate_table_execution();
     failures += test_insert_values_execution();
     failures += test_insert_set_execution();
     failures += test_replace_execution();
@@ -4421,6 +4423,168 @@ static int test_rename_table_execution(void)
     }
     free(physical_source);
     free(physical_target);
+    remove_runtime_test_files();
+
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
+    return failures;
+}
+
+static int test_truncate_table_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const count_column[] = {"c"};
+    static const char *const id_v_columns[] = {"id", "v"};
+    static const char *const zero_count[] = {"0"};
+    static const char *const post_truncate_values[] = {"1", "30"};
+    static const char *const qualified_count[] = {"0"};
+    const char *path = MYLITE_RUNTIME_TEST_FILE_PATH;
+    mylite_db *database = NULL;
+    mylite_db *file_database = NULL;
+    mylite_db *no_schema_database = NULL;
+    mylite_stmt *stmt = NULL;
+    char *physical_name = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open truncate database");
+    failures += prepare_sql(database, "TRUNCATE TABLE no_default", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "No database selected",
+                                  "truncate table requires selected schema");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE DATABASE mylite_truncate_a", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_truncate_a", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE t ("
+                            "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, "
+                            "v INT, UNIQUE KEY uq_v (v), KEY k_v (v)) "
+                            "AUTO_INCREMENT=10",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO t(v) VALUES (10),(20)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(database, "TRUNCATE TABLE t", 0,
+                                                 "truncate table affected rows");
+    failures += expect_select_rows(database, "SELECT COUNT(*) AS c FROM t", count_column, 1,
+                                   zero_count, 1, "truncate removes rows");
+    failures += expect_information_schema_table_collation(database,
+                                                          &(const struct expected_table_collation){
+                                                              .table_name = "t",
+                                                              .collation = "utf8mb4_0900_ai_ci",
+                                                          });
+    failures += expect_information_schema_column_row(database, &(const struct expected_columns_row){
+                                                                   .table_name = "t",
+                                                                   .column_name = "id",
+                                                                   .ordinal_position = 1,
+                                                                   .column_default = NULL,
+                                                                   .is_nullable = "NO",
+                                                                   .data_type = "int",
+                                                                   .column_type = "int",
+                                                                   .column_key = "PRI",
+                                                                   .extra = "auto_increment",
+                                                               });
+    failures +=
+        expect_information_schema_statistics_row(database, &(const struct expected_statistics_row){
+                                                               .table_name = "t",
+                                                               .index_name = "PRIMARY",
+                                                               .seq_in_index = 1,
+                                                               .column_name = "id",
+                                                               .non_unique = 0,
+                                                               .collation = "A",
+                                                               .sub_part = NULL,
+                                                               .index_comment = "",
+                                                               .visible = "YES",
+                                                           });
+    failures +=
+        expect_information_schema_statistics_row(database, &(const struct expected_statistics_row){
+                                                               .table_name = "t",
+                                                               .index_name = "k_v",
+                                                               .seq_in_index = 1,
+                                                               .column_name = "v",
+                                                               .non_unique = 1,
+                                                               .collation = "A",
+                                                               .sub_part = NULL,
+                                                               .index_comment = "",
+                                                               .visible = "YES",
+                                                           });
+
+    failures += execute_sql(database, "INSERT INTO t(v) VALUES (30)", MYLITE_DONE);
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), 1,
+                             "truncate resets auto increment id");
+    failures += expect_select_rows(database, "SELECT id, v FROM t", id_v_columns, 2,
+                                   post_truncate_values, 1, "truncate auto increment row");
+    failures += prepare_sql(database, "INSERT INTO t(v) VALUES (30)", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Duplicate entry",
+                                  "truncate preserves unique index enforcement");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql_expect_done_affected(database, "TRUNCATE t", 0,
+                                                 "truncate shorthand affected rows");
+    failures += expect_select_rows(database, "SELECT COUNT(*) AS c FROM t", count_column, 1,
+                                   zero_count, 1, "truncate shorthand removes rows");
+
+    failures += execute_sql(database, "CREATE TABLE truncate (id INT)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO truncate VALUES (1)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(database, "TRUNCATE TABLE truncate", 0,
+                                                 "truncate nonreserved table name");
+    failures += expect_select_rows(database, "SELECT COUNT(*) AS c FROM truncate", count_column, 1,
+                                   zero_count, 1, "truncate nonreserved table removes rows");
+
+    failures += prepare_sql(database, "TRUNCATE TABLE missing", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "doesn't exist",
+                                  "truncate rejects missing selected-schema table");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "TRUNCATE TABLE missing_schema.t", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "doesn't exist",
+                                  "truncate rejects missing qualified schema");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "TRUNCATE TABLE information_schema.tables", MYLITE_OK, &stmt);
+    failures +=
+        expect_exec_error(stmt, database, "system schema", "truncate rejects system schema");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    mylite_close(database);
+
+    failures += expect_status(mylite_open_memory(&no_schema_database), MYLITE_OK,
+                              "open truncate no-schema database");
+    failures +=
+        execute_sql(no_schema_database, "CREATE DATABASE mylite_truncate_no_default", MYLITE_DONE);
+    failures += execute_sql(no_schema_database,
+                            "CREATE TABLE mylite_truncate_no_default.q (id INT)", MYLITE_DONE);
+    failures += execute_sql(no_schema_database,
+                            "INSERT INTO mylite_truncate_no_default.q VALUES (1)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        no_schema_database, "TRUNCATE TABLE mylite_truncate_no_default.q", 0,
+        "truncate qualified target without selected schema");
+    failures += expect_select_rows(
+        no_schema_database, "SELECT COUNT(*) AS c FROM mylite_truncate_no_default.q", count_column,
+        1, qualified_count, 1, "qualified truncate without selected schema removes rows");
+    mylite_close(no_schema_database);
+
+    remove_runtime_test_files();
+    failures += expect_status(mylite_open(path, &file_database), MYLITE_OK,
+                              "open truncate physical database");
+    failures += execute_sql(file_database, "CREATE DATABASE mylite_truncate_file", MYLITE_DONE);
+    failures += execute_sql(file_database, "USE mylite_truncate_file", MYLITE_DONE);
+    failures += execute_sql(file_database, "CREATE TABLE physical_t (id INT)", MYLITE_DONE);
+    failures += execute_sql(file_database, "INSERT INTO physical_t VALUES (1)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(file_database, "TRUNCATE TABLE physical_t", 0,
+                                                 "truncate physical affected rows");
+    mylite_close(file_database);
+
+    physical_name = expected_physical_table_name("mylite_truncate_file", "physical_t");
+    if (physical_name == NULL) {
+        fprintf(stderr, "out of memory while building truncate physical table name\n");
+        failures = 1;
+    } else {
+        failures += expect_sqlite_table_exists(&(const struct sqlite_table_lookup){
+            .path = path,
+            .table_name = physical_name,
+        });
+    }
+    free(physical_name);
     remove_runtime_test_files();
 
     // NOLINTEND(readability-function-size,readability-magic-numbers)

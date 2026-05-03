@@ -154,6 +154,8 @@ static void dump_statements(const MyliteAst *ast) {
         mylite_ast_kill_statement_view(ast, i);
     const MyliteAstFlushStatement *flush_statement =
         mylite_ast_flush_statement_view(ast, i);
+    const MyliteAstLoadStatement *load_statement =
+        mylite_ast_load_statement_view(ast, i);
     const MyliteAstDeleteStatement *delete_statement =
         mylite_ast_delete_statement_view(ast, i);
     const MyliteAstInsertStatement *insert_statement =
@@ -1125,6 +1127,193 @@ static void dump_statements(const MyliteAst *ast) {
               name, mylite_ast_flush_plugin_view_name_value_length(plugin));
         }
         fputc('\n', stdout);
+      }
+    }
+    if (load_statement != NULL) {
+      printf("  load_statement span=%zu..%zu kind=%s duplicate=%s "
+             "low_priority=%d local=%d partition=%d fields=%d columns_kw=%d "
+             "lines=%d ignore_rows=%d:%llu items=%zu assignments=%zu "
+             "options=%zu node=%s file=",
+             mylite_ast_load_statement_view_start(load_statement),
+             mylite_ast_load_statement_view_end(load_statement),
+             mylite_load_statement_kind_name(
+                 mylite_ast_load_statement_view_kind(load_statement)),
+             mylite_load_duplicate_kind_name(
+                 mylite_ast_load_statement_view_duplicate_kind(
+                     load_statement)),
+             mylite_ast_load_statement_view_has_low_priority(load_statement),
+             mylite_ast_load_statement_view_has_local(load_statement),
+             mylite_ast_load_statement_view_has_partition(load_statement),
+             mylite_ast_load_statement_view_has_fields_clause(load_statement),
+             mylite_ast_load_statement_view_uses_columns_keyword(
+                 load_statement),
+             mylite_ast_load_statement_view_has_lines_clause(load_statement),
+             mylite_ast_load_statement_view_has_ignore_rows(load_statement),
+             mylite_ast_load_statement_view_ignore_rows(load_statement),
+             mylite_ast_load_statement_view_item_count(load_statement),
+             mylite_ast_load_statement_view_assignment_count(load_statement),
+             mylite_ast_load_statement_view_option_count(load_statement),
+             node_symbol_or_none(
+                 mylite_ast_load_statement_view_node(load_statement)));
+      const char *file =
+          mylite_ast_load_statement_view_file_value(load_statement);
+      if (file == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(
+            file,
+            mylite_ast_load_statement_view_file_value_length(load_statement));
+      }
+      fputs(" table=", stdout);
+      const char *schema =
+          mylite_ast_load_statement_view_table_schema_value(load_statement);
+      if (schema != NULL) {
+        print_escaped_bytes(
+            schema,
+            mylite_ast_load_statement_view_table_schema_value_length(
+                load_statement));
+        fputc('.', stdout);
+      }
+      const char *table =
+          mylite_ast_load_statement_view_table_name_value(load_statement);
+      if (table == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(
+            table,
+            mylite_ast_load_statement_view_table_name_value_length(
+                load_statement));
+      }
+      fputs(" charset=", stdout);
+      const char *charset =
+          mylite_ast_load_statement_view_charset_value(load_statement);
+      if (charset == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(
+            charset,
+            mylite_ast_load_statement_view_charset_value_length(
+                load_statement));
+      }
+      fputs(" format=", stdout);
+      const char *format =
+          mylite_ast_load_statement_view_format_value(load_statement);
+      if (format == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(
+            format,
+            mylite_ast_load_statement_view_format_value_length(
+                load_statement));
+      }
+      fputs(" row_tag=", stdout);
+      const char *row_tag =
+          mylite_ast_load_statement_view_row_tag_value(load_statement);
+      if (row_tag == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(
+            row_tag,
+            mylite_ast_load_statement_view_row_tag_value_length(
+                load_statement));
+      }
+      fputc('\n', stdout);
+
+      printf("    load_fields terminated_len=%zu enclosed_len=%zu "
+             "enclosed_optional=%d escaped_len=%zu defined_null_len=%zu "
+             "defined_null_optional=%d line_starting_len=%zu "
+             "line_terminated_len=%zu\n",
+             mylite_ast_load_statement_view_field_terminated_value_length(
+                 load_statement),
+             mylite_ast_load_statement_view_field_enclosed_value_length(
+                 load_statement),
+             mylite_ast_load_statement_view_field_enclosed_is_optional(
+                 load_statement),
+             mylite_ast_load_statement_view_field_escaped_value_length(
+                 load_statement),
+             mylite_ast_load_statement_view_field_defined_null_value_length(
+                 load_statement),
+             mylite_ast_load_statement_view_field_defined_null_is_optionally_enclosed(
+                 load_statement),
+             mylite_ast_load_statement_view_line_starting_value_length(
+                 load_statement),
+             mylite_ast_load_statement_view_line_terminated_value_length(
+                 load_statement));
+
+      for (size_t j = 0;
+           j < mylite_ast_load_statement_view_item_count(load_statement);
+           j++) {
+        const MyliteAstLoadListItem *item =
+            mylite_ast_load_statement_view_item_at(load_statement, j);
+        printf("    load_item[%zu] span=%zu..%zu kind=%s value_len=%zu "
+               "value=",
+               j, mylite_ast_load_list_item_view_start(item),
+               mylite_ast_load_list_item_view_end(item),
+               mylite_load_list_item_kind_name(
+                   mylite_ast_load_list_item_view_kind(item)),
+               mylite_ast_load_list_item_view_value_length(item));
+        const char *value = mylite_ast_load_list_item_view_value(item);
+        if (value == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(
+              value, mylite_ast_load_list_item_view_value_length(item));
+        }
+        fputc('\n', stdout);
+      }
+      for (size_t j = 0;
+           j < mylite_ast_load_statement_view_assignment_count(load_statement);
+           j++) {
+        const MyliteAstLoadAssignment *assignment =
+            mylite_ast_load_statement_view_assignment_at(load_statement, j);
+        printf("    load_assignment[%zu] span=%zu..%zu column_len=%zu "
+               "column=",
+               j, mylite_ast_load_assignment_view_start(assignment),
+               mylite_ast_load_assignment_view_end(assignment),
+               mylite_ast_load_assignment_view_column_value_length(
+                   assignment));
+        const char *column =
+            mylite_ast_load_assignment_view_column_value(assignment);
+        if (column == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(
+              column,
+              mylite_ast_load_assignment_view_column_value_length(
+                  assignment));
+        }
+        fputc('\n', stdout);
+        const MyliteAstExpression *expression =
+            mylite_ast_load_assignment_view_expression(assignment);
+        if (expression != NULL) {
+          dump_expression_tree(expression, 3);
+        }
+      }
+      for (size_t j = 0;
+           j < mylite_ast_load_statement_view_option_count(load_statement);
+           j++) {
+        const MyliteAstLoadOption *option =
+            mylite_ast_load_statement_view_option_at(load_statement, j);
+        printf("    load_option[%zu] span=%zu..%zu value_kind=%s name_len=%zu "
+               "name=",
+               j, mylite_ast_load_option_view_start(option),
+               mylite_ast_load_option_view_end(option),
+               mylite_load_option_value_kind_name(
+                   mylite_ast_load_option_view_value_kind(option)),
+               mylite_ast_load_option_view_name_value_length(option));
+        const char *name = mylite_ast_load_option_view_name_value(option);
+        if (name == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(
+              name, mylite_ast_load_option_view_name_value_length(option));
+        }
+        fputc('\n', stdout);
+        const MyliteAstExpression *expression =
+            mylite_ast_load_option_view_value_expression(option);
+        if (expression != NULL) {
+          dump_expression_tree(expression, 3);
+        }
       }
     }
     if (insert_statement != NULL) {

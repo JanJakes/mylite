@@ -378,6 +378,25 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t flush_statement_target_wildcards = 0;
   size_t flush_statement_plugins = 0;
   size_t flush_statement_plugin_name_values = 0;
+  size_t load_statement_views = 0;
+  size_t load_statement_data_forms = 0;
+  size_t load_statement_xml_forms = 0;
+  size_t load_statement_local_flags = 0;
+  size_t load_statement_file_values = 0;
+  size_t load_statement_table_name_values = 0;
+  size_t load_statement_field_clauses = 0;
+  size_t load_statement_line_clauses = 0;
+  size_t load_statement_ignore_rows = 0;
+  size_t load_statement_row_tags = 0;
+  size_t load_statement_items = 0;
+  size_t load_statement_item_values = 0;
+  size_t load_statement_assignments = 0;
+  size_t load_statement_assignment_expressions = 0;
+  size_t load_statement_options = 0;
+  size_t load_statement_option_values = 0;
+  size_t load_statement_expression_tree_nodes = 0;
+  size_t load_statement_expression_tree_operators = 0;
+  size_t load_statement_expression_tree_leaf_values = 0;
   size_t rename_table_views = 0;
   size_t rename_table_pairs = 0;
   size_t set_statement_views = 0;
@@ -1937,6 +1956,92 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                 }
               }
             }
+            const MyliteAstLoadStatement *load_statement =
+                mylite_ast_load_statement_view(ast, i);
+            if (load_statement != NULL) {
+              load_statement_views++;
+              switch (mylite_ast_load_statement_view_kind(load_statement)) {
+                case MYLITE_LOAD_STATEMENT_DATA:
+                  load_statement_data_forms++;
+                  break;
+                case MYLITE_LOAD_STATEMENT_XML:
+                  load_statement_xml_forms++;
+                  break;
+                default:
+                  break;
+              }
+              if (mylite_ast_load_statement_view_has_local(load_statement)) {
+                load_statement_local_flags++;
+              }
+              if (mylite_ast_load_statement_view_file_value(load_statement) !=
+                  NULL) {
+                load_statement_file_values++;
+              }
+              if (mylite_ast_load_statement_view_table_name_value(
+                      load_statement) != NULL) {
+                load_statement_table_name_values++;
+              }
+              if (mylite_ast_load_statement_view_has_fields_clause(
+                      load_statement)) {
+                load_statement_field_clauses++;
+              }
+              if (mylite_ast_load_statement_view_has_lines_clause(
+                      load_statement)) {
+                load_statement_line_clauses++;
+              }
+              if (mylite_ast_load_statement_view_has_ignore_rows(
+                      load_statement)) {
+                load_statement_ignore_rows++;
+              }
+              if (mylite_ast_load_statement_view_row_tag_value(
+                      load_statement) != NULL) {
+                load_statement_row_tags++;
+              }
+              size_t item_count =
+                  mylite_ast_load_statement_view_item_count(load_statement);
+              load_statement_items += item_count;
+              for (size_t j = 0; j < item_count; j++) {
+                const MyliteAstLoadListItem *item =
+                    mylite_ast_load_statement_view_item_at(load_statement, j);
+                if (mylite_ast_load_list_item_view_value(item) != NULL) {
+                  load_statement_item_values++;
+                }
+              }
+              size_t assignment_count =
+                  mylite_ast_load_statement_view_assignment_count(
+                      load_statement);
+              load_statement_assignments += assignment_count;
+              for (size_t j = 0; j < assignment_count; j++) {
+                const MyliteAstLoadAssignment *assignment =
+                    mylite_ast_load_statement_view_assignment_at(
+                        load_statement, j);
+                const MyliteAstExpression *expression =
+                    mylite_ast_load_assignment_view_expression(assignment);
+                if (expression != NULL) {
+                  load_statement_assignment_expressions++;
+                  count_expression_tree(
+                      expression, &load_statement_expression_tree_nodes,
+                      &load_statement_expression_tree_operators,
+                      &load_statement_expression_tree_leaf_values);
+                }
+              }
+              size_t option_count =
+                  mylite_ast_load_statement_view_option_count(load_statement);
+              load_statement_options += option_count;
+              for (size_t j = 0; j < option_count; j++) {
+                const MyliteAstLoadOption *option =
+                    mylite_ast_load_statement_view_option_at(load_statement, j);
+                const MyliteAstExpression *expression =
+                    mylite_ast_load_option_view_value_expression(option);
+                if (expression != NULL) {
+                  load_statement_option_values++;
+                  count_expression_tree(
+                      expression, &load_statement_expression_tree_nodes,
+                      &load_statement_expression_tree_operators,
+                      &load_statement_expression_tree_leaf_values);
+                }
+              }
+            }
             const MyliteAstSetStatement *set_statement =
                 mylite_ast_set_statement_view(ast, i);
             if (set_statement != NULL) {
@@ -2587,6 +2692,25 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_flush_statement_target_wildcards=%.2f "
            "avg_flush_statement_plugins=%.2f "
            "avg_flush_statement_plugin_name_values=%.2f "
+           "avg_load_statement_views=%.2f "
+           "avg_load_statement_data_forms=%.2f "
+           "avg_load_statement_xml_forms=%.2f "
+           "avg_load_statement_local_flags=%.2f "
+           "avg_load_statement_file_values=%.2f "
+           "avg_load_statement_table_name_values=%.2f "
+           "avg_load_statement_field_clauses=%.2f "
+           "avg_load_statement_line_clauses=%.2f "
+           "avg_load_statement_ignore_rows=%.2f "
+           "avg_load_statement_row_tags=%.2f "
+           "avg_load_statement_items=%.2f "
+           "avg_load_statement_item_values=%.2f "
+           "avg_load_statement_assignments=%.2f "
+           "avg_load_statement_assignment_expressions=%.2f "
+           "avg_load_statement_options=%.2f "
+           "avg_load_statement_option_values=%.2f "
+           "avg_load_statement_expression_tree_nodes=%.2f "
+           "avg_load_statement_expression_tree_operators=%.2f "
+           "avg_load_statement_expression_tree_leaf_values=%.2f "
            "avg_set_statement_views=%.2f "
            "avg_set_statement_assignments=%.2f "
            "avg_set_assignment_name_values=%.2f "
@@ -2982,6 +3106,26 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)flush_statement_target_wildcards / (double)parsed,
            (double)flush_statement_plugins / (double)parsed,
            (double)flush_statement_plugin_name_values / (double)parsed,
+           (double)load_statement_views / (double)parsed,
+           (double)load_statement_data_forms / (double)parsed,
+           (double)load_statement_xml_forms / (double)parsed,
+           (double)load_statement_local_flags / (double)parsed,
+           (double)load_statement_file_values / (double)parsed,
+           (double)load_statement_table_name_values / (double)parsed,
+           (double)load_statement_field_clauses / (double)parsed,
+           (double)load_statement_line_clauses / (double)parsed,
+           (double)load_statement_ignore_rows / (double)parsed,
+           (double)load_statement_row_tags / (double)parsed,
+           (double)load_statement_items / (double)parsed,
+           (double)load_statement_item_values / (double)parsed,
+           (double)load_statement_assignments / (double)parsed,
+           (double)load_statement_assignment_expressions / (double)parsed,
+           (double)load_statement_options / (double)parsed,
+           (double)load_statement_option_values / (double)parsed,
+           (double)load_statement_expression_tree_nodes / (double)parsed,
+           (double)load_statement_expression_tree_operators / (double)parsed,
+           (double)load_statement_expression_tree_leaf_values /
+               (double)parsed,
            (double)set_statement_views / (double)parsed,
            (double)set_statement_assignments / (double)parsed,
            (double)set_assignment_name_values / (double)parsed,

@@ -208,6 +208,7 @@ static int expect_lock_statement_view(void);
 static int expect_table_maintenance_statement_view(void);
 static int expect_kill_statement_view(void);
 static int expect_flush_statement_view(void);
+static int expect_load_statement_view(void);
 static int expect_call_statement_view(void);
 static int expect_do_statement_view(void);
 static int expect_delete_statement_view(void);
@@ -830,6 +831,7 @@ int main(void) {
   failures += expect_table_maintenance_statement_view();
   failures += expect_kill_statement_view();
   failures += expect_flush_statement_view();
+  failures += expect_load_statement_view();
   failures += expect_call_statement_view();
   failures += expect_do_statement_view();
   failures += expect_delete_statement_view();
@@ -4844,6 +4846,191 @@ static int expect_flush_statement_view(void) {
             mylite_ast_flush_plugin_view_name_value_length(plugin),
             "plugin`b")) {
       fprintf(stderr, "FLUSH TIDB PLUGINS view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+  return failed;
+}
+
+static int expect_load_statement_view(void) {
+  int failed = 0;
+  {
+    const char *sql =
+        "LOAD DATA LOW_PRIORITY LOCAL INFILE 'file.csv' FORMAT 'csv' "
+        "REPLACE INTO TABLE `db``x`.`t``y` CHARACTER SET utf8mb4 "
+        "FIELDS TERMINATED BY ',' LINES TERMINATED BY 'x' IGNORE 2 LINES "
+        "(`c``1`, @v) SET c2 = @v WITH thread=4";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "LOAD DATA view parse failed: status=%s offset=%zu token=%d "
+              "message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+    const MyliteAstLoadStatement *view =
+        mylite_ast_load_statement_view(ast, 0);
+    const MyliteAstLoadListItem *first =
+        mylite_ast_load_statement_view_item_at(view, 0);
+    const MyliteAstLoadListItem *second =
+        mylite_ast_load_statement_view_item_at(view, 1);
+    const MyliteAstLoadAssignment *assignment =
+        mylite_ast_load_statement_view_assignment_at(view, 0);
+    const MyliteAstLoadOption *option =
+        mylite_ast_load_statement_view_option_at(view, 0);
+    if (view == NULL ||
+        mylite_ast_load_statement_view_kind(view) !=
+            MYLITE_LOAD_STATEMENT_DATA ||
+        mylite_ast_load_statement_view_duplicate_kind(view) !=
+            MYLITE_LOAD_DUPLICATE_REPLACE ||
+        !mylite_ast_load_statement_view_has_low_priority(view) ||
+        !mylite_ast_load_statement_view_has_local(view) ||
+        !mylite_ast_load_statement_view_has_fields_clause(view) ||
+        !mylite_ast_load_statement_view_has_lines_clause(view) ||
+        !mylite_ast_load_statement_view_has_ignore_rows(view) ||
+        mylite_ast_load_statement_view_ignore_rows(view) != 2 ||
+        mylite_ast_load_statement_view_item_count(view) != 2 ||
+        mylite_ast_load_statement_view_assignment_count(view) != 1 ||
+        mylite_ast_load_statement_view_option_count(view) != 1 ||
+        !value_matches_when_expected(
+            mylite_ast_load_statement_view_file_value(view),
+            mylite_ast_load_statement_view_file_value_length(view),
+            "file.csv") ||
+        !value_matches_when_expected(
+            mylite_ast_load_statement_view_format_value(view),
+            mylite_ast_load_statement_view_format_value_length(view), "csv") ||
+        !value_matches_when_expected(
+            mylite_ast_load_statement_view_table_schema_value(view),
+            mylite_ast_load_statement_view_table_schema_value_length(view),
+            "db`x") ||
+        !value_matches_when_expected(
+            mylite_ast_load_statement_view_table_name_value(view),
+            mylite_ast_load_statement_view_table_name_value_length(view),
+            "t`y") ||
+        !value_matches_when_expected(
+            mylite_ast_load_statement_view_charset_value(view),
+            mylite_ast_load_statement_view_charset_value_length(view),
+            "utf8mb4") ||
+        !value_matches_when_expected(
+            mylite_ast_load_statement_view_field_terminated_value(view),
+            mylite_ast_load_statement_view_field_terminated_value_length(view),
+            ",") ||
+        !value_matches_when_expected(
+            mylite_ast_load_statement_view_line_terminated_value(view),
+            mylite_ast_load_statement_view_line_terminated_value_length(view),
+            "x") ||
+        first == NULL ||
+        mylite_ast_load_list_item_view_kind(first) !=
+            MYLITE_LOAD_LIST_ITEM_COLUMN ||
+        !value_matches_when_expected(
+            mylite_ast_load_list_item_view_value(first),
+            mylite_ast_load_list_item_view_value_length(first), "c`1") ||
+        second == NULL ||
+        mylite_ast_load_list_item_view_kind(second) !=
+            MYLITE_LOAD_LIST_ITEM_USER_VARIABLE ||
+        !value_matches_when_expected(
+            mylite_ast_load_list_item_view_value(second),
+            mylite_ast_load_list_item_view_value_length(second), "v") ||
+        assignment == NULL ||
+        !value_matches_when_expected(
+            mylite_ast_load_assignment_view_column_value(assignment),
+            mylite_ast_load_assignment_view_column_value_length(assignment),
+            "c2") ||
+        mylite_ast_load_assignment_view_expression(assignment) == NULL ||
+        option == NULL ||
+        !value_matches_when_expected(
+            mylite_ast_load_option_view_name_value(option),
+            mylite_ast_load_option_view_name_value_length(option), "thread") ||
+        mylite_ast_load_option_view_value_kind(option) !=
+            MYLITE_LOAD_OPTION_VALUE_SIGNED_LITERAL ||
+        mylite_ast_load_option_view_value_expression(option) == NULL) {
+      fprintf(stderr, "LOAD DATA view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql =
+        "LOAD DATA INFILE 'file.csv' INTO TABLE t COLUMNS ESCAPED BY 'e' "
+        "DEFINED NULL BY 'NULL' OPTIONALLY ENCLOSED";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "LOAD DATA COLUMNS view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    const MyliteAstLoadStatement *view =
+        mylite_ast_load_statement_view(ast, 0);
+    if (view == NULL ||
+        !mylite_ast_load_statement_view_uses_columns_keyword(view) ||
+        !value_matches_when_expected(
+            mylite_ast_load_statement_view_field_escaped_value(view),
+            mylite_ast_load_statement_view_field_escaped_value_length(view),
+            "e") ||
+        !value_matches_when_expected(
+            mylite_ast_load_statement_view_field_defined_null_value(view),
+            mylite_ast_load_statement_view_field_defined_null_value_length(view),
+            "NULL") ||
+        !mylite_ast_load_statement_view_field_defined_null_is_optionally_enclosed(
+            view)) {
+      fprintf(stderr, "LOAD DATA COLUMNS view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql =
+        "LOAD XML LOW_PRIORITY LOCAL INFILE 'x.xml' IGNORE INTO TABLE db1.t1 "
+        "CHARACTER SET utf8mb4 ROWS IDENTIFIED BY '<row>' IGNORE 2 ROWS "
+        "(c1, @v) SET c2 := @v";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "LOAD XML view parse failed: status=%s offset=%zu token=%d "
+              "message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    const MyliteAstLoadStatement *view =
+        mylite_ast_load_statement_view(ast, 0);
+    const MyliteAstLoadAssignment *assignment =
+        mylite_ast_load_statement_view_assignment_at(view, 0);
+    if (view == NULL ||
+        mylite_ast_load_statement_view_kind(view) !=
+            MYLITE_LOAD_STATEMENT_XML ||
+        mylite_ast_load_statement_view_duplicate_kind(view) !=
+            MYLITE_LOAD_DUPLICATE_IGNORE ||
+        !mylite_ast_load_statement_view_has_low_priority(view) ||
+        !mylite_ast_load_statement_view_has_local(view) ||
+        !mylite_ast_load_statement_view_has_ignore_rows(view) ||
+        mylite_ast_load_statement_view_ignore_rows(view) != 2 ||
+        mylite_ast_load_statement_view_item_count(view) != 2 ||
+        mylite_ast_load_statement_view_assignment_count(view) != 1 ||
+        mylite_ast_load_statement_view_option_count(view) != 0 ||
+        !value_matches_when_expected(
+            mylite_ast_load_statement_view_file_value(view),
+            mylite_ast_load_statement_view_file_value_length(view), "x.xml") ||
+        !value_matches_when_expected(
+            mylite_ast_load_statement_view_row_tag_value(view),
+            mylite_ast_load_statement_view_row_tag_value_length(view),
+            "<row>") ||
+        assignment == NULL ||
+        mylite_ast_load_assignment_view_expression(assignment) == NULL) {
+      fprintf(stderr, "LOAD XML view failed: %s\n", sql);
       failed = 1;
     }
     mylite_ast_free(ast);

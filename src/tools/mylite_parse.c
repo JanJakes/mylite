@@ -3186,6 +3186,11 @@ static void dump_semantic_node(const MyliteSemanticAstNode *node,
                mylite_semantic_ast_node_target_kind(node)),
            mylite_statement_target_role_name(
                mylite_semantic_ast_node_target_role(node)));
+  } else if (kind == MYLITE_SEMANTIC_NODE_QUERY) {
+    printf(" query_blocks=%zu has_with=%d has_set_operation=%d",
+           mylite_semantic_ast_node_query_block_count(node),
+           mylite_semantic_ast_node_query_has_with_clause(node),
+           mylite_semantic_ast_node_query_has_set_operation(node));
   } else if (kind == MYLITE_SEMANTIC_NODE_DESCRIPTOR) {
     printf(" descriptor_kind=%s",
            mylite_semantic_descriptor_kind_name(
@@ -3258,6 +3263,10 @@ static const char *semantic_node_kind_name(MyliteSemanticNodeKind kind) {
     return "data_type_element";
   case MYLITE_SEMANTIC_NODE_DATA_TYPE_ATTRIBUTE:
     return "data_type_attribute";
+  case MYLITE_SEMANTIC_NODE_QUERY:
+    return "query";
+  case MYLITE_SEMANTIC_NODE_TABLE_REFERENCE:
+    return "table_reference";
   }
   return "unknown";
 }

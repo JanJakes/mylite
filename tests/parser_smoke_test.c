@@ -154,6 +154,8 @@ typedef struct ExpectedCreateTableOption {
 
 typedef struct SemanticCounts {
   size_t targets;
+  size_t queries;
+  size_t table_references;
   size_t descriptors;
   size_t clauses;
   size_t data_types;
@@ -250,6 +252,8 @@ static const MyliteSemanticAstNode *first_semantic_child_with_kind(
     const MyliteSemanticAstNode *node, MyliteSemanticNodeKind kind);
 static const MyliteSemanticAstNode *first_semantic_child_with_descriptor_kind(
     const MyliteSemanticAstNode *node, MyliteSemanticDescriptorKind kind);
+static const MyliteSemanticAstNode *first_semantic_child_with_clause_kind(
+    const MyliteSemanticAstNode *node, MyliteSemanticClauseKind kind);
 static int span_matches(const char *sql, size_t start, size_t end,
                         const char *expected);
 static int span_matches_when_expected(const char *sql, size_t start, size_t end,
@@ -7518,6 +7522,96 @@ static int expect_semantic_ast_materialization(void) {
   }
   mylite_semantic_ast_free(semantic_ast);
 
+  const char *query_sql =
+      "SELECT a AS aa FROM t WHERE a > 1 GROUP BY a HAVING a < 10 "
+      "ORDER BY aa LIMIT 1 FOR UPDATE";
+  semantic_ast = NULL;
+  status = mylite_parse_sql_semantic_ast(query_sql, &semantic_ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "semantic AST query parse failed: status=%s offset=%zu token=%d "
+            "message=%s\n",
+            mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return failed + 1;
+  }
+
+  root = mylite_semantic_ast_root(semantic_ast);
+  statement = mylite_semantic_ast_node_child_at(root, 0);
+  const MyliteSemanticAstNode *query =
+      first_semantic_child_with_kind(statement, MYLITE_SEMANTIC_NODE_QUERY);
+  const MyliteSemanticAstNode *query_projection =
+      first_semantic_child_with_descriptor_kind(
+          query, MYLITE_SEMANTIC_DESCRIPTOR_PROJECTION);
+  const MyliteSemanticAstNode *direct_projection =
+      first_semantic_child_with_descriptor_kind(
+          statement, MYLITE_SEMANTIC_DESCRIPTOR_PROJECTION);
+  const MyliteSemanticAstNode *direct_clause =
+      first_semantic_child_with_kind(statement, MYLITE_SEMANTIC_NODE_CLAUSE);
+  const MyliteSemanticAstNode *from_clause =
+      first_semantic_child_with_clause_kind(query, MYLITE_SEMANTIC_CLAUSE_FROM);
+  const MyliteSemanticAstNode *table_reference =
+      mylite_semantic_ast_node_child_at(from_clause, 0);
+  const MyliteSemanticAstNode *where_clause =
+      first_semantic_child_with_clause_kind(query, MYLITE_SEMANTIC_CLAUSE_WHERE);
+  const MyliteSemanticAstNode *group_by_clause =
+      first_semantic_child_with_clause_kind(query,
+                                           MYLITE_SEMANTIC_CLAUSE_GROUP_BY);
+  const MyliteSemanticAstNode *having_clause =
+      first_semantic_child_with_clause_kind(query,
+                                           MYLITE_SEMANTIC_CLAUSE_HAVING);
+  const MyliteSemanticAstNode *order_by_clause =
+      first_semantic_child_with_clause_kind(query,
+                                           MYLITE_SEMANTIC_CLAUSE_ORDER_BY);
+  const MyliteSemanticAstNode *limit_clause =
+      first_semantic_child_with_clause_kind(query, MYLITE_SEMANTIC_CLAUSE_LIMIT);
+  const MyliteSemanticAstNode *locking_clause =
+      first_semantic_child_with_clause_kind(query,
+                                           MYLITE_SEMANTIC_CLAUSE_LOCKING);
+  SemanticCounts query_counts = {0};
+  count_semantic_nodes(root, &query_counts);
+  if (statement == NULL ||
+      mylite_semantic_ast_node_statement_kind(statement) !=
+          MYLITE_STATEMENT_SELECT ||
+      query == NULL ||
+      mylite_semantic_ast_node_query_block_count(query) != 1 ||
+      mylite_semantic_ast_node_query_has_with_clause(query) != 0 ||
+      mylite_semantic_ast_node_query_has_set_operation(query) != 0 ||
+      query_projection == NULL ||
+      !value_matches_when_expected(
+          mylite_semantic_ast_node_value(query_projection),
+          mylite_semantic_ast_node_value_length(query_projection), "aa") ||
+      direct_projection != NULL || direct_clause != NULL ||
+      from_clause == NULL ||
+      mylite_semantic_ast_node_child_count(from_clause) != 1 ||
+      table_reference == NULL ||
+      mylite_semantic_ast_node_kind(table_reference) !=
+          MYLITE_SEMANTIC_NODE_TABLE_REFERENCE ||
+      !span_matches(
+          query_sql, mylite_semantic_ast_node_start(table_reference),
+          mylite_semantic_ast_node_end(table_reference), "t") ||
+      where_clause == NULL ||
+      mylite_semantic_ast_node_child_count(where_clause) != 1 ||
+      group_by_clause == NULL || having_clause == NULL ||
+      mylite_semantic_ast_node_child_count(having_clause) != 1 ||
+      order_by_clause == NULL || limit_clause == NULL ||
+      locking_clause == NULL || query_counts.queries != 1 ||
+      query_counts.table_references != 1 || query_counts.descriptors != 1 ||
+      query_counts.clauses != 7 || query_counts.expressions < 5 ||
+      query_counts.operators < 2 || query_counts.leaf_values < 5) {
+    fprintf(stderr,
+            "semantic AST query shape mismatch: nodes=%zu queries=%zu "
+            "table_refs=%zu descriptors=%zu clauses=%zu expressions=%zu "
+            "operators=%zu leaf_values=%zu\n",
+            mylite_semantic_ast_node_count(semantic_ast),
+            query_counts.queries, query_counts.table_references,
+            query_counts.descriptors, query_counts.clauses,
+            query_counts.expressions, query_counts.operators,
+            query_counts.leaf_values);
+    failed = 1;
+  }
+  mylite_semantic_ast_free(semantic_ast);
+
   const char *ddl_sql =
       "CREATE TABLE t ("
       "a INT DEFAULT (1 + 2), "
@@ -7698,7 +7792,7 @@ static int expect_semantic_ast_materialization(void) {
   mylite_semantic_ast_free(semantic_ast);
 
   const ExpectedSemanticClause select_clauses[] = {
-      {MYLITE_SEMANTIC_CLAUSE_FROM, 0},
+      {MYLITE_SEMANTIC_CLAUSE_FROM, 1},
       {MYLITE_SEMANTIC_CLAUSE_WHERE, 1},
       {MYLITE_SEMANTIC_CLAUSE_GROUP_BY, 0},
       {MYLITE_SEMANTIC_CLAUSE_HAVING, 1},
@@ -7709,7 +7803,7 @@ static int expect_semantic_ast_materialization(void) {
       select_clauses, sizeof(select_clauses) / sizeof(select_clauses[0]));
 
   const ExpectedSemanticClause select_structural_clauses[] = {
-      {MYLITE_SEMANTIC_CLAUSE_FROM, 0},
+      {MYLITE_SEMANTIC_CLAUSE_FROM, 1},
       {MYLITE_SEMANTIC_CLAUSE_ORDER_BY, 0},
       {MYLITE_SEMANTIC_CLAUSE_LIMIT, 0},
       {MYLITE_SEMANTIC_CLAUSE_LOCKING, 0},
@@ -7798,16 +7892,19 @@ static int expect_semantic_clauses(const char *label, const char *sql,
       mylite_semantic_ast_node_child_at(root, 0);
   const MyliteSemanticAstNode *direct_expression =
       first_semantic_child_with_kind(statement, MYLITE_SEMANTIC_NODE_EXPRESSION);
+  const MyliteSemanticAstNode *query =
+      first_semantic_child_with_kind(statement, MYLITE_SEMANTIC_NODE_QUERY);
+  const MyliteSemanticAstNode *clause_parent = query == NULL ? statement : query;
   SemanticCounts counts = {0};
   count_semantic_nodes(root, &counts);
 
   int failed = 0;
   size_t clause_index = 0;
-  for (size_t i = 0; statement != NULL &&
-                     i < mylite_semantic_ast_node_child_count(statement);
+  for (size_t i = 0; clause_parent != NULL &&
+                     i < mylite_semantic_ast_node_child_count(clause_parent);
        i++) {
     const MyliteSemanticAstNode *child =
-        mylite_semantic_ast_node_child_at(statement, i);
+        mylite_semantic_ast_node_child_at(clause_parent, i);
     if (mylite_semantic_ast_node_kind(child) != MYLITE_SEMANTIC_NODE_CLAUSE) {
       continue;
     }
@@ -7822,7 +7919,9 @@ static int expect_semantic_clauses(const char *label, const char *sql,
     if (clauses[clause_index].child_count > 0 &&
         mylite_semantic_ast_node_kind(
             mylite_semantic_ast_node_child_at(child, 0)) !=
-            MYLITE_SEMANTIC_NODE_EXPRESSION) {
+            (clauses[clause_index].kind == MYLITE_SEMANTIC_CLAUSE_FROM
+                 ? MYLITE_SEMANTIC_NODE_TABLE_REFERENCE
+                 : MYLITE_SEMANTIC_NODE_EXPRESSION)) {
       failed = 1;
       break;
     }
@@ -7852,6 +7951,13 @@ static void count_semantic_nodes(const MyliteSemanticAstNode *node,
   }
   if (mylite_semantic_ast_node_kind(node) == MYLITE_SEMANTIC_NODE_TARGET) {
     counts->targets++;
+  }
+  if (mylite_semantic_ast_node_kind(node) == MYLITE_SEMANTIC_NODE_QUERY) {
+    counts->queries++;
+  }
+  if (mylite_semantic_ast_node_kind(node) ==
+      MYLITE_SEMANTIC_NODE_TABLE_REFERENCE) {
+    counts->table_references++;
   }
   if (mylite_semantic_ast_node_kind(node) == MYLITE_SEMANTIC_NODE_DESCRIPTOR) {
     counts->descriptors++;
@@ -7914,6 +8020,22 @@ static const MyliteSemanticAstNode *first_semantic_child_with_descriptor_kind(
     if (mylite_semantic_ast_node_kind(child) ==
             MYLITE_SEMANTIC_NODE_DESCRIPTOR &&
         mylite_semantic_ast_node_descriptor_kind(child) == kind) {
+      return child;
+    }
+  }
+  return NULL;
+}
+
+static const MyliteSemanticAstNode *first_semantic_child_with_clause_kind(
+    const MyliteSemanticAstNode *node, MyliteSemanticClauseKind kind) {
+  if (node == NULL) {
+    return NULL;
+  }
+  for (size_t i = 0; i < mylite_semantic_ast_node_child_count(node); i++) {
+    const MyliteSemanticAstNode *child =
+        mylite_semantic_ast_node_child_at(node, i);
+    if (mylite_semantic_ast_node_kind(child) == MYLITE_SEMANTIC_NODE_CLAUSE &&
+        mylite_semantic_ast_node_clause_kind(child) == kind) {
       return child;
     }
   }

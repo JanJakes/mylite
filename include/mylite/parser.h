@@ -118,7 +118,9 @@ typedef enum MyliteSemanticNodeKind {
   MYLITE_SEMANTIC_NODE_CLAUSE = 6,
   MYLITE_SEMANTIC_NODE_DATA_TYPE = 7,
   MYLITE_SEMANTIC_NODE_DATA_TYPE_ELEMENT = 8,
-  MYLITE_SEMANTIC_NODE_DATA_TYPE_ATTRIBUTE = 9
+  MYLITE_SEMANTIC_NODE_DATA_TYPE_ATTRIBUTE = 9,
+  MYLITE_SEMANTIC_NODE_QUERY = 10,
+  MYLITE_SEMANTIC_NODE_TABLE_REFERENCE = 11
 } MyliteSemanticNodeKind;
 
 typedef enum MyliteSemanticDataTypeAttributeKind {
@@ -1171,6 +1173,12 @@ MyliteStatementKind mylite_semantic_ast_node_statement_kind(
 MyliteStatementTargetKind mylite_semantic_ast_node_target_kind(
     const MyliteSemanticAstNode *node);
 MyliteStatementTargetRole mylite_semantic_ast_node_target_role(
+    const MyliteSemanticAstNode *node);
+size_t mylite_semantic_ast_node_query_block_count(
+    const MyliteSemanticAstNode *node);
+int mylite_semantic_ast_node_query_has_with_clause(
+    const MyliteSemanticAstNode *node);
+int mylite_semantic_ast_node_query_has_set_operation(
     const MyliteSemanticAstNode *node);
 MyliteSemanticClauseKind mylite_semantic_ast_node_clause_kind(
     const MyliteSemanticAstNode *node);

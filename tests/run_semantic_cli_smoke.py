@@ -54,6 +54,9 @@ def main() -> int:
     required = (
         "semantic_statements=1",
         "statement_kind=select",
+        "semantic kind=query",
+        "query_blocks=1",
+        "semantic kind=table_reference",
         "semantic kind=clause",
         "clause_kind=from",
         "clause_kind=where",

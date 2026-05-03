@@ -1,5 +1,7 @@
 #include "mylite_expression.h"
 
+#include <mylite/mylite.h>
+
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
@@ -53,6 +55,20 @@ enum {
     MYLITE_EXPRESSION_IPV4_SECOND_OCTET_SHIFT = 16,
     MYLITE_EXPRESSION_IPV4_THIRD_OCTET_SHIFT = 8,
     MYLITE_EXPRESSION_IPV4_NTOA_BUFFER_SIZE = 16,
+    MYLITE_EXPRESSION_UUID_TEXT_HEX_LENGTH = 32,
+    MYLITE_EXPRESSION_UUID_CANONICAL_TEXT_LENGTH = 36,
+    MYLITE_EXPRESSION_UUID_BRACED_TEXT_LENGTH = 38,
+    MYLITE_EXPRESSION_UUID_BINARY_LENGTH = 16,
+    MYLITE_EXPRESSION_UUID_FIRST_DASH = 8,
+    MYLITE_EXPRESSION_UUID_SECOND_DASH = 13,
+    MYLITE_EXPRESSION_UUID_THIRD_DASH = 18,
+    MYLITE_EXPRESSION_UUID_FOURTH_DASH = 23,
+    MYLITE_EXPRESSION_UUID_TIME_LOW_OFFSET = 0,
+    MYLITE_EXPRESSION_UUID_TIME_MID_OFFSET = 4,
+    MYLITE_EXPRESSION_UUID_TIME_HIGH_OFFSET = 6,
+    MYLITE_EXPRESSION_UUID_REST_OFFSET = 8,
+    MYLITE_EXPRESSION_UUID_TIME_LOW_LENGTH = 4,
+    MYLITE_EXPRESSION_UUID_TIME_FIELD_LENGTH = 2,
     MYLITE_EXPRESSION_CHAR_VALUE_BYTES = 4,
     MYLITE_EXPRESSION_CHAR_SHIFT_8 = 8,
     MYLITE_EXPRESSION_CHAR_SHIFT_16 = 16,
@@ -311,6 +327,9 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_INET_ATON = 61,
     MYLITE_SCALAR_FUNCTION_INET_NTOA = 62,
     MYLITE_SCALAR_FUNCTION_CRC32 = 63,
+    MYLITE_SCALAR_FUNCTION_IS_UUID = 64,
+    MYLITE_SCALAR_FUNCTION_UUID_TO_BIN = 65,
+    MYLITE_SCALAR_FUNCTION_BIN_TO_UUID = 66,
 };
 
 static int eval_node(const struct mylite_sql_ast_node *node,
@@ -678,6 +697,40 @@ append_inet_ntoa_negative_integer_span_warning(struct mylite_expression_warnings
 static int append_inet_ntoa_range_text_warning(struct mylite_expression_warnings *warnings,
                                                const char *text);
 static int set_inet_ntoa_result(uint32_t address, struct mylite_expression_value *out_value);
+static int eval_is_uuid_function(const struct mylite_sql_ast_node *arguments,
+                                 const struct mylite_expression_eval_context *context,
+                                 struct mylite_expression_warnings *warnings,
+                                 struct mylite_expression_value *out_value);
+static int eval_uuid_to_bin_function(const struct mylite_sql_ast_node *arguments,
+                                     const struct mylite_expression_eval_context *context,
+                                     struct mylite_expression_warnings *warnings,
+                                     struct mylite_expression_value *out_value);
+static int eval_bin_to_uuid_function(const struct mylite_sql_ast_node *arguments,
+                                     const struct mylite_expression_eval_context *context,
+                                     struct mylite_expression_warnings *warnings,
+                                     struct mylite_expression_value *out_value);
+static int eval_uuid_first_argument(const struct mylite_sql_ast_node *argument,
+                                    const struct mylite_expression_eval_context *context,
+                                    struct mylite_expression_warnings *warnings,
+                                    struct mylite_expression_value *out_value, char **out_text,
+                                    size_t *out_length);
+static int eval_uuid_swap_flag(const struct mylite_sql_ast_node *arguments,
+                               const struct mylite_expression_eval_context *context,
+                               struct mylite_expression_warnings *warnings, bool *out_swap);
+static bool parse_uuid_text(const char *text, size_t text_length,
+                            unsigned char out_bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH]);
+static bool parse_uuid_unbraced_text(const char *text, size_t text_length,
+                                     unsigned char out_bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH]);
+static bool uuid_canonical_dash_position(size_t index);
+static void swap_uuid_time_parts(unsigned char bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH]);
+static void unswap_uuid_time_parts(unsigned char bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH]);
+static int set_uuid_binary_value(const unsigned char bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH],
+                                 struct mylite_expression_value *out_value);
+static int set_uuid_text_value(const unsigned char bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH],
+                               struct mylite_expression_value *out_value);
+static int append_uuid_incorrect_string_error(struct mylite_expression_warnings *warnings,
+                                              const char *function_name, const char *text,
+                                              size_t text_length);
 static int eval_bin_oct_function(const struct mylite_sql_ast_node *argument, uint64_t to_base,
                                  const struct mylite_expression_eval_context *context,
                                  struct mylite_expression_warnings *warnings,
@@ -1163,6 +1216,7 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_CRC32:
     case MYLITE_SCALAR_FUNCTION_INET_ATON:
     case MYLITE_SCALAR_FUNCTION_INET_NTOA:
+    case MYLITE_SCALAR_FUNCTION_IS_UUID:
     case MYLITE_SCALAR_FUNCTION_ABS:
     case MYLITE_SCALAR_FUNCTION_SIGN:
     case MYLITE_SCALAR_FUNCTION_FLOOR:
@@ -1177,6 +1231,9 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_INSTR:
     case MYLITE_SCALAR_FUNCTION_FIND_IN_SET:
         return arity == 2U;
+    case MYLITE_SCALAR_FUNCTION_UUID_TO_BIN:
+    case MYLITE_SCALAR_FUNCTION_BIN_TO_UUID:
+        return arity == 1U || arity == 2U;
     case MYLITE_SCALAR_FUNCTION_INSERT:
         return arity == 4U;
     case MYLITE_SCALAR_FUNCTION_SUBSTRING:
@@ -1977,6 +2034,12 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_inet_aton_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_INET_NTOA:
         return eval_inet_ntoa_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_IS_UUID:
+        return eval_is_uuid_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_UUID_TO_BIN:
+        return eval_uuid_to_bin_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_BIN_TO_UUID:
+        return eval_bin_to_uuid_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_MOD:
         return eval_mod_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_ABS:
@@ -4805,6 +4868,9 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_CRC32:
     case MYLITE_SCALAR_FUNCTION_INET_ATON:
     case MYLITE_SCALAR_FUNCTION_INET_NTOA:
+    case MYLITE_SCALAR_FUNCTION_IS_UUID:
+    case MYLITE_SCALAR_FUNCTION_UUID_TO_BIN:
+    case MYLITE_SCALAR_FUNCTION_BIN_TO_UUID:
         return -1;
     }
     return -1;
@@ -5446,6 +5512,293 @@ static int set_inet_ntoa_result(uint32_t address, struct mylite_expression_value
         return -1;
     }
     return set_text_value(text, (size_t)length, out_value);
+}
+
+static int eval_is_uuid_function(const struct mylite_sql_ast_node *arguments,
+                                 const struct mylite_expression_eval_context *context,
+                                 struct mylite_expression_warnings *warnings,
+                                 struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value value = {0};
+    char *text = NULL;
+    size_t text_length = 0U;
+    unsigned char bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH] = {0};
+    int status = eval_uuid_first_argument(child_at(arguments, 0U), context, warnings, &value, &text,
+                                          &text_length);
+
+    if (status != 0) {
+        return status;
+    }
+    if (is_null(&value)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+    } else {
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = parse_uuid_text(text, text_length, bytes) ? 1 : 0,
+        };
+    }
+    free(text);
+    mylite_expression_value_deinit(&value);
+    return 0;
+}
+
+static int eval_uuid_to_bin_function(const struct mylite_sql_ast_node *arguments,
+                                     const struct mylite_expression_eval_context *context,
+                                     struct mylite_expression_warnings *warnings,
+                                     struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value value = {0};
+    char *text = NULL;
+    size_t text_length = 0U;
+    unsigned char bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH] = {0};
+    bool swap = false;
+    int status = eval_uuid_first_argument(child_at(arguments, 0U), context, warnings, &value, &text,
+                                          &text_length);
+
+    if (status != 0) {
+        return status;
+    }
+    if (is_null(&value)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    if (!parse_uuid_text(text, text_length, bytes)) {
+        status = append_uuid_incorrect_string_error(warnings, "uuid_to_bin", text, text_length);
+        status = status == 0 ? MYLITE_EXEC_ERROR : status;
+        goto cleanup;
+    }
+    status = eval_uuid_swap_flag(arguments, context, warnings, &swap);
+    if (status == 0) {
+        if (swap) {
+            swap_uuid_time_parts(bytes);
+        }
+        status = set_uuid_binary_value(bytes, out_value);
+    }
+
+cleanup:
+    free(text);
+    mylite_expression_value_deinit(&value);
+    return status;
+}
+
+static int eval_bin_to_uuid_function(const struct mylite_sql_ast_node *arguments,
+                                     const struct mylite_expression_eval_context *context,
+                                     struct mylite_expression_warnings *warnings,
+                                     struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value value = {0};
+    char *text = NULL;
+    size_t text_length = 0U;
+    unsigned char bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH] = {0};
+    bool swap = false;
+    int status = eval_uuid_first_argument(child_at(arguments, 0U), context, warnings, &value, &text,
+                                          &text_length);
+
+    if (status != 0) {
+        return status;
+    }
+    if (is_null(&value)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    if (text_length != MYLITE_EXPRESSION_UUID_BINARY_LENGTH) {
+        status = append_uuid_incorrect_string_error(warnings, "bin_to_uuid", text, text_length);
+        status = status == 0 ? MYLITE_EXEC_ERROR : status;
+        goto cleanup;
+    }
+    memcpy(bytes, text, MYLITE_EXPRESSION_UUID_BINARY_LENGTH);
+    status = eval_uuid_swap_flag(arguments, context, warnings, &swap);
+    if (status == 0) {
+        if (swap) {
+            unswap_uuid_time_parts(bytes);
+        }
+        status = set_uuid_text_value(bytes, out_value);
+    }
+
+cleanup:
+    free(text);
+    mylite_expression_value_deinit(&value);
+    return status;
+}
+
+static int eval_uuid_first_argument(const struct mylite_sql_ast_node *argument,
+                                    const struct mylite_expression_eval_context *context,
+                                    struct mylite_expression_warnings *warnings,
+                                    struct mylite_expression_value *out_value, char **out_text,
+                                    size_t *out_length)
+{
+    int status = eval_node(argument, context, warnings, out_value);
+
+    if (status != 0 || is_null(out_value)) {
+        return status;
+    }
+    return value_to_string_with_length(out_value, out_text, out_length);
+}
+
+static int eval_uuid_swap_flag(const struct mylite_sql_ast_node *arguments,
+                               const struct mylite_expression_eval_context *context,
+                               struct mylite_expression_warnings *warnings, bool *out_swap)
+{
+    const struct mylite_sql_ast_node *flag_argument = child_at(arguments, 1U);
+    struct mylite_expression_value value = {0};
+    int truth = 0;
+    int status = 0;
+
+    if (out_swap == NULL) {
+        return -1;
+    }
+    *out_swap = false;
+    if (flag_argument == NULL) {
+        return 0;
+    }
+
+    status = eval_node(flag_argument, context, warnings, &value);
+    if (status == 0) {
+        status = truth_value(&value, warnings, &truth);
+    }
+    if (status == 0) {
+        *out_swap = truth > 0;
+    }
+    mylite_expression_value_deinit(&value);
+    return status;
+}
+
+static bool parse_uuid_text(const char *text, size_t text_length,
+                            unsigned char out_bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH])
+{
+    if (text == NULL) {
+        return false;
+    }
+    if (text_length == MYLITE_EXPRESSION_UUID_BRACED_TEXT_LENGTH && text[0] == '{' &&
+        text[MYLITE_EXPRESSION_UUID_BRACED_TEXT_LENGTH - 1U] == '}') {
+        return parse_uuid_unbraced_text(text + 1U, MYLITE_EXPRESSION_UUID_CANONICAL_TEXT_LENGTH,
+                                        out_bytes);
+    }
+    return parse_uuid_unbraced_text(text, text_length, out_bytes);
+}
+
+static bool parse_uuid_unbraced_text(const char *text, size_t text_length,
+                                     unsigned char out_bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH])
+{
+    unsigned char bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH] = {0};
+    size_t hex_index = 0U;
+
+    if (text == NULL || (text_length != MYLITE_EXPRESSION_UUID_TEXT_HEX_LENGTH &&
+                         text_length != MYLITE_EXPRESSION_UUID_CANONICAL_TEXT_LENGTH)) {
+        return false;
+    }
+    for (size_t index = 0U; index < text_length; ++index) {
+        int digit = 0;
+
+        if (text_length == MYLITE_EXPRESSION_UUID_CANONICAL_TEXT_LENGTH &&
+            uuid_canonical_dash_position(index)) {
+            if (text[index] != '-') {
+                return false;
+            }
+            continue;
+        }
+        digit = hex_digit_value((unsigned char)text[index]);
+        if (digit < 0 || hex_index >= MYLITE_EXPRESSION_UUID_TEXT_HEX_LENGTH) {
+            return false;
+        }
+        bytes[hex_index / 2U] =
+            (unsigned char)((bytes[hex_index / 2U] << 4U) | (unsigned char)digit);
+        ++hex_index;
+    }
+    if (hex_index != MYLITE_EXPRESSION_UUID_TEXT_HEX_LENGTH) {
+        return false;
+    }
+    if (out_bytes != NULL) {
+        memcpy(out_bytes, bytes, sizeof(bytes));
+    }
+    return true;
+}
+
+static bool uuid_canonical_dash_position(size_t index)
+{
+    return index == MYLITE_EXPRESSION_UUID_FIRST_DASH ||
+           index == MYLITE_EXPRESSION_UUID_SECOND_DASH ||
+           index == MYLITE_EXPRESSION_UUID_THIRD_DASH ||
+           index == MYLITE_EXPRESSION_UUID_FOURTH_DASH;
+}
+
+static void swap_uuid_time_parts(unsigned char bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH])
+{
+    unsigned char copy[MYLITE_EXPRESSION_UUID_BINARY_LENGTH] = {0};
+
+    memcpy(copy, bytes, sizeof(copy));
+    memcpy(bytes + MYLITE_EXPRESSION_UUID_TIME_LOW_OFFSET,
+           copy + MYLITE_EXPRESSION_UUID_TIME_HIGH_OFFSET,
+           MYLITE_EXPRESSION_UUID_TIME_FIELD_LENGTH);
+    memcpy(bytes + MYLITE_EXPRESSION_UUID_TIME_FIELD_LENGTH,
+           copy + MYLITE_EXPRESSION_UUID_TIME_MID_OFFSET, MYLITE_EXPRESSION_UUID_TIME_FIELD_LENGTH);
+    memcpy(bytes + MYLITE_EXPRESSION_UUID_TIME_MID_OFFSET,
+           copy + MYLITE_EXPRESSION_UUID_TIME_LOW_OFFSET, MYLITE_EXPRESSION_UUID_TIME_LOW_LENGTH);
+    memcpy(bytes + MYLITE_EXPRESSION_UUID_REST_OFFSET, copy + MYLITE_EXPRESSION_UUID_REST_OFFSET,
+           MYLITE_EXPRESSION_UUID_BINARY_LENGTH - MYLITE_EXPRESSION_UUID_REST_OFFSET);
+}
+
+static void unswap_uuid_time_parts(unsigned char bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH])
+{
+    unsigned char copy[MYLITE_EXPRESSION_UUID_BINARY_LENGTH] = {0};
+
+    memcpy(copy, bytes, sizeof(copy));
+    memcpy(bytes + MYLITE_EXPRESSION_UUID_TIME_LOW_OFFSET,
+           copy + MYLITE_EXPRESSION_UUID_TIME_MID_OFFSET, MYLITE_EXPRESSION_UUID_TIME_LOW_LENGTH);
+    memcpy(bytes + MYLITE_EXPRESSION_UUID_TIME_MID_OFFSET,
+           copy + MYLITE_EXPRESSION_UUID_TIME_FIELD_LENGTH,
+           MYLITE_EXPRESSION_UUID_TIME_FIELD_LENGTH);
+    memcpy(bytes + MYLITE_EXPRESSION_UUID_TIME_HIGH_OFFSET,
+           copy + MYLITE_EXPRESSION_UUID_TIME_LOW_OFFSET, MYLITE_EXPRESSION_UUID_TIME_FIELD_LENGTH);
+    memcpy(bytes + MYLITE_EXPRESSION_UUID_REST_OFFSET, copy + MYLITE_EXPRESSION_UUID_REST_OFFSET,
+           MYLITE_EXPRESSION_UUID_BINARY_LENGTH - MYLITE_EXPRESSION_UUID_REST_OFFSET);
+}
+
+static int set_uuid_binary_value(const unsigned char bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH],
+                                 struct mylite_expression_value *out_value)
+{
+    return set_text_value((const char *)bytes, MYLITE_EXPRESSION_UUID_BINARY_LENGTH, out_value);
+}
+
+static int set_uuid_text_value(const unsigned char bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH],
+                               struct mylite_expression_value *out_value)
+{
+    static const char digits[] = "0123456789abcdef";
+    char text[MYLITE_EXPRESSION_UUID_CANONICAL_TEXT_LENGTH + 1U];
+    size_t output = 0U;
+
+    for (size_t index = 0U; index < MYLITE_EXPRESSION_UUID_BINARY_LENGTH; ++index) {
+        if (output == MYLITE_EXPRESSION_UUID_FIRST_DASH ||
+            output == MYLITE_EXPRESSION_UUID_SECOND_DASH ||
+            output == MYLITE_EXPRESSION_UUID_THIRD_DASH ||
+            output == MYLITE_EXPRESSION_UUID_FOURTH_DASH) {
+            text[output++] = '-';
+        }
+        text[output++] = digits[bytes[index] >> 4U];
+        text[output++] = digits[bytes[index] & MYLITE_EXPRESSION_HEX_LOW_NIBBLE_MASK];
+    }
+    text[output] = '\0';
+    return set_text_value(text, output, out_value);
+}
+
+static int append_uuid_incorrect_string_error(struct mylite_expression_warnings *warnings,
+                                              const char *function_name, const char *text,
+                                              size_t text_length)
+{
+    char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
+    int preview = text_length > MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
+                      ? MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
+                      : (int)text_length;
+    int length =
+        snprintf(message, sizeof(message), "Incorrect string value: '%.*s' for function %s",
+                 preview, text == NULL ? "" : text, function_name == NULL ? "" : function_name);
+
+    if (length < 0) {
+        return -1;
+    }
+    return mylite_expression_warnings_append_condition(
+        warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, MYLITE_WARNING_INCORRECT_STRING_VALUE,
+        message);
 }
 
 static int eval_bin_oct_function(const struct mylite_sql_ast_node *argument, uint64_t to_base,
@@ -7705,6 +8058,9 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"CRC32", MYLITE_SCALAR_FUNCTION_CRC32},
         {"INET_ATON", MYLITE_SCALAR_FUNCTION_INET_ATON},
         {"INET_NTOA", MYLITE_SCALAR_FUNCTION_INET_NTOA},
+        {"IS_UUID", MYLITE_SCALAR_FUNCTION_IS_UUID},
+        {"UUID_TO_BIN", MYLITE_SCALAR_FUNCTION_UUID_TO_BIN},
+        {"BIN_TO_UUID", MYLITE_SCALAR_FUNCTION_BIN_TO_UUID},
     };
 
     for (size_t index = 0U; index < sizeof(functions) / sizeof(functions[0]); ++index) {
@@ -7770,6 +8126,9 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_CRC32:
     case MYLITE_SCALAR_FUNCTION_INET_ATON:
     case MYLITE_SCALAR_FUNCTION_INET_NTOA:
+    case MYLITE_SCALAR_FUNCTION_IS_UUID:
+    case MYLITE_SCALAR_FUNCTION_UUID_TO_BIN:
+    case MYLITE_SCALAR_FUNCTION_BIN_TO_UUID:
     case MYLITE_SCALAR_FUNCTION_LOCATE:
     case MYLITE_SCALAR_FUNCTION_INSTR:
     case MYLITE_SCALAR_FUNCTION_ABS:

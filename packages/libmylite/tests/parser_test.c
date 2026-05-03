@@ -5184,7 +5184,7 @@ static int test_scalar_function_call_syntax(void)
         string_function_item_count = 15,
         padding_function_item_count = 6,
         quote_function_item_count = 2,
-        list_function_item_count = 16,
+        list_function_item_count = 19,
         coalesce_nested_arg_index = 2,
     };
     struct mylite_sql_parse_result result;
@@ -5410,7 +5410,10 @@ static int test_scalar_function_call_syntax(void)
                           "BIN(12), OCT(12), CONV('a',16,2), "
                           "BIT_COUNT(7), BIT_LENGTH('abc'), cRc32('MySQL'), "
                           "INET_ATON('127.0.0.1'), "
-                          "inet_ntoa(2130706433);",
+                          "inet_ntoa(2130706433), "
+                          "IS_UUID('6ccd780c-baba-1026-9564-5b8c656024db'), "
+                          "Uuid_To_Bin('6ccd780c-baba-1026-9564-5b8c656024db', 1), "
+                          "bin_to_uuid(UNHEX('6CCD780CBABA102695645B8C656024DB'));",
                           MYLITE_SQL_PARSE_OK, &result);
     select_list = child_at(child_at(result.root, 0U), 0U);
     failures +=
@@ -5447,6 +5450,12 @@ static int test_scalar_function_call_syntax(void)
                                      "INET_ATON call");
     failures += expect_function_call(child_at(child_at(select_list, 15U), 0U), "inet_ntoa", 1U,
                                      "INET_NTOA case-insensitive call");
+    failures += expect_function_call(child_at(child_at(select_list, 16U), 0U), "IS_UUID", 1U,
+                                     "IS_UUID call");
+    failures += expect_function_call(child_at(child_at(select_list, 17U), 0U), "Uuid_To_Bin", 2U,
+                                     "UUID_TO_BIN case-insensitive call");
+    failures += expect_function_call(child_at(child_at(select_list, 18U), 0U), "bin_to_uuid", 1U,
+                                     "BIN_TO_UUID case-insensitive call");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT CHAR(65), CHAR(65,66 USING utf8mb4), "

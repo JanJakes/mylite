@@ -35,6 +35,7 @@ In scope for the initial implementation:
   - `TO_BASE64`, `FROM_BASE64`
   - `BIN`, `OCT`
   - `CRC32`
+  - `IS_UUID`, `UUID_TO_BIN`, `BIN_TO_UUID`
 - numeric functions:
   - `ABS`
   - `BIT_COUNT`
@@ -91,7 +92,7 @@ Out of scope for the initial implementation:
   and full collation coercibility beyond the current charset foundation
 - `DATE_FORMAT`, `STR_TO_DATE`, week-numbering functions, named time zones,
   locale-sensitive day/month names, and time-zone table integration
-- `RAND`, `UUID`, `UUID_TO_BIN`, `BIN_TO_UUID`, `SLEEP`, `BENCHMARK`, and other
+- `RAND`, `UUID`, `UUID_SHORT`, `SLEEP`, `BENCHMARK`, and other
   nondeterministic or diagnostic/performance functions not needed for the first
   application batch
 - `DEFAULT(col)`, user variables, system variables, prepared-statement
@@ -128,7 +129,8 @@ by common scalar expressions:
   `docs/specs/string-make-set-function/specs.md` and
   `docs/specs/string-hex-unhex-functions/specs.md` and
   `docs/specs/base64-string-functions/specs.md` and
-  `docs/specs/numeric-base-conversion-functions/specs.md`
+  `docs/specs/numeric-base-conversion-functions/specs.md` and
+  `docs/specs/uuid-conversion-functions/specs.md`
 - numeric functions: `ABS`, `SIGN`, `FLOOR`, `CEIL`, `CEILING`, `MOD`,
   `CONV`, `BIT_COUNT`, `BIT_LENGTH`, `CRC32`, `INET_ATON`, `INET_NTOA`, and `PI`; see
   `docs/specs/numeric-base-conversion-functions/specs.md` and
@@ -164,6 +166,8 @@ CRC-32 checksum values, `CRC32()` string/numeric/NULL/binary-byte conversion,
 exact decimal leading-zero normalization, unsigned checksum metadata,
 IPv4 network-address conversion, short IPv4 forms, invalid IPv4 warnings,
 `INET_NTOA()` bounds and string-integer truncation warnings,
+UUID text validation, UUID string-to-binary and binary-to-string conversion,
+optional UUID time-part swap flags,
 `MOD(..., 0)` warnings, table projection, filters, ordering, update assignment
 expressions, delete predicates, unsupported functions, unsupported arity, and
 selected result metadata.
@@ -194,6 +198,8 @@ mismatches.
   https://dev.mysql.com/doc/refman/8.4/en/comparison-operators.html
 - MySQL 8.4 Reference Manual, Information Functions:
   https://dev.mysql.com/doc/refman/8.4/en/information-functions.html
+- MySQL 8.4 Reference Manual, Miscellaneous Functions:
+  https://dev.mysql.com/doc/refman/8.4/en/miscellaneous-functions.html
 - MySQL 8.4 Reference Manual, Type Conversion in Expression Evaluation:
   https://dev.mysql.com/doc/refman/8.4/en/type-conversion.html
 - MySQL 8.4 Reference Manual, Precision Math Rounding Behavior:

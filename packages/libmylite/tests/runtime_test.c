@@ -250,6 +250,7 @@ static int test_select_integer_literal(void);
 static int test_select_integer_literal_with_semicolon(void);
 static int test_expression_operator_foundation(void);
 static int test_scalar_builtin_functions_execution(void);
+static int test_uuid_scalar_functions(mylite_db *database);
 static int test_inet_ipv4_functions_execution(void);
 static int test_charset_collation_functions_execution(void);
 static int test_session_information_functions_execution(void);
@@ -3910,6 +3911,8 @@ static int test_scalar_builtin_functions_execution(void)
                            crc32_values, 1, "CRC32 scalar values");
     failures += expect_int(mylite_warning_count(database), 0, "CRC32 scalar warning count");
 
+    failures += test_uuid_scalar_functions(database);
+
     failures +=
         expect_select_rows(database,
                            "SELECT LEFT('abcdef',0) AS left_zero, "
@@ -5265,6 +5268,302 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_no_stmt_handle(&stmt, "unsupported pi arity");
 
     mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_uuid_scalar_functions(mylite_db *database)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const struct expected_result_metadata uuid_metadata[] = {
+        {"is_valid", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"uuid_bin", NULL, NULL, NULL, NULL, NULL, 16U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"uuid_text", NULL, NULL, NULL, NULL, NULL, 144U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+    };
+    static const struct expected_result_metadata uuid_latin1_metadata[] = {
+        {"is_valid", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"uuid_bin", NULL, NULL, NULL, NULL, NULL, 16U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"uuid_text", NULL, NULL, NULL, NULL, NULL, 36U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+    };
+    static const char *const uuid_columns[] = {
+        "is_lower",      "is_upper",   "is_nodash",    "is_braced",         "is_braced_nodash",
+        "is_short",      "is_bad_hex", "is_bad_dash",  "is_space",          "is_numeric",
+        "is_null",       "bin_plain",  "bin_upper",    "bin_nodash",        "bin_braced",
+        "bin_swap",      "bin_swap2",  "bin_swap_neg", "bin_swap_null",     "bin_len",
+        "bin_null",      "uuid_text",  "uuid_unswap",  "uuid_wrong_unswap", "uuid_from_char",
+        "uuid_bin_null",
+    };
+    static const char *const uuid_values[] = {
+        "1",
+        "1",
+        "1",
+        "1",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        NULL,
+        "6CCD780CBABA102695645B8C656024DB",
+        "6CCD780CBABA102695645B8C656024DB",
+        "6CCD780CBABA102695645B8C656024DB",
+        "6CCD780CBABA102695645B8C656024DB",
+        "1026BABA6CCD780C95645B8C656024DB",
+        "1026BABA6CCD780C95645B8C656024DB",
+        "1026BABA6CCD780C95645B8C656024DB",
+        "6CCD780CBABA102695645B8C656024DB",
+        "16",
+        NULL,
+        "6ccd780c-baba-1026-9564-5b8c656024db",
+        "6ccd780c-baba-1026-9564-5b8c656024db",
+        "baba1026-780c-6ccd-9564-5b8c656024db",
+        "6ccd780c-baba-1026-9564-5b8c656024db",
+        NULL,
+    };
+    static const char *const uuid_warning_columns[] = {"bad_uuid_flag", "bad_bin_flag",
+                                                       "trunc_uuid_flag", "trunc_bin_flag"};
+    static const char *const uuid_warning_values[] = {
+        "6CCD780CBABA102695645B8C656024DB",
+        "6ccd780c-baba-1026-9564-5b8c656024db",
+        "1026BABA6CCD780C95645B8C656024DB",
+        "baba1026-780c-6ccd-9564-5b8c656024db",
+    };
+    static const char *const uuid_division_warning_columns[] = {"div_uuid_flag", "div_bin_flag"};
+    static const char *const uuid_division_warning_values[] = {
+        "6CCD780CBABA102695645B8C656024DB",
+        "6ccd780c-baba-1026-9564-5b8c656024db",
+    };
+    static const char *const uuid_null_skip_columns[] = {"null_uuid_flag", "null_bin_flag"};
+    static const char *const uuid_null_skip_values[] = {NULL, NULL};
+    static const char *const uuid_site_projection_columns[] = {"id", "valid", "uuid_hex",
+                                                               "uuid_text"};
+    static const char *const uuid_site_projection_values[] = {
+        "1", "1", "6CCD780CBABA102695645B8C656024DB", "6ccd780c-baba-1026-9564-5b8c656024db",
+        "2", "1", "6CCD780CBABA102695645B8C656024DB", "6ccd780c-baba-1026-9564-5b8c656024db",
+    };
+    static const char *const id_column[] = {"id"};
+    static const char *const id_s_n_columns[] = {"id", "s", "n"};
+    static const char *const all_id_values[] = {"1", "2"};
+    static const char *const updated_uuid_values[] = {
+        "1",
+        "6ccd780c-baba-1026-9564-5b8c656024db",
+        "16",
+    };
+    static const char *const uuid_order_values[] = {
+        "2",
+        "6ccd780c-baba-1026-9564-5b8c656024db",
+        "99",
+    };
+    static const char *const uuid_remaining_values[] = {"2"};
+    int failures = 0;
+    mylite_stmt *stmt = NULL;
+
+    failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
+    failures += prepare_sql(database,
+                            "SELECT IS_UUID(NULL) AS is_valid, "
+                            "UUID_TO_BIN(NULL) AS uuid_bin, "
+                            "BIN_TO_UUID(NULL) AS uuid_text",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, uuid_metadata,
+                                       (int)(sizeof(uuid_metadata) / sizeof(uuid_metadata[0])),
+                                       "UUID utf8mb4 metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "UUID utf8mb4 metadata row");
+    failures += expect_int(mylite_warning_count(database), 0, "UUID utf8mb4 metadata warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "UUID utf8mb4 metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "SET NAMES latin1", MYLITE_DONE);
+    failures += prepare_sql(database,
+                            "SELECT IS_UUID(NULL) AS is_valid, "
+                            "UUID_TO_BIN(NULL) AS uuid_bin, "
+                            "BIN_TO_UUID(NULL) AS uuid_text",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, uuid_latin1_metadata,
+        (int)(sizeof(uuid_latin1_metadata) / sizeof(uuid_latin1_metadata[0])),
+        "UUID latin1 metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "UUID latin1 metadata row");
+    failures += expect_int(mylite_warning_count(database), 0, "UUID latin1 metadata warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "UUID latin1 metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
+
+    failures += expect_select_rows(
+        database,
+        "SELECT IS_UUID('6ccd780c-baba-1026-9564-5b8c656024db') AS is_lower, "
+        "IS_UUID('6CCD780C-BABA-1026-9564-5B8C656024DB') AS is_upper, "
+        "IS_UUID('6ccd780cbaba102695645b8c656024db') AS is_nodash, "
+        "IS_UUID('{6ccd780c-baba-1026-9564-5b8c656024db}') AS is_braced, "
+        "IS_UUID('{6ccd780cbaba102695645b8c656024db}') AS is_braced_nodash, "
+        "IS_UUID('6ccd') AS is_short, "
+        "IS_UUID('6ccd780c-baba-1026-9564-5b8c656024dg') AS is_bad_hex, "
+        "IS_UUID('6ccd780c-baba-10269564-5b8c656024db') AS is_bad_dash, "
+        "IS_UUID(' 6ccd780c-baba-1026-9564-5b8c656024db') AS is_space, "
+        "IS_UUID(123) AS is_numeric, "
+        "IS_UUID(NULL) AS is_null, "
+        "HEX(UUID_TO_BIN('6ccd780c-baba-1026-9564-5b8c656024db')) AS bin_plain, "
+        "HEX(UUID_TO_BIN('6CCD780C-BABA-1026-9564-5B8C656024DB')) AS bin_upper, "
+        "HEX(UUID_TO_BIN('6ccd780cbaba102695645b8c656024db')) AS bin_nodash, "
+        "HEX(UUID_TO_BIN('{6ccd780c-baba-1026-9564-5b8c656024db}')) AS bin_braced, "
+        "HEX(UUID_TO_BIN('6ccd780c-baba-1026-9564-5b8c656024db', 1)) AS bin_swap, "
+        "HEX(UUID_TO_BIN('6ccd780c-baba-1026-9564-5b8c656024db', 2)) AS bin_swap2, "
+        "HEX(UUID_TO_BIN('6ccd780c-baba-1026-9564-5b8c656024db', -1)) AS bin_swap_neg, "
+        "HEX(UUID_TO_BIN('6ccd780c-baba-1026-9564-5b8c656024db', NULL)) AS bin_swap_null, "
+        "LENGTH(UUID_TO_BIN('6ccd780c-baba-1026-9564-5b8c656024db')) AS bin_len, "
+        "UUID_TO_BIN(NULL) AS bin_null, "
+        "BIN_TO_UUID(UNHEX('6CCD780CBABA102695645B8C656024DB')) AS uuid_text, "
+        "BIN_TO_UUID(UNHEX('1026BABA6CCD780C95645B8C656024DB'), 1) AS uuid_unswap, "
+        "BIN_TO_UUID(UNHEX('6CCD780CBABA102695645B8C656024DB'), 1) AS uuid_wrong_unswap, "
+        "BIN_TO_UUID(CHAR(108,205,120,12,186,186,16,38,149,100,91,140,101,96,36,219 "
+        "USING binary)) AS uuid_from_char, "
+        "BIN_TO_UUID(NULL) AS uuid_bin_null",
+        uuid_columns, (int)(sizeof(uuid_columns) / sizeof(uuid_columns[0])), uuid_values, 1,
+        "UUID scalar values");
+    failures += expect_int(mylite_warning_count(database), 0, "UUID scalar warning count");
+
+    failures += expect_select_rows(
+        database,
+        "SELECT HEX(UUID_TO_BIN('6ccd780c-baba-1026-9564-5b8c656024db', 'abc')) "
+        "AS bad_uuid_flag, "
+        "BIN_TO_UUID(UNHEX('6CCD780CBABA102695645B8C656024DB'), 'abc') AS bad_bin_flag, "
+        "HEX(UUID_TO_BIN('6ccd780c-baba-1026-9564-5b8c656024db', '1abc')) "
+        "AS trunc_uuid_flag, "
+        "BIN_TO_UUID(UNHEX('6CCD780CBABA102695645B8C656024DB'), '1abc') AS trunc_bin_flag",
+        uuid_warning_columns, (int)(sizeof(uuid_warning_columns) / sizeof(uuid_warning_columns[0])),
+        uuid_warning_values, 1, "UUID string flag warning values");
+    failures += expect_int(mylite_warning_count(database), 4, "UUID string flag warning count");
+    for (int index = 0; index < 4; ++index) {
+        failures +=
+            expect_int((int)mylite_warning_code(database, index),
+                       mysql_warning_truncated_wrong_value, "UUID string flag warning code");
+    }
+
+    failures += expect_select_rows(
+        database,
+        "SELECT HEX(UUID_TO_BIN('6ccd780c-baba-1026-9564-5b8c656024db', MOD(7,0))) "
+        "AS div_uuid_flag, "
+        "BIN_TO_UUID(UNHEX('6CCD780CBABA102695645B8C656024DB'), MOD(7,0)) "
+        "AS div_bin_flag",
+        uuid_division_warning_columns,
+        (int)(sizeof(uuid_division_warning_columns) / sizeof(uuid_division_warning_columns[0])),
+        uuid_division_warning_values, 1, "UUID division flag warning values");
+    failures += expect_int(mylite_warning_count(database), 2, "UUID division flag warning count");
+    for (int index = 0; index < 2; ++index) {
+        failures += expect_int((int)mylite_warning_code(database, index),
+                               mysql_warning_division_by_zero, "UUID division flag warning code");
+    }
+
+    failures += expect_select_rows(
+        database,
+        "SELECT UUID_TO_BIN(NULL, MOD(7,0)) AS null_uuid_flag, "
+        "BIN_TO_UUID(NULL, MOD(7,0)) AS null_bin_flag",
+        uuid_null_skip_columns,
+        (int)(sizeof(uuid_null_skip_columns) / sizeof(uuid_null_skip_columns[0])),
+        uuid_null_skip_values, 1, "UUID null skips flag values");
+    failures += expect_int(mylite_warning_count(database), 0, "UUID null skips flag warning count");
+
+    failures +=
+        expect_prepare_error(database, "SELECT UUID_TO_BIN('not-a-uuid')", MYLITE_EXEC_ERROR,
+                             "Incorrect string value", "UUID_TO_BIN invalid UUID");
+    failures += expect_prepare_error(database, "SELECT UUID_TO_BIN(123)", MYLITE_EXEC_ERROR,
+                                     "Incorrect string value", "UUID_TO_BIN numeric error");
+    failures += expect_prepare_error(database, "SELECT BIN_TO_UUID(UNHEX('00'))", MYLITE_EXEC_ERROR,
+                                     "Incorrect string value", "BIN_TO_UUID short binary");
+
+    failures += execute_sql(database,
+                            "CREATE TABLE uuid_sites "
+                            "(id INT PRIMARY KEY, u VARCHAR(40), n INT)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO uuid_sites VALUES "
+                            "(1,'6ccd780c-baba-1026-9564-5b8c656024db',0),"
+                            "(2,'6CCD780CBABA102695645B8C656024DB',0),"
+                            "(3,'not-a-uuid',0)",
+                            MYLITE_DONE);
+    failures +=
+        expect_select_rows(database,
+                           "SELECT id, IS_UUID(u) AS valid, HEX(UUID_TO_BIN(u)) AS uuid_hex, "
+                           "BIN_TO_UUID(UUID_TO_BIN(u)) AS uuid_text "
+                           "FROM uuid_sites WHERE IS_UUID(u) ORDER BY UUID_TO_BIN(u), id",
+                           uuid_site_projection_columns, 4, uuid_site_projection_values, 2,
+                           "table UUID projection where and order");
+    failures += expect_select_rows(database,
+                                   "SELECT id FROM uuid_sites "
+                                   "WHERE IS_UUID(u) AND BIN_TO_UUID(UUID_TO_BIN(u)) = "
+                                   "'6ccd780c-baba-1026-9564-5b8c656024db' "
+                                   "ORDER BY id",
+                                   id_column, 1, all_id_values, 2, "UUID function where");
+
+    failures += prepare_sql(database,
+                            "UPDATE uuid_sites SET n = 5 "
+                            "WHERE UUID_TO_BIN('not-a-uuid') IS NULL",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "update UUID warning promoted");
+    failures += expect_contains(mylite_error_message(database), "Incorrect string value",
+                                "update UUID warning error");
+    failures += expect_int(mylite_warning_count(database), 1, "update UUID warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_incorrect_string_value, "update UUID warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql_expect_done_affected(database,
+                                                 "UPDATE uuid_sites SET n = LENGTH(UUID_TO_BIN(u)) "
+                                                 "WHERE id = 1 AND BIN_TO_UUID(UUID_TO_BIN(u)) = "
+                                                 "'6ccd780c-baba-1026-9564-5b8c656024db'",
+                                                 1, "update UUID assignment and predicate");
+    failures +=
+        expect_select_rows(database, "SELECT id, u AS s, n FROM uuid_sites WHERE id = 1",
+                           id_s_n_columns, 3, updated_uuid_values, 1, "updated UUID values");
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE uuid_sites SET u = BIN_TO_UUID(UUID_TO_BIN(u)), n = 99 "
+        "WHERE IS_UUID(u) ORDER BY UUID_TO_BIN(u), id DESC LIMIT 1",
+        1, "update UUID order key");
+    failures +=
+        expect_select_rows(database, "SELECT id, u AS s, n FROM uuid_sites WHERE id = 2",
+                           id_s_n_columns, 3, uuid_order_values, 1, "UUID order update values");
+    failures +=
+        execute_sql_expect_done_affected(database, "DELETE FROM uuid_sites WHERE NOT IS_UUID(u)", 1,
+                                         "delete UUID invalid predicate");
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM uuid_sites ORDER BY UUID_TO_BIN(u), id LIMIT 1", 1,
+        "delete UUID order key");
+    failures += expect_select_rows(database, "SELECT id FROM uuid_sites ORDER BY id", id_column, 1,
+                                   uuid_remaining_values, 1, "delete UUID remaining rows");
+
+    failures += prepare_sql(database, "SELECT IS_UUID()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported is_uuid zero arity");
+    failures += prepare_sql(database, "SELECT IS_UUID('a','b')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported is_uuid two arity");
+    failures += prepare_sql(database, "SELECT UUID_TO_BIN()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported uuid_to_bin zero arity");
+    failures += prepare_sql(database, "SELECT UUID_TO_BIN('a','b','c')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported uuid_to_bin three arity");
+    failures += prepare_sql(database, "SELECT BIN_TO_UUID()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported bin_to_uuid zero arity");
+    failures += prepare_sql(database, "SELECT BIN_TO_UUID('a','b','c')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported bin_to_uuid three arity");
+    failures += prepare_sql(database, "SELECT UUID()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported uuid generation");
+    failures += prepare_sql(database, "SELECT UUID_SHORT()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported uuid_short generation");
+
     // NOLINTEND(readability-magic-numbers)
     return failures;
 }

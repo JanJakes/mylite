@@ -162,6 +162,8 @@ static const uint64_t mylite_mysql_length_function_display_length = 10U;
 static const uint64_t mylite_mysql_bit_count_function_display_length = 21U;
 static const uint64_t mylite_mysql_crc32_function_display_length = 10U;
 static const uint64_t mylite_mysql_inet_ntoa_result_chars = 31U;
+static const uint64_t mylite_mysql_uuid_text_result_chars = 36U;
+static const uint64_t mylite_mysql_uuid_binary_result_bytes = 16U;
 static const uint64_t mylite_mysql_ascii_function_display_length = 3U;
 static const uint64_t mylite_mysql_search_function_display_length = 11U;
 static const uint64_t mylite_mysql_list_index_function_display_length = 3U;
@@ -2079,6 +2081,9 @@ static int infer_function_expression_descriptor(mylite_db *database,
                                                 const struct mylite_sql_ast_node *expression,
                                                 const struct mylite_expression_value *value,
                                                 struct mylite_field_descriptor *out_descriptor);
+static bool infer_common_scalar_function_descriptor(mylite_db *database,
+                                                    const struct mylite_sql_ast_node *name,
+                                                    struct mylite_field_descriptor *out_descriptor);
 static bool function_result_nullable(bool arguments_nullable,
                                      const struct mylite_expression_value *value);
 static uint64_t text_function_result_length(mylite_db *database,
@@ -2092,6 +2097,9 @@ static bool infer_fixed_integer_function_descriptor(const struct mylite_sql_ast_
 static bool infer_list_index_function_descriptor(const struct mylite_sql_ast_node *name,
                                                  bool nullable,
                                                  struct mylite_field_descriptor *out_descriptor);
+static bool infer_uuid_function_descriptor(mylite_db *database,
+                                           const struct mylite_sql_ast_node *name,
+                                           struct mylite_field_descriptor *out_descriptor);
 // NOLINTNEXTLINE(misc-no-recursion)
 static int infer_make_set_function_descriptor(mylite_db *database,
                                               const struct mylite_select_plan *plan,
@@ -2207,6 +2215,9 @@ static bool function_name_is_bit_count(const struct mylite_sql_ast_node *name);
 static bool function_name_is_crc32(const struct mylite_sql_ast_node *name);
 static bool function_name_is_inet_aton(const struct mylite_sql_ast_node *name);
 static bool function_name_is_inet_ntoa(const struct mylite_sql_ast_node *name);
+static bool function_name_is_is_uuid(const struct mylite_sql_ast_node *name);
+static bool function_name_is_uuid_to_bin(const struct mylite_sql_ast_node *name);
+static bool function_name_is_bin_to_uuid(const struct mylite_sql_ast_node *name);
 static bool
 infer_session_or_inet_function_descriptor(mylite_db *database,
                                           const struct mylite_sql_ast_node *name,
@@ -10525,10 +10536,7 @@ static int infer_function_expression_descriptor(mylite_db *database,
     }
     result_nullable = function_result_nullable(nullable, value);
 
-    if (infer_session_or_inet_function_descriptor(database, name, out_descriptor)) {
-        return MYLITE_OK;
-    }
-    if (infer_base_conversion_function_descriptor(database, name, out_descriptor)) {
+    if (infer_common_scalar_function_descriptor(database, name, out_descriptor)) {
         return MYLITE_OK;
     }
     status = infer_char_function_descriptor(database, expression, out_descriptor);
@@ -10605,6 +10613,19 @@ static int infer_function_expression_descriptor(mylite_db *database,
     return MYLITE_OK;
 }
 
+static bool infer_common_scalar_function_descriptor(mylite_db *database,
+                                                    const struct mylite_sql_ast_node *name,
+                                                    struct mylite_field_descriptor *out_descriptor)
+{
+    if (infer_session_or_inet_function_descriptor(database, name, out_descriptor)) {
+        return true;
+    }
+    if (infer_uuid_function_descriptor(database, name, out_descriptor)) {
+        return true;
+    }
+    return infer_base_conversion_function_descriptor(database, name, out_descriptor);
+}
+
 static bool
 infer_session_or_inet_function_descriptor(mylite_db *database,
                                           const struct mylite_sql_ast_node *name,
@@ -10630,6 +10651,47 @@ static bool infer_inet_function_descriptor(mylite_db *database,
         uint64_t length = max_bytes_per_character > UINT64_MAX / mylite_mysql_inet_ntoa_result_chars
                               ? mylite_mysql_long_text_length
                               : mylite_mysql_inet_ntoa_result_chars * max_bytes_per_character;
+
+        *out_descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_VAR_STRING,
+            .flags = 0U,
+            .length = length,
+            .decimals = mylite_mysql_not_fixed_decimals,
+            .charset_id = field_descriptor_connection_charset_id(database),
+            .nullable = true,
+        };
+        field_descriptor_set_nullable(out_descriptor, true);
+        return true;
+    }
+    return false;
+}
+
+static bool infer_uuid_function_descriptor(mylite_db *database,
+                                           const struct mylite_sql_ast_node *name,
+                                           struct mylite_field_descriptor *out_descriptor)
+{
+    if (function_name_is_is_uuid(name)) {
+        *out_descriptor = signed_longlong_expression_descriptor(true);
+        out_descriptor->length = 1U;
+        return true;
+    }
+    if (function_name_is_uuid_to_bin(name)) {
+        *out_descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_VAR_STRING,
+            .flags = MYLITE_FIELD_FLAG_BINARY,
+            .length = mylite_mysql_uuid_binary_result_bytes,
+            .decimals = mylite_mysql_not_fixed_decimals,
+            .charset_id = mylite_mysql_binary_charset_id,
+            .nullable = true,
+        };
+        field_descriptor_set_nullable(out_descriptor, true);
+        return true;
+    }
+    if (function_name_is_bin_to_uuid(name)) {
+        uint64_t max_bytes_per_character = connection_character_max_length(database);
+        uint64_t length = max_bytes_per_character > UINT64_MAX / mylite_mysql_uuid_text_result_chars
+                              ? mylite_mysql_long_text_length
+                              : mylite_mysql_uuid_text_result_chars * max_bytes_per_character;
 
         *out_descriptor = (struct mylite_field_descriptor){
             .type = MYLITE_FIELD_TYPE_VAR_STRING,
@@ -12277,7 +12339,7 @@ static bool function_name_is_from_base64(const struct mylite_sql_ast_node *name)
 
 static bool function_name_has_binary_string_result(const struct mylite_sql_ast_node *name)
 {
-    if (function_name_is_unhex(name)) {
+    if (function_name_is_unhex(name) || function_name_is_uuid_to_bin(name)) {
         return true;
     }
     return function_name_is_from_base64(name);
@@ -12285,7 +12347,8 @@ static bool function_name_has_binary_string_result(const struct mylite_sql_ast_n
 
 static bool function_name_has_connection_string_result(const struct mylite_sql_ast_node *name)
 {
-    if (function_name_is_hex(name) || function_name_is_to_base64(name)) {
+    if (function_name_is_hex(name) || function_name_is_to_base64(name) ||
+        function_name_is_bin_to_uuid(name)) {
         return true;
     }
     return function_name_has_base_conversion_result(name);
@@ -12387,6 +12450,27 @@ static bool function_name_is_inet_aton(const struct mylite_sql_ast_node *name)
 static bool function_name_is_inet_ntoa(const struct mylite_sql_ast_node *name)
 {
     static const char *const names[] = {"INET_NTOA"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_is_is_uuid(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"IS_UUID"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_is_uuid_to_bin(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"UUID_TO_BIN"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_is_bin_to_uuid(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"BIN_TO_UUID"};
 
     return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }
@@ -26766,7 +26850,8 @@ function_name_has_binary_numeric_collation_result(const struct mylite_sql_ast_no
 
     if (function_name_is_coercibility(name) || function_name_has_length_result(name) ||
         function_name_is_bit_count(name) || function_name_is_crc32(name) ||
-        function_name_is_inet_aton(name) || function_name_has_integer_result(name)) {
+        function_name_is_inet_aton(name) || function_name_is_is_uuid(name) ||
+        function_name_has_integer_result(name)) {
         return true;
     }
     if (infer_code_search_function_descriptor(name, true, &descriptor) ||
@@ -30985,6 +31070,11 @@ static int set_where_predicate_eval_error(mylite_stmt *stmt)
         const struct mylite_expression_warning *warning =
             &database->warnings.items[database->warnings.count - 1U];
 
+        if (warning->level == MYLITE_EXPRESSION_WARNING_LEVEL_ERROR) {
+            int status = set_error_message(database, warning->message);
+
+            return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+        }
         if (warning->code == MYLITE_MYSQL_ER_WRONG_ARGUMENTS) {
             int status = set_error_message(database, warning->message);
 
@@ -36510,6 +36600,16 @@ static int evaluate_scalar_select_expression(mylite_stmt *stmt,
     }
     if (stmt->database->error_message != NULL) {
         return status > 0 ? status : MYLITE_EXEC_ERROR;
+    }
+    for (size_t index = 0U; index < stmt->scalar_result.warnings.count; ++index) {
+        const struct mylite_expression_warning *warning =
+            &stmt->scalar_result.warnings.items[index];
+
+        if (warning->level == MYLITE_EXPRESSION_WARNING_LEVEL_ERROR) {
+            int error_status = set_error_message(stmt->database, warning->message);
+
+            return error_status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+        }
     }
     return MYLITE_UNSUPPORTED;
 }
@@ -42424,6 +42524,16 @@ static int append_database_error(mylite_db *database, unsigned int code, const c
 static int ensure_current_error_condition(mylite_db *database, unsigned int fallback_code)
 {
     if (database_has_error_condition(database)) {
+        if (database != NULL && database->error_message == NULL) {
+            for (size_t index = 0U; index < database->warnings.count; ++index) {
+                const struct mylite_expression_warning *condition =
+                    &database->warnings.items[index];
+
+                if (condition->level == MYLITE_EXPRESSION_WARNING_LEVEL_ERROR) {
+                    return set_error_message(database, condition->message);
+                }
+            }
+        }
         return MYLITE_OK;
     }
     if (promote_current_error_message_condition(database)) {

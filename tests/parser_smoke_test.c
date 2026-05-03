@@ -154,6 +154,7 @@ typedef struct ExpectedCreateTableOption {
 
 typedef struct SemanticCounts {
   size_t targets;
+  size_t tables;
   size_t queries;
   size_t query_blocks;
   size_t table_references;
@@ -8075,11 +8076,16 @@ static int expect_semantic_ast_materialization(void) {
   statement = mylite_semantic_ast_node_child_at(root, 0);
   target = first_semantic_child_with_kind(statement,
                                          MYLITE_SEMANTIC_NODE_TARGET);
+  const MyliteSemanticAstNode *table =
+      first_semantic_child_with_kind(statement, MYLITE_SEMANTIC_NODE_TABLE);
   column_descriptor = first_semantic_child_with_descriptor_kind(
-      statement, MYLITE_SEMANTIC_DESCRIPTOR_COLUMN);
+      table, MYLITE_SEMANTIC_DESCRIPTOR_COLUMN);
+  const MyliteSemanticAstNode *direct_column_descriptor =
+      first_semantic_child_with_descriptor_kind(
+          statement, MYLITE_SEMANTIC_DESCRIPTOR_COLUMN);
   const MyliteSemanticAstNode *key_descriptor =
       first_semantic_child_with_descriptor_kind(
-          statement, MYLITE_SEMANTIC_DESCRIPTOR_KEY);
+          table, MYLITE_SEMANTIC_DESCRIPTOR_KEY);
   const MyliteSemanticAstNode *data_type =
       first_semantic_child_with_kind(column_descriptor,
                                     MYLITE_SEMANTIC_NODE_DATA_TYPE);
@@ -8092,7 +8098,17 @@ static int expect_semantic_ast_materialization(void) {
       !value_matches_when_expected(
           mylite_semantic_ast_node_value(target),
           mylite_semantic_ast_node_value_length(target), "t") ||
+      table == NULL ||
+      mylite_semantic_ast_node_target_kind(table) !=
+          MYLITE_STATEMENT_TARGET_TABLE ||
+      mylite_semantic_ast_node_target_role(table) !=
+          MYLITE_STATEMENT_TARGET_ROLE_PRIMARY ||
+      mylite_semantic_ast_node_child_count(table) != 7 ||
+      !value_matches_when_expected(
+          mylite_semantic_ast_node_value(table),
+          mylite_semantic_ast_node_value_length(table), "t") ||
       column_descriptor == NULL ||
+      direct_column_descriptor != NULL ||
       !value_matches_when_expected(
           mylite_semantic_ast_node_value(column_descriptor),
           mylite_semantic_ast_node_value_length(column_descriptor), "a") ||
@@ -8115,7 +8131,8 @@ static int expect_semantic_ast_materialization(void) {
       !value_matches_when_expected(
           mylite_semantic_ast_node_value(key_descriptor),
           mylite_semantic_ast_node_value_length(key_descriptor), "k") ||
-      ddl_counts.targets != 1 || ddl_counts.descriptors < 7 ||
+      ddl_counts.targets != 1 || ddl_counts.tables != 1 ||
+      ddl_counts.descriptors < 7 ||
       ddl_counts.clauses != 0 || ddl_counts.data_types != 4 ||
       ddl_counts.data_type_numeric_parameters != 0 ||
       ddl_counts.data_type_elements != 0 ||
@@ -8123,11 +8140,11 @@ static int expect_semantic_ast_materialization(void) {
       ddl_counts.leaf_values < 8) {
     fprintf(stderr,
             "semantic AST DDL shape mismatch: nodes=%zu targets=%zu "
-            "descriptors=%zu clauses=%zu data_types=%zu "
+            "tables=%zu descriptors=%zu clauses=%zu data_types=%zu "
             "data_type_numeric_parameters=%zu data_type_elements=%zu "
             "expressions=%zu operators=%zu leaf_values=%zu\n",
             mylite_semantic_ast_node_count(semantic_ast), ddl_counts.targets,
-            ddl_counts.descriptors, ddl_counts.clauses,
+            ddl_counts.tables, ddl_counts.descriptors, ddl_counts.clauses,
             ddl_counts.data_types, ddl_counts.data_type_numeric_parameters,
             ddl_counts.data_type_elements, ddl_counts.expressions,
             ddl_counts.operators,
@@ -8155,7 +8172,10 @@ static int expect_semantic_ast_materialization(void) {
 
   root = mylite_semantic_ast_root(semantic_ast);
   statement = mylite_semantic_ast_node_child_at(root, 0);
+  table = first_semantic_child_with_kind(statement, MYLITE_SEMANTIC_NODE_TABLE);
   column_descriptor = first_semantic_child_with_descriptor_kind(
+      table, MYLITE_SEMANTIC_DESCRIPTOR_COLUMN);
+  direct_column_descriptor = first_semantic_child_with_descriptor_kind(
       statement, MYLITE_SEMANTIC_DESCRIPTOR_COLUMN);
   data_type = first_semantic_child_with_kind(column_descriptor,
                                             MYLITE_SEMANTIC_NODE_DATA_TYPE);
@@ -8164,6 +8184,11 @@ static int expect_semantic_ast_materialization(void) {
   if (statement == NULL ||
       mylite_semantic_ast_node_statement_kind(statement) !=
           MYLITE_STATEMENT_CREATE ||
+      table == NULL ||
+      !value_matches_when_expected(mylite_semantic_ast_node_value(table),
+                                   mylite_semantic_ast_node_value_length(table),
+                                   "type_t") ||
+      direct_column_descriptor != NULL ||
       data_type == NULL ||
       mylite_semantic_ast_node_data_type_kind(data_type) !=
           MYLITE_CREATE_TABLE_COLUMN_TYPE_KIND_DECIMAL ||
@@ -8178,14 +8203,16 @@ static int expect_semantic_ast_materialization(void) {
                                        data_type),
                                    "DECIMAL") ||
       type_counts.data_types != 4 ||
+      type_counts.tables != 1 ||
       type_counts.data_type_numeric_parameters != 4 ||
       type_counts.data_type_elements != 2 ||
       type_counts.data_type_attributes != 5) {
     fprintf(stderr,
-            "semantic AST type shape mismatch: nodes=%zu data_types=%zu "
-            "numeric_parameters=%zu elements=%zu attributes=%zu\n",
+            "semantic AST type shape mismatch: nodes=%zu tables=%zu "
+            "data_types=%zu numeric_parameters=%zu elements=%zu "
+            "attributes=%zu\n",
             mylite_semantic_ast_node_count(semantic_ast),
-            type_counts.data_types,
+            type_counts.tables, type_counts.data_types,
             type_counts.data_type_numeric_parameters,
             type_counts.data_type_elements, type_counts.data_type_attributes);
     failed = 1;
@@ -8406,6 +8433,9 @@ static void count_semantic_nodes(const MyliteSemanticAstNode *node,
   }
   if (mylite_semantic_ast_node_kind(node) == MYLITE_SEMANTIC_NODE_TARGET) {
     counts->targets++;
+  }
+  if (mylite_semantic_ast_node_kind(node) == MYLITE_SEMANTIC_NODE_TABLE) {
+    counts->tables++;
   }
   if (mylite_semantic_ast_node_kind(node) == MYLITE_SEMANTIC_NODE_QUERY) {
     counts->queries++;

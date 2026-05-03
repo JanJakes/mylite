@@ -61,6 +61,10 @@ expression nodes.
   descriptor collections without duplicating those arrays. The view exposes
   opaque handles for navigating those descriptors directly, including nested
   column type elements, key parts, and key options.
+- The separate semantic AST now groups `CREATE TABLE` descriptor children under
+  a semantic table node. The table node keeps the decoded table name and gives
+  DDL analyzers a real object subtree while the generic statement target remains
+  available for uniform target enumeration.
 - `CREATE DATABASE`, `CREATE VIEW`, `ALTER TABLE`, `CREATE INDEX`, `DROP
   DATABASE`, `DROP INDEX`, `DROP TABLE`, `DROP VIEW`, `RENAME TABLE`, and
   `TRUNCATE TABLE` statements expose semantic DDL views that reuse the same
@@ -372,7 +376,7 @@ descriptor layers suitable for measuring cost and for guiding typed-node work.
 
 `mylite_parse_sql_semantic_ast()` now returns the first separate semantic graph
 as an opaque `MyliteSemanticAst`. This graph materializes program -> statement
--> query/query-block/source/row/target/descriptor/clause/data-type/
+-> query/query-block/table/source/row/target/descriptor/clause/data-type/
 data-type-element/data-type-attribute/expression nodes, copies decoded target,
 descriptor, clause expression, data-type names, data-type element/attribute
 values, and expression values into its own arena, and frees the parser CST.
@@ -394,6 +398,12 @@ now own one semantic source node with `VALUES`, `SET`, or `SELECT` source kind;
 VALUES sources own row nodes, each row node owns the row's value descriptors,
 and SET payload descriptors live directly under the source node. Column
 descriptors and duplicate-key assignment descriptors remain statement-scoped.
+`CREATE TABLE` statements own a semantic table node after the generic target
+node. The table node spans the parser-level create-table view, carries the
+decoded table name, and owns the table's column, key, key-part, key-option, and
+table-option descriptor children. `ALTER TABLE`, `CREATE INDEX`, and DML
+descriptor placement remains statement-scoped until those statement families get
+their own object nodes.
 Descriptor nodes own the obvious expression payload for their parser-view item,
 including projection, VALUES, assignment, column default/generated/check, key
 check/key-part, LOAD assignment, and LOAD option expressions. Column descriptor
@@ -787,13 +797,13 @@ counters. `semantic` parses through the parser AST, materializes the first
 semantic graph, frees the parser AST, and then counts the semantic graph.
 
 Latest semantic-AST construction run on May 3, 2026, after direct SELECT
-query-block clause collection:
+query-block clause collection and semantic `CREATE TABLE` table-node grouping:
 
 ```text
-mode=syntax queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=2.669374 qps=521029 mbps=39.62 avg_us=1.919
-mode=ast-only queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.961692 qps=174689 mbps=13.29 avg_us=5.724 avg_nodes=74.5 avg_ast_bytes=11213.9 avg_statements=1.00
-mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=8.174165 qps=170148 mbps=12.94 avg_us=5.877 avg_nodes=74.5 avg_ast_bytes=11213.9
-mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=8.582059 qps=162061 mbps=12.32 avg_us=6.171 avg_semantic_nodes=10.1 avg_semantic_bytes=4689.6 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_queries=0.25 avg_semantic_query_blocks=0.28 avg_semantic_table_references=0.20 avg_semantic_sources=0.19 avg_semantic_rows=0.58 avg_semantic_descriptors=2.58 avg_semantic_clauses=0.37 avg_semantic_structural_clauses=0.06 avg_semantic_data_types=0.31 avg_semantic_data_type_numeric_parameters=0.12 avg_semantic_data_type_elements=0.05 avg_semantic_data_type_attributes=0.03 avg_semantic_expressions=2.69 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.04 avg_semantic_descriptor_expressions=1.81 avg_semantic_clause_expressions=0.11 avg_semantic_statement_expressions=0.00
+mode=syntax queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=2.750433 qps=505673 mbps=38.46 avg_us=1.978
+mode=ast-only queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=8.159434 qps=170455 mbps=12.96 avg_us=5.867 avg_nodes=74.5 avg_ast_bytes=11213.9 avg_statements=1.00
+mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=8.358398 qps=166398 mbps=12.65 avg_us=6.010 avg_nodes=74.5 avg_ast_bytes=11213.9
+mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=8.699470 qps=159874 mbps=12.16 avg_us=6.255 avg_semantic_nodes=10.3 avg_semantic_bytes=4691.4 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_queries=0.25 avg_semantic_query_blocks=0.28 avg_semantic_tables=0.13 avg_semantic_table_references=0.20 avg_semantic_sources=0.19 avg_semantic_rows=0.58 avg_semantic_descriptors=2.58 avg_semantic_clauses=0.37 avg_semantic_structural_clauses=0.06 avg_semantic_data_types=0.31 avg_semantic_data_type_numeric_parameters=0.12 avg_semantic_data_type_elements=0.05 avg_semantic_data_type_attributes=0.03 avg_semantic_expressions=2.69 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.04 avg_semantic_descriptor_expressions=1.81 avg_semantic_clause_expressions=0.11 avg_semantic_statement_expressions=0.00
 ```
 
 Latest EXPLAIN/DESCRIBE parser-view run on May 3, 2026:
@@ -994,7 +1004,7 @@ Current release build size on the same machine:
 generated parser C: 72,876 lines, 5,639,543 bytes
 generated parser object: 997K on disk, 905,630 bytes text/data/other
 parser support object: 416K on disk, 239,813 bytes text/data/other
-semantic AST object: 69K on disk, 32,535 bytes text/data/other
+semantic AST object: 70K on disk, 32,851 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.6M on disk
 mylite-parse: 1.3M on disk
@@ -1005,12 +1015,11 @@ mylite-parser-bench: 1.3M on disk
 
 - Replace temporary recognizer placeholder roots with real grammar productions
   or explicit typed placeholder statements.
-- Expand `MyliteSemanticAst` beyond statement/target/expression nodes into
-  concrete `CREATE TABLE` column, key, table-option, data-type, and expression
-  metadata nodes.
 - Normalize parser-derived DDL summaries into MySQL metadata-ready structures,
   including generated names for unnamed constraints and SQL-mode-sensitive
   literal/expression handling.
+- Extend semantic DDL object nodes beyond `CREATE TABLE` into `ALTER TABLE`,
+  `CREATE INDEX`, `DROP`, `RENAME`, and `TRUNCATE` statement families.
 - Extend the `ALTER TABLE` view into partition action payloads,
   generated/check/default expression descriptors, position clauses, validation
   clauses, and final metadata operations.

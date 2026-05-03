@@ -37,6 +37,7 @@ struct mylite_expression_value {
     int64_t int64_value;
     uint64_t uint64_value;
     double real_value;
+    bool compact_real_text;
     char *text_value;
     size_t text_length;
 };

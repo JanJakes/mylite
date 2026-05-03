@@ -66,6 +66,13 @@ target_include_directories(mylite
 )
 target_link_libraries(mylite PRIVATE MyLite::sqlite)
 
+if(NOT WIN32)
+  find_library(MYLITE_MATH_LIBRARY m)
+  if(MYLITE_MATH_LIBRARY)
+    target_link_libraries(mylite PRIVATE "${MYLITE_MATH_LIBRARY}")
+  endif()
+endif()
+
 mylite_configure_c_target(mylite)
 
 if(BUILD_TESTING)

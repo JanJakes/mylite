@@ -5,6 +5,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -117,6 +118,11 @@ struct numeric_value {
     uint64_t uint64_value;
     bool is_integer;
     bool is_unsigned;
+};
+
+struct numeric_text_input {
+    const char *start;
+    const char *text;
 };
 
 struct between_truth {
@@ -358,6 +364,7 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_BIN_TO_UUID = 66,
     MYLITE_SCALAR_FUNCTION_SUBSTRING_INDEX = 67,
     MYLITE_SCALAR_FUNCTION_ROUND = 68,
+    MYLITE_SCALAR_FUNCTION_POWER = 69,
 };
 
 static int eval_node(const struct mylite_sql_ast_node *node,
@@ -820,6 +827,10 @@ static int eval_mod_function(const struct mylite_sql_ast_node *arguments,
                              const struct mylite_expression_eval_context *context,
                              struct mylite_expression_warnings *warnings,
                              struct mylite_expression_value *out_value);
+static int eval_power_function(const struct mylite_sql_ast_node *arguments,
+                               const struct mylite_expression_eval_context *context,
+                               struct mylite_expression_warnings *warnings,
+                               struct mylite_expression_value *out_value);
 static int eval_round_function(const struct mylite_sql_ast_node *arguments,
                                const struct mylite_expression_eval_context *context,
                                struct mylite_expression_warnings *warnings,
@@ -961,6 +972,8 @@ static int compare_values(const struct mylite_expression_value *left,
 static int value_to_numeric(const struct mylite_expression_value *value,
                             struct mylite_expression_warnings *warnings,
                             struct numeric_value *out_numeric);
+static int append_numeric_text_without_digits_warning(struct mylite_expression_warnings *warnings,
+                                                      struct numeric_text_input input);
 static int cast_value_to_signed_integer(const struct mylite_expression_value *value,
                                         struct mylite_expression_warnings *warnings,
                                         int64_t *out_integer);
@@ -992,6 +1005,8 @@ static int64_t ceil_real_value(double value);
 static int value_to_string(const struct mylite_expression_value *value, char **out_text);
 static int value_to_string_with_length(const struct mylite_expression_value *value, char **out_text,
                                        size_t *out_length);
+static int format_compact_real_text(double value, char *buffer, size_t buffer_size);
+static void normalize_real_exponent_text(char *text);
 static int set_text_value(const char *text, size_t length,
                           struct mylite_expression_value *out_value);
 static int append_text(char **text, size_t *length, const char *addition, size_t addition_length);
@@ -1005,6 +1020,7 @@ static int append_warning(struct mylite_expression_warnings *warnings, unsigned 
 static int append_truncation_warning(struct mylite_expression_warnings *warnings, const char *text);
 static int append_cast_truncation_warning(struct mylite_expression_warnings *warnings,
                                           const char *type_name, const char *text);
+static int append_power_out_of_range_error(struct mylite_expression_warnings *warnings);
 static int append_char_truncation_warning(struct mylite_expression_warnings *warnings,
                                           uint64_t length, const char *text);
 static int append_signed_complement_warning(struct mylite_expression_warnings *warnings);
@@ -1144,7 +1160,9 @@ char *mylite_expression_value_to_text(const struct mylite_expression_value *valu
                    : copy_span_text(buffer, (size_t)length);
     }
 
-    int length = snprintf(buffer, sizeof(buffer), "%.4f", value->real_value);
+    int length = value->compact_real_text
+                     ? format_compact_real_text(value->real_value, buffer, sizeof(buffer))
+                     : snprintf(buffer, sizeof(buffer), "%.4f", value->real_value);
     return length <= 0 || (size_t)length >= sizeof(buffer) ? NULL
                                                            : copy_span_text(buffer, (size_t)length);
 }
@@ -1320,6 +1338,7 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_LEFT:
     case MYLITE_SCALAR_FUNCTION_RIGHT:
     case MYLITE_SCALAR_FUNCTION_MOD:
+    case MYLITE_SCALAR_FUNCTION_POWER:
     case MYLITE_SCALAR_FUNCTION_IFNULL:
     case MYLITE_SCALAR_FUNCTION_NULLIF:
     case MYLITE_SCALAR_FUNCTION_INSTR:
@@ -2140,6 +2159,8 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_bin_to_uuid_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_MOD:
         return eval_mod_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_POWER:
+        return eval_power_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_ABS:
     case MYLITE_SCALAR_FUNCTION_SIGN:
     case MYLITE_SCALAR_FUNCTION_FLOOR:
@@ -5130,6 +5151,7 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_FLOOR:
     case MYLITE_SCALAR_FUNCTION_CEIL:
     case MYLITE_SCALAR_FUNCTION_ROUND:
+    case MYLITE_SCALAR_FUNCTION_POWER:
     case MYLITE_SCALAR_FUNCTION_MOD:
     case MYLITE_SCALAR_FUNCTION_PI:
     case MYLITE_SCALAR_FUNCTION_IF:
@@ -6562,6 +6584,59 @@ static int eval_mod_function(const struct mylite_sql_ast_node *arguments,
     }
     mylite_expression_value_deinit(&left);
     mylite_expression_value_deinit(&right);
+    return status;
+}
+
+static int eval_power_function(const struct mylite_sql_ast_node *arguments,
+                               const struct mylite_expression_eval_context *context,
+                               struct mylite_expression_warnings *warnings,
+                               struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value base = {0};
+    struct mylite_expression_value exponent = {0};
+    struct numeric_value base_number = {0};
+    struct numeric_value exponent_number = {0};
+    double result = 0.0;
+    int status = eval_node(child_at(arguments, 0U), context, warnings, &base);
+
+    if (status == 0) {
+        status = eval_node(child_at(arguments, 1U), context, warnings, &exponent);
+    }
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&base) || is_null(&exponent)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+
+    status = value_to_numeric(&base, warnings, &base_number);
+    if (status == 0) {
+        status = value_to_numeric(&exponent, warnings, &exponent_number);
+    }
+    if (status != 0) {
+        goto cleanup;
+    }
+
+    errno = 0;
+    result = pow(base_number.real_value, exponent_number.real_value);
+    if (isnan(result) || isinf(result)) {
+        status = append_power_out_of_range_error(warnings);
+        if (status == 0) {
+            status = MYLITE_EXEC_ERROR;
+        }
+        goto cleanup;
+    }
+
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_REAL,
+        .real_value = result,
+        .compact_real_text = true,
+    };
+
+cleanup:
+    mylite_expression_value_deinit(&base);
+    mylite_expression_value_deinit(&exponent);
     return status;
 }
 
@@ -8138,7 +8213,18 @@ static int value_to_numeric(const struct mylite_expression_value *value,
         }
     }
     if (!saw_digit) {
+        int status = append_numeric_text_without_digits_warning(
+            warnings, (struct numeric_text_input){.start = start, .text = text});
+        free(text);
+        return status;
+    }
+    const char *number_start = start;
+    if (*number_start == '+' || *number_start == '-') {
+        ++number_start;
+    }
+    if (number_start[0] == '0' && (number_start[1] == 'x' || number_start[1] == 'X')) {
         int status = append_truncation_warning(warnings, text);
+
         free(text);
         return status;
     }
@@ -8155,6 +8241,15 @@ static int value_to_numeric(const struct mylite_expression_value *value,
     }
     free(text);
     return 0;
+}
+
+static int append_numeric_text_without_digits_warning(struct mylite_expression_warnings *warnings,
+                                                      struct numeric_text_input input)
+{
+    if (*input.start == '\0') {
+        return 0;
+    }
+    return append_truncation_warning(warnings, input.text);
 }
 
 static int cast_value_to_signed_integer(const struct mylite_expression_value *value,
@@ -8502,6 +8597,40 @@ static int value_to_string_with_length(const struct mylite_expression_value *val
     return 0;
 }
 
+static int format_compact_real_text(double value, char *buffer, size_t buffer_size)
+{
+    int length = snprintf(buffer, buffer_size, "%.16g", value);
+
+    if (length <= 0 || (size_t)length >= buffer_size) {
+        return length;
+    }
+    normalize_real_exponent_text(buffer);
+    return (int)strlen(buffer);
+}
+
+static void normalize_real_exponent_text(char *text)
+{
+    char *exponent = strchr(text, 'e');
+    char *read = NULL;
+    char *write = NULL;
+
+    if (exponent == NULL) {
+        return;
+    }
+
+    write = exponent + 1;
+    read = write;
+    if (*read == '+') {
+        ++read;
+    } else if (*read == '-') {
+        *write++ = *read++;
+    }
+    while (read[0] == '0' && isdigit((unsigned char)read[1])) {
+        ++read;
+    }
+    memmove(write, read, strlen(read) + 1U);
+}
+
 static int set_text_value(const char *text, size_t length,
                           struct mylite_expression_value *out_value)
 {
@@ -8664,6 +8793,13 @@ static int append_cast_truncation_warning(struct mylite_expression_warnings *war
         return -1;
     }
     return append_warning(warnings, MYLITE_WARNING_TRUNCATED_WRONG_VALUE, message);
+}
+
+static int append_power_out_of_range_error(struct mylite_expression_warnings *warnings)
+{
+    return mylite_expression_warnings_append_condition(
+        warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, MYLITE_WARNING_OUT_OF_RANGE,
+        "DOUBLE value is out of range in 'pow()'");
 }
 
 static int append_char_truncation_warning(struct mylite_expression_warnings *warnings,
@@ -8880,6 +9016,8 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"CEIL", MYLITE_SCALAR_FUNCTION_CEIL},
         {"CEILING", MYLITE_SCALAR_FUNCTION_CEIL},
         {"ROUND", MYLITE_SCALAR_FUNCTION_ROUND},
+        {"POW", MYLITE_SCALAR_FUNCTION_POWER},
+        {"POWER", MYLITE_SCALAR_FUNCTION_POWER},
         {"MOD", MYLITE_SCALAR_FUNCTION_MOD},
         {"PI", MYLITE_SCALAR_FUNCTION_PI},
         {"IF", MYLITE_SCALAR_FUNCTION_IF},
@@ -8981,6 +9119,7 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_FLOOR:
     case MYLITE_SCALAR_FUNCTION_CEIL:
     case MYLITE_SCALAR_FUNCTION_ROUND:
+    case MYLITE_SCALAR_FUNCTION_POWER:
     case MYLITE_SCALAR_FUNCTION_MOD:
     case MYLITE_SCALAR_FUNCTION_PI:
     case MYLITE_SCALAR_FUNCTION_IF:

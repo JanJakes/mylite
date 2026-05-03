@@ -252,6 +252,7 @@ static int test_select_integer_literal_with_semicolon(void);
 static int test_expression_operator_foundation(void);
 static int test_scalar_builtin_functions_execution(void);
 static int test_round_scalar_function_execution(mylite_db *database);
+static int test_power_scalar_function_execution(mylite_db *database);
 static int test_uuid_scalar_functions(mylite_db *database);
 static int test_inet_ipv4_functions_execution(void);
 static int test_charset_collation_functions_execution(void);
@@ -4024,6 +4025,8 @@ static int test_scalar_builtin_functions_execution(void)
 
     failures += test_round_scalar_function_execution(database);
 
+    failures += test_power_scalar_function_execution(database);
+
     failures += test_uuid_scalar_functions(database);
 
     failures +=
@@ -5677,6 +5680,237 @@ static int test_round_scalar_function_execution(mylite_db *database)
     failures += expect_no_stmt_handle(&stmt, "unsupported round zero arity");
     failures += prepare_sql(database, "SELECT ROUND(1,2,3)", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported round three arity");
+
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_power_scalar_function_execution(mylite_db *database)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const struct expected_result_metadata power_metadata[] = {
+        {"pow_int", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"power_frac", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"pow_null", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"pow_warn", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    static const struct expected_result_metadata power_table_metadata[] = {
+        {"px", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"py", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"ps", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    static const char *const power_columns[] = {
+        "pow_int",     "power_frac", "null_base",     "null_exp",  "neg_even",      "neg_odd",
+        "neg_neg_odd", "zero_zero",  "zero_positive", "underflow", "neg_underflow", "spaced_text",
+        "signed_text", "sqrt_text",  "inv_sqrt",      "third",     "large_power",   "alias_value",
+    };
+    static const char *const power_values[] = {
+        "1024", "0.25", NULL, NULL, "4",   "-8", "-0.125", "1",
+        "0",    "0",    "-0", "5",  "0.5", "2",  "0.5",    "0.3333333333333333",
+        "1e22", "27",
+    };
+    static const char *const warning_columns[] = {
+        "str_garbage", "str_bad_base", "str_bad_exp", "empty_args", "space_arg", "hex_like",
+    };
+    static const char *const warning_values[] = {"8", "0", "1", "1", "0", "0"};
+    static const char *const power_projection_columns[] = {"id", "p"};
+    static const char *const power_projection_values[] = {
+        "3", NULL, "2", "-8", "4", "0.5", "1", "8",
+    };
+    static const char *const id_column[] = {"id"};
+    static const char *const selected_id_values[] = {"1"};
+    static const char *const updated_columns[] = {"id", "p"};
+    static const char *const updated_values[] = {"1", "4", "2", "4"};
+    static const char *const updated_y_values[] = {"4", "2"};
+    static const char *const dml_rollback_values[] = {"1", "2", "3", "4"};
+    static const char *const remaining_values[] = {"2", "3", "4"};
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_select_rows(database,
+                           "SELECT POW(2,10) AS pow_int, "
+                           "POWER(2,-2) AS power_frac, "
+                           "POW(NULL,2) AS null_base, "
+                           "POW(2,NULL) AS null_exp, "
+                           "POW(-2,2) AS neg_even, "
+                           "POW(-2,3) AS neg_odd, "
+                           "POW(-2,-3) AS neg_neg_odd, "
+                           "POW(0,0) AS zero_zero, "
+                           "POW(0,2) AS zero_positive, "
+                           "POW(2,-1075) AS underflow, "
+                           "POW(-2,-1075) AS neg_underflow, "
+                           "POW('  2.5e1 ', ' .5 ') AS spaced_text, "
+                           "POW('+4','-.5') AS signed_text, "
+                           "POW(4,0.5) AS sqrt_text, "
+                           "POW(4,-0.5) AS inv_sqrt, "
+                           "POW(3,-1) AS third, "
+                           "POW(10,22) AS large_power, "
+                           "POWER(3,3) AS alias_value",
+                           power_columns, (int)(sizeof(power_columns) / sizeof(power_columns[0])),
+                           power_values, 1, "POWER scalar values");
+    failures += expect_int(mylite_warning_count(database), 0, "POWER scalar warning count");
+
+    failures += expect_select_rows(database,
+                                   "SELECT POW('2x','3y') AS str_garbage, "
+                                   "POW('foo',2) AS str_bad_base, "
+                                   "POW(2,'bar') AS str_bad_exp, "
+                                   "POW('','') AS empty_args, "
+                                   "POW(' ',2) AS space_arg, "
+                                   "POW('0x10',2) AS hex_like",
+                                   warning_columns,
+                                   (int)(sizeof(warning_columns) / sizeof(warning_columns[0])),
+                                   warning_values, 1, "POWER string warning values");
+    failures += expect_int(mylite_warning_count(database), 5, "POWER string warning count");
+    for (int index = 0; index < 5; ++index) {
+        failures += expect_int((int)mylite_warning_code(database, index),
+                               mysql_warning_truncated_wrong_value, "POWER string warning code");
+    }
+    failures +=
+        expect_contains(mylite_warning_message(database, 0), "2x", "POWER trailing base warning");
+    failures += expect_contains(mylite_warning_message(database, 1), "3y",
+                                "POWER trailing exponent warning");
+    failures +=
+        expect_contains(mylite_warning_message(database, 2), "foo", "POWER bad base warning");
+    failures +=
+        expect_contains(mylite_warning_message(database, 3), "bar", "POWER bad exponent warning");
+    failures +=
+        expect_contains(mylite_warning_message(database, 4), "0x10", "POWER hex-like warning");
+
+    failures += expect_prepare_error(database, "SELECT POW(-2,0.5)", MYLITE_EXEC_ERROR,
+                                     "DOUBLE value is out of range in 'pow()'",
+                                     "POWER negative fractional domain");
+    failures += expect_int(mylite_warning_count(database), 1, "POWER domain warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_out_of_range,
+                           "POWER domain warning code");
+    failures += expect_prepare_error(database, "SELECT POW(0,-1)", MYLITE_EXEC_ERROR,
+                                     "DOUBLE value is out of range in 'pow()'",
+                                     "POWER zero negative exponent");
+    failures += expect_prepare_error(database, "SELECT POW(1e308,2)", MYLITE_EXEC_ERROR,
+                                     "DOUBLE value is out of range in 'pow()'", "POWER overflow");
+
+    failures += prepare_sql(database,
+                            "SELECT POW(2,10) AS pow_int, "
+                            "POWER(2,-2) AS power_frac, "
+                            "POW(NULL,2) AS pow_null, "
+                            "POW('2x','3y') AS pow_warn",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, power_metadata,
+                                       (int)(sizeof(power_metadata) / sizeof(power_metadata[0])),
+                                       "POWER scalar metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "POWER metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "POWER metadata done");
+    failures += expect_int(mylite_warning_count(database), 2, "POWER metadata warning count");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database,
+                            "CREATE TABLE power_sites ("
+                            "id INT PRIMARY KEY, "
+                            "x DOUBLE, "
+                            "y DOUBLE, "
+                            "s VARCHAR(16))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO power_sites VALUES "
+                            "(1,2,3,'2'),"
+                            "(2,-2,3,'2x'),"
+                            "(3,NULL,2,'bad'),"
+                            "(4,4,-0.5,'4')",
+                            MYLITE_DONE);
+
+    failures += prepare_sql(database,
+                            "SELECT POW(x, y) AS px, POWER(x, 2) AS py, "
+                            "POW(s, 2) AS ps FROM power_sites LIMIT 0",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, power_table_metadata,
+        (int)(sizeof(power_table_metadata) / sizeof(power_table_metadata[0])),
+        "POWER table metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "POWER table metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_select_rows(database,
+                                   "SELECT id, POW(x,y) AS p FROM power_sites "
+                                   "ORDER BY POW(x,y), id",
+                                   power_projection_columns, 2, power_projection_values, 4,
+                                   "POWER table projection order");
+    failures += expect_int(mylite_warning_count(database), 0, "POWER table projection warnings");
+    failures +=
+        expect_select_rows(database, "SELECT id FROM power_sites WHERE POW(x,y) > 1 ORDER BY id",
+                           id_column, 1, selected_id_values, 1, "POWER table WHERE");
+    failures += expect_int(mylite_warning_count(database), 0, "POWER table WHERE warnings");
+
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE power_sites SET x = POW(x,2) WHERE id IN (1,2)", 2,
+        "POWER update assignment");
+    failures += expect_select_rows(database,
+                                   "SELECT id, POW(x,1) AS p FROM power_sites "
+                                   "WHERE id IN (1,2) ORDER BY id",
+                                   updated_columns, 2, updated_values, 2, "POWER updated values");
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE power_sites SET y = POWER(x,0.5) WHERE id = 4", 1,
+        "POWER alias update assignment");
+    failures +=
+        expect_select_rows(database, "SELECT id, POW(y,1) AS p FROM power_sites WHERE id = 4",
+                           updated_columns, 2, updated_y_values, 1, "POWER alias updated value");
+
+    failures += prepare_sql(database, "UPDATE power_sites SET y = POW('2x',3) WHERE id = 4",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Truncated incorrect DOUBLE value",
+                                  "POWER update warning promoted");
+    failures += expect_int(mylite_warning_count(database), 1, "POWER update warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "POWER update warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM power_sites ORDER BY id", id_column, 1,
+                                   dml_rollback_values, 4, "POWER update rollback rows");
+
+    failures +=
+        prepare_sql(database, "DELETE FROM power_sites WHERE POW('2x',3) = 8", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Truncated incorrect DOUBLE value",
+                                  "POWER delete warning promoted");
+    failures += expect_int(mylite_warning_count(database), 1, "POWER delete warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "POWER delete warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM power_sites ORDER BY id", id_column, 1,
+                                   dml_rollback_values, 4, "POWER delete warning rollback rows");
+
+    failures +=
+        prepare_sql(database, "DELETE FROM power_sites WHERE POW(0,-1) IS NULL", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "DOUBLE value is out of range in 'pow()'",
+                                  "POWER delete domain error");
+    failures += expect_int(mylite_warning_count(database), 1, "POWER delete domain warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_out_of_range,
+                           "POWER delete domain warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM power_sites WHERE id = 1 AND POW(x,0.5) = 2", 1,
+        "POWER delete predicate");
+    failures += expect_select_rows(database, "SELECT id FROM power_sites ORDER BY id", id_column, 1,
+                                   remaining_values, 3, "POWER delete remaining rows");
+
+    failures += prepare_sql(database, "SELECT POW()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "POWER zero arity unsupported");
+    failures += prepare_sql(database, "SELECT POW(1)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "POWER one arity unsupported");
+    failures += prepare_sql(database, "SELECT POW(1,2,3)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "POWER three arity unsupported");
+    failures += prepare_sql(database, "SELECT POWER(1)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "POWER alias one arity unsupported");
 
     // NOLINTEND(readability-magic-numbers)
     return failures;

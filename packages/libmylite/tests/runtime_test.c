@@ -112,6 +112,13 @@ struct sqlite_table_lookup {
     const char *table_name;
 };
 
+struct show_variable_expectation {
+    const char *sql;
+    const char *variable_name;
+    const char *value;
+    const char *context;
+};
+
 struct sqlite_physical_value_expectation {
     const char *path;
     const char *physical_name;
@@ -197,6 +204,7 @@ static int test_alter_table_column_operations_execution(void);
 static int test_alter_table_key_operations_execution(void);
 static int test_rename_table_execution(void);
 static int test_truncate_table_execution(void);
+static int test_show_variables_execution(void);
 static int test_show_tables_execution(void);
 static int test_show_columns_execution(void);
 static int test_show_index_execution(void);
@@ -237,6 +245,8 @@ static int execute_sql_expect_done_affected(mylite_db *database, const char *sql
 static int expect_select_rows(mylite_db *database, const char *sql, const char *const *columns,
                               int column_count, const char *const *values, int row_count,
                               const char *context);
+static int expect_show_variables_contains(mylite_db *database,
+                                          const struct show_variable_expectation *expected);
 static int expect_select_row_count(mylite_db *database, const char *sql, int row_count,
                                    const char *context);
 static int expect_information_schema_schemata_row(mylite_db *database,
@@ -338,6 +348,7 @@ int main(void)
     failures += test_alter_table_key_operations_execution();
     failures += test_rename_table_execution();
     failures += test_truncate_table_execution();
+    failures += test_show_variables_execution();
     failures += test_show_tables_execution();
     failures += test_show_columns_execution();
     failures += test_show_index_execution();
@@ -4718,6 +4729,214 @@ static int test_show_tables_execution(void)
     mylite_close(database);
 
     // NOLINTEND(readability-function-size,readability-magic-numbers)
+    return failures;
+}
+
+static int test_show_variables_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const columns[] = {"Variable_name", "Value"};
+    static const char *const autocommit_values[] = {"autocommit", "ON"};
+    static const char *const initial_charset_values[] = {
+        "character_set_client",   "utf8mb4", "character_set_connection", "utf8mb4",
+        "character_set_database", "utf8mb4", "character_set_filesystem", "binary",
+        "character_set_results",  "utf8mb4", "character_set_server",     "utf8mb4",
+        "character_set_system",   "utf8mb3",
+    };
+    static const char *const unescaped_charset_values[] = {
+        "character_set_client",   "utf8mb4", "character_set_connection", "utf8mb4",
+        "character_set_database", "utf8mb4", "character_set_filesystem", "binary",
+        "character_set_results",  "utf8mb4", "character_set_server",     "utf8mb4",
+        "character_set_system",   "utf8mb3", "character_sets_dir",       "",
+    };
+    static const char *const latin1_session_charset_values[] = {
+        "character_set_client",   "latin1",  "character_set_connection", "latin1",
+        "character_set_database", "utf8mb4", "character_set_filesystem", "binary",
+        "character_set_results",  "latin1",  "character_set_server",     "utf8mb4",
+        "character_set_system",   "utf8mb3",
+    };
+    static const char *const global_charset_values[] = {
+        "character_set_client",   "utf8mb4", "character_set_connection", "utf8mb4",
+        "character_set_database", "utf8mb4", "character_set_filesystem", "binary",
+        "character_set_results",  "utf8mb4", "character_set_server",     "utf8mb4",
+        "character_set_system",   "utf8mb3",
+    };
+    static const char *const latin1_selected_charset_values[] = {
+        "character_set_client",   "utf8mb4", "character_set_connection", "latin1",
+        "character_set_database", "latin1",  "character_set_filesystem", "binary",
+        "character_set_results",  "utf8mb4", "character_set_server",     "utf8mb4",
+        "character_set_system",   "utf8mb3",
+    };
+    static const char *const session_collation_values[] = {"collation_connection", "latin1_bin"};
+    static const char *const global_collation_values[] = {"collation_connection",
+                                                          "utf8mb4_0900_ai_ci"};
+    static const char *const reset_collation_values[] = {"collation_connection",
+                                                         "utf8mb4_0900_ai_ci"};
+    static const char *const selected_database_collation_values[] = {"collation_database",
+                                                                     "latin1_bin"};
+    static const char *const selected_connection_collation_values[] = {"collation_connection",
+                                                                       "latin1_bin"};
+    static const char *const global_database_collation_values[] = {"collation_database",
+                                                                   "utf8mb4_0900_ai_ci"};
+    static const char *const warning_count_values[] = {"warning_count", "0"};
+    static const char *const error_count_values[] = {"error_count", "0"};
+    static const char *const diagnostics_columns[] = {"Level", "Code", "Message"};
+    const char *const version_values[] = {
+        "version",
+        mylite_version(),
+        "version_comment",
+        "MyLite",
+        "version_compile_machine",
+        "",
+        "version_compile_os",
+        "",
+        "version_compile_zlib",
+        "",
+    };
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open show variables database");
+
+    failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'autocommit'", columns, 2,
+                                   autocommit_values, 1, "show variables autocommit");
+    failures +=
+        expect_select_rows(database, "SHOW VARIABLES LIKE 'character\\_set\\_%'", columns, 2,
+                           initial_charset_values, 7, "show variables escaped charset pattern");
+    failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'character_set_%'", columns, 2,
+                                   unescaped_charset_values, 8,
+                                   "show variables unescaped charset wildcard");
+    failures +=
+        expect_select_rows(database, "SHOW VARIABLES LIKE 'CHARACTER\\_SET\\_%'", columns, 2,
+                           initial_charset_values, 7, "show variables like is case-insensitive");
+    failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'version%'", columns, 2,
+                                   version_values, 5, "show variables version rows");
+    failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'no_such_variable'", columns, 2,
+                                   NULL, 0, "show variables empty like result");
+    failures += expect_show_variables_contains(
+        database, &(const struct show_variable_expectation){
+                      .sql = "SHOW VARIABLES",
+                      .variable_name = "sql_mode",
+                      .value = "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,"
+                               "NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,"
+                               "NO_ENGINE_SUBSTITUTION",
+                      .context = "show variables unfiltered sql mode",
+                  });
+    failures +=
+        expect_show_variables_contains(database, &(const struct show_variable_expectation){
+                                                     .sql = "SHOW VARIABLES",
+                                                     .variable_name = "version",
+                                                     .value = mylite_version(),
+                                                     .context = "show variables unfiltered version",
+                                                 });
+    failures += expect_prepare_error(database, "SHOW VARIABLES WHERE Variable_name = 'autocommit'",
+                                     MYLITE_UNSUPPORTED, "SHOW VARIABLES WHERE is not supported",
+                                     "show variables where is parsed but unsupported");
+    failures += expect_prepare_error(database, "SHOW VARIABLES WHERE Value = 'ON'",
+                                     MYLITE_UNSUPPORTED, "SHOW VARIABLES WHERE is not supported",
+                                     "show variables where value column is parsed but unsupported");
+    failures += expect_prepare_error(database, "SHOW VARIABLES LIMIT 1", MYLITE_PARSE_ERROR,
+                                     "syntax_error", "show variables limit syntax");
+
+    failures += execute_sql(database, "SET NAMES latin1 COLLATE latin1_bin", MYLITE_DONE);
+    failures += expect_select_rows(database, "SHOW SESSION VARIABLES LIKE 'character\\_set\\_%'",
+                                   columns, 2, latin1_session_charset_values, 7,
+                                   "show session variables after set names");
+    failures += expect_select_rows(database, "SHOW LOCAL VARIABLES LIKE 'character\\_set\\_%'",
+                                   columns, 2, latin1_session_charset_values, 7,
+                                   "show local variables matches session");
+    failures +=
+        expect_select_rows(database, "SHOW GLOBAL VARIABLES LIKE 'character\\_set\\_%'", columns, 2,
+                           global_charset_values, 7, "show global variables charset defaults");
+    failures += expect_select_rows(database, "SHOW SESSION VARIABLES LIKE 'collation_connection'",
+                                   columns, 2, session_collation_values, 1,
+                                   "show variables session collation after set names");
+    failures += expect_select_rows(database, "SHOW GLOBAL VARIABLES LIKE 'collation_connection'",
+                                   columns, 2, global_collation_values, 1,
+                                   "show variables global collation default");
+    failures += expect_select_rows(database, "SHOW GLOBAL VARIABLES LIKE 'warning_count'", columns,
+                                   2, NULL, 0, "show global variables omits warning count");
+    failures += expect_select_rows(database, "SHOW GLOBAL VARIABLES LIKE 'error_count'", columns, 2,
+                                   NULL, 0, "show global variables omits error count");
+
+    failures += execute_sql(database, "SET CHARACTER SET utf8mb4", MYLITE_DONE);
+    failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'collation_connection'", columns,
+                                   2, reset_collation_values, 1,
+                                   "show variables set character set resets collation");
+
+    failures += execute_sql(database,
+                            "CREATE DATABASE mylite_show_variables_latin1 "
+                            "DEFAULT CHARACTER SET latin1 COLLATE latin1_bin",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_show_variables_latin1", MYLITE_DONE);
+    failures += execute_sql(database, "SET CHARACTER SET utf8mb4", MYLITE_DONE);
+    failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'character\\_set\\_%'", columns,
+                                   2, latin1_selected_charset_values, 7,
+                                   "show variables selected schema charset defaults");
+    failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'collation_database'", columns, 2,
+                                   selected_database_collation_values, 1,
+                                   "show variables selected schema collation database");
+    failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'collation_connection'", columns,
+                                   2, selected_connection_collation_values, 1,
+                                   "show variables selected schema collation connection");
+    failures += expect_select_rows(database, "SHOW GLOBAL VARIABLES LIKE 'collation_database'",
+                                   columns, 2, global_database_collation_values, 1,
+                                   "show global variables database collation default");
+
+    failures +=
+        expect_select_rows(database, "SELECT 1/0 AS divzero", (const char *const[]){"divzero"}, 1,
+                           (const char *const[]){NULL}, 1, "show variables warning source");
+    failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'warning_count'", columns, 2,
+                                   warning_count_values, 1, "show variables clears warning count");
+    failures += expect_select_rows(database, "SHOW WARNINGS", diagnostics_columns, 3, NULL, 0,
+                                   "show variables cleared diagnostics");
+
+    failures += execute_sql(database, "CREATE TABLE show_variable_errors (id INT)", MYLITE_DONE);
+    failures +=
+        expect_prepare_error(database, "SELECT missing_show_variable FROM show_variable_errors",
+                             MYLITE_EXEC_ERROR, "Unknown column", "show variables error source");
+    failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'error_count'", columns, 2,
+                                   error_count_values, 1, "show variables clears error count");
+
+    mylite_close(database);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
+    return failures;
+}
+
+static int expect_show_variables_contains(mylite_db *database,
+                                          const struct show_variable_expectation *expected)
+{
+    static const char *const columns[] = {"Variable_name", "Value"};
+    mylite_stmt *stmt = NULL;
+    int failures = prepare_sql(database, expected->sql, MYLITE_OK, &stmt);
+    int saw_variable = 0;
+
+    failures += expect_column_names(stmt, columns, 2, expected->context);
+    while (failures == 0) {
+        int status = mylite_step(stmt);
+
+        if (status == MYLITE_DONE) {
+            break;
+        }
+        failures += expect_status(status, MYLITE_ROW, expected->context);
+        if (failures != 0) {
+            break;
+        }
+        if (strcmp(mylite_column_text(stmt, 0), expected->variable_name) == 0) {
+            saw_variable = 1;
+            failures +=
+                expect_string(mylite_column_text(stmt, 1), expected->value, expected->context);
+            break;
+        }
+    }
+    if (!saw_variable) {
+        fprintf(stderr, "%s: SHOW VARIABLES did not return '%s'\n", expected->context,
+                expected->variable_name);
+        failures = 1;
+    }
+    failures += expect_int64(mylite_affected_rows(stmt), -1, expected->context);
+    mylite_finalize(stmt);
     return failures;
 }
 

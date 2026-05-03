@@ -2536,6 +2536,38 @@ mylite_sql_parser_make_show_schemas_statement(struct mylite_sql_parser_state *st
                      span_join(span_from_token(&show_token), span_from_token(&schemas_token)));
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_variables_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token show_token,
+    struct mylite_sql_parser_show_variables_scope scope, struct mylite_sql_token variables_token,
+    struct mylite_sql_ast_node *filter)
+{
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&show_token), span_from_token(&variables_token));
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (filter != NULL) {
+        span = span_join(span, filter->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+    mylite_sql_ast_node_set_show_variables_scope(statement, scope.scope);
+    mylite_sql_ast_node_append_child(statement, filter);
+    return statement;
+}
+
+struct mylite_sql_parser_show_variables_scope
+mylite_sql_parser_make_show_variables_scope(struct mylite_sql_token token,
+                                            enum mylite_sql_ast_show_variables_scope scope)
+{
+    return (struct mylite_sql_parser_show_variables_scope){
+        .token = token,
+        .scope = scope,
+    };
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_tables_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_parser_show_tables_tokens tokens,
     struct mylite_sql_ast_node *schema_name, struct mylite_sql_ast_node *filter)
@@ -5526,6 +5558,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"FOREIGN", MYLITE_SQL_PARSE_FOREIGN},
         {"FULL", MYLITE_SQL_PARSE_FULL},
         {"FULLTEXT", MYLITE_SQL_PARSE_FULLTEXT},
+        {"GLOBAL", MYLITE_SQL_PARSE_GLOBAL},
         {"GROUP", MYLITE_SQL_PARSE_GROUP},
         {"HASH", MYLITE_SQL_PARSE_HASH},
         {"HAVING", MYLITE_SQL_PARSE_HAVING},
@@ -5554,6 +5587,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"KEY_BLOCK_SIZE", MYLITE_SQL_PARSE_KEY_BLOCK_SIZE},
         {"LEFT", MYLITE_SQL_PARSE_LEFT},
         {"LONGBLOB", MYLITE_SQL_PARSE_LONGBLOB},
+        {"LOCAL", MYLITE_SQL_PARSE_LOCAL},
         {"LONG", MYLITE_SQL_PARSE_LONG},
         {"LONGTEXT", MYLITE_SQL_PARSE_LONGTEXT},
         {"LOCALTIME", MYLITE_SQL_PARSE_LOCALTIME},
@@ -5604,6 +5638,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"SAVEPOINT", MYLITE_SQL_PARSE_SAVEPOINT},
         {"SECONDARY_ENGINE_ATTRIBUTE", MYLITE_SQL_PARSE_SECONDARY_ENGINE_ATTRIBUTE},
         {"SELECT", MYLITE_SQL_PARSE_SELECT},
+        {"SESSION", MYLITE_SQL_PARSE_SESSION},
         {"SET", MYLITE_SQL_PARSE_SET},
         {"SHARED", MYLITE_SQL_PARSE_SHARED},
         {"SHOW", MYLITE_SQL_PARSE_SHOW},
@@ -5641,6 +5676,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"UTC_TIME", MYLITE_SQL_PARSE_UTC_TIME},
         {"UTC_TIMESTAMP", MYLITE_SQL_PARSE_UTC_TIMESTAMP},
         {"VARBINARY", MYLITE_SQL_PARSE_VARBINARY},
+        {"VARIABLES", MYLITE_SQL_PARSE_VARIABLES},
         {"VALUE", MYLITE_SQL_PARSE_VALUE},
         {"VALUES", MYLITE_SQL_PARSE_VALUES},
         {"VARCHAR", MYLITE_SQL_PARSE_VARCHAR},

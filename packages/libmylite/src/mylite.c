@@ -1154,6 +1154,11 @@ struct mylite_connection_charset_request {
     const char *collation_name;
 };
 
+struct mylite_show_variables_query {
+    enum mylite_sql_ast_show_variables_scope scope;
+    const char *like_pattern;
+};
+
 struct mylite_show_tables_query {
     const char *schema_name;
     const char *column_name;
@@ -1525,6 +1530,14 @@ static int prepare_transaction_statement(mylite_db *database,
                                          const struct mylite_sql_ast_node *statement,
                                          mylite_stmt **out_stmt);
 static int prepare_show_schemas_statement(mylite_db *database, mylite_stmt **out_stmt);
+static int prepare_show_variables_statement(mylite_db *database,
+                                            const struct mylite_sql_ast_node *statement,
+                                            mylite_stmt **out_stmt);
+static char *copy_show_variables_like_pattern(const struct mylite_sql_ast_node *statement);
+static int show_variables_sql(mylite_db *database, const struct mylite_show_variables_query *query,
+                              char **out_sql);
+static void append_show_variable_row(sqlite3_str *sql, bool *first, const char *name,
+                                     const char *value);
 static int prepare_show_tables_statement(mylite_db *database,
                                          const struct mylite_sql_ast_node *statement,
                                          mylite_stmt **out_stmt);
@@ -4985,6 +4998,8 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
             return prepare_transaction_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT:
             return prepare_show_schemas_statement(database, out_stmt);
+        case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
+            return prepare_show_variables_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
             return prepare_show_tables_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
@@ -5203,6 +5218,7 @@ static int prepare_schema_lifecycle_statement(mylite_db *database,
     case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
@@ -5349,6 +5365,7 @@ static int prepare_connection_charset_statement(mylite_db *database,
     case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
@@ -5660,6 +5677,7 @@ static int prepare_transaction_statement(mylite_db *database,
     case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
@@ -5884,6 +5902,146 @@ diagnostic_condition_level_name(const struct mylite_expression_warning *conditio
         return "Note";
     }
     return "Warning";
+}
+
+static int prepare_show_variables_statement(mylite_db *database,
+                                            const struct mylite_sql_ast_node *statement,
+                                            mylite_stmt **out_stmt)
+{
+    char *like_pattern = NULL;
+    char *sqlite_sql = NULL;
+    int status = MYLITE_OK;
+
+    if (find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
+        (void)set_error_message(database, "SHOW VARIABLES WHERE is not supported");
+        return MYLITE_UNSUPPORTED;
+    }
+
+    like_pattern = copy_show_variables_like_pattern(statement);
+    if (find_child_kind(statement, MYLITE_SQL_AST_LITERAL) != NULL && like_pattern == NULL) {
+        status = MYLITE_NOMEM;
+    }
+    if (status == MYLITE_OK) {
+        status = show_variables_sql(database,
+                                    &(const struct mylite_show_variables_query){
+                                        .scope = statement->show_variables_scope,
+                                        .like_pattern = like_pattern,
+                                    },
+                                    &sqlite_sql);
+    }
+    if (status == MYLITE_OK) {
+        status = prepare_sqlite_statement(database, sqlite_sql, out_stmt);
+    }
+
+    if (status == MYLITE_NOMEM) {
+        (void)set_error_message(database, "out of memory");
+    }
+    free(like_pattern);
+    sqlite3_free(sqlite_sql);
+    return status;
+}
+
+static char *copy_show_variables_like_pattern(const struct mylite_sql_ast_node *statement)
+{
+    const struct mylite_sql_ast_node *literal = find_child_kind(statement, MYLITE_SQL_AST_LITERAL);
+
+    if (literal == NULL) {
+        return NULL;
+    }
+    return copy_show_like_pattern_span(literal);
+}
+
+static int show_variables_sql(mylite_db *database, const struct mylite_show_variables_query *query,
+                              char **out_sql)
+{
+    static const char sql_mode[] =
+        "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,"
+        "ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION";
+    struct mylite_schema_default schema_default = {
+        .character_set = mylite_charset_default_name(),
+        .collation = mylite_charset_default_collation_name(),
+    };
+    sqlite3_str *sql = NULL;
+    const char *character_set_client = mylite_charset_default_name();
+    const char *character_set_connection = mylite_charset_default_name();
+    const char *character_set_database = mylite_charset_default_name();
+    const char *character_set_results = mylite_charset_default_name();
+    const char *collation_connection = mylite_charset_default_collation_name();
+    const char *collation_database = mylite_charset_default_collation_name();
+    bool first = true;
+    bool global = query->scope == MYLITE_SQL_AST_SHOW_VARIABLES_GLOBAL;
+    int status = MYLITE_OK;
+
+    *out_sql = NULL;
+    if (!global) {
+        status = selected_schema_default(database, &schema_default);
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        character_set_client = database->character_set_client;
+        character_set_connection = database->character_set_connection;
+        character_set_database = schema_default.character_set;
+        character_set_results = database->character_set_results;
+        collation_connection = database->collation_connection;
+        collation_database = schema_default.collation;
+    }
+
+    sql = sqlite3_str_new(database->sqlite);
+    if (sql == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    sqlite3_str_appendall(sql, "SELECT Variable_name, Value FROM (");
+    append_show_variable_row(sql, &first, "autocommit", "ON");
+    append_show_variable_row(sql, &first, "character_set_client", character_set_client);
+    append_show_variable_row(sql, &first, "character_set_connection", character_set_connection);
+    append_show_variable_row(sql, &first, "character_set_database", character_set_database);
+    append_show_variable_row(sql, &first, "character_set_filesystem", "binary");
+    append_show_variable_row(sql, &first, "character_set_results", character_set_results);
+    append_show_variable_row(sql, &first, "character_set_server", mylite_charset_default_name());
+    append_show_variable_row(sql, &first, "character_set_system", "utf8mb3");
+    append_show_variable_row(sql, &first, "character_sets_dir", "");
+    append_show_variable_row(sql, &first, "collation_connection", collation_connection);
+    append_show_variable_row(sql, &first, "collation_database", collation_database);
+    append_show_variable_row(sql, &first, "collation_server",
+                             mylite_charset_default_collation_name());
+    if (!global) {
+        append_show_variable_row(sql, &first, "error_count", "0");
+    }
+    append_show_variable_row(sql, &first, "max_error_count", "1024");
+    append_show_variable_row(sql, &first, "sql_mode", sql_mode);
+    append_show_variable_row(sql, &first, "sql_notes", "ON");
+    append_show_variable_row(sql, &first, "transaction_isolation", "REPEATABLE-READ");
+    append_show_variable_row(sql, &first, "transaction_read_only", "OFF");
+    append_show_variable_row(sql, &first, "version", mylite_version());
+    append_show_variable_row(sql, &first, "version_comment", "MyLite");
+    append_show_variable_row(sql, &first, "version_compile_machine", "");
+    append_show_variable_row(sql, &first, "version_compile_os", "");
+    append_show_variable_row(sql, &first, "version_compile_zlib", "");
+    if (!global) {
+        append_show_variable_row(sql, &first, "warning_count", "0");
+    }
+    sqlite3_str_appendall(sql, ")");
+
+    if (query->like_pattern != NULL) {
+        sqlite3_str_appendf(sql, " WHERE Variable_name LIKE %Q ESCAPE '\\'", query->like_pattern);
+    }
+    sqlite3_str_appendall(sql,
+                          " ORDER BY Variable_name COLLATE NOCASE, Variable_name COLLATE BINARY");
+
+    *out_sql = sqlite3_str_finish(sql);
+    return *out_sql == NULL ? MYLITE_NOMEM : MYLITE_OK;
+}
+
+static void append_show_variable_row(sqlite3_str *sql, bool *first, const char *name,
+                                     const char *value)
+{
+    if (!*first) {
+        sqlite3_str_appendall(sql, " UNION ALL ");
+    }
+    sqlite3_str_appendf(sql, "SELECT %Q AS \"Variable_name\", %Q AS \"Value\"", name,
+                        value == NULL ? "" : value);
+    *first = false;
 }
 
 static int prepare_show_tables_statement(mylite_db *database,
@@ -8358,6 +8516,7 @@ static int infer_expression_descriptor(mylite_db *database, const struct mylite_
     case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION:
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
@@ -11311,6 +11470,7 @@ static int bind_select_predicate_expression_in_clause(mylite_db *database,
     case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION:
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
@@ -12011,6 +12171,7 @@ static int bind_select_aggregate_aware_expression(mylite_db *database,
     case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION:
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
@@ -12571,6 +12732,7 @@ static int bind_select_order_expression(mylite_db *database,
     case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION:
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
@@ -13286,6 +13448,7 @@ static bool select_expression_is_group_invariant( // NOLINT(misc-no-recursion)
     case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION:
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
@@ -21312,6 +21475,7 @@ static int bind_update_predicate_expression(mylite_stmt *stmt,
     case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION:
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
@@ -22779,6 +22943,7 @@ static int bind_delete_predicate_expression(mylite_stmt *stmt,
     case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION:
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
@@ -34331,6 +34496,7 @@ static int copy_insert_simple_value(const struct mylite_sql_ast_node *value_node
     case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION:
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:

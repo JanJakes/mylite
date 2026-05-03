@@ -109,6 +109,11 @@ struct mylite_sql_parser_show_columns_tokens {
     struct mylite_sql_token columns;
 };
 
+struct mylite_sql_parser_show_variables_scope {
+    struct mylite_sql_token token;
+    enum mylite_sql_ast_show_variables_scope scope;
+};
+
 struct mylite_sql_parser_show_index_tokens {
     struct mylite_sql_token show;
     struct mylite_sql_token extended;
@@ -617,6 +622,13 @@ struct mylite_sql_ast_node *
 mylite_sql_parser_make_show_schemas_statement(struct mylite_sql_parser_state *state,
                                               struct mylite_sql_token show_token,
                                               struct mylite_sql_token schemas_token);
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_variables_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token show_token,
+    struct mylite_sql_parser_show_variables_scope scope, struct mylite_sql_token variables_token,
+    struct mylite_sql_ast_node *filter);
+struct mylite_sql_parser_show_variables_scope
+mylite_sql_parser_make_show_variables_scope(struct mylite_sql_token token,
+                                            enum mylite_sql_ast_show_variables_scope scope);
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_tables_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_parser_show_tables_tokens tokens,
     struct mylite_sql_ast_node *schema_name, struct mylite_sql_ast_node *filter);

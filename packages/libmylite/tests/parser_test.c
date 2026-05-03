@@ -21,6 +21,7 @@ static int test_alter_table_column_operations_syntax(void);
 static int test_alter_table_key_constraint_operations_syntax(void);
 static int test_rename_table_syntax(void);
 static int test_truncate_table_syntax(void);
+static int test_show_variables_syntax(void);
 static int test_show_tables_syntax(void);
 static int test_show_columns_syntax(void);
 static int test_show_index_syntax(void);
@@ -164,6 +165,7 @@ int main(void)
     failures += test_alter_table_key_constraint_operations_syntax();
     failures += test_rename_table_syntax();
     failures += test_truncate_table_syntax();
+    failures += test_show_variables_syntax();
     failures += test_show_tables_syntax();
     failures += test_show_columns_syntax();
     failures += test_show_index_syntax();
@@ -2845,6 +2847,111 @@ static int test_truncate_table_syntax(void)
     failures += parse_sql("TRUNCATE TABLE t TO u;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
+    return failures;
+}
+
+static int test_show_variables_syntax(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SHOW VARIABLES; SHOW GLOBAL VARIABLES; SHOW SESSION VARIABLES; "
+                          "SHOW LOCAL VARIABLES; SHOW VARIABLES LIKE 'autocommit'; "
+                          "SHOW GLOBAL VARIABLES LIKE 'character\\_set\\_%'; "
+                          "SHOW SESSION VARIABLES WHERE Variable_name = 'autocommit'; "
+                          "SHOW VARIABLES WHERE Value = 'ON';",
+                          MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_child_count(result.root, 8U, "show variables script count");
+
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT, "show variables");
+    failures += expect_child_count(statement, 0U, "show variables child count");
+    if (statement != NULL &&
+        statement->show_variables_scope != MYLITE_SQL_AST_SHOW_VARIABLES_SESSION) {
+        fprintf(stderr, "show variables: expected default session scope\n");
+        failures = 1;
+    }
+
+    statement = child_at(result.root, 1U);
+    if (statement != NULL &&
+        statement->show_variables_scope != MYLITE_SQL_AST_SHOW_VARIABLES_GLOBAL) {
+        fprintf(stderr, "show global variables: expected global scope\n");
+        failures = 1;
+    }
+
+    statement = child_at(result.root, 2U);
+    if (statement != NULL &&
+        statement->show_variables_scope != MYLITE_SQL_AST_SHOW_VARIABLES_SESSION) {
+        fprintf(stderr, "show session variables: expected session scope\n");
+        failures = 1;
+    }
+
+    statement = child_at(result.root, 3U);
+    if (statement != NULL &&
+        statement->show_variables_scope != MYLITE_SQL_AST_SHOW_VARIABLES_SESSION) {
+        fprintf(stderr, "show local variables: expected session scope\n");
+        failures = 1;
+    }
+
+    statement = child_at(result.root, 4U);
+    failures += expect_child_count(statement, 1U, "show variables like child count");
+    failures += expect_literal(child_at(statement, 0U), MYLITE_SQL_AST_LITERAL_STRING,
+                               "show variables like pattern");
+    failures += expect_span_text(child_at(statement, 0U), "'autocommit'",
+                                 "show variables like pattern text");
+
+    statement = child_at(result.root, 5U);
+    failures += expect_child_count(statement, 1U, "show global variables like child count");
+    failures += expect_span_text(child_at(statement, 0U), "'character\\_set\\_%'",
+                                 "show global variables escaped pattern text");
+
+    statement = child_at(result.root, 6U);
+    failures += expect_child_count(statement, 1U, "show variables where child count");
+    failures += expect_node(child_at(statement, 0U), MYLITE_SQL_AST_WHERE_CLAUSE,
+                            "show variables where clause");
+
+    statement = child_at(result.root, 7U);
+    failures += expect_child_count(statement, 1U, "show variables where value child count");
+    failures += expect_node(child_at(statement, 0U), MYLITE_SQL_AST_WHERE_CLAUSE,
+                            "show variables where value clause");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE variables (global INT, session INT, local INT, "
+                          "variables INT);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_child_count(result.root, 1U, "show variables keyword identifiers");
+    failures += expect_span_text(child_at(child_at(result.root, 0U), 0U), "variables",
+                                 "variables keyword as table name");
+    statement = child_at(child_at(result.root, 0U), 1U);
+    failures += expect_span_text(child_at(child_at(statement, 0U), 0U), "global",
+                                 "global keyword as column name");
+    failures += expect_span_text(child_at(child_at(statement, 1U), 0U), "session",
+                                 "session keyword as column name");
+    failures += expect_span_text(child_at(child_at(statement, 2U), 0U), "local",
+                                 "local keyword as column name");
+    failures += expect_span_text(child_at(child_at(statement, 3U), 0U), "variables",
+                                 "variables keyword as column name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW VARIABLES LIKE 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW VARIABLES LIKE 'a%' WHERE TRUE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW VARIABLES LIMIT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW GLOBAL SESSION VARIABLES;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW VARIABLES GLOBAL;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    // NOLINTEND(readability-magic-numbers)
     return failures;
 }
 

@@ -47,6 +47,8 @@ In scope for the initial implementation:
   - `ROUND`
   - `TRUNCATE`
   - `FLOOR`, `CEIL`, `CEILING`
+  - `EXP`
+  - `LN`, `LOG`, `LOG2`, `LOG10`
   - `POW`, `POWER`
   - `SQRT`
   - `MOD`
@@ -135,8 +137,12 @@ by common scalar expressions:
   `docs/specs/numeric-base-conversion-functions/specs.md` and
   `docs/specs/uuid-conversion-functions/specs.md`
 - numeric functions: `ABS`, `SIGN`, `FLOOR`, `CEIL`, `CEILING`, `MOD`,
-  `ROUND`, `POW`, `POWER`, `SQRT`, `CONV`, `BIT_COUNT`, `BIT_LENGTH`, `CRC32`, `INET_ATON`, `INET_NTOA`, and `PI`; see
+  `ROUND`, `EXP`, `LN`, `LOG`, `LOG2`, `LOG10`, `POW`, `POWER`, `SQRT`,
+  `CONV`, `BIT_COUNT`, `BIT_LENGTH`, `CRC32`, `INET_ATON`, `INET_NTOA`, and
+  `PI`; see
   `docs/specs/round-function/specs.md` and
+  `docs/specs/exp-function/specs.md` and
+  `docs/specs/logarithm-functions/specs.md` and
   `docs/specs/power-functions/specs.md` and
   `docs/specs/sqrt-function/specs.md` and
   `docs/specs/numeric-base-conversion-functions/specs.md` and
@@ -174,9 +180,10 @@ IPv4 network-address conversion, short IPv4 forms, invalid IPv4 warnings,
 `INET_NTOA()` bounds and string-integer truncation warnings,
 UUID text validation, UUID string-to-binary and binary-to-string conversion,
 optional UUID time-part swap flags,
-`MOD(..., 0)` warnings, `SQRT()` domain behavior, table projection, filters,
-ordering, update assignment expressions, delete predicates, unsupported
-functions, unsupported arity, and selected result metadata.
+`MOD(..., 0)` warnings, `EXP()` overflow behavior, logarithm invalid-domain
+warnings, `SQRT()` domain behavior, table projection, filters, ordering,
+update assignment expressions, delete predicates, unsupported functions,
+unsupported arity, and selected result metadata.
 
 This checkpoint intentionally does not yet implement `INSERT ... VALUES` or
 `INSERT ... SET` function expressions, temporal functions, information

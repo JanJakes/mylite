@@ -125,6 +125,7 @@ enum {
     mysql_warning_out_of_range = 1690,
     mysql_warning_duplicate_index = 1831,
     mysql_warning_legacy_syntax_converted = 3005,
+    mysql_warning_invalid_argument_for_logarithm = 3020,
     mysql_warning_field_in_order_not_select = 3065,
     mysql_warning_using_other_handler = 3502,
     mysql_warning_primary_invisible = 3522,
@@ -254,6 +255,7 @@ static int test_scalar_builtin_functions_execution(void);
 static int test_round_scalar_function_execution(mylite_db *database);
 static int test_power_scalar_function_execution(mylite_db *database);
 static int test_exp_scalar_function_execution(mylite_db *database);
+static int test_logarithm_scalar_function_execution(mylite_db *database);
 static int test_sqrt_scalar_function_execution(mylite_db *database);
 static int test_uuid_scalar_functions(mylite_db *database);
 static int test_inet_ipv4_functions_execution(void);
@@ -4031,6 +4033,8 @@ static int test_scalar_builtin_functions_execution(void)
 
     failures += test_exp_scalar_function_execution(database);
 
+    failures += test_logarithm_scalar_function_execution(database);
+
     failures += test_sqrt_scalar_function_execution(database);
 
     failures += test_uuid_scalar_functions(database);
@@ -6217,6 +6221,414 @@ static int test_exp_scalar_function_execution(mylite_db *database)
     failures += expect_no_stmt_handle(&stmt, "EXP zero arity unsupported");
     failures += prepare_sql(database, "SELECT EXP(1,2)", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "EXP two arity unsupported");
+
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_logarithm_scalar_function_execution(mylite_db *database)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const struct expected_result_metadata log_metadata[] = {
+        {"ln_two", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"log_one", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"log_two", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"log2_null", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"log10_warn", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    static const struct expected_result_metadata log_table_metadata[] = {
+        {"lx", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"ls", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"l10", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    static const char *const log_columns[] = {
+        "ln_two",   "log_one",   "log_two", "log2_eight", "log10_thousand", "ln_one",
+        "log2_one", "log10_one", "ln_null", "log_null",   "log_base_null",  "log_x_null",
+    };
+    static const char *const log_values[] = {
+        "0.6931471805599453",
+        "0.6931471805599453",
+        "2",
+        "3",
+        "3",
+        "0",
+        "0",
+        "0",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+    };
+    static const char *const domain_columns[] = {
+        "ln_neg",        "ln_zero",   "log_neg",   "log_zero",  "log_base_one",
+        "log_zero_base", "log_x_neg", "log2_zero", "log10_neg",
+    };
+    static const char *const domain_values[] = {NULL, NULL, NULL, NULL, NULL,
+                                                NULL, NULL, NULL, NULL};
+    static const char *const warning_columns[] = {
+        "ln_trail",      "log_bad",        "log2_empty",     "log10_space",    "log_hex",
+        "log_two_trail", "log_base_empty", "log_both_trail", "log_short_base",
+    };
+    static const char *const warning_values[] = {
+        "0.6931471805599453", NULL, NULL, NULL, NULL, "3", NULL, "3", NULL};
+    static const char *const text_domain_columns[] = {
+        "ln_empty", "ln_space", "ln_dot",          "ln_plus",
+        "ln_minus", "ln_hex",   "ln_pos_overflow", "ln_neg_overflow",
+    };
+    static const char *const text_domain_values[] = {
+        NULL, NULL, NULL, NULL, NULL, NULL, "709.782712893384", NULL};
+    static const char *const binary_order_columns[] = {
+        "null_base_trail", "invalid_base_trail",   "zero_base_bad", "text_base_one_trail",
+        "half_base_trail", "text_half_base_trail", "one_null",      "text_one_null",
+        "text_zero_null",
+    };
+    static const char *const binary_order_values[] = {
+        NULL, NULL, NULL, NULL, "-3", "-3", NULL, NULL, NULL,
+    };
+    static const char *const log_projection_columns[] = {"id", "l"};
+    static const char *const log_projection_values[] = {
+        "5", NULL,
+        "6", NULL,
+        "1", "0",
+        "2", "0.6931471805599453",
+        "3", "2.0794415416798357",
+        "4", "2.302585092994046",
+    };
+    static const char *const id_column[] = {"id"};
+    static const char *const selected_id_values[] = {"3", "4"};
+    static const char *const updated_id_values[] = {"1"};
+    static const char *const all_id_values[] = {"1", "2", "3", "4", "5", "6"};
+    static const char *const remaining_values[] = {"1", "3", "4", "5", "6"};
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_select_rows(database,
+                                   "SELECT LN(2) AS ln_two, "
+                                   "LOG(2) AS log_one, "
+                                   "LOG(10,100) AS log_two, "
+                                   "LOG2(8) AS log2_eight, "
+                                   "LOG10(1000) AS log10_thousand, "
+                                   "LN(1) AS ln_one, "
+                                   "LOG2(1) AS log2_one, "
+                                   "LOG10(1) AS log10_one, "
+                                   "LN(NULL) AS ln_null, "
+                                   "LOG(NULL) AS log_null, "
+                                   "LOG(NULL,8) AS log_base_null, "
+                                   "LOG(2,NULL) AS log_x_null",
+                                   log_columns, (int)(sizeof(log_columns) / sizeof(log_columns[0])),
+                                   log_values, 1, "logarithm scalar values");
+    failures += expect_int(mylite_warning_count(database), 0, "logarithm scalar warning count");
+
+    failures += expect_select_rows(database,
+                                   "SELECT LN(-2) AS ln_neg, "
+                                   "LN(0) AS ln_zero, "
+                                   "LOG(-2) AS log_neg, "
+                                   "LOG(0) AS log_zero, "
+                                   "LOG(1,100) AS log_base_one, "
+                                   "LOG(0,100) AS log_zero_base, "
+                                   "LOG(2,-4) AS log_x_neg, "
+                                   "LOG2(0) AS log2_zero, "
+                                   "LOG10(-1) AS log10_neg",
+                                   domain_columns,
+                                   (int)(sizeof(domain_columns) / sizeof(domain_columns[0])),
+                                   domain_values, 1, "logarithm domain values");
+    failures += expect_int(mylite_warning_count(database), 9, "logarithm domain warning count");
+    for (int index = 0; index < 9; ++index) {
+        failures += expect_int((int)mylite_warning_code(database, index),
+                               mysql_warning_invalid_argument_for_logarithm,
+                               "logarithm domain warning code");
+    }
+
+    failures += expect_select_rows(database,
+                                   "SELECT LN('2x') AS ln_trail, "
+                                   "LOG('foo') AS log_bad, "
+                                   "LOG2('') AS log2_empty, "
+                                   "LOG10(' ') AS log10_space, "
+                                   "LOG('0x10') AS log_hex, "
+                                   "LOG(2,'8x') AS log_two_trail, "
+                                   "LOG('',8) AS log_base_empty, "
+                                   "LOG('2x','8y') AS log_both_trail, "
+                                   "LOG('foo','bar') AS log_short_base",
+                                   warning_columns,
+                                   (int)(sizeof(warning_columns) / sizeof(warning_columns[0])),
+                                   warning_values, 1, "logarithm string warning values");
+    failures += expect_int(mylite_warning_count(database), 13, "logarithm string warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "logarithm 2x warning code");
+    failures += expect_int((int)mylite_warning_code(database, 1),
+                           mysql_warning_truncated_wrong_value, "logarithm foo warning code");
+    failures += expect_int((int)mylite_warning_code(database, 2),
+                           mysql_warning_invalid_argument_for_logarithm,
+                           "logarithm bad domain warning code");
+    failures += expect_int((int)mylite_warning_code(database, 8),
+                           mysql_warning_invalid_argument_for_logarithm,
+                           "logarithm empty base warning code");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 9), mysql_warning_truncated_wrong_value,
+                   "logarithm trailing base warning code");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 10), mysql_warning_truncated_wrong_value,
+                   "logarithm trailing argument warning code");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 11), mysql_warning_truncated_wrong_value,
+                   "logarithm short-circuit base warning code");
+    failures += expect_int((int)mylite_warning_code(database, 12),
+                           mysql_warning_invalid_argument_for_logarithm,
+                           "logarithm short-circuit domain warning code");
+    failures +=
+        expect_contains(mylite_warning_message(database, 0), "2x", "logarithm trailing warning");
+    failures +=
+        expect_contains(mylite_warning_message(database, 11), "foo", "logarithm base warning");
+
+    failures += expect_select_rows(
+        database,
+        "SELECT LN('') AS ln_empty, "
+        "LN(' ') AS ln_space, "
+        "LN('.') AS ln_dot, "
+        "LN('+') AS ln_plus, "
+        "LN('-') AS ln_minus, "
+        "LN('0x10') AS ln_hex, "
+        "LN('1e309') AS ln_pos_overflow, "
+        "LN('-1e309') AS ln_neg_overflow",
+        text_domain_columns, (int)(sizeof(text_domain_columns) / sizeof(text_domain_columns[0])),
+        text_domain_values, 1, "logarithm text domain values");
+    failures +=
+        expect_int(mylite_warning_count(database), 13, "logarithm text domain warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0),
+                   mysql_warning_invalid_argument_for_logarithm, "logarithm empty warning code");
+    failures += expect_int((int)mylite_warning_code(database, 2),
+                           mysql_warning_truncated_wrong_value, "logarithm dot warning code");
+    failures += expect_int((int)mylite_warning_code(database, 3),
+                           mysql_warning_invalid_argument_for_logarithm,
+                           "logarithm dot domain warning code");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 10), mysql_warning_truncated_wrong_value,
+                   "logarithm positive overflow text warning code");
+    failures += expect_int((int)mylite_warning_code(database, 12),
+                           mysql_warning_invalid_argument_for_logarithm,
+                           "logarithm negative overflow domain warning code");
+
+    failures += expect_select_rows(
+        database,
+        "SELECT LOG(NULL,'8x') AS null_base_trail, "
+        "LOG(1,'8x') AS invalid_base_trail, "
+        "LOG(0,'bad') AS zero_base_bad, "
+        "LOG('1x','8y') AS text_base_one_trail, "
+        "LOG(0.5,'8x') AS half_base_trail, "
+        "LOG('0.5x','8y') AS text_half_base_trail, "
+        "LOG(1,NULL) AS one_null, "
+        "LOG('1x',NULL) AS text_one_null, "
+        "LOG('0x10',NULL) AS text_zero_null",
+        binary_order_columns, (int)(sizeof(binary_order_columns) / sizeof(binary_order_columns[0])),
+        binary_order_values, 1, "logarithm two-argument ordering values");
+    failures += expect_int(mylite_warning_count(database), 12,
+                           "logarithm two-argument ordering warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_truncated_wrong_value,
+                   "logarithm invalid base value warning code");
+    failures += expect_int((int)mylite_warning_code(database, 1),
+                           mysql_warning_invalid_argument_for_logarithm,
+                           "logarithm invalid base domain warning code");
+    failures += expect_int((int)mylite_warning_code(database, 2),
+                           mysql_warning_invalid_argument_for_logarithm,
+                           "logarithm zero base domain warning code");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 3), mysql_warning_truncated_wrong_value,
+                   "logarithm text base one warning code");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 4), mysql_warning_truncated_wrong_value,
+                   "logarithm text value after base one warning code");
+    failures += expect_int((int)mylite_warning_code(database, 5),
+                           mysql_warning_invalid_argument_for_logarithm,
+                           "logarithm text base one domain warning code");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 6), mysql_warning_truncated_wrong_value,
+                   "logarithm fractional base value warning code");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 7), mysql_warning_truncated_wrong_value,
+                   "logarithm text fractional base warning code");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 8), mysql_warning_truncated_wrong_value,
+                   "logarithm text fractional value warning code");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 9), mysql_warning_truncated_wrong_value,
+                   "logarithm text base one null value warning code");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 10), mysql_warning_truncated_wrong_value,
+                   "logarithm text zero null value warning code");
+    failures += expect_int((int)mylite_warning_code(database, 11),
+                           mysql_warning_invalid_argument_for_logarithm,
+                           "logarithm text zero null domain warning code");
+    failures += expect_contains(mylite_warning_message(database, 0), "8x",
+                                "logarithm invalid base value warning");
+    failures += expect_contains(mylite_warning_message(database, 3), "1x",
+                                "logarithm text base one warning");
+    failures += expect_contains(mylite_warning_message(database, 4), "8y",
+                                "logarithm text value after base one warning");
+    failures += expect_contains(mylite_warning_message(database, 10), "0x10",
+                                "logarithm text zero null warning");
+
+    failures += prepare_sql(database,
+                            "SELECT LN(2) AS ln_two, "
+                            "LOG(2) AS log_one, "
+                            "LOG(10,100) AS log_two, "
+                            "LOG2(NULL) AS log2_null, "
+                            "LOG10('100x') AS log10_warn",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, log_metadata,
+                                       (int)(sizeof(log_metadata) / sizeof(log_metadata[0])),
+                                       "logarithm scalar metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "logarithm metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "logarithm metadata done");
+    failures += expect_int(mylite_warning_count(database), 1, "logarithm metadata warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "logarithm metadata warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database,
+                            "CREATE TABLE log_sites ("
+                            "id INT PRIMARY KEY, "
+                            "x DOUBLE, "
+                            "s VARCHAR(16))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO log_sites VALUES "
+                            "(1,1,'1'),"
+                            "(2,2,'2'),"
+                            "(3,8,'8'),"
+                            "(4,10,'10'),"
+                            "(5,0,'0'),"
+                            "(6,-1,'bad')",
+                            MYLITE_DONE);
+
+    failures += prepare_sql(database,
+                            "SELECT LN(x) AS lx, LOG(s) AS ls, LOG10(x) AS l10 "
+                            "FROM log_sites LIMIT 0",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, log_table_metadata, (int)(sizeof(log_table_metadata) / sizeof(log_table_metadata[0])),
+        "logarithm table metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "logarithm table metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_select_rows(database,
+                                   "SELECT id, LN(x) AS l FROM log_sites "
+                                   "ORDER BY LN(x), id",
+                                   log_projection_columns, 2, log_projection_values, 6,
+                                   "logarithm table projection order");
+    failures +=
+        expect_int(mylite_warning_count(database), 4, "logarithm table projection warning count");
+    for (int index = 0; index < 4; ++index) {
+        failures += expect_int((int)mylite_warning_code(database, index),
+                               mysql_warning_invalid_argument_for_logarithm,
+                               "logarithm table projection warning code");
+    }
+    failures +=
+        expect_select_rows(database, "SELECT id FROM log_sites WHERE LOG2(x) > 1 ORDER BY id",
+                           id_column, 1, selected_id_values, 2, "logarithm table WHERE");
+    failures += expect_int(mylite_warning_count(database), 2, "logarithm table WHERE warnings");
+
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE log_sites SET x = LOG10(1000) WHERE id = 1 AND LOG(10,100) = 2", 1,
+        "logarithm update assignment");
+    failures += expect_select_rows(database,
+                                   "SELECT id FROM log_sites "
+                                   "WHERE id = 1 AND x > 2.99 AND x < 3.01",
+                                   id_column, 1, updated_id_values, 1, "logarithm updated value");
+    failures += expect_int(mylite_warning_count(database), 0, "logarithm update warning count");
+
+    failures +=
+        prepare_sql(database, "UPDATE log_sites SET x = LN('8x') WHERE id = 2", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Truncated incorrect DOUBLE value",
+                                  "logarithm update conversion warning promoted");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "logarithm update conversion warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_truncated_wrong_value,
+                   "logarithm update conversion warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM log_sites ORDER BY id", id_column, 1,
+                                   all_id_values, 6, "logarithm update conversion rollback rows");
+
+    failures +=
+        prepare_sql(database, "UPDATE log_sites SET x = LN('bad') WHERE id = 2", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Truncated incorrect DOUBLE value",
+                                  "logarithm update conversion domain warning promoted");
+    failures += expect_int(mylite_warning_count(database), 2,
+                           "logarithm update conversion domain warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_truncated_wrong_value,
+                   "logarithm update conversion domain warning code");
+    failures += expect_int((int)mylite_warning_code(database, 1),
+                           mysql_warning_invalid_argument_for_logarithm,
+                           "logarithm update domain warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM log_sites ORDER BY id", id_column, 1,
+                                   all_id_values, 6, "logarithm update domain rollback rows");
+
+    failures +=
+        prepare_sql(database, "DELETE FROM log_sites WHERE LOG(2,'8x') = 3", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Truncated incorrect DOUBLE value",
+                                  "logarithm delete conversion warning promoted");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "logarithm delete conversion warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_truncated_wrong_value,
+                   "logarithm delete conversion warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM log_sites ORDER BY id", id_column, 1,
+                                   all_id_values, 6, "logarithm delete conversion rollback rows");
+
+    failures += prepare_sql(database, "DELETE FROM log_sites WHERE id IN (5,6) AND LN(s) IS NULL",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Invalid argument for logarithm",
+                                  "logarithm delete domain warning promoted");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "logarithm delete domain warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_invalid_argument_for_logarithm,
+                           "logarithm delete domain warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM log_sites ORDER BY id", id_column, 1,
+                                   all_id_values, 6, "logarithm delete domain rollback rows");
+
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM log_sites WHERE id = 2 AND LOG(x) < 1", 1,
+        "logarithm delete predicate");
+    failures += expect_select_rows(database, "SELECT id FROM log_sites ORDER BY id", id_column, 1,
+                                   remaining_values, 5, "logarithm delete remaining rows");
+
+    failures += prepare_sql(database, "SELECT LN()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "LN zero arity unsupported");
+    failures += prepare_sql(database, "SELECT LN(1,2)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "LN two arity unsupported");
+    failures += prepare_sql(database, "SELECT LOG()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "LOG zero arity unsupported");
+    failures += prepare_sql(database, "SELECT LOG(1,2,3)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "LOG three arity unsupported");
+    failures += prepare_sql(database, "SELECT LOG2()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "LOG2 zero arity unsupported");
+    failures += prepare_sql(database, "SELECT LOG2(1,2)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "LOG2 two arity unsupported");
+    failures += prepare_sql(database, "SELECT LOG10()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "LOG10 zero arity unsupported");
+    failures += prepare_sql(database, "SELECT LOG10(1,2)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "LOG10 two arity unsupported");
 
     // NOLINTEND(readability-magic-numbers)
     return failures;

@@ -2305,6 +2305,8 @@ static int infer_round_function_descriptor(mylite_db *database,
                                            const struct mylite_expression_value *value,
                                            bool result_nullable,
                                            struct mylite_field_descriptor *out_descriptor);
+static bool infer_logarithm_function_descriptor(const struct mylite_sql_ast_node *name,
+                                                struct mylite_field_descriptor *out_descriptor);
 static bool
 round_function_argument_is_approximate_literal(const struct mylite_sql_ast_node *argument);
 static bool round_function_constant_scale(const struct mylite_sql_ast_node *argument,
@@ -2322,6 +2324,7 @@ static bool function_name_is_field(const struct mylite_sql_ast_node *name);
 static bool function_name_is_find_in_set(const struct mylite_sql_ast_node *name);
 static bool function_name_has_integer_result(const struct mylite_sql_ast_node *name);
 static bool function_name_is_exp(const struct mylite_sql_ast_node *name);
+static bool function_name_is_logarithm(const struct mylite_sql_ast_node *name);
 static bool function_name_is_power(const struct mylite_sql_ast_node *name);
 static bool function_name_is_sqrt(const struct mylite_sql_ast_node *name);
 static bool function_name_matches_any(const struct mylite_sql_ast_node *name,
@@ -10653,6 +10656,9 @@ static bool infer_common_scalar_function_descriptor(mylite_db *database,
     if (infer_exp_function_descriptor(name, out_descriptor)) {
         return true;
     }
+    if (infer_logarithm_function_descriptor(name, out_descriptor)) {
+        return true;
+    }
     if (infer_power_function_descriptor(name, out_descriptor)) {
         return true;
     }
@@ -10666,6 +10672,25 @@ static bool infer_exp_function_descriptor(const struct mylite_sql_ast_node *name
                                           struct mylite_field_descriptor *out_descriptor)
 {
     if (!function_name_is_exp(name)) {
+        return false;
+    }
+
+    *out_descriptor = (struct mylite_field_descriptor){
+        .type = MYLITE_FIELD_TYPE_DOUBLE,
+        .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+        .length = mylite_mysql_double_display_length + 1U,
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = mylite_mysql_binary_charset_id,
+        .nullable = true,
+    };
+    field_descriptor_set_nullable(out_descriptor, true);
+    return true;
+}
+
+static bool infer_logarithm_function_descriptor(const struct mylite_sql_ast_node *name,
+                                                struct mylite_field_descriptor *out_descriptor)
+{
+    if (!function_name_is_logarithm(name)) {
         return false;
     }
 
@@ -12782,6 +12807,13 @@ static bool function_name_has_integer_result(const struct mylite_sql_ast_node *n
 static bool function_name_is_exp(const struct mylite_sql_ast_node *name)
 {
     static const char *const names[] = {"EXP"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_is_logarithm(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"LN", "LOG", "LOG2", "LOG10"};
 
     return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }
@@ -27200,7 +27232,8 @@ function_name_has_binary_numeric_collation_result(const struct mylite_sql_ast_no
         return false;
     }
     if (ascii_span_equal_ci(name->span, "PI") || ascii_span_equal_ci(name->span, "MOD") ||
-        function_name_is_exp(name) || function_name_is_power(name) || function_name_is_sqrt(name) ||
+        function_name_is_exp(name) || function_name_is_logarithm(name) ||
+        function_name_is_power(name) || function_name_is_sqrt(name) ||
         ascii_span_equal_ci(name->span, "ISNULL") ||
         ascii_span_equal_ci(name->span, "LAST_INSERT_ID") ||
         ascii_span_equal_ci(name->span, "CONNECTION_ID")) {

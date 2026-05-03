@@ -23,6 +23,7 @@ enum {
     MYLITE_WARNING_DIVISION_BY_ZERO = 1365,
     MYLITE_WARNING_INCORRECT_STRING_VALUE = 1411,
     MYLITE_WARNING_OUT_OF_RANGE = 1690,
+    MYLITE_WARNING_INVALID_ARGUMENT_FOR_LOGARITHM = 3020,
     MYLITE_EXPRESSION_TEXT_BUFFER_SIZE = 64,
     MYLITE_EXPRESSION_DECIMAL_TEXT_BUFFER_SIZE = 128,
     MYLITE_EXPRESSION_DECIMAL_ROUND_SCALE_LIMIT = 30,
@@ -373,6 +374,10 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_POWER = 69,
     MYLITE_SCALAR_FUNCTION_SQRT = 70,
     MYLITE_SCALAR_FUNCTION_EXP = 71,
+    MYLITE_SCALAR_FUNCTION_LN = 72,
+    MYLITE_SCALAR_FUNCTION_LOG = 73,
+    MYLITE_SCALAR_FUNCTION_LOG2 = 74,
+    MYLITE_SCALAR_FUNCTION_LOG10 = 75,
 };
 
 static int eval_node(const struct mylite_sql_ast_node *node,
@@ -843,6 +848,20 @@ static int eval_exp_function(const struct mylite_sql_ast_node *arguments,
                              const struct mylite_expression_eval_context *context,
                              struct mylite_expression_warnings *warnings,
                              struct mylite_expression_value *out_value);
+static int eval_log_function(enum mylite_scalar_function_id function_id,
+                             const struct mylite_sql_ast_node *arguments,
+                             const struct mylite_expression_eval_context *context,
+                             struct mylite_expression_warnings *warnings,
+                             struct mylite_expression_value *out_value);
+static int eval_unary_log_function(enum mylite_scalar_function_id function_id,
+                                   const struct mylite_sql_ast_node *argument,
+                                   const struct mylite_expression_eval_context *context,
+                                   struct mylite_expression_warnings *warnings,
+                                   struct mylite_expression_value *out_value);
+static int eval_binary_log_function(const struct mylite_sql_ast_node *arguments,
+                                    const struct mylite_expression_eval_context *context,
+                                    struct mylite_expression_warnings *warnings,
+                                    struct mylite_expression_value *out_value);
 static int eval_sqrt_function(const struct mylite_sql_ast_node *arguments,
                               const struct mylite_expression_eval_context *context,
                               struct mylite_expression_warnings *warnings,
@@ -1049,6 +1068,7 @@ static int append_cast_truncation_warning(struct mylite_expression_warnings *war
                                           const char *type_name, const char *text);
 static int append_power_out_of_range_error(struct mylite_expression_warnings *warnings);
 static int append_exp_out_of_range_error(struct mylite_expression_warnings *warnings);
+static int append_invalid_logarithm_warning(struct mylite_expression_warnings *warnings);
 static int append_char_truncation_warning(struct mylite_expression_warnings *warnings,
                                           uint64_t length, const char *text);
 static int append_signed_complement_warning(struct mylite_expression_warnings *warnings);
@@ -1361,8 +1381,12 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_CEIL:
     case MYLITE_SCALAR_FUNCTION_EXP:
     case MYLITE_SCALAR_FUNCTION_SQRT:
+    case MYLITE_SCALAR_FUNCTION_LN:
+    case MYLITE_SCALAR_FUNCTION_LOG2:
+    case MYLITE_SCALAR_FUNCTION_LOG10:
     case MYLITE_SCALAR_FUNCTION_ISNULL:
         return arity == 1U;
+    case MYLITE_SCALAR_FUNCTION_LOG:
     case MYLITE_SCALAR_FUNCTION_ROUND:
         return arity == 1U || arity == 2U;
     case MYLITE_SCALAR_FUNCTION_LEFT:
@@ -2193,6 +2217,11 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_power_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_EXP:
         return eval_exp_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_LN:
+    case MYLITE_SCALAR_FUNCTION_LOG:
+    case MYLITE_SCALAR_FUNCTION_LOG2:
+    case MYLITE_SCALAR_FUNCTION_LOG10:
+        return eval_log_function(function_id, arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_SQRT:
         return eval_sqrt_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_ABS:
@@ -5188,6 +5217,10 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_EXP:
     case MYLITE_SCALAR_FUNCTION_POWER:
     case MYLITE_SCALAR_FUNCTION_SQRT:
+    case MYLITE_SCALAR_FUNCTION_LN:
+    case MYLITE_SCALAR_FUNCTION_LOG:
+    case MYLITE_SCALAR_FUNCTION_LOG2:
+    case MYLITE_SCALAR_FUNCTION_LOG10:
     case MYLITE_SCALAR_FUNCTION_MOD:
     case MYLITE_SCALAR_FUNCTION_PI:
     case MYLITE_SCALAR_FUNCTION_IF:
@@ -6717,6 +6750,131 @@ static int eval_exp_function(const struct mylite_sql_ast_node *arguments,
 
 cleanup:
     mylite_expression_value_deinit(&argument);
+    return status;
+}
+
+static int eval_log_function(enum mylite_scalar_function_id function_id,
+                             const struct mylite_sql_ast_node *arguments,
+                             const struct mylite_expression_eval_context *context,
+                             struct mylite_expression_warnings *warnings,
+                             struct mylite_expression_value *out_value)
+{
+    if (function_id == MYLITE_SCALAR_FUNCTION_LOG && child_count(arguments) == 2U) {
+        return eval_binary_log_function(arguments, context, warnings, out_value);
+    }
+    return eval_unary_log_function(function_id, child_at(arguments, 0U), context, warnings,
+                                   out_value);
+}
+
+static int eval_unary_log_function(enum mylite_scalar_function_id function_id,
+                                   const struct mylite_sql_ast_node *argument,
+                                   const struct mylite_expression_eval_context *context,
+                                   struct mylite_expression_warnings *warnings,
+                                   struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value value = {0};
+    struct numeric_value number = {0};
+    double result = 0.0;
+    int status = eval_node(argument, context, warnings, &value);
+
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&value)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+
+    status = value_to_numeric(&value, warnings, &number);
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (number.real_value <= 0.0) {
+        status = append_invalid_logarithm_warning(warnings);
+        if (status == 0) {
+            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        }
+        goto cleanup;
+    }
+
+    result = log(number.real_value);
+    if (function_id == MYLITE_SCALAR_FUNCTION_LOG2) {
+        result = log2(number.real_value);
+    } else if (function_id == MYLITE_SCALAR_FUNCTION_LOG10) {
+        result = log10(number.real_value);
+    }
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_REAL,
+        .real_value = result,
+        .compact_real_text = true,
+    };
+
+cleanup:
+    mylite_expression_value_deinit(&value);
+    return status;
+}
+
+static int eval_binary_log_function(const struct mylite_sql_ast_node *arguments,
+                                    const struct mylite_expression_eval_context *context,
+                                    struct mylite_expression_warnings *warnings,
+                                    struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value base = {0};
+    struct mylite_expression_value value = {0};
+    struct numeric_value base_number = {0};
+    struct numeric_value number = {0};
+    int status = eval_node(child_at(arguments, 0U), context, warnings, &base);
+
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&base)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+
+    status = value_to_numeric(&base, warnings, &base_number);
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (base_number.real_value <= 0.0) {
+        status = append_invalid_logarithm_warning(warnings);
+        if (status == 0) {
+            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        }
+        goto cleanup;
+    }
+
+    status = eval_node(child_at(arguments, 1U), context, warnings, &value);
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&value)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+
+    status = value_to_numeric(&value, warnings, &number);
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (number.real_value <= 0.0 || base_number.real_value == 1.0) {
+        status = append_invalid_logarithm_warning(warnings);
+        if (status == 0) {
+            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        }
+        goto cleanup;
+    }
+
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_REAL,
+        .real_value = log(number.real_value) / log(base_number.real_value),
+        .compact_real_text = true,
+    };
+
+cleanup:
+    mylite_expression_value_deinit(&base);
+    mylite_expression_value_deinit(&value);
     return status;
 }
 
@@ -9014,6 +9172,12 @@ static int append_exp_out_of_range_error(struct mylite_expression_warnings *warn
         "DOUBLE value is out of range in 'exp()'");
 }
 
+static int append_invalid_logarithm_warning(struct mylite_expression_warnings *warnings)
+{
+    return append_warning(warnings, MYLITE_WARNING_INVALID_ARGUMENT_FOR_LOGARITHM,
+                          "Invalid argument for logarithm");
+}
+
 static int append_char_truncation_warning(struct mylite_expression_warnings *warnings,
                                           uint64_t length, const char *text)
 {
@@ -9229,6 +9393,10 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"CEILING", MYLITE_SCALAR_FUNCTION_CEIL},
         {"ROUND", MYLITE_SCALAR_FUNCTION_ROUND},
         {"EXP", MYLITE_SCALAR_FUNCTION_EXP},
+        {"LN", MYLITE_SCALAR_FUNCTION_LN},
+        {"LOG", MYLITE_SCALAR_FUNCTION_LOG},
+        {"LOG2", MYLITE_SCALAR_FUNCTION_LOG2},
+        {"LOG10", MYLITE_SCALAR_FUNCTION_LOG10},
         {"POW", MYLITE_SCALAR_FUNCTION_POWER},
         {"POWER", MYLITE_SCALAR_FUNCTION_POWER},
         {"SQRT", MYLITE_SCALAR_FUNCTION_SQRT},
@@ -9336,6 +9504,10 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_EXP:
     case MYLITE_SCALAR_FUNCTION_POWER:
     case MYLITE_SCALAR_FUNCTION_SQRT:
+    case MYLITE_SCALAR_FUNCTION_LN:
+    case MYLITE_SCALAR_FUNCTION_LOG:
+    case MYLITE_SCALAR_FUNCTION_LOG2:
+    case MYLITE_SCALAR_FUNCTION_LOG10:
     case MYLITE_SCALAR_FUNCTION_MOD:
     case MYLITE_SCALAR_FUNCTION_PI:
     case MYLITE_SCALAR_FUNCTION_IF:

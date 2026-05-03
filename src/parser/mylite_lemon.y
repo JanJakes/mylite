@@ -881,9 +881,7 @@ account_resource_option ::= MAX_UPDATES_PER_HOUR account_resource_count.
 account_resource_option ::= MAX_CONNECTIONS_PER_HOUR account_resource_count.
 account_resource_option ::= MAX_USER_CONNECTIONS account_resource_count.
 
-account_resource_count ::= BOOLEAN_NUMBER.
-account_resource_count ::= FACTOR_NUMBER.
-account_resource_count ::= NUMBER_LITERAL.
+account_resource_count ::= unsigned_decimal_or_lower_hex_value.
 
 account_password_option ::= PASSWORD EXPIRE.
 account_password_option ::= PASSWORD EXPIRE DEFAULT.

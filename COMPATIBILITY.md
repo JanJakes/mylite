@@ -594,8 +594,8 @@ This table is generated from the MySQL 8.4 built-in function and operator refere
 | `BIN_TO_UUID()` | ❌ | high | Convert binary UUID to string |  |
 | `BINARY` | ❌ | medium | Cast a string to a binary string |  |
 | `BIT_AND()` | ❌ | medium | Return bitwise AND |  |
-| `BIT_COUNT()` | ❌ | medium | Return the number of bits that are set |  |
-| `BIT_LENGTH()` | ❌ | medium | Return length of argument in bits |  |
+| `BIT_COUNT()` | 🟡 | medium | Return the number of bits that are set | Implemented for supported scalar expression call sites, including `NULL`, positive and negative 64-bit numeric values, unsigned maximum, exact and approximate numeric conversion, string integer parsing warnings, table projection/`WHERE`/`ORDER BY`, `UPDATE`, `DELETE`, and MySQL-compatible numeric metadata. Exact native arity diagnostics and full binary-string type dispatch remain deferred. See [bit utility functions spec](docs/specs/bit-utility-functions/specs.md) and [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
+| `BIT_LENGTH()` | 🟡 | medium | Return length of argument in bits | Implemented for supported scalar expression call sites as byte length after string conversion multiplied by eight, including `NULL`, UTF-8 and binary text values, numeric arguments, table projection/`WHERE`/`ORDER BY`, `UPDATE`, `DELETE`, and MySQL-compatible numeric metadata. Exact native arity diagnostics remain deferred. See [bit utility functions spec](docs/specs/bit-utility-functions/specs.md) and [scalar built-in functions spec](docs/specs/scalar-built-in-functions/specs.md). |
 | `BIT_OR()` | ❌ | medium | Return bitwise OR |  |
 | `BIT_XOR()` | ❌ | medium | Return bitwise XOR |  |
 | `CAN_ACCESS_COLUMN()` | ❌ | low | Internal use only |  |

@@ -2545,6 +2545,16 @@ static int test_scalar_builtin_functions_execution(void)
              MYLITE_FIELD_FLAG_UNSIGNED,
          1},
     };
+    static const struct expected_result_metadata bit_metadata[] = {
+        {"bc_nonnull", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"bc_null", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"bl_nonnull", NULL, NULL, NULL, NULL, NULL, 10U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"bl_null", NULL, NULL, NULL, NULL, NULL, 10U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
     static const struct expected_result_metadata nullable_search_metadata[] = {
         {"ascii_null", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
          MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
@@ -3295,6 +3305,19 @@ static int test_scalar_builtin_functions_execution(void)
     static const char *const base_site_projection_values[] = {
         "2", "1111", "1777777777777777777777", "15", "1", "1100", "377", "10",
     };
+    static const char *const bit_columns[] = {
+        "bc0",     "bc1",         "bc7",     "bcm1",    "bcmax",    "bcnull", "bcs7",
+        "bcsx",    "bc_trailing", "bc_sneg", "bc_real", "bc_rneg",  "bl_abc", "bl_empty",
+        "bl_null", "bl_utf8",     "bl_int",  "bl_real", "bl_unhex",
+    };
+    static const char *const bit_values[] = {
+        "0", "1",  "3",  "64", "64", NULL, "3",  "0",  "4",  "64",
+        "1", "63", "24", "0",  NULL, "16", "24", "32", "16",
+    };
+    static const char *const bit_site_projection_columns[] = {"id", "bc_s", "bc_n", "bl_s"};
+    static const char *const bit_site_projection_values[] = {
+        "2", "4", "64", "16", "1", "2", "8", "16",
+    };
     static const char *const id_column[] = {"id"};
     static const char *const n_column[] = {"n"};
     static const char *const id_2[] = {"2"};
@@ -3316,6 +3339,8 @@ static int test_scalar_builtin_functions_execution(void)
     static const char *const unchanged_base_values[] = {"1", "12", "255"};
     static const char *const updated_base_values[] = {"1", "FF", "255"};
     static const char *const base_remaining_values[] = {"1", "2"};
+    static const char *const updated_bit_values[] = {"1", "12", "16"};
+    static const char *const bit_remaining_values[] = {"1"};
     static const char *const updated_make_order_values[] = {"2", "a", "99"};
     static const char *const updated_hex_order_values[] = {"2", "61", "99"};
     static const char *const make_order_remaining_values[] = {"1", "3"};
@@ -3483,6 +3508,20 @@ static int test_scalar_builtin_functions_execution(void)
     stmt = NULL;
 
     failures += prepare_sql(database,
+                            "SELECT BIT_COUNT(7) AS bc_nonnull, "
+                            "BIT_COUNT(NULL) AS bc_null, "
+                            "BIT_LENGTH('abc') AS bl_nonnull, "
+                            "BIT_LENGTH(NULL) AS bl_null",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, bit_metadata,
+                                       (int)(sizeof(bit_metadata) / sizeof(bit_metadata[0])),
+                                       "bit utility utf8mb4 metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "bit utility utf8mb4 metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "bit utility utf8mb4 metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
                             "SELECT ASCII(NULL) AS ascii_null, "
                             "LOCATE('a', NULL) AS locate_null, "
                             "INSERT('abc', NULL, 1, 'x') AS insert_null, "
@@ -3578,7 +3617,48 @@ static int test_scalar_builtin_functions_execution(void)
         expect_status(mylite_step(stmt), MYLITE_DONE, "base conversion latin1 metadata done");
     mylite_finalize(stmt);
     stmt = NULL;
+    failures += prepare_sql(database,
+                            "SELECT BIT_COUNT(7) AS bc_nonnull, "
+                            "BIT_COUNT(NULL) AS bc_null, "
+                            "BIT_LENGTH('abc') AS bl_nonnull, "
+                            "BIT_LENGTH(NULL) AS bl_null",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, bit_metadata,
+                                       (int)(sizeof(bit_metadata) / sizeof(bit_metadata[0])),
+                                       "bit utility latin1 metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "bit utility latin1 metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "bit utility latin1 metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
+
+    failures += expect_select_rows(database,
+                                   "SELECT BIT_COUNT(0) AS bc0, "
+                                   "BIT_COUNT(1) AS bc1, "
+                                   "BIT_COUNT(7) AS bc7, "
+                                   "BIT_COUNT(-1) AS bcm1, "
+                                   "BIT_COUNT(18446744073709551615) AS bcmax, "
+                                   "BIT_COUNT(NULL) AS bcnull, "
+                                   "BIT_COUNT('7') AS bcs7, "
+                                   "BIT_COUNT('x') AS bcsx, "
+                                   "BIT_COUNT('  15x') AS bc_trailing, "
+                                   "BIT_COUNT('-1x') AS bc_sneg, "
+                                   "BIT_COUNT(1.9) AS bc_real, "
+                                   "BIT_COUNT(-1.9) AS bc_rneg, "
+                                   "BIT_LENGTH('abc') AS bl_abc, "
+                                   "BIT_LENGTH('') AS bl_empty, "
+                                   "BIT_LENGTH(NULL) AS bl_null, "
+                                   "BIT_LENGTH('\xC3\xA9') AS bl_utf8, "
+                                   "BIT_LENGTH(123) AS bl_int, "
+                                   "BIT_LENGTH(1.25) AS bl_real, "
+                                   "BIT_LENGTH(UNHEX('4100')) AS bl_unhex",
+                                   bit_columns, (int)(sizeof(bit_columns) / sizeof(bit_columns[0])),
+                                   bit_values, 1, "bit utility scalar values");
+    failures += expect_int(mylite_warning_count(database), 3, "bit utility warning count");
+    for (int index = 0; index < 3; ++index) {
+        failures += expect_int((int)mylite_warning_code(database, index),
+                               mysql_warning_truncated_wrong_value, "bit utility warning code");
+    }
 
     failures +=
         expect_select_rows(database,
@@ -4281,6 +4361,22 @@ static int test_scalar_builtin_functions_execution(void)
         "table numeric base conversion projection where and order");
     failures += expect_select_rows(database, "SELECT id FROM base_sites WHERE BIN(s)='1100'",
                                    id_column, 1, n_1, 1, "numeric base conversion where");
+    failures += execute_sql(database,
+                            "CREATE TABLE bit_sites "
+                            "(id INT PRIMARY KEY, s VARCHAR(20), n BIGINT)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO bit_sites VALUES "
+                            "(1,'12',255),(2,'15',-1),(3,'0',0)",
+                            MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id, BIT_COUNT(s) AS bc_s, BIT_COUNT(n) AS bc_n, BIT_LENGTH(s) AS bl_s "
+        "FROM bit_sites WHERE id IN (1,2) ORDER BY BIT_COUNT(n) DESC, id",
+        bit_site_projection_columns, 4, bit_site_projection_values, 2,
+        "table bit utility projection where and order");
+    failures += expect_select_rows(database, "SELECT id FROM bit_sites WHERE BIT_COUNT(s)=2",
+                                   id_column, 1, n_1, 1, "bit utility function where");
     failures += expect_select_rows(database, "SELECT id FROM t WHERE LPAD(s, 5, '.')='alpha'",
                                    id_column, 1, n_1, 1, "lpad function where");
     failures += expect_select_rows(database, "SELECT id FROM t WHERE REVERSE(s)='ateB'", id_column,
@@ -4524,6 +4620,35 @@ static int test_scalar_builtin_functions_execution(void)
                                    base_remaining_values, 2,
                                    "delete numeric base conversion remaining rows");
 
+    failures += prepare_sql(database, "UPDATE bit_sites SET n = 5 WHERE BIT_COUNT('x') = 0",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "update BIT_COUNT warning promoted");
+    failures += expect_contains(mylite_error_message(database), "Truncated incorrect INTEGER value",
+                                "update BIT_COUNT warning error");
+    failures += expect_int(mylite_warning_count(database), 1, "update BIT_COUNT warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "update BIT_COUNT warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE bit_sites SET n = BIT_LENGTH(s) WHERE BIT_COUNT(s) = 2", 1,
+        "update bit utility assignment and predicate");
+    failures +=
+        expect_select_rows(database, "SELECT id, s, n FROM bit_sites WHERE id = 1", id_s_n_columns,
+                           3, updated_bit_values, 1, "updated bit utility values");
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE bit_sites SET s = 'ordered' ORDER BY BIT_LENGTH(s), id LIMIT 1", 1,
+        "update bit utility order key");
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM bit_sites ORDER BY BIT_COUNT(n) DESC, id LIMIT 1", 1,
+        "delete bit utility order key");
+    failures +=
+        execute_sql_expect_done_affected(database, "DELETE FROM bit_sites WHERE BIT_LENGTH(s) = 56",
+                                         1, "delete bit utility predicate");
+    failures += expect_select_rows(database, "SELECT id FROM bit_sites ORDER BY id", id_column, 1,
+                                   bit_remaining_values, 1, "delete bit utility remaining rows");
+
     failures += execute_sql(database,
                             "CREATE TABLE make_order "
                             "(id INT PRIMARY KEY, s VARCHAR(20), n INT)",
@@ -4726,6 +4851,14 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_no_stmt_handle(&stmt, "unsupported conv two arity");
     failures += prepare_sql(database, "SELECT CONV(1,10,2,3)", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported conv four arity");
+    failures += prepare_sql(database, "SELECT BIT_COUNT()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported bit_count zero arity");
+    failures += prepare_sql(database, "SELECT BIT_COUNT(1,2)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported bit_count two arity");
+    failures += prepare_sql(database, "SELECT BIT_LENGTH()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported bit_length zero arity");
+    failures += prepare_sql(database, "SELECT BIT_LENGTH('a','b')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported bit_length two arity");
     failures += prepare_sql(database, "SELECT POSITION('a')", MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "position ordinary syntax");
     failures += prepare_sql(database, "SELECT LTRIM()", MYLITE_UNSUPPORTED, &stmt);

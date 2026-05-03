@@ -22,6 +22,7 @@ enum {
     MYLITE_EXPRESSION_DECIMAL_TEXT_BUFFER_SIZE = 128,
     MYLITE_EXPRESSION_DECIMAL_BASE = 10,
     MYLITE_EXPRESSION_UINT64_DIGITS = 19,
+    MYLITE_EXPRESSION_BITS_PER_BYTE = 8,
     MYLITE_EXPRESSION_BITS_PER_UINT64 = 64,
     MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE = 256,
     MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW = 160,
@@ -276,6 +277,8 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_CONNECTION_ID = 54,
     MYLITE_SCALAR_FUNCTION_USER = 55,
     MYLITE_SCALAR_FUNCTION_CURRENT_USER = 56,
+    MYLITE_SCALAR_FUNCTION_BIT_COUNT = 57,
+    MYLITE_SCALAR_FUNCTION_BIT_LENGTH = 58,
 };
 
 static int eval_node(const struct mylite_sql_ast_node *node,
@@ -565,6 +568,19 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
                                          const struct mylite_expression_eval_context *context,
                                          struct mylite_expression_warnings *warnings,
                                          struct mylite_expression_value *out_value);
+static int eval_bit_count_function(const struct mylite_sql_ast_node *arguments,
+                                   const struct mylite_expression_eval_context *context,
+                                   struct mylite_expression_warnings *warnings,
+                                   struct mylite_expression_value *out_value);
+static int bit_count_value_bits(const struct mylite_expression_value *value,
+                                struct mylite_expression_warnings *warnings, uint64_t *out_bits);
+static int bit_count_string_bits(const char *text, struct mylite_expression_warnings *warnings,
+                                 uint64_t *out_bits);
+static unsigned int uint64_bit_count(uint64_t value);
+static int eval_bit_length_function(const struct mylite_sql_ast_node *arguments,
+                                    const struct mylite_expression_eval_context *context,
+                                    struct mylite_expression_warnings *warnings,
+                                    struct mylite_expression_value *out_value);
 static int eval_bin_oct_function(const struct mylite_sql_ast_node *argument, uint64_t to_base,
                                  const struct mylite_expression_eval_context *context,
                                  struct mylite_expression_warnings *warnings,
@@ -1043,6 +1059,8 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_CHARSET:
     case MYLITE_SCALAR_FUNCTION_COLLATION:
     case MYLITE_SCALAR_FUNCTION_COERCIBILITY:
+    case MYLITE_SCALAR_FUNCTION_BIT_COUNT:
+    case MYLITE_SCALAR_FUNCTION_BIT_LENGTH:
     case MYLITE_SCALAR_FUNCTION_ABS:
     case MYLITE_SCALAR_FUNCTION_SIGN:
     case MYLITE_SCALAR_FUNCTION_FLOOR:
@@ -1843,6 +1861,10 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
     case MYLITE_SCALAR_FUNCTION_OCT:
     case MYLITE_SCALAR_FUNCTION_CONV:
         return eval_base_conversion_function(function_id, arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_BIT_COUNT:
+        return eval_bit_count_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_BIT_LENGTH:
+        return eval_bit_length_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_MOD:
         return eval_mod_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_ABS:
@@ -4311,9 +4333,140 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_CHAR:
     case MYLITE_SCALAR_FUNCTION_HEX:
     case MYLITE_SCALAR_FUNCTION_UNHEX:
+    case MYLITE_SCALAR_FUNCTION_BIT_COUNT:
+    case MYLITE_SCALAR_FUNCTION_BIT_LENGTH:
         return -1;
     }
     return -1;
+}
+
+static int eval_bit_count_function(const struct mylite_sql_ast_node *arguments,
+                                   const struct mylite_expression_eval_context *context,
+                                   struct mylite_expression_warnings *warnings,
+                                   struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value value = {0};
+    uint64_t bits = 0U;
+    int status = eval_node(child_at(arguments, 0U), context, warnings, &value);
+
+    if (status != 0) {
+        return status;
+    }
+    if (is_null(&value)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+    } else {
+        status = bit_count_value_bits(&value, warnings, &bits);
+        if (status == 0) {
+            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
+                                                          .int64_value = uint64_bit_count(bits)};
+        }
+    }
+    mylite_expression_value_deinit(&value);
+    return status;
+}
+
+static int bit_count_value_bits(const struct mylite_expression_value *value,
+                                struct mylite_expression_warnings *warnings, uint64_t *out_bits)
+{
+    if (value == NULL || out_bits == NULL) {
+        return -1;
+    }
+
+    switch (value->kind) {
+    case MYLITE_EXPRESSION_VALUE_INT64:
+        *out_bits = (uint64_t)value->int64_value;
+        return 0;
+    case MYLITE_EXPRESSION_VALUE_UINT64:
+        *out_bits = value->uint64_value;
+        return 0;
+    case MYLITE_EXPRESSION_VALUE_REAL:
+        *out_bits = (uint64_t)cast_real_to_signed_integer(value->real_value);
+        return 0;
+    case MYLITE_EXPRESSION_VALUE_TEXT:
+        return bit_count_string_bits(value->text_value == NULL ? "" : value->text_value, warnings,
+                                     out_bits);
+    case MYLITE_EXPRESSION_VALUE_NULL:
+        break;
+    }
+    return -1;
+}
+
+static int bit_count_string_bits(const char *text, struct mylite_expression_warnings *warnings,
+                                 uint64_t *out_bits)
+{
+    struct cast_integer_parse parsed = parse_cast_integer_text(text);
+    bool truncated = !parsed.saw_digit || parsed.trailing_garbage || parsed.overflow;
+
+    if (out_bits == NULL) {
+        return -1;
+    }
+    if (truncated) {
+        int status = append_cast_truncation_warning(warnings, "INTEGER", text);
+
+        if (status != 0) {
+            return status;
+        }
+    }
+    if (!parsed.saw_digit) {
+        *out_bits = 0U;
+        return 0;
+    }
+    *out_bits =
+        parsed.negative ? unsigned_complement_from_magnitude(parsed.magnitude) : parsed.magnitude;
+    return 0;
+}
+
+static unsigned int uint64_bit_count(uint64_t value)
+{
+    unsigned int count = 0U;
+
+    while (value != 0U) {
+        value &= value - 1U;
+        ++count;
+    }
+    return count;
+}
+
+static int eval_bit_length_function(const struct mylite_sql_ast_node *arguments,
+                                    const struct mylite_expression_eval_context *context,
+                                    struct mylite_expression_warnings *warnings,
+                                    struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value value = {0};
+    char *text = NULL;
+    size_t text_length = 0U;
+    int status = eval_node(child_at(arguments, 0U), context, warnings, &value);
+
+    if (status != 0) {
+        return status;
+    }
+    if (is_null(&value)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        mylite_expression_value_deinit(&value);
+        return 0;
+    }
+
+    if (value.kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+        status = value_to_string_with_length(&value, &text, &text_length);
+    } else {
+        status = cast_value_to_string(&value, &text);
+        if (status == 0) {
+            text_length = strlen(text);
+        }
+    }
+    mylite_expression_value_deinit(&value);
+    if (status != 0) {
+        return status;
+    }
+    if (text_length > (size_t)(INT64_MAX / MYLITE_EXPRESSION_BITS_PER_BYTE)) {
+        free(text);
+        return -1;
+    }
+    *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
+                                                  .int64_value = (int64_t)text_length *
+                                                                 MYLITE_EXPRESSION_BITS_PER_BYTE};
+    free(text);
+    return 0;
 }
 
 static int eval_bin_oct_function(const struct mylite_sql_ast_node *argument, uint64_t to_base,
@@ -6566,6 +6719,8 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"SESSION_USER", MYLITE_SCALAR_FUNCTION_USER},
         {"SYSTEM_USER", MYLITE_SCALAR_FUNCTION_USER},
         {"CURRENT_USER", MYLITE_SCALAR_FUNCTION_CURRENT_USER},
+        {"BIT_COUNT", MYLITE_SCALAR_FUNCTION_BIT_COUNT},
+        {"BIT_LENGTH", MYLITE_SCALAR_FUNCTION_BIT_LENGTH},
     };
 
     for (size_t index = 0U; index < sizeof(functions) / sizeof(functions[0]); ++index) {
@@ -6624,6 +6779,8 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_BIN:
     case MYLITE_SCALAR_FUNCTION_OCT:
     case MYLITE_SCALAR_FUNCTION_CONV:
+    case MYLITE_SCALAR_FUNCTION_BIT_COUNT:
+    case MYLITE_SCALAR_FUNCTION_BIT_LENGTH:
     case MYLITE_SCALAR_FUNCTION_LOCATE:
     case MYLITE_SCALAR_FUNCTION_INSTR:
     case MYLITE_SCALAR_FUNCTION_ABS:

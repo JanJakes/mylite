@@ -35,6 +35,8 @@ In scope for the initial implementation:
   - `BIN`, `OCT`
 - numeric functions:
   - `ABS`
+  - `BIT_COUNT`
+  - `BIT_LENGTH`
   - `SIGN`
   - `ROUND`
   - `TRUNCATE`
@@ -122,8 +124,9 @@ by common scalar expressions:
   `docs/specs/string-hex-unhex-functions/specs.md` and
   `docs/specs/numeric-base-conversion-functions/specs.md`
 - numeric functions: `ABS`, `SIGN`, `FLOOR`, `CEIL`, `CEILING`, `MOD`,
-  `CONV`, and `PI`; see
-  `docs/specs/numeric-base-conversion-functions/specs.md`
+  `CONV`, `BIT_COUNT`, `BIT_LENGTH`, and `PI`; see
+  `docs/specs/numeric-base-conversion-functions/specs.md` and
+  `docs/specs/bit-utility-functions/specs.md`
 - conditional/comparison functions: `IF`, `IFNULL`, `NULLIF`, `COALESCE`, and
   `ISNULL`
 - session information functions: `DATABASE`, `SCHEMA`, `VERSION`,
@@ -453,6 +456,8 @@ Verified `mysql --column-type-info -vvv` examples:
 | `UNHEX('417a') AS unhex_text` | `VAR_STRING` | `8` | `31` | `binary` | `BINARY` |
 | `LENGTH('海豚') AS byte_len` | `LONGLONG` | `10` | `0` | `binary` | `NOT_NULL BINARY NUM` |
 | `CHAR_LENGTH('海豚') AS char_len` | `LONGLONG` | `10` | `0` | `binary` | `NOT_NULL BINARY NUM` |
+| `BIT_LENGTH('abc') AS bit_len` | `LONGLONG` | `10` | `0` | `binary` | `NOT_NULL BINARY NUM` |
+| `BIT_COUNT(7) AS bit_count` | `LONGLONG` | `21` | `0` | `binary` | `NOT_NULL BINARY NUM` |
 | `SUBSTRING('abcdef',2,3) AS substr_value` | `VAR_STRING` | `12` | `31` | `utf8mb4_0900_ai_ci` | none |
 | `ABS(-12.5) AS abs_decimal` | `NEWDECIMAL` | `5` | `1` | `binary` | `NOT_NULL BINARY NUM` |
 | `ROUND(123.456,2) AS round_scale` | `NEWDECIMAL` | `8` | `2` | `binary` | `NOT_NULL BINARY NUM` |

@@ -253,6 +253,7 @@ static int test_expression_operator_foundation(void);
 static int test_scalar_builtin_functions_execution(void);
 static int test_round_scalar_function_execution(mylite_db *database);
 static int test_power_scalar_function_execution(mylite_db *database);
+static int test_exp_scalar_function_execution(mylite_db *database);
 static int test_sqrt_scalar_function_execution(mylite_db *database);
 static int test_uuid_scalar_functions(mylite_db *database);
 static int test_inet_ipv4_functions_execution(void);
@@ -4028,6 +4029,8 @@ static int test_scalar_builtin_functions_execution(void)
 
     failures += test_power_scalar_function_execution(database);
 
+    failures += test_exp_scalar_function_execution(database);
+
     failures += test_sqrt_scalar_function_execution(database);
 
     failures += test_uuid_scalar_functions(database);
@@ -5710,14 +5713,31 @@ static int test_power_scalar_function_execution(mylite_db *database)
          MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
     };
     static const char *const power_columns[] = {
-        "pow_int",     "power_frac", "null_base",     "null_exp",  "neg_even",      "neg_odd",
-        "neg_neg_odd", "zero_zero",  "zero_positive", "underflow", "neg_underflow", "spaced_text",
-        "signed_text", "sqrt_text",  "inv_sqrt",      "third",     "large_power",   "alias_value",
+        "pow_int",   "power_frac",    "null_base",   "null_exp",      "neg_even",
+        "neg_odd",   "neg_neg_odd",   "zero_zero",   "zero_positive", "underflow_subnormal",
+        "underflow", "neg_underflow", "spaced_text", "signed_text",   "sqrt_text",
+        "inv_sqrt",  "third",         "large_power", "alias_value",
     };
     static const char *const power_values[] = {
-        "1024", "0.25", NULL, NULL, "4",   "-8", "-0.125", "1",
-        "0",    "0",    "-0", "5",  "0.5", "2",  "0.5",    "0.3333333333333333",
-        "1e22", "27",
+        "1024",
+        "0.25",
+        NULL,
+        NULL,
+        "4",
+        "-8",
+        "-0.125",
+        "1",
+        "0",
+        "5e-324",
+        "0",
+        "-0",
+        "5",
+        "0.5",
+        "2",
+        "0.5",
+        "0.3333333333333333",
+        "1e22",
+        "27",
     };
     static const char *const warning_columns[] = {
         "str_garbage", "str_bad_base", "str_bad_exp", "empty_args", "space_arg", "hex_like",
@@ -5748,6 +5768,7 @@ static int test_power_scalar_function_execution(mylite_db *database)
                            "POW(-2,-3) AS neg_neg_odd, "
                            "POW(0,0) AS zero_zero, "
                            "POW(0,2) AS zero_positive, "
+                           "POW(2,-1074) AS underflow_subnormal, "
                            "POW(2,-1075) AS underflow, "
                            "POW(-2,-1075) AS neg_underflow, "
                            "POW('  2.5e1 ', ' .5 ') AS spaced_text, "
@@ -5914,6 +5935,288 @@ static int test_power_scalar_function_execution(mylite_db *database)
     failures += expect_no_stmt_handle(&stmt, "POWER three arity unsupported");
     failures += prepare_sql(database, "SELECT POWER(1)", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "POWER alias one arity unsupported");
+
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_exp_scalar_function_execution(mylite_db *database)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const struct expected_result_metadata exp_metadata[] = {
+        {"exp_int", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"exp_null", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"exp_warn", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"exp_underflow", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    static const struct expected_result_metadata exp_table_metadata[] = {
+        {"ex", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"es", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    static const char *const exp_columns[] = {
+        "exp_pos",        "exp_neg",           "exp_zero", "exp_null",
+        "exp_one",        "exp_neg_zero",      "tiny_pos", "underflow_subnormal",
+        "underflow_zero", "near_max",          "text_num", "exponent_text",
+        "text_underflow", "text_neg_overflow",
+    };
+    static const char *const exp_values[] = {
+        "7.38905609893065",
+        "0.1353352832366127",
+        "1",
+        NULL,
+        "2.718281828459045",
+        "1",
+        "1",
+        "5e-324",
+        "0",
+        "8.218407461554972e307",
+        "72004899337.38588",
+        "2.6881171418161356e43",
+        "1",
+        "0",
+    };
+    static const char *const warning_columns[] = {
+        "trail",   "nonnumeric", "empty_s",           "space_s",  "dot_s",    "plus_s",
+        "minus_s", "hex_like",   "neg_text_overflow", "nan_text", "inf_text",
+    };
+    static const char *const warning_values[] = {
+        "7.38905609893065", "1", "1", "1", "1", "1", "1", "1", "0", "1", "1"};
+    static const char *const exp_projection_columns[] = {"id", "e"};
+    static const char *const exp_projection_values[] = {
+        "5", "0",
+        "4", "0.1353352832366127",
+        "1", "1",
+        "2", "2.718281828459045",
+        "3", "7.38905609893065",
+    };
+    static const char *const id_column[] = {"id"};
+    static const char *const selected_id_values[] = {"2", "3"};
+    static const char *const updated_id_values[] = {"1", "2"};
+    static const char *const dml_rollback_values[] = {"1", "2", "3", "4", "5"};
+    static const char *const remaining_values[] = {"2", "3", "4", "5"};
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_select_rows(database,
+                                   "SELECT EXP(2) AS exp_pos, "
+                                   "EXP(-2) AS exp_neg, "
+                                   "EXP(0) AS exp_zero, "
+                                   "EXP(NULL) AS exp_null, "
+                                   "EXP(1) AS exp_one, "
+                                   "EXP(-0.0) AS exp_neg_zero, "
+                                   "EXP(1e-308) AS tiny_pos, "
+                                   "EXP(-745) AS underflow_subnormal, "
+                                   "EXP(-746) AS underflow_zero, "
+                                   "EXP(709) AS near_max, "
+                                   "EXP('  2.5e1 ') AS text_num, "
+                                   "EXP('1e2') AS exponent_text, "
+                                   "EXP('1e-9999') AS text_underflow, "
+                                   "EXP('-1e309') AS text_neg_overflow",
+                                   exp_columns, (int)(sizeof(exp_columns) / sizeof(exp_columns[0])),
+                                   exp_values, 1, "EXP scalar values");
+    failures += expect_int(mylite_warning_count(database), 1, "EXP scalar warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "EXP scalar warning code");
+    failures += expect_contains(mylite_warning_message(database, 0), "-1e309",
+                                "EXP negative overflow text warning");
+
+    failures += expect_select_rows(database,
+                                   "SELECT EXP('2x') AS trail, "
+                                   "EXP('foo') AS nonnumeric, "
+                                   "EXP('') AS empty_s, "
+                                   "EXP(' ') AS space_s, "
+                                   "EXP('.') AS dot_s, "
+                                   "EXP('+') AS plus_s, "
+                                   "EXP('-') AS minus_s, "
+                                   "EXP('0x10') AS hex_like, "
+                                   "EXP('-1e309') AS neg_text_overflow, "
+                                   "EXP('nan') AS nan_text, "
+                                   "EXP('inf') AS inf_text",
+                                   warning_columns,
+                                   (int)(sizeof(warning_columns) / sizeof(warning_columns[0])),
+                                   warning_values, 1, "EXP string warning values");
+    failures += expect_int(mylite_warning_count(database), 9, "EXP string warning count");
+    for (int index = 0; index < 9; ++index) {
+        failures += expect_int((int)mylite_warning_code(database, index),
+                               mysql_warning_truncated_wrong_value, "EXP string warning code");
+    }
+    failures += expect_contains(mylite_warning_message(database, 0), "2x", "EXP trailing warning");
+    failures += expect_contains(mylite_warning_message(database, 1), "foo", "EXP bad text warning");
+    failures +=
+        expect_contains(mylite_warning_message(database, 5), "0x10", "EXP hex-like warning");
+    failures +=
+        expect_contains(mylite_warning_message(database, 6), "-1e309", "EXP overflow text warning");
+
+    failures +=
+        expect_prepare_error(database, "SELECT EXP(710)", MYLITE_EXEC_ERROR,
+                             "DOUBLE value is out of range in 'exp()'", "EXP numeric overflow");
+    failures += expect_int(mylite_warning_count(database), 1, "EXP numeric overflow warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_out_of_range,
+                           "EXP numeric overflow warning code");
+    failures +=
+        expect_prepare_error(database, "SELECT EXP('1e309')", MYLITE_EXEC_ERROR,
+                             "DOUBLE value is out of range in 'exp()'", "EXP text overflow");
+    failures += expect_int(mylite_warning_count(database), 2, "EXP text overflow warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "EXP text overflow warning code");
+    failures += expect_int((int)mylite_warning_code(database, 1), mysql_warning_out_of_range,
+                           "EXP text overflow error code");
+
+    failures += prepare_sql(database,
+                            "SELECT EXP(2) AS exp_int, "
+                            "EXP(NULL) AS exp_null, "
+                            "EXP('2x') AS exp_warn, "
+                            "EXP(-746) AS exp_underflow",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, exp_metadata,
+                                       (int)(sizeof(exp_metadata) / sizeof(exp_metadata[0])),
+                                       "EXP scalar metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "EXP metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "EXP metadata done");
+    failures += expect_int(mylite_warning_count(database), 1, "EXP metadata warning count");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database,
+                            "CREATE TABLE exp_sites ("
+                            "id INT PRIMARY KEY, "
+                            "x DOUBLE, "
+                            "s VARCHAR(16))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO exp_sites VALUES "
+                            "(1,0,'0'),"
+                            "(2,1,'1'),"
+                            "(3,2,'2x'),"
+                            "(4,-2,'foo'),"
+                            "(5,-746,'')",
+                            MYLITE_DONE);
+
+    failures += prepare_sql(database, "SELECT EXP(x) AS ex, EXP(s) AS es FROM exp_sites LIMIT 0",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, exp_table_metadata, (int)(sizeof(exp_table_metadata) / sizeof(exp_table_metadata[0])),
+        "EXP table metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "EXP table metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_select_rows(database,
+                                   "SELECT id, EXP(x) AS e FROM exp_sites "
+                                   "ORDER BY EXP(x), id",
+                                   exp_projection_columns, 2, exp_projection_values, 5,
+                                   "EXP table projection order");
+    failures += expect_int(mylite_warning_count(database), 0, "EXP table projection warnings");
+    failures +=
+        expect_select_rows(database, "SELECT id FROM exp_sites WHERE EXP(x) > 2 ORDER BY id",
+                           id_column, 1, selected_id_values, 2, "EXP table WHERE");
+    failures += expect_int(mylite_warning_count(database), 0, "EXP table WHERE warnings");
+
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE exp_sites SET x = EXP(x) WHERE id IN (1,2)", 2, "EXP update assignment");
+    failures += expect_select_rows(database,
+                                   "SELECT id FROM exp_sites "
+                                   "WHERE id IN (1,2) AND x > 0.99 AND x < 2.72 "
+                                   "ORDER BY id",
+                                   id_column, 1, updated_id_values, 2, "EXP updated values");
+    failures += expect_int(mylite_warning_count(database), 0, "EXP update warning count");
+
+    failures +=
+        prepare_sql(database, "UPDATE exp_sites SET x = EXP('2x') WHERE id = 3", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Truncated incorrect DOUBLE value",
+                                  "EXP update warning promoted");
+    failures += expect_int(mylite_warning_count(database), 1, "EXP update warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "EXP update warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM exp_sites ORDER BY id", id_column, 1,
+                                   dml_rollback_values, 5, "EXP update warning rollback rows");
+
+    failures +=
+        prepare_sql(database, "UPDATE exp_sites SET x = EXP(710) WHERE id = 2", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "DOUBLE value is out of range in 'exp()'",
+                                  "EXP update overflow error");
+    failures += expect_int(mylite_warning_count(database), 1, "EXP update overflow warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_out_of_range,
+                           "EXP update overflow warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM exp_sites ORDER BY id", id_column, 1,
+                                   dml_rollback_values, 5, "EXP update overflow rollback rows");
+
+    failures += prepare_sql(database, "UPDATE exp_sites SET x = EXP('1e309') WHERE id = 2",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Truncated incorrect DOUBLE value",
+                                  "EXP update text overflow warning promoted");
+    failures +=
+        expect_int(mylite_warning_count(database), 2, "EXP update text overflow warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_truncated_wrong_value,
+                   "EXP update text overflow warning code");
+    failures += expect_int((int)mylite_warning_code(database, 1), mysql_warning_out_of_range,
+                           "EXP update text overflow error code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_select_rows(database, "SELECT id FROM exp_sites ORDER BY id", id_column, 1,
+                           dml_rollback_values, 5, "EXP update text overflow rollback rows");
+
+    failures +=
+        prepare_sql(database, "DELETE FROM exp_sites WHERE EXP('2x') > 1", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Truncated incorrect DOUBLE value",
+                                  "EXP delete warning promoted");
+    failures += expect_int(mylite_warning_count(database), 1, "EXP delete warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "EXP delete warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM exp_sites ORDER BY id", id_column, 1,
+                                   dml_rollback_values, 5, "EXP delete warning rollback rows");
+
+    failures += prepare_sql(database, "DELETE FROM exp_sites WHERE EXP(710) > 0", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "DOUBLE value is out of range in 'exp()'",
+                                  "EXP delete overflow error");
+    failures += expect_int(mylite_warning_count(database), 1, "EXP delete overflow warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_out_of_range,
+                           "EXP delete overflow warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM exp_sites ORDER BY id", id_column, 1,
+                                   dml_rollback_values, 5, "EXP delete overflow rollback rows");
+
+    failures +=
+        prepare_sql(database, "DELETE FROM exp_sites WHERE EXP('1e309') > 0", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Truncated incorrect DOUBLE value",
+                                  "EXP delete text overflow warning promoted");
+    failures +=
+        expect_int(mylite_warning_count(database), 2, "EXP delete text overflow warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_truncated_wrong_value,
+                   "EXP delete text overflow warning code");
+    failures += expect_int((int)mylite_warning_code(database, 1), mysql_warning_out_of_range,
+                           "EXP delete text overflow error code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_select_rows(database, "SELECT id FROM exp_sites ORDER BY id", id_column, 1,
+                           dml_rollback_values, 5, "EXP delete text overflow rollback rows");
+
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM exp_sites WHERE id = 1 AND EXP(x) > 2", 1, "EXP delete predicate");
+    failures += expect_select_rows(database, "SELECT id FROM exp_sites ORDER BY id", id_column, 1,
+                                   remaining_values, 4, "EXP delete remaining rows");
+
+    failures += prepare_sql(database, "SELECT EXP()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "EXP zero arity unsupported");
+    failures += prepare_sql(database, "SELECT EXP(1,2)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "EXP two arity unsupported");
 
     // NOLINTEND(readability-magic-numbers)
     return failures;

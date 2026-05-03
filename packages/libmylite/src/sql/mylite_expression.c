@@ -372,6 +372,7 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_ROUND = 68,
     MYLITE_SCALAR_FUNCTION_POWER = 69,
     MYLITE_SCALAR_FUNCTION_SQRT = 70,
+    MYLITE_SCALAR_FUNCTION_EXP = 71,
 };
 
 static int eval_node(const struct mylite_sql_ast_node *node,
@@ -838,6 +839,10 @@ static int eval_power_function(const struct mylite_sql_ast_node *arguments,
                                const struct mylite_expression_eval_context *context,
                                struct mylite_expression_warnings *warnings,
                                struct mylite_expression_value *out_value);
+static int eval_exp_function(const struct mylite_sql_ast_node *arguments,
+                             const struct mylite_expression_eval_context *context,
+                             struct mylite_expression_warnings *warnings,
+                             struct mylite_expression_value *out_value);
 static int eval_sqrt_function(const struct mylite_sql_ast_node *arguments,
                               const struct mylite_expression_eval_context *context,
                               struct mylite_expression_warnings *warnings,
@@ -1043,6 +1048,7 @@ static int append_truncation_warning(struct mylite_expression_warnings *warnings
 static int append_cast_truncation_warning(struct mylite_expression_warnings *warnings,
                                           const char *type_name, const char *text);
 static int append_power_out_of_range_error(struct mylite_expression_warnings *warnings);
+static int append_exp_out_of_range_error(struct mylite_expression_warnings *warnings);
 static int append_char_truncation_warning(struct mylite_expression_warnings *warnings,
                                           uint64_t length, const char *text);
 static int append_signed_complement_warning(struct mylite_expression_warnings *warnings);
@@ -1353,6 +1359,7 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_SIGN:
     case MYLITE_SCALAR_FUNCTION_FLOOR:
     case MYLITE_SCALAR_FUNCTION_CEIL:
+    case MYLITE_SCALAR_FUNCTION_EXP:
     case MYLITE_SCALAR_FUNCTION_SQRT:
     case MYLITE_SCALAR_FUNCTION_ISNULL:
         return arity == 1U;
@@ -2184,6 +2191,8 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_mod_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_POWER:
         return eval_power_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_EXP:
+        return eval_exp_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_SQRT:
         return eval_sqrt_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_ABS:
@@ -5176,6 +5185,7 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_FLOOR:
     case MYLITE_SCALAR_FUNCTION_CEIL:
     case MYLITE_SCALAR_FUNCTION_ROUND:
+    case MYLITE_SCALAR_FUNCTION_EXP:
     case MYLITE_SCALAR_FUNCTION_POWER:
     case MYLITE_SCALAR_FUNCTION_SQRT:
     case MYLITE_SCALAR_FUNCTION_MOD:
@@ -6663,6 +6673,50 @@ static int eval_power_function(const struct mylite_sql_ast_node *arguments,
 cleanup:
     mylite_expression_value_deinit(&base);
     mylite_expression_value_deinit(&exponent);
+    return status;
+}
+
+static int eval_exp_function(const struct mylite_sql_ast_node *arguments,
+                             const struct mylite_expression_eval_context *context,
+                             struct mylite_expression_warnings *warnings,
+                             struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value argument = {0};
+    struct numeric_value number = {0};
+    double result = 0.0;
+    int status = eval_node(child_at(arguments, 0U), context, warnings, &argument);
+
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&argument)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+
+    status = value_to_numeric(&argument, warnings, &number);
+    if (status != 0) {
+        goto cleanup;
+    }
+
+    errno = 0;
+    result = exp(number.real_value);
+    if (isnan(result) || isinf(result)) {
+        status = append_exp_out_of_range_error(warnings);
+        if (status == 0) {
+            status = MYLITE_EXEC_ERROR;
+        }
+        goto cleanup;
+    }
+
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_REAL,
+        .real_value = result,
+        .compact_real_text = true,
+    };
+
+cleanup:
+    mylite_expression_value_deinit(&argument);
     return status;
 }
 
@@ -8724,6 +8778,12 @@ static int format_compact_real_text(double value, char *buffer, size_t buffer_si
         max_double_precision = 17,
     };
 
+    if (value == DBL_TRUE_MIN || value == -DBL_TRUE_MIN) {
+        int length = snprintf(buffer, buffer_size, "%s5e-324", value < 0.0 ? "-" : "");
+
+        return (length <= 0 || (size_t)length >= buffer_size) ? length : (int)strlen(buffer);
+    }
+
     for (int precision = min_double_precision; precision <= max_double_precision; ++precision) {
         int length = snprintf(buffer, buffer_size, "%.*g", precision, value);
 
@@ -8947,6 +9007,13 @@ static int append_power_out_of_range_error(struct mylite_expression_warnings *wa
         "DOUBLE value is out of range in 'pow()'");
 }
 
+static int append_exp_out_of_range_error(struct mylite_expression_warnings *warnings)
+{
+    return mylite_expression_warnings_append_condition(
+        warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, MYLITE_WARNING_OUT_OF_RANGE,
+        "DOUBLE value is out of range in 'exp()'");
+}
+
 static int append_char_truncation_warning(struct mylite_expression_warnings *warnings,
                                           uint64_t length, const char *text)
 {
@@ -9161,6 +9228,7 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"CEIL", MYLITE_SCALAR_FUNCTION_CEIL},
         {"CEILING", MYLITE_SCALAR_FUNCTION_CEIL},
         {"ROUND", MYLITE_SCALAR_FUNCTION_ROUND},
+        {"EXP", MYLITE_SCALAR_FUNCTION_EXP},
         {"POW", MYLITE_SCALAR_FUNCTION_POWER},
         {"POWER", MYLITE_SCALAR_FUNCTION_POWER},
         {"SQRT", MYLITE_SCALAR_FUNCTION_SQRT},
@@ -9265,6 +9333,7 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_FLOOR:
     case MYLITE_SCALAR_FUNCTION_CEIL:
     case MYLITE_SCALAR_FUNCTION_ROUND:
+    case MYLITE_SCALAR_FUNCTION_EXP:
     case MYLITE_SCALAR_FUNCTION_POWER:
     case MYLITE_SCALAR_FUNCTION_SQRT:
     case MYLITE_SCALAR_FUNCTION_MOD:

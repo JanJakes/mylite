@@ -734,6 +734,7 @@ For development inspection:
 ```sh
 printf 'SELECT 1\n' | build/mylite-parse --statements
 printf 'SELECT 1\n' | build/mylite-parse --ast
+printf 'SELECT 1\n' | build/mylite-parse --semantic
 ```
 
 ## Benchmark
@@ -758,7 +759,7 @@ Latest semantic-AST construction run on May 3, 2026:
 mode=syntax queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=2.769838 qps=502130 mbps=38.19 avg_us=1.992
 mode=ast-only queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.157245 qps=194323 mbps=14.78 avg_us=5.146 avg_nodes=74.5 avg_ast_bytes=11091.3 avg_statements=1.00
 mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.286471 qps=190877 mbps=14.52 avg_us=5.239 avg_nodes=74.5 avg_ast_bytes=11091.3
-mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.598470 qps=183039 mbps=13.92 avg_us=5.463 avg_semantic_nodes=7.9 avg_semantic_bytes=4344.9 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_descriptors=2.57 avg_semantic_expressions=2.68 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.04
+mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.563729 qps=183880 mbps=13.98 avg_us=5.438 avg_semantic_nodes=7.9 avg_semantic_bytes=4344.9 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_descriptors=2.57 avg_semantic_expressions=2.68 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.04
 ```
 
 Latest EXPLAIN/DESCRIBE parser-view run on May 3, 2026:

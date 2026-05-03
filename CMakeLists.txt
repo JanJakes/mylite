@@ -83,4 +83,11 @@ if(BUILD_TESTING)
   add_executable(mylite_parser_smoke_test tests/parser_smoke_test.c)
   target_link_libraries(mylite_parser_smoke_test PRIVATE mylite_parser)
   add_test(NAME mylite_parser_smoke_test COMMAND mylite_parser_smoke_test)
+  add_test(
+    NAME mylite_parse_semantic_cli_smoke
+    COMMAND
+      "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_semantic_cli_smoke.py"
+      --parser $<TARGET_FILE:mylite-parse>
+  )
 endif()

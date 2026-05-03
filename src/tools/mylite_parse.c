@@ -8,6 +8,7 @@
 typedef enum OutputMode {
   OUTPUT_VALIDATE,
   OUTPUT_AST,
+  OUTPUT_SEMANTIC,
   OUTPUT_STATEMENTS
 } OutputMode;
 
@@ -15,6 +16,10 @@ static int parse_stdin(OutputMode mode);
 static int parse_file(const char *path, OutputMode mode);
 static int parse_sql_text(const char *sql, const char *label, OutputMode mode);
 static void dump_statements(const MyliteAst *ast);
+static void dump_semantic_ast(const MyliteSemanticAst *ast);
+static void dump_semantic_node(const MyliteSemanticAstNode *node,
+                               unsigned depth);
+static const char *semantic_node_kind_name(MyliteSemanticNodeKind kind);
 static void dump_create_table_view_handles(
     const MyliteAstCreateTable *create_table);
 static void dump_expression_tree(const MyliteAstExpression *expression,
@@ -30,6 +35,8 @@ int main(int argc, char **argv) {
   while (first_path < argc && strncmp(argv[first_path], "--", 2) == 0) {
     if (strcmp(argv[first_path], "--ast") == 0) {
       mode = OUTPUT_AST;
+    } else if (strcmp(argv[first_path], "--semantic") == 0) {
+      mode = OUTPUT_SEMANTIC;
     } else if (strcmp(argv[first_path], "--statements") == 0) {
       mode = OUTPUT_STATEMENTS;
     } else {
@@ -84,25 +91,32 @@ static int parse_file(const char *path, OutputMode mode) {
 static int parse_sql_text(const char *sql, const char *label, OutputMode mode) {
   MyliteParseResult result;
   MyliteAst *ast = NULL;
+  MyliteSemanticAst *semantic_ast = NULL;
   MyliteParseStatus status;
   if (mode == OUTPUT_VALIDATE) {
     status = mylite_parse_sql(sql, &result);
+  } else if (mode == OUTPUT_SEMANTIC) {
+    status = mylite_parse_sql_semantic_ast(sql, &semantic_ast, &result);
   } else {
     status = mylite_parse_sql_ast(sql, &ast, &result);
   }
 
   if (status == MYLITE_PARSE_OK) {
-    if (mode == OUTPUT_STATEMENTS) {
+    if (mode == OUTPUT_SEMANTIC) {
+      dump_semantic_ast(semantic_ast);
+    } else if (mode == OUTPUT_STATEMENTS) {
       dump_statements(ast);
     } else if (mode == OUTPUT_AST) {
       dump_statements(ast);
       dump_ast_node(mylite_ast_root(ast), 0);
     }
     mylite_ast_free(ast);
+    mylite_semantic_ast_free(semantic_ast);
     return 0;
   }
 
   mylite_ast_free(ast);
+  mylite_semantic_ast_free(semantic_ast);
   fprintf(stderr, "%s:%zu: %s: %s\n", label, result.offset,
           mylite_parse_status_name(status), result.message);
   return 1;
@@ -3137,6 +3151,86 @@ static void dump_statements(const MyliteAst *ast) {
              mylite_ast_create_table_option_value_end(ast, i, j));
     }
   }
+}
+
+static void dump_semantic_ast(const MyliteSemanticAst *ast) {
+  printf("semantic_statements=%zu semantic_nodes=%zu semantic_bytes=%zu\n",
+         mylite_semantic_ast_statement_count(ast),
+         mylite_semantic_ast_node_count(ast),
+         mylite_semantic_ast_allocated_bytes(ast));
+  dump_semantic_node(mylite_semantic_ast_root(ast), 0);
+}
+
+static void dump_semantic_node(const MyliteSemanticAstNode *node,
+                               unsigned depth) {
+  if (node == NULL) {
+    return;
+  }
+
+  for (unsigned i = 0; i < depth; i++) {
+    fputs("  ", stdout);
+  }
+
+  MyliteSemanticNodeKind kind = mylite_semantic_ast_node_kind(node);
+  printf("semantic kind=%s span=%zu..%zu children=%zu",
+         semantic_node_kind_name(kind), mylite_semantic_ast_node_start(node),
+         mylite_semantic_ast_node_end(node),
+         mylite_semantic_ast_node_child_count(node));
+  if (kind == MYLITE_SEMANTIC_NODE_STATEMENT) {
+    printf(" statement_kind=%s",
+           mylite_statement_kind_name(
+               mylite_semantic_ast_node_statement_kind(node)));
+  } else if (kind == MYLITE_SEMANTIC_NODE_TARGET) {
+    printf(" target_kind=%s target_role=%s",
+           mylite_statement_target_kind_name(
+               mylite_semantic_ast_node_target_kind(node)),
+           mylite_statement_target_role_name(
+               mylite_semantic_ast_node_target_role(node)));
+  } else if (kind == MYLITE_SEMANTIC_NODE_DESCRIPTOR) {
+    printf(" descriptor_kind=%s",
+           mylite_semantic_descriptor_kind_name(
+               mylite_semantic_ast_node_descriptor_kind(node)));
+  } else if (kind == MYLITE_SEMANTIC_NODE_EXPRESSION) {
+    printf(" expression_kind=%s literal=%s operator=%s",
+           mylite_expression_kind_name(
+               mylite_semantic_ast_node_expression_kind(node)),
+           mylite_expression_literal_kind_name(
+               mylite_semantic_ast_node_expression_literal_kind(node)),
+           mylite_expression_operator_kind_name(
+               mylite_semantic_ast_node_expression_operator_kind(node)));
+  }
+
+  const char *value = mylite_semantic_ast_node_value(node);
+  size_t value_length = mylite_semantic_ast_node_value_length(node);
+  printf(" value_len=%zu value=", value_length);
+  if (value == NULL) {
+    fputs("none", stdout);
+  } else {
+    print_escaped_bytes(value, value_length);
+  }
+  fputc('\n', stdout);
+
+  for (size_t i = 0; i < mylite_semantic_ast_node_child_count(node); i++) {
+    dump_semantic_node(mylite_semantic_ast_node_child_at(node, i), depth + 1);
+  }
+}
+
+static const char *semantic_node_kind_name(MyliteSemanticNodeKind kind) {
+  switch (kind) {
+  case MYLITE_SEMANTIC_NODE_UNKNOWN:
+    return "unknown";
+  case MYLITE_SEMANTIC_NODE_PROGRAM:
+    return "program";
+  case MYLITE_SEMANTIC_NODE_STATEMENT:
+    return "statement";
+  case MYLITE_SEMANTIC_NODE_TARGET:
+    return "target";
+  case MYLITE_SEMANTIC_NODE_EXPRESSION:
+    return "expression";
+  case MYLITE_SEMANTIC_NODE_DESCRIPTOR:
+    return "descriptor";
+  }
+  return "unknown";
 }
 
 static void dump_expression_tree(const MyliteAstExpression *expression,

@@ -195,8 +195,15 @@ level application surfaces.
        missing-table, and unknown-system-table diagnostics. `information_schema`
        table descriptions currently return an unsupported diagnostic, and
        broader query-plan `EXPLAIN` syntax remains deferred. The first
-       `SHOW CREATE TABLE` slice is specified and implemented for supported
-       persistent MyLite base tables, including selected-schema and
+       `SHOW CREATE DATABASE` / `SHOW CREATE SCHEMA` slice is specified and
+       implemented for schema catalog rows, including the `IF NOT EXISTS`
+       display modifier, exact `Database` / `Create Database` result columns,
+       catalog-backed charset/collation/encryption rendering, system-schema
+       rows, backtick identifier quoting, no selected-schema requirement, and
+       unknown-database diagnostics. `LIKE` and `WHERE` suffixes are
+       syntactically rejected for now. The first `SHOW CREATE TABLE` slice is
+       specified and implemented for supported persistent MyLite base tables,
+       including selected-schema and
        schema-qualified targets, two-column `Table` / `Create Table` result
        shape, catalog-backed deterministic CREATE text for the supported
        column, primary-key, unique-key, nonunique-key, visibility, comments,
@@ -206,7 +213,9 @@ level application surfaces.
        temporary tables, foreign keys, checks, generated columns, partitions,
        functional indexes, storage-engine-specific options, privilege
        filtering, `SHOW CREATE VIEW`, and `sql_quote_show_create = 0` remain
-       deferred. The first `SHOW ENGINES` slice is specified for
+       deferred. Specs: [SHOW CREATE DATABASE](../show-create-database/specs.md),
+       [SHOW CREATE TABLE](../show-create-table/specs.md). The first
+       `SHOW ENGINES` slice is specified for
        `SHOW [STORAGE] ENGINES`, including exact six-column metadata,
        nondiagnostic clearing, `InnoDB` as the default MyLite SQLite-backed
        transactional facade, common unsupported MySQL engines reported as

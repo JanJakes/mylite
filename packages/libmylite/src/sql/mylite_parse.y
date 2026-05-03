@@ -55,6 +55,7 @@
 %type show_index_keyword { struct mylite_sql_token }
 %type opt_show_index_schema { struct mylite_sql_ast_node * }
 %type opt_show_index_filter { struct mylite_sql_ast_node * }
+%type show_create_schema_keyword { struct mylite_sql_token }
 %type show_diagnostics_kind { struct mylite_sql_parser_show_diagnostics_kind }
 %type opt_show_diagnostics_limit { struct mylite_sql_ast_node * }
 %type describe_table_keyword { struct mylite_sql_token }
@@ -223,6 +224,9 @@ statement(A) ::= show_index_statement(B). {
     A = B;
 }
 statement(A) ::= show_create_table_statement(B). {
+    A = B;
+}
+statement(A) ::= show_create_schema_statement(B). {
     A = B;
 }
 statement(A) ::= show_diagnostics_statement(B). {
@@ -1263,6 +1267,19 @@ opt_show_index_filter(A) ::= where_clause(B). {
 show_create_table_statement(A) ::= SHOW(S) CREATE TABLE(T) table_name(B). {
     A = mylite_sql_parser_make_show_create_table_statement(
         state, (struct mylite_sql_parser_show_create_table_tokens){.show = S, .table = T}, B);
+}
+
+show_create_schema_statement(A) ::= SHOW(S) CREATE show_create_schema_keyword(K)
+        opt_if_not_exists(I) identifier(B). {
+    A = mylite_sql_parser_make_show_create_schema_statement(
+        state, (struct mylite_sql_parser_show_create_schema_tokens){.show = S, .schema = K}, I, B);
+}
+
+show_create_schema_keyword(A) ::= DATABASE(T). {
+    A = T;
+}
+show_create_schema_keyword(A) ::= SCHEMA(T). {
+    A = T;
 }
 
 show_diagnostics_statement(A) ::= SHOW(T) show_diagnostics_kind(K)

@@ -136,6 +136,11 @@ struct mylite_sql_parser_show_create_table_tokens {
     struct mylite_sql_token table;
 };
 
+struct mylite_sql_parser_show_create_schema_tokens {
+    struct mylite_sql_token show;
+    struct mylite_sql_token schema;
+};
+
 struct mylite_sql_parser_show_diagnostics_kind {
     struct mylite_sql_token token;
     enum mylite_sql_ast_show_diagnostics_kind kind;
@@ -670,6 +675,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_index_statement(
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_table_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_parser_show_create_table_tokens tokens,
     struct mylite_sql_ast_node *table_name);
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_schema_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_show_create_schema_tokens tokens,
+    struct mylite_sql_ast_node *if_not_exists, struct mylite_sql_ast_node *schema_name);
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_diagnostics_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_token show_token,
     struct mylite_sql_parser_show_diagnostics_kind kind, struct mylite_sql_ast_node *limit_clause);

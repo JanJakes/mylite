@@ -2767,6 +2767,33 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_table_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_schema_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_show_create_schema_tokens tokens,
+    struct mylite_sql_ast_node *if_not_exists, struct mylite_sql_ast_node *schema_name)
+{
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&tokens.show), span_from_token(&tokens.schema));
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (if_not_exists != NULL) {
+        span = span_join(span, if_not_exists->span);
+    }
+    if (schema_name != NULL) {
+        span = span_join(span, schema_name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_SHOW_CREATE_SCHEMA_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+    if (if_not_exists != NULL) {
+        mylite_sql_ast_node_set_show_create_schema_if_not_exists(statement);
+    }
+    mylite_sql_ast_node_append_child(statement, schema_name);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_diagnostics_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_token show_token,
     struct mylite_sql_parser_show_diagnostics_kind kind, struct mylite_sql_ast_node *limit_clause)

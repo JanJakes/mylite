@@ -282,6 +282,7 @@ static int test_show_collation_execution(void);
 static int test_show_tables_execution(void);
 static int test_show_columns_execution(void);
 static int test_show_index_execution(void);
+static int test_show_create_database_execution(void);
 static int test_show_create_table_execution(void);
 static int test_show_diagnostics_execution(void);
 static int test_describe_table_execution(void);
@@ -463,6 +464,7 @@ int main(void)
     failures += test_show_tables_execution();
     failures += test_show_columns_execution();
     failures += test_show_index_execution();
+    failures += test_show_create_database_execution();
     failures += test_show_create_table_execution();
     failures += test_show_diagnostics_execution();
     failures += test_describe_table_execution();
@@ -7095,6 +7097,155 @@ static int test_describe_table_execution(void)
                                      MYLITE_EXEC_ERROR,
                                      "Unknown table 'MISSING_INFO' in information_schema",
                                      "describe unknown information schema table");
+
+    mylite_close(database);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
+    return failures;
+}
+
+static int test_show_create_database_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const columns[] = {"Database", "Create Database"};
+    static const char default_create[] =
+        "CREATE DATABASE `mylite_show_create_db_default` "
+        "/*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ "
+        "/*!80016 DEFAULT ENCRYPTION='N' */";
+    static const char *const default_values[] = {"mylite_show_create_db_default", default_create};
+    static const char if_not_exists_create[] =
+        "CREATE DATABASE /*!32312 IF NOT EXISTS*/ `mylite_show_create_db_default` "
+        "/*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ "
+        "/*!80016 DEFAULT ENCRYPTION='N' */";
+    static const char *const if_not_exists_values[] = {"mylite_show_create_db_default",
+                                                       if_not_exists_create};
+    static const char latin1_create[] =
+        "CREATE DATABASE `mylite_show_create_db_latin1` "
+        "/*!40100 DEFAULT CHARACTER SET latin1 */ /*!80016 DEFAULT ENCRYPTION='Y' */";
+    static const char *const latin1_values[] = {"mylite_show_create_db_latin1", latin1_create};
+    static const char utf8mb3_create[] =
+        "CREATE DATABASE `mylite_show_create_db_utf8mb3` "
+        "/*!40100 DEFAULT CHARACTER SET utf8mb3 */ /*!80016 DEFAULT ENCRYPTION='N' */";
+    static const char *const utf8mb3_values[] = {"mylite_show_create_db_utf8mb3", utf8mb3_create};
+    static const char binary_create[] =
+        "CREATE DATABASE `mylite_show_create_db_binary` "
+        "/*!40100 DEFAULT CHARACTER SET binary */ /*!80016 DEFAULT ENCRYPTION='N' */";
+    static const char *const binary_values[] = {"mylite_show_create_db_binary", binary_create};
+    static const char latin1_bin_create[] =
+        "CREATE DATABASE `mylite_show_create_db_latin1_bin` "
+        "/*!40100 DEFAULT CHARACTER SET latin1 COLLATE latin1_bin */ "
+        "/*!80016 DEFAULT ENCRYPTION='N' */";
+    static const char *const latin1_bin_values[] = {"mylite_show_create_db_latin1_bin",
+                                                    latin1_bin_create};
+    static const char utf8mb3_bin_create[] =
+        "CREATE DATABASE `mylite_show_create_db_utf8mb3_bin` "
+        "/*!40100 DEFAULT CHARACTER SET utf8mb3 COLLATE utf8mb3_bin */ "
+        "/*!80016 DEFAULT ENCRYPTION='N' */";
+    static const char *const utf8mb3_bin_values[] = {"mylite_show_create_db_utf8mb3_bin",
+                                                     utf8mb3_bin_create};
+    static const char altered_create[] =
+        "CREATE DATABASE `mylite_show_create_db_latin1` "
+        "/*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ "
+        "/*!80016 DEFAULT ENCRYPTION='N' */";
+    static const char *const altered_values[] = {"mylite_show_create_db_latin1", altered_create};
+    static const char escaped_create[] =
+        "CREATE DATABASE `My``Show``Db` "
+        "/*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin */ "
+        "/*!80016 DEFAULT ENCRYPTION='N' */";
+    static const char *const escaped_values[] = {"My`Show`Db", escaped_create};
+    static const char information_schema_create[] =
+        "CREATE DATABASE `information_schema` /*!40100 DEFAULT CHARACTER SET utf8mb3 */ "
+        "/*!80016 DEFAULT ENCRYPTION='N' */";
+    static const char *const information_schema_values[] = {"information_schema",
+                                                            information_schema_create};
+    static const char mysql_create[] =
+        "CREATE DATABASE `mysql` "
+        "/*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ "
+        "/*!80016 DEFAULT ENCRYPTION='N' */";
+    static const char *const mysql_values[] = {"mysql", mysql_create};
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK,
+                              "open show create database database");
+
+    failures += execute_sql(database, "CREATE DATABASE mylite_show_create_db_default", MYLITE_DONE);
+    failures +=
+        expect_select_rows(database, "SHOW CREATE DATABASE mylite_show_create_db_default", columns,
+                           2, default_values, 1, "show create database default schema");
+    failures += expect_select_rows(database, "SHOW CREATE SCHEMA mylite_show_create_db_default",
+                                   columns, 2, default_values, 1, "show create schema synonym");
+    failures += expect_select_rows(
+        database, "SHOW CREATE DATABASE IF NOT EXISTS mylite_show_create_db_default", columns, 2,
+        if_not_exists_values, 1, "show create database if not exists");
+    failures += expect_select_rows(
+        database, "SHOW CREATE SCHEMA IF NOT EXISTS mylite_show_create_db_default", columns, 2,
+        if_not_exists_values, 1, "show create schema if not exists");
+
+    failures += execute_sql(database,
+                            "CREATE DATABASE mylite_show_create_db_latin1 "
+                            "DEFAULT CHARACTER SET latin1 COLLATE latin1_swedish_ci "
+                            "ENCRYPTION='Y'",
+                            MYLITE_DONE);
+    failures +=
+        expect_select_rows(database, "SHOW CREATE DATABASE mylite_show_create_db_latin1", columns,
+                           2, latin1_values, 1, "show create database latin1 default collation");
+
+    failures += execute_sql(database,
+                            "CREATE DATABASE mylite_show_create_db_utf8mb3 "
+                            "DEFAULT CHARACTER SET utf8mb3 COLLATE utf8mb3_general_ci",
+                            MYLITE_DONE);
+    failures +=
+        expect_select_rows(database, "SHOW CREATE DATABASE mylite_show_create_db_utf8mb3", columns,
+                           2, utf8mb3_values, 1, "show create database utf8mb3 default collation");
+
+    failures += execute_sql(database,
+                            "CREATE DATABASE mylite_show_create_db_binary "
+                            "DEFAULT CHARACTER SET binary COLLATE binary",
+                            MYLITE_DONE);
+    failures +=
+        expect_select_rows(database, "SHOW CREATE DATABASE mylite_show_create_db_binary", columns,
+                           2, binary_values, 1, "show create database binary default collation");
+
+    failures += execute_sql(database,
+                            "CREATE DATABASE mylite_show_create_db_latin1_bin "
+                            "DEFAULT CHARACTER SET latin1 COLLATE latin1_bin",
+                            MYLITE_DONE);
+    failures += expect_select_rows(
+        database, "SHOW CREATE DATABASE mylite_show_create_db_latin1_bin", columns, 2,
+        latin1_bin_values, 1, "show create database latin1 nondefault collation");
+
+    failures += execute_sql(database,
+                            "CREATE DATABASE mylite_show_create_db_utf8mb3_bin "
+                            "DEFAULT CHARACTER SET utf8mb3 COLLATE utf8mb3_bin",
+                            MYLITE_DONE);
+    failures += expect_select_rows(
+        database, "SHOW CREATE DATABASE mylite_show_create_db_utf8mb3_bin", columns, 2,
+        utf8mb3_bin_values, 1, "show create database utf8mb3 nondefault collation");
+
+    failures += execute_sql(database,
+                            "ALTER DATABASE mylite_show_create_db_latin1 "
+                            "DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci "
+                            "ENCRYPTION='N'",
+                            MYLITE_DONE);
+    failures +=
+        expect_select_rows(database, "SHOW CREATE DATABASE mylite_show_create_db_latin1", columns,
+                           2, altered_values, 1, "show create database altered defaults");
+
+    failures += execute_sql(database,
+                            "CREATE DATABASE `My``Show``Db` DEFAULT CHARACTER SET utf8mb4 "
+                            "COLLATE utf8mb4_bin",
+                            MYLITE_DONE);
+    failures += expect_select_rows(database, "SHOW CREATE DATABASE `My``Show``Db`", columns, 2,
+                                   escaped_values, 1, "show create database escaped identifiers");
+
+    failures +=
+        expect_select_rows(database, "SHOW CREATE DATABASE information_schema", columns, 2,
+                           information_schema_values, 1, "show create database information schema");
+    failures += expect_select_rows(database, "SHOW CREATE DATABASE mysql", columns, 2, mysql_values,
+                                   1, "show create database mysql schema");
+    failures += expect_prepare_error(database, "SHOW CREATE DATABASE missing_show_create_db",
+                                     MYLITE_EXEC_ERROR, "Unknown database 'missing_show_create_db'",
+                                     "show create database rejects missing schema");
 
     mylite_close(database);
     // NOLINTEND(readability-function-size,readability-magic-numbers)

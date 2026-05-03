@@ -142,6 +142,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_SHOW_CHARACTER_SET_STATEMENT = 131,
     MYLITE_SQL_AST_SHOW_COLLATION_STATEMENT = 132,
     MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT = 133,
+    MYLITE_SQL_AST_SHOW_CREATE_SCHEMA_STATEMENT = 134,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -555,6 +556,7 @@ struct mylite_sql_ast_node {
     bool show_columns_extended;
     bool show_columns_full;
     bool show_index_extended;
+    bool show_create_schema_if_not_exists;
 };
 
 struct mylite_sql_ast {
@@ -664,6 +666,7 @@ void mylite_sql_ast_node_set_show_tables_full(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_show_columns_extended(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_show_columns_full(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_show_index_extended(struct mylite_sql_ast_node *node);
+void mylite_sql_ast_node_set_show_create_schema_if_not_exists(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_show_diagnostics_kind(struct mylite_sql_ast_node *node,
                                                    enum mylite_sql_ast_show_diagnostics_kind kind);
 void mylite_sql_ast_node_set_show_variables_scope(struct mylite_sql_ast_node *node,

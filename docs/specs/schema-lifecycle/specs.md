@@ -10,6 +10,8 @@ schema behavior for:
 - `DROP DATABASE` and `DROP SCHEMA`
 - `USE`
 - unfiltered `SHOW DATABASES` and `SHOW SCHEMAS`
+- `SHOW CREATE DATABASE` and `SHOW CREATE SCHEMA` are covered by the focused
+  [SHOW CREATE DATABASE spec](../show-create-database/specs.md)
 
 The implementation is intentionally embedded-compatible. A MyLite database file
 stores multiple MySQL schema names in one SQLite payload instead of mapping each
@@ -29,6 +31,8 @@ covered by the
   https://dev.mysql.com/doc/refman/8.4/en/drop-database.html
 - MySQL 8.4 Reference Manual, `SHOW DATABASES` Statement:
   https://dev.mysql.com/doc/refman/8.4/en/show-databases.html
+- MySQL 8.4 Reference Manual, `SHOW CREATE DATABASE` Statement:
+  https://dev.mysql.com/doc/refman/8.4/en/show-create-database.html
 - MySQL 8.4 Reference Manual, `USE` Statement:
   https://dev.mysql.com/doc/refman/8.4/en/use.html
 - Observed MySQL 8.4.9 runtime behavior from Docker container
@@ -238,6 +242,14 @@ Compatibility gaps:
 - The result is backed by the MyLite catalog rather than filesystem directory
   enumeration.
 
+### `SHOW CREATE DATABASE` / `SHOW CREATE SCHEMA`
+
+Supported syntax and behavior are specified in
+[SHOW CREATE DATABASE](../show-create-database/specs.md). The statement reads
+the schema catalog directly, does not require the session default schema, and
+returns one row with MySQL's `Database` / `Create Database` columns for user
+and system schemas.
+
 ## Lemon grammar snippets
 
 These snippets describe MyLite's intended grammar for this feature:
@@ -247,6 +259,7 @@ statement ::= create_schema_statement.
 statement ::= alter_schema_statement.
 statement ::= drop_schema_statement.
 statement ::= show_schemas_statement.
+statement ::= show_create_schema_statement.
 statement ::= use_statement.
 
 create_schema_statement ::= CREATE schema_keyword opt_if_not_exists identifier
@@ -285,6 +298,8 @@ opt_if_exists ::= IF EXISTS.
 show_schemas_statement ::= SHOW show_schema_keyword.
 show_schema_keyword ::= DATABASES.
 show_schema_keyword ::= SCHEMAS.
+
+show_create_schema_statement ::= SHOW CREATE schema_keyword opt_if_not_exists identifier.
 
 use_statement ::= USE identifier.
 

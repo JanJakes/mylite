@@ -29,6 +29,7 @@ static int test_show_collation_syntax(void);
 static int test_show_tables_syntax(void);
 static int test_show_columns_syntax(void);
 static int test_show_index_syntax(void);
+static int test_show_create_database_syntax(void);
 static int test_show_create_table_syntax(void);
 static int test_show_diagnostics_syntax(void);
 static int test_describe_table_syntax(void);
@@ -177,6 +178,7 @@ int main(void)
     failures += test_show_tables_syntax();
     failures += test_show_columns_syntax();
     failures += test_show_index_syntax();
+    failures += test_show_create_database_syntax();
     failures += test_show_create_table_syntax();
     failures += test_show_diagnostics_syntax();
     failures += test_describe_table_syntax();
@@ -3568,6 +3570,82 @@ static int test_show_index_syntax(void)
 
     failures +=
         parse_sql("SHOW INDEX FROM t FROM app FROM other;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_show_create_database_syntax(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SHOW CREATE DATABASE app; SHOW CREATE SCHEMA app; "
+                          "SHOW CREATE DATABASE IF NOT EXISTS `My``Show``Db`; "
+                          "SHOW CREATE SCHEMA IF NOT EXISTS app;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_child_count(result.root, 4U, "show create database script count");
+
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_CREATE_SCHEMA_STATEMENT, "show create database");
+    failures += expect_child_count(statement, 1U, "show create database child count");
+    failures += expect_span_text(child_at(statement, 0U), "app", "show create database name");
+    failures += expect_bool(statement->show_create_schema_if_not_exists, false,
+                            "show create database no if not exists");
+
+    statement = child_at(result.root, 1U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_CREATE_SCHEMA_STATEMENT, "show create schema");
+    failures += expect_span_text(child_at(statement, 0U), "app", "show create schema name");
+
+    statement = child_at(result.root, 2U);
+    failures += expect_span_text(child_at(statement, 0U), "`My``Show``Db`",
+                                 "show create database escaped name");
+    failures += expect_bool(statement->show_create_schema_if_not_exists, true,
+                            "show create database if not exists");
+
+    statement = child_at(result.root, 3U);
+    failures +=
+        expect_span_text(child_at(statement, 0U), "app", "show create schema if not exists name");
+    failures += expect_bool(statement->show_create_schema_if_not_exists, true,
+                            "show create schema if not exists");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW CREATE DATABASE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW CREATE SCHEMA;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW CREATE DATABASE IF NOT EXISTS;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW CREATE SCHEMA IF NOT EXISTS;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW CREATE DATABASE app LIKE 'a%';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW CREATE DATABASE app WHERE 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW CREATE SCHEMA app LIKE 'a%';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW CREATE SCHEMA app WHERE 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW CREATE VIEW v;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     // NOLINTEND(readability-magic-numbers)

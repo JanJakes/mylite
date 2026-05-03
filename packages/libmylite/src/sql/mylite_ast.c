@@ -624,6 +624,15 @@ void mylite_sql_ast_node_set_show_index_extended(struct mylite_sql_ast_node *nod
     node->show_index_extended = true;
 }
 
+void mylite_sql_ast_node_set_show_create_schema_if_not_exists(struct mylite_sql_ast_node *node)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->show_create_schema_if_not_exists = true;
+}
+
 void mylite_sql_ast_node_set_show_diagnostics_kind(struct mylite_sql_ast_node *node,
                                                    enum mylite_sql_ast_show_diagnostics_kind kind)
 {
@@ -942,6 +951,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "show_collation_statement";
     case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
         return "show_engines_statement";
+    case MYLITE_SQL_AST_SHOW_CREATE_SCHEMA_STATEMENT:
+        return "show_create_schema_statement";
     }
 
     return "unknown";

@@ -906,9 +906,7 @@ account_current_password_tail ::= OPTIONAL.
 account_password_lock_value ::= account_password_number_value.
 account_password_lock_value ::= UNBOUNDED.
 
-account_password_number_value ::= BOOLEAN_NUMBER.
-account_password_number_value ::= FACTOR_NUMBER.
-account_password_number_value ::= NUMBER_LITERAL.
+account_password_number_value ::= unsigned_integer_or_lower_hex_value.
 
 account_lock_option ::= ACCOUNT LOCK.
 account_lock_option ::= ACCOUNT UNLOCK.
@@ -2174,6 +2172,16 @@ unsigned_decimal_or_lower_hex_value ::= NUMBER_LITERAL(A). {
   mylite_parser_require_unsigned_decimal_or_lower_hex_literal(ctx, A);
 }
 unsigned_decimal_or_lower_hex_value ::= DOT unsigned_decimal_fraction.
+
+unsigned_integer_or_lower_hex_value ::= BOOLEAN_NUMBER(A). {
+  mylite_parser_require_unsigned_integer_or_lower_hex_literal(ctx, A);
+}
+unsigned_integer_or_lower_hex_value ::= FACTOR_NUMBER(A). {
+  mylite_parser_require_unsigned_integer_or_lower_hex_literal(ctx, A);
+}
+unsigned_integer_or_lower_hex_value ::= NUMBER_LITERAL(A). {
+  mylite_parser_require_unsigned_integer_or_lower_hex_literal(ctx, A);
+}
 
 unsigned_decimal_value ::= BOOLEAN_NUMBER(A). {
   mylite_parser_require_unsigned_decimal_literal(ctx, A);
@@ -4248,17 +4256,7 @@ set_resource_group_thread_list ::= set_resource_group_thread.
 set_resource_group_thread_list ::= set_resource_group_thread_list import_comma set_resource_group_thread.
 set_resource_group_thread_list ::= set_resource_group_thread_list set_resource_group_thread.
 
-set_resource_group_thread ::= resource_group_thread_id_value.
-
-resource_group_thread_id_value ::= BOOLEAN_NUMBER(A). {
-  mylite_parser_require_unsigned_integer_or_lower_hex_literal(ctx, A);
-}
-resource_group_thread_id_value ::= FACTOR_NUMBER(A). {
-  mylite_parser_require_unsigned_integer_or_lower_hex_literal(ctx, A);
-}
-resource_group_thread_id_value ::= NUMBER_LITERAL(A). {
-  mylite_parser_require_unsigned_integer_or_lower_hex_literal(ctx, A);
-}
+set_resource_group_thread ::= unsigned_integer_or_lower_hex_value.
 
 set_password_tail ::= set_password_target_tail set_password_auth_option set_password_replace_tail set_password_retain_tail.
 

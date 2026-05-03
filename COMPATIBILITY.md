@@ -212,7 +212,7 @@ below. The current prototype parses the WordPress MySQL server query corpus with
 | `TABLE` | ❌ | medium | Table-value statement syntax and ordering/limit behavior. |  |
 | `UPDATE` (single-table) | ❌ | top | Assignment order, generated columns, ORDER BY, LIMIT, LOW_PRIORITY, and IGNORE. | Parser prototype exposes target table-reference spans, priority and `IGNORE` modifiers, ordered assignment descriptors with decoded names and recursive value expression views, statement-level `WHERE` predicate views, and `ORDER BY` / `LIMIT` anchors. Runtime semantics are not implemented yet. |
 | `UPDATE` (multi-table) | ❌ | high | Joined update semantics, assignment evaluation, and affected rows. | Parser prototype marks joined/multi-table target references, records all currently discovered table targets, exposes ordered assignments, and anchors the statement-level `WHERE` predicate. Runtime semantics are not implemented yet. |
-| `VALUES` | ❌ | high | Standalone values statement and row constructor behavior. |  |
+| `VALUES` | ❌ | high | Standalone values statement and row constructor behavior. | Parser prototype exposes row/value descriptors, `DEFAULT` markers, recursive value expression views, and `ORDER BY` / `LIMIT` anchors. Runtime query semantics are not implemented yet. |
 
 ### 1.3 Transactional, Locking, Replication, Prepared, and Compound Statements
 

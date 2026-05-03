@@ -768,6 +768,36 @@ struct MyliteAstSelectStatement {
   int has_set_operation;
 };
 
+struct MyliteAstValuesValue {
+  const MyliteAstNode *node;
+  MyliteAstExpression expression;
+  size_t row_index;
+  size_t value_index;
+  size_t start;
+  size_t end;
+  int is_default;
+};
+
+struct MyliteAstValuesStatement {
+  const MyliteAstNode *node;
+  const MyliteAstNode *row_list_node;
+  MyliteAstValuesValue *values;
+  size_t row_count;
+  size_t value_count;
+  size_t start;
+  size_t end;
+  size_t row_list_start;
+  size_t row_list_end;
+  size_t order_by_start;
+  size_t order_by_end;
+  size_t limit_start;
+  size_t limit_end;
+  size_t into_start;
+  size_t into_end;
+  size_t lock_start;
+  size_t lock_end;
+};
+
 struct MyliteAstSetAssignment {
   const MyliteAstNode *node;
   const MyliteAstNode *value_node;
@@ -922,6 +952,7 @@ typedef struct MyliteAstStatement {
   MyliteAstReplaceStatement *replace_statement;
   MyliteAstRenameTable *rename_table;
   MyliteAstSelectStatement *select_statement;
+  MyliteAstValuesStatement *values_statement;
   MyliteAstSetStatement *set_statement;
   MyliteAstTruncateTable *truncate_table;
   MyliteAstTransactionStatement *transaction_statement;
@@ -1230,6 +1261,27 @@ static int mylite_ast_set_select_projection_alias(
 static int mylite_ast_set_select_projection_qualifier(
     MyliteAst *ast, MyliteAstSelectProjection *projection,
     const MyliteAstNode *node);
+static int mylite_ast_set_values_statement_view(MyliteAst *ast,
+                                                MyliteAstStatement *statement,
+                                                const MyliteAstNode *payload);
+static void mylite_ast_set_values_clause_spans(
+    MyliteAstValuesStatement *values_statement, const MyliteAstNode *payload);
+static size_t mylite_ast_count_values_rows(const MyliteAstNode *node);
+static size_t mylite_ast_count_values_values(const MyliteAstNode *node);
+static int mylite_ast_fill_values_values(MyliteAst *ast,
+                                         MyliteAstValuesStatement *statement,
+                                         const MyliteAstNode *node,
+                                         size_t *row_index,
+                                         size_t *value_index);
+static int mylite_ast_fill_values_row_values(
+    MyliteAst *ast, MyliteAstValuesStatement *statement,
+    const MyliteAstNode *node, size_t row_index, size_t *row_value_index,
+    size_t *value_index);
+static int mylite_ast_fill_values_value(MyliteAst *ast,
+                                        MyliteAstValuesValue *value,
+                                        const MyliteAstNode *node,
+                                        size_t row_index,
+                                        size_t row_value_index);
 static const MyliteAstNode *mylite_ast_find_first_spanned_symbol(
     const MyliteAstNode *node, const char *symbol_name);
 static const MyliteAstNode *mylite_ast_find_first_select_into_node(
@@ -3334,6 +3386,13 @@ const MyliteAstSelectStatement *mylite_ast_select_statement_view(
   return statement == NULL ? NULL : statement->select_statement;
 }
 
+const MyliteAstValuesStatement *mylite_ast_values_statement_view(
+    const MyliteAst *ast, size_t statement_index) {
+  const MyliteAstStatement *statement =
+      mylite_ast_statement_at(ast, statement_index);
+  return statement == NULL ? NULL : statement->values_statement;
+}
+
 const MyliteAstSetStatement *mylite_ast_set_statement_view(
     const MyliteAst *ast, size_t statement_index) {
   const MyliteAstStatement *statement =
@@ -4711,6 +4770,124 @@ const char *mylite_ast_select_projection_view_qualifier_value(
 size_t mylite_ast_select_projection_view_qualifier_value_length(
     const MyliteAstSelectProjection *projection) {
   return projection == NULL ? 0 : projection->qualifier_value_length;
+}
+
+const MyliteAstNode *mylite_ast_values_statement_view_node(
+    const MyliteAstValuesStatement *values_statement) {
+  return values_statement == NULL ? NULL : values_statement->node;
+}
+
+size_t mylite_ast_values_statement_view_start(
+    const MyliteAstValuesStatement *values_statement) {
+  return values_statement == NULL ? 0 : values_statement->start;
+}
+
+size_t mylite_ast_values_statement_view_end(
+    const MyliteAstValuesStatement *values_statement) {
+  return values_statement == NULL ? 0 : values_statement->end;
+}
+
+size_t mylite_ast_values_statement_view_row_list_start(
+    const MyliteAstValuesStatement *values_statement) {
+  return values_statement == NULL ? 0 : values_statement->row_list_start;
+}
+
+size_t mylite_ast_values_statement_view_row_list_end(
+    const MyliteAstValuesStatement *values_statement) {
+  return values_statement == NULL ? 0 : values_statement->row_list_end;
+}
+
+size_t mylite_ast_values_statement_view_row_count(
+    const MyliteAstValuesStatement *values_statement) {
+  return values_statement == NULL ? 0 : values_statement->row_count;
+}
+
+size_t mylite_ast_values_statement_view_value_count(
+    const MyliteAstValuesStatement *values_statement) {
+  return values_statement == NULL ? 0 : values_statement->value_count;
+}
+
+const MyliteAstValuesValue *mylite_ast_values_statement_view_value_at(
+    const MyliteAstValuesStatement *values_statement, size_t value_index) {
+  if (values_statement == NULL || value_index >= values_statement->value_count) {
+    return NULL;
+  }
+  return &values_statement->values[value_index];
+}
+
+size_t mylite_ast_values_statement_view_order_by_start(
+    const MyliteAstValuesStatement *values_statement) {
+  return values_statement == NULL ? 0 : values_statement->order_by_start;
+}
+
+size_t mylite_ast_values_statement_view_order_by_end(
+    const MyliteAstValuesStatement *values_statement) {
+  return values_statement == NULL ? 0 : values_statement->order_by_end;
+}
+
+size_t mylite_ast_values_statement_view_limit_start(
+    const MyliteAstValuesStatement *values_statement) {
+  return values_statement == NULL ? 0 : values_statement->limit_start;
+}
+
+size_t mylite_ast_values_statement_view_limit_end(
+    const MyliteAstValuesStatement *values_statement) {
+  return values_statement == NULL ? 0 : values_statement->limit_end;
+}
+
+size_t mylite_ast_values_statement_view_into_start(
+    const MyliteAstValuesStatement *values_statement) {
+  return values_statement == NULL ? 0 : values_statement->into_start;
+}
+
+size_t mylite_ast_values_statement_view_into_end(
+    const MyliteAstValuesStatement *values_statement) {
+  return values_statement == NULL ? 0 : values_statement->into_end;
+}
+
+size_t mylite_ast_values_statement_view_lock_start(
+    const MyliteAstValuesStatement *values_statement) {
+  return values_statement == NULL ? 0 : values_statement->lock_start;
+}
+
+size_t mylite_ast_values_statement_view_lock_end(
+    const MyliteAstValuesStatement *values_statement) {
+  return values_statement == NULL ? 0 : values_statement->lock_end;
+}
+
+const MyliteAstNode *mylite_ast_values_value_view_node(
+    const MyliteAstValuesValue *value) {
+  return value == NULL ? NULL : value->node;
+}
+
+size_t mylite_ast_values_value_view_start(
+    const MyliteAstValuesValue *value) {
+  return value == NULL ? 0 : value->start;
+}
+
+size_t mylite_ast_values_value_view_end(const MyliteAstValuesValue *value) {
+  return value == NULL ? 0 : value->end;
+}
+
+size_t mylite_ast_values_value_view_row_index(
+    const MyliteAstValuesValue *value) {
+  return value == NULL ? 0 : value->row_index;
+}
+
+size_t mylite_ast_values_value_view_value_index(
+    const MyliteAstValuesValue *value) {
+  return value == NULL ? 0 : value->value_index;
+}
+
+int mylite_ast_values_value_view_is_default(
+    const MyliteAstValuesValue *value) {
+  return value == NULL ? 0 : value->is_default;
+}
+
+const MyliteAstExpression *mylite_ast_values_value_view_expression(
+    const MyliteAstValuesValue *value) {
+  return value == NULL || value->expression.node == NULL ? NULL
+                                                         : &value->expression;
 }
 
 const MyliteAstNode *mylite_ast_alter_table_view_node(
@@ -9594,7 +9771,8 @@ static int mylite_ast_set_statement_details(MyliteAst *ast,
     return 1;
   }
   if (statement->kind == MYLITE_STATEMENT_SELECT) {
-    return mylite_ast_set_select_statement_view(ast, statement, payload);
+    return mylite_ast_set_select_statement_view(ast, statement, payload) &&
+           mylite_ast_set_values_statement_view(ast, statement, payload);
   }
   if (statement->kind == MYLITE_STATEMENT_CALL) {
     return mylite_ast_set_call_statement_view(ast, statement, payload);
@@ -11510,6 +11688,191 @@ static int mylite_ast_set_update_assignment_name_value(
                                       assignment->name_end,
                                       &assignment->name_value,
                                       &assignment->name_value_length);
+}
+
+static int mylite_ast_set_values_statement_view(MyliteAst *ast,
+                                                MyliteAstStatement *statement,
+                                                const MyliteAstNode *payload) {
+  if (ast == NULL || statement == NULL || payload == NULL ||
+      mylite_ast_direct_child_token(payload, 0, MYLITE_TOK_VALUES) == NULL) {
+    return 1;
+  }
+
+  MyliteAstValuesStatement *values_statement =
+      mylite_ast_alloc(ast, sizeof(*values_statement));
+  if (values_statement == NULL) {
+    return 0;
+  }
+  values_statement->node = payload;
+  values_statement->start = mylite_ast_node_start(payload);
+  values_statement->end = mylite_ast_node_end(payload);
+  values_statement->row_list_node =
+      mylite_ast_insert_direct_child_symbol(payload, "nt_values_stmt_list");
+  if (values_statement->row_list_node != NULL) {
+    values_statement->row_list_start =
+        mylite_ast_node_start(values_statement->row_list_node);
+    values_statement->row_list_end =
+        mylite_ast_node_end(values_statement->row_list_node);
+  }
+  mylite_ast_set_values_clause_spans(values_statement, payload);
+  values_statement->row_count =
+      mylite_ast_count_values_rows(values_statement->row_list_node);
+  values_statement->value_count =
+      mylite_ast_count_values_values(values_statement->row_list_node);
+  if (values_statement->value_count > 0) {
+    values_statement->values =
+        mylite_ast_alloc(ast, values_statement->value_count *
+                                  sizeof(*values_statement->values));
+    if (values_statement->values == NULL) {
+      return 0;
+    }
+    size_t row_index = 0;
+    size_t value_index = 0;
+    if (!mylite_ast_fill_values_values(
+            ast, values_statement, values_statement->row_list_node, &row_index,
+            &value_index) ||
+        row_index != values_statement->row_count ||
+        value_index != values_statement->value_count) {
+      return 0;
+    }
+  }
+  statement->values_statement = values_statement;
+  return 1;
+}
+
+static void mylite_ast_set_values_clause_spans(
+    MyliteAstValuesStatement *values_statement, const MyliteAstNode *payload) {
+  if (values_statement == NULL || payload == NULL) {
+    return;
+  }
+  const MyliteAstNode *clause =
+      mylite_ast_find_first_spanned_symbol(payload, "nt_order_by");
+  if (clause != NULL) {
+    values_statement->order_by_start = mylite_ast_node_start(clause);
+    values_statement->order_by_end = mylite_ast_node_end(clause);
+  }
+  clause =
+      mylite_ast_find_first_spanned_symbol(payload, "nt_select_stmt_limit");
+  if (clause != NULL) {
+    values_statement->limit_start = mylite_ast_node_start(clause);
+    values_statement->limit_end = mylite_ast_node_end(clause);
+  }
+  clause = mylite_ast_find_first_select_into_node(payload);
+  if (clause != NULL) {
+    values_statement->into_start = mylite_ast_node_start(clause);
+    values_statement->into_end = mylite_ast_node_end(clause);
+  }
+  clause = mylite_ast_find_first_spanned_symbol(payload, "nt_select_lock_opt");
+  if (clause != NULL) {
+    values_statement->lock_start = mylite_ast_node_start(clause);
+    values_statement->lock_end = mylite_ast_node_end(clause);
+  }
+}
+
+static size_t mylite_ast_count_values_rows(const MyliteAstNode *node) {
+  if (node == NULL) {
+    return 0;
+  }
+  if (mylite_ast_expression_is_symbol(node, "nt_row_stmt")) {
+    return 1;
+  }
+  size_t count = 0;
+  for (size_t i = 0; i < node->child_count; i++) {
+    count += mylite_ast_count_values_rows(node->children[i]);
+  }
+  return count;
+}
+
+static size_t mylite_ast_count_values_values(const MyliteAstNode *node) {
+  if (node == NULL) {
+    return 0;
+  }
+  if (mylite_ast_expression_is_symbol(node, "nt_expr_or_default")) {
+    return 1;
+  }
+  size_t count = 0;
+  for (size_t i = 0; i < node->child_count; i++) {
+    count += mylite_ast_count_values_values(node->children[i]);
+  }
+  return count;
+}
+
+static int mylite_ast_fill_values_values(MyliteAst *ast,
+                                         MyliteAstValuesStatement *statement,
+                                         const MyliteAstNode *node,
+                                         size_t *row_index,
+                                         size_t *value_index) {
+  if (node == NULL) {
+    return 1;
+  }
+  if (mylite_ast_expression_is_symbol(node, "nt_row_stmt")) {
+    if (row_index == NULL || value_index == NULL ||
+        *row_index >= statement->row_count) {
+      return 0;
+    }
+    size_t row_value_index = 0;
+    if (!mylite_ast_fill_values_row_values(
+            ast, statement, node, *row_index, &row_value_index, value_index)) {
+      return 0;
+    }
+    (*row_index)++;
+    return 1;
+  }
+  for (size_t i = 0; i < node->child_count; i++) {
+    if (!mylite_ast_fill_values_values(ast, statement, node->children[i],
+                                       row_index, value_index)) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+static int mylite_ast_fill_values_row_values(
+    MyliteAst *ast, MyliteAstValuesStatement *statement,
+    const MyliteAstNode *node, size_t row_index, size_t *row_value_index,
+    size_t *value_index) {
+  if (node == NULL) {
+    return 1;
+  }
+  if (mylite_ast_expression_is_symbol(node, "nt_expr_or_default")) {
+    if (row_value_index == NULL || value_index == NULL ||
+        *value_index >= statement->value_count) {
+      return 0;
+    }
+    if (!mylite_ast_fill_values_value(ast, &statement->values[*value_index],
+                                      node, row_index, *row_value_index)) {
+      return 0;
+    }
+    (*row_value_index)++;
+    (*value_index)++;
+    return 1;
+  }
+  for (size_t i = 0; i < node->child_count; i++) {
+    if (!mylite_ast_fill_values_row_values(
+            ast, statement, node->children[i], row_index, row_value_index,
+            value_index)) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+static int mylite_ast_fill_values_value(MyliteAst *ast,
+                                        MyliteAstValuesValue *value,
+                                        const MyliteAstNode *node,
+                                        size_t row_index,
+                                        size_t row_value_index) {
+  if (ast == NULL || value == NULL || node == NULL) {
+    return 1;
+  }
+  value->node = node;
+  value->row_index = row_index;
+  value->value_index = row_value_index;
+  value->start = mylite_ast_node_start(node);
+  value->end = mylite_ast_node_end(node);
+  value->is_default =
+      mylite_ast_find_first_token(node, MYLITE_TOK_DEFAULT_KWD) != NULL;
+  return mylite_ast_set_expression_summary(ast, &value->expression, node);
 }
 
 static int mylite_ast_set_select_statement_view(MyliteAst *ast,

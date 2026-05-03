@@ -69,6 +69,9 @@ expression nodes.
   markers, query-block counts, projection descriptors, common clause spans, and
   recursive expression views for projection, `WHERE`, and `HAVING`
   expressions.
+- Standalone `VALUES` query forms expose parser-level row/value descriptors,
+  `DEFAULT` markers, recursive value expression views, and `ORDER BY` /
+  `LIMIT` anchors.
 - `DELETE` statements expose parser-level views for single-table, multi-table
   `FROM`, and multi-table `USING` forms, `WITH` markers, priority, `QUICK`, and
   `IGNORE` modifiers, ordered delete-target descriptors, table-reference spans,
@@ -174,6 +177,9 @@ expression nodes.
 - typed `SELECT` projection descriptors with expression/wildcard/table-wildcard
   kind, source spans, expression spans, decoded aliases, table-wildcard
   qualifier spans, and recursive expression views where present
+- typed standalone `VALUES` descriptors with row-list spans, row/value counts,
+  row/value coordinates, `DEFAULT` markers, common clause anchors, and recursive
+  value-expression handles
 - typed `DELETE` descriptors with statement form, `WITH` and multi-table
   markers, priority, `QUICK`, and `IGNORE` modifiers, delete-target handles,
   target-list spans, table-reference spans, statement-level `WHERE` predicate
@@ -437,6 +443,15 @@ available to the next AST layer. Stored-procedure lookup, invocation, OUT/INOUT
 parameter binding, result-set streaming, diagnostics, and security context
 remain runtime work.
 
+The first parser-level standalone `VALUES` view hangs off `nt_select_stmt`
+because TiDB parses `VALUES ROW(...)` as a SELECT-like query form. The
+top-level statement kind remains `MYLITE_STATEMENT_SELECT`, while
+`mylite_ast_values_statement_view()` exposes the VALUES-specific row list,
+row/value coordinates, `DEFAULT` markers, recursive value expression views, and
+`ORDER BY` / `LIMIT` / `INTO` / lock anchors. Query result production,
+metadata inference, ordering, limiting, and locking semantics remain later
+query-engine work.
+
 The first parser-level `DO` view records the statement expression-list span and
 ordered top-level expression descriptors. Each descriptor anchors the original
 CST expression and exposes the shared recursive expression view, covering
@@ -591,6 +606,13 @@ mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=13.7978
 mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=35.733288 qps=194611 mbps=14.80 avg_us=5.138 avg_nodes=74.5 avg_ast_bytes=10890.7 avg_call_statement_views=0.01 avg_call_statement_schema_values=0.00 avg_call_statement_name_values=0.01 avg_call_statement_parentheses=0.01 avg_call_statement_arguments=0.01 avg_call_statement_expression_tree_nodes=0.01 avg_call_statement_expression_tree_operators=0.00 avg_call_statement_expression_tree_leaf_values=0.01
 ```
 
+Latest standalone VALUES parser-view run on the same corpus:
+
+```text
+mode=syntax queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=13.899991 qps=500295 mbps=38.05 avg_us=1.999
+mode=ast queries=69541 iterations=100 parsed=6954100 failed=0 elapsed=35.143866 qps=197875 mbps=15.05 avg_us=5.054 avg_nodes=74.5 avg_ast_bytes=10893.3 avg_values_statement_views=0.00 avg_values_statement_rows=0.00 avg_values_statement_values=0.00 avg_values_statement_default_values=0.00 avg_values_statement_order_by_clauses=0.00 avg_values_statement_limit_clauses=0.00 avg_values_statement_into_clauses=0.00 avg_values_statement_lock_clauses=0.00 avg_values_statement_expression_tree_nodes=0.00 avg_values_statement_expression_tree_operators=0.00 avg_values_statement_expression_tree_leaf_values=0.00
+```
+
 Before semantic actions were generated, syntax-only parsing measured about
 `711k queries/sec` on the same corpus. The current syntax-only path still runs
 the generated reduce actions, but with AST building disabled, so it avoids arena
@@ -601,7 +623,7 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,852 lines, 5,637,339 bytes
 generated parser object: 996K on disk, 905,398 bytes text/data/other
-parser support object: 296K on disk, 172,848 bytes text/data/other
+parser support object: 301K on disk, 175,892 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.4M on disk
 mylite-parse: 1.2M on disk

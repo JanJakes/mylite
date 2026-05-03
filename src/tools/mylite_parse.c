@@ -152,6 +152,8 @@ static void dump_statements(const MyliteAst *ast) {
         mylite_ast_rename_table_view(ast, i);
     const MyliteAstSelectStatement *select_statement =
         mylite_ast_select_statement_view(ast, i);
+    const MyliteAstValuesStatement *values_statement =
+        mylite_ast_values_statement_view(ast, i);
     const MyliteAstSetStatement *set_statement =
         mylite_ast_set_statement_view(ast, i);
     const MyliteAstTruncateTable *truncate_table =
@@ -1381,6 +1383,46 @@ static void dump_statements(const MyliteAst *ast) {
         if (projection_expression != NULL) {
           printf("      projection[%zu].expression\n", j);
           dump_expression_tree(projection_expression, 4);
+        }
+      }
+    }
+    if (values_statement != NULL) {
+      printf("  values_statement span=%zu..%zu row_list=%zu..%zu "
+             "rows=%zu values=%zu order=%zu..%zu limit=%zu..%zu "
+             "into=%zu..%zu lock=%zu..%zu node=%s\n",
+             mylite_ast_values_statement_view_start(values_statement),
+             mylite_ast_values_statement_view_end(values_statement),
+             mylite_ast_values_statement_view_row_list_start(values_statement),
+             mylite_ast_values_statement_view_row_list_end(values_statement),
+             mylite_ast_values_statement_view_row_count(values_statement),
+             mylite_ast_values_statement_view_value_count(values_statement),
+             mylite_ast_values_statement_view_order_by_start(values_statement),
+             mylite_ast_values_statement_view_order_by_end(values_statement),
+             mylite_ast_values_statement_view_limit_start(values_statement),
+             mylite_ast_values_statement_view_limit_end(values_statement),
+             mylite_ast_values_statement_view_into_start(values_statement),
+             mylite_ast_values_statement_view_into_end(values_statement),
+             mylite_ast_values_statement_view_lock_start(values_statement),
+             mylite_ast_values_statement_view_lock_end(values_statement),
+             node_symbol_or_none(
+                 mylite_ast_values_statement_view_node(values_statement)));
+      for (size_t j = 0;
+           j < mylite_ast_values_statement_view_value_count(values_statement);
+           j++) {
+        const MyliteAstValuesValue *value =
+            mylite_ast_values_statement_view_value_at(values_statement, j);
+        printf("    values_value[%zu] row=%zu value=%zu span=%zu..%zu "
+               "default=%d\n",
+               j, mylite_ast_values_value_view_row_index(value),
+               mylite_ast_values_value_view_value_index(value),
+               mylite_ast_values_value_view_start(value),
+               mylite_ast_values_value_view_end(value),
+               mylite_ast_values_value_view_is_default(value));
+        const MyliteAstExpression *expression =
+            mylite_ast_values_value_view_expression(value);
+        if (expression != NULL) {
+          printf("      values_value[%zu].expression\n", j);
+          dump_expression_tree(expression, 4);
         }
       }
     }

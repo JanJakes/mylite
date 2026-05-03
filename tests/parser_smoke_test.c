@@ -203,6 +203,7 @@ static int expect_prepared_statement_views(void);
 static int expect_replace_statement_view(void);
 static int expect_rename_table_view(void);
 static int expect_select_statement_view(void);
+static int expect_values_statement_view(void);
 static int expect_set_expression_tree_view(void);
 static int expect_set_statement_view(void);
 static int expect_truncate_table_view(void);
@@ -813,6 +814,7 @@ int main(void) {
   failures += expect_replace_statement_view();
   failures += expect_rename_table_view();
   failures += expect_select_statement_view();
+  failures += expect_values_statement_view();
   failures += expect_set_statement_view();
   failures += expect_set_expression_tree_view();
   failures += expect_truncate_table_view();
@@ -4712,6 +4714,68 @@ static int expect_select_statement_view(void) {
     mylite_ast_free(ast);
   }
 
+  return failed;
+}
+
+static int expect_values_statement_view(void) {
+  const char *sql =
+      "VALUES ROW(1, DEFAULT), ROW(2, a + 3) ORDER BY 1 LIMIT 1";
+  MyliteParseResult result;
+  MyliteAst *ast = NULL;
+  MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+  if (status != MYLITE_PARSE_OK) {
+    fprintf(stderr,
+            "VALUES statement view parse failed: status=%s offset=%zu "
+            "token=%d message=%s\n",
+            mylite_parse_status_name(status), result.offset, result.token,
+            result.message);
+    return 1;
+  }
+
+  const MyliteAstValuesStatement *view =
+      mylite_ast_values_statement_view(ast, 0);
+  const MyliteAstValuesValue *default_value =
+      view == NULL ? NULL : mylite_ast_values_statement_view_value_at(view, 1);
+  const MyliteAstValuesValue *add_value =
+      view == NULL ? NULL : mylite_ast_values_statement_view_value_at(view, 3);
+  const MyliteAstExpression *default_expression =
+      mylite_ast_values_value_view_expression(default_value);
+  const MyliteAstExpression *add_expression =
+      mylite_ast_values_value_view_expression(add_value);
+  int failed = 0;
+  if (view == NULL || mylite_ast_statement_kind(ast, 0) !=
+                          MYLITE_STATEMENT_SELECT ||
+      mylite_ast_values_statement_view_row_count(view) != 2 ||
+      mylite_ast_values_statement_view_value_count(view) != 4 ||
+      !span_matches(sql, mylite_ast_values_statement_view_row_list_start(view),
+                    mylite_ast_values_statement_view_row_list_end(view),
+                    "ROW(1, DEFAULT), ROW(2, a + 3)") ||
+      !span_matches(sql, mylite_ast_values_statement_view_order_by_start(view),
+                    mylite_ast_values_statement_view_order_by_end(view),
+                    "ORDER BY 1") ||
+      !span_matches(sql, mylite_ast_values_statement_view_limit_start(view),
+                    mylite_ast_values_statement_view_limit_end(view),
+                    "LIMIT 1") ||
+      default_value == NULL ||
+      mylite_ast_values_value_view_row_index(default_value) != 0 ||
+      mylite_ast_values_value_view_value_index(default_value) != 1 ||
+      !mylite_ast_values_value_view_is_default(default_value) ||
+      default_expression == NULL ||
+      mylite_ast_expression_view_kind(default_expression) !=
+          MYLITE_EXPRESSION_DEFAULT ||
+      add_value == NULL ||
+      mylite_ast_values_value_view_row_index(add_value) != 1 ||
+      mylite_ast_values_value_view_value_index(add_value) != 1 ||
+      !span_matches(sql, mylite_ast_values_value_view_start(add_value),
+                    mylite_ast_values_value_view_end(add_value), "a + 3") ||
+      add_expression == NULL ||
+      mylite_ast_expression_view_operator_kind(add_expression) !=
+          MYLITE_EXPRESSION_OPERATOR_ADD) {
+    fprintf(stderr, "VALUES statement view failed: %s\n", sql);
+    failed = 1;
+  }
+
+  mylite_ast_free(ast);
   return failed;
 }
 

@@ -83,6 +83,17 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t select_statement_expression_tree_nodes = 0;
   size_t select_statement_expression_tree_operators = 0;
   size_t select_statement_expression_tree_leaf_values = 0;
+  size_t values_statement_views = 0;
+  size_t values_statement_rows = 0;
+  size_t values_statement_values = 0;
+  size_t values_statement_default_values = 0;
+  size_t values_statement_order_by_clauses = 0;
+  size_t values_statement_limit_clauses = 0;
+  size_t values_statement_into_clauses = 0;
+  size_t values_statement_lock_clauses = 0;
+  size_t values_statement_expression_tree_nodes = 0;
+  size_t values_statement_expression_tree_operators = 0;
+  size_t values_statement_expression_tree_leaf_values = 0;
   size_t insert_statement_views = 0;
   size_t insert_statement_values_sources = 0;
   size_t insert_statement_set_sources = 0;
@@ -495,6 +506,53 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                   case MYLITE_SELECT_PROJECTION_UNKNOWN:
                     break;
                 }
+              }
+            }
+            const MyliteAstValuesStatement *values_statement =
+                mylite_ast_values_statement_view(ast, i);
+            if (values_statement != NULL) {
+              values_statement_views++;
+              values_statement_rows +=
+                  mylite_ast_values_statement_view_row_count(values_statement);
+              values_statement_values +=
+                  mylite_ast_values_statement_view_value_count(
+                      values_statement);
+              if (mylite_ast_values_statement_view_order_by_start(
+                      values_statement) !=
+                  mylite_ast_values_statement_view_order_by_end(
+                      values_statement)) {
+                values_statement_order_by_clauses++;
+              }
+              if (mylite_ast_values_statement_view_limit_start(
+                      values_statement) !=
+                  mylite_ast_values_statement_view_limit_end(values_statement)) {
+                values_statement_limit_clauses++;
+              }
+              if (mylite_ast_values_statement_view_into_start(
+                      values_statement) !=
+                  mylite_ast_values_statement_view_into_end(values_statement)) {
+                values_statement_into_clauses++;
+              }
+              if (mylite_ast_values_statement_view_lock_start(
+                      values_statement) !=
+                  mylite_ast_values_statement_view_lock_end(values_statement)) {
+                values_statement_lock_clauses++;
+              }
+              for (size_t j = 0;
+                   j < mylite_ast_values_statement_view_value_count(
+                           values_statement);
+                   j++) {
+                const MyliteAstValuesValue *value =
+                    mylite_ast_values_statement_view_value_at(values_statement,
+                                                              j);
+                if (mylite_ast_values_value_view_is_default(value)) {
+                  values_statement_default_values++;
+                }
+                count_expression_tree(
+                    mylite_ast_values_value_view_expression(value),
+                    &values_statement_expression_tree_nodes,
+                    &values_statement_expression_tree_operators,
+                    &values_statement_expression_tree_leaf_values);
               }
             }
             columns += mylite_ast_create_table_column_count(ast, i);
@@ -1827,6 +1885,17 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_select_statement_expression_tree_nodes=%.2f "
            "avg_select_statement_expression_tree_operators=%.2f "
            "avg_select_statement_expression_tree_leaf_values=%.2f "
+           "avg_values_statement_views=%.2f "
+           "avg_values_statement_rows=%.2f "
+           "avg_values_statement_values=%.2f "
+           "avg_values_statement_default_values=%.2f "
+           "avg_values_statement_order_by_clauses=%.2f "
+           "avg_values_statement_limit_clauses=%.2f "
+           "avg_values_statement_into_clauses=%.2f "
+           "avg_values_statement_lock_clauses=%.2f "
+           "avg_values_statement_expression_tree_nodes=%.2f "
+           "avg_values_statement_expression_tree_operators=%.2f "
+           "avg_values_statement_expression_tree_leaf_values=%.2f "
            "avg_insert_statement_views=%.2f "
            "avg_insert_statement_values_sources=%.2f "
            "avg_insert_statement_set_sources=%.2f "
@@ -2105,6 +2174,19 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)select_statement_expression_tree_operators /
                (double)parsed,
            (double)select_statement_expression_tree_leaf_values /
+               (double)parsed,
+           (double)values_statement_views / (double)parsed,
+           (double)values_statement_rows / (double)parsed,
+           (double)values_statement_values / (double)parsed,
+           (double)values_statement_default_values / (double)parsed,
+           (double)values_statement_order_by_clauses / (double)parsed,
+           (double)values_statement_limit_clauses / (double)parsed,
+           (double)values_statement_into_clauses / (double)parsed,
+           (double)values_statement_lock_clauses / (double)parsed,
+           (double)values_statement_expression_tree_nodes / (double)parsed,
+           (double)values_statement_expression_tree_operators /
+               (double)parsed,
+           (double)values_statement_expression_tree_leaf_values /
                (double)parsed,
            (double)insert_statement_views / (double)parsed,
            (double)insert_statement_values_sources / (double)parsed,

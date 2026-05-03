@@ -69,6 +69,8 @@ typedef struct MyliteAstTransactionStatement MyliteAstTransactionStatement;
 typedef struct MyliteAstUpdateAssignment MyliteAstUpdateAssignment;
 typedef struct MyliteAstUpdateStatement MyliteAstUpdateStatement;
 typedef struct MyliteAstUseDatabase MyliteAstUseDatabase;
+typedef struct MyliteAstValuesStatement MyliteAstValuesStatement;
+typedef struct MyliteAstValuesValue MyliteAstValuesValue;
 typedef struct MyliteAstCreateView MyliteAstCreateView;
 typedef struct MyliteAstDropView MyliteAstDropView;
 typedef struct MyliteAstViewColumn MyliteAstViewColumn;
@@ -813,6 +815,8 @@ const MyliteAstRenameTable *mylite_ast_rename_table_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstSelectStatement *mylite_ast_select_statement_view(
     const MyliteAst *ast, size_t statement_index);
+const MyliteAstValuesStatement *mylite_ast_values_statement_view(
+    const MyliteAst *ast, size_t statement_index);
 const MyliteAstSetStatement *mylite_ast_set_statement_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstTruncateTable *mylite_ast_truncate_table_view(
@@ -1327,6 +1331,51 @@ const char *mylite_ast_select_projection_view_qualifier_value(
     const MyliteAstSelectProjection *projection);
 size_t mylite_ast_select_projection_view_qualifier_value_length(
     const MyliteAstSelectProjection *projection);
+const MyliteAstNode *mylite_ast_values_statement_view_node(
+    const MyliteAstValuesStatement *values_statement);
+size_t mylite_ast_values_statement_view_start(
+    const MyliteAstValuesStatement *values_statement);
+size_t mylite_ast_values_statement_view_end(
+    const MyliteAstValuesStatement *values_statement);
+size_t mylite_ast_values_statement_view_row_list_start(
+    const MyliteAstValuesStatement *values_statement);
+size_t mylite_ast_values_statement_view_row_list_end(
+    const MyliteAstValuesStatement *values_statement);
+size_t mylite_ast_values_statement_view_row_count(
+    const MyliteAstValuesStatement *values_statement);
+size_t mylite_ast_values_statement_view_value_count(
+    const MyliteAstValuesStatement *values_statement);
+const MyliteAstValuesValue *mylite_ast_values_statement_view_value_at(
+    const MyliteAstValuesStatement *values_statement, size_t value_index);
+size_t mylite_ast_values_statement_view_order_by_start(
+    const MyliteAstValuesStatement *values_statement);
+size_t mylite_ast_values_statement_view_order_by_end(
+    const MyliteAstValuesStatement *values_statement);
+size_t mylite_ast_values_statement_view_limit_start(
+    const MyliteAstValuesStatement *values_statement);
+size_t mylite_ast_values_statement_view_limit_end(
+    const MyliteAstValuesStatement *values_statement);
+size_t mylite_ast_values_statement_view_into_start(
+    const MyliteAstValuesStatement *values_statement);
+size_t mylite_ast_values_statement_view_into_end(
+    const MyliteAstValuesStatement *values_statement);
+size_t mylite_ast_values_statement_view_lock_start(
+    const MyliteAstValuesStatement *values_statement);
+size_t mylite_ast_values_statement_view_lock_end(
+    const MyliteAstValuesStatement *values_statement);
+const MyliteAstNode *mylite_ast_values_value_view_node(
+    const MyliteAstValuesValue *value);
+size_t mylite_ast_values_value_view_start(
+    const MyliteAstValuesValue *value);
+size_t mylite_ast_values_value_view_end(const MyliteAstValuesValue *value);
+size_t mylite_ast_values_value_view_row_index(
+    const MyliteAstValuesValue *value);
+size_t mylite_ast_values_value_view_value_index(
+    const MyliteAstValuesValue *value);
+int mylite_ast_values_value_view_is_default(
+    const MyliteAstValuesValue *value);
+const MyliteAstExpression *mylite_ast_values_value_view_expression(
+    const MyliteAstValuesValue *value);
 const MyliteAstNode *mylite_ast_alter_table_view_node(
     const MyliteAstAlterTable *alter_table);
 size_t mylite_ast_alter_table_view_start(

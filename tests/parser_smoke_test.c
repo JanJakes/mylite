@@ -207,6 +207,7 @@ static int expect_show_statement_view(void);
 static int expect_lock_statement_view(void);
 static int expect_table_maintenance_statement_view(void);
 static int expect_replication_statement_view(void);
+static int expect_stored_object_statement_view(void);
 static int expect_kill_statement_view(void);
 static int expect_flush_statement_view(void);
 static int expect_load_statement_view(void);
@@ -834,6 +835,7 @@ int main(void) {
   failures += expect_lock_statement_view();
   failures += expect_table_maintenance_statement_view();
   failures += expect_replication_statement_view();
+  failures += expect_stored_object_statement_view();
   failures += expect_kill_statement_view();
   failures += expect_flush_statement_view();
   failures += expect_load_statement_view();
@@ -4767,6 +4769,182 @@ static int expect_replication_statement_view(void) {
         fprintf(stderr, "replication control view[%zu] failed: %s\n", i, sql);
         failed = 1;
       }
+    }
+    mylite_ast_free(ast);
+  }
+
+  return failed;
+}
+
+static int expect_stored_object_statement_view(void) {
+  int failed = 0;
+  {
+    const char *sql =
+        "CREATE PROCEDURE db1.sp1() INSERT INTO t2(d) VALUES(10)";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "CREATE PROCEDURE stored-object parse failed: status=%s "
+              "offset=%zu token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+    const MyliteAstStoredObjectStatement *view =
+        mylite_ast_stored_object_statement_view(ast, 0);
+    if (view == NULL ||
+        mylite_ast_stored_object_statement_view_kind(view) !=
+            MYLITE_STORED_OBJECT_STATEMENT_CREATE_PROCEDURE ||
+        mylite_ast_stored_object_statement_view_object_kind(view) !=
+            MYLITE_STORED_OBJECT_PROCEDURE ||
+        !value_matches_when_expected(
+            mylite_ast_stored_object_statement_view_schema_value(view),
+            mylite_ast_stored_object_statement_view_schema_value_length(view),
+            "db1") ||
+        !value_matches_when_expected(
+            mylite_ast_stored_object_statement_view_name_value(view),
+            mylite_ast_stored_object_statement_view_name_value_length(view),
+            "sp1") ||
+        mylite_ast_stored_object_statement_view_definition_node(view) == NULL ||
+        mylite_ast_stored_object_statement_view_definition_start(view) == 0 ||
+        mylite_ast_stored_object_statement_view_definition_end(view) <=
+            mylite_ast_stored_object_statement_view_definition_start(view)) {
+      fprintf(stderr, "CREATE PROCEDURE stored-object view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql =
+        "CREATE FUNCTION f(a INTEGER) RETURNS INTEGER DETERMINISTIC "
+        "RETURN IFNULL(a, 666)";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "CREATE FUNCTION stored-object parse failed: status=%s "
+              "offset=%zu token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    const MyliteAstStoredObjectStatement *view =
+        mylite_ast_stored_object_statement_view(ast, 0);
+    if (view == NULL ||
+        mylite_ast_stored_object_statement_view_kind(view) !=
+            MYLITE_STORED_OBJECT_STATEMENT_CREATE_FUNCTION ||
+        mylite_ast_stored_object_statement_view_object_kind(view) !=
+            MYLITE_STORED_OBJECT_FUNCTION ||
+        !value_matches_when_expected(
+            mylite_ast_stored_object_statement_view_name_value(view),
+            mylite_ast_stored_object_statement_view_name_value_length(view),
+            "f") ||
+        mylite_ast_stored_object_statement_view_definition_node(view) == NULL) {
+      fprintf(stderr, "CREATE FUNCTION stored-object view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql =
+        "CREATE TRIGGER t1_bi BEFORE INSERT ON db1.t1 FOR EACH ROW "
+        "SET @a:=0";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "CREATE TRIGGER stored-object parse failed: status=%s "
+              "offset=%zu token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    const MyliteAstStoredObjectStatement *view =
+        mylite_ast_stored_object_statement_view(ast, 0);
+    if (view == NULL ||
+        mylite_ast_stored_object_statement_view_kind(view) !=
+            MYLITE_STORED_OBJECT_STATEMENT_CREATE_TRIGGER ||
+        mylite_ast_stored_object_statement_view_trigger_time(view) !=
+            MYLITE_STORED_TRIGGER_TIME_BEFORE ||
+        mylite_ast_stored_object_statement_view_trigger_event(view) !=
+            MYLITE_STORED_TRIGGER_EVENT_INSERT ||
+        !value_matches_when_expected(
+            mylite_ast_stored_object_statement_view_name_value(view),
+            mylite_ast_stored_object_statement_view_name_value_length(view),
+            "t1_bi") ||
+        !value_matches_when_expected(
+            mylite_ast_stored_object_statement_view_table_schema_value(view),
+            mylite_ast_stored_object_statement_view_table_schema_value_length(
+                view),
+            "db1") ||
+        !value_matches_when_expected(
+            mylite_ast_stored_object_statement_view_table_name_value(view),
+            mylite_ast_stored_object_statement_view_table_name_value_length(
+                view),
+            "t1") ||
+        mylite_ast_stored_object_statement_view_definition_node(view) == NULL) {
+      fprintf(stderr, "CREATE TRIGGER stored-object view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql =
+        "DROP EVENT IF EXISTS ev1; ALTER EVENT ev1 RENAME TO ev2; "
+        "DROP FUNCTION IF EXISTS f; ALTER PROCEDURE p COMMENT 'x'";
+    const MyliteStoredObjectStatementKind expected[] = {
+        MYLITE_STORED_OBJECT_STATEMENT_DROP_EVENT,
+        MYLITE_STORED_OBJECT_STATEMENT_ALTER_EVENT,
+        MYLITE_STORED_OBJECT_STATEMENT_DROP_FUNCTION,
+        MYLITE_STORED_OBJECT_STATEMENT_ALTER_PROCEDURE};
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "stored-object sequence parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    if (mylite_ast_statement_count(ast) !=
+        sizeof(expected) / sizeof(expected[0])) {
+      fprintf(stderr, "stored-object sequence count failed: %s\n", sql);
+      failed = 1;
+    }
+    for (size_t i = 0; i < sizeof(expected) / sizeof(expected[0]); i++) {
+      const MyliteAstStoredObjectStatement *view =
+          mylite_ast_stored_object_statement_view(ast, i);
+      if (view == NULL ||
+          mylite_ast_stored_object_statement_view_kind(view) != expected[i]) {
+        fprintf(stderr, "stored-object sequence view[%zu] failed: %s\n", i,
+                sql);
+        failed = 1;
+      }
+    }
+    const MyliteAstStoredObjectStatement *drop_event =
+        mylite_ast_stored_object_statement_view(ast, 0);
+    const MyliteAstStoredObjectStatement *alter_event =
+        mylite_ast_stored_object_statement_view(ast, 1);
+    if (drop_event == NULL ||
+        !mylite_ast_stored_object_statement_view_has_if_exists(drop_event) ||
+        alter_event == NULL ||
+        !value_matches_when_expected(
+            mylite_ast_stored_object_statement_view_secondary_name_value(
+                alter_event),
+            mylite_ast_stored_object_statement_view_secondary_name_value_length(
+                alter_event),
+            "ev2")) {
+      fprintf(stderr, "stored-object sequence details failed: %s\n", sql);
+      failed = 1;
     }
     mylite_ast_free(ast);
   }

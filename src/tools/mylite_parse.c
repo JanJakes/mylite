@@ -152,6 +152,8 @@ static void dump_statements(const MyliteAst *ast) {
         mylite_ast_table_maintenance_statement_view(ast, i);
     const MyliteAstReplicationStatement *replication_statement =
         mylite_ast_replication_statement_view(ast, i);
+    const MyliteAstStoredObjectStatement *stored_object_statement =
+        mylite_ast_stored_object_statement_view(ast, i);
     const MyliteAstKillStatement *kill_statement =
         mylite_ast_kill_statement_view(ast, i);
     const MyliteAstFlushStatement *flush_statement =
@@ -1096,6 +1098,108 @@ static void dump_statements(const MyliteAst *ast) {
         }
         fputc('\n', stdout);
       }
+    }
+    if (stored_object_statement != NULL) {
+      printf("  stored_object_statement span=%zu..%zu kind=%s object=%s "
+             "if_exists=%d if_not_exists=%d or_replace=%d trigger_time=%s "
+             "trigger_event=%s node=%s name=",
+             mylite_ast_stored_object_statement_view_start(
+                 stored_object_statement),
+             mylite_ast_stored_object_statement_view_end(
+                 stored_object_statement),
+             mylite_stored_object_statement_kind_name(
+                 mylite_ast_stored_object_statement_view_kind(
+                     stored_object_statement)),
+             mylite_stored_object_kind_name(
+                 mylite_ast_stored_object_statement_view_object_kind(
+                     stored_object_statement)),
+             mylite_ast_stored_object_statement_view_has_if_exists(
+                 stored_object_statement),
+             mylite_ast_stored_object_statement_view_has_if_not_exists(
+                 stored_object_statement),
+             mylite_ast_stored_object_statement_view_has_or_replace(
+                 stored_object_statement),
+             mylite_stored_trigger_time_kind_name(
+                 mylite_ast_stored_object_statement_view_trigger_time(
+                     stored_object_statement)),
+             mylite_stored_trigger_event_kind_name(
+                 mylite_ast_stored_object_statement_view_trigger_event(
+                     stored_object_statement)),
+             node_symbol_or_none(
+                 mylite_ast_stored_object_statement_view_node(
+                     stored_object_statement)));
+      const char *schema =
+          mylite_ast_stored_object_statement_view_schema_value(
+              stored_object_statement);
+      if (schema != NULL) {
+        print_escaped_bytes(
+            schema,
+            mylite_ast_stored_object_statement_view_schema_value_length(
+                stored_object_statement));
+        fputc('.', stdout);
+      }
+      const char *name = mylite_ast_stored_object_statement_view_name_value(
+          stored_object_statement);
+      if (name == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(
+            name,
+            mylite_ast_stored_object_statement_view_name_value_length(
+                stored_object_statement));
+      }
+      fputs(" secondary=", stdout);
+      const char *secondary_schema =
+          mylite_ast_stored_object_statement_view_secondary_schema_value(
+              stored_object_statement);
+      if (secondary_schema != NULL) {
+        print_escaped_bytes(
+            secondary_schema,
+            mylite_ast_stored_object_statement_view_secondary_schema_value_length(
+                stored_object_statement));
+        fputc('.', stdout);
+      }
+      const char *secondary_name =
+          mylite_ast_stored_object_statement_view_secondary_name_value(
+              stored_object_statement);
+      if (secondary_name == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(
+            secondary_name,
+            mylite_ast_stored_object_statement_view_secondary_name_value_length(
+                stored_object_statement));
+      }
+      fputs(" table=", stdout);
+      const char *table_schema =
+          mylite_ast_stored_object_statement_view_table_schema_value(
+              stored_object_statement);
+      if (table_schema != NULL) {
+        print_escaped_bytes(
+            table_schema,
+            mylite_ast_stored_object_statement_view_table_schema_value_length(
+                stored_object_statement));
+        fputc('.', stdout);
+      }
+      const char *table_name =
+          mylite_ast_stored_object_statement_view_table_name_value(
+              stored_object_statement);
+      if (table_name == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(
+            table_name,
+            mylite_ast_stored_object_statement_view_table_name_value_length(
+                stored_object_statement));
+      }
+      printf(" definition=%zu..%zu definition_node=%s\n",
+             mylite_ast_stored_object_statement_view_definition_start(
+                 stored_object_statement),
+             mylite_ast_stored_object_statement_view_definition_end(
+                 stored_object_statement),
+             node_symbol_or_none(
+                 mylite_ast_stored_object_statement_view_definition_node(
+                     stored_object_statement)));
     }
     if (kill_statement != NULL) {
       printf("  kill_statement span=%zu..%zu kind=%s target_kind=%s "

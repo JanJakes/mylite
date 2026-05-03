@@ -152,6 +152,11 @@ expression nodes.
   parser views with statement kind, decoded channel strings, `ALL` markers,
   ordered option names, value-kind classification, decoded scalar values, and
   integer-list counts.
+- Procedure, stored-function, trigger, and event create/alter/drop statements
+  expose typed stored-object parser views with statement/object kind, decoded
+  object names, `IF EXISTS`/`IF NOT EXISTS`/`OR REPLACE` flags, trigger
+  timing/event/table metadata, optional rename targets, and body/definition
+  anchors.
 - Transaction-control statements expose begin form, access mode, consistency
   modifiers, `WORK`, completion modifiers, and decoded savepoint names.
 - Temporary syntax recognizers produce a placeholder root node so AST mode can
@@ -306,6 +311,10 @@ expression nodes.
   strings, `ALL` markers, ordered source-option descriptors, option names,
   option value kind, decoded scalar values, raw/list values, and integer-list
   counts
+- typed stored-object descriptors with statement kind, object kind, decoded
+  primary object name, optional secondary rename target, optional trigger
+  subject table, trigger timing/event classification, existence/replace flags,
+  and body/definition CST anchor
 - typed transaction-control descriptors with statement kind, begin form,
   TiDB begin mode, access mode, consistency modifiers, `WORK`, completion
   modifiers, savepoint-keyword marker, and decoded savepoint name
@@ -691,6 +700,15 @@ counts. Replication metadata, binary-log state, channel handling, privilege
 checks, result-set construction, warnings, and diagnostics remain
 semantic/runtime work.
 
+Stored-object parser views cover procedure, stored-function, trigger, and event
+create/alter/drop statements. The view records statement kind, object kind,
+decoded primary object names, `IF EXISTS`/`IF NOT EXISTS`/`OR REPLACE` flags,
+body or definition anchors, optional event rename targets, and for triggers,
+decoded subject table plus trigger timing/event classification. Stored-program
+body semantics, metadata catalog changes, scheduling, trigger execution,
+security context, privilege checks, warnings, and diagnostics remain
+semantic/runtime work.
+
 Transaction-control views cover `BEGIN`, `START TRANSACTION`, `COMMIT`,
 `ROLLBACK`, `SAVEPOINT`, and `RELEASE SAVEPOINT`. `BEGIN`/`START TRANSACTION`
 records the begin form, optional TiDB pessimistic/optimistic markers, MySQL
@@ -815,6 +833,14 @@ mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.337179 qp
 mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.424682 qps=187324 mbps=14.25 avg_us=5.338 avg_semantic_nodes=5.3 avg_semantic_bytes=4268.0 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_expressions=2.67 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.04
 ```
 
+Latest stored-object parser-view run on May 3, 2026:
+
+```text
+mode=syntax queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=2.823285 qps=492625 mbps=37.46 avg_us=2.030
+mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.551822 qps=184170 mbps=14.01 avg_us=5.430 avg_nodes=74.5 avg_ast_bytes=11091.3 avg_stored_object_statement_views=0.06 avg_stored_object_statement_create_procedures=0.02 avg_stored_object_statement_drop_procedures=0.01 avg_stored_object_statement_alter_procedures=0.00 avg_stored_object_statement_create_functions=0.01 avg_stored_object_statement_drop_functions=0.01 avg_stored_object_statement_alter_functions=0.00 avg_stored_object_statement_triggers=0.01 avg_stored_object_statement_events=0.00 avg_stored_object_statement_if_exists=0.01 avg_stored_object_statement_if_not_exists=0.00 avg_stored_object_statement_or_replace=0.00 avg_stored_object_statement_name_values=0.06 avg_stored_object_statement_secondary_name_values=0.00 avg_stored_object_statement_table_name_values=0.01 avg_stored_object_statement_definitions=0.03
+mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.742466 qps=179635 mbps=13.66 avg_us=5.567 avg_semantic_nodes=5.3 avg_semantic_bytes=4268.0 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_expressions=2.67 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.04
+```
+
 Release benchmark result on May 2, 2026:
 
 ```text
@@ -922,7 +948,7 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,876 lines, 5,639,543 bytes
 generated parser object: 997K on disk, 905,630 bytes text/data/other
-parser support object: 398K on disk, 230,445 bytes text/data/other
+parser support object: 408K on disk, 235,023 bytes text/data/other
 semantic AST object: 18K on disk, 8,095 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.5M on disk

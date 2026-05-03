@@ -119,7 +119,9 @@ modifiers, completion modifiers, `WORK`, and decoded savepoint names. The
 replication/admin views currently cover `CHANGE REPLICATION SOURCE TO`,
 `CHANGE MASTER TO`, replica/slave start/stop/reset forms, binary-log reset and
 purge forms, and replication/binary-log status `SHOW` forms, including channel
-strings and replication option descriptors. The
+strings and replication option descriptors. Stored-object views currently cover
+procedure, stored-function, trigger, and event create/alter/drop statements with
+decoded object names and body/definition anchors. The
 `ALTER TABLE` view currently covers decoded target tables, ordered coarse
 operation specs,
 operation names, nested rename/exchange table targets, reused table-option
@@ -138,23 +140,23 @@ below. The current prototype parses the WordPress MySQL server query corpus with
 | Feature | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
 | `ALTER DATABASE` / `ALTER SCHEMA` | ❌ | high | Database default character set, collation, encryption, and read-only options. |  |
-| `ALTER EVENT` | ❌ | medium | Event scheduler metadata and body changes. |  |
-| `ALTER FUNCTION` | ❌ | medium | Stored-function metadata characteristics. |  |
+| `ALTER EVENT` | ❌ | medium | Event scheduler metadata and body changes. | Parser prototype exposes a typed stored-object view with decoded event name, optional rename target, and alter-option anchor. Event metadata changes, scheduling, privileges, warnings, and diagnostics are not implemented yet. |
+| `ALTER FUNCTION` | ❌ | medium | Stored-function metadata characteristics. | Parser prototype exposes a typed stored-object view with decoded function name and characteristic-list anchor. Runtime routine metadata changes, privilege checks, warnings, and diagnostics are not implemented yet. |
 | `ALTER INSTANCE` | ❌ | low | Instance reload, TLS, keyring, and master-key operations with embedded-compatible behavior. |  |
 | `ALTER LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. |  |
-| `ALTER PROCEDURE` | ❌ | medium | Stored-procedure metadata characteristics. |  |
+| `ALTER PROCEDURE` | ❌ | medium | Stored-procedure metadata characteristics. | Parser prototype exposes a typed stored-object view with decoded procedure name and characteristic-list anchor. Runtime routine metadata changes, privilege checks, warnings, and diagnostics are not implemented yet. |
 | `ALTER SERVER` | ❌ | low | Foreign server metadata changes. |  |
 | `ALTER TABLE` | ❌ | top | Full table rebuild/in-place/instant surface; see section 3.2. |  |
 | `ALTER TABLESPACE` | ❌ | low | General tablespace alterations and diagnostics. |  |
 | `ALTER UNDO TABLESPACE` | ❌ | low | Undo tablespace syntax from the MySQL parser. |  |
 | `ALTER VIEW` | ❌ | high | View replacement while preserving MySQL metadata and security semantics. |  |
 | `CREATE DATABASE` / `CREATE SCHEMA` | ❌ | high | Database creation syntax, defaults, warnings, and single-file mapping. |  |
-| `CREATE EVENT` | ❌ | medium | Scheduled event definition, body, definer, comments, and scheduler metadata. |  |
-| `CREATE FUNCTION` (stored) | ❌ | medium | Stored-function definition, determinism, SQL data access, security, and body semantics. |  |
+| `CREATE EVENT` | ❌ | medium | Scheduled event definition, body, definer, comments, and scheduler metadata. | Parser prototype exposes a typed stored-object view with decoded event name, `OR REPLACE`/`IF NOT EXISTS` flags, and event body anchor. Scheduler metadata, event execution, privileges, warnings, and diagnostics are not implemented yet. |
+| `CREATE FUNCTION` (stored) | ❌ | medium | Stored-function definition, determinism, SQL data access, security, and body semantics. | Parser prototype exposes a typed stored-object view with decoded function name, `OR REPLACE`/`IF NOT EXISTS` flags, and function body anchor. Stored-function metadata, body semantics, privileges, warnings, and diagnostics are not implemented yet. |
 | `CREATE FUNCTION` (loadable) | ❌ | low | Loadable-function registration syntax with embedded-compatible diagnostics. |  |
 | `CREATE INDEX` | ❌ | top | Standalone index creation over MySQL index types and attributes. |  |
 | `CREATE LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. |  |
-| `CREATE PROCEDURE` | ❌ | medium | Stored procedure parameters, body, characteristics, and diagnostics. |  |
+| `CREATE PROCEDURE` | ❌ | medium | Stored procedure parameters, body, characteristics, and diagnostics. | Parser prototype exposes a typed stored-object view with decoded procedure name, `IF NOT EXISTS` flag, and procedure body anchor. Stored-procedure metadata, body semantics, privileges, warnings, and diagnostics are not implemented yet. |
 | `CREATE SERVER` | ❌ | low | Foreign server metadata syntax. |  |
 | `CREATE SPATIAL REFERENCE SYSTEM` | ❌ | medium | Spatial reference system catalog DDL. |  |
 | `CREATE TABLE` | ❌ | top | Column definitions, constraints, indexes, table options, generated columns, and partitions; see section 3.1. |  |
@@ -163,21 +165,21 @@ below. The current prototype parses the WordPress MySQL server query corpus with
 | `CREATE TABLE ... SELECT` | ❌ | high | CTAS type inference, default handling, indexes, and atomicity. |  |
 | `CREATE TABLESPACE` | ❌ | low | General and NDB tablespace syntax and diagnostics. |  |
 | `CREATE UNDO TABLESPACE` | ❌ | low | Undo tablespace syntax present in the MySQL 8.4 parser source. |  |
-| `CREATE TRIGGER` | ❌ | high | Trigger timing, event, ordering, body, definer, and metadata. |  |
+| `CREATE TRIGGER` | ❌ | high | Trigger timing, event, ordering, body, definer, and metadata. | Parser prototype exposes a typed stored-object view with decoded trigger name, subject table, trigger timing/event, `IF NOT EXISTS` flag, and trigger body anchor. Trigger metadata, ordering, execution, privileges, warnings, and diagnostics are not implemented yet. |
 | `CREATE VIEW` | ❌ | high | View column names, algorithms, security, check options, and metadata. |  |
 | `DROP DATABASE` / `DROP SCHEMA` | ❌ | high | Schema removal, metadata cleanup, warnings, and embedded single-file constraints. |  |
-| `DROP EVENT` | ❌ | medium | Event metadata deletion. |  |
-| `DROP FUNCTION` (stored) | ❌ | medium | Stored-function deletion and routine metadata cleanup. |  |
+| `DROP EVENT` | ❌ | medium | Event metadata deletion. | Parser prototype exposes a typed stored-object view with decoded event name and `IF EXISTS` flag. Metadata deletion, warnings, and diagnostics are not implemented yet. |
+| `DROP FUNCTION` (stored) | ❌ | medium | Stored-function deletion and routine metadata cleanup. | Parser prototype exposes a typed stored-object view with decoded function name and `IF EXISTS` flag. Metadata cleanup, privilege checks, warnings, and diagnostics are not implemented yet. |
 | `DROP FUNCTION` (loadable) | ❌ | low | Loadable-function deregistration syntax. |  |
 | `DROP INDEX` | ❌ | top | Standalone index removal semantics. |  |
 | `DROP LOGFILE GROUP` | ❌ | low | NDB logfile group syntax and diagnostics. |  |
-| `DROP PROCEDURE` | ❌ | medium | Stored-procedure deletion and metadata cleanup. |  |
+| `DROP PROCEDURE` | ❌ | medium | Stored-procedure deletion and metadata cleanup. | Parser prototype exposes a typed stored-object view with decoded procedure name and `IF EXISTS` flag. Metadata cleanup, privilege checks, warnings, and diagnostics are not implemented yet. |
 | `DROP SERVER` | ❌ | low | Foreign server metadata deletion. |  |
 | `DROP SPATIAL REFERENCE SYSTEM` | ❌ | medium | Spatial reference system deletion and dependency checks. |  |
 | `DROP TABLE` | ❌ | top | Multi-table drop, temporary tables, foreign-key checks, and warnings. |  |
 | `DROP TABLESPACE` | ❌ | low | Tablespace deletion syntax and diagnostics. |  |
 | `DROP UNDO TABLESPACE` | ❌ | low | Undo tablespace deletion syntax present in the MySQL 8.4 parser source. |  |
-| `DROP TRIGGER` | ❌ | high | Trigger deletion and metadata cleanup. |  |
+| `DROP TRIGGER` | ❌ | high | Trigger deletion and metadata cleanup. | Parser prototype exposes a typed stored-object view with decoded trigger name and `IF EXISTS` flag. Metadata cleanup, privilege checks, warnings, and diagnostics are not implemented yet. |
 | `DROP VIEW` | ❌ | high | Multi-view drop and warnings. |  |
 | `RENAME TABLE` | ❌ | top | Atomic multi-table rename semantics. |  |
 | `TRUNCATE TABLE` | ❌ | top | DDL-like truncate, auto-increment reset, implicit commit, and foreign-key restrictions. |  |

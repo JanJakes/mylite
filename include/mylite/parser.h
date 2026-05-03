@@ -32,6 +32,8 @@ typedef struct MyliteAstReplicationOption MyliteAstReplicationOption;
 typedef struct MyliteAstReplicationStatement MyliteAstReplicationStatement;
 typedef struct MyliteAstRoleName MyliteAstRoleName;
 typedef struct MyliteAstRoleStatement MyliteAstRoleStatement;
+typedef struct MyliteAstStoredObjectStatement
+    MyliteAstStoredObjectStatement;
 typedef struct MyliteAstAlterTable MyliteAstAlterTable;
 typedef struct MyliteAstAlterTableSpec MyliteAstAlterTableSpec;
 typedef struct MyliteAstCreateDatabase MyliteAstCreateDatabase;
@@ -397,6 +399,42 @@ typedef enum MyliteReplicationOptionValueKind {
   MYLITE_REPLICATION_OPTION_VALUE_EXPRESSION,
   MYLITE_REPLICATION_OPTION_VALUE_RAW
 } MyliteReplicationOptionValueKind;
+
+typedef enum MyliteStoredObjectStatementKind {
+  MYLITE_STORED_OBJECT_STATEMENT_UNKNOWN = 0,
+  MYLITE_STORED_OBJECT_STATEMENT_CREATE_PROCEDURE,
+  MYLITE_STORED_OBJECT_STATEMENT_DROP_PROCEDURE,
+  MYLITE_STORED_OBJECT_STATEMENT_ALTER_PROCEDURE,
+  MYLITE_STORED_OBJECT_STATEMENT_CREATE_FUNCTION,
+  MYLITE_STORED_OBJECT_STATEMENT_DROP_FUNCTION,
+  MYLITE_STORED_OBJECT_STATEMENT_ALTER_FUNCTION,
+  MYLITE_STORED_OBJECT_STATEMENT_CREATE_TRIGGER,
+  MYLITE_STORED_OBJECT_STATEMENT_DROP_TRIGGER,
+  MYLITE_STORED_OBJECT_STATEMENT_CREATE_EVENT,
+  MYLITE_STORED_OBJECT_STATEMENT_ALTER_EVENT,
+  MYLITE_STORED_OBJECT_STATEMENT_DROP_EVENT
+} MyliteStoredObjectStatementKind;
+
+typedef enum MyliteStoredObjectKind {
+  MYLITE_STORED_OBJECT_UNKNOWN = 0,
+  MYLITE_STORED_OBJECT_PROCEDURE,
+  MYLITE_STORED_OBJECT_FUNCTION,
+  MYLITE_STORED_OBJECT_TRIGGER,
+  MYLITE_STORED_OBJECT_EVENT
+} MyliteStoredObjectKind;
+
+typedef enum MyliteStoredTriggerTimeKind {
+  MYLITE_STORED_TRIGGER_TIME_UNKNOWN = 0,
+  MYLITE_STORED_TRIGGER_TIME_BEFORE,
+  MYLITE_STORED_TRIGGER_TIME_AFTER
+} MyliteStoredTriggerTimeKind;
+
+typedef enum MyliteStoredTriggerEventKind {
+  MYLITE_STORED_TRIGGER_EVENT_UNKNOWN = 0,
+  MYLITE_STORED_TRIGGER_EVENT_INSERT,
+  MYLITE_STORED_TRIGGER_EVENT_UPDATE,
+  MYLITE_STORED_TRIGGER_EVENT_DELETE
+} MyliteStoredTriggerEventKind;
 
 typedef enum MyliteKillStatementKind {
   MYLITE_KILL_STATEMENT_UNKNOWN = 0,
@@ -962,6 +1000,13 @@ const char *mylite_replication_statement_kind_name(
     MyliteReplicationStatementKind kind);
 const char *mylite_replication_option_value_kind_name(
     MyliteReplicationOptionValueKind kind);
+const char *mylite_stored_object_statement_kind_name(
+    MyliteStoredObjectStatementKind kind);
+const char *mylite_stored_object_kind_name(MyliteStoredObjectKind kind);
+const char *mylite_stored_trigger_time_kind_name(
+    MyliteStoredTriggerTimeKind kind);
+const char *mylite_stored_trigger_event_kind_name(
+    MyliteStoredTriggerEventKind kind);
 const char *mylite_kill_statement_kind_name(MyliteKillStatementKind kind);
 const char *mylite_kill_target_kind_name(MyliteKillTargetKind kind);
 const char *mylite_flush_statement_kind_name(MyliteFlushStatementKind kind);
@@ -1177,6 +1222,8 @@ const MyliteAstTableMaintenanceStatement *
 mylite_ast_table_maintenance_statement_view(const MyliteAst *ast,
                                             size_t statement_index);
 const MyliteAstReplicationStatement *mylite_ast_replication_statement_view(
+    const MyliteAst *ast, size_t statement_index);
+const MyliteAstStoredObjectStatement *mylite_ast_stored_object_statement_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstKillStatement *mylite_ast_kill_statement_view(
     const MyliteAst *ast, size_t statement_index);
@@ -2449,6 +2496,58 @@ size_t mylite_ast_replication_option_view_value_length(
     const MyliteAstReplicationOption *option);
 size_t mylite_ast_replication_option_view_integer_count(
     const MyliteAstReplicationOption *option);
+const MyliteAstNode *mylite_ast_stored_object_statement_view_node(
+    const MyliteAstStoredObjectStatement *stored_object);
+size_t mylite_ast_stored_object_statement_view_start(
+    const MyliteAstStoredObjectStatement *stored_object);
+size_t mylite_ast_stored_object_statement_view_end(
+    const MyliteAstStoredObjectStatement *stored_object);
+MyliteStoredObjectStatementKind mylite_ast_stored_object_statement_view_kind(
+    const MyliteAstStoredObjectStatement *stored_object);
+MyliteStoredObjectKind mylite_ast_stored_object_statement_view_object_kind(
+    const MyliteAstStoredObjectStatement *stored_object);
+MyliteStoredTriggerTimeKind
+mylite_ast_stored_object_statement_view_trigger_time(
+    const MyliteAstStoredObjectStatement *stored_object);
+MyliteStoredTriggerEventKind
+mylite_ast_stored_object_statement_view_trigger_event(
+    const MyliteAstStoredObjectStatement *stored_object);
+int mylite_ast_stored_object_statement_view_has_if_exists(
+    const MyliteAstStoredObjectStatement *stored_object);
+int mylite_ast_stored_object_statement_view_has_if_not_exists(
+    const MyliteAstStoredObjectStatement *stored_object);
+int mylite_ast_stored_object_statement_view_has_or_replace(
+    const MyliteAstStoredObjectStatement *stored_object);
+const char *mylite_ast_stored_object_statement_view_schema_value(
+    const MyliteAstStoredObjectStatement *stored_object);
+size_t mylite_ast_stored_object_statement_view_schema_value_length(
+    const MyliteAstStoredObjectStatement *stored_object);
+const char *mylite_ast_stored_object_statement_view_name_value(
+    const MyliteAstStoredObjectStatement *stored_object);
+size_t mylite_ast_stored_object_statement_view_name_value_length(
+    const MyliteAstStoredObjectStatement *stored_object);
+const char *mylite_ast_stored_object_statement_view_secondary_schema_value(
+    const MyliteAstStoredObjectStatement *stored_object);
+size_t mylite_ast_stored_object_statement_view_secondary_schema_value_length(
+    const MyliteAstStoredObjectStatement *stored_object);
+const char *mylite_ast_stored_object_statement_view_secondary_name_value(
+    const MyliteAstStoredObjectStatement *stored_object);
+size_t mylite_ast_stored_object_statement_view_secondary_name_value_length(
+    const MyliteAstStoredObjectStatement *stored_object);
+const char *mylite_ast_stored_object_statement_view_table_schema_value(
+    const MyliteAstStoredObjectStatement *stored_object);
+size_t mylite_ast_stored_object_statement_view_table_schema_value_length(
+    const MyliteAstStoredObjectStatement *stored_object);
+const char *mylite_ast_stored_object_statement_view_table_name_value(
+    const MyliteAstStoredObjectStatement *stored_object);
+size_t mylite_ast_stored_object_statement_view_table_name_value_length(
+    const MyliteAstStoredObjectStatement *stored_object);
+const MyliteAstNode *mylite_ast_stored_object_statement_view_definition_node(
+    const MyliteAstStoredObjectStatement *stored_object);
+size_t mylite_ast_stored_object_statement_view_definition_start(
+    const MyliteAstStoredObjectStatement *stored_object);
+size_t mylite_ast_stored_object_statement_view_definition_end(
+    const MyliteAstStoredObjectStatement *stored_object);
 const MyliteAstNode *mylite_ast_kill_statement_view_node(
     const MyliteAstKillStatement *kill_statement);
 size_t mylite_ast_kill_statement_view_start(

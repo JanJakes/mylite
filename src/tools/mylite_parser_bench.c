@@ -370,6 +370,22 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t replication_statement_option_name_values = 0;
   size_t replication_statement_option_string_values = 0;
   size_t replication_statement_option_integer_lists = 0;
+  size_t stored_object_statement_views = 0;
+  size_t stored_object_statement_create_procedures = 0;
+  size_t stored_object_statement_drop_procedures = 0;
+  size_t stored_object_statement_alter_procedures = 0;
+  size_t stored_object_statement_create_functions = 0;
+  size_t stored_object_statement_drop_functions = 0;
+  size_t stored_object_statement_alter_functions = 0;
+  size_t stored_object_statement_triggers = 0;
+  size_t stored_object_statement_events = 0;
+  size_t stored_object_statement_if_exists = 0;
+  size_t stored_object_statement_if_not_exists = 0;
+  size_t stored_object_statement_or_replace = 0;
+  size_t stored_object_statement_name_values = 0;
+  size_t stored_object_statement_secondary_name_values = 0;
+  size_t stored_object_statement_table_name_values = 0;
+  size_t stored_object_statement_definitions = 0;
   size_t kill_statement_views = 0;
   size_t kill_statement_queries = 0;
   size_t kill_statement_tidb_extensions = 0;
@@ -2006,6 +2022,71 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                   default:
                     break;
                 }
+              }
+            }
+            const MyliteAstStoredObjectStatement *stored_object_statement =
+                mylite_ast_stored_object_statement_view(ast, i);
+            if (stored_object_statement != NULL) {
+              stored_object_statement_views++;
+              switch (mylite_ast_stored_object_statement_view_kind(
+                  stored_object_statement)) {
+                case MYLITE_STORED_OBJECT_STATEMENT_CREATE_PROCEDURE:
+                  stored_object_statement_create_procedures++;
+                  break;
+                case MYLITE_STORED_OBJECT_STATEMENT_DROP_PROCEDURE:
+                  stored_object_statement_drop_procedures++;
+                  break;
+                case MYLITE_STORED_OBJECT_STATEMENT_ALTER_PROCEDURE:
+                  stored_object_statement_alter_procedures++;
+                  break;
+                case MYLITE_STORED_OBJECT_STATEMENT_CREATE_FUNCTION:
+                  stored_object_statement_create_functions++;
+                  break;
+                case MYLITE_STORED_OBJECT_STATEMENT_DROP_FUNCTION:
+                  stored_object_statement_drop_functions++;
+                  break;
+                case MYLITE_STORED_OBJECT_STATEMENT_ALTER_FUNCTION:
+                  stored_object_statement_alter_functions++;
+                  break;
+                case MYLITE_STORED_OBJECT_STATEMENT_CREATE_TRIGGER:
+                case MYLITE_STORED_OBJECT_STATEMENT_DROP_TRIGGER:
+                  stored_object_statement_triggers++;
+                  break;
+                case MYLITE_STORED_OBJECT_STATEMENT_CREATE_EVENT:
+                case MYLITE_STORED_OBJECT_STATEMENT_ALTER_EVENT:
+                case MYLITE_STORED_OBJECT_STATEMENT_DROP_EVENT:
+                  stored_object_statement_events++;
+                  break;
+                default:
+                  break;
+              }
+              if (mylite_ast_stored_object_statement_view_has_if_exists(
+                      stored_object_statement)) {
+                stored_object_statement_if_exists++;
+              }
+              if (mylite_ast_stored_object_statement_view_has_if_not_exists(
+                      stored_object_statement)) {
+                stored_object_statement_if_not_exists++;
+              }
+              if (mylite_ast_stored_object_statement_view_has_or_replace(
+                      stored_object_statement)) {
+                stored_object_statement_or_replace++;
+              }
+              if (mylite_ast_stored_object_statement_view_name_value(
+                      stored_object_statement) != NULL) {
+                stored_object_statement_name_values++;
+              }
+              if (mylite_ast_stored_object_statement_view_secondary_name_value(
+                      stored_object_statement) != NULL) {
+                stored_object_statement_secondary_name_values++;
+              }
+              if (mylite_ast_stored_object_statement_view_table_name_value(
+                      stored_object_statement) != NULL) {
+                stored_object_statement_table_name_values++;
+              }
+              if (mylite_ast_stored_object_statement_view_definition_node(
+                      stored_object_statement) != NULL) {
+                stored_object_statement_definitions++;
               }
             }
             const MyliteAstKillStatement *kill_statement =
@@ -3702,6 +3783,40 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)replication_statement_option_string_values / (double)parsed,
            (double)replication_statement_option_integer_lists /
                (double)parsed);
+    printf(" avg_stored_object_statement_views=%.2f "
+           "avg_stored_object_statement_create_procedures=%.2f "
+           "avg_stored_object_statement_drop_procedures=%.2f "
+           "avg_stored_object_statement_alter_procedures=%.2f "
+           "avg_stored_object_statement_create_functions=%.2f "
+           "avg_stored_object_statement_drop_functions=%.2f "
+           "avg_stored_object_statement_alter_functions=%.2f "
+           "avg_stored_object_statement_triggers=%.2f "
+           "avg_stored_object_statement_events=%.2f "
+           "avg_stored_object_statement_if_exists=%.2f "
+           "avg_stored_object_statement_if_not_exists=%.2f "
+           "avg_stored_object_statement_or_replace=%.2f "
+           "avg_stored_object_statement_name_values=%.2f "
+           "avg_stored_object_statement_secondary_name_values=%.2f "
+           "avg_stored_object_statement_table_name_values=%.2f "
+           "avg_stored_object_statement_definitions=%.2f",
+           (double)stored_object_statement_views / (double)parsed,
+           (double)stored_object_statement_create_procedures / (double)parsed,
+           (double)stored_object_statement_drop_procedures / (double)parsed,
+           (double)stored_object_statement_alter_procedures / (double)parsed,
+           (double)stored_object_statement_create_functions / (double)parsed,
+           (double)stored_object_statement_drop_functions / (double)parsed,
+           (double)stored_object_statement_alter_functions / (double)parsed,
+           (double)stored_object_statement_triggers / (double)parsed,
+           (double)stored_object_statement_events / (double)parsed,
+           (double)stored_object_statement_if_exists / (double)parsed,
+           (double)stored_object_statement_if_not_exists / (double)parsed,
+           (double)stored_object_statement_or_replace / (double)parsed,
+           (double)stored_object_statement_name_values / (double)parsed,
+           (double)stored_object_statement_secondary_name_values /
+               (double)parsed,
+           (double)stored_object_statement_table_name_values /
+               (double)parsed,
+           (double)stored_object_statement_definitions / (double)parsed);
     printf(" avg_column_name_values=%.2f "
            "avg_column_defaults=%.2f avg_column_on_updates=%.2f "
            "avg_column_generated=%.2f avg_column_checks=%.2f "

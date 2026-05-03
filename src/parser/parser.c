@@ -1062,6 +1062,49 @@ struct MyliteAstReplicationStatement {
   int has_all;
 };
 
+struct MyliteAstStoredObjectStatement {
+  const MyliteAstNode *node;
+  const MyliteAstNode *name_node;
+  const MyliteAstNode *secondary_name_node;
+  const MyliteAstNode *table_node;
+  const MyliteAstNode *definition_node;
+  MyliteStoredObjectStatementKind kind;
+  MyliteStoredObjectKind object_kind;
+  MyliteStoredTriggerTimeKind trigger_time;
+  MyliteStoredTriggerEventKind trigger_event;
+  size_t start;
+  size_t end;
+  size_t schema_start;
+  size_t schema_end;
+  const char *schema_value;
+  size_t schema_value_length;
+  size_t name_start;
+  size_t name_end;
+  const char *name_value;
+  size_t name_value_length;
+  size_t secondary_schema_start;
+  size_t secondary_schema_end;
+  const char *secondary_schema_value;
+  size_t secondary_schema_value_length;
+  size_t secondary_name_start;
+  size_t secondary_name_end;
+  const char *secondary_name_value;
+  size_t secondary_name_value_length;
+  size_t table_schema_start;
+  size_t table_schema_end;
+  const char *table_schema_value;
+  size_t table_schema_value_length;
+  size_t table_name_start;
+  size_t table_name_end;
+  const char *table_name_value;
+  size_t table_name_value_length;
+  size_t definition_start;
+  size_t definition_end;
+  int has_if_exists;
+  int has_if_not_exists;
+  int has_or_replace;
+};
+
 struct MyliteAstKillStatement {
   const MyliteAstNode *node;
   const MyliteAstNode *target_node;
@@ -1413,6 +1456,7 @@ typedef struct MyliteAstStatement {
   MyliteAstLockStatement *lock_statement;
   MyliteAstTableMaintenanceStatement *table_maintenance_statement;
   MyliteAstReplicationStatement *replication_statement;
+  MyliteAstStoredObjectStatement *stored_object_statement;
   MyliteAstKillStatement *kill_statement;
   MyliteAstFlushStatement *flush_statement;
   MyliteAstLoadStatement *load_statement;
@@ -1974,6 +2018,29 @@ mylite_ast_classify_replication_option_value(const MyliteAstNode *value_node);
 static int mylite_ast_set_replication_option_value(
     MyliteAst *ast, MyliteAstReplicationOption *option);
 static size_t mylite_ast_count_replication_int_literals(
+    const MyliteAstNode *node);
+static int mylite_ast_set_stored_object_statement_view(
+    MyliteAst *ast, MyliteAstStatement *statement,
+    const MyliteAstNode *payload);
+static MyliteStoredObjectStatementKind
+mylite_ast_classify_stored_object_statement(const char *symbol_name,
+                                            const MyliteAstNode *payload);
+static MyliteStoredObjectKind mylite_ast_stored_object_kind(
+    MyliteStoredObjectStatementKind kind);
+static int mylite_ast_set_stored_object_names(
+    MyliteAst *ast, MyliteAstStoredObjectStatement *stored_object);
+static int mylite_ast_set_stored_object_name_value(
+    MyliteAst *ast, const MyliteAstNode *node, size_t *schema_start,
+    size_t *schema_end, const char **schema_value,
+    size_t *schema_value_length, size_t *name_start, size_t *name_end,
+    const char **name_value, size_t *name_value_length);
+static void mylite_ast_set_stored_object_definition(
+    MyliteAstStoredObjectStatement *stored_object);
+static void mylite_ast_set_stored_object_trigger_details(
+    MyliteAstStoredObjectStatement *stored_object);
+static MyliteStoredTriggerTimeKind mylite_ast_stored_trigger_time(
+    const MyliteAstNode *node);
+static MyliteStoredTriggerEventKind mylite_ast_stored_trigger_event(
     const MyliteAstNode *node);
 static int mylite_ast_set_kill_statement_view(MyliteAst *ast,
                                               MyliteAstStatement *statement,
@@ -3171,6 +3238,81 @@ const char *mylite_replication_option_value_kind_name(
       return "expression";
     case MYLITE_REPLICATION_OPTION_VALUE_RAW:
       return "raw";
+  }
+  return "unknown";
+}
+
+const char *mylite_stored_object_statement_kind_name(
+    MyliteStoredObjectStatementKind kind) {
+  switch (kind) {
+    case MYLITE_STORED_OBJECT_STATEMENT_UNKNOWN:
+      return "unknown";
+    case MYLITE_STORED_OBJECT_STATEMENT_CREATE_PROCEDURE:
+      return "create_procedure";
+    case MYLITE_STORED_OBJECT_STATEMENT_DROP_PROCEDURE:
+      return "drop_procedure";
+    case MYLITE_STORED_OBJECT_STATEMENT_ALTER_PROCEDURE:
+      return "alter_procedure";
+    case MYLITE_STORED_OBJECT_STATEMENT_CREATE_FUNCTION:
+      return "create_function";
+    case MYLITE_STORED_OBJECT_STATEMENT_DROP_FUNCTION:
+      return "drop_function";
+    case MYLITE_STORED_OBJECT_STATEMENT_ALTER_FUNCTION:
+      return "alter_function";
+    case MYLITE_STORED_OBJECT_STATEMENT_CREATE_TRIGGER:
+      return "create_trigger";
+    case MYLITE_STORED_OBJECT_STATEMENT_DROP_TRIGGER:
+      return "drop_trigger";
+    case MYLITE_STORED_OBJECT_STATEMENT_CREATE_EVENT:
+      return "create_event";
+    case MYLITE_STORED_OBJECT_STATEMENT_ALTER_EVENT:
+      return "alter_event";
+    case MYLITE_STORED_OBJECT_STATEMENT_DROP_EVENT:
+      return "drop_event";
+  }
+  return "unknown";
+}
+
+const char *mylite_stored_object_kind_name(MyliteStoredObjectKind kind) {
+  switch (kind) {
+    case MYLITE_STORED_OBJECT_UNKNOWN:
+      return "unknown";
+    case MYLITE_STORED_OBJECT_PROCEDURE:
+      return "procedure";
+    case MYLITE_STORED_OBJECT_FUNCTION:
+      return "function";
+    case MYLITE_STORED_OBJECT_TRIGGER:
+      return "trigger";
+    case MYLITE_STORED_OBJECT_EVENT:
+      return "event";
+  }
+  return "unknown";
+}
+
+const char *mylite_stored_trigger_time_kind_name(
+    MyliteStoredTriggerTimeKind kind) {
+  switch (kind) {
+    case MYLITE_STORED_TRIGGER_TIME_UNKNOWN:
+      return "unknown";
+    case MYLITE_STORED_TRIGGER_TIME_BEFORE:
+      return "before";
+    case MYLITE_STORED_TRIGGER_TIME_AFTER:
+      return "after";
+  }
+  return "unknown";
+}
+
+const char *mylite_stored_trigger_event_kind_name(
+    MyliteStoredTriggerEventKind kind) {
+  switch (kind) {
+    case MYLITE_STORED_TRIGGER_EVENT_UNKNOWN:
+      return "unknown";
+    case MYLITE_STORED_TRIGGER_EVENT_INSERT:
+      return "insert";
+    case MYLITE_STORED_TRIGGER_EVENT_UPDATE:
+      return "update";
+    case MYLITE_STORED_TRIGGER_EVENT_DELETE:
+      return "delete";
   }
   return "unknown";
 }
@@ -4702,6 +4844,13 @@ const MyliteAstReplicationStatement *mylite_ast_replication_statement_view(
   const MyliteAstStatement *statement =
       mylite_ast_statement_at(ast, statement_index);
   return statement == NULL ? NULL : statement->replication_statement;
+}
+
+const MyliteAstStoredObjectStatement *mylite_ast_stored_object_statement_view(
+    const MyliteAst *ast, size_t statement_index) {
+  const MyliteAstStatement *statement =
+      mylite_ast_statement_at(ast, statement_index);
+  return statement == NULL ? NULL : statement->stored_object_statement;
 }
 
 const MyliteAstKillStatement *mylite_ast_kill_statement_view(
@@ -8176,6 +8325,138 @@ size_t mylite_ast_replication_option_view_value_length(
 size_t mylite_ast_replication_option_view_integer_count(
     const MyliteAstReplicationOption *option) {
   return option == NULL ? 0 : option->integer_count;
+}
+
+const MyliteAstNode *mylite_ast_stored_object_statement_view_node(
+    const MyliteAstStoredObjectStatement *stored_object) {
+  return stored_object == NULL ? NULL : stored_object->node;
+}
+
+size_t mylite_ast_stored_object_statement_view_start(
+    const MyliteAstStoredObjectStatement *stored_object) {
+  return stored_object == NULL ? 0 : stored_object->start;
+}
+
+size_t mylite_ast_stored_object_statement_view_end(
+    const MyliteAstStoredObjectStatement *stored_object) {
+  return stored_object == NULL ? 0 : stored_object->end;
+}
+
+MyliteStoredObjectStatementKind mylite_ast_stored_object_statement_view_kind(
+    const MyliteAstStoredObjectStatement *stored_object) {
+  return stored_object == NULL ? MYLITE_STORED_OBJECT_STATEMENT_UNKNOWN
+                               : stored_object->kind;
+}
+
+MyliteStoredObjectKind mylite_ast_stored_object_statement_view_object_kind(
+    const MyliteAstStoredObjectStatement *stored_object) {
+  return stored_object == NULL ? MYLITE_STORED_OBJECT_UNKNOWN
+                               : stored_object->object_kind;
+}
+
+MyliteStoredTriggerTimeKind
+mylite_ast_stored_object_statement_view_trigger_time(
+    const MyliteAstStoredObjectStatement *stored_object) {
+  return stored_object == NULL ? MYLITE_STORED_TRIGGER_TIME_UNKNOWN
+                               : stored_object->trigger_time;
+}
+
+MyliteStoredTriggerEventKind
+mylite_ast_stored_object_statement_view_trigger_event(
+    const MyliteAstStoredObjectStatement *stored_object) {
+  return stored_object == NULL ? MYLITE_STORED_TRIGGER_EVENT_UNKNOWN
+                               : stored_object->trigger_event;
+}
+
+int mylite_ast_stored_object_statement_view_has_if_exists(
+    const MyliteAstStoredObjectStatement *stored_object) {
+  return stored_object != NULL && stored_object->has_if_exists;
+}
+
+int mylite_ast_stored_object_statement_view_has_if_not_exists(
+    const MyliteAstStoredObjectStatement *stored_object) {
+  return stored_object != NULL && stored_object->has_if_not_exists;
+}
+
+int mylite_ast_stored_object_statement_view_has_or_replace(
+    const MyliteAstStoredObjectStatement *stored_object) {
+  return stored_object != NULL && stored_object->has_or_replace;
+}
+
+const char *mylite_ast_stored_object_statement_view_schema_value(
+    const MyliteAstStoredObjectStatement *stored_object) {
+  return stored_object == NULL ? NULL : stored_object->schema_value;
+}
+
+size_t mylite_ast_stored_object_statement_view_schema_value_length(
+    const MyliteAstStoredObjectStatement *stored_object) {
+  return stored_object == NULL ? 0 : stored_object->schema_value_length;
+}
+
+const char *mylite_ast_stored_object_statement_view_name_value(
+    const MyliteAstStoredObjectStatement *stored_object) {
+  return stored_object == NULL ? NULL : stored_object->name_value;
+}
+
+size_t mylite_ast_stored_object_statement_view_name_value_length(
+    const MyliteAstStoredObjectStatement *stored_object) {
+  return stored_object == NULL ? 0 : stored_object->name_value_length;
+}
+
+const char *mylite_ast_stored_object_statement_view_secondary_schema_value(
+    const MyliteAstStoredObjectStatement *stored_object) {
+  return stored_object == NULL ? NULL : stored_object->secondary_schema_value;
+}
+
+size_t mylite_ast_stored_object_statement_view_secondary_schema_value_length(
+    const MyliteAstStoredObjectStatement *stored_object) {
+  return stored_object == NULL ? 0
+                               : stored_object->secondary_schema_value_length;
+}
+
+const char *mylite_ast_stored_object_statement_view_secondary_name_value(
+    const MyliteAstStoredObjectStatement *stored_object) {
+  return stored_object == NULL ? NULL : stored_object->secondary_name_value;
+}
+
+size_t mylite_ast_stored_object_statement_view_secondary_name_value_length(
+    const MyliteAstStoredObjectStatement *stored_object) {
+  return stored_object == NULL ? 0 : stored_object->secondary_name_value_length;
+}
+
+const char *mylite_ast_stored_object_statement_view_table_schema_value(
+    const MyliteAstStoredObjectStatement *stored_object) {
+  return stored_object == NULL ? NULL : stored_object->table_schema_value;
+}
+
+size_t mylite_ast_stored_object_statement_view_table_schema_value_length(
+    const MyliteAstStoredObjectStatement *stored_object) {
+  return stored_object == NULL ? 0 : stored_object->table_schema_value_length;
+}
+
+const char *mylite_ast_stored_object_statement_view_table_name_value(
+    const MyliteAstStoredObjectStatement *stored_object) {
+  return stored_object == NULL ? NULL : stored_object->table_name_value;
+}
+
+size_t mylite_ast_stored_object_statement_view_table_name_value_length(
+    const MyliteAstStoredObjectStatement *stored_object) {
+  return stored_object == NULL ? 0 : stored_object->table_name_value_length;
+}
+
+const MyliteAstNode *mylite_ast_stored_object_statement_view_definition_node(
+    const MyliteAstStoredObjectStatement *stored_object) {
+  return stored_object == NULL ? NULL : stored_object->definition_node;
+}
+
+size_t mylite_ast_stored_object_statement_view_definition_start(
+    const MyliteAstStoredObjectStatement *stored_object) {
+  return stored_object == NULL ? 0 : stored_object->definition_start;
+}
+
+size_t mylite_ast_stored_object_statement_view_definition_end(
+    const MyliteAstStoredObjectStatement *stored_object) {
+  return stored_object == NULL ? 0 : stored_object->definition_end;
 }
 
 const MyliteAstNode *mylite_ast_kill_statement_view_node(
@@ -12859,6 +13140,18 @@ static int mylite_ast_set_statement_details(MyliteAst *ast,
       strcmp(statement->symbol_name, "nt_mysql_reset_stmt") == 0 ||
       strcmp(statement->symbol_name, "nt_mysql_purge_logs_stmt") == 0) {
     return mylite_ast_set_replication_statement_view(ast, statement, payload);
+  }
+  if (strcmp(statement->symbol_name, "nt_create_procedure_stmt") == 0 ||
+      strcmp(statement->symbol_name, "nt_drop_procedure_stmt") == 0 ||
+      strcmp(statement->symbol_name, "nt_mysql_alter_routine_stmt") == 0 ||
+      strcmp(statement->symbol_name, "nt_mysql_create_function_stmt") == 0 ||
+      strcmp(statement->symbol_name, "nt_mysql_drop_function_stmt") == 0 ||
+      strcmp(statement->symbol_name, "nt_mysql_create_trigger_stmt") == 0 ||
+      strcmp(statement->symbol_name, "nt_mysql_drop_trigger_stmt") == 0 ||
+      strcmp(statement->symbol_name, "nt_mysql_create_event_stmt") == 0 ||
+      strcmp(statement->symbol_name, "nt_mysql_alter_event_stmt") == 0 ||
+      strcmp(statement->symbol_name, "nt_mysql_drop_event_stmt") == 0) {
+    return mylite_ast_set_stored_object_statement_view(ast, statement, payload);
   }
   if (strcmp(statement->symbol_name, "nt_kill_stmt") == 0) {
     return mylite_ast_set_kill_statement_view(ast, statement, payload);
@@ -17771,6 +18064,272 @@ static size_t mylite_ast_count_replication_int_literals(
     count += mylite_ast_count_replication_int_literals(node->children[i]);
   }
   return count;
+}
+
+static int mylite_ast_set_stored_object_statement_view(
+    MyliteAst *ast, MyliteAstStatement *statement,
+    const MyliteAstNode *payload) {
+  if (ast == NULL || statement == NULL) {
+    return 1;
+  }
+  MyliteStoredObjectStatementKind kind =
+      mylite_ast_classify_stored_object_statement(statement->symbol_name,
+                                                  payload);
+  if (kind == MYLITE_STORED_OBJECT_STATEMENT_UNKNOWN) {
+    return 1;
+  }
+  MyliteAstStoredObjectStatement *stored_object =
+      mylite_ast_alloc(ast, sizeof(*stored_object));
+  if (stored_object == NULL) {
+    return 0;
+  }
+  stored_object->node = payload == NULL ? statement->node : payload;
+  stored_object->kind = kind;
+  stored_object->object_kind = mylite_ast_stored_object_kind(kind);
+  stored_object->start = mylite_ast_node_start(stored_object->node);
+  stored_object->end = mylite_ast_node_end(stored_object->node);
+  stored_object->has_if_exists =
+      mylite_ast_find_first_spanned_symbol(stored_object->node,
+                                           "nt_if_exists") != NULL;
+  stored_object->has_if_not_exists =
+      mylite_ast_find_first_spanned_symbol(stored_object->node,
+                                           "nt_if_not_exists") != NULL;
+  stored_object->has_or_replace =
+      mylite_ast_find_first_spanned_symbol(stored_object->node,
+                                           "nt_or_replace") != NULL;
+  mylite_ast_set_stored_object_definition(stored_object);
+  mylite_ast_set_stored_object_trigger_details(stored_object);
+  if (!mylite_ast_set_stored_object_names(ast, stored_object)) {
+    return 0;
+  }
+  statement->stored_object_statement = stored_object;
+  return 1;
+}
+
+static MyliteStoredObjectStatementKind
+mylite_ast_classify_stored_object_statement(const char *symbol_name,
+                                            const MyliteAstNode *payload) {
+  if (symbol_name == NULL) {
+    return MYLITE_STORED_OBJECT_STATEMENT_UNKNOWN;
+  }
+  if (strcmp(symbol_name, "nt_create_procedure_stmt") == 0) {
+    return MYLITE_STORED_OBJECT_STATEMENT_CREATE_PROCEDURE;
+  }
+  if (strcmp(symbol_name, "nt_drop_procedure_stmt") == 0) {
+    return MYLITE_STORED_OBJECT_STATEMENT_DROP_PROCEDURE;
+  }
+  if (strcmp(symbol_name, "nt_mysql_create_function_stmt") == 0) {
+    return MYLITE_STORED_OBJECT_STATEMENT_CREATE_FUNCTION;
+  }
+  if (strcmp(symbol_name, "nt_mysql_drop_function_stmt") == 0) {
+    return MYLITE_STORED_OBJECT_STATEMENT_DROP_FUNCTION;
+  }
+  if (strcmp(symbol_name, "nt_mysql_alter_routine_stmt") == 0) {
+    return mylite_ast_find_direct_child_token(payload,
+                                              MYLITE_TOK_PROCEDURE) != NULL
+               ? MYLITE_STORED_OBJECT_STATEMENT_ALTER_PROCEDURE
+               : MYLITE_STORED_OBJECT_STATEMENT_ALTER_FUNCTION;
+  }
+  if (strcmp(symbol_name, "nt_mysql_create_trigger_stmt") == 0) {
+    return MYLITE_STORED_OBJECT_STATEMENT_CREATE_TRIGGER;
+  }
+  if (strcmp(symbol_name, "nt_mysql_drop_trigger_stmt") == 0) {
+    return MYLITE_STORED_OBJECT_STATEMENT_DROP_TRIGGER;
+  }
+  if (strcmp(symbol_name, "nt_mysql_create_event_stmt") == 0) {
+    return MYLITE_STORED_OBJECT_STATEMENT_CREATE_EVENT;
+  }
+  if (strcmp(symbol_name, "nt_mysql_alter_event_stmt") == 0) {
+    return MYLITE_STORED_OBJECT_STATEMENT_ALTER_EVENT;
+  }
+  if (strcmp(symbol_name, "nt_mysql_drop_event_stmt") == 0) {
+    return MYLITE_STORED_OBJECT_STATEMENT_DROP_EVENT;
+  }
+  return MYLITE_STORED_OBJECT_STATEMENT_UNKNOWN;
+}
+
+static MyliteStoredObjectKind mylite_ast_stored_object_kind(
+    MyliteStoredObjectStatementKind kind) {
+  switch (kind) {
+    case MYLITE_STORED_OBJECT_STATEMENT_CREATE_PROCEDURE:
+    case MYLITE_STORED_OBJECT_STATEMENT_DROP_PROCEDURE:
+    case MYLITE_STORED_OBJECT_STATEMENT_ALTER_PROCEDURE:
+      return MYLITE_STORED_OBJECT_PROCEDURE;
+    case MYLITE_STORED_OBJECT_STATEMENT_CREATE_FUNCTION:
+    case MYLITE_STORED_OBJECT_STATEMENT_DROP_FUNCTION:
+    case MYLITE_STORED_OBJECT_STATEMENT_ALTER_FUNCTION:
+      return MYLITE_STORED_OBJECT_FUNCTION;
+    case MYLITE_STORED_OBJECT_STATEMENT_CREATE_TRIGGER:
+    case MYLITE_STORED_OBJECT_STATEMENT_DROP_TRIGGER:
+      return MYLITE_STORED_OBJECT_TRIGGER;
+    case MYLITE_STORED_OBJECT_STATEMENT_CREATE_EVENT:
+    case MYLITE_STORED_OBJECT_STATEMENT_ALTER_EVENT:
+    case MYLITE_STORED_OBJECT_STATEMENT_DROP_EVENT:
+      return MYLITE_STORED_OBJECT_EVENT;
+    default:
+      return MYLITE_STORED_OBJECT_UNKNOWN;
+  }
+}
+
+static int mylite_ast_set_stored_object_names(
+    MyliteAst *ast, MyliteAstStoredObjectStatement *stored_object) {
+  if (ast == NULL || stored_object == NULL || stored_object->node == NULL) {
+    return 1;
+  }
+  size_t remaining = 0;
+  stored_object->name_node =
+      mylite_ast_find_nth_symbol(stored_object->node, "nt_table_name",
+                                 &remaining);
+  if (!mylite_ast_set_stored_object_name_value(
+          ast, stored_object->name_node, &stored_object->schema_start,
+          &stored_object->schema_end, &stored_object->schema_value,
+          &stored_object->schema_value_length, &stored_object->name_start,
+          &stored_object->name_end, &stored_object->name_value,
+          &stored_object->name_value_length)) {
+    return 0;
+  }
+  if (stored_object->kind == MYLITE_STORED_OBJECT_STATEMENT_CREATE_TRIGGER) {
+    remaining = 1;
+    stored_object->table_node =
+        mylite_ast_find_nth_symbol(stored_object->node, "nt_table_name",
+                                   &remaining);
+    return mylite_ast_set_stored_object_name_value(
+        ast, stored_object->table_node, &stored_object->table_schema_start,
+        &stored_object->table_schema_end, &stored_object->table_schema_value,
+        &stored_object->table_schema_value_length,
+        &stored_object->table_name_start, &stored_object->table_name_end,
+        &stored_object->table_name_value,
+        &stored_object->table_name_value_length);
+  }
+  if (stored_object->kind == MYLITE_STORED_OBJECT_STATEMENT_ALTER_EVENT &&
+      mylite_ast_find_first_symbol(stored_object->node,
+                                   "nt_mysql_event_rename") != NULL) {
+    remaining = 1;
+    stored_object->secondary_name_node =
+        mylite_ast_find_nth_symbol(stored_object->node, "nt_table_name",
+                                   &remaining);
+    return mylite_ast_set_stored_object_name_value(
+        ast, stored_object->secondary_name_node,
+        &stored_object->secondary_schema_start,
+        &stored_object->secondary_schema_end,
+        &stored_object->secondary_schema_value,
+        &stored_object->secondary_schema_value_length,
+        &stored_object->secondary_name_start,
+        &stored_object->secondary_name_end,
+        &stored_object->secondary_name_value,
+        &stored_object->secondary_name_value_length);
+  }
+  return 1;
+}
+
+static int mylite_ast_set_stored_object_name_value(
+    MyliteAst *ast, const MyliteAstNode *node, size_t *schema_start,
+    size_t *schema_end, const char **schema_value,
+    size_t *schema_value_length, size_t *name_start, size_t *name_end,
+    const char **name_value, size_t *name_value_length) {
+  if (ast == NULL || node == NULL) {
+    return 1;
+  }
+  mylite_ast_set_table_name_span_parts(node, schema_start, schema_end,
+                                       name_start, name_end);
+  if (schema_start != NULL && schema_end != NULL &&
+      *schema_start != *schema_end &&
+      !mylite_ast_decode_identifier(ast, *schema_start, *schema_end,
+                                    schema_value, schema_value_length)) {
+    return 0;
+  }
+  if (name_start != NULL && name_end != NULL && *name_start != *name_end) {
+    return mylite_ast_decode_identifier(ast, *name_start, *name_end,
+                                        name_value, name_value_length);
+  }
+  return 1;
+}
+
+static void mylite_ast_set_stored_object_definition(
+    MyliteAstStoredObjectStatement *stored_object) {
+  if (stored_object == NULL || stored_object->node == NULL) {
+    return;
+  }
+  switch (stored_object->kind) {
+    case MYLITE_STORED_OBJECT_STATEMENT_CREATE_PROCEDURE:
+      stored_object->definition_node =
+          mylite_ast_find_first_symbol(stored_object->node,
+                                       "nt_procedure_proc_stmt");
+      break;
+    case MYLITE_STORED_OBJECT_STATEMENT_CREATE_FUNCTION:
+      stored_object->definition_node =
+          mylite_ast_find_first_symbol(stored_object->node,
+                                       "nt_mysql_function_body");
+      break;
+    case MYLITE_STORED_OBJECT_STATEMENT_CREATE_TRIGGER:
+      stored_object->definition_node =
+          mylite_ast_find_first_symbol(stored_object->node,
+                                       "nt_mysql_trigger_body");
+      break;
+    case MYLITE_STORED_OBJECT_STATEMENT_CREATE_EVENT:
+      stored_object->definition_node =
+          mylite_ast_find_first_symbol(stored_object->node,
+                                       "nt_mysql_event_body");
+      break;
+    case MYLITE_STORED_OBJECT_STATEMENT_ALTER_EVENT:
+      stored_object->definition_node =
+          mylite_ast_find_first_symbol(stored_object->node,
+                                       "nt_mysql_event_alter_options");
+      break;
+    case MYLITE_STORED_OBJECT_STATEMENT_ALTER_PROCEDURE:
+    case MYLITE_STORED_OBJECT_STATEMENT_ALTER_FUNCTION:
+      stored_object->definition_node =
+          mylite_ast_find_first_symbol(stored_object->node,
+                                       "nt_mysql_routine_characteristic_list");
+      break;
+    default:
+      break;
+  }
+  if (stored_object->definition_node != NULL) {
+    stored_object->definition_start =
+        mylite_ast_node_start(stored_object->definition_node);
+    stored_object->definition_end =
+        mylite_ast_node_end(stored_object->definition_node);
+  }
+}
+
+static void mylite_ast_set_stored_object_trigger_details(
+    MyliteAstStoredObjectStatement *stored_object) {
+  if (stored_object == NULL ||
+      stored_object->kind != MYLITE_STORED_OBJECT_STATEMENT_CREATE_TRIGGER) {
+    return;
+  }
+  stored_object->trigger_time = mylite_ast_stored_trigger_time(
+      mylite_ast_find_first_symbol(stored_object->node,
+                                   "nt_mysql_trigger_time"));
+  stored_object->trigger_event = mylite_ast_stored_trigger_event(
+      mylite_ast_find_first_symbol(stored_object->node,
+                                   "nt_mysql_trigger_event"));
+}
+
+static MyliteStoredTriggerTimeKind mylite_ast_stored_trigger_time(
+    const MyliteAstNode *node) {
+  if (mylite_ast_find_first_token(node, MYLITE_TOK_BEFORE) != NULL) {
+    return MYLITE_STORED_TRIGGER_TIME_BEFORE;
+  }
+  if (mylite_ast_find_first_token(node, MYLITE_TOK_AFTER) != NULL) {
+    return MYLITE_STORED_TRIGGER_TIME_AFTER;
+  }
+  return MYLITE_STORED_TRIGGER_TIME_UNKNOWN;
+}
+
+static MyliteStoredTriggerEventKind mylite_ast_stored_trigger_event(
+    const MyliteAstNode *node) {
+  if (mylite_ast_find_first_token(node, MYLITE_TOK_INSERT) != NULL) {
+    return MYLITE_STORED_TRIGGER_EVENT_INSERT;
+  }
+  if (mylite_ast_find_first_token(node, MYLITE_TOK_UPDATE) != NULL) {
+    return MYLITE_STORED_TRIGGER_EVENT_UPDATE;
+  }
+  if (mylite_ast_find_first_token(node, MYLITE_TOK_DELETE_KWD) != NULL) {
+    return MYLITE_STORED_TRIGGER_EVENT_DELETE;
+  }
+  return MYLITE_STORED_TRIGGER_EVENT_UNKNOWN;
 }
 
 static int mylite_ast_set_kill_statement_view(MyliteAst *ast,

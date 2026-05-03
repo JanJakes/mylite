@@ -1263,6 +1263,42 @@ struct MyliteAstAccountStatement {
   int uses_random_password;
 };
 
+struct MyliteAstPrivilegeItem {
+  const MyliteAstNode *node;
+  MylitePrivilegeItemKind kind;
+  size_t start;
+  size_t end;
+  const char *value;
+  size_t value_length;
+  size_t column_count;
+};
+
+struct MyliteAstPrivilegeStatement {
+  const MyliteAstNode *node;
+  MylitePrivilegeStatementKind kind;
+  MyliteAstPrivilegeItem *items;
+  MyliteAstAccount *users;
+  MyliteAstAccount proxy_user;
+  size_t start;
+  size_t end;
+  size_t item_count;
+  size_t user_count;
+  size_t level_schema_start;
+  size_t level_schema_end;
+  const char *level_schema_value;
+  size_t level_schema_value_length;
+  size_t level_name_start;
+  size_t level_name_end;
+  const char *level_name_value;
+  size_t level_name_value_length;
+  MylitePrivilegeObjectType object_type;
+  MylitePrivilegeLevelKind level_kind;
+  int has_proxy_user;
+  int has_with_grant_option;
+  int has_resource_limits;
+  int has_require_clause;
+};
+
 struct MyliteAstTransactionStatement {
   const MyliteAstNode *node;
   MyliteTransactionStatementKind kind;
@@ -1319,6 +1355,7 @@ typedef struct MyliteAstStatement {
   MyliteAstFlushStatement *flush_statement;
   MyliteAstLoadStatement *load_statement;
   MyliteAstAccountStatement *account_statement;
+  MyliteAstPrivilegeStatement *privilege_statement;
   MyliteAstDeleteStatement *delete_statement;
   MyliteAstInsertStatement *insert_statement;
   MyliteAstReplaceStatement *replace_statement;
@@ -2002,6 +2039,44 @@ static int mylite_ast_set_account_auth_string_value(
     size_t *value_end, const char **value, size_t *value_length);
 static int mylite_ast_set_account_statement_passwords(
     MyliteAst *ast, MyliteAstAccountStatement *account_statement);
+static int mylite_ast_set_privilege_statement_view(
+    MyliteAst *ast, MyliteAstStatement *statement,
+    const MyliteAstNode *payload);
+static MylitePrivilegeStatementKind mylite_ast_classify_privilege_statement(
+    const char *symbol_name, const MyliteAstNode *node);
+static int mylite_ast_privilege_statement_is_revoke_all(
+    const MyliteAstNode *node);
+static int mylite_ast_set_privilege_statement_flags(
+    MyliteAstPrivilegeStatement *privilege_statement);
+static int mylite_ast_set_privilege_statement_items(
+    MyliteAst *ast, MyliteAstPrivilegeStatement *privilege_statement);
+static int mylite_ast_fill_privilege_items(
+    MyliteAst *ast, MyliteAstPrivilegeStatement *privilege_statement,
+    const MyliteAstNode *node, size_t *index);
+static int mylite_ast_fill_privilege_item(
+    MyliteAst *ast, MyliteAstPrivilegeStatement *privilege_statement,
+    MyliteAstPrivilegeItem *item, const MyliteAstNode *node);
+static MylitePrivilegeItemKind mylite_ast_classify_privilege_item(
+    const MyliteAstPrivilegeStatement *privilege_statement,
+    const MyliteAstNode *node);
+static int mylite_ast_set_privilege_statement_object(
+    MyliteAst *ast, MyliteAstPrivilegeStatement *privilege_statement);
+static MylitePrivilegeObjectType mylite_ast_classify_privilege_object_type(
+    const MyliteAstNode *object_type);
+static int mylite_ast_set_privilege_level_identifier(
+    MyliteAst *ast, const MyliteAstNode *node, size_t *value_start,
+    size_t *value_end, const char **value, size_t *value_length);
+static int mylite_ast_set_privilege_statement_users(
+    MyliteAst *ast, MyliteAstPrivilegeStatement *privilege_statement);
+static const MyliteAstNode *mylite_ast_privilege_user_list_node(
+    const MyliteAstPrivilegeStatement *privilege_statement);
+static const char *mylite_ast_privilege_user_symbol(
+    const MyliteAstPrivilegeStatement *privilege_statement);
+static int mylite_ast_fill_privilege_users(
+    MyliteAst *ast, MyliteAstPrivilegeStatement *privilege_statement,
+    const MyliteAstNode *node, const char *symbol_name, size_t *index);
+static int mylite_ast_set_privilege_statement_proxy_user(
+    MyliteAst *ast, MyliteAstPrivilegeStatement *privilege_statement);
 static int mylite_ast_set_prepared_statement_name_value(
     MyliteAst *ast, const MyliteAstNode *node, size_t *name_start,
     size_t *name_end, const char **name_value, size_t *name_value_length);
@@ -3085,6 +3160,70 @@ const char *mylite_account_auth_kind_name(MyliteAccountAuthKind kind) {
       return "identified_by_random_password";
     case MYLITE_ACCOUNT_AUTH_IDENTIFIED_BY_REPLACE:
       return "identified_by_replace";
+  }
+  return "unknown";
+}
+
+const char *mylite_privilege_statement_kind_name(
+    MylitePrivilegeStatementKind kind) {
+  switch (kind) {
+    case MYLITE_PRIVILEGE_STATEMENT_UNKNOWN:
+      return "unknown";
+    case MYLITE_PRIVILEGE_STATEMENT_GRANT:
+      return "grant";
+    case MYLITE_PRIVILEGE_STATEMENT_GRANT_PROXY:
+      return "grant_proxy";
+    case MYLITE_PRIVILEGE_STATEMENT_GRANT_ROLE:
+      return "grant_role";
+    case MYLITE_PRIVILEGE_STATEMENT_REVOKE:
+      return "revoke";
+    case MYLITE_PRIVILEGE_STATEMENT_REVOKE_ROLE:
+      return "revoke_role";
+    case MYLITE_PRIVILEGE_STATEMENT_REVOKE_ALL:
+      return "revoke_all";
+  }
+  return "unknown";
+}
+
+const char *mylite_privilege_item_kind_name(MylitePrivilegeItemKind kind) {
+  switch (kind) {
+    case MYLITE_PRIVILEGE_ITEM_UNKNOWN:
+      return "unknown";
+    case MYLITE_PRIVILEGE_ITEM_PRIVILEGE:
+      return "privilege";
+    case MYLITE_PRIVILEGE_ITEM_ROLE:
+      return "role";
+    case MYLITE_PRIVILEGE_ITEM_DYNAMIC:
+      return "dynamic";
+  }
+  return "unknown";
+}
+
+const char *mylite_privilege_object_type_name(
+    MylitePrivilegeObjectType type) {
+  switch (type) {
+    case MYLITE_PRIVILEGE_OBJECT_NONE:
+      return "none";
+    case MYLITE_PRIVILEGE_OBJECT_TABLE:
+      return "table";
+    case MYLITE_PRIVILEGE_OBJECT_FUNCTION:
+      return "function";
+    case MYLITE_PRIVILEGE_OBJECT_PROCEDURE:
+      return "procedure";
+  }
+  return "unknown";
+}
+
+const char *mylite_privilege_level_kind_name(MylitePrivilegeLevelKind kind) {
+  switch (kind) {
+    case MYLITE_PRIVILEGE_LEVEL_NONE:
+      return "none";
+    case MYLITE_PRIVILEGE_LEVEL_GLOBAL:
+      return "global";
+    case MYLITE_PRIVILEGE_LEVEL_DATABASE:
+      return "database";
+    case MYLITE_PRIVILEGE_LEVEL_TABLE:
+      return "table";
   }
   return "unknown";
 }
@@ -4361,6 +4500,13 @@ const MyliteAstAccountStatement *mylite_ast_account_statement_view(
   const MyliteAstStatement *statement =
       mylite_ast_statement_at(ast, statement_index);
   return statement == NULL ? NULL : statement->account_statement;
+}
+
+const MyliteAstPrivilegeStatement *mylite_ast_privilege_statement_view(
+    const MyliteAst *ast, size_t statement_index) {
+  const MyliteAstStatement *statement =
+      mylite_ast_statement_at(ast, statement_index);
+  return statement == NULL ? NULL : statement->privilege_statement;
 }
 
 const MyliteAstDeleteStatement *mylite_ast_delete_statement_view(
@@ -8442,6 +8588,150 @@ size_t mylite_ast_account_view_replacement_auth_string_value_length(
                          : account->replacement_auth_string_value_length;
 }
 
+const MyliteAstNode *mylite_ast_privilege_statement_view_node(
+    const MyliteAstPrivilegeStatement *privilege_statement) {
+  return privilege_statement == NULL ? NULL : privilege_statement->node;
+}
+
+size_t mylite_ast_privilege_statement_view_start(
+    const MyliteAstPrivilegeStatement *privilege_statement) {
+  return privilege_statement == NULL ? 0 : privilege_statement->start;
+}
+
+size_t mylite_ast_privilege_statement_view_end(
+    const MyliteAstPrivilegeStatement *privilege_statement) {
+  return privilege_statement == NULL ? 0 : privilege_statement->end;
+}
+
+MylitePrivilegeStatementKind mylite_ast_privilege_statement_view_kind(
+    const MyliteAstPrivilegeStatement *privilege_statement) {
+  return privilege_statement == NULL ? MYLITE_PRIVILEGE_STATEMENT_UNKNOWN
+                                     : privilege_statement->kind;
+}
+
+int mylite_ast_privilege_statement_view_has_with_grant_option(
+    const MyliteAstPrivilegeStatement *privilege_statement) {
+  return privilege_statement != NULL &&
+         privilege_statement->has_with_grant_option;
+}
+
+int mylite_ast_privilege_statement_view_has_resource_limits(
+    const MyliteAstPrivilegeStatement *privilege_statement) {
+  return privilege_statement != NULL && privilege_statement->has_resource_limits;
+}
+
+int mylite_ast_privilege_statement_view_has_require_clause(
+    const MyliteAstPrivilegeStatement *privilege_statement) {
+  return privilege_statement != NULL && privilege_statement->has_require_clause;
+}
+
+MylitePrivilegeObjectType mylite_ast_privilege_statement_view_object_type(
+    const MyliteAstPrivilegeStatement *privilege_statement) {
+  return privilege_statement == NULL ? MYLITE_PRIVILEGE_OBJECT_NONE
+                                     : privilege_statement->object_type;
+}
+
+MylitePrivilegeLevelKind mylite_ast_privilege_statement_view_level_kind(
+    const MyliteAstPrivilegeStatement *privilege_statement) {
+  return privilege_statement == NULL ? MYLITE_PRIVILEGE_LEVEL_NONE
+                                     : privilege_statement->level_kind;
+}
+
+const char *mylite_ast_privilege_statement_view_level_schema_value(
+    const MyliteAstPrivilegeStatement *privilege_statement) {
+  return privilege_statement == NULL ? NULL
+                                     : privilege_statement->level_schema_value;
+}
+
+size_t mylite_ast_privilege_statement_view_level_schema_value_length(
+    const MyliteAstPrivilegeStatement *privilege_statement) {
+  return privilege_statement == NULL
+             ? 0
+             : privilege_statement->level_schema_value_length;
+}
+
+const char *mylite_ast_privilege_statement_view_level_name_value(
+    const MyliteAstPrivilegeStatement *privilege_statement) {
+  return privilege_statement == NULL ? NULL
+                                     : privilege_statement->level_name_value;
+}
+
+size_t mylite_ast_privilege_statement_view_level_name_value_length(
+    const MyliteAstPrivilegeStatement *privilege_statement) {
+  return privilege_statement == NULL
+             ? 0
+             : privilege_statement->level_name_value_length;
+}
+
+size_t mylite_ast_privilege_statement_view_item_count(
+    const MyliteAstPrivilegeStatement *privilege_statement) {
+  return privilege_statement == NULL ? 0 : privilege_statement->item_count;
+}
+
+const MyliteAstPrivilegeItem *mylite_ast_privilege_statement_view_item_at(
+    const MyliteAstPrivilegeStatement *privilege_statement, size_t item_index) {
+  if (privilege_statement == NULL ||
+      item_index >= privilege_statement->item_count) {
+    return NULL;
+  }
+  return &privilege_statement->items[item_index];
+}
+
+size_t mylite_ast_privilege_statement_view_user_count(
+    const MyliteAstPrivilegeStatement *privilege_statement) {
+  return privilege_statement == NULL ? 0 : privilege_statement->user_count;
+}
+
+const MyliteAstAccount *mylite_ast_privilege_statement_view_user_at(
+    const MyliteAstPrivilegeStatement *privilege_statement, size_t user_index) {
+  if (privilege_statement == NULL ||
+      user_index >= privilege_statement->user_count) {
+    return NULL;
+  }
+  return &privilege_statement->users[user_index];
+}
+
+const MyliteAstAccount *mylite_ast_privilege_statement_view_proxy_user(
+    const MyliteAstPrivilegeStatement *privilege_statement) {
+  return privilege_statement != NULL && privilege_statement->has_proxy_user
+             ? &privilege_statement->proxy_user
+             : NULL;
+}
+
+const MyliteAstNode *mylite_ast_privilege_item_view_node(
+    const MyliteAstPrivilegeItem *item) {
+  return item == NULL ? NULL : item->node;
+}
+
+size_t mylite_ast_privilege_item_view_start(
+    const MyliteAstPrivilegeItem *item) {
+  return item == NULL ? 0 : item->start;
+}
+
+size_t mylite_ast_privilege_item_view_end(const MyliteAstPrivilegeItem *item) {
+  return item == NULL ? 0 : item->end;
+}
+
+MylitePrivilegeItemKind mylite_ast_privilege_item_view_kind(
+    const MyliteAstPrivilegeItem *item) {
+  return item == NULL ? MYLITE_PRIVILEGE_ITEM_UNKNOWN : item->kind;
+}
+
+const char *mylite_ast_privilege_item_view_value(
+    const MyliteAstPrivilegeItem *item) {
+  return item == NULL ? NULL : item->value;
+}
+
+size_t mylite_ast_privilege_item_view_value_length(
+    const MyliteAstPrivilegeItem *item) {
+  return item == NULL ? 0 : item->value_length;
+}
+
+size_t mylite_ast_privilege_item_view_column_count(
+    const MyliteAstPrivilegeItem *item) {
+  return item == NULL ? 0 : item->column_count;
+}
+
 const MyliteAstNode *mylite_ast_transaction_statement_view_node(
     const MyliteAstTransactionStatement *transaction_statement) {
   return transaction_statement == NULL ? NULL : transaction_statement->node;
@@ -11882,6 +12172,7 @@ static MyliteStatementKind mylite_ast_classify_statement(const char *symbol_name
       "nt_check_table_stmt",
       "nt_checksum_table_stmt",
       "nt_flush_stmt",
+      "nt_grant_proxy_stmt",
       "nt_grant_stmt",
       "nt_grant_role_stmt",
       "nt_handler_stmt",
@@ -12097,6 +12388,13 @@ static int mylite_ast_set_statement_details(MyliteAst *ast,
       strcmp(statement->symbol_name, "nt_alter_user_stmt") == 0 ||
       strcmp(statement->symbol_name, "nt_drop_user_stmt") == 0) {
     return mylite_ast_set_account_statement_view(ast, statement, payload);
+  }
+  if (strcmp(statement->symbol_name, "nt_grant_stmt") == 0 ||
+      strcmp(statement->symbol_name, "nt_grant_proxy_stmt") == 0 ||
+      strcmp(statement->symbol_name, "nt_grant_role_stmt") == 0 ||
+      strcmp(statement->symbol_name, "nt_revoke_stmt") == 0 ||
+      strcmp(statement->symbol_name, "nt_revoke_role_stmt") == 0) {
+    return mylite_ast_set_privilege_statement_view(ast, statement, payload);
   }
   if (strcmp(statement->symbol_name, "nt_lock_tables_stmt") == 0 ||
       strcmp(statement->symbol_name, "nt_unlock_tables_stmt") == 0 ||
@@ -18297,6 +18595,402 @@ static int mylite_ast_set_account_statement_passwords(
         &account_statement->replacement_password_value,
         &account_statement->replacement_password_value_length);
   }
+  return 1;
+}
+
+static int mylite_ast_set_privilege_statement_view(
+    MyliteAst *ast, MyliteAstStatement *statement,
+    const MyliteAstNode *payload) {
+  if (ast == NULL || statement == NULL) {
+    return 1;
+  }
+  MylitePrivilegeStatementKind kind =
+      mylite_ast_classify_privilege_statement(statement->symbol_name, payload);
+  if (kind == MYLITE_PRIVILEGE_STATEMENT_UNKNOWN) {
+    return 1;
+  }
+  MyliteAstPrivilegeStatement *privilege_statement =
+      mylite_ast_alloc(ast, sizeof(*privilege_statement));
+  if (privilege_statement == NULL) {
+    return 0;
+  }
+  privilege_statement->node = payload == NULL ? statement->node : payload;
+  privilege_statement->kind = kind;
+  privilege_statement->start = mylite_ast_node_start(privilege_statement->node);
+  privilege_statement->end = mylite_ast_node_end(privilege_statement->node);
+  if (!mylite_ast_set_privilege_statement_flags(privilege_statement) ||
+      !mylite_ast_set_privilege_statement_items(ast, privilege_statement) ||
+      !mylite_ast_set_privilege_statement_object(ast, privilege_statement) ||
+      !mylite_ast_set_privilege_statement_users(ast, privilege_statement) ||
+      !mylite_ast_set_privilege_statement_proxy_user(ast,
+                                                     privilege_statement)) {
+    return 0;
+  }
+  statement->privilege_statement = privilege_statement;
+  return 1;
+}
+
+static MylitePrivilegeStatementKind mylite_ast_classify_privilege_statement(
+    const char *symbol_name, const MyliteAstNode *node) {
+  if (symbol_name == NULL) {
+    return MYLITE_PRIVILEGE_STATEMENT_UNKNOWN;
+  }
+  if (strcmp(symbol_name, "nt_grant_stmt") == 0) {
+    return MYLITE_PRIVILEGE_STATEMENT_GRANT;
+  }
+  if (strcmp(symbol_name, "nt_grant_proxy_stmt") == 0) {
+    return MYLITE_PRIVILEGE_STATEMENT_GRANT_PROXY;
+  }
+  if (strcmp(symbol_name, "nt_grant_role_stmt") == 0) {
+    return MYLITE_PRIVILEGE_STATEMENT_GRANT_ROLE;
+  }
+  if (strcmp(symbol_name, "nt_revoke_stmt") == 0) {
+    return MYLITE_PRIVILEGE_STATEMENT_REVOKE;
+  }
+  if (strcmp(symbol_name, "nt_revoke_role_stmt") == 0) {
+    return mylite_ast_privilege_statement_is_revoke_all(node)
+               ? MYLITE_PRIVILEGE_STATEMENT_REVOKE_ALL
+               : MYLITE_PRIVILEGE_STATEMENT_REVOKE_ROLE;
+  }
+  return MYLITE_PRIVILEGE_STATEMENT_UNKNOWN;
+}
+
+static int mylite_ast_privilege_statement_is_revoke_all(
+    const MyliteAstNode *node) {
+  if (node == NULL) {
+    return 0;
+  }
+  const MyliteAstNode *items =
+      mylite_ast_find_first_symbol(node, "nt_role_or_priv_elem_list");
+  return items != NULL &&
+         mylite_ast_count_load_nodes(items, "nt_role_or_priv_elem") == 2 &&
+         mylite_ast_find_first_token(items, MYLITE_TOK_ALL) != NULL &&
+         mylite_ast_find_first_token(items, MYLITE_TOK_GRANT) != NULL &&
+         mylite_ast_find_first_token(items, MYLITE_TOK_OPTION) != NULL;
+}
+
+static int mylite_ast_set_privilege_statement_flags(
+    MyliteAstPrivilegeStatement *privilege_statement) {
+  if (privilege_statement == NULL) {
+    return 1;
+  }
+  const MyliteAstNode *with_grant =
+      mylite_ast_find_first_symbol(privilege_statement->node,
+                                   "nt_with_grant_option_opt");
+  if (with_grant != NULL && with_grant->has_span) {
+    privilege_statement->has_with_grant_option =
+        mylite_ast_find_first_token(with_grant, MYLITE_TOK_GRANT) != NULL &&
+        mylite_ast_find_first_token(with_grant, MYLITE_TOK_OPTION) != NULL;
+    privilege_statement->has_resource_limits =
+        mylite_ast_find_first_token(with_grant,
+                                    MYLITE_TOK_MAX_QUERIES_PER_HOUR) != NULL ||
+        mylite_ast_find_first_token(with_grant,
+                                    MYLITE_TOK_MAX_UPDATES_PER_HOUR) != NULL ||
+        mylite_ast_find_first_token(
+            with_grant, MYLITE_TOK_MAX_CONNECTIONS_PER_HOUR) != NULL ||
+        mylite_ast_find_first_token(with_grant,
+                                    MYLITE_TOK_MAX_USER_CONNECTIONS) != NULL;
+  }
+  const MyliteAstNode *require =
+      mylite_ast_find_first_symbol(privilege_statement->node,
+                                   "nt_require_clause_opt");
+  privilege_statement->has_require_clause =
+      require != NULL && require->has_span;
+  return 1;
+}
+
+static int mylite_ast_set_privilege_statement_items(
+    MyliteAst *ast, MyliteAstPrivilegeStatement *privilege_statement) {
+  if (ast == NULL || privilege_statement == NULL ||
+      privilege_statement->kind == MYLITE_PRIVILEGE_STATEMENT_GRANT_PROXY) {
+    return 1;
+  }
+  const MyliteAstNode *items =
+      mylite_ast_find_first_symbol(privilege_statement->node,
+                                   "nt_role_or_priv_elem_list");
+  if (items == NULL) {
+    return 1;
+  }
+  privilege_statement->item_count =
+      mylite_ast_count_load_nodes(items, "nt_role_or_priv_elem");
+  if (privilege_statement->item_count == 0) {
+    return 1;
+  }
+  privilege_statement->items =
+      mylite_ast_alloc(ast, privilege_statement->item_count *
+                                sizeof(*privilege_statement->items));
+  if (privilege_statement->items == NULL) {
+    return 0;
+  }
+  size_t index = 0;
+  return mylite_ast_fill_privilege_items(ast, privilege_statement, items,
+                                         &index) &&
+         index == privilege_statement->item_count;
+}
+
+static int mylite_ast_fill_privilege_items(
+    MyliteAst *ast, MyliteAstPrivilegeStatement *privilege_statement,
+    const MyliteAstNode *node, size_t *index) {
+  if (node == NULL) {
+    return 1;
+  }
+  if (mylite_ast_expression_is_symbol(node, "nt_role_or_priv_elem")) {
+    if (index == NULL || *index >= privilege_statement->item_count ||
+        !mylite_ast_fill_privilege_item(
+            ast, privilege_statement, &privilege_statement->items[*index],
+            node)) {
+      return 0;
+    }
+    (*index)++;
+    return 1;
+  }
+  for (size_t i = 0; i < node->child_count; i++) {
+    if (!mylite_ast_fill_privilege_items(ast, privilege_statement,
+                                         node->children[i], index)) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+static int mylite_ast_fill_privilege_item(
+    MyliteAst *ast, MyliteAstPrivilegeStatement *privilege_statement,
+    MyliteAstPrivilegeItem *item, const MyliteAstNode *node) {
+  if (ast == NULL || privilege_statement == NULL || item == NULL ||
+      node == NULL) {
+    return 1;
+  }
+  item->node = node;
+  item->kind = mylite_ast_classify_privilege_item(privilege_statement, node);
+  item->start = mylite_ast_node_start(node);
+  item->end = mylite_ast_node_end(node);
+  item->column_count = mylite_ast_count_load_nodes(node, "nt_column_name");
+  return mylite_ast_copy_source_span(ast, item->start, item->end, &item->value,
+                                     &item->value_length);
+}
+
+static MylitePrivilegeItemKind mylite_ast_classify_privilege_item(
+    const MyliteAstPrivilegeStatement *privilege_statement,
+    const MyliteAstNode *node) {
+  if (node == NULL) {
+    return MYLITE_PRIVILEGE_ITEM_UNKNOWN;
+  }
+  if (privilege_statement != NULL &&
+      (privilege_statement->kind == MYLITE_PRIVILEGE_STATEMENT_GRANT_ROLE ||
+       privilege_statement->kind == MYLITE_PRIVILEGE_STATEMENT_REVOKE_ROLE)) {
+    return MYLITE_PRIVILEGE_ITEM_ROLE;
+  }
+  if (mylite_ast_find_first_symbol(node, "nt_priv_elem") != NULL) {
+    return MYLITE_PRIVILEGE_ITEM_PRIVILEGE;
+  }
+  if (mylite_ast_find_first_symbol(node, "nt_rolename_without_ident") != NULL) {
+    return MYLITE_PRIVILEGE_ITEM_ROLE;
+  }
+  if (mylite_ast_find_first_symbol(node, "nt_extended_priv") != NULL ||
+      mylite_ast_find_first_token(node, MYLITE_TOK_S3) != NULL) {
+    return MYLITE_PRIVILEGE_ITEM_DYNAMIC;
+  }
+  return MYLITE_PRIVILEGE_ITEM_UNKNOWN;
+}
+
+static int mylite_ast_set_privilege_statement_object(
+    MyliteAst *ast, MyliteAstPrivilegeStatement *privilege_statement) {
+  if (ast == NULL || privilege_statement == NULL) {
+    return 1;
+  }
+  const MyliteAstNode *object_type =
+      mylite_ast_find_first_symbol(privilege_statement->node, "nt_object_type");
+  privilege_statement->object_type =
+      mylite_ast_classify_privilege_object_type(object_type);
+  const MyliteAstNode *level =
+      mylite_ast_find_first_symbol(privilege_statement->node, "nt_priv_level");
+  if (level == NULL || !level->has_span) {
+    return 1;
+  }
+  const MyliteAstNode *first =
+      mylite_ast_direct_child_symbol(level, 0, "nt_identifier");
+  const MyliteAstNode *third =
+      mylite_ast_direct_child_symbol(level, 2, "nt_identifier");
+  if (mylite_ast_direct_child_token(level, 0, MYLITE_TOK_STAR) != NULL) {
+    privilege_statement->level_kind =
+        mylite_ast_direct_child_token(level, 2, MYLITE_TOK_STAR) != NULL
+            ? MYLITE_PRIVILEGE_LEVEL_GLOBAL
+            : MYLITE_PRIVILEGE_LEVEL_DATABASE;
+    return 1;
+  }
+  if (first != NULL &&
+      mylite_ast_direct_child_token(level, 2, MYLITE_TOK_STAR) != NULL) {
+    privilege_statement->level_kind = MYLITE_PRIVILEGE_LEVEL_DATABASE;
+    return mylite_ast_set_privilege_level_identifier(
+        ast, first, &privilege_statement->level_schema_start,
+        &privilege_statement->level_schema_end,
+        &privilege_statement->level_schema_value,
+        &privilege_statement->level_schema_value_length);
+  }
+  if (first != NULL && third != NULL) {
+    privilege_statement->level_kind = MYLITE_PRIVILEGE_LEVEL_TABLE;
+    return mylite_ast_set_privilege_level_identifier(
+               ast, first, &privilege_statement->level_schema_start,
+               &privilege_statement->level_schema_end,
+               &privilege_statement->level_schema_value,
+               &privilege_statement->level_schema_value_length) &&
+           mylite_ast_set_privilege_level_identifier(
+               ast, third, &privilege_statement->level_name_start,
+               &privilege_statement->level_name_end,
+               &privilege_statement->level_name_value,
+               &privilege_statement->level_name_value_length);
+  }
+  if (first != NULL) {
+    privilege_statement->level_kind = MYLITE_PRIVILEGE_LEVEL_TABLE;
+    return mylite_ast_set_privilege_level_identifier(
+        ast, first, &privilege_statement->level_name_start,
+        &privilege_statement->level_name_end,
+        &privilege_statement->level_name_value,
+        &privilege_statement->level_name_value_length);
+  }
+  return 1;
+}
+
+static MylitePrivilegeObjectType mylite_ast_classify_privilege_object_type(
+    const MyliteAstNode *object_type) {
+  if (object_type == NULL || !object_type->has_span) {
+    return MYLITE_PRIVILEGE_OBJECT_NONE;
+  }
+  if (mylite_ast_find_first_token(object_type, MYLITE_TOK_TABLE_KWD) != NULL) {
+    return MYLITE_PRIVILEGE_OBJECT_TABLE;
+  }
+  if (mylite_ast_find_first_token(object_type, MYLITE_TOK_FUNCTION) != NULL) {
+    return MYLITE_PRIVILEGE_OBJECT_FUNCTION;
+  }
+  if (mylite_ast_find_first_token(object_type, MYLITE_TOK_PROCEDURE) != NULL) {
+    return MYLITE_PRIVILEGE_OBJECT_PROCEDURE;
+  }
+  return MYLITE_PRIVILEGE_OBJECT_NONE;
+}
+
+static int mylite_ast_set_privilege_level_identifier(
+    MyliteAst *ast, const MyliteAstNode *node, size_t *value_start,
+    size_t *value_end, const char **value, size_t *value_length) {
+  if (ast == NULL || node == NULL || value_start == NULL ||
+      value_end == NULL || value == NULL || value_length == NULL) {
+    return 1;
+  }
+  *value_start = mylite_ast_node_start(node);
+  *value_end = mylite_ast_node_end(node);
+  return mylite_ast_decode_identifier(ast, *value_start, *value_end, value,
+                                      value_length);
+}
+
+static int mylite_ast_set_privilege_statement_users(
+    MyliteAst *ast, MyliteAstPrivilegeStatement *privilege_statement) {
+  if (ast == NULL || privilege_statement == NULL) {
+    return 1;
+  }
+  const MyliteAstNode *list =
+      mylite_ast_privilege_user_list_node(privilege_statement);
+  const char *symbol_name =
+      mylite_ast_privilege_user_symbol(privilege_statement);
+  if (list == NULL || symbol_name == NULL) {
+    return 1;
+  }
+  privilege_statement->user_count =
+      mylite_ast_count_load_nodes(list, symbol_name);
+  if (privilege_statement->user_count == 0) {
+    return 1;
+  }
+  privilege_statement->users =
+      mylite_ast_alloc(ast, privilege_statement->user_count *
+                                sizeof(*privilege_statement->users));
+  if (privilege_statement->users == NULL) {
+    return 0;
+  }
+  size_t index = 0;
+  return mylite_ast_fill_privilege_users(ast, privilege_statement, list,
+                                         symbol_name, &index) &&
+         index == privilege_statement->user_count;
+}
+
+static const MyliteAstNode *mylite_ast_privilege_user_list_node(
+    const MyliteAstPrivilegeStatement *privilege_statement) {
+  if (privilege_statement == NULL) {
+    return NULL;
+  }
+  switch (privilege_statement->kind) {
+    case MYLITE_PRIVILEGE_STATEMENT_GRANT:
+    case MYLITE_PRIVILEGE_STATEMENT_REVOKE:
+      return mylite_ast_find_first_symbol(privilege_statement->node,
+                                          "nt_user_spec_list");
+    case MYLITE_PRIVILEGE_STATEMENT_GRANT_PROXY:
+    case MYLITE_PRIVILEGE_STATEMENT_GRANT_ROLE:
+    case MYLITE_PRIVILEGE_STATEMENT_REVOKE_ROLE:
+    case MYLITE_PRIVILEGE_STATEMENT_REVOKE_ALL:
+      return mylite_ast_find_first_symbol(privilege_statement->node,
+                                          "nt_username_list");
+    case MYLITE_PRIVILEGE_STATEMENT_UNKNOWN:
+      return NULL;
+  }
+  return NULL;
+}
+
+static const char *mylite_ast_privilege_user_symbol(
+    const MyliteAstPrivilegeStatement *privilege_statement) {
+  if (privilege_statement == NULL) {
+    return NULL;
+  }
+  switch (privilege_statement->kind) {
+    case MYLITE_PRIVILEGE_STATEMENT_GRANT:
+    case MYLITE_PRIVILEGE_STATEMENT_REVOKE:
+      return "nt_user_spec";
+    case MYLITE_PRIVILEGE_STATEMENT_GRANT_PROXY:
+    case MYLITE_PRIVILEGE_STATEMENT_GRANT_ROLE:
+    case MYLITE_PRIVILEGE_STATEMENT_REVOKE_ROLE:
+    case MYLITE_PRIVILEGE_STATEMENT_REVOKE_ALL:
+      return "nt_username";
+    case MYLITE_PRIVILEGE_STATEMENT_UNKNOWN:
+      return NULL;
+  }
+  return NULL;
+}
+
+static int mylite_ast_fill_privilege_users(
+    MyliteAst *ast, MyliteAstPrivilegeStatement *privilege_statement,
+    const MyliteAstNode *node, const char *symbol_name, size_t *index) {
+  if (node == NULL || symbol_name == NULL) {
+    return 1;
+  }
+  if (mylite_ast_expression_is_symbol(node, symbol_name)) {
+    if (index == NULL || *index >= privilege_statement->user_count ||
+        !mylite_ast_fill_account(ast, &privilege_statement->users[*index],
+                                 node)) {
+      return 0;
+    }
+    (*index)++;
+    return 1;
+  }
+  for (size_t i = 0; i < node->child_count; i++) {
+    if (!mylite_ast_fill_privilege_users(ast, privilege_statement,
+                                         node->children[i], symbol_name,
+                                         index)) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+static int mylite_ast_set_privilege_statement_proxy_user(
+    MyliteAst *ast, MyliteAstPrivilegeStatement *privilege_statement) {
+  if (ast == NULL || privilege_statement == NULL ||
+      privilege_statement->kind != MYLITE_PRIVILEGE_STATEMENT_GRANT_PROXY) {
+    return 1;
+  }
+  const MyliteAstNode *proxy_user =
+      mylite_ast_find_first_symbol(privilege_statement->node, "nt_username");
+  if (proxy_user == NULL ||
+      !mylite_ast_fill_account(ast, &privilege_statement->proxy_user,
+                               proxy_user)) {
+    return proxy_user == NULL;
+  }
+  privilege_statement->has_proxy_user = 1;
   return 1;
 }
 

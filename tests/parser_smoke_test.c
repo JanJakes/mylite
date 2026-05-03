@@ -210,6 +210,7 @@ static int expect_kill_statement_view(void);
 static int expect_flush_statement_view(void);
 static int expect_load_statement_view(void);
 static int expect_account_statement_view(void);
+static int expect_privilege_statement_view(void);
 static int expect_call_statement_view(void);
 static int expect_do_statement_view(void);
 static int expect_delete_statement_view(void);
@@ -834,6 +835,7 @@ int main(void) {
   failures += expect_flush_statement_view();
   failures += expect_load_statement_view();
   failures += expect_account_statement_view();
+  failures += expect_privilege_statement_view();
   failures += expect_call_statement_view();
   failures += expect_do_statement_view();
   failures += expect_delete_statement_view();
@@ -5301,6 +5303,177 @@ static int expect_account_statement_view(void) {
     }
     mylite_ast_free(ast);
   }
+  return failed;
+}
+
+static int expect_privilege_statement_view(void) {
+  int failed = 0;
+  {
+    const char *sql =
+        "GRANT SELECT, INSERT(c1, c2) ON TABLE db.t TO 'u'@'h' IDENTIFIED BY "
+        "'p' WITH GRANT OPTION";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "GRANT privilege view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+    const MyliteAstPrivilegeStatement *view =
+        mylite_ast_privilege_statement_view(ast, 0);
+    const MyliteAstPrivilegeItem *second =
+        mylite_ast_privilege_statement_view_item_at(view, 1);
+    const MyliteAstAccount *user =
+        mylite_ast_privilege_statement_view_user_at(view, 0);
+    if (view == NULL ||
+        mylite_ast_privilege_statement_view_kind(view) !=
+            MYLITE_PRIVILEGE_STATEMENT_GRANT ||
+        mylite_ast_privilege_statement_view_object_type(view) !=
+            MYLITE_PRIVILEGE_OBJECT_TABLE ||
+        mylite_ast_privilege_statement_view_level_kind(view) !=
+            MYLITE_PRIVILEGE_LEVEL_TABLE ||
+        !mylite_ast_privilege_statement_view_has_with_grant_option(view) ||
+        mylite_ast_privilege_statement_view_item_count(view) != 2 ||
+        mylite_ast_privilege_statement_view_user_count(view) != 1 ||
+        !value_matches_when_expected(
+            mylite_ast_privilege_statement_view_level_schema_value(view),
+            mylite_ast_privilege_statement_view_level_schema_value_length(view),
+            "db") ||
+        !value_matches_when_expected(
+            mylite_ast_privilege_statement_view_level_name_value(view),
+            mylite_ast_privilege_statement_view_level_name_value_length(view),
+            "t") ||
+        second == NULL ||
+        mylite_ast_privilege_item_view_kind(second) !=
+            MYLITE_PRIVILEGE_ITEM_PRIVILEGE ||
+        mylite_ast_privilege_item_view_column_count(second) != 2 ||
+        user == NULL ||
+        mylite_ast_account_view_auth_kind(user) !=
+            MYLITE_ACCOUNT_AUTH_IDENTIFIED_BY ||
+        !value_matches_when_expected(
+            mylite_ast_account_view_user_value(user),
+            mylite_ast_account_view_user_value_length(user), "u") ||
+        !value_matches_when_expected(
+            mylite_ast_account_view_host_value(user),
+            mylite_ast_account_view_host_value_length(user), "h")) {
+      fprintf(stderr, "GRANT privilege view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql =
+        "GRANT PROXY ON 'local'@'localhost' TO 'external'@'%' WITH GRANT "
+        "OPTION";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "GRANT PROXY privilege view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    const MyliteAstPrivilegeStatement *view =
+        mylite_ast_privilege_statement_view(ast, 0);
+    const MyliteAstAccount *proxy =
+        mylite_ast_privilege_statement_view_proxy_user(view);
+    const MyliteAstAccount *user =
+        mylite_ast_privilege_statement_view_user_at(view, 0);
+    if (view == NULL ||
+        mylite_ast_privilege_statement_view_kind(view) !=
+            MYLITE_PRIVILEGE_STATEMENT_GRANT_PROXY ||
+        !mylite_ast_privilege_statement_view_has_with_grant_option(view) ||
+        mylite_ast_privilege_statement_view_user_count(view) != 1 ||
+        proxy == NULL ||
+        !value_matches_when_expected(
+            mylite_ast_account_view_user_value(proxy),
+            mylite_ast_account_view_user_value_length(proxy), "local") ||
+        !value_matches_when_expected(
+            mylite_ast_account_view_host_value(proxy),
+            mylite_ast_account_view_host_value_length(proxy), "localhost") ||
+        user == NULL ||
+        !value_matches_when_expected(
+            mylite_ast_account_view_user_value(user),
+            mylite_ast_account_view_user_value_length(user), "external")) {
+      fprintf(stderr, "GRANT PROXY privilege view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql = "GRANT app_role, read_role TO 'u'@'%'";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "GRANT role privilege view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    const MyliteAstPrivilegeStatement *view =
+        mylite_ast_privilege_statement_view(ast, 0);
+    const MyliteAstPrivilegeItem *second =
+        mylite_ast_privilege_statement_view_item_at(view, 1);
+    if (view == NULL ||
+        mylite_ast_privilege_statement_view_kind(view) !=
+            MYLITE_PRIVILEGE_STATEMENT_GRANT_ROLE ||
+        mylite_ast_privilege_statement_view_item_count(view) != 2 ||
+        second == NULL ||
+        mylite_ast_privilege_item_view_kind(second) !=
+            MYLITE_PRIVILEGE_ITEM_ROLE ||
+        !value_matches_when_expected(
+            mylite_ast_privilege_item_view_value(second),
+            mylite_ast_privilege_item_view_value_length(second), "read_role")) {
+      fprintf(stderr, "GRANT role privilege view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql = "REVOKE ALL PRIVILEGES, GRANT OPTION FROM 'u'@'%'";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "REVOKE ALL privilege view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    const MyliteAstPrivilegeStatement *view =
+        mylite_ast_privilege_statement_view(ast, 0);
+    const MyliteAstAccount *user =
+        mylite_ast_privilege_statement_view_user_at(view, 0);
+    if (view == NULL ||
+        mylite_ast_privilege_statement_view_kind(view) !=
+            MYLITE_PRIVILEGE_STATEMENT_REVOKE_ALL ||
+        mylite_ast_privilege_statement_view_item_count(view) != 2 ||
+        mylite_ast_privilege_statement_view_user_count(view) != 1 ||
+        user == NULL ||
+        !value_matches_when_expected(
+            mylite_ast_account_view_host_value(user),
+            mylite_ast_account_view_host_value_length(user), "%")) {
+      fprintf(stderr, "REVOKE ALL privilege view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
   return failed;
 }
 

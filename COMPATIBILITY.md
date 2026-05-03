@@ -280,9 +280,9 @@ below. The current prototype parses the WordPress MySQL server query corpus with
 | `CREATE ROLE` | ❌ | medium | Role creation syntax and metadata. |  |
 | `DROP USER` | ❌ | medium | User deletion syntax and privilege cleanup. | Parser prototype exposes a typed account-management view with decoded user/host list and IF EXISTS marker. Runtime account deletion, privilege cleanup, diagnostics, and privilege checks are not implemented yet. |
 | `DROP ROLE` | ❌ | medium | Role deletion syntax and grant cleanup. |  |
-| `GRANT` | ❌ | medium | Privilege and role grants, WITH GRANT OPTION, PROXY, dynamic privileges, and partial revoke semantics. |  |
+| `GRANT` | ❌ | medium | Privilege and role grants, WITH GRANT OPTION, PROXY, dynamic privileges, and partial revoke semantics. | Parser prototype exposes a typed privilege view for privilege grants, role grants, and proxy grants, including privilege/role/dynamic item spans, item column counts, object type, privilege level, decoded users, proxy user, auth options, WITH GRANT OPTION, resource-limit marker, and require-clause marker. Runtime privilege catalog updates, role membership, proxy semantics, dynamic-privilege validation, authorization, warnings, and diagnostics are not implemented yet. |
 | `RENAME USER` | ❌ | medium | User rename syntax and privilege metadata. |  |
-| `REVOKE` | ❌ | medium | Privilege and role revocation semantics. |  |
+| `REVOKE` | ❌ | medium | Privilege and role revocation semantics. | Parser prototype exposes a typed privilege view for privilege revokes, role revokes, and `REVOKE ALL PRIVILEGES, GRANT OPTION`, including privilege/role item spans, item column counts, object type, privilege level, and decoded users. Runtime privilege catalog updates, role membership changes, partial revokes, authorization, warnings, and diagnostics are not implemented yet. |
 | `SET DEFAULT ROLE` | ❌ | medium | Default role assignment. |  |
 | `SET PASSWORD` | ❌ | medium | Password assignment semantics. | Parser prototype exposes a typed account-management view with optional FOR user account, decoded password value, and decoded replacement password value. Runtime password assignment, auth semantics, diagnostics, and privilege checks are not implemented yet. |
 | `SET ROLE` | ❌ | medium | Active-role selection. |  |

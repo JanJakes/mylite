@@ -418,6 +418,26 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t account_statement_auth_strings = 0;
   size_t account_statement_hash_strings = 0;
   size_t account_statement_replacement_auth_strings = 0;
+  size_t privilege_statement_views = 0;
+  size_t privilege_statement_grants = 0;
+  size_t privilege_statement_grant_proxies = 0;
+  size_t privilege_statement_grant_roles = 0;
+  size_t privilege_statement_revokes = 0;
+  size_t privilege_statement_revoke_roles = 0;
+  size_t privilege_statement_revoke_alls = 0;
+  size_t privilege_statement_with_grant_options = 0;
+  size_t privilege_statement_resource_limits = 0;
+  size_t privilege_statement_require_clauses = 0;
+  size_t privilege_statement_object_types = 0;
+  size_t privilege_statement_level_schemas = 0;
+  size_t privilege_statement_level_names = 0;
+  size_t privilege_statement_items = 0;
+  size_t privilege_statement_privilege_items = 0;
+  size_t privilege_statement_role_items = 0;
+  size_t privilege_statement_dynamic_items = 0;
+  size_t privilege_statement_item_columns = 0;
+  size_t privilege_statement_users = 0;
+  size_t privilege_statement_proxy_users = 0;
   size_t rename_table_views = 0;
   size_t rename_table_pairs = 0;
   size_t set_statement_views = 0;
@@ -2150,6 +2170,89 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                 }
               }
             }
+            const MyliteAstPrivilegeStatement *privilege_statement =
+                mylite_ast_privilege_statement_view(ast, i);
+            if (privilege_statement != NULL) {
+              privilege_statement_views++;
+              switch (mylite_ast_privilege_statement_view_kind(
+                  privilege_statement)) {
+                case MYLITE_PRIVILEGE_STATEMENT_GRANT:
+                  privilege_statement_grants++;
+                  break;
+                case MYLITE_PRIVILEGE_STATEMENT_GRANT_PROXY:
+                  privilege_statement_grant_proxies++;
+                  break;
+                case MYLITE_PRIVILEGE_STATEMENT_GRANT_ROLE:
+                  privilege_statement_grant_roles++;
+                  break;
+                case MYLITE_PRIVILEGE_STATEMENT_REVOKE:
+                  privilege_statement_revokes++;
+                  break;
+                case MYLITE_PRIVILEGE_STATEMENT_REVOKE_ROLE:
+                  privilege_statement_revoke_roles++;
+                  break;
+                case MYLITE_PRIVILEGE_STATEMENT_REVOKE_ALL:
+                  privilege_statement_revoke_alls++;
+                  break;
+                default:
+                  break;
+              }
+              if (mylite_ast_privilege_statement_view_has_with_grant_option(
+                      privilege_statement)) {
+                privilege_statement_with_grant_options++;
+              }
+              if (mylite_ast_privilege_statement_view_has_resource_limits(
+                      privilege_statement)) {
+                privilege_statement_resource_limits++;
+              }
+              if (mylite_ast_privilege_statement_view_has_require_clause(
+                      privilege_statement)) {
+                privilege_statement_require_clauses++;
+              }
+              if (mylite_ast_privilege_statement_view_object_type(
+                      privilege_statement) != MYLITE_PRIVILEGE_OBJECT_NONE) {
+                privilege_statement_object_types++;
+              }
+              if (mylite_ast_privilege_statement_view_level_schema_value(
+                      privilege_statement) != NULL) {
+                privilege_statement_level_schemas++;
+              }
+              if (mylite_ast_privilege_statement_view_level_name_value(
+                      privilege_statement) != NULL) {
+                privilege_statement_level_names++;
+              }
+              size_t item_count =
+                  mylite_ast_privilege_statement_view_item_count(
+                      privilege_statement);
+              privilege_statement_items += item_count;
+              for (size_t j = 0; j < item_count; j++) {
+                const MyliteAstPrivilegeItem *item =
+                    mylite_ast_privilege_statement_view_item_at(
+                        privilege_statement, j);
+                switch (mylite_ast_privilege_item_view_kind(item)) {
+                  case MYLITE_PRIVILEGE_ITEM_PRIVILEGE:
+                    privilege_statement_privilege_items++;
+                    break;
+                  case MYLITE_PRIVILEGE_ITEM_ROLE:
+                    privilege_statement_role_items++;
+                    break;
+                  case MYLITE_PRIVILEGE_ITEM_DYNAMIC:
+                    privilege_statement_dynamic_items++;
+                    break;
+                  default:
+                    break;
+                }
+                privilege_statement_item_columns +=
+                    mylite_ast_privilege_item_view_column_count(item);
+              }
+              privilege_statement_users +=
+                  mylite_ast_privilege_statement_view_user_count(
+                      privilege_statement);
+              if (mylite_ast_privilege_statement_view_proxy_user(
+                      privilege_statement) != NULL) {
+                privilege_statement_proxy_users++;
+              }
+            }
             const MyliteAstSetStatement *set_statement =
                 mylite_ast_set_statement_view(ast, i);
             if (set_statement != NULL) {
@@ -2840,6 +2943,26 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_account_statement_auth_strings=%.2f "
            "avg_account_statement_hash_strings=%.2f "
            "avg_account_statement_replacement_auth_strings=%.2f "
+           "avg_privilege_statement_views=%.2f "
+           "avg_privilege_statement_grants=%.2f "
+           "avg_privilege_statement_grant_proxies=%.2f "
+           "avg_privilege_statement_grant_roles=%.2f "
+           "avg_privilege_statement_revokes=%.2f "
+           "avg_privilege_statement_revoke_roles=%.2f "
+           "avg_privilege_statement_revoke_alls=%.2f "
+           "avg_privilege_statement_with_grant_options=%.2f "
+           "avg_privilege_statement_resource_limits=%.2f "
+           "avg_privilege_statement_require_clauses=%.2f "
+           "avg_privilege_statement_object_types=%.2f "
+           "avg_privilege_statement_level_schemas=%.2f "
+           "avg_privilege_statement_level_names=%.2f "
+           "avg_privilege_statement_items=%.2f "
+           "avg_privilege_statement_privilege_items=%.2f "
+           "avg_privilege_statement_role_items=%.2f "
+           "avg_privilege_statement_dynamic_items=%.2f "
+           "avg_privilege_statement_item_columns=%.2f "
+           "avg_privilege_statement_users=%.2f "
+           "avg_privilege_statement_proxy_users=%.2f "
            "avg_set_statement_views=%.2f "
            "avg_set_statement_assignments=%.2f "
            "avg_set_assignment_name_values=%.2f "
@@ -3278,6 +3401,26 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)account_statement_hash_strings / (double)parsed,
            (double)account_statement_replacement_auth_strings /
                (double)parsed,
+           (double)privilege_statement_views / (double)parsed,
+           (double)privilege_statement_grants / (double)parsed,
+           (double)privilege_statement_grant_proxies / (double)parsed,
+           (double)privilege_statement_grant_roles / (double)parsed,
+           (double)privilege_statement_revokes / (double)parsed,
+           (double)privilege_statement_revoke_roles / (double)parsed,
+           (double)privilege_statement_revoke_alls / (double)parsed,
+           (double)privilege_statement_with_grant_options / (double)parsed,
+           (double)privilege_statement_resource_limits / (double)parsed,
+           (double)privilege_statement_require_clauses / (double)parsed,
+           (double)privilege_statement_object_types / (double)parsed,
+           (double)privilege_statement_level_schemas / (double)parsed,
+           (double)privilege_statement_level_names / (double)parsed,
+           (double)privilege_statement_items / (double)parsed,
+           (double)privilege_statement_privilege_items / (double)parsed,
+           (double)privilege_statement_role_items / (double)parsed,
+           (double)privilege_statement_dynamic_items / (double)parsed,
+           (double)privilege_statement_item_columns / (double)parsed,
+           (double)privilege_statement_users / (double)parsed,
+           (double)privilege_statement_proxy_users / (double)parsed,
            (double)set_statement_views / (double)parsed,
            (double)set_statement_assignments / (double)parsed,
            (double)set_assignment_name_values / (double)parsed,

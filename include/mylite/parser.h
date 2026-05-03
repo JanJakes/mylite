@@ -26,6 +26,8 @@ typedef struct MyliteSemanticAst MyliteSemanticAst;
 typedef struct MyliteSemanticAstNode MyliteSemanticAstNode;
 typedef struct MyliteAstAccount MyliteAstAccount;
 typedef struct MyliteAstAccountStatement MyliteAstAccountStatement;
+typedef struct MyliteAstPrivilegeItem MyliteAstPrivilegeItem;
+typedef struct MyliteAstPrivilegeStatement MyliteAstPrivilegeStatement;
 typedef struct MyliteAstAlterTable MyliteAstAlterTable;
 typedef struct MyliteAstAlterTableSpec MyliteAstAlterTableSpec;
 typedef struct MyliteAstCreateDatabase MyliteAstCreateDatabase;
@@ -441,6 +443,37 @@ typedef enum MyliteAccountAuthKind {
   MYLITE_ACCOUNT_AUTH_IDENTIFIED_BY_RANDOM_PASSWORD,
   MYLITE_ACCOUNT_AUTH_IDENTIFIED_BY_REPLACE
 } MyliteAccountAuthKind;
+
+typedef enum MylitePrivilegeStatementKind {
+  MYLITE_PRIVILEGE_STATEMENT_UNKNOWN = 0,
+  MYLITE_PRIVILEGE_STATEMENT_GRANT,
+  MYLITE_PRIVILEGE_STATEMENT_GRANT_PROXY,
+  MYLITE_PRIVILEGE_STATEMENT_GRANT_ROLE,
+  MYLITE_PRIVILEGE_STATEMENT_REVOKE,
+  MYLITE_PRIVILEGE_STATEMENT_REVOKE_ROLE,
+  MYLITE_PRIVILEGE_STATEMENT_REVOKE_ALL
+} MylitePrivilegeStatementKind;
+
+typedef enum MylitePrivilegeItemKind {
+  MYLITE_PRIVILEGE_ITEM_UNKNOWN = 0,
+  MYLITE_PRIVILEGE_ITEM_PRIVILEGE,
+  MYLITE_PRIVILEGE_ITEM_ROLE,
+  MYLITE_PRIVILEGE_ITEM_DYNAMIC
+} MylitePrivilegeItemKind;
+
+typedef enum MylitePrivilegeObjectType {
+  MYLITE_PRIVILEGE_OBJECT_NONE = 0,
+  MYLITE_PRIVILEGE_OBJECT_TABLE,
+  MYLITE_PRIVILEGE_OBJECT_FUNCTION,
+  MYLITE_PRIVILEGE_OBJECT_PROCEDURE
+} MylitePrivilegeObjectType;
+
+typedef enum MylitePrivilegeLevelKind {
+  MYLITE_PRIVILEGE_LEVEL_NONE = 0,
+  MYLITE_PRIVILEGE_LEVEL_GLOBAL,
+  MYLITE_PRIVILEGE_LEVEL_DATABASE,
+  MYLITE_PRIVILEGE_LEVEL_TABLE
+} MylitePrivilegeLevelKind;
 
 typedef enum MyliteCreateTableColumnTypeFamily {
   MYLITE_CREATE_TABLE_COLUMN_TYPE_UNKNOWN = 0,
@@ -879,6 +912,12 @@ const char *mylite_load_option_value_kind_name(
 const char *mylite_account_statement_kind_name(
     MyliteAccountStatementKind kind);
 const char *mylite_account_auth_kind_name(MyliteAccountAuthKind kind);
+const char *mylite_privilege_statement_kind_name(
+    MylitePrivilegeStatementKind kind);
+const char *mylite_privilege_item_kind_name(MylitePrivilegeItemKind kind);
+const char *mylite_privilege_object_type_name(
+    MylitePrivilegeObjectType type);
+const char *mylite_privilege_level_kind_name(MylitePrivilegeLevelKind kind);
 const char *mylite_expression_kind_name(MyliteExpressionKind kind);
 const char *mylite_expression_literal_kind_name(
     MyliteExpressionLiteralKind kind);
@@ -1079,6 +1118,8 @@ const MyliteAstFlushStatement *mylite_ast_flush_statement_view(
 const MyliteAstLoadStatement *mylite_ast_load_statement_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstAccountStatement *mylite_ast_account_statement_view(
+    const MyliteAst *ast, size_t statement_index);
+const MyliteAstPrivilegeStatement *mylite_ast_privilege_statement_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstDeleteStatement *mylite_ast_delete_statement_view(
     const MyliteAst *ast, size_t statement_index);
@@ -2574,6 +2615,55 @@ const char *mylite_ast_account_view_replacement_auth_string_value(
     const MyliteAstAccount *account);
 size_t mylite_ast_account_view_replacement_auth_string_value_length(
     const MyliteAstAccount *account);
+const MyliteAstNode *mylite_ast_privilege_statement_view_node(
+    const MyliteAstPrivilegeStatement *privilege_statement);
+size_t mylite_ast_privilege_statement_view_start(
+    const MyliteAstPrivilegeStatement *privilege_statement);
+size_t mylite_ast_privilege_statement_view_end(
+    const MyliteAstPrivilegeStatement *privilege_statement);
+MylitePrivilegeStatementKind mylite_ast_privilege_statement_view_kind(
+    const MyliteAstPrivilegeStatement *privilege_statement);
+int mylite_ast_privilege_statement_view_has_with_grant_option(
+    const MyliteAstPrivilegeStatement *privilege_statement);
+int mylite_ast_privilege_statement_view_has_resource_limits(
+    const MyliteAstPrivilegeStatement *privilege_statement);
+int mylite_ast_privilege_statement_view_has_require_clause(
+    const MyliteAstPrivilegeStatement *privilege_statement);
+MylitePrivilegeObjectType mylite_ast_privilege_statement_view_object_type(
+    const MyliteAstPrivilegeStatement *privilege_statement);
+MylitePrivilegeLevelKind mylite_ast_privilege_statement_view_level_kind(
+    const MyliteAstPrivilegeStatement *privilege_statement);
+const char *mylite_ast_privilege_statement_view_level_schema_value(
+    const MyliteAstPrivilegeStatement *privilege_statement);
+size_t mylite_ast_privilege_statement_view_level_schema_value_length(
+    const MyliteAstPrivilegeStatement *privilege_statement);
+const char *mylite_ast_privilege_statement_view_level_name_value(
+    const MyliteAstPrivilegeStatement *privilege_statement);
+size_t mylite_ast_privilege_statement_view_level_name_value_length(
+    const MyliteAstPrivilegeStatement *privilege_statement);
+size_t mylite_ast_privilege_statement_view_item_count(
+    const MyliteAstPrivilegeStatement *privilege_statement);
+const MyliteAstPrivilegeItem *mylite_ast_privilege_statement_view_item_at(
+    const MyliteAstPrivilegeStatement *privilege_statement, size_t item_index);
+size_t mylite_ast_privilege_statement_view_user_count(
+    const MyliteAstPrivilegeStatement *privilege_statement);
+const MyliteAstAccount *mylite_ast_privilege_statement_view_user_at(
+    const MyliteAstPrivilegeStatement *privilege_statement, size_t user_index);
+const MyliteAstAccount *mylite_ast_privilege_statement_view_proxy_user(
+    const MyliteAstPrivilegeStatement *privilege_statement);
+const MyliteAstNode *mylite_ast_privilege_item_view_node(
+    const MyliteAstPrivilegeItem *item);
+size_t mylite_ast_privilege_item_view_start(
+    const MyliteAstPrivilegeItem *item);
+size_t mylite_ast_privilege_item_view_end(const MyliteAstPrivilegeItem *item);
+MylitePrivilegeItemKind mylite_ast_privilege_item_view_kind(
+    const MyliteAstPrivilegeItem *item);
+const char *mylite_ast_privilege_item_view_value(
+    const MyliteAstPrivilegeItem *item);
+size_t mylite_ast_privilege_item_view_value_length(
+    const MyliteAstPrivilegeItem *item);
+size_t mylite_ast_privilege_item_view_column_count(
+    const MyliteAstPrivilegeItem *item);
 const MyliteAstNode *mylite_ast_transaction_statement_view_node(
     const MyliteAstTransactionStatement *transaction_statement);
 size_t mylite_ast_transaction_statement_view_start(

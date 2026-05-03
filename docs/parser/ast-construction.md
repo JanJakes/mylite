@@ -139,6 +139,10 @@ expression nodes.
   expose typed account-management parser views with decoded account names,
   explicit-host markers, auth-option kind, auth plugin/string/hash values,
   replacement passwords, statement modifiers, and option-clause presence flags.
+- `GRANT`, `GRANT PROXY`, `GRANT role`, `REVOKE`, and `REVOKE role/all`
+  statements expose typed privilege parser views with statement form, privilege
+  and role items, object type, privilege level, decoded users, proxy user, grant
+  option, resource-limit marker, and require-clause marker.
 - Transaction-control statements expose begin form, access mode, consistency
   modifiers, `WORK`, completion modifiers, and decoded savepoint names.
 - Temporary syntax recognizers produce a placeholder root node so AST mode can
@@ -280,6 +284,11 @@ expression nodes.
   string, hash string, replacement auth string, and presence flags for require,
   connection, password/lock, comment/attribute, and resource-group option
   clauses
+- typed privilege descriptors with statement kind, object type, privilege-level
+  kind, decoded privilege-level schema/table names, ordered privilege/role/
+  dynamic items, item column counts, decoded account/user targets, optional
+  proxy user, `WITH GRANT OPTION`, resource-limit marker, and require-clause
+  marker
 - typed transaction-control descriptors with statement kind, begin form,
   TiDB begin mode, access mode, consistency modifiers, `WORK`, completion
   modifiers, savepoint-keyword marker, and decoded savepoint name
@@ -636,6 +645,16 @@ password/lock clauses, comments/attributes, and resource-group clauses are
 present. Account metadata changes, authentication semantics, generated random
 password values, privilege checks, and diagnostics remain semantic/runtime work.
 
+Privilege parser views cover TiDB-ported grant/revoke grammar for privilege
+grants, role grants, proxy grants, privilege revokes, role revokes, and MySQL's
+`REVOKE ALL PRIVILEGES, GRANT OPTION` form. The view records statement form,
+ordered privilege/role/dynamic items, item column counts, object type, privilege
+level kind, decoded level schema/table names, decoded target users with auth
+options, optional proxy user, `WITH GRANT OPTION`, resource-limit `WITH`
+markers, and TLS require-clause presence. Privilege catalog mutations, role
+membership, partial revokes, dynamic-privilege validation, proxy semantics,
+authorization, warnings, and result diagnostics remain semantic/runtime work.
+
 Transaction-control views cover `BEGIN`, `START TRANSACTION`, `COMMIT`,
 `ROLLBACK`, `SAVEPOINT`, and `RELEASE SAVEPOINT`. `BEGIN`/`START TRANSACTION`
 records the begin form, optional TiDB pessimistic/optimistic markers, MySQL
@@ -734,6 +753,14 @@ Latest account-management parser-view run on May 3, 2026:
 mode=syntax queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=2.760947 qps=503747 mbps=38.31 avg_us=1.985
 mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.279281 qps=191066 mbps=14.53 avg_us=5.234 avg_nodes=74.5 avg_ast_bytes=11074.0 avg_account_statement_views=0.02 avg_account_statement_create_users=0.01 avg_account_statement_alter_users=0.00 avg_account_statement_drop_users=0.01 avg_account_statement_set_passwords=0.00 avg_account_statement_if_exists=0.00 avg_account_statement_if_not_exists=0.00 avg_account_statement_for_users=0.00 avg_account_statement_random_passwords=0.00 avg_account_statement_password_values=0.00 avg_account_statement_replacement_password_values=0.00 avg_account_statement_accounts=0.03 avg_account_statement_current_users=0.00 avg_account_statement_explicit_hosts=0.02 avg_account_statement_user_values=0.03 avg_account_statement_host_values=0.02 avg_account_statement_auth_options=0.01 avg_account_statement_auth_plugins=0.00 avg_account_statement_auth_strings=0.01 avg_account_statement_hash_strings=0.00 avg_account_statement_replacement_auth_strings=0.00
 mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.417214 qps=187512 mbps=14.26 avg_us=5.333 avg_semantic_nodes=5.3 avg_semantic_bytes=4268.0 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_expressions=2.67 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.04
+```
+
+Latest privilege parser-view run on May 3, 2026:
+
+```text
+mode=syntax queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=2.813765 qps=494291 mbps=37.59 avg_us=2.023
+mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.239667 qps=192111 mbps=14.61 avg_us=5.205 avg_nodes=74.5 avg_ast_bytes=11077.0 avg_privilege_statement_views=0.02 avg_privilege_statement_grants=0.02 avg_privilege_statement_grant_proxies=0.00 avg_privilege_statement_grant_roles=0.00 avg_privilege_statement_revokes=0.00 avg_privilege_statement_revoke_roles=0.00 avg_privilege_statement_revoke_alls=0.00 avg_privilege_statement_with_grant_options=0.00 avg_privilege_statement_resource_limits=0.00 avg_privilege_statement_require_clauses=0.00 avg_privilege_statement_object_types=0.00 avg_privilege_statement_level_schemas=0.01 avg_privilege_statement_level_names=0.01 avg_privilege_statement_items=0.03 avg_privilege_statement_privilege_items=0.02 avg_privilege_statement_role_items=0.00 avg_privilege_statement_dynamic_items=0.00 avg_privilege_statement_item_columns=0.00 avg_privilege_statement_users=0.02 avg_privilege_statement_proxy_users=0.00
+mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.466737 qps=186269 mbps=14.17 avg_us=5.369 avg_semantic_nodes=5.3 avg_semantic_bytes=4268.0 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_expressions=2.67 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.04
 ```
 
 Release benchmark result on May 2, 2026:
@@ -843,7 +870,7 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,852 lines, 5,637,339 bytes
 generated parser object: 996K on disk, 905,398 bytes text/data/other
-parser support object: 372K on disk, 215,600 bytes text/data/other
+parser support object: 382K on disk, 220,981 bytes text/data/other
 semantic AST object: 18K on disk, 8,095 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.5M on disk

@@ -158,6 +158,8 @@ static void dump_statements(const MyliteAst *ast) {
         mylite_ast_load_statement_view(ast, i);
     const MyliteAstAccountStatement *account_statement =
         mylite_ast_account_statement_view(ast, i);
+    const MyliteAstPrivilegeStatement *privilege_statement =
+        mylite_ast_privilege_statement_view(ast, i);
     const MyliteAstDeleteStatement *delete_statement =
         mylite_ast_delete_statement_view(ast, i);
     const MyliteAstInsertStatement *insert_statement =
@@ -1400,6 +1402,134 @@ static void dump_statements(const MyliteAst *ast) {
                mylite_ast_account_view_hash_string_value_length(account),
                mylite_ast_account_view_replacement_auth_string_value_length(
                    account));
+      }
+    }
+    if (privilege_statement != NULL) {
+      printf("  privilege_statement span=%zu..%zu kind=%s object=%s "
+             "level=%s with_grant=%d resource_limits=%d require=%d "
+             "items=%zu users=%zu node=%s level_schema=",
+             mylite_ast_privilege_statement_view_start(privilege_statement),
+             mylite_ast_privilege_statement_view_end(privilege_statement),
+             mylite_privilege_statement_kind_name(
+                 mylite_ast_privilege_statement_view_kind(privilege_statement)),
+             mylite_privilege_object_type_name(
+                 mylite_ast_privilege_statement_view_object_type(
+                     privilege_statement)),
+             mylite_privilege_level_kind_name(
+                 mylite_ast_privilege_statement_view_level_kind(
+                     privilege_statement)),
+             mylite_ast_privilege_statement_view_has_with_grant_option(
+                 privilege_statement),
+             mylite_ast_privilege_statement_view_has_resource_limits(
+                 privilege_statement),
+             mylite_ast_privilege_statement_view_has_require_clause(
+                 privilege_statement),
+             mylite_ast_privilege_statement_view_item_count(
+                 privilege_statement),
+             mylite_ast_privilege_statement_view_user_count(
+                 privilege_statement),
+             node_symbol_or_none(
+                 mylite_ast_privilege_statement_view_node(privilege_statement)));
+      const char *level_schema =
+          mylite_ast_privilege_statement_view_level_schema_value(
+              privilege_statement);
+      if (level_schema == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(
+            level_schema,
+            mylite_ast_privilege_statement_view_level_schema_value_length(
+                privilege_statement));
+      }
+      fputs(" level_name=", stdout);
+      const char *level_name =
+          mylite_ast_privilege_statement_view_level_name_value(
+              privilege_statement);
+      if (level_name == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(
+            level_name,
+            mylite_ast_privilege_statement_view_level_name_value_length(
+                privilege_statement));
+      }
+      fputc('\n', stdout);
+      for (size_t j = 0;
+           j < mylite_ast_privilege_statement_view_item_count(
+                   privilege_statement);
+           j++) {
+        const MyliteAstPrivilegeItem *item =
+            mylite_ast_privilege_statement_view_item_at(privilege_statement, j);
+        printf("    privilege_item[%zu] span=%zu..%zu kind=%s columns=%zu "
+               "value=",
+               j, mylite_ast_privilege_item_view_start(item),
+               mylite_ast_privilege_item_view_end(item),
+               mylite_privilege_item_kind_name(
+                   mylite_ast_privilege_item_view_kind(item)),
+               mylite_ast_privilege_item_view_column_count(item));
+        const char *value = mylite_ast_privilege_item_view_value(item);
+        if (value == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(value,
+                              mylite_ast_privilege_item_view_value_length(item));
+        }
+        fputc('\n', stdout);
+      }
+      const MyliteAstAccount *proxy_user =
+          mylite_ast_privilege_statement_view_proxy_user(privilege_statement);
+      if (proxy_user != NULL) {
+        printf("    proxy_user span=%zu..%zu user=",
+               mylite_ast_account_view_start(proxy_user),
+               mylite_ast_account_view_end(proxy_user));
+        const char *user = mylite_ast_account_view_user_value(proxy_user);
+        if (user == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(user,
+                              mylite_ast_account_view_user_value_length(
+                                  proxy_user));
+        }
+        fputs(" host=", stdout);
+        const char *host = mylite_ast_account_view_host_value(proxy_user);
+        if (host == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(host,
+                              mylite_ast_account_view_host_value_length(
+                                  proxy_user));
+        }
+        fputc('\n', stdout);
+      }
+      for (size_t j = 0;
+           j < mylite_ast_privilege_statement_view_user_count(
+                   privilege_statement);
+           j++) {
+        const MyliteAstAccount *user_account =
+            mylite_ast_privilege_statement_view_user_at(privilege_statement, j);
+        printf("    privilege_user[%zu] span=%zu..%zu auth=%s user=", j,
+               mylite_ast_account_view_start(user_account),
+               mylite_ast_account_view_end(user_account),
+               mylite_account_auth_kind_name(
+                   mylite_ast_account_view_auth_kind(user_account)));
+        const char *user = mylite_ast_account_view_user_value(user_account);
+        if (user == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(user,
+                              mylite_ast_account_view_user_value_length(
+                                  user_account));
+        }
+        fputs(" host=", stdout);
+        const char *host = mylite_ast_account_view_host_value(user_account);
+        if (host == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(host,
+                              mylite_ast_account_view_host_value_length(
+                                  user_account));
+        }
+        fputc('\n', stdout);
       }
     }
     if (insert_statement != NULL) {

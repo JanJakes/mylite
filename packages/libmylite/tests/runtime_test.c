@@ -259,6 +259,7 @@ static int test_logarithm_scalar_function_execution(mylite_db *database);
 static int test_sqrt_scalar_function_execution(mylite_db *database);
 static int test_trigonometric_scalar_function_execution(mylite_db *database);
 static int test_cot_scalar_function_execution(mylite_db *database);
+static int test_inverse_trigonometric_scalar_function_execution(mylite_db *database);
 static int test_angle_conversion_scalar_function_execution(mylite_db *database);
 static int test_uuid_scalar_functions(mylite_db *database);
 static int test_inet_ipv4_functions_execution(void);
@@ -4044,6 +4045,8 @@ static int test_scalar_builtin_functions_execution(void)
 
     failures += test_cot_scalar_function_execution(database);
 
+    failures += test_inverse_trigonometric_scalar_function_execution(database);
+
     failures += test_angle_conversion_scalar_function_execution(database);
 
     failures += test_uuid_scalar_functions(database);
@@ -5358,7 +5361,7 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_select_rows(database, "SELECT id FROM t ORDER BY id", id_column, 1,
                                    remaining_values, 1, "delete list function remaining rows");
 
-    failures += prepare_sql(database, "SELECT ACOS(1)", MYLITE_UNSUPPORTED, &stmt);
+    failures += prepare_sql(database, "SELECT ATAN(1)", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported scalar function");
     failures += prepare_sql(database, "SELECT CONCAT()", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported concat arity");
@@ -7453,6 +7456,351 @@ static int test_cot_scalar_function_execution(mylite_db *database)
     failures += expect_no_stmt_handle(&stmt, "COT zero arity unsupported");
     failures += prepare_sql(database, "SELECT COT(1,2)", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "COT two arity unsupported");
+
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_inverse_trigonometric_scalar_function_execution(mylite_db *database)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const struct expected_result_metadata inverse_metadata[] = {
+        {"acos_one", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"acos_null", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"acos_domain", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"asin_warn", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    static const struct expected_result_metadata inverse_table_metadata[] = {
+        {"acos_x", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"asin_n", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"asin_s", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    static const char *const inverse_columns[] = {
+        "acos_one",   "acos_zero",    "acos_neg_one",  "acos_half",     "acos_neg_half",
+        "acos_high",  "acos_low",     "acos_null",     "acos_neg_zero", "asin_one",
+        "asin_zero",  "asin_neg_one", "asin_fraction", "asin_half",     "asin_neg_half",
+        "asin_high",  "asin_low",     "asin_null",     "asin_neg_zero", "acos_under",
+        "asin_under",
+    };
+    static const char *const inverse_values[] = {
+        "0",
+        "1.5707963267948966",
+        "3.141592653589793",
+        "1.0471975511965976",
+        "2.0943951023931957",
+        NULL,
+        NULL,
+        NULL,
+        "1.5707963267948966",
+        "1.5707963267948966",
+        "0",
+        "-1.5707963267948966",
+        "0.2013579207903308",
+        "0.5235987755982988",
+        "-0.5235987755982988",
+        NULL,
+        NULL,
+        NULL,
+        "0",
+        "1.5707963267948966",
+        "0",
+    };
+    static const char *const warning_columns[] = {
+        "acos_trail",  "asin_trail",    "acos_foo",      "asin_foo", "acos_empty",
+        "asin_empty",  "acos_space",    "asin_space",    "acos_dot", "asin_dot",
+        "acos_plus",   "asin_minus",    "acos_hex",      "asin_hex", "acos_spaced",
+        "asin_spaced", "acos_pos_over", "asin_neg_over", "acos_nan", "asin_inf",
+    };
+    static const char *const warning_values[] = {
+        "0",
+        "1.5707963267948966",
+        "1.5707963267948966",
+        "0",
+        "1.5707963267948966",
+        "0",
+        "1.5707963267948966",
+        "0",
+        "1.5707963267948966",
+        "0",
+        "1.5707963267948966",
+        "0",
+        "1.5707963267948966",
+        "0",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "1.5707963267948966",
+        "0",
+    };
+    static const char *const inverse_projection_columns[] = {"id", "a", "s"};
+    static const char *const inverse_projection_values[] = {
+        "4",
+        NULL,
+        NULL,
+        "5",
+        NULL,
+        NULL,
+        "1",
+        "0",
+        "1.5707963267948966",
+        "6",
+        "1.3694384060045657",
+        "0.2013579207903308",
+        "2",
+        "1.5707963267948966",
+        "0",
+        "3",
+        "3.141592653589793",
+        "-1.5707963267948966",
+    };
+    static const char *const id_column[] = {"id"};
+    static const char *const invalid_domain_ids[] = {"4", "5"};
+    static const char *const asin_positive_ids[] = {"1", "6"};
+    static const char *const updated_acos_ids[] = {"1", "2", "3", "4"};
+    static const char *const updated_asin_ids[] = {"1", "2", "3", "6"};
+    static const char *const all_id_values[] = {"1", "2", "3", "4", "5", "6"};
+    static const char *const not_null_assignment_id[] = {"6"};
+    static const char *const remaining_values[] = {"1", "2", "3", "6"};
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_select_rows(database,
+                                   "SELECT ACOS(1) AS acos_one, "
+                                   "ACOS(0) AS acos_zero, "
+                                   "ACOS(-1) AS acos_neg_one, "
+                                   "ACOS(0.5) AS acos_half, "
+                                   "ACOS(-0.5) AS acos_neg_half, "
+                                   "ACOS(1.0001) AS acos_high, "
+                                   "ACOS(-1.0001) AS acos_low, "
+                                   "ACOS(NULL) AS acos_null, "
+                                   "ACOS(-0.0) AS acos_neg_zero, "
+                                   "ASIN(1) AS asin_one, "
+                                   "ASIN(0) AS asin_zero, "
+                                   "ASIN(-1) AS asin_neg_one, "
+                                   "ASIN(0.2) AS asin_fraction, "
+                                   "ASIN(0.5) AS asin_half, "
+                                   "ASIN(-0.5) AS asin_neg_half, "
+                                   "ASIN(1.0001) AS asin_high, "
+                                   "ASIN(-1.0001) AS asin_low, "
+                                   "ASIN(NULL) AS asin_null, "
+                                   "ASIN(-0.0) AS asin_neg_zero, "
+                                   "ACOS(1e-9999) AS acos_under, "
+                                   "ASIN(1e-9999) AS asin_under",
+                                   inverse_columns,
+                                   (int)(sizeof(inverse_columns) / sizeof(inverse_columns[0])),
+                                   inverse_values, 1, "inverse trigonometric scalar values");
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "inverse trigonometric scalar warnings");
+
+    failures += expect_select_rows(
+        database,
+        "SELECT ACOS('1x') AS acos_trail, "
+        "ASIN('1x') AS asin_trail, "
+        "ACOS('foo') AS acos_foo, "
+        "ASIN('foo') AS asin_foo, "
+        "ACOS('') AS acos_empty, "
+        "ASIN('') AS asin_empty, "
+        "ACOS(' ') AS acos_space, "
+        "ASIN(' ') AS asin_space, "
+        "ACOS('.') AS acos_dot, "
+        "ASIN('.') AS asin_dot, "
+        "ACOS('+') AS acos_plus, "
+        "ASIN('-') AS asin_minus, "
+        "ACOS('0x10') AS acos_hex, "
+        "ASIN('0x10') AS asin_hex, "
+        "ACOS('  2.5e1 ') AS acos_spaced, "
+        "ASIN('  2.5e1 ') AS asin_spaced, "
+        "ACOS('1e309') AS acos_pos_over, "
+        "ASIN('-1e309') AS asin_neg_over, "
+        "ACOS('nan') AS acos_nan, "
+        "ASIN('inf') AS asin_inf",
+        warning_columns, (int)(sizeof(warning_columns) / sizeof(warning_columns[0])),
+        warning_values, 1, "inverse trigonometric string warning values");
+    failures +=
+        expect_int(mylite_warning_count(database), 14, "inverse trigonometric warning count");
+    for (int index = 0; index < 14; ++index) {
+        failures +=
+            expect_int((int)mylite_warning_code(database, index),
+                       mysql_warning_truncated_wrong_value, "inverse trigonometric warning code");
+    }
+    failures += expect_contains(mylite_warning_message(database, 0), "1x", "ACOS trailing warning");
+    failures += expect_contains(mylite_warning_message(database, 2), "foo", "ACOS bad warning");
+    failures += expect_contains(mylite_warning_message(database, 8), "0x10", "ACOS hex warning");
+    failures +=
+        expect_contains(mylite_warning_message(database, 10), "1e309", "ACOS overflow warning");
+    failures += expect_contains(mylite_warning_message(database, 13), "inf", "ASIN inf warning");
+
+    failures += prepare_sql(database,
+                            "SELECT aCoS(1) AS acos_one, "
+                            "ACOS(NULL) AS acos_null, "
+                            "ACOS(1.0001) AS acos_domain, "
+                            "aSiN('1x') AS asin_warn",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, inverse_metadata, (int)(sizeof(inverse_metadata) / sizeof(inverse_metadata[0])),
+        "inverse trigonometric scalar metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "inverse trigonometric metadata row");
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_DONE, "inverse trigonometric metadata done");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "inverse trigonometric metadata warning");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database,
+                            "CREATE TABLE inverse_trig_sites ("
+                            "id INT PRIMARY KEY, "
+                            "x DOUBLE NOT NULL, "
+                            "n DOUBLE NULL, "
+                            "s VARCHAR(32) NOT NULL)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO inverse_trig_sites VALUES "
+                            "(1,1,NULL,'1x'),"
+                            "(2,0,1,'foo'),"
+                            "(3,-1,NULL,''),"
+                            "(4,2,0,'2'),"
+                            "(5,-2,NULL,'-2'),"
+                            "(6,0.2,NULL,'0.2')",
+                            MYLITE_DONE);
+
+    failures += prepare_sql(database,
+                            "SELECT ACOS(x) AS acos_x, ASIN(n) AS asin_n, ASIN(s) AS asin_s "
+                            "FROM inverse_trig_sites LIMIT 0",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, inverse_table_metadata,
+        (int)(sizeof(inverse_table_metadata) / sizeof(inverse_table_metadata[0])),
+        "inverse trigonometric table metadata");
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_DONE, "inverse trigonometric table metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_select_rows(database,
+                                   "SELECT id, ACOS(x) AS a, ASIN(x) AS s "
+                                   "FROM inverse_trig_sites ORDER BY ACOS(x), id",
+                                   inverse_projection_columns, 3, inverse_projection_values, 6,
+                                   "inverse trigonometric table projection order");
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "inverse trig table projection warnings");
+    failures += expect_select_rows(database,
+                                   "SELECT id FROM inverse_trig_sites "
+                                   "WHERE ACOS(x) IS NULL ORDER BY id",
+                                   id_column, 1, invalid_domain_ids, 2,
+                                   "inverse trigonometric invalid-domain WHERE");
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "inverse trig invalid-domain warnings");
+    failures += expect_select_rows(database,
+                                   "SELECT id FROM inverse_trig_sites "
+                                   "WHERE ASIN(x) > 0 ORDER BY id",
+                                   id_column, 1, asin_positive_ids, 2,
+                                   "inverse trigonometric positive WHERE");
+    failures += expect_int(mylite_warning_count(database), 0, "inverse trig WHERE warnings");
+
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE inverse_trig_sites SET n = ACOS(x) WHERE id IN (1,2,3,4)", 4,
+        "ACOS update nullable assignment");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT id FROM inverse_trig_sites "
+                           "WHERE (id = 1 AND n = 0) "
+                           "OR (id = 2 AND n > 1.57 AND n < 1.58) "
+                           "OR (id = 3 AND n > 3.14 AND n < 3.15) "
+                           "OR (id = 4 AND n IS NULL) "
+                           "ORDER BY id",
+                           id_column, 1, updated_acos_ids, 4, "ACOS updated nullable values");
+    failures += expect_int(mylite_warning_count(database), 0, "ACOS update warning count");
+
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE inverse_trig_sites SET n = ASIN(x) WHERE id IN (1,2,3,6)", 4,
+        "ASIN update nullable assignment");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT id FROM inverse_trig_sites "
+                           "WHERE (id = 1 AND n > 1.57 AND n < 1.58) "
+                           "OR (id = 2 AND n = 0) "
+                           "OR (id = 3 AND n < -1.57 AND n > -1.58) "
+                           "OR (id = 6 AND n > 0.20 AND n < 0.21) "
+                           "ORDER BY id",
+                           id_column, 1, updated_asin_ids, 4, "ASIN updated nullable values");
+    failures += expect_int(mylite_warning_count(database), 0, "ASIN update warning count");
+
+    failures += prepare_sql(database, "UPDATE inverse_trig_sites SET x = ACOS('1x') WHERE id = 6",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Truncated incorrect DOUBLE value",
+                                  "ACOS update warning promoted");
+    failures += expect_int(mylite_warning_count(database), 1, "ACOS update warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "ACOS update warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_select_rows(database, "SELECT id FROM inverse_trig_sites ORDER BY id", id_column, 1,
+                           all_id_values, 6, "ACOS update warning rollback rows");
+
+    failures +=
+        prepare_sql(database, "DELETE FROM inverse_trig_sites WHERE ASIN(s) > 0", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Truncated incorrect DOUBLE value",
+                                  "ASIN delete warning promoted");
+    failures += expect_int(mylite_warning_count(database), 1, "ASIN delete warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "ASIN delete warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_select_rows(database, "SELECT id FROM inverse_trig_sites ORDER BY id", id_column, 1,
+                           all_id_values, 6, "ASIN delete warning rollback rows");
+
+    failures += prepare_sql(database, "UPDATE inverse_trig_sites SET x = ACOS(2) WHERE id = 6",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "cannot be null",
+                                  "ACOS invalid-domain NOT NULL assignment");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database,
+                                   "SELECT id FROM inverse_trig_sites "
+                                   "WHERE id = 6 AND x > 0.19 AND x < 0.21",
+                                   id_column, 1, not_null_assignment_id, 1,
+                                   "ACOS invalid-domain NOT NULL rollback");
+
+    failures += prepare_sql(database, "UPDATE inverse_trig_sites SET x = ASIN(-2) WHERE id = 6",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "cannot be null",
+                                  "ASIN invalid-domain NOT NULL assignment");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database,
+                                   "SELECT id FROM inverse_trig_sites "
+                                   "WHERE id = 6 AND x > 0.19 AND x < 0.21",
+                                   id_column, 1, not_null_assignment_id, 1,
+                                   "ASIN invalid-domain NOT NULL rollback");
+
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM inverse_trig_sites WHERE id IN (4,5) AND ACOS(x) IS NULL", 2,
+        "ACOS invalid-domain delete predicate");
+    failures +=
+        expect_select_rows(database, "SELECT id FROM inverse_trig_sites ORDER BY id", id_column, 1,
+                           remaining_values, 4, "inverse trigonometric delete remaining rows");
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "ACOS invalid-domain delete warning count");
+
+    failures += prepare_sql(database, "SELECT ACOS()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "ACOS zero arity unsupported");
+    failures += prepare_sql(database, "SELECT ACOS(1,2)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "ACOS two arity unsupported");
+    failures += prepare_sql(database, "SELECT ASIN()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "ASIN zero arity unsupported");
+    failures += prepare_sql(database, "SELECT ASIN(1,2)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "ASIN two arity unsupported");
 
     // NOLINTEND(readability-magic-numbers)
     return failures;

@@ -266,8 +266,8 @@ token sink:
   bounded numeric and quoted-hex `STATS_SAMPLE_PAGES`, storage values without equality signs,
   `UNION` table-name lists, and `START TRANSACTION`. `CREATE TABLE`
   partition tails validate `HASH`/`LINEAR HASH` expressions, reject
-  `LINEAR RANGE`/`LINEAR LIST`, validate `RANGE`/`LIST`
-  and `RANGE COLUMNS`/`LIST COLUMNS` expression-list envelopes, `KEY`/`LINEAR
+  `LINEAR RANGE`/`LINEAR LIST`, validate `RANGE`/`LIST` expression-list
+  envelopes and `RANGE COLUMNS`/`LIST COLUMNS` identifier-list envelopes, `KEY`/`LINEAR
   KEY` column lists including MySQL's syntax-valid empty list, key
   `ALGORITHM=1/2` values, partition/subpartition count literals,
   `HASH`/`KEY`-only subpartition methods, non-empty `VALUES LESS THAN (...)`

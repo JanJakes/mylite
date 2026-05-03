@@ -323,6 +323,8 @@ static void validate_create_table_tail_options(MyliteParseContext *ctx,
                                                MyliteToken start);
 static void validate_create_table_partition_key_list_from(
     MyliteParseContext *ctx, MyliteToken start, const char *message);
+static void validate_create_table_partition_column_list_from(
+    MyliteParseContext *ctx, MyliteToken start, const char *message);
 static void validate_create_table_partition_definitions_from(
     MyliteParseContext *ctx, MyliteToken start, int values_required);
 static void validate_create_table_subpartition_definitions_from(
@@ -9472,6 +9474,9 @@ static void validate_alter_table_expression_tails(MyliteParseContext *ctx,
         if (partition_method == ALTER_EXPR_PARTITION_METHOD_KEY) {
           validate_create_table_partition_key_list_from(
               ctx, token, "malformed ALTER TABLE partition key list");
+        } else if (partition_columns_seen) {
+          validate_create_table_partition_column_list_from(
+              ctx, token, "malformed ALTER TABLE partition column list");
         } else {
           mylite_parser_validate_parenthesized_expression_list_from(
               ctx, token, "malformed ALTER TABLE partition expression");
@@ -13495,6 +13500,9 @@ static void validate_create_table_tail_options(MyliteParseContext *ctx,
           if (partition_method == CREATE_TABLE_PARTITION_METHOD_KEY) {
             validate_create_table_partition_key_list_from(
                 ctx, token, "malformed CREATE TABLE partition key list");
+          } else if (partition_columns_seen) {
+            validate_create_table_partition_column_list_from(
+                ctx, token, "malformed CREATE TABLE partition column list");
           } else {
             mylite_parser_validate_parenthesized_expression_list_from(
                 ctx, token, "malformed CREATE TABLE partition expression");
@@ -13949,6 +13957,81 @@ static void validate_create_table_partition_key_list_from(
         state != CREATE_TABLE_PARTITION_KEY_AFTER_NAME &&
         create_table_partition_key_name_token(token_id, token)) {
       state = CREATE_TABLE_PARTITION_KEY_AFTER_NAME;
+      continue;
+    }
+
+    mylite_parser_reject(ctx, token, message);
+    return;
+  }
+
+  if (saw_list && depth > 0) {
+    mylite_parser_reject(ctx, pending_token, message);
+  }
+}
+
+static void validate_create_table_partition_column_list_from(
+    MyliteParseContext *ctx, MyliteToken start, const char *message) {
+  enum {
+    CREATE_TABLE_PARTITION_COLUMN_NEED_NAME,
+    CREATE_TABLE_PARTITION_COLUMN_AFTER_NAME
+  };
+  MyliteLexer lexer;
+  MyliteToken token;
+  MyliteToken pending_token = start;
+  int token_id;
+  int saw_list = 0;
+  int depth = 0;
+  int state = CREATE_TABLE_PARTITION_COLUMN_NEED_NAME;
+
+  mylite_lexer_init(&lexer, ctx->sql, ctx->length, ctx->result);
+  while ((token_id = mylite_lexer_next(&lexer, &token)) > 0) {
+    if (!saw_list) {
+      if (token.offset == start.offset) {
+        saw_list = 1;
+        if (token_id != ML_LP) {
+          return;
+        }
+        depth = 1;
+        pending_token = token;
+      }
+      continue;
+    }
+
+    if (depth <= 0) {
+      break;
+    }
+
+    if (depth == 1 && token_id == ML_RP) {
+      if (state != CREATE_TABLE_PARTITION_COLUMN_AFTER_NAME) {
+        mylite_parser_reject(ctx, pending_token, message);
+      }
+      return;
+    }
+
+    if (depth == 1 && token_id == ML_COMMA) {
+      if (state != CREATE_TABLE_PARTITION_COLUMN_AFTER_NAME) {
+        mylite_parser_reject(ctx, token, message);
+        return;
+      }
+      state = CREATE_TABLE_PARTITION_COLUMN_NEED_NAME;
+      pending_token = token;
+      continue;
+    }
+
+    if (token_opens_nested_expression(token_id)) {
+      mylite_parser_reject(ctx, token, message);
+      return;
+    }
+
+    if (token_closes_nested_expression(token_id)) {
+      depth--;
+      continue;
+    }
+
+    if (depth == 1 &&
+        state == CREATE_TABLE_PARTITION_COLUMN_NEED_NAME &&
+        create_table_partition_key_name_token(token_id, token)) {
+      state = CREATE_TABLE_PARTITION_COLUMN_AFTER_NAME;
       continue;
     }
 

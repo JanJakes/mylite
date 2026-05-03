@@ -23,6 +23,7 @@ In scope for the initial implementation:
   - `LEFT`, `RIGHT`
   - `SUBSTRING`, `SUBSTR`, `MID`
   - `LOCATE`, `POSITION`, `INSTR`
+  - `INSERT`
   - `LOWER`, `LCASE`, `UPPER`, `UCASE`
   - `TRIM`, `LTRIM`, `RTRIM`
   - `LPAD`, `RPAD`
@@ -103,10 +104,11 @@ by common scalar expressions:
 - string functions: `CONCAT`, `LENGTH`, `OCTET_LENGTH`, `CHAR_LENGTH`,
   `CHARACTER_LENGTH`, `LOWER`, `LCASE`, `UPPER`, `UCASE`, `LEFT`, `RIGHT`,
   `REPLACE`, `CONCAT_WS`, `SUBSTRING`, `SUBSTR`, `MID`, `TRIM`, `LTRIM`,
-  `RTRIM`, `ASCII`, `ORD`, `LOCATE`, `POSITION`, `INSTR`, `REPEAT`,
+  `RTRIM`, `ASCII`, `ORD`, `LOCATE`, `POSITION`, `INSTR`, `INSERT`, `REPEAT`,
   `SPACE`, `REVERSE`, `LPAD`, and `RPAD`; see
   `docs/specs/string-functions-substring-trim/specs.md` and
   `docs/specs/string-search-code-functions/specs.md` and
+  `docs/specs/string-insert-function/specs.md` and
   `docs/specs/string-padding-repeat-functions/specs.md`
 - numeric functions: `ABS`, `SIGN`, `FLOOR`, `CEIL`, `CEILING`, `MOD`, and
   `PI`
@@ -123,7 +125,8 @@ runtime tests for scalar rows, NULL propagation, UTF-8 length and substring
 handling, zero and negative `LEFT`/`RIGHT` counts, `SUBSTRING` `FROM` / `FOR`
 syntax, trim direction syntax, byte-based `ASCII`, packed-byte `ORD`,
 `LOCATE` / `POSITION` / `INSTR` search positions, start-position edges,
-padding, repetition, spaces, UTF-8 reversal, empty pad strings,
+`INSERT` string splicing, padding, repetition, spaces, UTF-8 reversal,
+empty pad strings,
 `MOD(..., 0)` warnings, table projection, filters, ordering, update assignment
 expressions, delete predicates, unsupported functions, unsupported arity, and
 selected result metadata.
@@ -239,6 +242,7 @@ Representative runtime results with `SET NAMES utf8mb4`:
 | `LOCATE('pha', 'alpha')` | `3` |
 | `POSITION('ph' IN 'alpha')` | `3` |
 | `INSTR('alpha', 'z')` | `0` |
+| `INSERT('Quadratic', 3, 4, 'What')` | `QuWhattic` |
 | `REPLACE('a.b.b', 'b', 'x')` | `a.x.x` |
 | `REPEAT('xy', 3)` | `xyxyxy` |
 | `REPEAT('xy', -1)` | empty string |

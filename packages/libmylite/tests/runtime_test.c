@@ -2413,12 +2413,22 @@ static int test_scalar_builtin_functions_execution(void)
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
              MYLITE_FIELD_FLAG_UNSIGNED,
          1},
+        {"insert_value", NULL, NULL, NULL, NULL, NULL, 52U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
     };
     static const struct expected_result_metadata nullable_search_metadata[] = {
         {"ascii_null", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
          MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
         {"locate_null", NULL, NULL, NULL, NULL, NULL, 11U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
          MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"insert_null", NULL, NULL, NULL, NULL, NULL, 16U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
     };
     static const struct expected_result_metadata latin1_metadata[] = {
         {"concat_ws_latin1", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_VAR_STRING, 31U,
@@ -2459,6 +2469,11 @@ static int test_scalar_builtin_functions_execution(void)
              MYLITE_FIELD_FLAG_UNSIGNED,
          1},
         {"rpad_latin1", NULL, NULL, NULL, NULL, NULL, 5U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"insert_latin1", NULL, NULL, NULL, NULL, NULL, 13U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U,
+         0U,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
              MYLITE_FIELD_FLAG_UNSIGNED,
          1},
@@ -2638,6 +2653,47 @@ static int test_scalar_builtin_functions_execution(void)
         ".a",
         "a.",
     };
+    static const char *const insert_columns[] = {
+        "basic",          "neg_pos",
+        "zero_pos",       "beyond_pos",
+        "zero_len",       "negative_len",
+        "long_len",       "empty_replacement",
+        "empty_pos1",     "empty_pos2",
+        "null_source",    "null_pos",
+        "null_len",       "null_replacement",
+        "utf8_one",       "utf8_two",
+        "rounded_pos",    "rounded_len",
+        "string_numeric", "p1_l0",
+        "p1_lneg",        "p4_l1",
+        "p3_l0",
+    };
+    static const char *const insert_values[] = {
+        "QuWhattic",
+        "Quadratic",
+        "Quadratic",
+        "Quadratic",
+        "QuWhatadratic",
+        "QuWhat",
+        "QuWhat",
+        "Qutic",
+        "",
+        "",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "\xE6\xB5\xB7\xE9\xB3\xA5\xE7\x8C\xAB",
+        "\xE6\xB5\xB7\xE9\xB3\xA5",
+        "abX",
+        "aX",
+        "aXc",
+        "Xabc",
+        "X",
+        "abc",
+        "abXc",
+    };
+    static const char *const insert_null_short_circuit_columns[] = {"null_replacement"};
+    static const char *const insert_null_short_circuit_values[] = {NULL};
     static const char *const abs_in_columns[] = {"abs_in"};
     static const char *const abs_in_values[] = {"1"};
     static const char *const projection_columns[] = {"id", "title"};
@@ -2658,6 +2714,13 @@ static int test_scalar_builtin_functions_execution(void)
         "1", "aaa", "ahpla", "..alpha", "alpha..", " ",
         "2", "BBB", "ateB",  "...Beta", "Beta...", "  ",
     };
+    static const char *const insert_projection_columns[] = {"id", "spliced"};
+    static const char *const insert_projection_values[] = {
+        "1",
+        "a-ha",
+        "2",
+        "B-a",
+    };
     static const char *const id_column[] = {"id"};
     static const char *const n_column[] = {"n"};
     static const char *const id_2[] = {"2"};
@@ -2668,6 +2731,7 @@ static int test_scalar_builtin_functions_execution(void)
     static const char *const updated_string_values[] = {"2", "x-be", "2"};
     static const char *const updated_padding_values[] = {"2", "x-be", "6"};
     static const char *const updated_search_values[] = {"2", "x-be", "120"};
+    static const char *const updated_insert_values[] = {"1", "a-ha", "1"};
     static const char *const all_id_values[] = {"1", "2", "3"};
     static const char *const remaining_values[] = {"1"};
     mylite_db *database = NULL;
@@ -2749,7 +2813,8 @@ static int test_scalar_builtin_functions_execution(void)
                             "SPACE(3) AS space_value, "
                             "REVERSE('abc') AS reverse_value, "
                             "LPAD('hi', 5, '.') AS lpad_value, "
-                            "RPAD('hi', 5, '.') AS rpad_value",
+                            "RPAD('hi', 5, '.') AS rpad_value, "
+                            "INSERT('Quadratic', 3, 4, 'What') AS insert_value",
                             MYLITE_OK, &stmt);
     failures += expect_result_metadata(
         stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "scalar function metadata");
@@ -2760,7 +2825,8 @@ static int test_scalar_builtin_functions_execution(void)
 
     failures += prepare_sql(database,
                             "SELECT ASCII(NULL) AS ascii_null, "
-                            "LOCATE('a', NULL) AS locate_null",
+                            "LOCATE('a', NULL) AS locate_null, "
+                            "INSERT('abc', NULL, 1, 'x') AS insert_null",
                             MYLITE_OK, &stmt);
     failures += expect_result_metadata(
         stmt, nullable_search_metadata,
@@ -2782,7 +2848,8 @@ static int test_scalar_builtin_functions_execution(void)
                             "SPACE(3) AS space_latin1, "
                             "REVERSE('abc') AS reverse_latin1, "
                             "LPAD('hi', 5, '.') AS lpad_latin1, "
-                            "RPAD('hi', 5, '.') AS rpad_latin1",
+                            "RPAD('hi', 5, '.') AS rpad_latin1, "
+                            "INSERT('Quadratic', 3, 4, 'What') AS insert_latin1",
                             MYLITE_OK, &stmt);
     failures += expect_result_metadata(stmt, latin1_metadata,
                                        (int)(sizeof(latin1_metadata) / sizeof(latin1_metadata[0])),
@@ -2938,6 +3005,52 @@ static int test_scalar_builtin_functions_execution(void)
                        mysql_warning_truncated_wrong_value, "string padding coercion warning code");
     }
 
+    failures += expect_select_rows(database,
+                                   "SELECT INSERT('Quadratic', 3, 4, 'What') AS basic, "
+                                   "INSERT('Quadratic', -1, 4, 'What') AS neg_pos, "
+                                   "INSERT('Quadratic', 0, 4, 'What') AS zero_pos, "
+                                   "INSERT('Quadratic', 99, 4, 'What') AS beyond_pos, "
+                                   "INSERT('Quadratic', 3, 0, 'What') AS zero_len, "
+                                   "INSERT('Quadratic', 3, -1, 'What') AS negative_len, "
+                                   "INSERT('Quadratic', 3, 99, 'What') AS long_len, "
+                                   "INSERT('Quadratic', 3, 4, '') AS empty_replacement, "
+                                   "INSERT('', 1, 1, 'x') AS empty_pos1, "
+                                   "INSERT('', 2, 1, 'x') AS empty_pos2, "
+                                   "INSERT(NULL, 1, 1, 'x') AS null_source, "
+                                   "INSERT('abc', NULL, 1, 'x') AS null_pos, "
+                                   "INSERT('abc', 1, NULL, 'x') AS null_len, "
+                                   "INSERT('abc', 1, 1, NULL) AS null_replacement, "
+                                   "INSERT('\xE6\xB5\xB7\xE8\xB1\x9A\xE7\x8C\xAB', 2, 1, "
+                                   "'\xE9\xB3\xA5') AS utf8_one, "
+                                   "INSERT('\xE6\xB5\xB7\xE8\xB1\x9A\xE7\x8C\xAB', 2, 2, "
+                                   "'\xE9\xB3\xA5') AS utf8_two, "
+                                   "INSERT('abc', 2.5, 1, 'X') AS rounded_pos, "
+                                   "INSERT('abc', 2, 1.5, 'X') AS rounded_len, "
+                                   "INSERT('abc', '2.5', '1.5', 'X') AS string_numeric, "
+                                   "INSERT('abc', 1, 0, 'X') AS p1_l0, "
+                                   "INSERT('abc', 1, -1, 'X') AS p1_lneg, "
+                                   "INSERT('abc', 4, 1, 'X') AS p4_l1, "
+                                   "INSERT('abc', 3, 0, 'X') AS p3_l0",
+                                   insert_columns,
+                                   (int)(sizeof(insert_columns) / sizeof(insert_columns[0])),
+                                   insert_values, 1, "string insert scalar values");
+    failures +=
+        expect_int(mylite_warning_count(database), 2, "string insert coercion warning count");
+    for (int index = 0; index < 2; ++index) {
+        failures +=
+            expect_int((int)mylite_warning_code(database, index),
+                       mysql_warning_truncated_wrong_value, "string insert coercion warning code");
+    }
+
+    failures +=
+        expect_select_rows(database, "SELECT INSERT('abc', '2.5', '1.5', NULL) AS null_replacement",
+                           insert_null_short_circuit_columns,
+                           (int)(sizeof(insert_null_short_circuit_columns) /
+                                 sizeof(insert_null_short_circuit_columns[0])),
+                           insert_null_short_circuit_values, 1, "string insert null short-circuit");
+    failures += expect_int(mylite_warning_count(database), 0,
+                           "string insert null short-circuit warning count");
+
     failures += expect_select_rows(database, "SELECT ABS(1 IN (1)) AS abs_in", abs_in_columns, 1,
                                    abs_in_values, 1, "function IN predicate argument");
 
@@ -2999,14 +3112,25 @@ static int test_scalar_builtin_functions_execution(void)
                                    "FROM t WHERE ISNULL(s)=0 ORDER BY id",
                                    padding_projection_columns, 6, padding_projection_values, 2,
                                    "table padding function projection");
+    failures += expect_select_rows(database,
+                                   "SELECT id, INSERT(s, 2, 2, '-') AS spliced "
+                                   "FROM t WHERE ISNULL(s)=0 ORDER BY id",
+                                   insert_projection_columns, 2, insert_projection_values, 2,
+                                   "table insert function projection");
     failures += expect_select_rows(database, "SELECT id FROM t WHERE LPAD(s, 5, '.')='alpha'",
                                    id_column, 1, n_1, 1, "lpad function where");
     failures += expect_select_rows(database, "SELECT id FROM t WHERE REVERSE(s)='ateB'", id_column,
                                    1, id_2, 1, "reverse function where");
+    failures += expect_select_rows(database, "SELECT id FROM t WHERE INSERT(s, 2, 2, '-')='B-a'",
+                                   id_column, 1, id_2, 1, "insert function where");
     failures += expect_select_rows(database,
                                    "SELECT id FROM t WHERE ISNULL(s)=0 ORDER BY REVERSE(s), id "
                                    "LIMIT 1",
                                    id_column, 1, n_1, 1, "padding function order");
+    failures += expect_select_rows(database,
+                                   "SELECT id FROM t WHERE ISNULL(s)=0 "
+                                   "ORDER BY INSERT(LOWER(s), 2, 0, 'z'), id LIMIT 1",
+                                   id_column, 1, n_1, 1, "insert function order");
     failures += expect_select_rows(database, "SELECT id FROM t ORDER BY COALESCE(n,0), id LIMIT 1",
                                    id_column, 1, id_2, 1, "table function order");
     failures += expect_select_rows(
@@ -3043,6 +3167,12 @@ static int test_scalar_builtin_functions_execution(void)
         expect_select_rows(database, "SELECT id, s, n FROM t WHERE id = 2", id_s_n_columns, 3,
                            updated_search_values, 1, "updated search/code function values");
 
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE t SET s = INSERT(s, 2, 2, '-') WHERE INSERT(s, 1, 0, '') = 'alpha'", 1,
+        "update insert function assignment and predicate");
+    failures += expect_select_rows(database, "SELECT id, s, n FROM t WHERE id = 1", id_s_n_columns,
+                                   3, updated_insert_values, 1, "updated insert function values");
+
     failures += prepare_sql(database, "UPDATE t SET n = 5 WHERE MOD(7,0)", MYLITE_OK, &stmt);
     failures +=
         expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "update function warning promoted");
@@ -3074,8 +3204,8 @@ static int test_scalar_builtin_functions_execution(void)
                                    all_id_values, 3, "delete warning predicate unchanged");
 
     failures += execute_sql_expect_done_affected(
-        database, "DELETE FROM t WHERE REVERSE(LPAD(s, 5, '.')) = 'eb-x.'", 1,
-        "delete padding function predicate");
+        database, "DELETE FROM t WHERE INSERT(REVERSE(LPAD(s, 5, '.')), 1, 0, '') = 'eb-x.'", 1,
+        "delete insert/padding function predicate");
     failures += execute_sql_expect_done_affected(
         database, "DELETE FROM t WHERE ISNULL(s) AND LOCATE('', s) IS NULL", 1,
         "delete search function predicate");
@@ -3102,6 +3232,12 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_no_stmt_handle(&stmt, "reverse zero arity syntax");
     failures += prepare_sql(database, "SELECT REVERSE('a','b')", MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "reverse two arity syntax");
+    failures += prepare_sql(database, "SELECT INSERT()", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "insert zero arity syntax");
+    failures += prepare_sql(database, "SELECT INSERT('a',1,1)", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "insert three arity syntax");
+    failures += prepare_sql(database, "SELECT INSERT('a',1,1,'x','y')", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "insert five arity syntax");
     failures += prepare_sql(database, "SELECT SPACE()", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported space zero arity");
     failures += prepare_sql(database, "SELECT SPACE(1,2)", MYLITE_UNSUPPORTED, &stmt);

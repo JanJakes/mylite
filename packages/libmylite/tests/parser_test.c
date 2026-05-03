@@ -5182,7 +5182,7 @@ static int test_scalar_function_call_syntax(void)
     enum {
         expected_select_item_count = 13,
         string_function_item_count = 15,
-        padding_function_item_count = 5,
+        padding_function_item_count = 6,
         coalesce_nested_arg_index = 2,
     };
     struct mylite_sql_parse_result result;
@@ -5359,7 +5359,8 @@ static int test_scalar_function_call_syntax(void)
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT REPEAT('ab', 3), SPACE(3), REVERSE('abc'), "
-                          "LPAD('hi', 5, '.'), RPAD('hi', 5, '.');",
+                          "LPAD('hi', 5, '.'), RPAD('hi', 5, '.'), "
+                          "INSERT('Quadratic', 3, 4, 'What');",
                           MYLITE_SQL_PARSE_OK, &result);
     select_list = child_at(child_at(result.root, 0U), 0U);
     failures += expect_child_count(select_list, padding_function_item_count,
@@ -5374,6 +5375,8 @@ static int test_scalar_function_call_syntax(void)
         expect_function_call(child_at(child_at(select_list, 3U), 0U), "LPAD", 3U, "LPAD call");
     failures +=
         expect_function_call(child_at(child_at(select_list, 4U), 0U), "RPAD", 3U, "RPAD call");
+    failures += expect_function_call(child_at(child_at(select_list, 5U), 0U), "INSERT", 4U,
+                                     "INSERT string function call");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT POSITION('a' IN ('abc'));", MYLITE_SQL_PARSE_OK, &result);
@@ -5471,6 +5474,15 @@ static int test_scalar_function_call_syntax(void)
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT REVERSE('a','b')", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT INSERT()", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT INSERT('a',1,1)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT INSERT('a',1,1,'x','y')", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT POSITION('a')", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

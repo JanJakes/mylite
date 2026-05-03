@@ -6180,6 +6180,10 @@ static bool function_name_has_parser_checked_arity(const struct mylite_sql_ast_n
         *out_arity = 2U;
         return true;
     }
+    if (function_name_matches(name, "INSERT")) {
+        *out_arity = 4U;
+        return true;
+    }
     return false;
 }
 

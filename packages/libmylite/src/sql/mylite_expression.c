@@ -74,6 +74,24 @@ struct locate_search {
     int64_t start_position;
 };
 
+struct insert_range {
+    int64_t position;
+    int64_t length;
+};
+
+struct insert_operands {
+    struct mylite_expression_value text;
+    struct mylite_expression_value replacement;
+    struct mylite_expression_value position;
+    struct mylite_expression_value length;
+};
+
+struct insert_text_input {
+    const char *text;
+    const char *replacement;
+    struct insert_range range;
+};
+
 struct cast_integer_parse {
     uint64_t magnitude;
     bool negative;
@@ -117,11 +135,12 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_ORD = 31,
     MYLITE_SCALAR_FUNCTION_LOCATE = 32,
     MYLITE_SCALAR_FUNCTION_INSTR = 33,
-    MYLITE_SCALAR_FUNCTION_REPEAT = 34,
-    MYLITE_SCALAR_FUNCTION_SPACE = 35,
-    MYLITE_SCALAR_FUNCTION_REVERSE = 36,
-    MYLITE_SCALAR_FUNCTION_LPAD = 37,
-    MYLITE_SCALAR_FUNCTION_RPAD = 38,
+    MYLITE_SCALAR_FUNCTION_INSERT = 34,
+    MYLITE_SCALAR_FUNCTION_REPEAT = 35,
+    MYLITE_SCALAR_FUNCTION_SPACE = 36,
+    MYLITE_SCALAR_FUNCTION_REVERSE = 37,
+    MYLITE_SCALAR_FUNCTION_LPAD = 38,
+    MYLITE_SCALAR_FUNCTION_RPAD = 39,
 };
 
 static int eval_node(const struct mylite_sql_ast_node *node,
@@ -248,6 +267,23 @@ static int eval_replace_function(const struct mylite_sql_ast_node *arguments,
                                  const struct mylite_expression_eval_context *context,
                                  struct mylite_expression_warnings *warnings,
                                  struct mylite_expression_value *out_value);
+static int eval_insert_function(const struct mylite_sql_ast_node *arguments,
+                                const struct mylite_expression_eval_context *context,
+                                struct mylite_expression_warnings *warnings,
+                                struct mylite_expression_value *out_value);
+static int eval_insert_operands(const struct mylite_sql_ast_node *arguments,
+                                const struct mylite_expression_eval_context *context,
+                                struct mylite_expression_warnings *warnings,
+                                struct insert_operands *operands, struct insert_range *out_range,
+                                bool *out_null_result);
+static int eval_insert_nonnull_argument(const struct mylite_sql_ast_node *argument,
+                                        const struct mylite_expression_eval_context *context,
+                                        struct mylite_expression_warnings *warnings,
+                                        struct mylite_expression_value *out_value,
+                                        bool *out_null_result);
+static void insert_operands_deinit(struct insert_operands *operands);
+static int insert_text_value(struct insert_text_input input,
+                             struct mylite_expression_value *out_value);
 static int eval_repeat_function(const struct mylite_sql_ast_node *arguments,
                                 const struct mylite_expression_eval_context *context,
                                 struct mylite_expression_warnings *warnings,
@@ -719,6 +755,8 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_NULLIF:
     case MYLITE_SCALAR_FUNCTION_INSTR:
         return arity == 2U;
+    case MYLITE_SCALAR_FUNCTION_INSERT:
+        return arity == 4U;
     case MYLITE_SCALAR_FUNCTION_SUBSTRING:
     case MYLITE_SCALAR_FUNCTION_LOCATE:
         return arity == 2U || arity == 3U;
@@ -1464,6 +1502,8 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_trim_function(function_id, arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_REPLACE:
         return eval_replace_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_INSERT:
+        return eval_insert_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_REPEAT:
         return eval_repeat_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_SPACE:
@@ -2052,6 +2092,147 @@ cleanup:
     for (size_t index = 0U; index < 3U; ++index) {
         mylite_expression_value_deinit(&values[index]);
     }
+    return status;
+}
+
+static int eval_insert_function(const struct mylite_sql_ast_node *arguments,
+                                const struct mylite_expression_eval_context *context,
+                                struct mylite_expression_warnings *warnings,
+                                struct mylite_expression_value *out_value)
+{
+    struct insert_operands operands = {0};
+    struct insert_range range = {0};
+    char *text = NULL;
+    char *replacement = NULL;
+    bool null_result = false;
+    int status =
+        eval_insert_operands(arguments, context, warnings, &operands, &range, &null_result);
+
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (null_result) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+
+    status = value_to_string(&operands.text, &text);
+    if (status == 0) {
+        status = value_to_string(&operands.replacement, &replacement);
+    }
+    if (status == 0) {
+        status = insert_text_value(
+            (struct insert_text_input){.text = text, .replacement = replacement, .range = range},
+            out_value);
+    }
+
+cleanup:
+    free(text);
+    free(replacement);
+    insert_operands_deinit(&operands);
+    return status;
+}
+
+static int eval_insert_operands(const struct mylite_sql_ast_node *arguments,
+                                const struct mylite_expression_eval_context *context,
+                                struct mylite_expression_warnings *warnings,
+                                struct insert_operands *operands, struct insert_range *out_range,
+                                bool *out_null_result)
+{
+    int status = eval_insert_nonnull_argument(child_at(arguments, 0U), context, warnings,
+                                              &operands->text, out_null_result);
+
+    if (status != 0 || *out_null_result) {
+        return status;
+    }
+    status = eval_insert_nonnull_argument(child_at(arguments, 3U), context, warnings,
+                                          &operands->replacement, out_null_result);
+    if (status != 0 || *out_null_result) {
+        return status;
+    }
+    status = eval_insert_nonnull_argument(child_at(arguments, 1U), context, warnings,
+                                          &operands->position, out_null_result);
+    if (status != 0 || *out_null_result) {
+        return status;
+    }
+    status = cast_value_to_signed_integer(&operands->position, warnings, &out_range->position);
+    if (status != 0) {
+        return status;
+    }
+    status = eval_insert_nonnull_argument(child_at(arguments, 2U), context, warnings,
+                                          &operands->length, out_null_result);
+    if (status != 0 || *out_null_result) {
+        return status;
+    }
+    return cast_value_to_signed_integer(&operands->length, warnings, &out_range->length);
+}
+
+static int eval_insert_nonnull_argument(const struct mylite_sql_ast_node *argument,
+                                        const struct mylite_expression_eval_context *context,
+                                        struct mylite_expression_warnings *warnings,
+                                        struct mylite_expression_value *out_value,
+                                        bool *out_null_result)
+{
+    int status = eval_node(argument, context, warnings, out_value);
+
+    *out_null_result = status == 0 && is_null(out_value);
+    return status;
+}
+
+static void insert_operands_deinit(struct insert_operands *operands)
+{
+    mylite_expression_value_deinit(&operands->text);
+    mylite_expression_value_deinit(&operands->replacement);
+    mylite_expression_value_deinit(&operands->position);
+    mylite_expression_value_deinit(&operands->length);
+}
+
+static int insert_text_value(struct insert_text_input input,
+                             struct mylite_expression_value *out_value)
+{
+    const char *source = input.text == NULL ? "" : input.text;
+    const char *new_text = input.replacement == NULL ? "" : input.replacement;
+    int64_t source_chars = 0;
+    int64_t replaced_chars = 0;
+    size_t prefix_length = 0U;
+    size_t suffix_offset = 0U;
+    char *result = NULL;
+    size_t result_length = 0U;
+    int status = utf8_char_count(source, &source_chars);
+
+    if (status != 0) {
+        return status;
+    }
+    if (input.range.position <= 0 || input.range.position > source_chars) {
+        return set_text_value(source, strlen(source), out_value);
+    }
+
+    replaced_chars = source_chars - (input.range.position - 1);
+    if (input.range.length >= 0 && input.range.length < replaced_chars) {
+        replaced_chars = input.range.length;
+    }
+
+    prefix_length = utf8_offset_for_chars(source, input.range.position - 1);
+    suffix_offset = utf8_offset_for_chars(source, input.range.position - 1 + replaced_chars);
+    result = copy_span_text("", 0U);
+    if (result == NULL) {
+        return -1;
+    }
+
+    status = append_text(&result, &result_length, source, prefix_length);
+    if (status == 0) {
+        status = append_text(&result, &result_length, new_text, strlen(new_text));
+    }
+    if (status == 0) {
+        status = append_text(&result, &result_length, source + suffix_offset,
+                             strlen(source + suffix_offset));
+    }
+    if (status == 0) {
+        out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
+        out_value->text_value = result;
+        result = NULL;
+    }
+    free(result);
     return status;
 }
 
@@ -4199,6 +4380,7 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"REVERSE", MYLITE_SCALAR_FUNCTION_REVERSE},
         {"LPAD", MYLITE_SCALAR_FUNCTION_LPAD},
         {"RPAD", MYLITE_SCALAR_FUNCTION_RPAD},
+        {"INSERT", MYLITE_SCALAR_FUNCTION_INSERT},
         {"LOCATE", MYLITE_SCALAR_FUNCTION_LOCATE},
         {"POSITION", MYLITE_SCALAR_FUNCTION_LOCATE},
         {"INSTR", MYLITE_SCALAR_FUNCTION_INSTR},
@@ -4254,6 +4436,7 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_LTRIM:
     case MYLITE_SCALAR_FUNCTION_RTRIM:
     case MYLITE_SCALAR_FUNCTION_REPLACE:
+    case MYLITE_SCALAR_FUNCTION_INSERT:
     case MYLITE_SCALAR_FUNCTION_REPEAT:
     case MYLITE_SCALAR_FUNCTION_SPACE:
     case MYLITE_SCALAR_FUNCTION_REVERSE:

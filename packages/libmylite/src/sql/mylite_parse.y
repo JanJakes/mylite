@@ -3355,6 +3355,9 @@ function_name(A) ::= CURRENT_USER(T). {
 function_name(A) ::= DATABASE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+function_name(A) ::= INSERT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 function_name(A) ::= LEFT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }

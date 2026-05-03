@@ -215,8 +215,9 @@ Runtime coverage:
 
 - MyLite exposes the supported registry subset instead of MySQL's full
   collation catalog through both `SHOW COLLATION` and
-  `INFORMATION_SCHEMA.COLLATIONS`. This is intentional for the first executable
-  slice.
+  `INFORMATION_SCHEMA.COLLATIONS` and
+  `INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY`. This is
+  intentional for the first executable slice.
 - `WHERE` filtering is parsed but not executed yet, matching the current
   `SHOW VARIABLES`, `SHOW STATUS`, and `SHOW CHARACTER SET` compatibility
   pattern.

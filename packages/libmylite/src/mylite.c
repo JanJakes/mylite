@@ -60,6 +60,7 @@ enum mylite_information_schema_table {
     MYLITE_INFORMATION_SCHEMA_ENGINES = 5,
     MYLITE_INFORMATION_SCHEMA_CHARACTER_SETS = 6,
     MYLITE_INFORMATION_SCHEMA_COLLATIONS = 7,
+    MYLITE_INFORMATION_SCHEMA_COLLATION_CHARACTER_SET_APPLICABILITY = 8,
 };
 
 enum mylite_mysql_condition_code {
@@ -1452,6 +1453,7 @@ static const char information_schema_tables_sql[] =
     "'' AS TABLE_COMMENT "
     "FROM ("
     "SELECT 'CHARACTER_SETS' AS table_name "
+    "UNION ALL SELECT 'COLLATION_CHARACTER_SET_APPLICABILITY' "
     "UNION ALL SELECT 'COLLATIONS' "
     "UNION ALL SELECT 'SCHEMATA' "
     "UNION ALL SELECT 'TABLES' "
@@ -1638,6 +1640,10 @@ static void append_show_collation_row(sqlite3_str *sql, bool *first,
 static int information_schema_collations_sql(mylite_db *database, char **out_sql);
 static void append_information_schema_collation_row(sqlite3_str *sql, bool *first,
                                                     const struct mylite_collation *collation);
+static int information_schema_collation_character_set_applicability_sql(mylite_db *database,
+                                                                        char **out_sql);
+static void append_information_schema_collation_character_set_applicability_row(
+    sqlite3_str *sql, bool *first, const struct mylite_collation *collation);
 static int prepare_show_tables_statement(mylite_db *database,
                                          const struct mylite_sql_ast_node *statement,
                                          mylite_stmt **out_stmt);
@@ -6703,6 +6709,40 @@ static void append_information_schema_collation_row(sqlite3_str *sql, bool *firs
     *first = false;
 }
 
+static int information_schema_collation_character_set_applicability_sql(mylite_db *database,
+                                                                        char **out_sql)
+{
+    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
+    bool first = true;
+
+    *out_sql = NULL;
+    if (sql == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    sqlite3_str_appendall(sql, "SELECT COLLATION_NAME, CHARACTER_SET_NAME FROM (");
+    for (size_t index = 0U; index < mylite_collation_count(); ++index) {
+        append_information_schema_collation_character_set_applicability_row(
+            sql, &first, mylite_collation_at(index));
+    }
+    sqlite3_str_appendall(sql, ") ORDER BY COLLATION_NAME COLLATE NOCASE, "
+                               "COLLATION_NAME COLLATE BINARY");
+
+    *out_sql = sqlite3_str_finish(sql);
+    return *out_sql == NULL ? MYLITE_NOMEM : MYLITE_OK;
+}
+
+static void append_information_schema_collation_character_set_applicability_row(
+    sqlite3_str *sql, bool *first, const struct mylite_collation *collation)
+{
+    if (!*first) {
+        sqlite3_str_appendall(sql, " UNION ALL ");
+    }
+    sqlite3_str_appendf(sql, "SELECT %Q AS \"COLLATION_NAME\", %Q AS \"CHARACTER_SET_NAME\"",
+                        collation->name, collation->character_set);
+    *first = false;
+}
+
 static int prepare_show_tables_statement(mylite_db *database,
                                          const struct mylite_sql_ast_node *statement,
                                          mylite_stmt **out_stmt)
@@ -6918,6 +6958,7 @@ static char *show_tables_sql(mylite_db *database, const struct mylite_show_table
         "SELECT 'information_schema' AS TABLE_SCHEMA, table_name AS TABLE_NAME, "
         "'SYSTEM VIEW' AS TABLE_TYPE FROM ("
         "SELECT 'CHARACTER_SETS' AS table_name "
+        "UNION ALL SELECT 'COLLATION_CHARACTER_SET_APPLICABILITY' "
         "UNION ALL SELECT 'COLLATIONS' "
         "UNION ALL SELECT 'SCHEMATA' "
         "UNION ALL SELECT 'TABLES' "
@@ -8161,6 +8202,18 @@ static int prepare_information_schema_select_statement(mylite_db *database,
     }
     if (table == MYLITE_INFORMATION_SCHEMA_COLLATIONS) {
         status = information_schema_collations_sql(database, &sqlite_sql);
+        if (status == MYLITE_OK) {
+            status = prepare_sqlite_statement(database, sqlite_sql, out_stmt);
+        }
+        sqlite3_free(sqlite_sql);
+        if (status == MYLITE_NOMEM) {
+            (void)set_error_message(database, "out of memory");
+        }
+        return status;
+    }
+    if (table == MYLITE_INFORMATION_SCHEMA_COLLATION_CHARACTER_SET_APPLICABILITY) {
+        status =
+            information_schema_collation_character_set_applicability_sql(database, &sqlite_sql);
         if (status == MYLITE_OK) {
             status = prepare_sqlite_statement(database, sqlite_sql, out_stmt);
         }
@@ -32153,6 +32206,9 @@ static enum mylite_information_schema_table information_schema_table_from_name(c
     if (ascii_case_equal(name, "collations")) {
         return MYLITE_INFORMATION_SCHEMA_COLLATIONS;
     }
+    if (ascii_case_equal(name, "collation_character_set_applicability")) {
+        return MYLITE_INFORMATION_SCHEMA_COLLATION_CHARACTER_SET_APPLICABILITY;
+    }
     return MYLITE_INFORMATION_SCHEMA_NONE;
 }
 
@@ -32170,6 +32226,7 @@ static const char *information_schema_table_sql(enum mylite_information_schema_t
     case MYLITE_INFORMATION_SCHEMA_ENGINES:
     case MYLITE_INFORMATION_SCHEMA_CHARACTER_SETS:
     case MYLITE_INFORMATION_SCHEMA_COLLATIONS:
+    case MYLITE_INFORMATION_SCHEMA_COLLATION_CHARACTER_SET_APPLICABILITY:
     case MYLITE_INFORMATION_SCHEMA_NONE:
         return NULL;
     }

@@ -5371,6 +5371,17 @@ static int test_information_schema_select(void)
                                  "collations information schema table");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SELECT * FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    from_table = child_at(select, 1U);
+    qualified = child_at(from_table, 0U);
+    failures += expect_span_text(child_at(qualified, 0U), "INFORMATION_SCHEMA",
+                                 "collation charset applicability information schema qualifier");
+    failures += expect_span_text(child_at(qualified, 1U), "COLLATION_CHARACTER_SET_APPLICABILITY",
+                                 "collation charset applicability information schema table");
+    mylite_sql_parse_result_deinit(&result);
+
     failures +=
         parse_sql("SELECT * FROM information_schema.engines;", MYLITE_SQL_PARSE_OK, &result);
     select = child_at(result.root, 0U);
@@ -5402,6 +5413,17 @@ static int test_information_schema_select(void)
                                  "lower collations information schema qualifier");
     failures += expect_span_text(child_at(qualified, 1U), "collations",
                                  "lower collations information schema table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT * FROM information_schema.collation_character_set_applicability;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    from_table = child_at(select, 1U);
+    qualified = child_at(from_table, 0U);
+    failures += expect_span_text(child_at(qualified, 0U), "information_schema",
+                                 "lower collation charset applicability qualifier");
+    failures += expect_span_text(child_at(qualified, 1U), "collation_character_set_applicability",
+                                 "lower collation charset applicability table");
     mylite_sql_parse_result_deinit(&result);
 
     failures +=
@@ -5437,6 +5459,17 @@ static int test_information_schema_select(void)
                                  "mixed collations information schema table");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SELECT * FROM Information_Schema.Collation_Character_Set_Applicability;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    from_table = child_at(select, 1U);
+    qualified = child_at(from_table, 0U);
+    failures += expect_span_text(child_at(qualified, 0U), "Information_Schema",
+                                 "mixed collation charset applicability qualifier");
+    failures += expect_span_text(child_at(qualified, 1U), "Collation_Character_Set_Applicability",
+                                 "mixed collation charset applicability table");
+    mylite_sql_parse_result_deinit(&result);
+
     failures +=
         parse_sql("SELECT * FROM `information_schema`.`ENGINES`;", MYLITE_SQL_PARSE_OK, &result);
     select = child_at(result.root, 0U);
@@ -5468,6 +5501,18 @@ static int test_information_schema_select(void)
                                  "quoted collations information schema qualifier");
     failures += expect_span_text(child_at(qualified, 1U), "`COLLATIONS`",
                                  "quoted collations information schema table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT * FROM `information_schema`.`COLLATION_CHARACTER_SET_APPLICABILITY`;",
+                  MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    from_table = child_at(select, 1U);
+    qualified = child_at(from_table, 0U);
+    failures += expect_span_text(child_at(qualified, 0U), "`information_schema`",
+                                 "quoted collation charset applicability qualifier");
+    failures += expect_span_text(child_at(qualified, 1U), "`COLLATION_CHARACTER_SET_APPLICABILITY`",
+                                 "quoted collation charset applicability table");
     mylite_sql_parse_result_deinit(&result);
 
     failures +=
@@ -5519,6 +5564,19 @@ static int test_information_schema_select(void)
                           MYLITE_SQL_PARSE_OK, &result);
     failures += expect_node(child_at(child_at(result.root, 0U), 2U), MYLITE_SQL_AST_WHERE_CLAUSE,
                             "information schema collations where clause");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT COLLATION_NAME FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY;",
+        MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT * FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY WHERE "
+                  "CHARACTER_SET_NAME = 'utf8mb4';",
+                  MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(child_at(child_at(result.root, 0U), 2U), MYLITE_SQL_AST_WHERE_CLAUSE,
+                            "information schema collation charset applicability where clause");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

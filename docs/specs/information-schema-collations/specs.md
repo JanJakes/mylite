@@ -24,7 +24,8 @@ supported. These MySQL-supported forms remain deferred until broader
 - aggregate queries such as `COUNT(*)`
 
 The same shared collation registry must back this table and `SHOW COLLATION`.
-MyLite must not maintain a second duplicate catalog for this table.
+MyLite must not maintain a second duplicate catalog for this table or for
+`INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY`.
 
 ## Compatibility Sources
 
@@ -34,6 +35,9 @@ MyLite must not maintain a second duplicate catalog for this table.
   https://dev.mysql.com/doc/refman/8.4/en/show-collation.html
 - MySQL 8.4 Reference Manual, `INFORMATION_SCHEMA` table reference:
   https://dev.mysql.com/doc/refman/8.4/en/information-schema-table-reference.html
+- MySQL 8.4 Reference Manual, `INFORMATION_SCHEMA`
+  `COLLATION_CHARACTER_SET_APPLICABILITY` table:
+  https://dev.mysql.com/doc/refman/8.4/en/information-schema-collation-character-set-applicability-table.html
 - Runtime observations verified against MySQL `8.4.9`.
 
 This specification is independently authored from official documentation and
@@ -154,6 +158,9 @@ Unsupported MySQL collations are omitted so applications do not discover
 collations that MyLite cannot accept in DDL or session character-set
 statements.
 
+`INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY` uses this same row
+source and exposes the `COLLATION_NAME` / `CHARACTER_SET_NAME` mapping.
+
 Rows are ordered by collation name using the same deterministic ordering as
 `SHOW COLLATION`. The current registry is materialized and ordered by
 collation name for this subset.
@@ -162,7 +169,9 @@ collation name for this subset.
 
 `INFORMATION_SCHEMA.TABLES` must include
 `TABLE_SCHEMA='information_schema'`, `TABLE_NAME='COLLATIONS'` as a system-view
-row alongside MyLite's existing information-schema system views.
+row alongside MyLite's existing information-schema system views. The companion
+`COLLATION_CHARACTER_SET_APPLICABILITY` system-view row is specified in
+[INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY](../information-schema-collation-character-set-applicability/specs.md).
 
 For this row, MyLite uses the same system-view values as the existing narrow
 metadata views:

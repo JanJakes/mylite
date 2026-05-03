@@ -15,7 +15,7 @@ enum {
     tables_column_count = 21,
     columns_column_count = 22,
     statistics_column_count = 18,
-    information_schema_view_count = 7,
+    information_schema_view_count = 8,
     schemata_catalog_column = 0,
     schemata_name_column = 1,
     schemata_character_set_column = 2,
@@ -218,6 +218,7 @@ static int test_core_metadata_catalog(void);
 static int test_information_schema_engines_execution(void);
 static int test_information_schema_character_sets_execution(void);
 static int test_information_schema_collations_execution(void);
+static int test_information_schema_collation_character_set_applicability_execution(void);
 static int test_mylite_file_preamble_and_vfs_payload(void);
 static int test_mylite_open_rejects_plain_sqlite(void);
 static int test_unsupported_statement(void);
@@ -379,6 +380,7 @@ int main(void)
     failures += test_information_schema_engines_execution();
     failures += test_information_schema_character_sets_execution();
     failures += test_information_schema_collations_execution();
+    failures += test_information_schema_collation_character_set_applicability_execution();
     failures += test_mylite_file_preamble_and_vfs_payload();
     failures += test_mylite_open_rejects_plain_sqlite();
     failures += test_unsupported_statement();
@@ -1191,6 +1193,139 @@ static int test_information_schema_collations_execution(void)
                             "INFORMATION_SCHEMA.TABLES",
                             MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "information schema collations join");
+
+    mylite_close(database);
+    mylite_finalize(stmt);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
+    return failures;
+}
+
+static int test_information_schema_collation_character_set_applicability_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const columns[] = {"COLLATION_NAME", "CHARACTER_SET_NAME"};
+    static const char *const show_tables_name_columns[] = {
+        "Tables_in_information_schema (COLLATION_CHARACTER_SET_APPLICABILITY)"};
+    static const char *const show_tables_columns[] = {
+        "Tables_in_information_schema (COLLATION_CHARACTER_SET_APPLICABILITY)", "Table_type"};
+    static const char *const show_tables_name_values[] = {"COLLATION_CHARACTER_SET_APPLICABILITY"};
+    static const char *const show_tables_values[] = {"COLLATION_CHARACTER_SET_APPLICABILITY",
+                                                     "SYSTEM VIEW"};
+    static const char *const values[] = {
+        "binary",      "binary",  "latin1_bin",         "latin1",  "latin1_swedish_ci",  "latin1",
+        "utf8mb3_bin", "utf8mb3", "utf8mb3_general_ci", "utf8mb3", "utf8mb4_0900_ai_ci", "utf8mb4",
+        "utf8mb4_bin", "utf8mb4",
+    };
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK,
+                              "open information schema collation charset applicability");
+
+    failures += expect_select_rows(
+        database, "SELECT * FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY", columns,
+        2, values, 7, "information schema collation charset applicability registry");
+    failures += expect_select_rows(
+        database, "SELECT * FROM information_schema.collation_character_set_applicability", columns,
+        2, values, 7, "information schema collation charset applicability lower-case");
+    failures += expect_select_rows(
+        database, "SELECT * FROM Information_Schema.Collation_Character_Set_Applicability", columns,
+        2, values, 7, "information schema collation charset applicability mixed-case");
+    failures += expect_select_rows(
+        database, "SELECT * FROM `information_schema`.`COLLATION_CHARACTER_SET_APPLICABILITY`",
+        columns, 2, values, 7, "information schema collation charset applicability quoted");
+
+    failures += prepare_sql(
+        database, "SELECT * FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY",
+        MYLITE_OK, &stmt);
+    failures += expect_column_names(stmt, columns, 2,
+                                    "information schema collation charset applicability columns");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW,
+                              "information schema collation charset applicability first row");
+    failures += expect_int64(mylite_affected_rows(stmt), -1,
+                             "information schema collation charset applicability affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_information_schema_tables_views(database);
+    failures +=
+        expect_select_rows(database,
+                           "SHOW TABLES FROM information_schema LIKE "
+                           "'COLLATION_CHARACTER_SET_APPLICABILITY'",
+                           show_tables_name_columns, 1, show_tables_name_values, 1,
+                           "show tables information schema collation charset applicability");
+    failures +=
+        expect_select_rows(database,
+                           "SHOW FULL TABLES FROM information_schema LIKE "
+                           "'collation_character_set_applicability'",
+                           show_tables_columns, 2, show_tables_values, 1,
+                           "show tables information schema collation charset applicability");
+
+    failures += prepare_sql(
+        database,
+        "SELECT COLLATION_NAME FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY",
+        MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(
+        &stmt, "information schema collation charset applicability projection");
+    failures += prepare_sql(
+        database, "SELECT DISTINCT * FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY",
+        MYLITE_UNSUPPORTED, &stmt);
+    failures +=
+        expect_no_stmt_handle(&stmt, "information schema collation charset applicability distinct");
+    failures += prepare_sql(
+        database, "SELECT ALL * FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY",
+        MYLITE_UNSUPPORTED, &stmt);
+    failures +=
+        expect_no_stmt_handle(&stmt, "information schema collation charset applicability all");
+    failures +=
+        prepare_sql(database,
+                    "SELECT * FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY WHERE "
+                    "CHARACTER_SET_NAME = 'utf8mb4'",
+                    MYLITE_UNSUPPORTED, &stmt);
+    failures +=
+        expect_no_stmt_handle(&stmt, "information schema collation charset applicability where");
+    failures += prepare_sql(
+        database,
+        "SELECT * FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY ORDER BY "
+        "COLLATION_NAME",
+        MYLITE_UNSUPPORTED, &stmt);
+    failures +=
+        expect_no_stmt_handle(&stmt, "information schema collation charset applicability order by");
+    failures += prepare_sql(
+        database, "SELECT * FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY LIMIT 1",
+        MYLITE_UNSUPPORTED, &stmt);
+    failures +=
+        expect_no_stmt_handle(&stmt, "information schema collation charset applicability limit");
+    failures += prepare_sql(
+        database, "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY",
+        MYLITE_UNSUPPORTED, &stmt);
+    failures +=
+        expect_no_stmt_handle(&stmt, "information schema collation charset applicability count");
+    failures += prepare_sql(
+        database, "SELECT * FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY AS ccsa",
+        MYLITE_UNSUPPORTED, &stmt);
+    failures +=
+        expect_no_stmt_handle(&stmt, "information schema collation charset applicability AS alias");
+    failures += prepare_sql(
+        database, "SELECT * FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY ccsa",
+        MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(
+        &stmt, "information schema collation charset applicability bare alias");
+    failures +=
+        prepare_sql(database,
+                    "SELECT INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY.* FROM "
+                    "INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY",
+                    MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(
+        &stmt, "information schema collation charset applicability qualified wildcard");
+    failures +=
+        prepare_sql(database,
+                    "SELECT * FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY JOIN "
+                    "INFORMATION_SCHEMA.TABLES",
+                    MYLITE_UNSUPPORTED, &stmt);
+    failures +=
+        expect_no_stmt_handle(&stmt, "information schema collation charset applicability join");
 
     mylite_close(database);
     mylite_finalize(stmt);
@@ -12400,7 +12535,10 @@ static int expect_no_information_schema_schemata_row(mylite_db *database, const 
 static int expect_information_schema_tables_views(mylite_db *database)
 {
     static const char *const expected_tables[] = {
-        "CHARACTER_SETS", "COLLATIONS", "COLUMNS", "ENGINES", "SCHEMATA", "STATISTICS", "TABLES",
+        "CHARACTER_SETS", "COLLATION_CHARACTER_SET_APPLICABILITY",
+        "COLLATIONS",     "COLUMNS",
+        "ENGINES",        "SCHEMATA",
+        "STATISTICS",     "TABLES",
     };
     mylite_stmt *stmt = NULL;
     int failures =

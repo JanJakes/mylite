@@ -222,7 +222,10 @@ level application surfaces.
        policy. The first `INFORMATION_SCHEMA.COLLATIONS` slice shares the
        supported collation registry used by `SHOW COLLATION`, exposes exact
        uppercase columns with numeric `ID` and `SORTLEN`, and preserves the
-       same wildcard-only information-schema query policy. Full
+       same wildcard-only information-schema query policy. The first
+       `INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY` slice reuses
+       that collation registry and exposes the collation-to-character-set
+       mapping with the same wildcard-only policy. Full
        build-dependent engine catalog breadth, full MySQL character-set
        catalog breadth, and full MySQL collation catalog breadth remain
        deferred. Specs:
@@ -234,6 +237,7 @@ level application surfaces.
        [SHOW ENGINES](../show-engines/specs.md),
        [INFORMATION_SCHEMA.ENGINES](../information-schema-engines/specs.md),
        [INFORMATION_SCHEMA.CHARACTER_SETS](../information-schema-character-sets/specs.md),
+       [INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY](../information-schema-collation-character-set-applicability/specs.md),
        [INFORMATION_SCHEMA.COLLATIONS](../information-schema-collations/specs.md).
 40. [ ] `SHOW VARIABLES`, `SHOW STATUS`, `SHOW WARNINGS`, `SHOW ERRORS`, and
        count variants: session state, diagnostics, filtering, and metadata.

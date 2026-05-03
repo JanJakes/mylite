@@ -214,7 +214,8 @@ Behavior:
 
 - Returns rows from `__mylite_table_catalog`.
 - Also exposes system-view rows for `INFORMATION_SCHEMA.CHARACTER_SETS`,
-  `COLLATIONS`, `SCHEMATA`, `TABLES`, `COLUMNS`, `ENGINES`, and `STATISTICS`.
+  `COLLATION_CHARACTER_SET_APPLICABILITY`, `COLLATIONS`, `SCHEMATA`, `TABLES`,
+  `COLUMNS`, `ENGINES`, and `STATISTICS`.
 - For these system views, MyLite returns `TABLE_TYPE='SYSTEM VIEW'`,
   `ENGINE=NULL`, `VERSION=10`, `TABLE_ROWS=0`, `TABLE_COLLATION=NULL`, and
   `TABLE_COMMENT=''`, matching observed MySQL 8.4.9 behavior for the fields

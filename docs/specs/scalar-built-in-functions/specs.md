@@ -631,9 +631,11 @@ for results, metadata, warnings, errors, type conversion, and edge cases.
 - `CURRENT_USER()` and `USER()` may initially use the same embedded connection
   identity when MyLite has no authentication layer, but the distinction must
   remain modeled in session state for future protocol/auth work.
-- `CHARSET()` and `COLLATION()` are limited to the current charset/collation
-  registry. Unsupported character sets or explicit `COLLATE` expressions
-  remain outside this task.
+- `CHARSET()`, `COLLATION()`, and `COERCIBILITY()` are implemented by the
+  dedicated charset/collation introspection slice for the current descriptor
+  and AST-visible subset. Full collation coercion, introducers, and explicit
+  expression `COLLATE` remain deferred; see
+  [charset and collation introspection functions](../charset-collation-functions/specs.md).
 - Date and time functions support the session time zone offset needed by the
   current session model. Named time zones and MySQL time-zone tables are
   deferred.

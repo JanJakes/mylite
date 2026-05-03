@@ -5447,6 +5447,18 @@ static int test_scalar_function_call_syntax(void)
     failures += parse_sql("SELECT CHAR(USING utf8mb4);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SELECT CHARSET('a'), COLLATION('a'), COERCIBILITY('a');",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_child_count(select_list, 3U, "charset introspection function select list");
+    failures += expect_function_call(child_at(child_at(select_list, 0U), 0U), "CHARSET", 1U,
+                                     "CHARSET call");
+    failures += expect_function_call(child_at(child_at(select_list, 1U), 0U), "COLLATION", 1U,
+                                     "COLLATION call");
+    failures += expect_function_call(child_at(child_at(select_list, 2U), 0U), "COERCIBILITY", 1U,
+                                     "COERCIBILITY call");
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("SELECT POSITION('a' IN ('abc'));", MYLITE_SQL_PARSE_OK, &result);
     select_list = child_at(child_at(result.root, 0U), 0U);
     call = child_at(child_at(select_list, 0U), 0U);

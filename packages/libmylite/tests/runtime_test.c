@@ -250,6 +250,7 @@ static int test_select_integer_literal(void);
 static int test_select_integer_literal_with_semicolon(void);
 static int test_expression_operator_foundation(void);
 static int test_scalar_builtin_functions_execution(void);
+static int test_charset_collation_functions_execution(void);
 static int test_session_information_functions_execution(void);
 static int test_case_expression_execution(void);
 static int test_cast_expression_execution(void);
@@ -436,6 +437,7 @@ int main(void)
     failures += test_select_integer_literal_with_semicolon();
     failures += test_expression_operator_foundation();
     failures += test_scalar_builtin_functions_execution();
+    failures += test_charset_collation_functions_execution();
     failures += test_session_information_functions_execution();
     failures += test_case_expression_execution();
     failures += test_cast_expression_execution();
@@ -4739,6 +4741,290 @@ static int test_scalar_builtin_functions_execution(void)
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_charset_collation_functions_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const scalar_columns[] = {
+        "cs_lit",          "co_lit",           "ce_lit",       "cs_null",
+        "co_null",         "ce_null",          "cs_num",       "co_dec",
+        "ce_real",         "cs_char",          "co_char_utf8", "cs_char_ascii",
+        "co_unhex",        "cs_hex",           "co_concat",    "ce_concat",
+        "cs_concat_null",  "ce_coalesce_null", "co_concat_ws", "cs_quote_null",
+        "co_quote_binary", "cs_quote_num",     "co_quote_num", "ce_quote_num",
+        "cs_cast_bin",     "ce_cast_bin",      "ce_cast_char", "ce_if_string_null",
+    };
+    static const char *const scalar_values[] = {
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        "4",
+        "binary",
+        "binary",
+        "6",
+        "binary",
+        "binary",
+        "5",
+        "binary",
+        "utf8mb4_0900_ai_ci",
+        "ascii",
+        "binary",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        "4",
+        "binary",
+        "6",
+        "utf8mb4_0900_ai_ci",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        "latin1",
+        "latin1_swedish_ci",
+        "5",
+        "binary",
+        "2",
+        "2",
+        "4",
+    };
+    static const char *const latin1_columns[] = {"cs_lit", "co_lit", "cs_hex", "co_concat"};
+    static const char *const latin1_values[] = {"latin1", "latin1_swedish_ci", "latin1",
+                                                "latin1_swedish_ci"};
+    static const char *const explicit_collation_columns[] = {"co_lit", "co_hex"};
+    static const char *const explicit_collation_values[] = {"utf8mb4_bin", "utf8mb4_bin"};
+    static const struct expected_result_metadata utf8mb4_metadata[] = {
+        {"cs", NULL, NULL, NULL, NULL, NULL, 256U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"co", NULL, NULL, NULL, NULL, NULL, 256U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"ce", NULL, NULL, NULL, NULL, NULL, 10U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_UNSIGNED, 0},
+    };
+    static const struct expected_result_metadata utf8mb4_bin_metadata[] = {
+        {"cs", NULL, NULL, NULL, NULL, NULL, 256U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 46U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"co", NULL, NULL, NULL, NULL, NULL, 256U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 46U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"ce", NULL, NULL, NULL, NULL, NULL, 10U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_UNSIGNED, 0},
+    };
+    static const struct expected_result_metadata latin1_metadata[] = {
+        {"cs", NULL, NULL, NULL, NULL, NULL, 64U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"co", NULL, NULL, NULL, NULL, NULL, 64U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"ce", NULL, NULL, NULL, NULL, NULL, 10U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_UNSIGNED, 0},
+    };
+    static const char *const table_columns[] = {
+        "id",    "cs_vc", "co_vc", "ce_vc",  "cs_ch",  "co_ch",  "ce_ch", "cs_tx", "co_tx",
+        "cs_vb", "co_vb", "ce_vb", "cs_qvb", "co_qvb", "ce_qvb", "cs_n",  "co_n",  "ce_n",
+    };
+    static const char *const table_values[] = {
+        "1",
+        "utf8mb4",
+        "utf8mb4_bin",
+        "2",
+        "latin1",
+        "latin1_bin",
+        "2",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        "binary",
+        "binary",
+        "2",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        "2",
+        "binary",
+        "binary",
+        "5",
+    };
+    static const char *const null_column_columns[] = {"cs_vc", "co_vc", "ce_vc"};
+    static const char *const null_column_values[] = {"utf8mb4", "utf8mb4_bin", "2"};
+    static const char *const id_column[] = {"id"};
+    static const char *const matching_ids[] = {"1", "2"};
+    static const char *const update_columns[] = {"n", "tx"};
+    static const char *const update_values[] = {"2", "latin1"};
+    static const char *const remaining_id[] = {"1"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open charset function database");
+    failures += execute_sql(database,
+                            "CREATE DATABASE cc_funcs DEFAULT CHARACTER SET utf8mb4 "
+                            "COLLATE utf8mb4_0900_ai_ci",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "USE cc_funcs", MYLITE_DONE);
+    failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
+
+    failures += expect_select_rows(
+        database,
+        "SELECT CHARSET('abc') AS cs_lit, COLLATION('abc') AS co_lit, "
+        "COERCIBILITY('abc') AS ce_lit, CHARSET(NULL) AS cs_null, "
+        "COLLATION(NULL) AS co_null, COERCIBILITY(NULL) AS ce_null, "
+        "CHARSET(123) AS cs_num, COLLATION(12.34) AS co_dec, "
+        "COERCIBILITY(12.34E0) AS ce_real, CHARSET(CHAR(65)) AS cs_char, "
+        "COLLATION(CHAR(65 USING utf8mb4)) AS co_char_utf8, "
+        "CHARSET(CHAR(65 USING ascii)) AS cs_char_ascii, "
+        "COLLATION(UNHEX('41')) AS co_unhex, CHARSET(HEX('Az')) AS cs_hex, "
+        "COLLATION(CONCAT('a','b')) AS co_concat, "
+        "COERCIBILITY(CONCAT(1,2)) AS ce_concat, "
+        "CHARSET(CONCAT(NULL,NULL)) AS cs_concat_null, "
+        "COERCIBILITY(COALESCE(NULL,NULL)) AS ce_coalesce_null, "
+        "COLLATION(CONCAT_WS(',',NULL,'x')) AS co_concat_ws, "
+        "CHARSET(QUOTE(NULL)) AS cs_quote_null, "
+        "COLLATION(QUOTE(UNHEX('41'))) AS co_quote_binary, "
+        "CHARSET(QUOTE(42)) AS cs_quote_num, COLLATION(QUOTE(42)) AS co_quote_num, "
+        "COERCIBILITY(QUOTE(42)) AS ce_quote_num, "
+        "CHARSET(CAST('abc' AS BINARY)) AS cs_cast_bin, "
+        "COERCIBILITY(CAST('abc' AS BINARY)) AS ce_cast_bin, "
+        "COERCIBILITY(CAST('abc' AS CHAR)) AS ce_cast_char, "
+        "COERCIBILITY(IF(1,'a',NULL)) AS ce_if_string_null",
+        scalar_columns, (int)(sizeof(scalar_columns) / sizeof(scalar_columns[0])), scalar_values, 1,
+        "charset collation scalar values");
+
+    failures += prepare_sql(
+        database, "SELECT CHARSET('a') AS cs, COLLATION('a') AS co, COERCIBILITY('a') AS ce",
+        MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, utf8mb4_metadata, (int)(sizeof(utf8mb4_metadata) / sizeof(utf8mb4_metadata[0])),
+        "charset collation utf8mb4 metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "charset utf8mb4 metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "charset utf8mb4 metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "SET NAMES utf8mb4 COLLATE utf8mb4_bin", MYLITE_DONE);
+    failures += expect_select_rows(
+        database, "SELECT COLLATION('abc') AS co_lit, COLLATION(HEX('Az')) AS co_hex",
+        explicit_collation_columns,
+        (int)(sizeof(explicit_collation_columns) / sizeof(explicit_collation_columns[0])),
+        explicit_collation_values, 1, "charset collation explicit utf8mb4 collation values");
+    failures += prepare_sql(
+        database, "SELECT CHARSET('a') AS cs, COLLATION('a') AS co, COERCIBILITY('a') AS ce",
+        MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, utf8mb4_bin_metadata,
+        (int)(sizeof(utf8mb4_bin_metadata) / sizeof(utf8mb4_bin_metadata[0])),
+        "charset collation explicit utf8mb4 metadata");
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_ROW, "charset explicit utf8mb4 metadata row");
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_DONE, "charset explicit utf8mb4 metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "SET NAMES latin1", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT CHARSET('abc') AS cs_lit, COLLATION('abc') AS co_lit, "
+        "CHARSET(HEX('Az')) AS cs_hex, COLLATION(CONCAT(1,'x')) AS co_concat",
+        latin1_columns, (int)(sizeof(latin1_columns) / sizeof(latin1_columns[0])), latin1_values, 1,
+        "charset collation latin1 values");
+    failures += prepare_sql(
+        database, "SELECT CHARSET('a') AS cs, COLLATION('a') AS co, COERCIBILITY('a') AS ce",
+        MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, latin1_metadata,
+                                       (int)(sizeof(latin1_metadata) / sizeof(latin1_metadata[0])),
+                                       "charset collation latin1 metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "charset latin1 metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "charset latin1 metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE cc_values ("
+                            "id INT PRIMARY KEY, "
+                            "vc VARCHAR(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin, "
+                            "ch CHAR(3) CHARACTER SET latin1 COLLATE latin1_bin, "
+                            "tx TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci, "
+                            "vb VARBINARY(4), bn BINARY(2), bl BLOB, n INT)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO cc_values VALUES "
+                            "(1,'u','l','t','vb','bn','blob',7),"
+                            "(2,NULL,NULL,NULL,NULL,NULL,NULL,NULL)",
+                            MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id, CHARSET(vc) AS cs_vc, COLLATION(vc) AS co_vc, "
+        "COERCIBILITY(vc) AS ce_vc, CHARSET(ch) AS cs_ch, COLLATION(ch) AS co_ch, "
+        "COERCIBILITY(ch) AS ce_ch, CHARSET(tx) AS cs_tx, COLLATION(tx) AS co_tx, "
+        "CHARSET(vb) AS cs_vb, COLLATION(vb) AS co_vb, COERCIBILITY(vb) AS ce_vb, "
+        "CHARSET(QUOTE(vb)) AS cs_qvb, COLLATION(QUOTE(vb)) AS co_qvb, "
+        "COERCIBILITY(QUOTE(vb)) AS ce_qvb, "
+        "CHARSET(n) AS cs_n, COLLATION(n) AS co_n, COERCIBILITY(n) AS ce_n "
+        "FROM cc_values WHERE id=1",
+        table_columns, (int)(sizeof(table_columns) / sizeof(table_columns[0])), table_values, 1,
+        "charset collation table values");
+    failures += expect_select_rows(
+        database,
+        "SELECT CHARSET(vc) AS cs_vc, COLLATION(vc) AS co_vc, "
+        "COERCIBILITY(vc) AS ce_vc FROM cc_values WHERE id=2",
+        null_column_columns, (int)(sizeof(null_column_columns) / sizeof(null_column_columns[0])),
+        null_column_values, 1, "charset collation null column values");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT id FROM cc_values "
+                           "WHERE CHARSET(vc)='utf8mb4' AND COLLATION(ch)='latin1_bin' "
+                           "ORDER BY COERCIBILITY(vc), id",
+                           id_column, 1, matching_ids, 2, "charset collation where order values");
+
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE cc_values SET n = 8 ORDER BY COLLATION(vc), id LIMIT 1", 1,
+        "charset collation update order");
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE cc_values SET n = COERCIBILITY(vc), tx = CHARSET(ch) "
+        "WHERE COLLATION(vb)='binary' AND id=1",
+        1, "charset collation update assignment predicate");
+    failures +=
+        expect_select_rows(database, "SELECT n, tx FROM cc_values WHERE id=1", update_columns, 2,
+                           update_values, 1, "charset collation updated values");
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM cc_values WHERE CHARSET(vb)='binary' AND id=2", 1,
+        "charset collation delete predicate");
+    failures += expect_select_rows(database, "SELECT id FROM cc_values ORDER BY id", id_column, 1,
+                                   remaining_id, 1, "charset collation remaining row");
+
+    failures += prepare_sql(database, "SELECT CHARSET(UNHEX('GG')) AS cs_bad", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "charset nested warning row");
+    failures +=
+        expect_string(mylite_column_text(stmt, 0), "binary", "charset nested warning value");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "charset nested warning done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_int(mylite_warning_count(database), 1, "charset nested warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_incorrect_string_value, "charset nested warning code");
+
+    failures += prepare_sql(database, "SELECT CHARSET()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported charset zero arity");
+    failures += prepare_sql(database, "SELECT COLLATION('a','b')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported collation two arity");
+    failures += prepare_sql(database, "SELECT COERCIBILITY()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported coercibility zero arity");
+
+    mylite_close(database);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
     return failures;
 }
 

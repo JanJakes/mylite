@@ -270,6 +270,9 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_OCT = 48,
     MYLITE_SCALAR_FUNCTION_CONV = 49,
     MYLITE_SCALAR_FUNCTION_CHAR = 50,
+    MYLITE_SCALAR_FUNCTION_CHARSET = 51,
+    MYLITE_SCALAR_FUNCTION_COLLATION = 52,
+    MYLITE_SCALAR_FUNCTION_COERCIBILITY = 53,
 };
 
 static int eval_node(const struct mylite_sql_ast_node *node,
@@ -1034,6 +1037,9 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_UNHEX:
     case MYLITE_SCALAR_FUNCTION_BIN:
     case MYLITE_SCALAR_FUNCTION_OCT:
+    case MYLITE_SCALAR_FUNCTION_CHARSET:
+    case MYLITE_SCALAR_FUNCTION_COLLATION:
+    case MYLITE_SCALAR_FUNCTION_COERCIBILITY:
     case MYLITE_SCALAR_FUNCTION_ABS:
     case MYLITE_SCALAR_FUNCTION_SIGN:
     case MYLITE_SCALAR_FUNCTION_FLOOR:
@@ -1855,6 +1861,9 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
     case MYLITE_SCALAR_FUNCTION_VERSION:
     case MYLITE_SCALAR_FUNCTION_LAST_INSERT_ID:
     case MYLITE_SCALAR_FUNCTION_ROW_COUNT:
+    case MYLITE_SCALAR_FUNCTION_CHARSET:
+    case MYLITE_SCALAR_FUNCTION_COLLATION:
+    case MYLITE_SCALAR_FUNCTION_COERCIBILITY:
         return context == NULL || context->eval_session_function == NULL
                    ? -1
                    : context->eval_session_function(context->user_data, node, context, warnings,
@@ -4269,6 +4278,9 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_VERSION:
     case MYLITE_SCALAR_FUNCTION_LAST_INSERT_ID:
     case MYLITE_SCALAR_FUNCTION_ROW_COUNT:
+    case MYLITE_SCALAR_FUNCTION_CHARSET:
+    case MYLITE_SCALAR_FUNCTION_COLLATION:
+    case MYLITE_SCALAR_FUNCTION_COERCIBILITY:
     case MYLITE_SCALAR_FUNCTION_ASCII:
     case MYLITE_SCALAR_FUNCTION_ORD:
     case MYLITE_SCALAR_FUNCTION_LOCATE:
@@ -6509,6 +6521,9 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"FIND_IN_SET", MYLITE_SCALAR_FUNCTION_FIND_IN_SET},
         {"MAKE_SET", MYLITE_SCALAR_FUNCTION_MAKE_SET},
         {"CHAR", MYLITE_SCALAR_FUNCTION_CHAR},
+        {"CHARSET", MYLITE_SCALAR_FUNCTION_CHARSET},
+        {"COLLATION", MYLITE_SCALAR_FUNCTION_COLLATION},
+        {"COERCIBILITY", MYLITE_SCALAR_FUNCTION_COERCIBILITY},
         {"HEX", MYLITE_SCALAR_FUNCTION_HEX},
         {"UNHEX", MYLITE_SCALAR_FUNCTION_UNHEX},
         {"BIN", MYLITE_SCALAR_FUNCTION_BIN},
@@ -6552,6 +6567,9 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_VERSION:
     case MYLITE_SCALAR_FUNCTION_LAST_INSERT_ID:
     case MYLITE_SCALAR_FUNCTION_ROW_COUNT:
+    case MYLITE_SCALAR_FUNCTION_CHARSET:
+    case MYLITE_SCALAR_FUNCTION_COLLATION:
+    case MYLITE_SCALAR_FUNCTION_COERCIBILITY:
         return true;
     case MYLITE_SCALAR_FUNCTION_UNKNOWN:
     case MYLITE_SCALAR_FUNCTION_CONCAT:

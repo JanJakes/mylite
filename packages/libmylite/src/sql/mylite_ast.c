@@ -615,6 +615,15 @@ void mylite_sql_ast_node_set_show_columns_full(struct mylite_sql_ast_node *node)
     node->show_columns_full = true;
 }
 
+void mylite_sql_ast_node_set_show_index_extended(struct mylite_sql_ast_node *node)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->show_index_extended = true;
+}
+
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node)
 {
     const struct mylite_sql_ast_node *child = NULL;
@@ -883,6 +892,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "show_tables_statement";
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
         return "show_columns_statement";
+    case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
+        return "show_index_statement";
     }
 
     return "unknown";

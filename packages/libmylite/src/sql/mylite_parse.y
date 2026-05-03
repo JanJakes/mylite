@@ -44,6 +44,9 @@
 %type show_columns_keyword { struct mylite_sql_token }
 %type opt_show_columns_schema { struct mylite_sql_ast_node * }
 %type opt_show_columns_filter { struct mylite_sql_ast_node * }
+%type show_index_keyword { struct mylite_sql_token }
+%type opt_show_index_schema { struct mylite_sql_ast_node * }
+%type opt_show_index_filter { struct mylite_sql_ast_node * }
 %extra_argument { struct mylite_sql_parser_state *state }
 
 %include {
@@ -186,6 +189,9 @@ statement(A) ::= show_tables_statement(B). {
     A = B;
 }
 statement(A) ::= show_columns_statement(B). {
+    A = B;
+}
+statement(A) ::= show_index_statement(B). {
     A = B;
 }
 statement(A) ::= set_names_statement(B). {
@@ -1027,6 +1033,48 @@ opt_show_columns_filter(A) ::= LIKE STRING(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
 }
 opt_show_columns_filter(A) ::= where_clause(B). {
+    A = B;
+}
+
+show_index_statement(A) ::= SHOW(T) opt_extended(E) show_index_keyword(K)
+        FROM table_name(B) opt_show_index_schema(D) opt_show_index_filter(W). {
+    A = mylite_sql_parser_make_show_index_statement(
+        state, (struct mylite_sql_parser_show_index_tokens){
+                   .show = T, .extended = E, .index = K},
+        B, D, W);
+}
+show_index_statement(A) ::= SHOW(T) opt_extended(E) show_index_keyword(K)
+        IN table_name(B) opt_show_index_schema(D) opt_show_index_filter(W). {
+    A = mylite_sql_parser_make_show_index_statement(
+        state, (struct mylite_sql_parser_show_index_tokens){
+                   .show = T, .extended = E, .index = K},
+        B, D, W);
+}
+
+show_index_keyword(A) ::= INDEX(T). {
+    A = T;
+}
+show_index_keyword(A) ::= INDEXES(T). {
+    A = T;
+}
+show_index_keyword(A) ::= KEYS(T). {
+    A = T;
+}
+
+opt_show_index_schema(A) ::= . {
+    A = NULL;
+}
+opt_show_index_schema(A) ::= FROM identifier(B). {
+    A = B;
+}
+opt_show_index_schema(A) ::= IN identifier(B). {
+    A = B;
+}
+
+opt_show_index_filter(A) ::= . {
+    A = NULL;
+}
+opt_show_index_filter(A) ::= where_clause(B). {
     A = B;
 }
 
@@ -3137,6 +3185,9 @@ nonreserved_identifier_keyword(A) ::= INPLACE(T). {
     A = T;
 }
 nonreserved_identifier_keyword(A) ::= INSTANT(T). {
+    A = T;
+}
+nonreserved_identifier_keyword(A) ::= INDEXES(T). {
     A = T;
 }
 nonreserved_identifier_keyword(A) ::= MODIFY(T). {

@@ -1174,6 +1174,21 @@ struct mylite_show_columns_query {
     bool full;
 };
 
+struct mylite_show_index_target {
+    char *schema_name;
+    char *table_name;
+};
+
+struct mylite_show_index_source_nodes {
+    const struct mylite_sql_ast_node *table_name;
+    const struct mylite_sql_ast_node *explicit_schema;
+};
+
+struct mylite_show_index_query {
+    const char *schema_name;
+    const char *table_name;
+};
+
 struct mylite_db {
     sqlite3 *sqlite;
     char *error_message;
@@ -1507,11 +1522,24 @@ static int copy_show_columns_selected_schema(mylite_db *database,
 static int normalize_show_columns_schema_name(char **schema_name);
 static int validate_show_columns_target(mylite_db *database,
                                         const struct mylite_show_columns_target *target);
-static int set_show_columns_unknown_information_schema_table_error(mylite_db *database,
-                                                                   const char *table_name);
+static int set_unknown_information_schema_table_error(mylite_db *database, const char *table_name);
 static char *copy_show_columns_like_pattern(const struct mylite_sql_ast_node *statement);
 static char *show_columns_sql(mylite_db *database, const struct mylite_show_columns_query *query);
 static void show_columns_target_deinit(struct mylite_show_columns_target *target);
+static int prepare_show_index_statement(mylite_db *database,
+                                        const struct mylite_sql_ast_node *statement,
+                                        mylite_stmt **out_stmt);
+static int copy_show_index_target(mylite_db *database, const struct mylite_sql_ast_node *statement,
+                                  struct mylite_show_index_target *out_target);
+static int copy_show_index_table_target(struct mylite_show_index_source_nodes source,
+                                        struct mylite_show_index_target *out_target);
+static int copy_show_index_selected_schema(mylite_db *database,
+                                           struct mylite_show_index_target *target);
+static int normalize_show_index_schema_name(char **schema_name);
+static int validate_show_index_target(mylite_db *database,
+                                      const struct mylite_show_index_target *target);
+static char *show_index_sql(mylite_db *database, const struct mylite_show_index_query *query);
+static void show_index_target_deinit(struct mylite_show_index_target *target);
 static int prepare_information_schema_select_statement(mylite_db *database,
                                                        const struct mylite_sql_ast_node *statement,
                                                        mylite_stmt **out_stmt);
@@ -4835,6 +4863,8 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
             return prepare_show_tables_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
             return prepare_show_columns_statement(database, statement, out_stmt);
+        case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
+            return prepare_show_index_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_QUERY_EXPRESSION:
             return prepare_union_query_expression_statement(database, statement, sql, sql_length,
                                                             out_stmt);
@@ -5041,6 +5071,7 @@ static int prepare_schema_lifecycle_statement(mylite_db *database,
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
     case MYLITE_SQL_AST_ALTER_TABLE_STATEMENT:
@@ -5182,6 +5213,7 @@ static int prepare_connection_charset_statement(mylite_db *database,
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
     case MYLITE_SQL_AST_ALTER_TABLE_STATEMENT:
@@ -5488,6 +5520,7 @@ static int prepare_transaction_statement(mylite_db *database,
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
     case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
@@ -5958,8 +5991,7 @@ static int validate_show_columns_target(mylite_db *database,
     if (ascii_case_equal(target->schema_name, "information_schema")) {
         if (information_schema_table_from_name(target->table_name) ==
             MYLITE_INFORMATION_SCHEMA_NONE) {
-            return set_show_columns_unknown_information_schema_table_error(database,
-                                                                           target->table_name);
+            return set_unknown_information_schema_table_error(database, target->table_name);
         }
         (void)set_error_message(database,
                                 "SHOW COLUMNS for information_schema tables is not supported");
@@ -5976,8 +6008,7 @@ static int validate_show_columns_target(mylite_db *database,
     return MYLITE_OK;
 }
 
-static int set_show_columns_unknown_information_schema_table_error(mylite_db *database,
-                                                                   const char *table_name)
+static int set_unknown_information_schema_table_error(mylite_db *database, const char *table_name)
 {
     char *display_name = copy_nonempty_cstring(table_name);
     char *message = NULL;
@@ -6047,6 +6078,222 @@ static void show_columns_target_deinit(struct mylite_show_columns_target *target
     free(target->schema_name);
     free(target->table_name);
     *target = (struct mylite_show_columns_target){0};
+}
+
+static int prepare_show_index_statement(mylite_db *database,
+                                        const struct mylite_sql_ast_node *statement,
+                                        mylite_stmt **out_stmt)
+{
+    struct mylite_show_index_target target = {0};
+    char *sqlite_sql = NULL;
+    int status = copy_show_index_target(database, statement, &target);
+
+    if (status == MYLITE_OK) {
+        status = validate_show_index_target(database, &target);
+    }
+    if (status == MYLITE_OK && find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
+        (void)set_error_message(database, "SHOW INDEX WHERE is not supported");
+        status = MYLITE_UNSUPPORTED;
+    }
+    if (status == MYLITE_OK) {
+        sqlite_sql = show_index_sql(database, &(const struct mylite_show_index_query){
+                                                  .schema_name = target.schema_name,
+                                                  .table_name = target.table_name,
+                                              });
+        if (sqlite_sql == NULL) {
+            status = MYLITE_NOMEM;
+        }
+    }
+    if (status == MYLITE_OK) {
+        status = prepare_sqlite_statement(database, sqlite_sql, out_stmt);
+    }
+
+    if (status == MYLITE_NOMEM) {
+        (void)set_error_message(database, "out of memory");
+    }
+    show_index_target_deinit(&target);
+    sqlite3_free(sqlite_sql);
+    return status;
+}
+
+static int copy_show_index_target(mylite_db *database, const struct mylite_sql_ast_node *statement,
+                                  struct mylite_show_index_target *out_target)
+{
+    const struct mylite_sql_ast_node *table_name = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *possible_schema = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *explicit_schema =
+        possible_schema != NULL && possible_schema->kind == MYLITE_SQL_AST_IDENTIFIER
+            ? possible_schema
+            : NULL;
+    int status = MYLITE_OK;
+
+    *out_target = (struct mylite_show_index_target){0};
+    status = copy_show_index_table_target(
+        (struct mylite_show_index_source_nodes){
+            .table_name = table_name,
+            .explicit_schema = explicit_schema,
+        },
+        out_target);
+    if (status != MYLITE_OK) {
+        if (status == MYLITE_UNSUPPORTED) {
+            (void)set_error_message(database,
+                                    "SHOW INDEX table names with more than two parts are not "
+                                    "supported");
+        }
+        return status;
+    }
+    if (out_target->schema_name == NULL) {
+        status = copy_show_index_selected_schema(database, out_target);
+    }
+    return status;
+}
+
+static int copy_show_index_table_target(struct mylite_show_index_source_nodes source,
+                                        struct mylite_show_index_target *out_target)
+{
+    char *parts[3] = {0};
+    size_t part_count = 0U;
+    int status = copy_select_identifier_parts(source.table_name, parts, &part_count);
+
+    if (status != MYLITE_OK) {
+        goto cleanup;
+    }
+    if (part_count == 0U || part_count > 2U) {
+        status = MYLITE_UNSUPPORTED;
+        goto cleanup;
+    }
+
+    if (source.explicit_schema != NULL) {
+        out_target->schema_name = copy_identifier_span(source.explicit_schema);
+        if (out_target->schema_name == NULL) {
+            status = MYLITE_NOMEM;
+            goto cleanup;
+        }
+        out_target->table_name = parts[part_count - 1U];
+        parts[part_count - 1U] = NULL;
+    } else if (part_count == 2U) {
+        out_target->schema_name = parts[0];
+        out_target->table_name = parts[1];
+        parts[0] = NULL;
+        parts[1] = NULL;
+    } else {
+        out_target->table_name = parts[0];
+        parts[0] = NULL;
+    }
+
+    if (out_target->schema_name != NULL) {
+        status = normalize_show_index_schema_name(&out_target->schema_name);
+    }
+
+cleanup:
+    for (size_t index = 0U; index < part_count; ++index) {
+        free(parts[index]);
+    }
+    if (status != MYLITE_OK) {
+        show_index_target_deinit(out_target);
+    }
+    return status;
+}
+
+static int copy_show_index_selected_schema(mylite_db *database,
+                                           struct mylite_show_index_target *target)
+{
+    if (database->selected_schema == NULL || database->selected_schema[0] == '\0') {
+        (void)set_error_message(database, "No database selected");
+        return MYLITE_EXEC_ERROR;
+    }
+
+    target->schema_name = copy_nonempty_cstring(database->selected_schema);
+    if (target->schema_name == NULL) {
+        return MYLITE_NOMEM;
+    }
+    return normalize_show_index_schema_name(&target->schema_name);
+}
+
+static int normalize_show_index_schema_name(char **schema_name)
+{
+    char *normalized = NULL;
+
+    if (schema_name == NULL || *schema_name == NULL ||
+        !ascii_case_equal(*schema_name, "information_schema") ||
+        strcmp(*schema_name, "information_schema") == 0) {
+        return MYLITE_OK;
+    }
+
+    normalized = copy_nonempty_cstring("information_schema");
+    if (normalized == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    free(*schema_name);
+    *schema_name = normalized;
+    return MYLITE_OK;
+}
+
+static int validate_show_index_target(mylite_db *database,
+                                      const struct mylite_show_index_target *target)
+{
+    struct mylite_schema_presence presence;
+    bool exists = false;
+    int status = schema_exists(database, target->schema_name, &presence);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (!presence.exists) {
+        (void)set_error_message_parts(database, "Unknown database '", target->schema_name, "'");
+        return MYLITE_EXEC_ERROR;
+    }
+    if (ascii_case_equal(target->schema_name, "information_schema")) {
+        if (information_schema_table_from_name(target->table_name) ==
+            MYLITE_INFORMATION_SCHEMA_NONE) {
+            return set_unknown_information_schema_table_error(database, target->table_name);
+        }
+        return MYLITE_OK;
+    }
+
+    status = table_exists(database, target->schema_name, target->table_name, &exists);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (!exists) {
+        return set_table_doesnt_exist_error(database, target->schema_name, target->table_name);
+    }
+    return MYLITE_OK;
+}
+
+static char *show_index_sql(mylite_db *database, const struct mylite_show_index_query *query)
+{
+    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
+
+    if (sql == NULL) {
+        return NULL;
+    }
+
+    sqlite3_str_appendf(sql,
+                        "SELECT table_name AS \"Table\", non_unique AS \"Non_unique\", "
+                        "index_name AS \"Key_name\", seq_in_index AS \"Seq_in_index\", "
+                        "column_name AS \"Column_name\", collation AS \"Collation\", "
+                        "cardinality AS \"Cardinality\", sub_part AS \"Sub_part\", "
+                        "packed AS \"Packed\", nullable AS \"Null\", index_type AS \"Index_type\", "
+                        "comment AS \"Comment\", index_comment AS \"Index_comment\", "
+                        "is_visible AS \"Visible\", expression AS \"Expression\" "
+                        "FROM __mylite_index_catalog "
+                        "WHERE table_schema = %Q AND table_name = %Q "
+                        "ORDER BY rowid",
+                        query->schema_name, query->table_name);
+    return sqlite3_str_finish(sql);
+}
+
+static void show_index_target_deinit(struct mylite_show_index_target *target)
+{
+    if (target == NULL) {
+        return;
+    }
+
+    free(target->schema_name);
+    free(target->table_name);
+    *target = (struct mylite_show_index_target){0};
 }
 
 static char *copy_show_like_pattern_span(const struct mylite_sql_ast_node *node)
@@ -7198,6 +7445,7 @@ static int infer_expression_descriptor(mylite_db *database, const struct mylite_
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
@@ -10146,6 +10394,7 @@ static int bind_select_predicate_expression_in_clause(mylite_db *database,
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
@@ -10841,6 +11090,7 @@ static int bind_select_aggregate_aware_expression(mylite_db *database,
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
@@ -11396,6 +11646,7 @@ static int bind_select_order_expression(mylite_db *database,
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
@@ -12106,6 +12357,7 @@ static bool select_expression_is_group_invariant( // NOLINT(misc-no-recursion)
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
@@ -20096,6 +20348,7 @@ static int bind_update_predicate_expression(mylite_stmt *stmt,
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
@@ -21558,6 +21811,7 @@ static int bind_delete_predicate_expression(mylite_stmt *stmt,
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
@@ -33101,6 +33355,7 @@ static int copy_insert_simple_value(const struct mylite_sql_ast_node *value_node
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
     case MYLITE_SQL_AST_WHERE_CLAUSE:

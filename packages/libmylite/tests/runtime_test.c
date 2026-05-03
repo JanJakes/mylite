@@ -198,6 +198,7 @@ static int test_rename_table_execution(void);
 static int test_truncate_table_execution(void);
 static int test_show_tables_execution(void);
 static int test_show_columns_execution(void);
+static int test_show_index_execution(void);
 static int test_insert_values_execution(void);
 static int test_insert_set_execution(void);
 static int test_replace_execution(void);
@@ -335,6 +336,7 @@ int main(void)
     failures += test_truncate_table_execution();
     failures += test_show_tables_execution();
     failures += test_show_columns_execution();
+    failures += test_show_index_execution();
     failures += test_insert_values_execution();
     failures += test_insert_set_execution();
     failures += test_replace_execution();
@@ -4880,6 +4882,138 @@ static int test_show_columns_execution(void)
     failures +=
         expect_select_rows(database, "SHOW FIELDS FROM columns LIKE 'columns'", standard_columns, 6,
                            keyword_columns_values, 1, "show fields keyword column name");
+
+    mylite_close(database);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
+    return failures;
+}
+
+static int test_show_index_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const show_index_columns[] = {
+        "Table",      "Non_unique",  "Key_name",      "Seq_in_index", "Column_name",
+        "Collation",  "Cardinality", "Sub_part",      "Packed",       "Null",
+        "Index_type", "Comment",     "Index_comment", "Visible",      "Expression",
+    };
+    static const char *const meta_values[] = {
+        "meta",     "0",     "PRIMARY",
+        "1",        "id",    "A",
+        NULL,       NULL,    NULL,
+        "",         "BTREE", "",
+        "",         "YES",   NULL,
+        "meta",     "0",     "uq_code",
+        "1",        "code",  "A",
+        NULL,       NULL,    NULL,
+        "",         "BTREE", "",
+        "",         "YES",   NULL,
+        "meta",     "1",     "idx_name_tail",
+        "1",        "name",  "D",
+        NULL,       "5",     NULL,
+        "YES",      "BTREE", "",
+        "idx note", "NO",    NULL,
+        "meta",     "1",     "idx_name_tail",
+        "2",        "tail",  "A",
+        NULL,       NULL,    NULL,
+        "YES",      "BTREE", "",
+        "idx note", "NO",    NULL,
+    };
+    static const char *const b_meta_values[] = {
+        "meta", "1", "other_idx", "1", "other_id", "A",   NULL, NULL,
+        NULL,   "",  "BTREE",     "",  "",         "YES", NULL,
+    };
+    static const char *const b_in_table_values[] = {
+        "in_table", "1", "in_idx", "1", "code", "A",   NULL, NULL,
+        NULL,       "",  "BTREE",  "",  "",     "YES", NULL,
+    };
+    static const char *const keyword_indexes_values[] = {
+        "indexes", "1",   "indexes", "1", "id", "A",   NULL, NULL,
+        NULL,      "YES", "BTREE",   "",  "",   "YES", NULL,
+    };
+    static const char *const quoted_keys_values[] = {
+        "keys", "1", "keys", "1", "id", "A", NULL, NULL, NULL, "YES", "BTREE", "", "", "YES", NULL,
+    };
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open show index database");
+    failures += expect_prepare_error(database, "SHOW INDEX FROM meta", MYLITE_EXEC_ERROR,
+                                     "No database selected", "show index requires selected schema");
+
+    failures += execute_sql(database, "CREATE DATABASE mylite_show_index_a", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE DATABASE mylite_show_index_b", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_show_index_a", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE meta ("
+                            "id INT NOT NULL, "
+                            "name VARCHAR(20) NULL, "
+                            "code VARCHAR(20) NOT NULL, "
+                            "tail INT NULL, "
+                            "PRIMARY KEY (id), "
+                            "UNIQUE KEY uq_code (code), "
+                            "KEY idx_name_tail (name(5) DESC, tail ASC) "
+                            "COMMENT 'idx note' INVISIBLE)",
+                            MYLITE_DONE);
+
+    failures += expect_select_rows(database, "SHOW INDEX FROM meta", show_index_columns, 15,
+                                   meta_values, 4, "show index selected schema");
+    failures += expect_select_rows(database, "SHOW INDEXES FROM meta", show_index_columns, 15,
+                                   meta_values, 4, "show indexes synonym");
+    failures += expect_select_rows(database, "SHOW KEYS IN meta", show_index_columns, 15,
+                                   meta_values, 4, "show keys synonym");
+    failures += expect_select_rows(database, "SHOW EXTENDED INDEX FROM meta", show_index_columns,
+                                   15, meta_values, 4, "show extended index current no-op");
+    failures += expect_prepare_error(database, "SHOW INDEX FROM meta WHERE Key_name = 'PRIMARY'",
+                                     MYLITE_UNSUPPORTED, "SHOW INDEX WHERE is not supported",
+                                     "show index where is parsed but unsupported");
+
+    failures += execute_sql(database, "CREATE TABLE no_idx (id INT)", MYLITE_DONE);
+    failures += expect_select_rows(database, "SHOW INDEX FROM no_idx", show_index_columns, 15, NULL,
+                                   0, "show index no index rows");
+
+    failures += execute_sql(database,
+                            "CREATE TABLE mylite_show_index_b.meta ("
+                            "other_id INT NOT NULL, KEY other_idx (other_id))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE mylite_show_index_b.in_table ("
+                            "code INT NOT NULL, KEY in_idx (code))",
+                            MYLITE_DONE);
+    failures +=
+        expect_select_rows(database, "SHOW INDEX FROM in_table FROM mylite_show_index_b",
+                           show_index_columns, 15, b_in_table_values, 1, "show index from schema");
+    failures +=
+        expect_select_rows(database, "SHOW INDEX IN in_table IN mylite_show_index_b",
+                           show_index_columns, 15, b_in_table_values, 1, "show index in schema");
+    failures += expect_select_rows(database, "SHOW INDEX FROM mylite_show_index_b.in_table",
+                                   show_index_columns, 15, b_in_table_values, 1,
+                                   "show index qualified table");
+    failures += expect_select_rows(database,
+                                   "SHOW INDEX FROM mylite_show_index_a.meta "
+                                   "FROM mylite_show_index_b",
+                                   show_index_columns, 15, b_meta_values, 1,
+                                   "show index explicit schema overrides qualifier");
+    failures += expect_prepare_error(database, "SHOW INDEX FROM in_table FROM missing_index_db",
+                                     MYLITE_EXEC_ERROR, "Unknown database",
+                                     "show index rejects missing schema");
+    failures +=
+        expect_prepare_error(database, "SHOW INDEX FROM missing_index_table", MYLITE_EXEC_ERROR,
+                             "doesn't exist", "show index rejects missing table");
+    failures += expect_select_rows(database, "SHOW INDEX FROM TABLES FROM information_schema",
+                                   show_index_columns, 15, NULL, 0,
+                                   "show index information schema known table");
+    failures += expect_prepare_error(
+        database, "SHOW INDEX FROM missing_info FROM information_schema", MYLITE_EXEC_ERROR,
+        "Unknown table 'MISSING_INFO' in information_schema",
+        "show index unknown information schema table");
+
+    failures +=
+        execute_sql(database, "CREATE TABLE indexes (id INT, KEY indexes (id))", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE `keys` (id INT, KEY `keys` (id))", MYLITE_DONE);
+    failures += expect_select_rows(database, "SHOW INDEX FROM indexes", show_index_columns, 15,
+                                   keyword_indexes_values, 1, "show index keyword table");
+    failures += expect_select_rows(database, "SHOW KEYS FROM `keys`", show_index_columns, 15,
+                                   quoted_keys_values, 1, "show keys quoted table");
 
     mylite_close(database);
     // NOLINTEND(readability-function-size,readability-magic-numbers)

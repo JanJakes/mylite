@@ -170,10 +170,24 @@ level application surfaces.
        catalog-backed column metadata, and selected-schema, missing-schema, and
        missing-table diagnostics. `SHOW COLUMNS WHERE` and system-view column
        descriptions are parsed but currently return unsupported diagnostics.
-       Temporary tables, user views, privilege filtering, hidden storage-engine
-       columns, and broader metadata statements remain deferred. Specs:
+       The first `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS` slice is specified
+       and implemented for persistent base-table indexes in
+       `__mylite_index_catalog`, including `EXTENDED`, `FROM`/`IN`, `db.table`,
+       explicit-schema override, `WHERE` grammar, synonym support,
+       MySQL-compatible result column names/order, catalog-backed primary,
+       unique, nonunique, multi-part, prefix, collation, comment, visibility,
+       nullable, and index-type metadata, empty no-index results, known
+       `information_schema` table behavior, and selected-schema,
+       missing-schema, missing-table, and unknown-system-table diagnostics.
+       `SHOW INDEX WHERE` is parsed but currently returns an unsupported
+       diagnostic; `EXTENDED` is a visible-catalog no-op until hidden
+       storage-engine key parts exist. Temporary tables, user views, privilege
+       filtering, hidden storage-engine columns, generated invisible primary key
+       rows, functional key parts, and broader metadata statements remain
+       deferred. Specs:
        [SHOW TABLES](../show-tables/specs.md),
-       [SHOW COLUMNS](../show-columns/specs.md).
+       [SHOW COLUMNS](../show-columns/specs.md),
+       [SHOW INDEX](../show-index/specs.md).
 40. [ ] `SHOW VARIABLES`, `SHOW STATUS`, `SHOW WARNINGS`, `SHOW ERRORS`, and
        count variants: session state, diagnostics, filtering, and metadata.
 41. [ ] User and system variables: `SET`, user-variable storage, system-variable

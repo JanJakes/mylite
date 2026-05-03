@@ -711,8 +711,10 @@ Information schema:
 - `INFORMATION_SCHEMA.KEY_COLUMN_USAGE` exposes primary and unique key parts
   from `__mylite_index_catalog` for supported key DDL. Foreign-key rows should
   be added when those underlying catalogs exist.
-- `INFORMATION_SCHEMA.CHECK_CONSTRAINTS` should expose CHECK constraint names
-  and clauses when CHECK catalog support lands.
+- `INFORMATION_SCHEMA.CHECK_CONSTRAINTS` exposes the MySQL-compatible
+  four-column system-view shape and currently returns zero rows. CHECK
+  constraint names and clauses should be added when CHECK catalog support
+  lands.
 
 ### Affected rows, diagnostics, and warnings
 

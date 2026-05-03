@@ -236,11 +236,14 @@ level application surfaces.
        `INFORMATION_SCHEMA.KEY_COLUMN_USAGE` slice exposes primary-key and
        unique key-part rows from `__mylite_index_catalog`, including composite
        key ordinals, supported key-DDL side effects, nonunique/expression-only
-       exclusion, and the same wildcard-only policy. Full
+       exclusion, and the same wildcard-only policy. The first
+       `INFORMATION_SCHEMA.CHECK_CONSTRAINTS` slice exposes the exact
+       four-column system-view shape and intentionally returns zero rows until
+       CHECK DDL/catalog/enforcement support exists. Full
        build-dependent engine catalog breadth, full MySQL character-set
        catalog breadth, full MySQL collation catalog breadth, exact MySQL
-       keyword catalog completeness, CHECK and foreign-key constraint rows, and
-       general information-schema query
+       keyword catalog completeness, actual CHECK rows, foreign-key constraint
+       rows, and general information-schema query
        processing remain deferred. Specs:
        [SHOW TABLES](../show-tables/specs.md),
        [SHOW COLUMNS](../show-columns/specs.md),
@@ -252,6 +255,7 @@ level application surfaces.
        [INFORMATION_SCHEMA.CHARACTER_SETS](../information-schema-character-sets/specs.md),
        [INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY](../information-schema-collation-character-set-applicability/specs.md),
        [INFORMATION_SCHEMA.COLLATIONS](../information-schema-collations/specs.md),
+       [INFORMATION_SCHEMA.CHECK_CONSTRAINTS](../information-schema-check-constraints/specs.md),
        [INFORMATION_SCHEMA.TABLE_CONSTRAINTS](../information-schema-table-constraints/specs.md),
        [INFORMATION_SCHEMA.KEY_COLUMN_USAGE](../information-schema-key-column-usage/specs.md),
        [INFORMATION_SCHEMA.KEYWORDS](../information-schema-keywords/specs.md).

@@ -255,8 +255,9 @@ Runtime coverage:
 
 ## Known Gaps
 
-- CHECK constraints are omitted until MyLite has CHECK catalogs, expression
-  validation, enforcement flags, and `INFORMATION_SCHEMA.CHECK_CONSTRAINTS`.
+- CHECK constraint rows are omitted until MyLite has CHECK catalogs, expression
+  validation, enforcement flags, and catalog-backed
+  `INFORMATION_SCHEMA.CHECK_CONSTRAINTS` rows.
 - Foreign-key constraints are omitted until MyLite has foreign-key catalogs,
   referential actions, enforcement, and `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS`.
 - Key-part ordinals for primary and unique constraints are exposed by

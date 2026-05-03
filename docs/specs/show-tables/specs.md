@@ -121,9 +121,10 @@ Rows:
 
 - User schemas are backed by `__mylite_table_catalog`.
 - `information_schema` additionally exposes MyLite's current metadata views:
-  `CHARACTER_SETS`, `COLLATION_CHARACTER_SET_APPLICABILITY`, `COLLATIONS`,
-  `SCHEMATA`, `TABLES`, `COLUMNS`, `ENGINES`, `KEYWORDS`, `KEY_COLUMN_USAGE`,
-  `STATISTICS`, and `TABLE_CONSTRAINTS`.
+  `CHARACTER_SETS`, `CHECK_CONSTRAINTS`,
+  `COLLATION_CHARACTER_SET_APPLICABILITY`, `COLLATIONS`, `SCHEMATA`, `TABLES`,
+  `COLUMNS`, `ENGINES`, `KEYWORDS`, `KEY_COLUMN_USAGE`, `STATISTICS`, and
+  `TABLE_CONSTRAINTS`.
 - User-created views are deferred and therefore not listed until view metadata
   exists.
 - `SHOW TABLES` returns only table/view names.
@@ -193,6 +194,8 @@ Runtime coverage:
 - `EXTENDED` accepted as no-op over the current catalog
 - parsed `WHERE` returns a deterministic unsupported diagnostic
 - `information_schema` existing metadata views as `SYSTEM VIEW`
+- `SHOW FULL TABLES FROM information_schema LIKE 'check_constraints'` returns
+  the `CHECK_CONSTRAINTS` system-view row
 - `SHOW FULL TABLES FROM information_schema LIKE 'collations'` returns the
   `COLLATIONS` system-view row
 - `SHOW FULL TABLES FROM information_schema LIKE 'character_sets'` returns the

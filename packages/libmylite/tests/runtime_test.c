@@ -18,7 +18,8 @@ enum {
     statistics_column_count = 18,
     table_constraints_column_count = 7,
     key_column_usage_column_count = 12,
-    information_schema_view_count = 11,
+    check_constraints_column_count = 4,
+    information_schema_view_count = 12,
     schemata_catalog_column = 0,
     schemata_name_column = 1,
     schemata_character_set_column = 2,
@@ -257,6 +258,7 @@ static int test_information_schema_character_sets_execution(void);
 static int test_information_schema_collations_execution(void);
 static int test_information_schema_collation_character_set_applicability_execution(void);
 static int test_information_schema_keywords_execution(void);
+static int test_information_schema_check_constraints_execution(void);
 static int test_information_schema_table_constraints_execution(void);
 static int test_information_schema_key_column_usage_execution(void);
 static int test_mylite_file_preamble_and_vfs_payload(void);
@@ -436,6 +438,7 @@ int main(void)
     failures += test_information_schema_collations_execution();
     failures += test_information_schema_collation_character_set_applicability_execution();
     failures += test_information_schema_keywords_execution();
+    failures += test_information_schema_check_constraints_execution();
     failures += test_information_schema_table_constraints_execution();
     failures += test_information_schema_key_column_usage_execution();
     failures += test_mylite_file_preamble_and_vfs_payload();
@@ -1639,6 +1642,123 @@ static int test_information_schema_table_constraints_execution(void)
                             "INFORMATION_SCHEMA.TABLES",
                             MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "information schema table constraints join");
+
+    mylite_close(database);
+    mylite_finalize(stmt);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
+    return failures;
+}
+
+static int test_information_schema_check_constraints_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const columns[] = {
+        "CONSTRAINT_CATALOG",
+        "CONSTRAINT_SCHEMA",
+        "CONSTRAINT_NAME",
+        "CHECK_CLAUSE",
+    };
+    static const char *const show_tables_name_columns[] = {
+        "Tables_in_information_schema (CHECK_CONSTRAINTS)"};
+    static const char *const show_tables_columns[] = {
+        "Tables_in_information_schema (CHECK_CONSTRAINTS)", "Table_type"};
+    static const char *const show_tables_name_values[] = {"CHECK_CONSTRAINTS"};
+    static const char *const show_tables_values[] = {"CHECK_CONSTRAINTS", "SYSTEM VIEW"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK,
+                              "open information schema check constraints");
+
+    failures += expect_empty_information_schema_table(
+        database, "SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS", columns,
+        check_constraints_column_count);
+
+    failures += execute_sql(database, "CREATE DATABASE mylite_check_constraints", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_check_constraints", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE check_constraints_fixture ("
+                            "id INT PRIMARY KEY,"
+                            "body VARCHAR(20))",
+                            MYLITE_DONE);
+
+    failures += expect_empty_information_schema_table(
+        database, "SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS", columns,
+        check_constraints_column_count);
+    failures += expect_empty_information_schema_table(
+        database, "SELECT * FROM information_schema.check_constraints", columns,
+        check_constraints_column_count);
+    failures += expect_empty_information_schema_table(
+        database, "SELECT * FROM Information_Schema.Check_Constraints", columns,
+        check_constraints_column_count);
+    failures += expect_empty_information_schema_table(
+        database, "SELECT * FROM `information_schema`.`CHECK_CONSTRAINTS`", columns,
+        check_constraints_column_count);
+
+    failures += expect_information_schema_tables_views(database);
+    failures +=
+        expect_select_rows(database, "SHOW TABLES FROM information_schema LIKE 'check_constraints'",
+                           show_tables_name_columns, 1, show_tables_name_values, 1,
+                           "show tables information schema check constraints");
+    failures += expect_select_rows(
+        database, "SHOW FULL TABLES FROM information_schema LIKE 'check_constraints'",
+        show_tables_columns, 2, show_tables_values, 1,
+        "show full tables information schema check constraints");
+
+    failures += prepare_sql(database, "ALTER TABLE check_constraints_fixture ADD CHECK (id > 0)",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_UNSUPPORTED,
+                              "alter check does not create check constraints rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_empty_information_schema_table(
+        database, "SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS", columns,
+        check_constraints_column_count);
+
+    failures +=
+        prepare_sql(database, "SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS",
+                    MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema check constraints projection");
+    failures += prepare_sql(database, "SELECT DISTINCT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema check constraints distinct");
+    failures += prepare_sql(database, "SELECT ALL * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema check constraints explicit all");
+    failures +=
+        prepare_sql(database,
+                    "SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS WHERE CONSTRAINT_NAME = "
+                    "'chk'",
+                    MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema check constraints where");
+    failures += prepare_sql(
+        database, "SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS ORDER BY CONSTRAINT_NAME",
+        MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema check constraints order by");
+    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS LIMIT 1",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema check constraints limit");
+    failures += prepare_sql(database, "SELECT COUNT(*) FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema check constraints count");
+    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS AS cc",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema check constraints AS alias");
+    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS cc",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema check constraints bare alias");
+    failures += prepare_sql(database,
+                            "SELECT INFORMATION_SCHEMA.CHECK_CONSTRAINTS.* FROM "
+                            "INFORMATION_SCHEMA.CHECK_CONSTRAINTS",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema check constraints qualified "
+                                             "wildcard");
+    failures += prepare_sql(database,
+                            "SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS JOIN "
+                            "INFORMATION_SCHEMA.TABLES",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema check constraints join");
 
     mylite_close(database);
     mylite_finalize(stmt);
@@ -13092,11 +13212,17 @@ static int expect_no_information_schema_schemata_row(mylite_db *database, const 
 static int expect_information_schema_tables_views(mylite_db *database)
 {
     static const char *const expected_tables[] = {
-        "CHARACTER_SETS",    "COLLATION_CHARACTER_SET_APPLICABILITY",
-        "COLLATIONS",        "COLUMNS",
-        "ENGINES",           "SCHEMATA",
-        "KEYWORDS",          "KEY_COLUMN_USAGE",
-        "STATISTICS",        "TABLES",
+        "CHARACTER_SETS",
+        "COLLATION_CHARACTER_SET_APPLICABILITY",
+        "CHECK_CONSTRAINTS",
+        "COLLATIONS",
+        "COLUMNS",
+        "ENGINES",
+        "SCHEMATA",
+        "KEYWORDS",
+        "KEY_COLUMN_USAGE",
+        "STATISTICS",
+        "TABLES",
         "TABLE_CONSTRAINTS",
     };
     mylite_stmt *stmt = NULL;

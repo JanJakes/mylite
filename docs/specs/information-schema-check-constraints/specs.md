@@ -1,0 +1,188 @@
+# INFORMATION_SCHEMA.CHECK_CONSTRAINTS
+
+## Scope
+
+This feature adds the first executable MyLite slice for:
+
+- `SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS`
+
+MyLite does not yet have executable CHECK-constraint DDL, a CHECK catalog, or
+CHECK expression enforcement. This slice therefore exposes the MySQL-compatible
+`INFORMATION_SCHEMA.CHECK_CONSTRAINTS` table shape as a read-only system view
+and returns zero rows for every current MyLite database. Rows for actual CHECK
+constraints are intentionally deferred until MyLite has CHECK DDL, catalog
+storage, expression validation, enforcement flags, and DML enforcement.
+
+The supported query shape remains consistent with the current narrow
+`INFORMATION_SCHEMA` runtime policy: only unqualified wildcard selection from
+the table executes. Projections, explicit duplicate modifiers, filters,
+ordering, limits, aggregates, aliases, joins, qualified wildcards, and broader
+information-schema query processing remain unsupported.
+
+## Sources
+
+- MySQL 8.4 Reference Manual, `INFORMATION_SCHEMA` `CHECK_CONSTRAINTS` table:
+  https://dev.mysql.com/doc/refman/8.4/en/information-schema-check-constraints-table.html
+- MySQL 8.4 Reference Manual, `INFORMATION_SCHEMA` table reference:
+  https://dev.mysql.com/doc/refman/8.4/en/information-schema-table-reference.html
+- MySQL 8.4 Reference Manual, constraint `INFORMATION_SCHEMA` tables:
+  https://dev.mysql.com/doc/refman/8.4/en/constraint-information-schema.html
+- Observed MySQL 8.4.9 runtime behavior from Docker container
+  `mylite-mysql-849`.
+
+This specification is independently authored from official documentation and
+observed runtime behavior. It does not copy MySQL grammar or implementation
+sources.
+
+## MySQL 8.4.9 Behavior Summary
+
+`INFORMATION_SCHEMA.CHECK_CONSTRAINTS` reports CHECK constraints defined for
+visible schemas. The table has four columns:
+
+1. `CONSTRAINT_CATALOG`
+2. `CONSTRAINT_SCHEMA`
+3. `CONSTRAINT_NAME`
+4. `CHECK_CLAUSE`
+
+Observed metadata for an empty result set:
+
+- `CONSTRAINT_CATALOG`: `VAR_STRING`, `latin1_swedish_ci`, length `64`, flags
+  `NOT_NULL`, `UNIQUE_KEY`, `BINARY`, `NO_DEFAULT_VALUE`, `PART_KEY`
+- `CONSTRAINT_SCHEMA`: `VAR_STRING`, `latin1_swedish_ci`, length `64`, flags
+  `NOT_NULL`, `BINARY`, `NO_DEFAULT_VALUE`, `PART_KEY`
+- `CONSTRAINT_NAME`: `VAR_STRING`, `latin1_swedish_ci`, length `64`, flags
+  `NOT_NULL`, `NO_DEFAULT_VALUE`, `PART_KEY`
+- `CHECK_CLAUSE`: `BLOB`, `latin1_swedish_ci`, length `4294967295`, flags
+  `NOT_NULL`, `BLOB`, `BINARY`, `NO_DEFAULT_VALUE`
+
+Runtime probes:
+
+- A schema containing a normal table without CHECK constraints returned zero
+  rows for `CHECK_CONSTRAINTS`.
+- `SHOW FULL TABLES FROM information_schema LIKE 'check_constraints'` returned
+  `CHECK_CONSTRAINTS`, `SYSTEM VIEW`.
+- A table with `a INT CHECK (a > 0)` and
+  `CONSTRAINT chk_b CHECK (b < 10) NOT ENFORCED` returned two
+  `CHECK_CONSTRAINTS` rows. MySQL generated the unnamed constraint as
+  `checks_probe_chk_1`; `CHECK_CLAUSE` rendered as ``(`a` > 0)`` for the
+  inline constraint and ``(`b` < 10)`` for the named constraint. The matching
+  `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` rows used `CONSTRAINT_TYPE='CHECK'`
+  and `ENFORCED='YES'` or `ENFORCED='NO'`.
+
+The CHECK rows described above are future MyLite behavior, not part of this
+first slice.
+
+## MyLite Behavior
+
+Supported executable query:
+
+```sql
+SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS
+```
+
+The schema and table identifiers are resolved case-insensitively, including
+quoted qualified forms such as:
+
+```sql
+SELECT * FROM `information_schema`.`CHECK_CONSTRAINTS`
+```
+
+The result columns are exactly:
+
+1. `CONSTRAINT_CATALOG`
+2. `CONSTRAINT_SCHEMA`
+3. `CONSTRAINT_NAME`
+4. `CHECK_CLAUSE`
+
+The query returns no rows because no CHECK catalog exists yet. This is a
+deliberate empty static system view, not a placeholder catalog and not fake
+metadata.
+
+`INFORMATION_SCHEMA.TABLES` exposes `CHECK_CONSTRAINTS` with
+`TABLE_SCHEMA='information_schema'`, `TABLE_NAME='CHECK_CONSTRAINTS'`, and
+`TABLE_TYPE='SYSTEM VIEW'`. The existing `SHOW TABLES FROM information_schema`
+and `SHOW FULL TABLES FROM information_schema` inventory also exposes
+`CHECK_CONSTRAINTS`; `SHOW FULL TABLES FROM information_schema LIKE
+'check_constraints'` returns `CHECK_CONSTRAINTS`, `SYSTEM VIEW`.
+
+### Unsupported Query Shapes
+
+The following forms parse through the general SELECT grammar but return
+`MYLITE_UNSUPPORTED` and no statement handle for this slice:
+
+- `SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS`
+- `SELECT DISTINCT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS`
+- `SELECT ALL * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS`
+- `SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS WHERE CONSTRAINT_NAME = 'chk'`
+- `SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS ORDER BY CONSTRAINT_NAME`
+- `SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS LIMIT 1`
+- `SELECT COUNT(*) FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS`
+- `SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS AS cc`
+- `SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS cc`
+- `SELECT INFORMATION_SCHEMA.CHECK_CONSTRAINTS.* FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS`
+- joins involving `INFORMATION_SCHEMA.CHECK_CONSTRAINTS`
+
+Unqualified `SELECT * FROM CHECK_CONSTRAINTS` is not part of this feature.
+
+## Grammar
+
+No new SELECT grammar is needed. The existing qualified table-reference grammar
+must continue accepting ordinary, mixed-case, and quoted identifiers for this
+information-schema table. The supported surface can be described with this
+MyLite-authored Lemon-style snippet:
+
+```lemon
+information_schema_wildcard_select ::= SELECT STAR FROM qualified_table_name.
+
+qualified_table_name ::= identifier DOT identifier.
+```
+
+Runtime validation narrows the accepted parsed statement to
+`information_schema.check_constraints`, an unqualified wildcard projection, no
+explicit duplicate modifier, no alias, and no additional SELECT clauses.
+
+## Storage And Runtime
+
+This feature must not add `__mylite_check_constraint_catalog` or any other
+CHECK metadata table. Runtime lowering should use a static SQLite statement
+with the correct column aliases and an always-false row predicate.
+
+When CHECK DDL is implemented later, the CHECK catalog should be designed once
+for DDL validation, DML enforcement, `INFORMATION_SCHEMA.CHECK_CONSTRAINTS`,
+and CHECK rows in `INFORMATION_SCHEMA.TABLE_CONSTRAINTS`. This empty static
+view should then be replaced by a catalog-backed query.
+
+## Tests
+
+Parser coverage:
+
+- `SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS`
+- lower-case and mixed-case qualified names
+- quoted qualified name
+- projection and `WHERE` forms parse successfully for runtime rejection
+
+Runtime coverage:
+
+- empty database returns zero rows with the exact four uppercase column names
+- creating a normal table without CHECK constraints still returns zero rows
+- lower-case, mixed-case, and quoted table references execute
+- `INFORMATION_SCHEMA.TABLES` exposes the `CHECK_CONSTRAINTS` system-view row
+- `SHOW TABLES FROM information_schema LIKE 'check_constraints'` exposes the
+  system view
+- `SHOW FULL TABLES FROM information_schema LIKE 'check_constraints'` returns
+  `CHECK_CONSTRAINTS`, `SYSTEM VIEW`
+- unsupported projection, explicit `DISTINCT`/`ALL`, `WHERE`, `ORDER BY`,
+  `LIMIT`, `COUNT(*)`, `AS` alias, bare alias, qualified wildcard, and join
+  forms return `MYLITE_UNSUPPORTED` and no statement handle
+- if CHECK DDL parses in the current runtime, unsupported CHECK DDL must not
+  create `CHECK_CONSTRAINTS` rows
+
+## Known Gaps
+
+- Actual CHECK rows are omitted until MyLite has CHECK DDL, a CHECK catalog,
+  expression validation, enforcement state, and DML enforcement.
+- `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` still omits CHECK rows until the same
+  underlying CHECK catalog exists.
+- General information-schema projections, filters, ordering, limits, aliases,
+  joins, aggregates, privilege filtering, and exact MySQL field metadata remain
+  deferred.

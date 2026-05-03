@@ -65,6 +65,7 @@ enum mylite_information_schema_table {
     MYLITE_INFORMATION_SCHEMA_KEYWORDS = 9,
     MYLITE_INFORMATION_SCHEMA_TABLE_CONSTRAINTS = 10,
     MYLITE_INFORMATION_SCHEMA_KEY_COLUMN_USAGE = 11,
+    MYLITE_INFORMATION_SCHEMA_CHECK_CONSTRAINTS = 12,
 };
 
 enum mylite_mysql_condition_code {
@@ -1457,6 +1458,7 @@ static const char information_schema_tables_sql[] =
     "'' AS TABLE_COMMENT "
     "FROM ("
     "SELECT 'CHARACTER_SETS' AS table_name "
+    "UNION ALL SELECT 'CHECK_CONSTRAINTS' "
     "UNION ALL SELECT 'COLLATION_CHARACTER_SET_APPLICABILITY' "
     "UNION ALL SELECT 'COLLATIONS' "
     "UNION ALL SELECT 'SCHEMATA' "
@@ -1602,6 +1604,11 @@ static const char information_schema_key_column_usage_sql[] =
     "WHERE i.non_unique = 0 AND i.column_name IS NOT NULL) "
     "ORDER BY TABLE_SCHEMA COLLATE BINARY, TABLE_NAME COLLATE BINARY, "
     "constraint_order, first_rowid, ORDINAL_POSITION";
+static const char information_schema_check_constraints_sql[] = "SELECT 'def' AS CONSTRAINT_CATALOG,"
+                                                               "'' AS CONSTRAINT_SCHEMA,"
+                                                               "'' AS CONSTRAINT_NAME,"
+                                                               "'' AS CHECK_CLAUSE "
+                                                               "WHERE 0";
 
 static int open_sqlite_database(const char *filename, int flags, const char *vfs_name,
                                 mylite_db **out_db);
@@ -7072,6 +7079,7 @@ static char *show_tables_sql(mylite_db *database, const struct mylite_show_table
         "SELECT 'information_schema' AS TABLE_SCHEMA, table_name AS TABLE_NAME, "
         "'SYSTEM VIEW' AS TABLE_TYPE FROM ("
         "SELECT 'CHARACTER_SETS' AS table_name "
+        "UNION ALL SELECT 'CHECK_CONSTRAINTS' "
         "UNION ALL SELECT 'COLLATION_CHARACTER_SET_APPLICABILITY' "
         "UNION ALL SELECT 'COLLATIONS' "
         "UNION ALL SELECT 'SCHEMATA' "
@@ -8347,6 +8355,7 @@ static int information_schema_dynamic_table_sql(mylite_db *database,
     case MYLITE_INFORMATION_SCHEMA_STATISTICS:
     case MYLITE_INFORMATION_SCHEMA_TABLE_CONSTRAINTS:
     case MYLITE_INFORMATION_SCHEMA_KEY_COLUMN_USAGE:
+    case MYLITE_INFORMATION_SCHEMA_CHECK_CONSTRAINTS:
     case MYLITE_INFORMATION_SCHEMA_NONE:
         return MYLITE_UNSUPPORTED;
     }
@@ -32329,6 +32338,9 @@ static enum mylite_information_schema_table information_schema_table_from_name(c
     if (ascii_case_equal(name, "key_column_usage")) {
         return MYLITE_INFORMATION_SCHEMA_KEY_COLUMN_USAGE;
     }
+    if (ascii_case_equal(name, "check_constraints")) {
+        return MYLITE_INFORMATION_SCHEMA_CHECK_CONSTRAINTS;
+    }
     return MYLITE_INFORMATION_SCHEMA_NONE;
 }
 
@@ -32347,6 +32359,8 @@ static const char *information_schema_table_sql(enum mylite_information_schema_t
         return information_schema_table_constraints_sql;
     case MYLITE_INFORMATION_SCHEMA_KEY_COLUMN_USAGE:
         return information_schema_key_column_usage_sql;
+    case MYLITE_INFORMATION_SCHEMA_CHECK_CONSTRAINTS:
+        return information_schema_check_constraints_sql;
     case MYLITE_INFORMATION_SCHEMA_ENGINES:
     case MYLITE_INFORMATION_SCHEMA_CHARACTER_SETS:
     case MYLITE_INFORMATION_SCHEMA_COLLATIONS:

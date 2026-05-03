@@ -257,6 +257,7 @@ static int test_power_scalar_function_execution(mylite_db *database);
 static int test_exp_scalar_function_execution(mylite_db *database);
 static int test_logarithm_scalar_function_execution(mylite_db *database);
 static int test_sqrt_scalar_function_execution(mylite_db *database);
+static int test_trigonometric_scalar_function_execution(mylite_db *database);
 static int test_uuid_scalar_functions(mylite_db *database);
 static int test_inet_ipv4_functions_execution(void);
 static int test_charset_collation_functions_execution(void);
@@ -4037,6 +4038,8 @@ static int test_scalar_builtin_functions_execution(void)
 
     failures += test_sqrt_scalar_function_execution(database);
 
+    failures += test_trigonometric_scalar_function_execution(database);
+
     failures += test_uuid_scalar_functions(database);
 
     failures +=
@@ -5349,7 +5352,7 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_select_rows(database, "SELECT id FROM t ORDER BY id", id_column, 1,
                                    remaining_values, 1, "delete list function remaining rows");
 
-    failures += prepare_sql(database, "SELECT SIN(1)", MYLITE_UNSUPPORTED, &stmt);
+    failures += prepare_sql(database, "SELECT ACOS(1)", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported scalar function");
     failures += prepare_sql(database, "SELECT CONCAT()", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported concat arity");
@@ -6834,6 +6837,278 @@ static int test_sqrt_scalar_function_execution(mylite_db *database)
     failures += expect_no_stmt_handle(&stmt, "SQRT zero arity unsupported");
     failures += prepare_sql(database, "SELECT SQRT(1,2)", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "SQRT two arity unsupported");
+
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_trigonometric_scalar_function_execution(mylite_db *database)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const struct expected_result_metadata trig_metadata[] = {
+        {"sin_one", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"cos_null", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"tan_warn", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    static const struct expected_result_metadata trig_table_metadata[] = {
+        {"sx", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"cs", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"tx", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    static const char *const trig_columns[] = {
+        "sin_zero",    "cos_zero", "tan_zero",       "sin_neg_zero", "cos_neg_zero", "tan_neg_zero",
+        "sin_one",     "cos_one",  "tan_one",        "sin_null",     "cos_null",     "tan_null",
+        "sin_half_pi", "cos_pi",   "tan_quarter_pi", "tan_half_pi",  "sin_pi",       "tan_pi",
+        "sin_huge",    "cos_huge", "tan_huge",       "sin_under",    "cos_under",    "tan_under",
+    };
+    static const char *const trig_values[] = {
+        "0",
+        "1",
+        "0",
+        "0",
+        "1",
+        "0",
+        "0.8414709848078965",
+        "0.5403023058681398",
+        "1.557407724654902",
+        NULL,
+        NULL,
+        NULL,
+        "1",
+        "-1",
+        "0.9999999999999999",
+        "1.633123935319537e16",
+        "1.2246467991473532e-16",
+        "-1.2246467991473532e-16",
+        "0.4533964905016491",
+        "-0.8913089376870335",
+        "-0.5086861259107567",
+        "0",
+        "1",
+        "0",
+    };
+    static const char *const warning_columns[] = {
+        "sin_trail",    "cos_bad",      "tan_empty", "sin_space",  "cos_hex",
+        "tan_pos_over", "sin_neg_over", "sin_nan",   "cos_inf",    "tan_neg_inf",
+        "sin_dot",      "cos_plus",     "tan_minus", "cos_spaced", "tan_exp",
+    };
+    static const char *const warning_values[] = {
+        "0.8414709848078965",
+        "1",
+        "0",
+        "0",
+        "1",
+        "-0.004962015874444894",
+        "-0.004961954789184062",
+        "0",
+        "1",
+        "0",
+        "0",
+        "1",
+        "0",
+        "0.9912028118634736",
+        "-0.5872139151569291",
+    };
+    static const char *const trig_projection_columns[] = {"id", "s"};
+    static const char *const trig_projection_values[] = {
+        "3", "-0.8414709848078965", "1", "0", "4", "1.2246467991473532e-16",
+        "2", "0.8414709848078965",  "5", "1",
+    };
+    static const char *const id_column[] = {"id"};
+    static const char *const selected_id_values[] = {"4"};
+    static const char *const updated_id_values[] = {"2", "3"};
+    static const char *const all_id_values[] = {"1", "2", "3", "4", "5"};
+    static const char *const remaining_values[] = {"2", "3", "4", "5"};
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_select_rows(database,
+                           "SELECT SIN(0) AS sin_zero, "
+                           "COS(0) AS cos_zero, "
+                           "TAN(0) AS tan_zero, "
+                           "SIN(-0.0) AS sin_neg_zero, "
+                           "COS(-0.0) AS cos_neg_zero, "
+                           "TAN(-0.0) AS tan_neg_zero, "
+                           "SIN(1) AS sin_one, "
+                           "COS(1) AS cos_one, "
+                           "TAN(1) AS tan_one, "
+                           "SIN(NULL) AS sin_null, "
+                           "COS(NULL) AS cos_null, "
+                           "TAN(NULL) AS tan_null, "
+                           "SIN(PI()/2) AS sin_half_pi, "
+                           "COS(PI()) AS cos_pi, "
+                           "TAN(PI()/4) AS tan_quarter_pi, "
+                           "TAN(PI()/2) AS tan_half_pi, "
+                           "SIN(PI()) AS sin_pi, "
+                           "TAN(PI()) AS tan_pi, "
+                           "SIN(1e308) AS sin_huge, "
+                           "COS(1e308) AS cos_huge, "
+                           "TAN(1e308) AS tan_huge, "
+                           "SIN(1e-9999) AS sin_under, "
+                           "COS(1e-9999) AS cos_under, "
+                           "TAN(1e-9999) AS tan_under",
+                           trig_columns, (int)(sizeof(trig_columns) / sizeof(trig_columns[0])),
+                           trig_values, 1, "trigonometric scalar values");
+    failures += expect_int(mylite_warning_count(database), 0, "trigonometric scalar warnings");
+
+    failures += expect_select_rows(database,
+                                   "SELECT SIN('1x') AS sin_trail, "
+                                   "COS('foo') AS cos_bad, "
+                                   "TAN('') AS tan_empty, "
+                                   "SIN(' ') AS sin_space, "
+                                   "COS('0x10') AS cos_hex, "
+                                   "TAN('1e309') AS tan_pos_over, "
+                                   "SIN('-1e309') AS sin_neg_over, "
+                                   "SIN('nan') AS sin_nan, "
+                                   "COS('inf') AS cos_inf, "
+                                   "TAN('-inf') AS tan_neg_inf, "
+                                   "SIN('.') AS sin_dot, "
+                                   "COS('+') AS cos_plus, "
+                                   "TAN('-') AS tan_minus, "
+                                   "COS('  2.5e1 ') AS cos_spaced, "
+                                   "TAN('1e2') AS tan_exp",
+                                   warning_columns,
+                                   (int)(sizeof(warning_columns) / sizeof(warning_columns[0])),
+                                   warning_values, 1, "trigonometric string warning values");
+    failures += expect_int(mylite_warning_count(database), 11, "trigonometric warning count");
+    for (int index = 0; index < 11; ++index) {
+        failures += expect_int((int)mylite_warning_code(database, index),
+                               mysql_warning_truncated_wrong_value, "trigonometric warning code");
+    }
+    failures += expect_contains(mylite_warning_message(database, 0), "1x", "SIN trailing warning");
+    failures += expect_contains(mylite_warning_message(database, 1), "foo", "COS bad warning");
+    failures +=
+        expect_contains(mylite_warning_message(database, 2), "0x10", "COS hex-like warning");
+    failures += expect_contains(mylite_warning_message(database, 3), "1e309",
+                                "TAN positive overflow text warning");
+    failures += expect_contains(mylite_warning_message(database, 4), "-1e309",
+                                "SIN negative overflow text warning");
+
+    failures += prepare_sql(database,
+                            "SELECT SIN(1) AS sin_one, "
+                            "COS(NULL) AS cos_null, "
+                            "TAN('1x') AS tan_warn",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, trig_metadata,
+                                       (int)(sizeof(trig_metadata) / sizeof(trig_metadata[0])),
+                                       "trigonometric scalar metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "trigonometric metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "trigonometric metadata done");
+    failures += expect_int(mylite_warning_count(database), 1, "trigonometric metadata warning");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database,
+                            "CREATE TABLE trig_sites ("
+                            "id INT PRIMARY KEY, "
+                            "x DOUBLE, "
+                            "s VARCHAR(32))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO trig_sites VALUES "
+                            "(1,0,'0'),"
+                            "(2,1,'1x'),"
+                            "(3,-1,'foo'),"
+                            "(4,3.141592653589793,'bad'),"
+                            "(5,1.5707963267948966,'1e309')",
+                            MYLITE_DONE);
+
+    failures += prepare_sql(database,
+                            "SELECT SIN(x) AS sx, COS(s) AS cs, TAN(x) AS tx "
+                            "FROM trig_sites LIMIT 0",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_result_metadata(stmt, trig_table_metadata,
+                               (int)(sizeof(trig_table_metadata) / sizeof(trig_table_metadata[0])),
+                               "trigonometric table metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "trigonometric table metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_select_rows(database,
+                                   "SELECT id, SIN(x) AS s FROM trig_sites "
+                                   "ORDER BY SIN(x), id",
+                                   trig_projection_columns, 2, trig_projection_values, 5,
+                                   "trigonometric table projection order");
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "trigonometric table projection warnings");
+    failures += expect_select_rows(database,
+                                   "SELECT id FROM trig_sites WHERE COS(x) < 0 ORDER BY TAN(x), id",
+                                   id_column, 1, selected_id_values, 1, "trigonometric WHERE");
+    failures += expect_int(mylite_warning_count(database), 0, "trigonometric WHERE warnings");
+
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE trig_sites SET x = SIN(x) WHERE id IN (2,3)", 2,
+        "trigonometric update assignment");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT id FROM trig_sites "
+                           "WHERE (id = 2 AND x > 0.84 AND x < 0.85) "
+                           "OR (id = 3 AND x < -0.84 AND x > -0.85) "
+                           "ORDER BY id",
+                           id_column, 1, updated_id_values, 2, "trigonometric updated values");
+    failures += expect_int(mylite_warning_count(database), 0, "trigonometric update warnings");
+
+    failures +=
+        prepare_sql(database, "UPDATE trig_sites SET x = SIN('1x') WHERE id = 1", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Truncated incorrect DOUBLE value",
+                                  "SIN update warning promoted");
+    failures += expect_int(mylite_warning_count(database), 1, "SIN update warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "SIN update warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM trig_sites ORDER BY id", id_column, 1,
+                                   all_id_values, 5, "SIN update rollback rows");
+
+    failures += prepare_sql(database, "UPDATE trig_sites SET x = COS('foo') WHERE id = 1",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Truncated incorrect DOUBLE value",
+                                  "COS update warning promoted");
+    failures += expect_int(mylite_warning_count(database), 1, "COS update warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "COS update warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM trig_sites ORDER BY id", id_column, 1,
+                                   all_id_values, 5, "COS update rollback rows");
+
+    failures += prepare_sql(database, "DELETE FROM trig_sites WHERE TAN(s) > 0", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Truncated incorrect DOUBLE value",
+                                  "TAN delete warning promoted");
+    failures += expect_int(mylite_warning_count(database), 1, "TAN delete warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "TAN delete warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM trig_sites ORDER BY id", id_column, 1,
+                                   all_id_values, 5, "TAN delete rollback rows");
+
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM trig_sites WHERE id = 1 AND SIN(x) = 0", 1,
+        "trigonometric delete predicate");
+    failures += expect_select_rows(database, "SELECT id FROM trig_sites ORDER BY id", id_column, 1,
+                                   remaining_values, 4, "trigonometric delete remaining rows");
+
+    failures += prepare_sql(database, "SELECT SIN()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "SIN zero arity unsupported");
+    failures += prepare_sql(database, "SELECT SIN(1,2)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "SIN two arity unsupported");
+    failures += prepare_sql(database, "SELECT COS()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "COS zero arity unsupported");
+    failures += prepare_sql(database, "SELECT COS(1,2)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "COS two arity unsupported");
+    failures += prepare_sql(database, "SELECT TAN()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "TAN zero arity unsupported");
+    failures += prepare_sql(database, "SELECT TAN(1,2)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "TAN two arity unsupported");
 
     // NOLINTEND(readability-magic-numbers)
     return failures;

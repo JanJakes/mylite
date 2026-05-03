@@ -108,6 +108,7 @@ enum {
 };
 
 static const char mylite_pi_text[] = "3.141593";
+static const double mylite_pi_double_value = 3.141592653589793238462643383279502884;
 static const uint64_t mylite_expression_int64_min_magnitude = (uint64_t)INT64_MAX + UINT64_C(1);
 static const uint64_t mylite_expression_ipv4_u32_max = UINT32_MAX;
 static const uint32_t mylite_expression_crc32_initial = UINT32_C(0xFFFFFFFF);
@@ -378,6 +379,9 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_LOG = 73,
     MYLITE_SCALAR_FUNCTION_LOG2 = 74,
     MYLITE_SCALAR_FUNCTION_LOG10 = 75,
+    MYLITE_SCALAR_FUNCTION_SIN = 76,
+    MYLITE_SCALAR_FUNCTION_COS = 77,
+    MYLITE_SCALAR_FUNCTION_TAN = 78,
 };
 
 static int eval_node(const struct mylite_sql_ast_node *node,
@@ -866,6 +870,18 @@ static int eval_sqrt_function(const struct mylite_sql_ast_node *arguments,
                               const struct mylite_expression_eval_context *context,
                               struct mylite_expression_warnings *warnings,
                               struct mylite_expression_value *out_value);
+static int eval_trigonometric_function(enum mylite_scalar_function_id function_id,
+                                       const struct mylite_sql_ast_node *arguments,
+                                       const struct mylite_expression_eval_context *context,
+                                       struct mylite_expression_warnings *warnings,
+                                       struct mylite_expression_value *out_value);
+static bool trigonometric_pi_expression_value(const struct mylite_sql_ast_node *node,
+                                              double *out_value);
+static bool trigonometric_pi_expression_value_impl(const struct mylite_sql_ast_node *node,
+                                                   double *out_value, bool *out_contains_pi);
+static bool trigonometric_pi_literal_value(const struct mylite_sql_ast_node *node,
+                                           double *out_value);
+static bool trigonometric_expression_is_pi_call(const struct mylite_sql_ast_node *node);
 static int eval_round_function(const struct mylite_sql_ast_node *arguments,
                                const struct mylite_expression_eval_context *context,
                                struct mylite_expression_warnings *warnings,
@@ -1384,6 +1400,9 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_LN:
     case MYLITE_SCALAR_FUNCTION_LOG2:
     case MYLITE_SCALAR_FUNCTION_LOG10:
+    case MYLITE_SCALAR_FUNCTION_SIN:
+    case MYLITE_SCALAR_FUNCTION_COS:
+    case MYLITE_SCALAR_FUNCTION_TAN:
     case MYLITE_SCALAR_FUNCTION_ISNULL:
         return arity == 1U;
     case MYLITE_SCALAR_FUNCTION_LOG:
@@ -2224,6 +2243,10 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_log_function(function_id, arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_SQRT:
         return eval_sqrt_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_SIN:
+    case MYLITE_SCALAR_FUNCTION_COS:
+    case MYLITE_SCALAR_FUNCTION_TAN:
+        return eval_trigonometric_function(function_id, arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_ABS:
     case MYLITE_SCALAR_FUNCTION_SIGN:
     case MYLITE_SCALAR_FUNCTION_FLOOR:
@@ -3714,7 +3737,8 @@ static int eval_field_function(const struct mylite_sql_ast_node *arguments,
 {
     struct mylite_expression_value search = {0};
     struct mylite_expression_value *candidates = NULL;
-    size_t candidate_count = child_count(arguments) - 1U;
+    size_t argument_count = child_count(arguments);
+    size_t candidate_count = argument_count > 1U ? argument_count - 1U : 0U;
     int64_t position = 0;
     int status = eval_node(child_at(arguments, 0U), context, warnings, &search);
 
@@ -3722,6 +3746,11 @@ static int eval_field_function(const struct mylite_sql_ast_node *arguments,
         goto cleanup;
     }
     if (is_null(&search)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
+                                                      .int64_value = 0};
+        goto cleanup;
+    }
+    if (candidate_count == 0U) {
         *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
                                                       .int64_value = 0};
         goto cleanup;
@@ -4277,6 +4306,9 @@ static int set_char_result(enum char_function_charset charset, const char *chars
                            struct mylite_expression_warnings *warnings,
                            struct mylite_expression_value *out_value)
 {
+    if (text == NULL) {
+        text_length = 0U;
+    }
     if (!char_text_is_valid_for_charset(charset, text, text_length)) {
         int status =
             append_invalid_char_string_warning(warnings, (struct char_invalid_string_warning){
@@ -4319,6 +4351,9 @@ static bool char_text_is_ascii(const char *text, size_t text_length)
 {
     const unsigned char *source = (const unsigned char *)(text == NULL ? "" : text);
 
+    if (text == NULL) {
+        text_length = 0U;
+    }
     for (size_t index = 0U; index < text_length; ++index) {
         if (source[index] > MYLITE_ASCII_MAX) {
             return false;
@@ -4332,6 +4367,9 @@ static bool char_text_is_utf8(const char *text, size_t text_length, bool allow_f
     const unsigned char *source = (const unsigned char *)(text == NULL ? "" : text);
     size_t index = 0U;
 
+    if (text == NULL) {
+        text_length = 0U;
+    }
     while (index < text_length) {
         unsigned char first = source[index];
         struct utf8_sequence sequence = {0};
@@ -4434,9 +4472,10 @@ static int append_invalid_char_string_warning(struct mylite_expression_warnings 
     char hex_preview[(MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW * 2U) + 1U];
     char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
     const unsigned char *source = (const unsigned char *)(warning.text == NULL ? "" : warning.text);
-    size_t preview = warning.text_length > MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
+    size_t text_length = warning.text == NULL ? 0U : warning.text_length;
+    size_t preview = text_length > MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
                          ? MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
-                         : warning.text_length;
+                         : text_length;
     size_t output = 0U;
     int length = 0;
 
@@ -5221,6 +5260,9 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_LOG:
     case MYLITE_SCALAR_FUNCTION_LOG2:
     case MYLITE_SCALAR_FUNCTION_LOG10:
+    case MYLITE_SCALAR_FUNCTION_SIN:
+    case MYLITE_SCALAR_FUNCTION_COS:
+    case MYLITE_SCALAR_FUNCTION_TAN:
     case MYLITE_SCALAR_FUNCTION_MOD:
     case MYLITE_SCALAR_FUNCTION_PI:
     case MYLITE_SCALAR_FUNCTION_IF:
@@ -6925,6 +6967,197 @@ cleanup:
     return status;
 }
 
+static int eval_trigonometric_function(enum mylite_scalar_function_id function_id,
+                                       const struct mylite_sql_ast_node *arguments,
+                                       const struct mylite_expression_eval_context *context,
+                                       struct mylite_expression_warnings *warnings,
+                                       struct mylite_expression_value *out_value)
+{
+    const struct mylite_sql_ast_node *argument_node = child_at(arguments, 0U);
+    struct mylite_expression_value argument = {0};
+    struct numeric_value number = {0};
+    double result = 0.0;
+    bool used_pi_expression = trigonometric_pi_expression_value(argument_node, &number.real_value);
+    int status = used_pi_expression ? 0 : eval_node(argument_node, context, warnings, &argument);
+
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (!used_pi_expression && is_null(&argument)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+
+    if (!used_pi_expression) {
+        status = value_to_numeric(&argument, warnings, &number);
+        if (status != 0) {
+            goto cleanup;
+        }
+    }
+
+    if (function_id == MYLITE_SCALAR_FUNCTION_SIN) {
+        result = sin(number.real_value);
+    } else if (function_id == MYLITE_SCALAR_FUNCTION_COS) {
+        result = cos(number.real_value);
+    } else if (function_id == MYLITE_SCALAR_FUNCTION_TAN) {
+        result = tan(number.real_value);
+    } else {
+        status = -1;
+        goto cleanup;
+    }
+    if (result == 0.0) {
+        result = 0.0;
+    }
+
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_REAL,
+        .real_value = result,
+        .compact_real_text = true,
+    };
+
+cleanup:
+    mylite_expression_value_deinit(&argument);
+    return status;
+}
+
+static bool trigonometric_pi_expression_value(const struct mylite_sql_ast_node *node,
+                                              double *out_value)
+{
+    bool contains_pi = false;
+
+    return trigonometric_pi_expression_value_impl(node, out_value, &contains_pi) && contains_pi;
+}
+
+static bool trigonometric_pi_expression_value_impl(const struct mylite_sql_ast_node *node,
+                                                   double *out_value, bool *out_contains_pi)
+{
+    double left = 0.0;
+    double right = 0.0;
+    bool left_contains_pi = false;
+    bool right_contains_pi = false;
+
+    node = unwrap_parenthesized_node(node);
+    if (node == NULL || out_value == NULL || out_contains_pi == NULL) {
+        return false;
+    }
+    if (trigonometric_expression_is_pi_call(node)) {
+        *out_value = mylite_pi_double_value;
+        *out_contains_pi = true;
+        return true;
+    }
+    if (trigonometric_pi_literal_value(node, out_value)) {
+        *out_contains_pi = false;
+        return true;
+    }
+    if (node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION &&
+        trigonometric_pi_expression_value_impl(child_at(node, 0U), out_value, out_contains_pi)) {
+        if (node->operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            *out_value = -*out_value;
+            return true;
+        }
+        return node->operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE;
+    }
+    if (node->kind != MYLITE_SQL_AST_BINARY_EXPRESSION ||
+        !trigonometric_pi_expression_value_impl(child_at(node, 0U), &left, &left_contains_pi) ||
+        !trigonometric_pi_expression_value_impl(child_at(node, 1U), &right, &right_contains_pi)) {
+        return false;
+    }
+    *out_contains_pi = left_contains_pi || right_contains_pi;
+
+    switch (node->operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_ADD:
+        *out_value = left + right;
+        return true;
+    case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
+        *out_value = left - right;
+        return true;
+    case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
+        *out_value = left * right;
+        return true;
+    case MYLITE_SQL_AST_OPERATOR_DIVIDE:
+        if (right == 0.0) {
+            return false;
+        }
+        *out_value = left / right;
+        return true;
+    case MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE:
+    case MYLITE_SQL_AST_OPERATOR_POSITIVE:
+    case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
+    case MYLITE_SQL_AST_OPERATOR_MODULO:
+    case MYLITE_SQL_AST_OPERATOR_SHIFT_LEFT:
+    case MYLITE_SQL_AST_OPERATOR_SHIFT_RIGHT:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_AND:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_OR:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_XOR:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_NOT:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_AND:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_OR:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_XOR:
+    case MYLITE_SQL_AST_OPERATOR_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_LESS:
+    case MYLITE_SQL_AST_OPERATOR_LESS_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_GREATER:
+    case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_LIKE:
+    case MYLITE_SQL_AST_OPERATOR_NOT_LIKE:
+    case MYLITE_SQL_AST_OPERATOR_IS_NULL:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL:
+    case MYLITE_SQL_AST_OPERATOR_IS_TRUE:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_TRUE:
+    case MYLITE_SQL_AST_OPERATOR_IS_FALSE:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_FALSE:
+    case MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN:
+    case MYLITE_SQL_AST_OPERATOR_BETWEEN:
+    case MYLITE_SQL_AST_OPERATOR_NOT_BETWEEN:
+    case MYLITE_SQL_AST_OPERATOR_IN:
+    case MYLITE_SQL_AST_OPERATOR_NOT_IN:
+    case MYLITE_SQL_AST_OPERATOR_NONE:
+        return false;
+    }
+    return false;
+}
+
+static bool trigonometric_pi_literal_value(const struct mylite_sql_ast_node *node,
+                                           double *out_value)
+{
+    char *text = NULL;
+    char *end = NULL;
+    bool matched = false;
+
+    if (node == NULL || node->kind != MYLITE_SQL_AST_LITERAL ||
+        (node->literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER &&
+         node->literal_kind != MYLITE_SQL_AST_LITERAL_DECIMAL &&
+         node->literal_kind != MYLITE_SQL_AST_LITERAL_FLOAT)) {
+        return false;
+    }
+    text = copy_span_text(node->span.text, node->span.length);
+    if (text == NULL) {
+        return false;
+    }
+    errno = 0;
+    *out_value = strtod(text, &end);
+    matched = errno != ERANGE && end != text && end != NULL && *end == '\0';
+    free(text);
+    return matched;
+}
+
+static bool trigonometric_expression_is_pi_call(const struct mylite_sql_ast_node *node)
+{
+    const struct mylite_sql_ast_node *arguments = NULL;
+
+    if (node == NULL || node->kind != MYLITE_SQL_AST_FUNCTION_CALL ||
+        scalar_function_id(node) != MYLITE_SCALAR_FUNCTION_PI) {
+        return false;
+    }
+    arguments = child_at(node, 1U);
+    return arguments != NULL && arguments->kind == MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST &&
+           child_count(arguments) == 0U;
+}
+
 static int eval_round_function(const struct mylite_sql_ast_node *arguments,
                                const struct mylite_expression_eval_context *context,
                                struct mylite_expression_warnings *warnings,
@@ -7215,11 +7448,24 @@ static int round_append_signed_decimal_result(const struct decimal_text_parts *p
                                               size_t fraction_length,
                                               struct mylite_expression_value *out_value)
 {
-    const char *integer = digits == NULL ? "0" : digits;
-    size_t integer_length = digits_length > fraction_length ? digits_length - fraction_length : 0U;
+    const char *integer = digits;
+    size_t integer_length = 0U;
+    bool has_nonzero_digit = false;
     size_t output_length = 0U;
     char *result = NULL;
     size_t offset = 0U;
+
+    if (digits == NULL) {
+        digits = "0";
+        digits_length = 1U;
+        fraction_length = 0U;
+    }
+    if (fraction_length > digits_length) {
+        return -1;
+    }
+    integer = digits;
+    integer_length = digits_length - fraction_length;
+    has_nonzero_digit = !decimal_digits_all_zero(digits, digits_length);
 
     while (integer_length > 1U && *integer == '0') {
         ++integer;
@@ -7229,13 +7475,13 @@ static int round_append_signed_decimal_result(const struct decimal_text_parts *p
         integer = "0";
         integer_length = 1U;
     }
-    output_length = (parts->negative && !decimal_digits_all_zero(digits, digits_length) ? 1U : 0U) +
-                    integer_length + (fraction_length == 0U ? 0U : 1U + fraction_length);
+    output_length = (parts->negative && has_nonzero_digit ? 1U : 0U) + integer_length +
+                    (fraction_length == 0U ? 0U : 1U + fraction_length);
     result = malloc(output_length + 1U);
     if (result == NULL) {
         return -1;
     }
-    if (parts->negative && !decimal_digits_all_zero(digits, digits_length)) {
+    if (parts->negative && has_nonzero_digit) {
         result[offset++] = '-';
     }
     memcpy(result + offset, integer, integer_length);
@@ -9067,9 +9313,12 @@ static int utf8_char_count(const char *text, int64_t *out_count)
 
 static size_t utf8_offset_for_chars(const char *text, int64_t char_count)
 {
-    const unsigned char *cursor = (const unsigned char *)(text == NULL ? "" : text);
+    const unsigned char *cursor = (const unsigned char *)text;
     int64_t count = 0;
 
+    if (text == NULL || char_count <= 0) {
+        return 0U;
+    }
     while (*cursor != '\0' && count < char_count) {
         ++cursor;
         while (*cursor != '\0' &&
@@ -9078,7 +9327,7 @@ static size_t utf8_offset_for_chars(const char *text, int64_t char_count)
         }
         ++count;
     }
-    return (size_t)((const char *)cursor - (text == NULL ? "" : text));
+    return (size_t)((const char *)cursor - text);
 }
 
 static size_t utf8_first_character_length(const char *text)
@@ -9400,6 +9649,9 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"POW", MYLITE_SCALAR_FUNCTION_POWER},
         {"POWER", MYLITE_SCALAR_FUNCTION_POWER},
         {"SQRT", MYLITE_SCALAR_FUNCTION_SQRT},
+        {"SIN", MYLITE_SCALAR_FUNCTION_SIN},
+        {"COS", MYLITE_SCALAR_FUNCTION_COS},
+        {"TAN", MYLITE_SCALAR_FUNCTION_TAN},
         {"MOD", MYLITE_SCALAR_FUNCTION_MOD},
         {"PI", MYLITE_SCALAR_FUNCTION_PI},
         {"IF", MYLITE_SCALAR_FUNCTION_IF},
@@ -9508,6 +9760,9 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_LOG:
     case MYLITE_SCALAR_FUNCTION_LOG2:
     case MYLITE_SCALAR_FUNCTION_LOG10:
+    case MYLITE_SCALAR_FUNCTION_SIN:
+    case MYLITE_SCALAR_FUNCTION_COS:
+    case MYLITE_SCALAR_FUNCTION_TAN:
     case MYLITE_SCALAR_FUNCTION_MOD:
     case MYLITE_SCALAR_FUNCTION_PI:
     case MYLITE_SCALAR_FUNCTION_IF:

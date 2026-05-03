@@ -5180,7 +5180,7 @@ static int test_scalar_function_call_syntax(void)
 {
     // NOLINTBEGIN(readability-magic-numbers)
     enum {
-        expected_select_item_count = 29,
+        expected_select_item_count = 32,
         string_function_item_count = 17,
         padding_function_item_count = 6,
         quote_function_item_count = 2,
@@ -5201,7 +5201,8 @@ static int test_scalar_function_call_syntax(void)
                           "IF(1, 2, 3), "
                           "LEFT('abc', 1), RIGHT('abc', 1), REPLACE('a','a','b'), "
                           "ROUND(123.456, 2), Exp(2), Ln(2), LOG(2), Log(10, 100), "
-                          "LOG2(8), LOG10(1000), POW(2, 10), Power(2, -2), Sqrt(9) "
+                          "LOG2(8), LOG10(1000), POW(2, 10), Power(2, -2), Sqrt(9), "
+                          "Sin(1), COS(1), Tan(1) "
                           "FROM DUAL;",
                           MYLITE_SQL_PARSE_OK, &result);
     select_list = child_at(child_at(result.root, 0U), 0U);

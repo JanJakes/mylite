@@ -51,6 +51,7 @@ In scope for the initial implementation:
   - `LN`, `LOG`, `LOG2`, `LOG10`
   - `POW`, `POWER`
   - `SQRT`
+  - `SIN`, `COS`, `TAN`
   - `MOD`
   - `CONV`
   - `PI`
@@ -138,6 +139,7 @@ by common scalar expressions:
   `docs/specs/uuid-conversion-functions/specs.md`
 - numeric functions: `ABS`, `SIGN`, `FLOOR`, `CEIL`, `CEILING`, `MOD`,
   `ROUND`, `EXP`, `LN`, `LOG`, `LOG2`, `LOG10`, `POW`, `POWER`, `SQRT`,
+  `SIN`, `COS`, `TAN`,
   `CONV`, `BIT_COUNT`, `BIT_LENGTH`, `CRC32`, `INET_ATON`, `INET_NTOA`, and
   `PI`; see
   `docs/specs/round-function/specs.md` and
@@ -145,6 +147,7 @@ by common scalar expressions:
   `docs/specs/logarithm-functions/specs.md` and
   `docs/specs/power-functions/specs.md` and
   `docs/specs/sqrt-function/specs.md` and
+  `docs/specs/trigonometric-basic-functions/specs.md` and
   `docs/specs/numeric-base-conversion-functions/specs.md` and
   `docs/specs/bit-utility-functions/specs.md` and
   `docs/specs/crc32-function/specs.md` and
@@ -181,7 +184,8 @@ IPv4 network-address conversion, short IPv4 forms, invalid IPv4 warnings,
 UUID text validation, UUID string-to-binary and binary-to-string conversion,
 optional UUID time-part swap flags,
 `MOD(..., 0)` warnings, `EXP()` overflow behavior, logarithm invalid-domain
-warnings, `SQRT()` domain behavior, table projection, filters, ordering,
+warnings, `SQRT()` domain behavior, `SIN()` / `COS()` / `TAN()` radian
+semantics and text conversion, table projection, filters, ordering,
 update assignment expressions, delete predicates, unsupported functions,
 unsupported arity, and selected result metadata.
 
@@ -342,6 +346,10 @@ Representative runtime results:
 | `POW(2, 10)` | `1024` | none |
 | `SQRT(9)` | `3` | none |
 | `SQRT(-1)` | `NULL` | none |
+| `SIN(1)` | `0.8414709848078965` | none |
+| `COS(1)` | `0.5403023058681398` | none |
+| `TAN(1)` | `1.5574077246549023` | none |
+| `TAN('1x')` | `1.5574077246549023` | warning 1292, truncated incorrect double value |
 | `MOD(7, 3)` | `1` | none |
 | `SQRT('foo')` | `0` | warning 1292, truncated incorrect double value |
 | `ABS(-9223372036854775808)` | error | 1690 / `22003`, out of range |
@@ -499,6 +507,9 @@ Verified `mysql --column-type-info -vvv` examples:
 | `ROUND(123.456,2) AS round_scale` | `NEWDECIMAL` | `8` | `2` | `binary` | `NOT_NULL BINARY NUM` |
 | `POW(2,10) AS pow_value` | `DOUBLE` | `23` | `31` | `binary` | `BINARY NUM` |
 | `SQRT(-1) AS sqrt_domain` | `DOUBLE` | `23` | `31` | `binary` | `BINARY NUM` |
+| `SIN(1) AS sin_value` | `DOUBLE` | `23` | `31` | `binary` | `BINARY NUM` |
+| `COS(NULL) AS cos_null` | `DOUBLE` | `23` | `31` | `binary` | `BINARY NUM` |
+| `TAN('1x') AS tan_warn` | `DOUBLE` | `23` | `31` | `binary` | `BINARY NUM` |
 | `IF(1,'yes','no') AS if_value` | `VAR_STRING` | `12` | `31` | `utf8mb4_0900_ai_ci` | `NOT_NULL` |
 | `IFNULL(NULL,'fallback') AS ifnull_value` | `VAR_STRING` | `32` | `31` | `utf8mb4_0900_ai_ci` | `NOT_NULL` |
 | `COALESCE(NULL,1.25) AS coalesce_value` | `NEWDECIMAL` | `5` | `2` | `binary` | `NOT_NULL BINARY NUM` |
@@ -756,13 +767,17 @@ SELECT
   POW(2, 10),
   SQRT(9),
   SQRT(-1),
+  SIN(1),
+  COS(1),
+  TAN(1),
   MOD(7, 3);
 ```
 
 Expected row:
 
 ```text
-12.5, -1, 3, 2, 123.46, -2, -1, 1024, 3, NULL, 1
+12.5, -1, 3, 2, 123.46, -2, -1, 1024, 3, NULL,
+0.8414709848078965, 0.5403023058681398, 1.5574077246549023, 1
 ```
 
 `ROUND(25E-1)` is approximate-input behavior. Keep a focused MySQL runtime

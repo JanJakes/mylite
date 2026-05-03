@@ -2150,37 +2150,39 @@ start_until_log_option ::= SOURCE_LOG_POS start_option_equals replication_source
 start_until_log_option ::= RELAY_LOG_FILE start_option_equals text_string_literal.
 start_until_log_option ::= RELAY_LOG_POS start_option_equals replication_relay_log_position_value.
 
-replication_source_log_position_value ::= replication_decimal_log_position_value.
+replication_source_log_position_value ::= unsigned_decimal_value.
 
-replication_relay_log_position_value ::= BOOLEAN_NUMBER(A). {
+replication_relay_log_position_value ::= unsigned_decimal_or_lower_hex_value.
+
+unsigned_decimal_or_lower_hex_value ::= BOOLEAN_NUMBER(A). {
   mylite_parser_require_unsigned_decimal_or_lower_hex_literal(ctx, A);
 }
-replication_relay_log_position_value ::= FACTOR_NUMBER(A). {
+unsigned_decimal_or_lower_hex_value ::= FACTOR_NUMBER(A). {
   mylite_parser_require_unsigned_decimal_or_lower_hex_literal(ctx, A);
 }
-replication_relay_log_position_value ::= NUMBER_LITERAL(A). {
+unsigned_decimal_or_lower_hex_value ::= NUMBER_LITERAL(A). {
   mylite_parser_require_unsigned_decimal_or_lower_hex_literal(ctx, A);
 }
-replication_relay_log_position_value ::= DOT replication_decimal_log_position_fraction.
+unsigned_decimal_or_lower_hex_value ::= DOT unsigned_decimal_fraction.
 
-replication_decimal_log_position_value ::= BOOLEAN_NUMBER(A). {
+unsigned_decimal_value ::= BOOLEAN_NUMBER(A). {
   mylite_parser_require_unsigned_decimal_literal(ctx, A);
 }
-replication_decimal_log_position_value ::= FACTOR_NUMBER(A). {
+unsigned_decimal_value ::= FACTOR_NUMBER(A). {
   mylite_parser_require_unsigned_decimal_literal(ctx, A);
 }
-replication_decimal_log_position_value ::= NUMBER_LITERAL(A). {
+unsigned_decimal_value ::= NUMBER_LITERAL(A). {
   mylite_parser_require_unsigned_decimal_literal(ctx, A);
 }
-replication_decimal_log_position_value ::= DOT replication_decimal_log_position_fraction.
+unsigned_decimal_value ::= DOT unsigned_decimal_fraction.
 
-replication_decimal_log_position_fraction ::= BOOLEAN_NUMBER(A). {
+unsigned_decimal_fraction ::= BOOLEAN_NUMBER(A). {
   mylite_parser_require_unsigned_decimal_literal(ctx, A);
 }
-replication_decimal_log_position_fraction ::= FACTOR_NUMBER(A). {
+unsigned_decimal_fraction ::= FACTOR_NUMBER(A). {
   mylite_parser_require_unsigned_decimal_literal(ctx, A);
 }
-replication_decimal_log_position_fraction ::= NUMBER_LITERAL(A). {
+unsigned_decimal_fraction ::= NUMBER_LITERAL(A). {
   mylite_parser_require_unsigned_decimal_literal(ctx, A);
 }
 
@@ -3356,9 +3358,7 @@ clone_account_host ::= AT_SIGN drop_host_name.
 
 clone_colon ::= COLON.
 
-clone_port ::= BOOLEAN_NUMBER.
-clone_port ::= FACTOR_NUMBER.
-clone_port ::= NUMBER_LITERAL.
+clone_port ::= unsigned_decimal_or_lower_hex_value.
 
 clone_identified ::= IDENTIFIED.
 

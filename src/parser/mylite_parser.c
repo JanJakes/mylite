@@ -548,7 +548,7 @@ static int token_ascii_equal(MyliteToken token, const char *expected);
 static int query_limit_option_token(int token_id, MyliteToken token);
 static int query_limit_number_token(MyliteToken token);
 static int token_is_show_log_position_literal(MyliteToken token);
-static int token_is_start_relay_log_position_literal(MyliteToken token);
+static int token_is_unsigned_decimal_or_lower_hex_literal(MyliteToken token);
 
 MyliteParseStatus mylite_parse_sql(const char *sql, size_t length,
                                    MyliteParseResult *result) {
@@ -11276,7 +11276,7 @@ void mylite_parser_require_unsigned_decimal_literal(MyliteParseContext *ctx,
 
 void mylite_parser_require_unsigned_decimal_or_lower_hex_literal(
     MyliteParseContext *ctx, MyliteToken token) {
-  if (token_is_start_relay_log_position_literal(token)) {
+  if (token_is_unsigned_decimal_or_lower_hex_literal(token)) {
     return;
   }
 
@@ -15281,7 +15281,7 @@ static int token_is_show_log_position_literal(MyliteToken token) {
   return i == token.length;
 }
 
-static int token_is_start_relay_log_position_literal(MyliteToken token) {
+static int token_is_unsigned_decimal_or_lower_hex_literal(MyliteToken token) {
   return token_is_show_log_position_literal(token) ||
          token_is_lower_hex_literal(token, 0);
 }

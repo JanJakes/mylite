@@ -160,6 +160,8 @@ static void dump_statements(const MyliteAst *ast) {
         mylite_ast_account_statement_view(ast, i);
     const MyliteAstPrivilegeStatement *privilege_statement =
         mylite_ast_privilege_statement_view(ast, i);
+    const MyliteAstRoleStatement *role_statement =
+        mylite_ast_role_statement_view(ast, i);
     const MyliteAstDeleteStatement *delete_statement =
         mylite_ast_delete_statement_view(ast, i);
     const MyliteAstInsertStatement *insert_statement =
@@ -1512,6 +1514,73 @@ static void dump_statements(const MyliteAst *ast) {
                mylite_ast_account_view_end(user_account),
                mylite_account_auth_kind_name(
                    mylite_ast_account_view_auth_kind(user_account)));
+        const char *user = mylite_ast_account_view_user_value(user_account);
+        if (user == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(user,
+                              mylite_ast_account_view_user_value_length(
+                                  user_account));
+        }
+        fputs(" host=", stdout);
+        const char *host = mylite_ast_account_view_host_value(user_account);
+        if (host == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(host,
+                              mylite_ast_account_view_host_value_length(
+                                  user_account));
+        }
+        fputc('\n', stdout);
+      }
+    }
+    if (role_statement != NULL) {
+      printf("  role_statement span=%zu..%zu kind=%s option=%s for_user=%d "
+             "using_roles=%d roles=%zu users=%zu node=%s\n",
+             mylite_ast_role_statement_view_start(role_statement),
+             mylite_ast_role_statement_view_end(role_statement),
+             mylite_role_statement_kind_name(
+                 mylite_ast_role_statement_view_kind(role_statement)),
+             mylite_role_option_kind_name(
+                 mylite_ast_role_statement_view_option_kind(role_statement)),
+             mylite_ast_role_statement_view_has_for_user(role_statement),
+             mylite_ast_role_statement_view_has_using_roles(role_statement),
+             mylite_ast_role_statement_view_role_count(role_statement),
+             mylite_ast_role_statement_view_user_count(role_statement),
+             node_symbol_or_none(
+                 mylite_ast_role_statement_view_node(role_statement)));
+      for (size_t j = 0;
+           j < mylite_ast_role_statement_view_role_count(role_statement); j++) {
+        const MyliteAstRoleName *role =
+            mylite_ast_role_statement_view_role_at(role_statement, j);
+        printf("    role[%zu] span=%zu..%zu host=%d name=", j,
+               mylite_ast_role_name_view_start(role),
+               mylite_ast_role_name_view_end(role),
+               mylite_ast_role_name_view_has_explicit_host(role));
+        const char *name = mylite_ast_role_name_view_name_value(role);
+        if (name == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(name,
+                              mylite_ast_role_name_view_name_value_length(role));
+        }
+        fputs(" host=", stdout);
+        const char *host = mylite_ast_role_name_view_host_value(role);
+        if (host == NULL) {
+          fputs("none", stdout);
+        } else {
+          print_escaped_bytes(host,
+                              mylite_ast_role_name_view_host_value_length(role));
+        }
+        fputc('\n', stdout);
+      }
+      for (size_t j = 0;
+           j < mylite_ast_role_statement_view_user_count(role_statement); j++) {
+        const MyliteAstAccount *user_account =
+            mylite_ast_role_statement_view_user_at(role_statement, j);
+        printf("    role_user[%zu] span=%zu..%zu user=", j,
+               mylite_ast_account_view_start(user_account),
+               mylite_ast_account_view_end(user_account));
         const char *user = mylite_ast_account_view_user_value(user_account);
         if (user == NULL) {
           fputs("none", stdout);

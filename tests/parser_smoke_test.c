@@ -211,6 +211,7 @@ static int expect_flush_statement_view(void);
 static int expect_load_statement_view(void);
 static int expect_account_statement_view(void);
 static int expect_privilege_statement_view(void);
+static int expect_role_statement_view(void);
 static int expect_call_statement_view(void);
 static int expect_do_statement_view(void);
 static int expect_delete_statement_view(void);
@@ -836,6 +837,7 @@ int main(void) {
   failures += expect_load_statement_view();
   failures += expect_account_statement_view();
   failures += expect_privilege_statement_view();
+  failures += expect_role_statement_view();
   failures += expect_call_statement_view();
   failures += expect_do_statement_view();
   failures += expect_delete_statement_view();
@@ -5469,6 +5471,131 @@ static int expect_privilege_statement_view(void) {
             mylite_ast_account_view_host_value(user),
             mylite_ast_account_view_host_value_length(user), "%")) {
       fprintf(stderr, "REVOKE ALL privilege view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  return failed;
+}
+
+static int expect_role_statement_view(void) {
+  int failed = 0;
+  {
+    const char *sql =
+        "SET ROLE ALL EXCEPT app_role, 'quoted'@'localhost'";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "SET ROLE view parse failed: status=%s offset=%zu token=%d "
+              "message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+    const MyliteAstRoleStatement *view =
+        mylite_ast_role_statement_view(ast, 0);
+    const MyliteAstRoleName *second =
+        mylite_ast_role_statement_view_role_at(view, 1);
+    if (view == NULL ||
+        mylite_ast_role_statement_view_kind(view) !=
+            MYLITE_ROLE_STATEMENT_SET_ROLE ||
+        mylite_ast_role_statement_view_option_kind(view) !=
+            MYLITE_ROLE_OPTION_ALL_EXCEPT ||
+        mylite_ast_role_statement_view_role_count(view) != 2 ||
+        second == NULL ||
+        !mylite_ast_role_name_view_has_explicit_host(second) ||
+        !value_matches_when_expected(
+            mylite_ast_role_name_view_name_value(second),
+            mylite_ast_role_name_view_name_value_length(second), "quoted") ||
+        !value_matches_when_expected(
+            mylite_ast_role_name_view_host_value(second),
+            mylite_ast_role_name_view_host_value_length(second),
+            "localhost")) {
+      fprintf(stderr, "SET ROLE view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql = "SET DEFAULT ROLE app_role TO 'u'@'%'";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "SET DEFAULT ROLE view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    const MyliteAstRoleStatement *view =
+        mylite_ast_role_statement_view(ast, 0);
+    const MyliteAstRoleName *role =
+        mylite_ast_role_statement_view_role_at(view, 0);
+    const MyliteAstAccount *user =
+        mylite_ast_role_statement_view_user_at(view, 0);
+    if (view == NULL ||
+        mylite_ast_role_statement_view_kind(view) !=
+            MYLITE_ROLE_STATEMENT_SET_DEFAULT_ROLE ||
+        mylite_ast_role_statement_view_option_kind(view) !=
+            MYLITE_ROLE_OPTION_REGULAR ||
+        mylite_ast_role_statement_view_role_count(view) != 1 ||
+        mylite_ast_role_statement_view_user_count(view) != 1 ||
+        role == NULL ||
+        !value_matches_when_expected(
+            mylite_ast_role_name_view_name_value(role),
+            mylite_ast_role_name_view_name_value_length(role), "app_role") ||
+        user == NULL ||
+        !value_matches_when_expected(
+            mylite_ast_account_view_user_value(user),
+            mylite_ast_account_view_user_value_length(user), "u")) {
+      fprintf(stderr, "SET DEFAULT ROLE view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql =
+        "SHOW GRANTS FOR 'u'@'%' USING app_role, read_role";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "SHOW GRANTS role view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    const MyliteAstRoleStatement *view =
+        mylite_ast_role_statement_view(ast, 0);
+    const MyliteAstRoleName *second =
+        mylite_ast_role_statement_view_role_at(view, 1);
+    const MyliteAstAccount *user =
+        mylite_ast_role_statement_view_user_at(view, 0);
+    if (view == NULL ||
+        mylite_ast_role_statement_view_kind(view) !=
+            MYLITE_ROLE_STATEMENT_SHOW_GRANTS ||
+        !mylite_ast_role_statement_view_has_for_user(view) ||
+        !mylite_ast_role_statement_view_has_using_roles(view) ||
+        mylite_ast_role_statement_view_role_count(view) != 2 ||
+        mylite_ast_role_statement_view_user_count(view) != 1 ||
+        second == NULL ||
+        !value_matches_when_expected(
+            mylite_ast_role_name_view_name_value(second),
+            mylite_ast_role_name_view_name_value_length(second), "read_role") ||
+        user == NULL ||
+        !value_matches_when_expected(
+            mylite_ast_account_view_host_value(user),
+            mylite_ast_account_view_host_value_length(user), "%")) {
+      fprintf(stderr, "SHOW GRANTS role view failed: %s\n", sql);
       failed = 1;
     }
     mylite_ast_free(ast);

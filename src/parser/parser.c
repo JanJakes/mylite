@@ -1299,6 +1299,35 @@ struct MyliteAstPrivilegeStatement {
   int has_require_clause;
 };
 
+struct MyliteAstRoleName {
+  const MyliteAstNode *node;
+  size_t start;
+  size_t end;
+  size_t name_start;
+  size_t name_end;
+  const char *name_value;
+  size_t name_value_length;
+  size_t host_start;
+  size_t host_end;
+  const char *host_value;
+  size_t host_value_length;
+  int has_explicit_host;
+};
+
+struct MyliteAstRoleStatement {
+  const MyliteAstNode *node;
+  MyliteRoleStatementKind kind;
+  MyliteRoleOptionKind option_kind;
+  MyliteAstRoleName *roles;
+  MyliteAstAccount *users;
+  size_t start;
+  size_t end;
+  size_t role_count;
+  size_t user_count;
+  int has_for_user;
+  int has_using_roles;
+};
+
 struct MyliteAstTransactionStatement {
   const MyliteAstNode *node;
   MyliteTransactionStatementKind kind;
@@ -1356,6 +1385,7 @@ typedef struct MyliteAstStatement {
   MyliteAstLoadStatement *load_statement;
   MyliteAstAccountStatement *account_statement;
   MyliteAstPrivilegeStatement *privilege_statement;
+  MyliteAstRoleStatement *role_statement;
   MyliteAstDeleteStatement *delete_statement;
   MyliteAstInsertStatement *insert_statement;
   MyliteAstReplaceStatement *replace_statement;
@@ -2077,6 +2107,33 @@ static int mylite_ast_fill_privilege_users(
     const MyliteAstNode *node, const char *symbol_name, size_t *index);
 static int mylite_ast_set_privilege_statement_proxy_user(
     MyliteAst *ast, MyliteAstPrivilegeStatement *privilege_statement);
+static int mylite_ast_set_role_statement_view(
+    MyliteAst *ast, MyliteAstStatement *statement,
+    const MyliteAstNode *payload);
+static MyliteRoleStatementKind mylite_ast_classify_role_statement(
+    const char *symbol_name, const MyliteAstNode *node);
+static MyliteRoleOptionKind mylite_ast_classify_role_option(
+    const MyliteAstRoleStatement *role_statement);
+static const MyliteAstNode *mylite_ast_role_option_node(
+    const MyliteAstRoleStatement *role_statement);
+static int mylite_ast_set_role_statement_roles(
+    MyliteAst *ast, MyliteAstRoleStatement *role_statement);
+static int mylite_ast_fill_role_names(MyliteAst *ast,
+                                      MyliteAstRoleStatement *role_statement,
+                                      const MyliteAstNode *node,
+                                      size_t *index);
+static int mylite_ast_fill_role_name(MyliteAst *ast, MyliteAstRoleName *role,
+                                     const MyliteAstNode *node);
+static int mylite_ast_set_role_name_values(MyliteAst *ast,
+                                           MyliteAstRoleName *role);
+static int mylite_ast_set_role_statement_users(
+    MyliteAst *ast, MyliteAstRoleStatement *role_statement);
+static const MyliteAstNode *mylite_ast_role_user_node(
+    const MyliteAstRoleStatement *role_statement);
+static int mylite_ast_fill_role_users(MyliteAst *ast,
+                                      MyliteAstRoleStatement *role_statement,
+                                      const MyliteAstNode *node,
+                                      size_t *index);
 static int mylite_ast_set_prepared_statement_name_value(
     MyliteAst *ast, const MyliteAstNode *node, size_t *name_start,
     size_t *name_end, const char **name_value, size_t *name_value_length);
@@ -3224,6 +3281,38 @@ const char *mylite_privilege_level_kind_name(MylitePrivilegeLevelKind kind) {
       return "database";
     case MYLITE_PRIVILEGE_LEVEL_TABLE:
       return "table";
+  }
+  return "unknown";
+}
+
+const char *mylite_role_statement_kind_name(MyliteRoleStatementKind kind) {
+  switch (kind) {
+    case MYLITE_ROLE_STATEMENT_UNKNOWN:
+      return "unknown";
+    case MYLITE_ROLE_STATEMENT_SET_ROLE:
+      return "set_role";
+    case MYLITE_ROLE_STATEMENT_SET_DEFAULT_ROLE:
+      return "set_default_role";
+    case MYLITE_ROLE_STATEMENT_SHOW_GRANTS:
+      return "show_grants";
+  }
+  return "unknown";
+}
+
+const char *mylite_role_option_kind_name(MyliteRoleOptionKind kind) {
+  switch (kind) {
+    case MYLITE_ROLE_OPTION_UNSPECIFIED:
+      return "unspecified";
+    case MYLITE_ROLE_OPTION_DEFAULT:
+      return "default";
+    case MYLITE_ROLE_OPTION_NONE:
+      return "none";
+    case MYLITE_ROLE_OPTION_ALL:
+      return "all";
+    case MYLITE_ROLE_OPTION_ALL_EXCEPT:
+      return "all_except";
+    case MYLITE_ROLE_OPTION_REGULAR:
+      return "regular";
   }
   return "unknown";
 }
@@ -4507,6 +4596,13 @@ const MyliteAstPrivilegeStatement *mylite_ast_privilege_statement_view(
   const MyliteAstStatement *statement =
       mylite_ast_statement_at(ast, statement_index);
   return statement == NULL ? NULL : statement->privilege_statement;
+}
+
+const MyliteAstRoleStatement *mylite_ast_role_statement_view(
+    const MyliteAst *ast, size_t statement_index) {
+  const MyliteAstStatement *statement =
+      mylite_ast_statement_at(ast, statement_index);
+  return statement == NULL ? NULL : statement->role_statement;
 }
 
 const MyliteAstDeleteStatement *mylite_ast_delete_statement_view(
@@ -8732,6 +8828,107 @@ size_t mylite_ast_privilege_item_view_column_count(
   return item == NULL ? 0 : item->column_count;
 }
 
+const MyliteAstNode *mylite_ast_role_statement_view_node(
+    const MyliteAstRoleStatement *role_statement) {
+  return role_statement == NULL ? NULL : role_statement->node;
+}
+
+size_t mylite_ast_role_statement_view_start(
+    const MyliteAstRoleStatement *role_statement) {
+  return role_statement == NULL ? 0 : role_statement->start;
+}
+
+size_t mylite_ast_role_statement_view_end(
+    const MyliteAstRoleStatement *role_statement) {
+  return role_statement == NULL ? 0 : role_statement->end;
+}
+
+MyliteRoleStatementKind mylite_ast_role_statement_view_kind(
+    const MyliteAstRoleStatement *role_statement) {
+  return role_statement == NULL ? MYLITE_ROLE_STATEMENT_UNKNOWN
+                                : role_statement->kind;
+}
+
+MyliteRoleOptionKind mylite_ast_role_statement_view_option_kind(
+    const MyliteAstRoleStatement *role_statement) {
+  return role_statement == NULL ? MYLITE_ROLE_OPTION_UNSPECIFIED
+                                : role_statement->option_kind;
+}
+
+int mylite_ast_role_statement_view_has_for_user(
+    const MyliteAstRoleStatement *role_statement) {
+  return role_statement != NULL && role_statement->has_for_user;
+}
+
+int mylite_ast_role_statement_view_has_using_roles(
+    const MyliteAstRoleStatement *role_statement) {
+  return role_statement != NULL && role_statement->has_using_roles;
+}
+
+size_t mylite_ast_role_statement_view_role_count(
+    const MyliteAstRoleStatement *role_statement) {
+  return role_statement == NULL ? 0 : role_statement->role_count;
+}
+
+const MyliteAstRoleName *mylite_ast_role_statement_view_role_at(
+    const MyliteAstRoleStatement *role_statement, size_t role_index) {
+  if (role_statement == NULL || role_index >= role_statement->role_count) {
+    return NULL;
+  }
+  return &role_statement->roles[role_index];
+}
+
+size_t mylite_ast_role_statement_view_user_count(
+    const MyliteAstRoleStatement *role_statement) {
+  return role_statement == NULL ? 0 : role_statement->user_count;
+}
+
+const MyliteAstAccount *mylite_ast_role_statement_view_user_at(
+    const MyliteAstRoleStatement *role_statement, size_t user_index) {
+  if (role_statement == NULL || user_index >= role_statement->user_count) {
+    return NULL;
+  }
+  return &role_statement->users[user_index];
+}
+
+const MyliteAstNode *mylite_ast_role_name_view_node(
+    const MyliteAstRoleName *role_name) {
+  return role_name == NULL ? NULL : role_name->node;
+}
+
+size_t mylite_ast_role_name_view_start(const MyliteAstRoleName *role_name) {
+  return role_name == NULL ? 0 : role_name->start;
+}
+
+size_t mylite_ast_role_name_view_end(const MyliteAstRoleName *role_name) {
+  return role_name == NULL ? 0 : role_name->end;
+}
+
+int mylite_ast_role_name_view_has_explicit_host(
+    const MyliteAstRoleName *role_name) {
+  return role_name != NULL && role_name->has_explicit_host;
+}
+
+const char *mylite_ast_role_name_view_name_value(
+    const MyliteAstRoleName *role_name) {
+  return role_name == NULL ? NULL : role_name->name_value;
+}
+
+size_t mylite_ast_role_name_view_name_value_length(
+    const MyliteAstRoleName *role_name) {
+  return role_name == NULL ? 0 : role_name->name_value_length;
+}
+
+const char *mylite_ast_role_name_view_host_value(
+    const MyliteAstRoleName *role_name) {
+  return role_name == NULL ? NULL : role_name->host_value;
+}
+
+size_t mylite_ast_role_name_view_host_value_length(
+    const MyliteAstRoleName *role_name) {
+  return role_name == NULL ? 0 : role_name->host_value_length;
+}
+
 const MyliteAstNode *mylite_ast_transaction_statement_view_node(
     const MyliteAstTransactionStatement *transaction_statement) {
   return transaction_statement == NULL ? NULL : transaction_statement->node;
@@ -12375,7 +12572,8 @@ static int mylite_ast_set_statement_details(MyliteAst *ast,
     return mylite_ast_set_explain_statement_view(ast, statement, payload);
   }
   if (strcmp(statement->symbol_name, "nt_show_stmt") == 0) {
-    return mylite_ast_set_show_statement_view(ast, statement, payload);
+    return mylite_ast_set_show_statement_view(ast, statement, payload) &&
+           mylite_ast_set_role_statement_view(ast, statement, payload);
   }
   if (strcmp(statement->symbol_name, "nt_flush_stmt") == 0) {
     return mylite_ast_set_flush_statement_view(ast, statement, payload);
@@ -12417,7 +12615,8 @@ static int mylite_ast_set_statement_details(MyliteAst *ast,
       strcmp(statement->symbol_name, "nt_set_role_stmt") == 0 ||
       strcmp(statement->symbol_name, "nt_set_default_role_stmt") == 0) {
     return mylite_ast_set_set_statement_view(ast, statement, payload) &&
-           mylite_ast_set_account_statement_view(ast, statement, payload);
+           mylite_ast_set_account_statement_view(ast, statement, payload) &&
+           mylite_ast_set_role_statement_view(ast, statement, payload);
   }
   if (strcmp(statement->symbol_name, "nt_rename_table_stmt") == 0) {
     return mylite_ast_set_rename_table_view(ast, statement, payload);
@@ -18991,6 +19190,283 @@ static int mylite_ast_set_privilege_statement_proxy_user(
     return proxy_user == NULL;
   }
   privilege_statement->has_proxy_user = 1;
+  return 1;
+}
+
+static int mylite_ast_set_role_statement_view(
+    MyliteAst *ast, MyliteAstStatement *statement,
+    const MyliteAstNode *payload) {
+  if (ast == NULL || statement == NULL) {
+    return 1;
+  }
+  MyliteRoleStatementKind kind =
+      mylite_ast_classify_role_statement(statement->symbol_name, payload);
+  if (kind == MYLITE_ROLE_STATEMENT_UNKNOWN) {
+    return 1;
+  }
+  MyliteAstRoleStatement *role_statement =
+      mylite_ast_alloc(ast, sizeof(*role_statement));
+  if (role_statement == NULL) {
+    return 0;
+  }
+  role_statement->node = payload == NULL ? statement->node : payload;
+  role_statement->kind = kind;
+  role_statement->start = mylite_ast_node_start(role_statement->node);
+  role_statement->end = mylite_ast_node_end(role_statement->node);
+  role_statement->option_kind = mylite_ast_classify_role_option(role_statement);
+  role_statement->has_for_user =
+      kind == MYLITE_ROLE_STATEMENT_SHOW_GRANTS &&
+      mylite_ast_find_direct_child_token(role_statement->node,
+                                         MYLITE_TOK_FOR_KWD) != NULL;
+  role_statement->has_using_roles =
+      kind == MYLITE_ROLE_STATEMENT_SHOW_GRANTS &&
+      mylite_ast_find_first_symbol(role_statement->node, "nt_using_roles") !=
+          NULL &&
+      mylite_ast_find_first_symbol(role_statement->node, "nt_using_roles")
+          ->has_span;
+  if (!mylite_ast_set_role_statement_roles(ast, role_statement) ||
+      !mylite_ast_set_role_statement_users(ast, role_statement)) {
+    return 0;
+  }
+  statement->role_statement = role_statement;
+  return 1;
+}
+
+static MyliteRoleStatementKind mylite_ast_classify_role_statement(
+    const char *symbol_name, const MyliteAstNode *node) {
+  if (symbol_name == NULL) {
+    return MYLITE_ROLE_STATEMENT_UNKNOWN;
+  }
+  if (strcmp(symbol_name, "nt_set_role_stmt") == 0) {
+    return MYLITE_ROLE_STATEMENT_SET_ROLE;
+  }
+  if (strcmp(symbol_name, "nt_set_default_role_stmt") == 0) {
+    return MYLITE_ROLE_STATEMENT_SET_DEFAULT_ROLE;
+  }
+  if (strcmp(symbol_name, "nt_show_stmt") == 0 &&
+      mylite_ast_find_direct_child_token(node, MYLITE_TOK_GRANTS) != NULL) {
+    return MYLITE_ROLE_STATEMENT_SHOW_GRANTS;
+  }
+  return MYLITE_ROLE_STATEMENT_UNKNOWN;
+}
+
+static MyliteRoleOptionKind mylite_ast_classify_role_option(
+    const MyliteAstRoleStatement *role_statement) {
+  const MyliteAstNode *option = mylite_ast_role_option_node(role_statement);
+  if (option == NULL || !option->has_span) {
+    return MYLITE_ROLE_OPTION_UNSPECIFIED;
+  }
+  if (mylite_ast_find_direct_child_token(option, MYLITE_TOK_DEFAULT_KWD) !=
+      NULL) {
+    return MYLITE_ROLE_OPTION_DEFAULT;
+  }
+  if (mylite_ast_find_direct_child_token(option, MYLITE_TOK_NONE) != NULL) {
+    return MYLITE_ROLE_OPTION_NONE;
+  }
+  if (mylite_ast_find_direct_child_token(option, MYLITE_TOK_ALL) != NULL &&
+      mylite_ast_find_direct_child_token(option, MYLITE_TOK_EXCEPT) != NULL) {
+    return MYLITE_ROLE_OPTION_ALL_EXCEPT;
+  }
+  if (mylite_ast_find_direct_child_token(option, MYLITE_TOK_ALL) != NULL) {
+    return MYLITE_ROLE_OPTION_ALL;
+  }
+  if (mylite_ast_find_first_symbol(option, "nt_rolename_list") != NULL) {
+    return MYLITE_ROLE_OPTION_REGULAR;
+  }
+  return MYLITE_ROLE_OPTION_UNSPECIFIED;
+}
+
+static const MyliteAstNode *mylite_ast_role_option_node(
+    const MyliteAstRoleStatement *role_statement) {
+  if (role_statement == NULL) {
+    return NULL;
+  }
+  switch (role_statement->kind) {
+    case MYLITE_ROLE_STATEMENT_SET_ROLE:
+      return mylite_ast_find_first_symbol(role_statement->node,
+                                          "nt_set_role_opt");
+    case MYLITE_ROLE_STATEMENT_SET_DEFAULT_ROLE:
+      return mylite_ast_find_first_symbol(role_statement->node,
+                                          "nt_set_default_role_opt");
+    case MYLITE_ROLE_STATEMENT_SHOW_GRANTS:
+    case MYLITE_ROLE_STATEMENT_UNKNOWN:
+      return NULL;
+  }
+  return NULL;
+}
+
+static int mylite_ast_set_role_statement_roles(
+    MyliteAst *ast, MyliteAstRoleStatement *role_statement) {
+  if (ast == NULL || role_statement == NULL) {
+    return 1;
+  }
+  const MyliteAstNode *roles =
+      mylite_ast_find_first_symbol(role_statement->node, "nt_rolename_list");
+  if (roles == NULL) {
+    return 1;
+  }
+  role_statement->role_count = mylite_ast_count_load_nodes(roles,
+                                                           "nt_rolename");
+  if (role_statement->role_count == 0) {
+    return 1;
+  }
+  role_statement->roles =
+      mylite_ast_alloc(ast,
+                       role_statement->role_count * sizeof(*role_statement->roles));
+  if (role_statement->roles == NULL) {
+    return 0;
+  }
+  size_t index = 0;
+  return mylite_ast_fill_role_names(ast, role_statement, roles, &index) &&
+         index == role_statement->role_count;
+}
+
+static int mylite_ast_fill_role_names(MyliteAst *ast,
+                                      MyliteAstRoleStatement *role_statement,
+                                      const MyliteAstNode *node,
+                                      size_t *index) {
+  if (node == NULL) {
+    return 1;
+  }
+  if (mylite_ast_expression_is_symbol(node, "nt_rolename")) {
+    if (index == NULL || *index >= role_statement->role_count ||
+        !mylite_ast_fill_role_name(ast, &role_statement->roles[*index],
+                                   node)) {
+      return 0;
+    }
+    (*index)++;
+    return 1;
+  }
+  for (size_t i = 0; i < node->child_count; i++) {
+    if (!mylite_ast_fill_role_names(ast, role_statement, node->children[i],
+                                    index)) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+static int mylite_ast_fill_role_name(MyliteAst *ast, MyliteAstRoleName *role,
+                                     const MyliteAstNode *node) {
+  if (ast == NULL || role == NULL || node == NULL) {
+    return 1;
+  }
+  role->node = node;
+  role->start = mylite_ast_node_start(node);
+  role->end = mylite_ast_node_end(node);
+  return mylite_ast_set_role_name_values(ast, role);
+}
+
+static int mylite_ast_set_role_name_values(MyliteAst *ast,
+                                           MyliteAstRoleName *role) {
+  if (ast == NULL || role == NULL || role->node == NULL) {
+    return 1;
+  }
+  const MyliteAstNode *composed =
+      mylite_ast_find_first_symbol(role->node, "nt_rolename_composed");
+  if (composed != NULL) {
+    const MyliteAstNode *name =
+        mylite_ast_direct_child_symbol(composed, 0, "nt_string_name");
+    if (!mylite_ast_set_account_string_name(
+            ast, name, &role->name_start, &role->name_end, &role->name_value,
+            &role->name_value_length)) {
+      return 0;
+    }
+    const MyliteAstNode *host =
+        mylite_ast_direct_child_symbol(composed, 2, "nt_string_name");
+    if (host != NULL) {
+      role->has_explicit_host = 1;
+      return mylite_ast_set_account_string_name(
+          ast, host, &role->host_start, &role->host_end, &role->host_value,
+          &role->host_value_length);
+    }
+    const MyliteAstNode *host_token =
+        mylite_ast_find_direct_child_token(composed,
+                                           MYLITE_TOK_SINGLE_AT_IDENTIFIER);
+    if (host_token != NULL) {
+      role->has_explicit_host = 1;
+      return mylite_ast_set_user_variable_name_value(
+          ast, host_token, &role->host_start, &role->host_end,
+          &role->host_value, &role->host_value_length);
+    }
+    return 1;
+  }
+  const MyliteAstNode *name =
+      mylite_ast_find_first_symbol(role->node, "nt_role_name_string");
+  if (name == NULL) {
+    name = mylite_ast_find_first_symbol(role->node, "nt_string_name");
+  }
+  return mylite_ast_set_account_string_name(
+      ast, name, &role->name_start, &role->name_end, &role->name_value,
+      &role->name_value_length);
+}
+
+static int mylite_ast_set_role_statement_users(
+    MyliteAst *ast, MyliteAstRoleStatement *role_statement) {
+  if (ast == NULL || role_statement == NULL) {
+    return 1;
+  }
+  const MyliteAstNode *user_node = mylite_ast_role_user_node(role_statement);
+  if (user_node == NULL) {
+    return 1;
+  }
+  role_statement->user_count =
+      mylite_ast_expression_is_symbol(user_node, "nt_username")
+          ? 1
+          : mylite_ast_count_load_nodes(user_node, "nt_username");
+  if (role_statement->user_count == 0) {
+    return 1;
+  }
+  role_statement->users =
+      mylite_ast_alloc(ast,
+                       role_statement->user_count * sizeof(*role_statement->users));
+  if (role_statement->users == NULL) {
+    return 0;
+  }
+  size_t index = 0;
+  return mylite_ast_fill_role_users(ast, role_statement, user_node, &index) &&
+         index == role_statement->user_count;
+}
+
+static const MyliteAstNode *mylite_ast_role_user_node(
+    const MyliteAstRoleStatement *role_statement) {
+  if (role_statement == NULL) {
+    return NULL;
+  }
+  switch (role_statement->kind) {
+    case MYLITE_ROLE_STATEMENT_SET_DEFAULT_ROLE:
+      return mylite_ast_find_first_symbol(role_statement->node,
+                                          "nt_username_list");
+    case MYLITE_ROLE_STATEMENT_SHOW_GRANTS:
+      return mylite_ast_find_first_symbol(role_statement->node, "nt_username");
+    case MYLITE_ROLE_STATEMENT_SET_ROLE:
+    case MYLITE_ROLE_STATEMENT_UNKNOWN:
+      return NULL;
+  }
+  return NULL;
+}
+
+static int mylite_ast_fill_role_users(MyliteAst *ast,
+                                      MyliteAstRoleStatement *role_statement,
+                                      const MyliteAstNode *node,
+                                      size_t *index) {
+  if (node == NULL) {
+    return 1;
+  }
+  if (mylite_ast_expression_is_symbol(node, "nt_username")) {
+    if (index == NULL || *index >= role_statement->user_count ||
+        !mylite_ast_fill_account(ast, &role_statement->users[*index], node)) {
+      return 0;
+    }
+    (*index)++;
+    return 1;
+  }
+  for (size_t i = 0; i < node->child_count; i++) {
+    if (!mylite_ast_fill_role_users(ast, role_statement, node->children[i],
+                                    index)) {
+      return 0;
+    }
+  }
   return 1;
 }
 

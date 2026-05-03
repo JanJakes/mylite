@@ -438,6 +438,22 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t privilege_statement_item_columns = 0;
   size_t privilege_statement_users = 0;
   size_t privilege_statement_proxy_users = 0;
+  size_t role_statement_views = 0;
+  size_t role_statement_set_roles = 0;
+  size_t role_statement_set_default_roles = 0;
+  size_t role_statement_show_grants = 0;
+  size_t role_statement_default_options = 0;
+  size_t role_statement_none_options = 0;
+  size_t role_statement_all_options = 0;
+  size_t role_statement_all_except_options = 0;
+  size_t role_statement_regular_options = 0;
+  size_t role_statement_for_users = 0;
+  size_t role_statement_using_roles = 0;
+  size_t role_statement_roles = 0;
+  size_t role_statement_role_hosts = 0;
+  size_t role_statement_role_name_values = 0;
+  size_t role_statement_role_host_values = 0;
+  size_t role_statement_users = 0;
   size_t rename_table_views = 0;
   size_t rename_table_pairs = 0;
   size_t set_statement_views = 0;
@@ -2253,6 +2269,70 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                 privilege_statement_proxy_users++;
               }
             }
+            const MyliteAstRoleStatement *role_statement =
+                mylite_ast_role_statement_view(ast, i);
+            if (role_statement != NULL) {
+              role_statement_views++;
+              switch (mylite_ast_role_statement_view_kind(role_statement)) {
+                case MYLITE_ROLE_STATEMENT_SET_ROLE:
+                  role_statement_set_roles++;
+                  break;
+                case MYLITE_ROLE_STATEMENT_SET_DEFAULT_ROLE:
+                  role_statement_set_default_roles++;
+                  break;
+                case MYLITE_ROLE_STATEMENT_SHOW_GRANTS:
+                  role_statement_show_grants++;
+                  break;
+                default:
+                  break;
+              }
+              switch (mylite_ast_role_statement_view_option_kind(
+                  role_statement)) {
+                case MYLITE_ROLE_OPTION_DEFAULT:
+                  role_statement_default_options++;
+                  break;
+                case MYLITE_ROLE_OPTION_NONE:
+                  role_statement_none_options++;
+                  break;
+                case MYLITE_ROLE_OPTION_ALL:
+                  role_statement_all_options++;
+                  break;
+                case MYLITE_ROLE_OPTION_ALL_EXCEPT:
+                  role_statement_all_except_options++;
+                  break;
+                case MYLITE_ROLE_OPTION_REGULAR:
+                  role_statement_regular_options++;
+                  break;
+                default:
+                  break;
+              }
+              if (mylite_ast_role_statement_view_has_for_user(
+                      role_statement)) {
+                role_statement_for_users++;
+              }
+              if (mylite_ast_role_statement_view_has_using_roles(
+                      role_statement)) {
+                role_statement_using_roles++;
+              }
+              size_t role_count =
+                  mylite_ast_role_statement_view_role_count(role_statement);
+              role_statement_roles += role_count;
+              for (size_t j = 0; j < role_count; j++) {
+                const MyliteAstRoleName *role =
+                    mylite_ast_role_statement_view_role_at(role_statement, j);
+                if (mylite_ast_role_name_view_has_explicit_host(role)) {
+                  role_statement_role_hosts++;
+                }
+                if (mylite_ast_role_name_view_name_value(role) != NULL) {
+                  role_statement_role_name_values++;
+                }
+                if (mylite_ast_role_name_view_host_value(role) != NULL) {
+                  role_statement_role_host_values++;
+                }
+              }
+              role_statement_users +=
+                  mylite_ast_role_statement_view_user_count(role_statement);
+            }
             const MyliteAstSetStatement *set_statement =
                 mylite_ast_set_statement_view(ast, i);
             if (set_statement != NULL) {
@@ -2963,6 +3043,22 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_privilege_statement_item_columns=%.2f "
            "avg_privilege_statement_users=%.2f "
            "avg_privilege_statement_proxy_users=%.2f "
+           "avg_role_statement_views=%.2f "
+           "avg_role_statement_set_roles=%.2f "
+           "avg_role_statement_set_default_roles=%.2f "
+           "avg_role_statement_show_grants=%.2f "
+           "avg_role_statement_default_options=%.2f "
+           "avg_role_statement_none_options=%.2f "
+           "avg_role_statement_all_options=%.2f "
+           "avg_role_statement_all_except_options=%.2f "
+           "avg_role_statement_regular_options=%.2f "
+           "avg_role_statement_for_users=%.2f "
+           "avg_role_statement_using_roles=%.2f "
+           "avg_role_statement_roles=%.2f "
+           "avg_role_statement_role_hosts=%.2f "
+           "avg_role_statement_role_name_values=%.2f "
+           "avg_role_statement_role_host_values=%.2f "
+           "avg_role_statement_users=%.2f "
            "avg_set_statement_views=%.2f "
            "avg_set_statement_assignments=%.2f "
            "avg_set_assignment_name_values=%.2f "
@@ -3421,6 +3517,22 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)privilege_statement_item_columns / (double)parsed,
            (double)privilege_statement_users / (double)parsed,
            (double)privilege_statement_proxy_users / (double)parsed,
+           (double)role_statement_views / (double)parsed,
+           (double)role_statement_set_roles / (double)parsed,
+           (double)role_statement_set_default_roles / (double)parsed,
+           (double)role_statement_show_grants / (double)parsed,
+           (double)role_statement_default_options / (double)parsed,
+           (double)role_statement_none_options / (double)parsed,
+           (double)role_statement_all_options / (double)parsed,
+           (double)role_statement_all_except_options / (double)parsed,
+           (double)role_statement_regular_options / (double)parsed,
+           (double)role_statement_for_users / (double)parsed,
+           (double)role_statement_using_roles / (double)parsed,
+           (double)role_statement_roles / (double)parsed,
+           (double)role_statement_role_hosts / (double)parsed,
+           (double)role_statement_role_name_values / (double)parsed,
+           (double)role_statement_role_host_values / (double)parsed,
+           (double)role_statement_users / (double)parsed,
            (double)set_statement_views / (double)parsed,
            (double)set_statement_assignments / (double)parsed,
            (double)set_assignment_name_values / (double)parsed,

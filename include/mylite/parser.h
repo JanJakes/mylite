@@ -28,6 +28,8 @@ typedef struct MyliteAstAccount MyliteAstAccount;
 typedef struct MyliteAstAccountStatement MyliteAstAccountStatement;
 typedef struct MyliteAstPrivilegeItem MyliteAstPrivilegeItem;
 typedef struct MyliteAstPrivilegeStatement MyliteAstPrivilegeStatement;
+typedef struct MyliteAstRoleName MyliteAstRoleName;
+typedef struct MyliteAstRoleStatement MyliteAstRoleStatement;
 typedef struct MyliteAstAlterTable MyliteAstAlterTable;
 typedef struct MyliteAstAlterTableSpec MyliteAstAlterTableSpec;
 typedef struct MyliteAstCreateDatabase MyliteAstCreateDatabase;
@@ -475,6 +477,22 @@ typedef enum MylitePrivilegeLevelKind {
   MYLITE_PRIVILEGE_LEVEL_TABLE
 } MylitePrivilegeLevelKind;
 
+typedef enum MyliteRoleStatementKind {
+  MYLITE_ROLE_STATEMENT_UNKNOWN = 0,
+  MYLITE_ROLE_STATEMENT_SET_ROLE,
+  MYLITE_ROLE_STATEMENT_SET_DEFAULT_ROLE,
+  MYLITE_ROLE_STATEMENT_SHOW_GRANTS
+} MyliteRoleStatementKind;
+
+typedef enum MyliteRoleOptionKind {
+  MYLITE_ROLE_OPTION_UNSPECIFIED = 0,
+  MYLITE_ROLE_OPTION_DEFAULT,
+  MYLITE_ROLE_OPTION_NONE,
+  MYLITE_ROLE_OPTION_ALL,
+  MYLITE_ROLE_OPTION_ALL_EXCEPT,
+  MYLITE_ROLE_OPTION_REGULAR
+} MyliteRoleOptionKind;
+
 typedef enum MyliteCreateTableColumnTypeFamily {
   MYLITE_CREATE_TABLE_COLUMN_TYPE_UNKNOWN = 0,
   MYLITE_CREATE_TABLE_COLUMN_TYPE_NUMERIC,
@@ -918,6 +936,8 @@ const char *mylite_privilege_item_kind_name(MylitePrivilegeItemKind kind);
 const char *mylite_privilege_object_type_name(
     MylitePrivilegeObjectType type);
 const char *mylite_privilege_level_kind_name(MylitePrivilegeLevelKind kind);
+const char *mylite_role_statement_kind_name(MyliteRoleStatementKind kind);
+const char *mylite_role_option_kind_name(MyliteRoleOptionKind kind);
 const char *mylite_expression_kind_name(MyliteExpressionKind kind);
 const char *mylite_expression_literal_kind_name(
     MyliteExpressionLiteralKind kind);
@@ -1120,6 +1140,8 @@ const MyliteAstLoadStatement *mylite_ast_load_statement_view(
 const MyliteAstAccountStatement *mylite_ast_account_statement_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstPrivilegeStatement *mylite_ast_privilege_statement_view(
+    const MyliteAst *ast, size_t statement_index);
+const MyliteAstRoleStatement *mylite_ast_role_statement_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstDeleteStatement *mylite_ast_delete_statement_view(
     const MyliteAst *ast, size_t statement_index);
@@ -2664,6 +2686,42 @@ size_t mylite_ast_privilege_item_view_value_length(
     const MyliteAstPrivilegeItem *item);
 size_t mylite_ast_privilege_item_view_column_count(
     const MyliteAstPrivilegeItem *item);
+const MyliteAstNode *mylite_ast_role_statement_view_node(
+    const MyliteAstRoleStatement *role_statement);
+size_t mylite_ast_role_statement_view_start(
+    const MyliteAstRoleStatement *role_statement);
+size_t mylite_ast_role_statement_view_end(
+    const MyliteAstRoleStatement *role_statement);
+MyliteRoleStatementKind mylite_ast_role_statement_view_kind(
+    const MyliteAstRoleStatement *role_statement);
+MyliteRoleOptionKind mylite_ast_role_statement_view_option_kind(
+    const MyliteAstRoleStatement *role_statement);
+int mylite_ast_role_statement_view_has_for_user(
+    const MyliteAstRoleStatement *role_statement);
+int mylite_ast_role_statement_view_has_using_roles(
+    const MyliteAstRoleStatement *role_statement);
+size_t mylite_ast_role_statement_view_role_count(
+    const MyliteAstRoleStatement *role_statement);
+const MyliteAstRoleName *mylite_ast_role_statement_view_role_at(
+    const MyliteAstRoleStatement *role_statement, size_t role_index);
+size_t mylite_ast_role_statement_view_user_count(
+    const MyliteAstRoleStatement *role_statement);
+const MyliteAstAccount *mylite_ast_role_statement_view_user_at(
+    const MyliteAstRoleStatement *role_statement, size_t user_index);
+const MyliteAstNode *mylite_ast_role_name_view_node(
+    const MyliteAstRoleName *role_name);
+size_t mylite_ast_role_name_view_start(const MyliteAstRoleName *role_name);
+size_t mylite_ast_role_name_view_end(const MyliteAstRoleName *role_name);
+int mylite_ast_role_name_view_has_explicit_host(
+    const MyliteAstRoleName *role_name);
+const char *mylite_ast_role_name_view_name_value(
+    const MyliteAstRoleName *role_name);
+size_t mylite_ast_role_name_view_name_value_length(
+    const MyliteAstRoleName *role_name);
+const char *mylite_ast_role_name_view_host_value(
+    const MyliteAstRoleName *role_name);
+size_t mylite_ast_role_name_view_host_value_length(
+    const MyliteAstRoleName *role_name);
 const MyliteAstNode *mylite_ast_transaction_statement_view_node(
     const MyliteAstTransactionStatement *transaction_statement);
 size_t mylite_ast_transaction_statement_view_start(

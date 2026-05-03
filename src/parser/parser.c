@@ -1030,6 +1030,24 @@ struct MyliteAstTableMaintenanceStatement {
   int has_use_frm;
 };
 
+struct MyliteAstKillStatement {
+  const MyliteAstNode *node;
+  const MyliteAstNode *target_node;
+  MyliteAstExpression target_expression;
+  MyliteKillStatementKind kind;
+  MyliteKillTargetKind target_kind;
+  size_t start;
+  size_t end;
+  size_t target_start;
+  size_t target_end;
+  const char *target_value;
+  size_t target_value_length;
+  unsigned long long connection_id;
+  int has_connection_id;
+  int has_tidb_extension;
+  int has_target_expression;
+};
+
 struct MyliteAstTransactionStatement {
   const MyliteAstNode *node;
   MyliteTransactionStatementKind kind;
@@ -1082,6 +1100,7 @@ typedef struct MyliteAstStatement {
   MyliteAstShowStatement *show_statement;
   MyliteAstLockStatement *lock_statement;
   MyliteAstTableMaintenanceStatement *table_maintenance_statement;
+  MyliteAstKillStatement *kill_statement;
   MyliteAstDeleteStatement *delete_statement;
   MyliteAstInsertStatement *insert_statement;
   MyliteAstReplaceStatement *replace_statement;
@@ -1617,6 +1636,20 @@ static int mylite_ast_fill_table_maintenance_targets(
 static int mylite_ast_fill_table_maintenance_target(
     MyliteAst *ast, MyliteAstTableMaintenanceTarget *target,
     const MyliteAstNode *node);
+static int mylite_ast_set_kill_statement_view(MyliteAst *ast,
+                                              MyliteAstStatement *statement,
+                                              const MyliteAstNode *payload);
+static MyliteKillStatementKind mylite_ast_classify_kill_statement(
+    const MyliteAstNode *node);
+static const MyliteAstNode *mylite_ast_kill_target_node(
+    const MyliteAstNode *node);
+static MyliteKillTargetKind mylite_ast_classify_kill_target(
+    const MyliteAstNode *target);
+static int mylite_ast_set_kill_target(MyliteAst *ast,
+                                      MyliteAstKillStatement *kill_statement,
+                                      const MyliteAstNode *target);
+static int mylite_ast_set_kill_target_value(
+    MyliteAst *ast, MyliteAstKillStatement *kill_statement);
 static int mylite_ast_set_prepared_statement_name_value(
     MyliteAst *ast, const MyliteAstNode *node, size_t *name_start,
     size_t *name_end, const char **name_value, size_t *name_value_length);
@@ -2520,6 +2553,34 @@ const char *mylite_table_maintenance_kind_name(
       return "repair";
     case MYLITE_TABLE_MAINTENANCE_CHECKSUM:
       return "checksum";
+  }
+  return "unknown";
+}
+
+const char *mylite_kill_statement_kind_name(MyliteKillStatementKind kind) {
+  switch (kind) {
+    case MYLITE_KILL_STATEMENT_UNKNOWN:
+      return "unknown";
+    case MYLITE_KILL_STATEMENT_CONNECTION:
+      return "connection";
+    case MYLITE_KILL_STATEMENT_QUERY:
+      return "query";
+  }
+  return "unknown";
+}
+
+const char *mylite_kill_target_kind_name(MyliteKillTargetKind kind) {
+  switch (kind) {
+    case MYLITE_KILL_TARGET_UNKNOWN:
+      return "unknown";
+    case MYLITE_KILL_TARGET_CONNECTION_ID:
+      return "connection_id";
+    case MYLITE_KILL_TARGET_LOCAL_NAME:
+      return "local_name";
+    case MYLITE_KILL_TARGET_USER_VARIABLE:
+      return "user_variable";
+    case MYLITE_KILL_TARGET_EXPRESSION:
+      return "expression";
   }
   return "unknown";
 }
@@ -3768,6 +3829,13 @@ mylite_ast_table_maintenance_statement_view(const MyliteAst *ast,
   const MyliteAstStatement *statement =
       mylite_ast_statement_at(ast, statement_index);
   return statement == NULL ? NULL : statement->table_maintenance_statement;
+}
+
+const MyliteAstKillStatement *mylite_ast_kill_statement_view(
+    const MyliteAst *ast, size_t statement_index) {
+  const MyliteAstStatement *statement =
+      mylite_ast_statement_at(ast, statement_index);
+  return statement == NULL ? NULL : statement->kill_statement;
 }
 
 const MyliteAstDeleteStatement *mylite_ast_delete_statement_view(
@@ -7096,6 +7164,75 @@ const char *mylite_ast_table_maintenance_target_view_name_value(
 size_t mylite_ast_table_maintenance_target_view_name_value_length(
     const MyliteAstTableMaintenanceTarget *target) {
   return target == NULL ? 0 : target->name_value_length;
+}
+
+const MyliteAstNode *mylite_ast_kill_statement_view_node(
+    const MyliteAstKillStatement *kill_statement) {
+  return kill_statement == NULL ? NULL : kill_statement->node;
+}
+
+size_t mylite_ast_kill_statement_view_start(
+    const MyliteAstKillStatement *kill_statement) {
+  return kill_statement == NULL ? 0 : kill_statement->start;
+}
+
+size_t mylite_ast_kill_statement_view_end(
+    const MyliteAstKillStatement *kill_statement) {
+  return kill_statement == NULL ? 0 : kill_statement->end;
+}
+
+MyliteKillStatementKind mylite_ast_kill_statement_view_kind(
+    const MyliteAstKillStatement *kill_statement) {
+  return kill_statement == NULL ? MYLITE_KILL_STATEMENT_UNKNOWN
+                                : kill_statement->kind;
+}
+
+MyliteKillTargetKind mylite_ast_kill_statement_view_target_kind(
+    const MyliteAstKillStatement *kill_statement) {
+  return kill_statement == NULL ? MYLITE_KILL_TARGET_UNKNOWN
+                                : kill_statement->target_kind;
+}
+
+int mylite_ast_kill_statement_view_has_tidb_extension(
+    const MyliteAstKillStatement *kill_statement) {
+  return kill_statement != NULL && kill_statement->has_tidb_extension;
+}
+
+size_t mylite_ast_kill_statement_view_target_start(
+    const MyliteAstKillStatement *kill_statement) {
+  return kill_statement == NULL ? 0 : kill_statement->target_start;
+}
+
+size_t mylite_ast_kill_statement_view_target_end(
+    const MyliteAstKillStatement *kill_statement) {
+  return kill_statement == NULL ? 0 : kill_statement->target_end;
+}
+
+const char *mylite_ast_kill_statement_view_target_value(
+    const MyliteAstKillStatement *kill_statement) {
+  return kill_statement == NULL ? NULL : kill_statement->target_value;
+}
+
+size_t mylite_ast_kill_statement_view_target_value_length(
+    const MyliteAstKillStatement *kill_statement) {
+  return kill_statement == NULL ? 0 : kill_statement->target_value_length;
+}
+
+int mylite_ast_kill_statement_view_has_connection_id(
+    const MyliteAstKillStatement *kill_statement) {
+  return kill_statement != NULL && kill_statement->has_connection_id;
+}
+
+unsigned long long mylite_ast_kill_statement_view_connection_id(
+    const MyliteAstKillStatement *kill_statement) {
+  return kill_statement == NULL ? 0 : kill_statement->connection_id;
+}
+
+const MyliteAstExpression *mylite_ast_kill_statement_view_target_expression(
+    const MyliteAstKillStatement *kill_statement) {
+  return kill_statement == NULL || !kill_statement->has_target_expression
+             ? NULL
+             : &kill_statement->target_expression;
 }
 
 const MyliteAstNode *mylite_ast_transaction_statement_view_node(
@@ -10755,6 +10892,9 @@ static int mylite_ast_set_statement_details(MyliteAst *ast,
       strcmp(statement->symbol_name, "nt_mysql_checksum_table_stmt") == 0) {
     return mylite_ast_set_table_maintenance_statement_view(ast, statement,
                                                            payload);
+  }
+  if (strcmp(statement->symbol_name, "nt_kill_stmt") == 0) {
+    return mylite_ast_set_kill_statement_view(ast, statement, payload);
   }
   if (strcmp(statement->symbol_name, "nt_set_stmt") == 0 ||
       strcmp(statement->symbol_name, "nt_set_role_stmt") == 0 ||
@@ -15343,6 +15483,180 @@ static int mylite_ast_fill_table_maintenance_target(
   return 1;
 }
 
+static int mylite_ast_set_kill_statement_view(MyliteAst *ast,
+                                              MyliteAstStatement *statement,
+                                              const MyliteAstNode *payload) {
+  if (ast == NULL || statement == NULL) {
+    return 1;
+  }
+  MyliteAstKillStatement *kill_statement =
+      mylite_ast_alloc(ast, sizeof(*kill_statement));
+  if (kill_statement == NULL) {
+    return 0;
+  }
+  kill_statement->node = payload == NULL ? statement->node : payload;
+  kill_statement->start = mylite_ast_node_start(kill_statement->node);
+  kill_statement->end = mylite_ast_node_end(kill_statement->node);
+  kill_statement->kind =
+      mylite_ast_classify_kill_statement(kill_statement->node);
+  const MyliteAstNode *kill_keyword =
+      mylite_ast_find_first_symbol(kill_statement->node,
+                                   "nt_kill_or_kill_ti_db");
+  kill_statement->has_tidb_extension =
+      mylite_ast_find_first_token(kill_keyword, MYLITE_TOK_TIDB) != NULL;
+  if (!mylite_ast_set_kill_target(
+          ast, kill_statement,
+          mylite_ast_kill_target_node(kill_statement->node))) {
+    return 0;
+  }
+  statement->kill_statement = kill_statement;
+  return 1;
+}
+
+static MyliteKillStatementKind mylite_ast_classify_kill_statement(
+    const MyliteAstNode *node) {
+  if (mylite_ast_find_direct_child_token(node, MYLITE_TOK_QUERY) != NULL) {
+    return MYLITE_KILL_STATEMENT_QUERY;
+  }
+  if (node != NULL) {
+    return MYLITE_KILL_STATEMENT_CONNECTION;
+  }
+  return MYLITE_KILL_STATEMENT_UNKNOWN;
+}
+
+static const MyliteAstNode *mylite_ast_kill_target_node(
+    const MyliteAstNode *node) {
+  if (node == NULL) {
+    return NULL;
+  }
+  for (size_t remaining = node->child_count; remaining > 0; remaining--) {
+    const MyliteAstNode *child = node->children[remaining - 1];
+    if (child == NULL || !child->has_span) {
+      continue;
+    }
+    if (child->symbol_name != NULL &&
+        strcmp(child->symbol_name, "nt_kill_or_kill_ti_db") == 0) {
+      continue;
+    }
+    if (child->kind == MYLITE_AST_NODE_TOKEN &&
+        (child->token == MYLITE_TOK_CONNECTION ||
+         child->token == MYLITE_TOK_QUERY)) {
+      continue;
+    }
+    return child;
+  }
+  return NULL;
+}
+
+static MyliteKillTargetKind mylite_ast_classify_kill_target(
+    const MyliteAstNode *target) {
+  if (target == NULL) {
+    return MYLITE_KILL_TARGET_UNKNOWN;
+  }
+  if (target->symbol_name != NULL) {
+    if (strcmp(target->symbol_name, "nt_num") == 0) {
+      return MYLITE_KILL_TARGET_CONNECTION_ID;
+    }
+    if (strcmp(target->symbol_name, "nt_user_variable") == 0) {
+      return MYLITE_KILL_TARGET_USER_VARIABLE;
+    }
+    if (strcmp(target->symbol_name, "nt_builtin_function") == 0) {
+      return MYLITE_KILL_TARGET_EXPRESSION;
+    }
+    if (strcmp(target->symbol_name, "nt_identifier") == 0) {
+      return MYLITE_KILL_TARGET_LOCAL_NAME;
+    }
+  }
+  if (target->kind == MYLITE_AST_NODE_TOKEN) {
+    if (target->token == MYLITE_TOK_INT_LIT ||
+        target->token == MYLITE_TOK_NUMBER) {
+      return MYLITE_KILL_TARGET_CONNECTION_ID;
+    }
+    if (target->token == MYLITE_TOK_SINGLE_AT_IDENTIFIER) {
+      return MYLITE_KILL_TARGET_USER_VARIABLE;
+    }
+    if (target->token == MYLITE_TOK_IDENTIFIER) {
+      return MYLITE_KILL_TARGET_LOCAL_NAME;
+    }
+  }
+  return MYLITE_KILL_TARGET_UNKNOWN;
+}
+
+static int mylite_ast_set_kill_target(MyliteAst *ast,
+                                      MyliteAstKillStatement *kill_statement,
+                                      const MyliteAstNode *target) {
+  if (ast == NULL || kill_statement == NULL || target == NULL) {
+    return 1;
+  }
+  kill_statement->target_node = target;
+  kill_statement->target_kind = mylite_ast_classify_kill_target(target);
+  kill_statement->target_start = mylite_ast_node_start(target);
+  kill_statement->target_end = mylite_ast_node_end(target);
+  if (kill_statement->target_kind == MYLITE_KILL_TARGET_EXPRESSION) {
+    kill_statement->has_target_expression = 1;
+    if (!mylite_ast_set_expression_summary(
+            ast, &kill_statement->target_expression, target)) {
+      return 0;
+    }
+  }
+  return mylite_ast_set_kill_target_value(ast, kill_statement);
+}
+
+static int mylite_ast_set_kill_target_value(
+    MyliteAst *ast, MyliteAstKillStatement *kill_statement) {
+  if (ast == NULL || kill_statement == NULL ||
+      kill_statement->target_node == NULL) {
+    return 1;
+  }
+  const MyliteAstNode *target = kill_statement->target_node;
+  if (kill_statement->target_kind == MYLITE_KILL_TARGET_CONNECTION_ID) {
+    const MyliteAstNode *number =
+        target->kind == MYLITE_AST_NODE_TOKEN
+            ? target
+            : mylite_ast_find_first_token(target, MYLITE_TOK_INT_LIT);
+    if (number == NULL) {
+      number = mylite_ast_find_first_token(target, MYLITE_TOK_NUMBER);
+    }
+    if (number != NULL) {
+      kill_statement->target_start = mylite_ast_node_start(number);
+      kill_statement->target_end = mylite_ast_node_end(number);
+      kill_statement->has_connection_id = mylite_ast_parse_unsigned_integer_value(
+          ast->source, kill_statement->target_start,
+          kill_statement->target_end, &kill_statement->connection_id);
+      return mylite_ast_copy_source_span(ast, kill_statement->target_start,
+                                         kill_statement->target_end,
+                                         &kill_statement->target_value,
+                                         &kill_statement->target_value_length);
+    }
+  }
+  if (kill_statement->target_kind == MYLITE_KILL_TARGET_USER_VARIABLE) {
+    size_t value_start = 0;
+    size_t value_end = 0;
+    return mylite_ast_set_user_variable_name_value(
+        ast, target, &value_start, &value_end, &kill_statement->target_value,
+        &kill_statement->target_value_length);
+  }
+  if (kill_statement->target_kind == MYLITE_KILL_TARGET_LOCAL_NAME) {
+    const MyliteAstNode *identifier =
+        target->kind == MYLITE_AST_NODE_TOKEN
+            ? target
+            : mylite_ast_find_first_token(target, MYLITE_TOK_IDENTIFIER);
+    if (identifier != NULL) {
+      return mylite_ast_decode_identifier(
+          ast, mylite_ast_node_start(identifier), mylite_ast_node_end(identifier),
+          &kill_statement->target_value,
+          &kill_statement->target_value_length);
+    }
+  }
+  if (kill_statement->target_kind == MYLITE_KILL_TARGET_EXPRESSION &&
+      kill_statement->target_expression.value != NULL) {
+    kill_statement->target_value = kill_statement->target_expression.value;
+    kill_statement->target_value_length =
+        kill_statement->target_expression.value_length;
+  }
+  return 1;
+}
+
 static int mylite_ast_set_prepared_statement_name_value(
     MyliteAst *ast, const MyliteAstNode *node, size_t *name_start,
     size_t *name_end, const char **name_value, size_t *name_value_length) {
@@ -15991,7 +16305,8 @@ static MyliteExpressionOperatorKind mylite_ast_expression_operator_from_token(
 static int mylite_ast_expression_is_function_call(const MyliteAstNode *node) {
   return mylite_ast_expression_is_symbol(node, "nt_function_call_generic") ||
          mylite_ast_expression_is_symbol(node, "nt_function_call_keyword") ||
-         mylite_ast_expression_is_symbol(node, "nt_function_call_non_keyword");
+         mylite_ast_expression_is_symbol(node, "nt_function_call_non_keyword") ||
+         mylite_ast_expression_is_symbol(node, "nt_builtin_function");
 }
 
 static int mylite_ast_expression_is_symbol(const MyliteAstNode *node,

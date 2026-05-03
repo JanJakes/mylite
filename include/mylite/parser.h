@@ -54,6 +54,7 @@ typedef struct MyliteAstInsertAssignment MyliteAstInsertAssignment;
 typedef struct MyliteAstInsertColumn MyliteAstInsertColumn;
 typedef struct MyliteAstInsertStatement MyliteAstInsertStatement;
 typedef struct MyliteAstInsertValue MyliteAstInsertValue;
+typedef struct MyliteAstKillStatement MyliteAstKillStatement;
 typedef struct MyliteAstLockStatement MyliteAstLockStatement;
 typedef struct MyliteAstNode MyliteAstNode;
 typedef struct MyliteAstPreparedStatementVariable
@@ -342,6 +343,20 @@ typedef enum MyliteTableMaintenanceKind {
   MYLITE_TABLE_MAINTENANCE_REPAIR,
   MYLITE_TABLE_MAINTENANCE_CHECKSUM
 } MyliteTableMaintenanceKind;
+
+typedef enum MyliteKillStatementKind {
+  MYLITE_KILL_STATEMENT_UNKNOWN = 0,
+  MYLITE_KILL_STATEMENT_CONNECTION,
+  MYLITE_KILL_STATEMENT_QUERY
+} MyliteKillStatementKind;
+
+typedef enum MyliteKillTargetKind {
+  MYLITE_KILL_TARGET_UNKNOWN = 0,
+  MYLITE_KILL_TARGET_CONNECTION_ID,
+  MYLITE_KILL_TARGET_LOCAL_NAME,
+  MYLITE_KILL_TARGET_USER_VARIABLE,
+  MYLITE_KILL_TARGET_EXPRESSION
+} MyliteKillTargetKind;
 
 typedef enum MyliteCreateTableColumnTypeFamily {
   MYLITE_CREATE_TABLE_COLUMN_TYPE_UNKNOWN = 0,
@@ -767,6 +782,8 @@ const char *mylite_lock_statement_kind_name(MyliteLockStatementKind kind);
 const char *mylite_table_lock_mode_name(MyliteTableLockMode mode);
 const char *mylite_table_maintenance_kind_name(
     MyliteTableMaintenanceKind kind);
+const char *mylite_kill_statement_kind_name(MyliteKillStatementKind kind);
+const char *mylite_kill_target_kind_name(MyliteKillTargetKind kind);
 const char *mylite_expression_kind_name(MyliteExpressionKind kind);
 const char *mylite_expression_literal_kind_name(
     MyliteExpressionLiteralKind kind);
@@ -960,6 +977,8 @@ const MyliteAstLockStatement *mylite_ast_lock_statement_view(
 const MyliteAstTableMaintenanceStatement *
 mylite_ast_table_maintenance_statement_view(const MyliteAst *ast,
                                             size_t statement_index);
+const MyliteAstKillStatement *mylite_ast_kill_statement_view(
+    const MyliteAst *ast, size_t statement_index);
 const MyliteAstDeleteStatement *mylite_ast_delete_statement_view(
     const MyliteAst *ast, size_t statement_index);
 const MyliteAstReplaceStatement *mylite_ast_replace_statement_view(
@@ -2178,6 +2197,32 @@ const char *mylite_ast_table_maintenance_target_view_name_value(
     const MyliteAstTableMaintenanceTarget *target);
 size_t mylite_ast_table_maintenance_target_view_name_value_length(
     const MyliteAstTableMaintenanceTarget *target);
+const MyliteAstNode *mylite_ast_kill_statement_view_node(
+    const MyliteAstKillStatement *kill_statement);
+size_t mylite_ast_kill_statement_view_start(
+    const MyliteAstKillStatement *kill_statement);
+size_t mylite_ast_kill_statement_view_end(
+    const MyliteAstKillStatement *kill_statement);
+MyliteKillStatementKind mylite_ast_kill_statement_view_kind(
+    const MyliteAstKillStatement *kill_statement);
+MyliteKillTargetKind mylite_ast_kill_statement_view_target_kind(
+    const MyliteAstKillStatement *kill_statement);
+int mylite_ast_kill_statement_view_has_tidb_extension(
+    const MyliteAstKillStatement *kill_statement);
+size_t mylite_ast_kill_statement_view_target_start(
+    const MyliteAstKillStatement *kill_statement);
+size_t mylite_ast_kill_statement_view_target_end(
+    const MyliteAstKillStatement *kill_statement);
+const char *mylite_ast_kill_statement_view_target_value(
+    const MyliteAstKillStatement *kill_statement);
+size_t mylite_ast_kill_statement_view_target_value_length(
+    const MyliteAstKillStatement *kill_statement);
+int mylite_ast_kill_statement_view_has_connection_id(
+    const MyliteAstKillStatement *kill_statement);
+unsigned long long mylite_ast_kill_statement_view_connection_id(
+    const MyliteAstKillStatement *kill_statement);
+const MyliteAstExpression *mylite_ast_kill_statement_view_target_expression(
+    const MyliteAstKillStatement *kill_statement);
 const MyliteAstNode *mylite_ast_transaction_statement_view_node(
     const MyliteAstTransactionStatement *transaction_statement);
 size_t mylite_ast_transaction_statement_view_start(

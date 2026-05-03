@@ -356,6 +356,15 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
   size_t table_maintenance_statement_targets = 0;
   size_t table_maintenance_statement_target_name_values = 0;
   size_t table_maintenance_statement_option_flags = 0;
+  size_t kill_statement_views = 0;
+  size_t kill_statement_queries = 0;
+  size_t kill_statement_tidb_extensions = 0;
+  size_t kill_statement_connection_ids = 0;
+  size_t kill_statement_target_values = 0;
+  size_t kill_statement_target_expressions = 0;
+  size_t kill_statement_expression_tree_nodes = 0;
+  size_t kill_statement_expression_tree_operators = 0;
+  size_t kill_statement_expression_tree_leaf_values = 0;
   size_t rename_table_views = 0;
   size_t rename_table_pairs = 0;
   size_t set_statement_views = 0;
@@ -1822,6 +1831,37 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
                 }
               }
             }
+            const MyliteAstKillStatement *kill_statement =
+                mylite_ast_kill_statement_view(ast, i);
+            if (kill_statement != NULL) {
+              kill_statement_views++;
+              if (mylite_ast_kill_statement_view_kind(kill_statement) ==
+                  MYLITE_KILL_STATEMENT_QUERY) {
+                kill_statement_queries++;
+              }
+              if (mylite_ast_kill_statement_view_has_tidb_extension(
+                      kill_statement)) {
+                kill_statement_tidb_extensions++;
+              }
+              if (mylite_ast_kill_statement_view_has_connection_id(
+                      kill_statement)) {
+                kill_statement_connection_ids++;
+              }
+              if (mylite_ast_kill_statement_view_target_value(
+                      kill_statement) != NULL) {
+                kill_statement_target_values++;
+              }
+              const MyliteAstExpression *target_expression =
+                  mylite_ast_kill_statement_view_target_expression(
+                      kill_statement);
+              if (target_expression != NULL) {
+                kill_statement_target_expressions++;
+                count_expression_tree(
+                    target_expression, &kill_statement_expression_tree_nodes,
+                    &kill_statement_expression_tree_operators,
+                    &kill_statement_expression_tree_leaf_values);
+              }
+            }
             const MyliteAstSetStatement *set_statement =
                 mylite_ast_set_statement_view(ast, i);
             if (set_statement != NULL) {
@@ -2450,6 +2490,15 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            "avg_table_maintenance_statement_targets=%.2f "
            "avg_table_maintenance_statement_target_name_values=%.2f "
            "avg_table_maintenance_statement_option_flags=%.2f "
+           "avg_kill_statement_views=%.2f "
+           "avg_kill_statement_queries=%.2f "
+           "avg_kill_statement_tidb_extensions=%.2f "
+           "avg_kill_statement_connection_ids=%.2f "
+           "avg_kill_statement_target_values=%.2f "
+           "avg_kill_statement_target_expressions=%.2f "
+           "avg_kill_statement_expression_tree_nodes=%.2f "
+           "avg_kill_statement_expression_tree_operators=%.2f "
+           "avg_kill_statement_expression_tree_leaf_values=%.2f "
            "avg_set_statement_views=%.2f "
            "avg_set_statement_assignments=%.2f "
            "avg_set_assignment_name_values=%.2f "
@@ -2822,6 +2871,16 @@ static int run_benchmark(const char *path, BenchMode mode, int iterations) {
            (double)table_maintenance_statement_target_name_values /
                (double)parsed,
            (double)table_maintenance_statement_option_flags / (double)parsed,
+           (double)kill_statement_views / (double)parsed,
+           (double)kill_statement_queries / (double)parsed,
+           (double)kill_statement_tidb_extensions / (double)parsed,
+           (double)kill_statement_connection_ids / (double)parsed,
+           (double)kill_statement_target_values / (double)parsed,
+           (double)kill_statement_target_expressions / (double)parsed,
+           (double)kill_statement_expression_tree_nodes / (double)parsed,
+           (double)kill_statement_expression_tree_operators / (double)parsed,
+           (double)kill_statement_expression_tree_leaf_values /
+               (double)parsed,
            (double)set_statement_views / (double)parsed,
            (double)set_statement_assignments / (double)parsed,
            (double)set_assignment_name_values / (double)parsed,

@@ -125,6 +125,9 @@ expression nodes.
 - `ANALYZE TABLE`, `OPTIMIZE TABLE`, `REPAIR TABLE`, and `CHECKSUM TABLE`
   expose typed table-maintenance statement views with decoded table targets and
   statement option flags.
+- `KILL` statements expose typed connection/query mode, TiDB-extension marker,
+  and typed target metadata for numeric connection IDs, local names, user
+  variables, and builtin-function expressions.
 - Transaction-control statements expose begin form, access mode, consistency
   modifiers, `WORK`, completion modifiers, and decoded savepoint names.
 - Temporary syntax recognizers produce a placeholder root node so AST mode can
@@ -246,6 +249,10 @@ expression nodes.
 - typed table-maintenance descriptors with statement kind, ordered decoded
   table targets, `NO_WRITE_TO_BINLOG`, `QUICK`, `EXTENDED`, `CHANGED`, `FAST`,
   `MEDIUM`, and `USE_FRM` option flags
+- typed `KILL` descriptors with connection/query mode, TiDB-extension marker,
+  target kind, parsed connection ID, decoded local/user-variable target values,
+  and recursive expression handles for builtin-function targets such as
+  `CONNECTION_ID()`
 - typed transaction-control descriptors with statement kind, begin form,
   TiDB begin mode, access mode, consistency modifiers, `WORK`, completion
   modifiers, savepoint-keyword marker, and decoded savepoint name
@@ -564,6 +571,13 @@ decoded target tables, and grammar-level option flags including
 behavior, statistics refresh, checksum result rows, binlog effects, and warning
 or error semantics remain runtime work.
 
+`KILL` parser views cover the MySQL `KILL [CONNECTION|QUERY] target` shape and
+the TiDB `KILL TIDB` extension marker. The view normalizes omitted mode to
+connection kill, parses numeric connection IDs, decodes local identifier and
+user-variable targets, and exposes builtin-function targets through the shared
+recursive expression view. Session lookup, privilege checks, active-query
+cancellation, connection teardown, and diagnostics remain runtime work.
+
 Transaction-control views cover `BEGIN`, `START TRANSACTION`, `COMMIT`,
 `ROLLBACK`, `SAVEPOINT`, and `RELEASE SAVEPOINT`. `BEGIN`/`START TRANSACTION`
 records the begin form, optional TiDB pessimistic/optimistic markers, MySQL
@@ -632,6 +646,13 @@ Latest table-maintenance parser-view run on May 3, 2026:
 ```text
 mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.645747 qps=181908 mbps=13.83 avg_us=5.497 avg_nodes=74.5 avg_ast_bytes=10915.5 avg_table_maintenance_statement_views=0.01 avg_table_maintenance_statement_targets=0.01 avg_table_maintenance_statement_target_name_values=0.01 avg_table_maintenance_statement_option_flags=0.00
 mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.848676 qps=177204 mbps=13.48 avg_us=5.643 avg_semantic_nodes=5.3 avg_semantic_bytes=4268.0 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_expressions=2.67 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.03
+```
+
+Latest KILL parser-view run on May 3, 2026:
+
+```text
+mode=ast queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.179944 qps=193709 mbps=14.73 avg_us=5.162 avg_nodes=74.5 avg_ast_bytes=10942.9 avg_kill_statement_views=0.00 avg_kill_statement_queries=0.00 avg_kill_statement_tidb_extensions=0.00 avg_kill_statement_connection_ids=0.00 avg_kill_statement_target_values=0.00 avg_kill_statement_target_expressions=0.00 avg_kill_statement_expression_tree_nodes=0.00 avg_kill_statement_expression_tree_operators=0.00 avg_kill_statement_expression_tree_leaf_values=0.00
+mode=semantic queries=69541 iterations=20 parsed=1390820 failed=0 elapsed=7.294432 qps=190669 mbps=14.50 avg_us=5.245 avg_semantic_nodes=5.3 avg_semantic_bytes=4268.0 avg_semantic_statements=1.00 avg_semantic_targets=0.60 avg_semantic_expressions=2.67 avg_semantic_expression_operators=0.22 avg_semantic_expression_leaf_values=2.04
 ```
 
 Release benchmark result on May 2, 2026:
@@ -741,7 +762,7 @@ Current release build size on the same machine:
 ```text
 generated parser C: 72,852 lines, 5,637,339 bytes
 generated parser object: 996K on disk, 905,398 bytes text/data/other
-parser support object: 329K on disk, 191,708 bytes text/data/other
+parser support object: 333K on disk, 194,019 bytes text/data/other
 semantic AST object: 18K on disk, 8,095 bytes text/data/other
 lexer object: 74K on disk, 39,564 bytes text/data/other
 libmylite_parser.a: 1.4M on disk

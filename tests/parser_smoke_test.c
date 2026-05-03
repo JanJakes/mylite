@@ -206,6 +206,7 @@ static int expect_explain_statement_view(void);
 static int expect_show_statement_view(void);
 static int expect_lock_statement_view(void);
 static int expect_table_maintenance_statement_view(void);
+static int expect_kill_statement_view(void);
 static int expect_call_statement_view(void);
 static int expect_do_statement_view(void);
 static int expect_delete_statement_view(void);
@@ -826,6 +827,7 @@ int main(void) {
   failures += expect_show_statement_view();
   failures += expect_lock_statement_view();
   failures += expect_table_maintenance_statement_view();
+  failures += expect_kill_statement_view();
   failures += expect_call_statement_view();
   failures += expect_do_statement_view();
   failures += expect_delete_statement_view();
@@ -4598,6 +4600,109 @@ static int expect_table_maintenance_statement_view(void) {
         !mylite_ast_table_maintenance_statement_view_has_quick(view) ||
         mylite_ast_table_maintenance_statement_view_target_count(view) != 1) {
       fprintf(stderr, "REPAIR TABLE view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+  return failed;
+}
+
+static int expect_kill_statement_view(void) {
+  int failed = 0;
+  {
+    const char *sql = "KILL TIDB QUERY 789";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "KILL query view parse failed: status=%s offset=%zu token=%d "
+              "message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return 1;
+    }
+    const MyliteAstKillStatement *view =
+        mylite_ast_kill_statement_view(ast, 0);
+    if (view == NULL ||
+        mylite_ast_kill_statement_view_kind(view) !=
+            MYLITE_KILL_STATEMENT_QUERY ||
+        mylite_ast_kill_statement_view_target_kind(view) !=
+            MYLITE_KILL_TARGET_CONNECTION_ID ||
+        !mylite_ast_kill_statement_view_has_tidb_extension(view) ||
+        !mylite_ast_kill_statement_view_has_connection_id(view) ||
+        mylite_ast_kill_statement_view_connection_id(view) != 789 ||
+        !span_matches(sql, mylite_ast_kill_statement_view_target_start(view),
+                      mylite_ast_kill_statement_view_target_end(view), "789") ||
+        !value_matches_when_expected(
+            mylite_ast_kill_statement_view_target_value(view),
+            mylite_ast_kill_statement_view_target_value_length(view), "789")) {
+      fprintf(stderr, "KILL query view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql = "KILL CONNECTION @thread_id";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "KILL user variable view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    const MyliteAstKillStatement *view =
+        mylite_ast_kill_statement_view(ast, 0);
+    if (view == NULL ||
+        mylite_ast_kill_statement_view_kind(view) !=
+            MYLITE_KILL_STATEMENT_CONNECTION ||
+        mylite_ast_kill_statement_view_target_kind(view) !=
+            MYLITE_KILL_TARGET_USER_VARIABLE ||
+        mylite_ast_kill_statement_view_has_connection_id(view) ||
+        mylite_ast_kill_statement_view_has_tidb_extension(view) ||
+        !value_matches_when_expected(
+            mylite_ast_kill_statement_view_target_value(view),
+            mylite_ast_kill_statement_view_target_value_length(view),
+            "thread_id")) {
+      fprintf(stderr, "KILL user variable view failed: %s\n", sql);
+      failed = 1;
+    }
+    mylite_ast_free(ast);
+  }
+
+  {
+    const char *sql = "KILL CONNECTION_ID()";
+    MyliteParseResult result;
+    MyliteAst *ast = NULL;
+    MyliteParseStatus status = mylite_parse_sql_ast(sql, &ast, &result);
+    if (status != MYLITE_PARSE_OK) {
+      fprintf(stderr,
+              "KILL expression view parse failed: status=%s offset=%zu "
+              "token=%d message=%s\n",
+              mylite_parse_status_name(status), result.offset, result.token,
+              result.message);
+      return failed + 1;
+    }
+    const MyliteAstKillStatement *view =
+        mylite_ast_kill_statement_view(ast, 0);
+    const MyliteAstExpression *expression =
+        mylite_ast_kill_statement_view_target_expression(view);
+    if (view == NULL ||
+        mylite_ast_kill_statement_view_target_kind(view) !=
+            MYLITE_KILL_TARGET_EXPRESSION ||
+        expression == NULL ||
+        mylite_ast_expression_view_kind(expression) !=
+            MYLITE_EXPRESSION_FUNCTION_CALL ||
+        !value_matches_when_expected(
+            mylite_ast_expression_view_value(expression),
+            mylite_ast_expression_view_value_length(expression),
+            "CONNECTION_ID")) {
+      fprintf(stderr, "KILL expression view failed: %s\n", sql);
       failed = 1;
     }
     mylite_ast_free(ast);

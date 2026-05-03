@@ -150,6 +150,8 @@ static void dump_statements(const MyliteAst *ast) {
         mylite_ast_lock_statement_view(ast, i);
     const MyliteAstTableMaintenanceStatement *maintenance_statement =
         mylite_ast_table_maintenance_statement_view(ast, i);
+    const MyliteAstKillStatement *kill_statement =
+        mylite_ast_kill_statement_view(ast, i);
     const MyliteAstDeleteStatement *delete_statement =
         mylite_ast_delete_statement_view(ast, i);
     const MyliteAstInsertStatement *insert_statement =
@@ -1014,6 +1016,43 @@ static void dump_statements(const MyliteAst *ast) {
           print_escaped_bytes(name, name_length);
         }
         fputc('\n', stdout);
+      }
+    }
+    if (kill_statement != NULL) {
+      printf("  kill_statement span=%zu..%zu kind=%s target_kind=%s "
+             "tidb=%d target=%zu..%zu has_connection_id=%d "
+             "connection_id=%llu node=%s value_len=%zu value=",
+             mylite_ast_kill_statement_view_start(kill_statement),
+             mylite_ast_kill_statement_view_end(kill_statement),
+             mylite_kill_statement_kind_name(
+                 mylite_ast_kill_statement_view_kind(kill_statement)),
+             mylite_kill_target_kind_name(
+                 mylite_ast_kill_statement_view_target_kind(kill_statement)),
+             mylite_ast_kill_statement_view_has_tidb_extension(
+                 kill_statement),
+             mylite_ast_kill_statement_view_target_start(kill_statement),
+             mylite_ast_kill_statement_view_target_end(kill_statement),
+             mylite_ast_kill_statement_view_has_connection_id(kill_statement),
+             mylite_ast_kill_statement_view_connection_id(kill_statement),
+             node_symbol_or_none(
+                 mylite_ast_kill_statement_view_node(kill_statement)),
+             mylite_ast_kill_statement_view_target_value_length(
+                 kill_statement));
+      const char *target_value =
+          mylite_ast_kill_statement_view_target_value(kill_statement);
+      if (target_value == NULL) {
+        fputs("none", stdout);
+      } else {
+        print_escaped_bytes(
+            target_value,
+            mylite_ast_kill_statement_view_target_value_length(
+                kill_statement));
+      }
+      fputc('\n', stdout);
+      const MyliteAstExpression *target_expression =
+          mylite_ast_kill_statement_view_target_expression(kill_statement);
+      if (target_expression != NULL) {
+        dump_expression_tree(target_expression, 3);
       }
     }
     if (insert_statement != NULL) {

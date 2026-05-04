@@ -150,13 +150,6 @@ struct mylite_insert_unique_index {
     bool is_primary;
 };
 
-struct mylite_insert_unique_index_part_name {
-    const char *index_name;
-    const char *column_name;
-    uint64_t prefix_length;
-    bool has_prefix_length;
-};
-
 struct mylite_insert_unique_index_part {
     size_t column_index;
     uint64_t prefix_length;

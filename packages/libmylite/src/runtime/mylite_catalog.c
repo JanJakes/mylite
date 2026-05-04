@@ -328,6 +328,125 @@ int mylite_catalog_table_exists(mylite_db *database, const char *schema_name,
     return MYLITE_OK;
 }
 
+int mylite_catalog_load_table_metadata(mylite_db *database, const char *schema_name,
+                                       const char *table_name,
+                                       struct mylite_catalog_table_metadata *out_metadata)
+{
+    sqlite3_stmt *stmt = NULL;
+    static const char sql[] =
+        "SELECT auto_increment FROM __mylite_table_catalog WHERE table_schema = ? "
+        "AND table_name = ?";
+    int rc = SQLITE_OK;
+
+    if (out_metadata == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_metadata = (struct mylite_catalog_table_metadata){0};
+    rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+
+    sqlite3_bind_text(stmt, 1, schema_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(stmt, 2, table_name, -1, sqlite_transient_destructor());
+    rc = sqlite3_step(stmt);
+    if (rc == SQLITE_ROW && sqlite3_column_type(stmt, 0) != SQLITE_NULL) {
+        sqlite3_int64 value = sqlite3_column_int64(stmt, 0);
+
+        if (value > 0) {
+            out_metadata->auto_increment = (uint64_t)value;
+            out_metadata->has_auto_increment = true;
+        }
+    }
+    sqlite3_finalize(stmt);
+    if (rc != SQLITE_ROW) {
+        return rc == SQLITE_DONE ? mylite_diagnostics_set_table_doesnt_exist_error(
+                                       database, schema_name, table_name)
+                                 : mylite_diagnostics_set_sqlite_error(database);
+    }
+    return MYLITE_OK;
+}
+
+int mylite_catalog_load_table_columns(mylite_db *database, const char *schema_name,
+                                      const char *table_name,
+                                      mylite_catalog_column_callback callback, void *context)
+{
+    sqlite3_stmt *stmt = NULL;
+    static const char sql[] =
+        "SELECT column_name, column_default, is_nullable, data_type, extra "
+        "FROM __mylite_column_catalog WHERE table_schema = ? AND table_name = ? "
+        "ORDER BY ordinal_position";
+    int rc = SQLITE_OK;
+
+    if (callback == NULL) {
+        return MYLITE_MISUSE;
+    }
+    rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+
+    sqlite3_bind_text(stmt, 1, schema_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(stmt, 2, table_name, -1, sqlite_transient_destructor());
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        const struct mylite_catalog_column_row row = {
+            .name = (const char *)sqlite3_column_text(stmt, 0),
+            .default_text = (const char *)sqlite3_column_text(stmt, 1),
+            .is_nullable = (const char *)sqlite3_column_text(stmt, 2),
+            .data_type = (const char *)sqlite3_column_text(stmt, 3),
+            .extra = (const char *)sqlite3_column_text(stmt, 4),
+        };
+        int status = callback(context, &row);
+
+        if (status != MYLITE_OK) {
+            sqlite3_finalize(stmt);
+            return status;
+        }
+    }
+    sqlite3_finalize(stmt);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
+}
+
+int mylite_catalog_load_unique_index_parts(mylite_db *database, const char *schema_name,
+                                           const char *table_name,
+                                           mylite_catalog_unique_index_part_callback callback,
+                                           void *context)
+{
+    sqlite3_stmt *stmt = NULL;
+    static const char sql[] =
+        "SELECT index_name, column_name, sub_part FROM __mylite_index_catalog "
+        "WHERE table_schema = ? AND table_name = ? AND non_unique = 0 "
+        "ORDER BY rowid";
+    int rc = SQLITE_OK;
+
+    if (callback == NULL) {
+        return MYLITE_MISUSE;
+    }
+    rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+
+    sqlite3_bind_text(stmt, 1, schema_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(stmt, 2, table_name, -1, sqlite_transient_destructor());
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        const struct mylite_catalog_unique_index_part_row row = {
+            .index_name = (const char *)sqlite3_column_text(stmt, 0),
+            .column_name = (const char *)sqlite3_column_text(stmt, 1),
+            .prefix_length = (uint64_t)sqlite3_column_int64(stmt, 2),
+            .has_prefix_length = sqlite3_column_type(stmt, 2) != SQLITE_NULL,
+        };
+        int status = callback(context, &row);
+
+        if (status != MYLITE_OK) {
+            sqlite3_finalize(stmt);
+            return status;
+        }
+    }
+    sqlite3_finalize(stmt);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
+}
+
 int mylite_catalog_schema_default_by_name(mylite_db *database, const char *schema_name,
                                           struct mylite_schema_default *out_default)
 {

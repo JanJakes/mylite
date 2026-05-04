@@ -134,22 +134,22 @@ void mylite_connection_clear_selected_schema_if_matches(mylite_db *database,
     }
 }
 
-int mylite_connection_set_names_state(mylite_db *database, const char *character_set_name,
-                                      const char *collation_name)
+int mylite_connection_set_names_state(mylite_db *database,
+                                      struct mylite_connection_names_state state)
 {
-    const struct mylite_charset *character_set = mylite_charset_lookup(character_set_name);
+    const struct mylite_charset *character_set = mylite_charset_lookup(state.character_set_name);
     const struct mylite_collation *collation = NULL;
 
     if (character_set == NULL) {
-        return mylite_diagnostics_set_unknown_charset_error(database, character_set_name);
+        return mylite_diagnostics_set_unknown_charset_error(database, state.character_set_name);
     }
 
-    if (collation_name == NULL) {
+    if (state.collation_name == NULL) {
         collation = mylite_collation_lookup(character_set->default_collation);
     } else {
-        collation = mylite_collation_lookup(collation_name);
+        collation = mylite_collation_lookup(state.collation_name);
         if (collation == NULL) {
-            return mylite_diagnostics_set_unknown_collation_error(database, collation_name);
+            return mylite_diagnostics_set_unknown_collation_error(database, state.collation_name);
         }
         if (!mylite_charset_collation_match(character_set, collation)) {
             return mylite_diagnostics_set_collation_charset_error(database, collation->name,
@@ -197,8 +197,11 @@ int mylite_connection_execute_set_names_statement(mylite_stmt *stmt)
     if (stmt->use_default_connection_charset) {
         return mylite_connection_set_default_state(stmt->database);
     }
-    return mylite_connection_set_names_state(stmt->database, stmt->character_set_name,
-                                             stmt->collation_name);
+    return mylite_connection_set_names_state(stmt->database,
+                                             (struct mylite_connection_names_state){
+                                                 .character_set_name = stmt->character_set_name,
+                                                 .collation_name = stmt->collation_name,
+                                             });
 }
 
 int mylite_connection_execute_set_character_set_statement(mylite_stmt *stmt)

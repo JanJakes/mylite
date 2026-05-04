@@ -208,9 +208,6 @@ only the core object model and transitional shared helpers listed here:
 - `struct mylite_strcmp_compare_options`
   String-comparison runtime helper. Move with the string comparison or collation
   evaluation code.
-- `struct mylite_connection_charset_request`
-  Parser-to-connection charset copy helper. Keep private or move to a connection
-  type header only if a non-`mylite.c` caller needs it.
 - `struct mylite_db`
   Core connection object layout. Keep here until a later private
   `mylite_runtime_objects.h` split is justified.

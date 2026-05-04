@@ -106,11 +106,6 @@ struct mylite_strcmp_compare_options {
     bool case_sensitive;
 };
 
-struct mylite_connection_charset_request {
-    const char *character_set_name;
-    const char *collation_name;
-};
-
 struct mylite_db {
     sqlite3 *sqlite;
     char *error_message;

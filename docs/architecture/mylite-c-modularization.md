@@ -282,6 +282,8 @@ only the core object model and transitional shared helpers listed here:
 - [x] Move public statement stepping into `src/runtime/mylite_statement`,
   keeping statement-family execution dispatch in `mylite.c`.
 - [x] Move SQLite statement preparation into `src/runtime/mylite_statement`.
+- [x] Move statement write-kind and diagnostics-preservation classifiers into
+  `src/runtime/mylite_statement`.
 - [x] Extract public result metadata accessors into
   `src/runtime/mylite_metadata.{h,c}`.
 - [x] Move result metadata cleanup into `src/runtime/mylite_metadata`.
@@ -368,6 +370,8 @@ only the core object model and transitional shared helpers listed here:
 - [x] Move generated index-name logic into `mylite_table_ddl`.
 - [x] Move table DDL prepared-statement wrappers for rename, truncate, and
   standalone index statements into a focused table DDL statement module.
+- [ ] Move ALTER TABLE catalog rewrite helpers into a focused table DDL catalog
+  companion module.
 - [ ] Split DML plans and execution.
 - [x] Start `src/runtime/mylite_dml.{h,c}` with DML plan and row cleanup.
 - [x] Move insert/replacement AST copy helpers into `mylite_dml`.

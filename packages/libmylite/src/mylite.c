@@ -1981,9 +1981,7 @@ static int set_row_quantified_non_alias_error(mylite_db *database,
                                               const struct mylite_sql_ast_node *expression);
 static int set_scalar_subquery_cardinality_error(mylite_db *database);
 static const char *sqlite_affinity_for_catalog_data_type(const char *data_type);
-static bool write_statement_kind(enum mylite_stmt_kind kind);
 static bool binary_expression_is_in_subquery(const struct mylite_sql_ast_node *expression);
-static bool statement_preserves_diagnostics(const struct mylite_sql_ast_node *statement);
 static sqlite3_destructor_type sqlite_transient_destructor(void);
 
 int mylite_prepare(mylite_db *database, const char *sql, size_t length, mylite_stmt **out_stmt)
@@ -2025,7 +2023,7 @@ int mylite_prepare(mylite_db *database, const char *sql, size_t length, mylite_s
     }
 
     statement = mylite_ast_single_statement(parse_result.root);
-    if (!statement_preserves_diagnostics(statement)) {
+    if (!mylite_statement_ast_preserves_diagnostics(statement)) {
         mylite_diagnostics_clear_warnings(database);
     }
 
@@ -13222,7 +13220,7 @@ int mylite_statement_execute_custom(mylite_stmt *stmt)
             return status;
         }
     }
-    if (write_statement_kind(stmt->kind) && stmt->database->transaction_active &&
+    if (mylite_statement_kind_writes(stmt->kind) && stmt->database->transaction_active &&
         stmt->database->transaction_access_mode == MYLITE_TRANSACTION_ACCESS_READ_ONLY) {
         stmt->affected_rows = -1;
         return mylite_transaction_set_read_only_error(stmt->database);
@@ -21996,18 +21994,6 @@ static const char *sqlite_affinity_for_catalog_data_type(const char *data_type)
     return "TEXT";
 }
 
-static bool write_statement_kind(enum mylite_stmt_kind kind)
-{
-    if (kind == MYLITE_STMT_INSERT_VALUES || kind == MYLITE_STMT_INSERT_SET ||
-        kind == MYLITE_STMT_REPLACE_VALUES || kind == MYLITE_STMT_REPLACE_SET ||
-        kind == MYLITE_STMT_UPDATE || kind == MYLITE_STMT_DELETE ||
-        kind == MYLITE_STMT_ALTER_TABLE || kind == MYLITE_STMT_RENAME_TABLE ||
-        kind == MYLITE_STMT_TRUNCATE_TABLE) {
-        return true;
-    }
-    return false;
-}
-
 static void table_select_group_deinit(struct mylite_table_select_group *group)
 {
     if (group == NULL) {
@@ -22236,20 +22222,6 @@ static bool binary_expression_is_in_subquery(const struct mylite_sql_ast_node *e
     default:
         return false;
     }
-}
-
-static bool statement_preserves_diagnostics(const struct mylite_sql_ast_node *statement)
-{
-    if (statement == NULL) {
-        return false;
-    }
-    if (statement->kind == MYLITE_SQL_AST_SHOW_DIAGNOSTICS_STATEMENT) {
-        return true;
-    }
-    if (statement->kind == MYLITE_SQL_AST_SHOW_DIAGNOSTICS_COUNT_STATEMENT) {
-        return true;
-    }
-    return false;
 }
 
 static sqlite3_destructor_type sqlite_transient_destructor(void)

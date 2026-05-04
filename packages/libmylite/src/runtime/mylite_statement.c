@@ -150,6 +150,32 @@ int mylite_statement_map_translate_status(mylite_db *database,
     return MYLITE_UNSUPPORTED;
 }
 
+bool mylite_statement_kind_writes(enum mylite_stmt_kind kind)
+{
+    if (kind == MYLITE_STMT_INSERT_VALUES || kind == MYLITE_STMT_INSERT_SET ||
+        kind == MYLITE_STMT_REPLACE_VALUES || kind == MYLITE_STMT_REPLACE_SET ||
+        kind == MYLITE_STMT_UPDATE || kind == MYLITE_STMT_DELETE ||
+        kind == MYLITE_STMT_ALTER_TABLE || kind == MYLITE_STMT_RENAME_TABLE ||
+        kind == MYLITE_STMT_TRUNCATE_TABLE) {
+        return true;
+    }
+    return false;
+}
+
+bool mylite_statement_ast_preserves_diagnostics(const struct mylite_sql_ast_node *statement)
+{
+    if (statement == NULL) {
+        return false;
+    }
+    if (statement->kind == MYLITE_SQL_AST_SHOW_DIAGNOSTICS_STATEMENT) {
+        return true;
+    }
+    if (statement->kind == MYLITE_SQL_AST_SHOW_DIAGNOSTICS_COUNT_STATEMENT) {
+        return true;
+    }
+    return false;
+}
+
 // NOLINTNEXTLINE(misc-no-recursion)
 int mylite_statement_clone_sql_ast_subtree(struct mylite_sql_ast *ast,
                                            const struct mylite_sql_ast_node *node,

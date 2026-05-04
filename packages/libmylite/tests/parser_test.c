@@ -5633,6 +5633,50 @@ static int test_scalar_function_call_syntax(void)
                                      "DATEDIFF nested current temporal call");
     mylite_sql_parse_result_deinit(&result);
 
+    if (parse_sql("SELECT YEAR('2024-02-29'), MONTH('2024-02-29'), "
+                  "DAY('2024-02-29'), DAYOFMONTH('2024-02-29'), "
+                  "HOUR('2024-02-29 12:34:56'), "
+                  "MINUTE('2024-02-29 12:34:56'), "
+                  "SECOND('2024-02-29 12:34:56'), "
+                  "EXTRACT(YEAR FROM DATE_ADD(CURDATE(), INTERVAL 1 DAY)), "
+                  "EXTRACT(SECOND FROM NOW());",
+                  MYLITE_SQL_PARSE_OK, &result) == 0) {
+        select_list = child_at(child_at(result.root, 0U), 0U);
+        failures += expect_function_call(child_at(child_at(select_list, 0U), 0U), "YEAR", 1U,
+                                         "YEAR keyword function call");
+        failures += expect_function_call(child_at(child_at(select_list, 1U), 0U), "MONTH", 1U,
+                                         "MONTH keyword function call");
+        failures += expect_function_call(child_at(child_at(select_list, 2U), 0U), "DAY", 1U,
+                                         "DAY keyword function call");
+        failures += expect_function_call(child_at(child_at(select_list, 3U), 0U), "DAYOFMONTH", 1U,
+                                         "DAYOFMONTH function call");
+        failures += expect_function_call(child_at(child_at(select_list, 4U), 0U), "HOUR", 1U,
+                                         "HOUR keyword function call");
+        failures += expect_function_call(child_at(child_at(select_list, 5U), 0U), "MINUTE", 1U,
+                                         "MINUTE keyword function call");
+        failures += expect_function_call(child_at(child_at(select_list, 6U), 0U), "SECOND", 1U,
+                                         "SECOND keyword function call");
+        failures += expect_function_call(child_at(child_at(select_list, 7U), 0U), "EXTRACT", 1U,
+                                         "EXTRACT YEAR function call");
+        failures += expect_bool(child_at(child_at(select_list, 7U), 0U)->interval_spec, true,
+                                "EXTRACT YEAR interval spec");
+        failures += expect_function_call(child_at(child_at(select_list, 8U), 0U), "EXTRACT", 1U,
+                                         "EXTRACT SECOND function call");
+        failures += expect_bool(child_at(child_at(select_list, 8U), 0U)->interval_spec, true,
+                                "EXTRACT SECOND interval spec");
+    } else {
+        ++failures;
+    }
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT year, month, day, hour, minute, second "
+                          "FROM temporal_part_names;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT extract FROM temporal_part_names;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("SELECT DATE_ADD('2024-02-29', INTERVAL 1 DAY), "
                           "DATE_SUB('2024-03-01', INTERVAL -1 WEEK), "
                           "ADDDATE(CURDATE(), INTERVAL 1 MONTH), "
@@ -7993,9 +8037,13 @@ static int parse_sql(const char *sql, enum mylite_sql_parse_status expected_stat
         out_result);
 
     if (actual != expected_status) {
-        fprintf(stderr, "parse '%s': expected %s, got %s\n", sql,
-                mylite_sql_parse_status_name(expected_status),
-                mylite_sql_parse_status_name(actual));
+        fprintf(stderr,
+                "parse '%s': expected %s, got %s at token '%.*s' "
+                "(parser token %d)\n",
+                sql, mylite_sql_parse_status_name(expected_status),
+                mylite_sql_parse_status_name(actual), (int)out_result->error_token.length,
+                out_result->error_token.text == NULL ? "" : out_result->error_token.text,
+                out_result->parser_token);
         return 1;
     }
 

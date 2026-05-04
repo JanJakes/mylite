@@ -65,6 +65,9 @@ static bool lexer_next_non_comment(struct mylite_sql_lexer *lexer,
 static bool token_text_equals(const struct mylite_sql_token *token, const char *text);
 static bool span_text_equals(struct mylite_sql_source_span span, const char *text);
 static bool function_name_is_position(const struct mylite_sql_ast_node *name);
+static bool function_name_is_extract(const struct mylite_sql_ast_node *name);
+static bool extract_interval_unit_from_expression(const struct mylite_sql_ast_node *expression,
+                                                  enum mylite_sql_ast_interval_unit *out_unit);
 static bool function_name_is_date_interval_arithmetic(const struct mylite_sql_ast_node *name);
 static bool function_name_has_parser_checked_arity(const struct mylite_sql_ast_node *name,
                                                    size_t *out_arity);
@@ -4927,6 +4930,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_function_call(
         mylite_sql_parser_state_parse_failed(state);
         return NULL;
     }
+    if (function_name_is_extract(name)) {
+        mylite_sql_parser_state_parse_failed(state);
+        return NULL;
+    }
     if (function_name_is_substring(name)) {
         size_t arity = mylite_sql_ast_node_child_count(arguments);
 
@@ -4978,6 +4985,32 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_from_function_call(
     struct mylite_sql_token left_paren, struct mylite_sql_ast_node *first,
     struct mylite_sql_ast_node *second, struct mylite_sql_token right_paren)
 {
+    if (function_name_is_extract(name)) {
+        struct mylite_sql_source_span span =
+            name == NULL ? span_from_token(&left_paren) : name->span;
+        enum mylite_sql_ast_interval_unit unit = MYLITE_SQL_AST_INTERVAL_UNIT_NONE;
+        struct mylite_sql_ast_node *list = NULL;
+        struct mylite_sql_ast_node *call = NULL;
+
+        if (!extract_interval_unit_from_expression(first, &unit)) {
+            mylite_sql_parser_state_parse_failed(state);
+            return NULL;
+        }
+
+        list = mylite_sql_parser_make_function_argument_list(state, second);
+        if (list == NULL) {
+            return NULL;
+        }
+        span = span_join(span, span_from_token(&right_paren));
+        call = make_node(state, MYLITE_SQL_AST_FUNCTION_CALL, span);
+        if (call == NULL) {
+            return NULL;
+        }
+        mylite_sql_ast_node_append_child(call, name);
+        mylite_sql_ast_node_append_child(call, list);
+        mylite_sql_ast_node_set_interval_spec(call, unit);
+        return call;
+    }
     if (function_name_is_substring(name)) {
         struct mylite_sql_ast_node *list =
             mylite_sql_parser_make_function_argument_list(state, first);
@@ -5946,6 +5979,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"EXISTS", MYLITE_SQL_PARSE_EXISTS},
         {"EXPLAIN", MYLITE_SQL_PARSE_EXPLAIN},
         {"EXTENDED", MYLITE_SQL_PARSE_EXTENDED},
+        {"EXTRACT", MYLITE_SQL_PARSE_EXTRACT},
         {"FALSE", MYLITE_SQL_PARSE_FALSE},
         {"FIELDS", MYLITE_SQL_PARSE_FIELDS},
         {"FIRST", MYLITE_SQL_PARSE_FIRST},
@@ -6305,6 +6339,42 @@ static bool span_text_equals(struct mylite_sql_source_span span, const char *tex
 static bool function_name_is_position(const struct mylite_sql_ast_node *name)
 {
     return function_name_matches(name, "POSITION");
+}
+
+static bool function_name_is_extract(const struct mylite_sql_ast_node *name)
+{
+    return function_name_matches(name, "EXTRACT");
+}
+
+static bool extract_interval_unit_from_expression(const struct mylite_sql_ast_node *expression,
+                                                  enum mylite_sql_ast_interval_unit *out_unit)
+{
+    enum mylite_sql_ast_interval_unit unit = MYLITE_SQL_AST_INTERVAL_UNIT_NONE;
+
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_IDENTIFIER || out_unit == NULL) {
+        return false;
+    }
+
+    if (span_text_equals(expression->span, "YEAR")) {
+        unit = MYLITE_SQL_AST_INTERVAL_UNIT_YEAR;
+    } else if (span_text_equals(expression->span, "MONTH")) {
+        unit = MYLITE_SQL_AST_INTERVAL_UNIT_MONTH;
+    } else if (span_text_equals(expression->span, "DAY")) {
+        unit = MYLITE_SQL_AST_INTERVAL_UNIT_DAY;
+    } else if (span_text_equals(expression->span, "HOUR")) {
+        unit = MYLITE_SQL_AST_INTERVAL_UNIT_HOUR;
+    } else if (span_text_equals(expression->span, "MINUTE")) {
+        unit = MYLITE_SQL_AST_INTERVAL_UNIT_MINUTE;
+    } else if (span_text_equals(expression->span, "SECOND")) {
+        unit = MYLITE_SQL_AST_INTERVAL_UNIT_SECOND;
+    } else if (span_text_equals(expression->span, "WEEK")) {
+        unit = MYLITE_SQL_AST_INTERVAL_UNIT_WEEK;
+    } else {
+        return false;
+    }
+
+    *out_unit = unit;
+    return true;
 }
 
 static bool function_name_is_date_interval_arithmetic(const struct mylite_sql_ast_node *name)

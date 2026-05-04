@@ -206,6 +206,9 @@ static const uint64_t mylite_mysql_int_signed_display_length = 11U;
 static const uint64_t mylite_mysql_year_display_length = 4U;
 static const uint64_t mylite_mysql_date_display_length = 10U;
 static const uint64_t mylite_mysql_datediff_function_display_length = 9U;
+static const uint64_t mylite_mysql_temporal_part_short_display_length = 3U;
+static const uint64_t mylite_mysql_temporal_part_hour_display_length = 4U;
+static const uint64_t mylite_mysql_extract_year_display_length = 5U;
 static const uint64_t mylite_mysql_date_arithmetic_string_result_chars = 29U;
 static const uint64_t mylite_mysql_time_display_length = 10U;
 static const uint64_t mylite_mysql_current_time_display_length = 8U;
@@ -2142,6 +2145,8 @@ static struct mylite_field_descriptor current_time_function_descriptor(unsigned 
 static bool
 infer_temporal_scalar_function_descriptor(const struct mylite_sql_ast_node *name,
                                           struct mylite_field_descriptor *out_descriptor);
+static bool infer_temporal_part_function_descriptor(const struct mylite_sql_ast_node *expression,
+                                                    struct mylite_field_descriptor *out_descriptor);
 static int infer_date_interval_function_descriptor(mylite_db *database,
                                                    const struct mylite_select_plan *plan,
                                                    const struct mylite_sql_ast_node *expression,
@@ -2459,6 +2464,14 @@ static bool function_name_is_current_temporal_date(const struct mylite_sql_ast_n
 static bool function_name_is_current_temporal_time(const struct mylite_sql_ast_node *name);
 static bool function_name_is_date_extraction(const struct mylite_sql_ast_node *name);
 static bool function_name_is_datediff(const struct mylite_sql_ast_node *name);
+static bool function_name_is_year_part(const struct mylite_sql_ast_node *name);
+static bool function_name_is_month_part(const struct mylite_sql_ast_node *name);
+static bool function_name_is_day_part(const struct mylite_sql_ast_node *name);
+static bool function_name_is_hour_part(const struct mylite_sql_ast_node *name);
+static bool function_name_is_minute_part(const struct mylite_sql_ast_node *name);
+static bool function_name_is_second_part(const struct mylite_sql_ast_node *name);
+static bool function_name_is_extract(const struct mylite_sql_ast_node *name);
+static bool extract_interval_unit_supported(enum mylite_sql_ast_interval_unit unit);
 static bool function_name_has_integer_result(const struct mylite_sql_ast_node *name);
 static bool function_name_is_exp(const struct mylite_sql_ast_node *name);
 static bool function_name_is_logarithm(const struct mylite_sql_ast_node *name);
@@ -10900,6 +10913,9 @@ static int infer_temporal_function_descriptor(mylite_db *database,
     if (infer_current_temporal_function_descriptor(expression, out_descriptor)) {
         return MYLITE_OK;
     }
+    if (infer_temporal_part_function_descriptor(expression, out_descriptor)) {
+        return MYLITE_OK;
+    }
     return infer_date_interval_function_descriptor(database, plan, expression, out_descriptor);
 }
 
@@ -11879,6 +11895,52 @@ infer_temporal_scalar_function_descriptor(const struct mylite_sql_ast_node *name
     if (function_name_is_datediff(name)) {
         *out_descriptor = signed_longlong_expression_descriptor(true);
         out_descriptor->length = mylite_mysql_datediff_function_display_length;
+        return true;
+    }
+    if (function_name_is_year_part(name)) {
+        struct mylite_field_descriptor descriptor = {
+            .type = MYLITE_FIELD_TYPE_YEAR,
+            .flags = MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+            .length = mylite_mysql_year_display_length,
+            .charset_id = mylite_mysql_binary_charset_id,
+            .nullable = true,
+        };
+
+        field_descriptor_set_nullable(&descriptor, true);
+        *out_descriptor = descriptor;
+        return true;
+    }
+    if (function_name_is_month_part(name) || function_name_is_day_part(name) ||
+        function_name_is_minute_part(name) || function_name_is_second_part(name)) {
+        *out_descriptor = signed_longlong_expression_descriptor(true);
+        out_descriptor->length = mylite_mysql_temporal_part_short_display_length;
+        return true;
+    }
+    if (function_name_is_hour_part(name)) {
+        *out_descriptor = signed_longlong_expression_descriptor(true);
+        out_descriptor->length = mylite_mysql_temporal_part_hour_display_length;
+        return true;
+    }
+    return false;
+}
+
+static bool infer_temporal_part_function_descriptor(const struct mylite_sql_ast_node *expression,
+                                                    struct mylite_field_descriptor *out_descriptor)
+{
+    const struct mylite_sql_ast_node *name = child_at(expression, 0U);
+
+    if (function_name_is_extract(name)) {
+        if (!expression->interval_spec ||
+            !extract_interval_unit_supported(expression->interval_unit)) {
+            return false;
+        }
+        *out_descriptor = signed_longlong_expression_descriptor(true);
+        out_descriptor->length = expression->interval_unit == MYLITE_SQL_AST_INTERVAL_UNIT_YEAR
+                                     ? mylite_mysql_extract_year_display_length
+                                     : mylite_mysql_temporal_part_short_display_length;
+        if (expression->interval_unit == MYLITE_SQL_AST_INTERVAL_UNIT_HOUR) {
+            out_descriptor->length = mylite_mysql_temporal_part_hour_display_length;
+        }
         return true;
     }
     return false;
@@ -13786,6 +13848,72 @@ static bool function_name_is_datediff(const struct mylite_sql_ast_node *name)
     static const char *const names[] = {"DATEDIFF"};
 
     return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_is_year_part(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"YEAR"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_is_month_part(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"MONTH"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_is_day_part(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"DAY", "DAYOFMONTH"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_is_hour_part(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"HOUR"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_is_minute_part(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"MINUTE"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_is_second_part(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"SECOND"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_is_extract(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"EXTRACT"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool extract_interval_unit_supported(enum mylite_sql_ast_interval_unit unit)
+{
+    switch (unit) {
+    case MYLITE_SQL_AST_INTERVAL_UNIT_YEAR:
+    case MYLITE_SQL_AST_INTERVAL_UNIT_MONTH:
+    case MYLITE_SQL_AST_INTERVAL_UNIT_DAY:
+    case MYLITE_SQL_AST_INTERVAL_UNIT_HOUR:
+    case MYLITE_SQL_AST_INTERVAL_UNIT_MINUTE:
+    case MYLITE_SQL_AST_INTERVAL_UNIT_SECOND:
+        return true;
+    case MYLITE_SQL_AST_INTERVAL_UNIT_NONE:
+    case MYLITE_SQL_AST_INTERVAL_UNIT_WEEK:
+        return false;
+    }
+    return false;
 }
 
 static bool function_name_is_date_interval_arithmetic(const struct mylite_sql_ast_node *name)

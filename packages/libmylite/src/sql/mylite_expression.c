@@ -378,6 +378,16 @@ enum temporal_date_warning_kind {
     TEMPORAL_DATE_WARNING_TRUNCATED_DATETIME,
 };
 
+enum temporal_part_kind {
+    TEMPORAL_PART_NONE = 0,
+    TEMPORAL_PART_YEAR,
+    TEMPORAL_PART_MONTH,
+    TEMPORAL_PART_DAY,
+    TEMPORAL_PART_HOUR,
+    TEMPORAL_PART_MINUTE,
+    TEMPORAL_PART_SECOND,
+};
+
 struct temporal_date_value {
     int year;
     int month;
@@ -523,6 +533,13 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_DATE_SUB = 101,
     MYLITE_SCALAR_FUNCTION_ADDDATE = 102,
     MYLITE_SCALAR_FUNCTION_SUBDATE = 103,
+    MYLITE_SCALAR_FUNCTION_YEAR = 104,
+    MYLITE_SCALAR_FUNCTION_MONTH = 105,
+    MYLITE_SCALAR_FUNCTION_DAY = 106,
+    MYLITE_SCALAR_FUNCTION_HOUR = 107,
+    MYLITE_SCALAR_FUNCTION_MINUTE = 108,
+    MYLITE_SCALAR_FUNCTION_SECOND = 109,
+    MYLITE_SCALAR_FUNCTION_EXTRACT = 110,
 };
 
 struct angle_conversion_input {
@@ -626,6 +643,16 @@ static int eval_datediff_function(const struct mylite_sql_ast_node *arguments,
                                   const struct mylite_expression_eval_context *context,
                                   struct mylite_expression_warnings *warnings,
                                   struct mylite_expression_value *out_value);
+static int eval_temporal_part_function(enum mylite_scalar_function_id function_id,
+                                       const struct mylite_sql_ast_node *node,
+                                       const struct mylite_expression_eval_context *context,
+                                       struct mylite_expression_warnings *warnings,
+                                       struct mylite_expression_value *out_value);
+static bool temporal_part_from_function(enum mylite_scalar_function_id function_id,
+                                        enum mylite_sql_ast_interval_unit unit,
+                                        enum temporal_part_kind *out_part);
+static int temporal_part_value(const struct temporal_date_value *date,
+                               enum temporal_part_kind part);
 static int eval_date_arithmetic_function(enum mylite_scalar_function_id function_id,
                                          const struct mylite_sql_ast_node *node,
                                          const struct mylite_expression_eval_context *context,
@@ -647,15 +674,23 @@ static int temporal_date_from_value(const struct mylite_expression_value *value,
                                     bool warn_approximate_fraction,
                                     struct mylite_expression_warnings *warnings,
                                     struct temporal_date_value *out_date, bool *out_valid);
+static int temporal_date_from_value_with_mode(const struct mylite_expression_value *value,
+                                              bool warn_approximate_fraction,
+                                              bool allow_incomplete_date,
+                                              struct mylite_expression_warnings *warnings,
+                                              struct temporal_date_value *out_date,
+                                              bool *out_valid);
 static int temporal_date_source_from_value(const struct mylite_expression_value *value,
                                            struct temporal_date_source *out_source);
 static bool temporal_date_source_has_fraction(const struct temporal_date_source *source);
 static bool parse_temporal_date_source(const struct temporal_date_source *source,
-                                       bool warn_approximate_fraction,
+                                       bool warn_approximate_fraction, bool allow_incomplete_date,
                                        struct temporal_date_value *out_date);
 static bool parse_temporal_delimited_date(const char *text, size_t length,
+                                          bool allow_incomplete_date,
                                           struct temporal_date_value *out_date);
 static bool parse_temporal_compact_date(const char *text, size_t length, bool numeric,
+                                        bool allow_incomplete_date,
                                         struct temporal_date_value *out_date);
 static bool temporal_text_is_digits(const char *text, size_t length);
 static bool prepare_temporal_compact_digits(const char *text, size_t length, bool numeric,
@@ -676,6 +711,9 @@ static bool parse_temporal_unsigned_part(const char *text, size_t length, size_t
 static bool parse_temporal_fraction(const char *text, size_t length, size_t *offset,
                                     int *out_microsecond, unsigned int *out_digits);
 static bool temporal_date_parts_are_valid(int year, int month, int day);
+static bool temporal_date_parts_are_valid_for_mode(int year, int month, int day,
+                                                   bool allow_incomplete_date);
+static bool temporal_date_parts_are_all_zero(int year, int month, int day);
 static bool temporal_time_parts_are_valid(int hour, int minute, int second);
 static bool temporal_year_is_leap(int year);
 static int temporal_month_day_limit(int year, int month);
@@ -1782,6 +1820,12 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_ASIN:
     case MYLITE_SCALAR_FUNCTION_ISNULL:
     case MYLITE_SCALAR_FUNCTION_DATE:
+    case MYLITE_SCALAR_FUNCTION_YEAR:
+    case MYLITE_SCALAR_FUNCTION_MONTH:
+    case MYLITE_SCALAR_FUNCTION_DAY:
+    case MYLITE_SCALAR_FUNCTION_HOUR:
+    case MYLITE_SCALAR_FUNCTION_MINUTE:
+    case MYLITE_SCALAR_FUNCTION_SECOND:
         return arity == 1U;
     case MYLITE_SCALAR_FUNCTION_LOG:
     case MYLITE_SCALAR_FUNCTION_ROUND:
@@ -1807,6 +1851,9 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_SUBDATE:
         return arity == 2U && expression->interval_spec &&
                expression->interval_unit != MYLITE_SQL_AST_INTERVAL_UNIT_NONE;
+    case MYLITE_SCALAR_FUNCTION_EXTRACT:
+        return arity == 1U && expression->interval_spec &&
+               temporal_part_from_function(function_id, expression->interval_unit, NULL);
     case MYLITE_SCALAR_FUNCTION_UUID_TO_BIN:
     case MYLITE_SCALAR_FUNCTION_BIN_TO_UUID:
         return arity == 1U || arity == 2U;
@@ -2674,6 +2721,14 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_date_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_DATEDIFF:
         return eval_datediff_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_YEAR:
+    case MYLITE_SCALAR_FUNCTION_MONTH:
+    case MYLITE_SCALAR_FUNCTION_DAY:
+    case MYLITE_SCALAR_FUNCTION_HOUR:
+    case MYLITE_SCALAR_FUNCTION_MINUTE:
+    case MYLITE_SCALAR_FUNCTION_SECOND:
+    case MYLITE_SCALAR_FUNCTION_EXTRACT:
+        return eval_temporal_part_function(function_id, node, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
     case MYLITE_SCALAR_FUNCTION_ADDDATE:
@@ -2805,6 +2860,234 @@ cleanup:
     mylite_expression_value_deinit(&left);
     mylite_expression_value_deinit(&right);
     return status;
+}
+
+static int eval_temporal_part_function(enum mylite_scalar_function_id function_id,
+                                       const struct mylite_sql_ast_node *node,
+                                       const struct mylite_expression_eval_context *context,
+                                       struct mylite_expression_warnings *warnings,
+                                       struct mylite_expression_value *out_value)
+{
+    const struct mylite_sql_ast_node *arguments = child_at(node, 1U);
+    struct mylite_expression_value argument = {0};
+    struct temporal_date_value date = {0};
+    enum temporal_part_kind part = TEMPORAL_PART_NONE;
+    bool valid = false;
+    int status = 0;
+
+    if (!temporal_part_from_function(function_id, node->interval_unit, &part)) {
+        return -1;
+    }
+
+    status = eval_node(child_at(arguments, 0U), context, warnings, &argument);
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&argument)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+
+    status = temporal_date_from_value_with_mode(&argument, true, true, warnings, &date, &valid);
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (!valid) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_INT64,
+        .int64_value = temporal_part_value(&date, part),
+    };
+
+cleanup:
+    mylite_expression_value_deinit(&argument);
+    return status;
+}
+
+static bool temporal_part_from_function(enum mylite_scalar_function_id function_id,
+                                        enum mylite_sql_ast_interval_unit unit,
+                                        enum temporal_part_kind *out_part)
+{
+    enum temporal_part_kind part = TEMPORAL_PART_NONE;
+
+    switch (function_id) {
+    case MYLITE_SCALAR_FUNCTION_YEAR:
+        part = TEMPORAL_PART_YEAR;
+        break;
+    case MYLITE_SCALAR_FUNCTION_MONTH:
+        part = TEMPORAL_PART_MONTH;
+        break;
+    case MYLITE_SCALAR_FUNCTION_DAY:
+        part = TEMPORAL_PART_DAY;
+        break;
+    case MYLITE_SCALAR_FUNCTION_HOUR:
+        part = TEMPORAL_PART_HOUR;
+        break;
+    case MYLITE_SCALAR_FUNCTION_MINUTE:
+        part = TEMPORAL_PART_MINUTE;
+        break;
+    case MYLITE_SCALAR_FUNCTION_SECOND:
+        part = TEMPORAL_PART_SECOND;
+        break;
+    case MYLITE_SCALAR_FUNCTION_EXTRACT:
+        switch (unit) {
+        case MYLITE_SQL_AST_INTERVAL_UNIT_YEAR:
+            part = TEMPORAL_PART_YEAR;
+            break;
+        case MYLITE_SQL_AST_INTERVAL_UNIT_MONTH:
+            part = TEMPORAL_PART_MONTH;
+            break;
+        case MYLITE_SQL_AST_INTERVAL_UNIT_DAY:
+            part = TEMPORAL_PART_DAY;
+            break;
+        case MYLITE_SQL_AST_INTERVAL_UNIT_HOUR:
+            part = TEMPORAL_PART_HOUR;
+            break;
+        case MYLITE_SQL_AST_INTERVAL_UNIT_MINUTE:
+            part = TEMPORAL_PART_MINUTE;
+            break;
+        case MYLITE_SQL_AST_INTERVAL_UNIT_SECOND:
+            part = TEMPORAL_PART_SECOND;
+            break;
+        case MYLITE_SQL_AST_INTERVAL_UNIT_NONE:
+        case MYLITE_SQL_AST_INTERVAL_UNIT_WEEK:
+            return false;
+        }
+        break;
+    case MYLITE_SCALAR_FUNCTION_UNKNOWN:
+    case MYLITE_SCALAR_FUNCTION_CONCAT:
+    case MYLITE_SCALAR_FUNCTION_CONCAT_WS:
+    case MYLITE_SCALAR_FUNCTION_LENGTH:
+    case MYLITE_SCALAR_FUNCTION_CHAR_LENGTH:
+    case MYLITE_SCALAR_FUNCTION_LOWER:
+    case MYLITE_SCALAR_FUNCTION_UPPER:
+    case MYLITE_SCALAR_FUNCTION_LEFT:
+    case MYLITE_SCALAR_FUNCTION_RIGHT:
+    case MYLITE_SCALAR_FUNCTION_SUBSTRING:
+    case MYLITE_SCALAR_FUNCTION_TRIM:
+    case MYLITE_SCALAR_FUNCTION_LTRIM:
+    case MYLITE_SCALAR_FUNCTION_RTRIM:
+    case MYLITE_SCALAR_FUNCTION_REPLACE:
+    case MYLITE_SCALAR_FUNCTION_ABS:
+    case MYLITE_SCALAR_FUNCTION_SIGN:
+    case MYLITE_SCALAR_FUNCTION_FLOOR:
+    case MYLITE_SCALAR_FUNCTION_CEIL:
+    case MYLITE_SCALAR_FUNCTION_MOD:
+    case MYLITE_SCALAR_FUNCTION_PI:
+    case MYLITE_SCALAR_FUNCTION_IF:
+    case MYLITE_SCALAR_FUNCTION_IFNULL:
+    case MYLITE_SCALAR_FUNCTION_NULLIF:
+    case MYLITE_SCALAR_FUNCTION_COALESCE:
+    case MYLITE_SCALAR_FUNCTION_ISNULL:
+    case MYLITE_SCALAR_FUNCTION_DATABASE:
+    case MYLITE_SCALAR_FUNCTION_SCHEMA:
+    case MYLITE_SCALAR_FUNCTION_VERSION:
+    case MYLITE_SCALAR_FUNCTION_LAST_INSERT_ID:
+    case MYLITE_SCALAR_FUNCTION_ROW_COUNT:
+    case MYLITE_SCALAR_FUNCTION_ASCII:
+    case MYLITE_SCALAR_FUNCTION_ORD:
+    case MYLITE_SCALAR_FUNCTION_LOCATE:
+    case MYLITE_SCALAR_FUNCTION_INSTR:
+    case MYLITE_SCALAR_FUNCTION_INSERT:
+    case MYLITE_SCALAR_FUNCTION_REPEAT:
+    case MYLITE_SCALAR_FUNCTION_SPACE:
+    case MYLITE_SCALAR_FUNCTION_REVERSE:
+    case MYLITE_SCALAR_FUNCTION_LPAD:
+    case MYLITE_SCALAR_FUNCTION_RPAD:
+    case MYLITE_SCALAR_FUNCTION_QUOTE:
+    case MYLITE_SCALAR_FUNCTION_ELT:
+    case MYLITE_SCALAR_FUNCTION_FIELD:
+    case MYLITE_SCALAR_FUNCTION_FIND_IN_SET:
+    case MYLITE_SCALAR_FUNCTION_MAKE_SET:
+    case MYLITE_SCALAR_FUNCTION_HEX:
+    case MYLITE_SCALAR_FUNCTION_UNHEX:
+    case MYLITE_SCALAR_FUNCTION_TO_BASE64:
+    case MYLITE_SCALAR_FUNCTION_FROM_BASE64:
+    case MYLITE_SCALAR_FUNCTION_BIN:
+    case MYLITE_SCALAR_FUNCTION_OCT:
+    case MYLITE_SCALAR_FUNCTION_CONV:
+    case MYLITE_SCALAR_FUNCTION_CHAR:
+    case MYLITE_SCALAR_FUNCTION_CHARSET:
+    case MYLITE_SCALAR_FUNCTION_COLLATION:
+    case MYLITE_SCALAR_FUNCTION_COERCIBILITY:
+    case MYLITE_SCALAR_FUNCTION_CONNECTION_ID:
+    case MYLITE_SCALAR_FUNCTION_USER:
+    case MYLITE_SCALAR_FUNCTION_CURRENT_USER:
+    case MYLITE_SCALAR_FUNCTION_BIT_COUNT:
+    case MYLITE_SCALAR_FUNCTION_BIT_LENGTH:
+    case MYLITE_SCALAR_FUNCTION_INET_ATON:
+    case MYLITE_SCALAR_FUNCTION_INET_NTOA:
+    case MYLITE_SCALAR_FUNCTION_CRC32:
+    case MYLITE_SCALAR_FUNCTION_IS_UUID:
+    case MYLITE_SCALAR_FUNCTION_UUID_TO_BIN:
+    case MYLITE_SCALAR_FUNCTION_BIN_TO_UUID:
+    case MYLITE_SCALAR_FUNCTION_SUBSTRING_INDEX:
+    case MYLITE_SCALAR_FUNCTION_ROUND:
+    case MYLITE_SCALAR_FUNCTION_TRUNCATE:
+    case MYLITE_SCALAR_FUNCTION_POWER:
+    case MYLITE_SCALAR_FUNCTION_SQRT:
+    case MYLITE_SCALAR_FUNCTION_EXP:
+    case MYLITE_SCALAR_FUNCTION_LN:
+    case MYLITE_SCALAR_FUNCTION_LOG:
+    case MYLITE_SCALAR_FUNCTION_LOG2:
+    case MYLITE_SCALAR_FUNCTION_LOG10:
+    case MYLITE_SCALAR_FUNCTION_SIN:
+    case MYLITE_SCALAR_FUNCTION_COS:
+    case MYLITE_SCALAR_FUNCTION_TAN:
+    case MYLITE_SCALAR_FUNCTION_COT:
+    case MYLITE_SCALAR_FUNCTION_DEGREES:
+    case MYLITE_SCALAR_FUNCTION_RADIANS:
+    case MYLITE_SCALAR_FUNCTION_ACOS:
+    case MYLITE_SCALAR_FUNCTION_ASIN:
+    case MYLITE_SCALAR_FUNCTION_ATAN:
+    case MYLITE_SCALAR_FUNCTION_ATAN2:
+    case MYLITE_SCALAR_FUNCTION_GREATEST:
+    case MYLITE_SCALAR_FUNCTION_LEAST:
+    case MYLITE_SCALAR_FUNCTION_STRCMP:
+    case MYLITE_SCALAR_FUNCTION_FORMAT:
+    case MYLITE_SCALAR_FUNCTION_NOW:
+    case MYLITE_SCALAR_FUNCTION_CURDATE:
+    case MYLITE_SCALAR_FUNCTION_CURRENT_DATE:
+    case MYLITE_SCALAR_FUNCTION_CURTIME:
+    case MYLITE_SCALAR_FUNCTION_CURRENT_TIME:
+    case MYLITE_SCALAR_FUNCTION_LOCALTIME:
+    case MYLITE_SCALAR_FUNCTION_LOCALTIMESTAMP:
+    case MYLITE_SCALAR_FUNCTION_DATE:
+    case MYLITE_SCALAR_FUNCTION_DATEDIFF:
+    case MYLITE_SCALAR_FUNCTION_DATE_ADD:
+    case MYLITE_SCALAR_FUNCTION_DATE_SUB:
+    case MYLITE_SCALAR_FUNCTION_ADDDATE:
+    case MYLITE_SCALAR_FUNCTION_SUBDATE:
+        return false;
+    }
+    if (out_part != NULL) {
+        *out_part = part;
+    }
+    return part != TEMPORAL_PART_NONE;
+}
+
+static int temporal_part_value(const struct temporal_date_value *date, enum temporal_part_kind part)
+{
+    switch (part) {
+    case TEMPORAL_PART_YEAR:
+        return date == NULL ? 0 : date->year;
+    case TEMPORAL_PART_MONTH:
+        return date == NULL ? 0 : date->month;
+    case TEMPORAL_PART_DAY:
+        return date == NULL ? 0 : date->day;
+    case TEMPORAL_PART_HOUR:
+        return date == NULL ? 0 : date->hour;
+    case TEMPORAL_PART_MINUTE:
+        return date == NULL ? 0 : date->minute;
+    case TEMPORAL_PART_SECOND:
+        return date == NULL ? 0 : date->second;
+    case TEMPORAL_PART_NONE:
+        return 0;
+    }
+    return 0;
 }
 
 static int eval_date_arithmetic_function(enum mylite_scalar_function_id function_id,
@@ -3118,6 +3401,16 @@ static int temporal_date_from_value(const struct mylite_expression_value *value,
                                     struct mylite_expression_warnings *warnings,
                                     struct temporal_date_value *out_date, bool *out_valid)
 {
+    return temporal_date_from_value_with_mode(value, warn_approximate_fraction, false, warnings,
+                                              out_date, out_valid);
+}
+
+static int temporal_date_from_value_with_mode(const struct mylite_expression_value *value,
+                                              bool warn_approximate_fraction,
+                                              bool allow_incomplete_date,
+                                              struct mylite_expression_warnings *warnings,
+                                              struct temporal_date_value *out_date, bool *out_valid)
+{
     struct temporal_date_source source = {0};
     bool valid = false;
     int status = 0;
@@ -3133,7 +3426,8 @@ static int temporal_date_from_value(const struct mylite_expression_value *value,
         return status;
     }
 
-    valid = parse_temporal_date_source(&source, warn_approximate_fraction, out_date);
+    valid = parse_temporal_date_source(&source, warn_approximate_fraction, allow_incomplete_date,
+                                       out_date);
     if (!valid && out_date->warning_kind == TEMPORAL_DATE_WARNING_NONE) {
         out_date->warning_kind = TEMPORAL_DATE_WARNING_INCORRECT;
     }
@@ -3224,14 +3518,15 @@ static bool temporal_date_source_has_fraction(const struct temporal_date_source 
 }
 
 static bool parse_temporal_date_source(const struct temporal_date_source *source,
-                                       bool warn_approximate_fraction,
+                                       bool warn_approximate_fraction, bool allow_incomplete_date,
                                        struct temporal_date_value *out_date)
 {
     if (source == NULL || out_date == NULL || source->text == NULL || source->length == 0U) {
         return false;
     }
     if (source->numeric) {
-        bool valid = parse_temporal_compact_date(source->text, source->length, true, out_date);
+        bool valid = parse_temporal_compact_date(source->text, source->length, true,
+                                                 allow_incomplete_date, out_date);
 
         if (valid && warn_approximate_fraction && source->approximate_fraction &&
             out_date->warning_kind == TEMPORAL_DATE_WARNING_NONE) {
@@ -3239,13 +3534,16 @@ static bool parse_temporal_date_source(const struct temporal_date_source *source
         }
         return valid;
     }
-    if (parse_temporal_delimited_date(source->text, source->length, out_date)) {
+    if (parse_temporal_delimited_date(source->text, source->length, allow_incomplete_date,
+                                      out_date)) {
         return true;
     }
-    return parse_temporal_compact_date(source->text, source->length, false, out_date);
+    return parse_temporal_compact_date(source->text, source->length, false, allow_incomplete_date,
+                                       out_date);
 }
 
 static bool parse_temporal_delimited_date(const char *text, size_t length,
+                                          bool allow_incomplete_date,
                                           struct temporal_date_value *out_date)
 {
     size_t offset = 0U;
@@ -3253,6 +3551,7 @@ static bool parse_temporal_delimited_date(const char *text, size_t length,
     int year = 0;
     int month = 0;
     int day = 0;
+    bool all_zero = false;
 
     if (text == NULL || out_date == NULL) {
         return false;
@@ -3282,7 +3581,9 @@ static bool parse_temporal_delimited_date(const char *text, size_t length,
                                       &day)) {
         return false;
     }
-    if (!temporal_date_parts_are_valid(year, month, day)) {
+    all_zero = allow_incomplete_date && temporal_date_parts_are_all_zero(year, month, day);
+    if (!temporal_date_parts_are_valid_for_mode(year, month, day, allow_incomplete_date) &&
+        !all_zero) {
         out_date->warning_kind = TEMPORAL_DATE_WARNING_INCORRECT;
         return false;
     }
@@ -3292,10 +3593,18 @@ static bool parse_temporal_delimited_date(const char *text, size_t length,
         .month = month,
         .day = day,
     };
-    return parse_temporal_time_suffix(text, length, offset, out_date);
+    if (!parse_temporal_time_suffix(text, length, offset, out_date)) {
+        return false;
+    }
+    if (all_zero && !out_date->has_time) {
+        out_date->warning_kind = TEMPORAL_DATE_WARNING_INCORRECT;
+        return false;
+    }
+    return true;
 }
 
 static bool parse_temporal_compact_date(const char *text, size_t length, bool numeric,
+                                        bool allow_incomplete_date,
                                         struct temporal_date_value *out_date)
 {
     char padded[MYLITE_TEMPORAL_LONG_DATETIME_DIGITS + 1U];
@@ -3343,7 +3652,7 @@ static bool parse_temporal_compact_date(const char *text, size_t length, bool nu
         out_date->warning_kind = TEMPORAL_DATE_WARNING_INCORRECT;
         return false;
     }
-    if (!temporal_date_parts_are_valid(year, month, day)) {
+    if (!temporal_date_parts_are_valid_for_mode(year, month, day, allow_incomplete_date)) {
         out_date->warning_kind = TEMPORAL_DATE_WARNING_INCORRECT;
         return false;
     }
@@ -3645,6 +3954,30 @@ static bool temporal_date_parts_are_valid(int year, int month, int day)
         return false;
     }
     return day <= temporal_month_day_limit(year, month);
+}
+
+static bool temporal_date_parts_are_valid_for_mode(int year, int month, int day,
+                                                   bool allow_incomplete_date)
+{
+    if (!allow_incomplete_date) {
+        return temporal_date_parts_are_valid(year, month, day);
+    }
+    if (year < 0 || year > MYLITE_TEMPORAL_MAX_YEAR || month < 0 ||
+        month > MYLITE_TEMPORAL_MONTHS_PER_YEAR || day < 0 || day > MYLITE_TEMPORAL_MAX_MONTH_DAY) {
+        return false;
+    }
+    if (year == 0 && month == 0 && day == 0) {
+        return false;
+    }
+    if (month == 0 || day == 0) {
+        return true;
+    }
+    return day <= temporal_month_day_limit(year, month);
+}
+
+static bool temporal_date_parts_are_all_zero(int year, int month, int day)
+{
+    return year == 0 && month == 0 && day == 0;
 }
 
 static bool temporal_time_parts_are_valid(int hour, int minute, int second)
@@ -6716,6 +7049,13 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
     case MYLITE_SCALAR_FUNCTION_ADDDATE:
     case MYLITE_SCALAR_FUNCTION_SUBDATE:
+    case MYLITE_SCALAR_FUNCTION_YEAR:
+    case MYLITE_SCALAR_FUNCTION_MONTH:
+    case MYLITE_SCALAR_FUNCTION_DAY:
+    case MYLITE_SCALAR_FUNCTION_HOUR:
+    case MYLITE_SCALAR_FUNCTION_MINUTE:
+    case MYLITE_SCALAR_FUNCTION_SECOND:
+    case MYLITE_SCALAR_FUNCTION_EXTRACT:
     case MYLITE_SCALAR_FUNCTION_CONCAT:
     case MYLITE_SCALAR_FUNCTION_CONCAT_WS:
     case MYLITE_SCALAR_FUNCTION_LENGTH:
@@ -8556,6 +8896,13 @@ static int trigonometric_function_result(struct trigonometric_input input,
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
     case MYLITE_SCALAR_FUNCTION_ADDDATE:
     case MYLITE_SCALAR_FUNCTION_SUBDATE:
+    case MYLITE_SCALAR_FUNCTION_YEAR:
+    case MYLITE_SCALAR_FUNCTION_MONTH:
+    case MYLITE_SCALAR_FUNCTION_DAY:
+    case MYLITE_SCALAR_FUNCTION_HOUR:
+    case MYLITE_SCALAR_FUNCTION_MINUTE:
+    case MYLITE_SCALAR_FUNCTION_SECOND:
+    case MYLITE_SCALAR_FUNCTION_EXTRACT:
     case MYLITE_SCALAR_FUNCTION_CONCAT:
     case MYLITE_SCALAR_FUNCTION_CONCAT_WS:
     case MYLITE_SCALAR_FUNCTION_LENGTH:
@@ -8845,6 +9192,13 @@ static int inverse_trigonometric_function_result(struct inverse_trigonometric_in
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
     case MYLITE_SCALAR_FUNCTION_ADDDATE:
     case MYLITE_SCALAR_FUNCTION_SUBDATE:
+    case MYLITE_SCALAR_FUNCTION_YEAR:
+    case MYLITE_SCALAR_FUNCTION_MONTH:
+    case MYLITE_SCALAR_FUNCTION_DAY:
+    case MYLITE_SCALAR_FUNCTION_HOUR:
+    case MYLITE_SCALAR_FUNCTION_MINUTE:
+    case MYLITE_SCALAR_FUNCTION_SECOND:
+    case MYLITE_SCALAR_FUNCTION_EXTRACT:
     case MYLITE_SCALAR_FUNCTION_CONCAT:
     case MYLITE_SCALAR_FUNCTION_CONCAT_WS:
     case MYLITE_SCALAR_FUNCTION_LENGTH:
@@ -9044,6 +9398,13 @@ static int angle_conversion_result(struct angle_conversion_input conversion, dou
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
     case MYLITE_SCALAR_FUNCTION_ADDDATE:
     case MYLITE_SCALAR_FUNCTION_SUBDATE:
+    case MYLITE_SCALAR_FUNCTION_YEAR:
+    case MYLITE_SCALAR_FUNCTION_MONTH:
+    case MYLITE_SCALAR_FUNCTION_DAY:
+    case MYLITE_SCALAR_FUNCTION_HOUR:
+    case MYLITE_SCALAR_FUNCTION_MINUTE:
+    case MYLITE_SCALAR_FUNCTION_SECOND:
+    case MYLITE_SCALAR_FUNCTION_EXTRACT:
     case MYLITE_SCALAR_FUNCTION_CONCAT:
     case MYLITE_SCALAR_FUNCTION_CONCAT_WS:
     case MYLITE_SCALAR_FUNCTION_LENGTH:
@@ -12803,6 +13164,14 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"DATE_SUB", MYLITE_SCALAR_FUNCTION_DATE_SUB},
         {"ADDDATE", MYLITE_SCALAR_FUNCTION_ADDDATE},
         {"SUBDATE", MYLITE_SCALAR_FUNCTION_SUBDATE},
+        {"YEAR", MYLITE_SCALAR_FUNCTION_YEAR},
+        {"MONTH", MYLITE_SCALAR_FUNCTION_MONTH},
+        {"DAY", MYLITE_SCALAR_FUNCTION_DAY},
+        {"DAYOFMONTH", MYLITE_SCALAR_FUNCTION_DAY},
+        {"HOUR", MYLITE_SCALAR_FUNCTION_HOUR},
+        {"MINUTE", MYLITE_SCALAR_FUNCTION_MINUTE},
+        {"SECOND", MYLITE_SCALAR_FUNCTION_SECOND},
+        {"EXTRACT", MYLITE_SCALAR_FUNCTION_EXTRACT},
         {"BIT_COUNT", MYLITE_SCALAR_FUNCTION_BIT_COUNT},
         {"BIT_LENGTH", MYLITE_SCALAR_FUNCTION_BIT_LENGTH},
         {"CRC32", MYLITE_SCALAR_FUNCTION_CRC32},
@@ -12929,6 +13298,13 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
     case MYLITE_SCALAR_FUNCTION_ADDDATE:
     case MYLITE_SCALAR_FUNCTION_SUBDATE:
+    case MYLITE_SCALAR_FUNCTION_YEAR:
+    case MYLITE_SCALAR_FUNCTION_MONTH:
+    case MYLITE_SCALAR_FUNCTION_DAY:
+    case MYLITE_SCALAR_FUNCTION_HOUR:
+    case MYLITE_SCALAR_FUNCTION_MINUTE:
+    case MYLITE_SCALAR_FUNCTION_SECOND:
+    case MYLITE_SCALAR_FUNCTION_EXTRACT:
         return false;
     }
     return false;

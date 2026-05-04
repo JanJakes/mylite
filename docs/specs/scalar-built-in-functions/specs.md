@@ -178,10 +178,14 @@ by common scalar expressions:
   `docs/specs/session-identity-functions/specs.md`
 - temporal functions: `NOW`, `CURRENT_TIMESTAMP`, `LOCALTIME`,
   `LOCALTIMESTAMP`, `CURDATE`/`CURRENT_DATE`, `CURTIME`/`CURRENT_TIME`,
-  `DATE`, `DATEDIFF`, `DATE_ADD`, `DATE_SUB`, `ADDDATE`, and `SUBDATE`; see
+  `DATE`, `DATEDIFF`, `DATE_ADD`, `DATE_SUB`, `ADDDATE`, `SUBDATE`,
+  `YEAR`, `MONTH`, `DAY`, `DAYOFMONTH`, `HOUR`, `MINUTE`, `SECOND`, and
+  `EXTRACT` for the simple `YEAR`, `MONTH`, `DAY`, `HOUR`, `MINUTE`, and
+  `SECOND` units; see
   `docs/specs/current-temporal-functions/specs.md` and
   `docs/specs/date-and-datediff-functions/specs.md` and
-  `docs/specs/date-add-sub-functions/specs.md`
+  `docs/specs/date-add-sub-functions/specs.md` and
+  `docs/specs/temporal-part-functions/specs.md`
 - grammar-level cast expressions: `CAST(expr AS type)`, `CONVERT(expr, type)`,
   and `CONVERT(expr USING charset_name)` for the supported CAST target and
   charset-registry subsets; see `docs/specs/cast-expression/specs.md` and
@@ -231,7 +235,8 @@ result metadata.
 
 This checkpoint intentionally does not yet implement `INSERT ... VALUES` or
 `INSERT ... SET` function expressions, temporal functions outside the current,
-date extraction/difference, and first date-arithmetic slices, information
+date extraction/difference, first date-arithmetic, and simple temporal part
+extraction slices, information
 functions outside the session-state and session-identity slices,
 aggregate/window functions, JSON,
 regular expressions, spatial, full-text, encryption, loadable functions,
@@ -502,14 +507,18 @@ representative runtime results were:
 | `YEAR('2024-02-29')` | `2024` |
 | `MONTH('2024-02-29')` | `2` |
 | `DAYOFMONTH('2001-11-00')` | `0` |
-| `HOUR('-03:04:05.000006')` | `3` |
-| `MICROSECOND('12:34:56.123456')` | `123456` |
+| `DAY('2024-02-29')` | `29` |
+| `DAYOFMONTH('2008-00-00')` | `0` |
+| `HOUR('2024-02-29 12:34:56')` | `12` |
+| `MINUTE('2024-02-29 12:34:56')` | `34` |
+| `SECOND('2024-02-29 12:34:56')` | `56` |
 | `DATEDIFF('2024-03-01','2024-02-28')` | `2` |
 | `TIMESTAMPDIFF(DAY,'2024-02-28','2024-03-01')` | `2` |
 | `TIMESTAMPDIFF(HOUR,'2024-02-28 00:00:00','2024-02-29 12:00:00')` | `36` |
 | `DATE_ADD('2024-02-29', INTERVAL 1 DAY)` | `2024-03-01` |
 | `DATE_SUB('2024-03-01', INTERVAL 1 DAY)` | `2024-02-29` |
-| `EXTRACT(YEAR_MONTH FROM '2024-02-29 12:34:56')` | `202402` |
+| `EXTRACT(YEAR FROM '2024-02-29 12:34:56')` | `2024` |
+| `EXTRACT(SECOND FROM '2024-02-29 12:34:56')` | `56` |
 | `TIMESTAMPADD(DAY, 2, '2024-02-28')` | `2024-03-01` |
 
 `NOW`, `CURDATE`, `CURTIME`, UTC variants, and their synonyms are evaluated

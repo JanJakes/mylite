@@ -28,6 +28,7 @@ size_t mylite_select_count_plan_column_parts_matches(const struct mylite_select_
                                                      size_t first_table, size_t table_count,
                                                      size_t *match_index);
 char *mylite_select_copy_wildcard_qualifier_name(const struct mylite_sql_ast_node *wildcard);
+int mylite_select_set_unknown_table_error(mylite_db *database, const char *table_name);
 int mylite_select_set_unknown_where_column_error(mylite_db *database, const char *column_name);
 int mylite_select_set_unknown_order_column_error(mylite_db *database, const char *column_name);
 

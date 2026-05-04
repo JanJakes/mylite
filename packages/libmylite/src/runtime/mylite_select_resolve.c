@@ -197,6 +197,14 @@ char *mylite_select_copy_wildcard_qualifier_name(const struct mylite_sql_ast_nod
     return name;
 }
 
+int mylite_select_set_unknown_table_error(mylite_db *database, const char *table_name)
+{
+    int status =
+        mylite_diagnostics_set_error_message_parts(database, "Unknown table '", table_name, "'");
+
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
 int mylite_select_set_unknown_where_column_error(mylite_db *database, const char *column_name)
 {
     int status = mylite_diagnostics_set_error_message_parts(database, "Unknown column '",

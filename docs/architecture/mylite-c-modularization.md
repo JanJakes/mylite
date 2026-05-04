@@ -481,7 +481,8 @@ only the core object model and transitional shared helpers listed here:
   helper.
 - [ ] Move table target resolution and remaining column loading behind catalog/metadata
   helper APIs.
-- [ ] Move wildcard expansion and output-column planning into `mylite_select`.
+- [x] Move wildcard expansion and wildcard output-column planning into a
+  focused SELECT projection module.
 - [ ] Move SELECT predicate binding into `mylite_select`.
 - [x] Move join planning and `USING` resolution into `mylite_select`.
 - [x] Move shared SELECT `USING` column resolution helpers into

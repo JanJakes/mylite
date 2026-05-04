@@ -41,6 +41,14 @@ int mylite_select_set_ambiguous_column_error(mylite_db *database, const char *co
 bool mylite_select_column_index_is_using_column_in_range(const struct mylite_select_plan *plan,
                                                          size_t column_index,
                                                          struct mylite_select_table_range range);
+static inline bool mylite_select_join_step_is_in_range(const struct mylite_select_join_step *step,
+                                                       struct mylite_select_table_range range)
+{
+    size_t range_end = range.first_table + range.table_count;
+    size_t step_end = step->joined_range.first_table + step->joined_range.table_count;
+
+    return (step->joined_range.first_table >= range.first_table && step_end <= range_end) != 0;
+}
 bool mylite_select_plan_has_column_span(const struct mylite_select_plan *plan,
                                         struct mylite_sql_source_span name);
 bool mylite_select_plan_has_visible_table_span(const struct mylite_select_plan *plan,

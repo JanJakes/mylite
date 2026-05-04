@@ -70,6 +70,8 @@ after every step.
 - [ ] Extract public statement lifecycle and result accessors into
   `src/runtime/mylite_statement.{h,c}` while keeping statement-family execution
   in `mylite.c`.
+- [x] Extract public result metadata accessors into
+  `src/runtime/mylite_metadata.{h,c}`.
 - [ ] Split catalog lookup helpers into `src/runtime/mylite_catalog`.
 - [ ] Split `SHOW` and `information_schema` dynamic result builders.
 - [ ] Split schema lifecycle and table/index DDL plans and execution.

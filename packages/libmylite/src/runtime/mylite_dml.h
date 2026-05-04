@@ -27,10 +27,17 @@ int mylite_dml_initialize_insert_ignore_warning_state(mylite_db *database,
 void mylite_dml_insert_execution_state_deinit(struct mylite_insert_execution_state *state);
 char *mylite_dml_build_insert_physical_sql(mylite_db *database,
                                            const struct mylite_insert_table *table);
+char *mylite_dml_build_replace_delete_sql(mylite_db *database,
+                                          const struct mylite_insert_table *table);
 int mylite_dml_write_insert_candidate_row(mylite_db *database, sqlite3_stmt *insert,
                                           const struct mylite_insert_table *table,
                                           const struct mylite_insert_bound_value *values,
                                           struct mylite_insert_execution_state *state);
+int mylite_dml_write_replace_candidate_row(mylite_db *database, sqlite3_stmt *insert,
+                                           sqlite3_stmt *delete_stmt,
+                                           const struct mylite_insert_table *table,
+                                           struct mylite_insert_execution_state *state,
+                                           const struct mylite_insert_bound_value *values);
 int mylite_dml_write_insert_update_candidate(mylite_db *database,
                                              const struct mylite_insert_table *table,
                                              sqlite3_int64 rowid,

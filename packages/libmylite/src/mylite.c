@@ -2244,15 +2244,6 @@ static int execute_replace_row(mylite_stmt *stmt, sqlite3_stmt *insert, sqlite3_
                                const struct mylite_insert_table *table,
                                const struct mylite_insert_row_column_indexes *column_indexes,
                                struct mylite_insert_execution_state *state, size_t row_index);
-// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
-static int execute_replace_candidate_row(mylite_stmt *stmt, sqlite3_stmt *insert,
-                                         sqlite3_stmt *delete_stmt,
-                                         const struct mylite_insert_table *table,
-                                         struct mylite_insert_execution_state *state,
-                                         const struct mylite_insert_bound_value *values);
-static int delete_replace_conflict_row(mylite_stmt *stmt, sqlite3_stmt *delete_stmt,
-                                       sqlite3_int64 rowid,
-                                       struct mylite_insert_execution_state *state);
 static int execute_replace_set_transaction(mylite_stmt *stmt, const char *schema_name,
                                            const struct mylite_insert_table *table,
                                            const size_t *column_indexes, size_t column_index_count);
@@ -2263,7 +2254,6 @@ static int execute_replace_set_row(mylite_stmt *stmt, const char *schema_name, s
                                    struct mylite_insert_execution_state *state,
                                    struct mylite_insert_bound_value *values,
                                    struct mylite_insert_set_row_state *row_state);
-static char *build_replace_delete_sql(mylite_db *database, const struct mylite_insert_table *table);
 static int append_replace_delayed_warning(mylite_stmt *stmt);
 static int finish_successful_replace_transaction(mylite_stmt *stmt, const char *schema_name,
                                                  const struct mylite_insert_table *table,
@@ -25364,7 +25354,7 @@ static int execute_replace_values_transaction(mylite_stmt *stmt, const char *sch
     row_column_indexes.source_column_count = source_column_count;
 
     insert_sql = mylite_dml_build_insert_physical_sql(stmt->database, table);
-    delete_sql = build_replace_delete_sql(stmt->database, table);
+    delete_sql = mylite_dml_build_replace_delete_sql(stmt->database, table);
     if (insert_sql == NULL || delete_sql == NULL) {
         sqlite3_free(insert_sql);
         sqlite3_free(delete_sql);
@@ -25430,58 +25420,12 @@ static int execute_replace_row(mylite_stmt *stmt, sqlite3_stmt *insert, sqlite3_
         stmt->database, &stmt->insert_values, table, column_indexes->insert_columns,
         stmt->insert_values.row_count, state, row_index, values);
     if (status == MYLITE_OK) {
-        status = execute_replace_candidate_row(stmt, insert, delete_stmt, table, state, values);
+        status = mylite_dml_write_replace_candidate_row(stmt->database, insert, delete_stmt, table,
+                                                        state, values);
     }
 
     mylite_dml_insert_bound_values_deinit(values, table->column_count);
     return status;
-}
-
-// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
-static int execute_replace_candidate_row(mylite_stmt *stmt, sqlite3_stmt *insert,
-                                         sqlite3_stmt *delete_stmt,
-                                         const struct mylite_insert_table *table,
-                                         struct mylite_insert_execution_state *state,
-                                         const struct mylite_insert_bound_value *values)
-{
-    for (;;) {
-        struct mylite_insert_unique_conflict conflict = {0};
-        int status =
-            mylite_dml_find_insert_unique_conflict(stmt->database, table, values, &conflict);
-
-        if (status != MYLITE_OK) {
-            return status;
-        }
-        if (!conflict.conflicts) {
-            break;
-        }
-        status = delete_replace_conflict_row(stmt, delete_stmt, conflict.rowid, state);
-        if (status != MYLITE_OK) {
-            return status;
-        }
-    }
-    return mylite_dml_write_insert_candidate_row(stmt->database, insert, table, values, state);
-}
-
-static int delete_replace_conflict_row(mylite_stmt *stmt, sqlite3_stmt *delete_stmt,
-                                       sqlite3_int64 rowid,
-                                       struct mylite_insert_execution_state *state)
-{
-    int rc = SQLITE_OK;
-
-    sqlite3_reset(delete_stmt);
-    sqlite3_clear_bindings(delete_stmt);
-    rc = sqlite3_bind_int64(delete_stmt, 1, rowid);
-    if (rc != SQLITE_OK) {
-        return mylite_diagnostics_set_sqlite_error(stmt->database);
-    }
-
-    rc = sqlite3_step(delete_stmt);
-    if (rc != SQLITE_DONE) {
-        return mylite_diagnostics_set_sqlite_error(stmt->database);
-    }
-    ++state->duplicate_count;
-    return MYLITE_OK;
 }
 
 static int execute_replace_set_transaction(mylite_stmt *stmt, const char *schema_name,
@@ -25523,7 +25467,7 @@ static int execute_replace_set_transaction(mylite_stmt *stmt, const char *schema
     }
 
     insert_sql = mylite_dml_build_insert_physical_sql(stmt->database, table);
-    delete_sql = build_replace_delete_sql(stmt->database, table);
+    delete_sql = mylite_dml_build_replace_delete_sql(stmt->database, table);
     if (insert_sql == NULL || delete_sql == NULL) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         status = MYLITE_NOMEM;
@@ -25574,19 +25518,8 @@ static int execute_replace_set_row(mylite_stmt *stmt, const char *schema_name, s
     if (status != MYLITE_OK) {
         return status;
     }
-    return execute_replace_candidate_row(stmt, insert, delete_stmt, table, state, values);
-}
-
-static char *build_replace_delete_sql(mylite_db *database, const struct mylite_insert_table *table)
-{
-    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
-
-    if (sql == NULL) {
-        return NULL;
-    }
-
-    sqlite3_str_appendf(sql, "DELETE FROM \"%w\" WHERE rowid = ?", table->physical_name);
-    return sqlite3_str_finish(sql);
+    return mylite_dml_write_replace_candidate_row(stmt->database, insert, delete_stmt, table, state,
+                                                  values);
 }
 
 static int append_replace_delayed_warning(mylite_stmt *stmt)

@@ -385,7 +385,7 @@ only the core object model and transitional shared helpers listed here:
   while keeping rollback hooks in transactions.
 - [ ] Move `INSERT ... ON DUPLICATE KEY UPDATE` execution into `mylite_dml`.
 - [ ] Move `INSERT IGNORE` warning/error downgrade logic into `mylite_dml`.
-- [ ] Move `REPLACE` delete-then-insert behavior into `mylite_dml`.
+- [x] Move `REPLACE` delete-then-insert behavior into `mylite_dml`.
 - [ ] Move update target binding and validation into `mylite_dml`.
 - [ ] Move update row materialization/sorting/limit logic into `mylite_dml`.
 - [ ] Move update row writeback into `mylite_dml`.

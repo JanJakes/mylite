@@ -11,6 +11,9 @@ static void record_insert_row_auto_increment_id(const struct mylite_insert_table
                                                 struct mylite_insert_execution_state *state);
 static char *build_insert_update_physical_sql(mylite_db *database,
                                               const struct mylite_insert_table *table);
+static int delete_replace_conflict_row(mylite_db *database, sqlite3_stmt *delete_stmt,
+                                       sqlite3_int64 rowid,
+                                       struct mylite_insert_execution_state *state);
 static bool insert_bound_values_equal(const struct mylite_insert_bound_value *left,
                                       const struct mylite_insert_bound_value *right);
 
@@ -81,6 +84,24 @@ char *mylite_dml_build_insert_physical_sql(mylite_db *database,
     return sqlite3_str_finish(sql);
 }
 
+char *mylite_dml_build_replace_delete_sql(mylite_db *database,
+                                          const struct mylite_insert_table *table)
+{
+    sqlite3_str *sql = NULL;
+
+    if (database == NULL || table == NULL) {
+        return NULL;
+    }
+
+    sql = sqlite3_str_new(database->sqlite);
+    if (sql == NULL) {
+        return NULL;
+    }
+
+    sqlite3_str_appendf(sql, "DELETE FROM \"%w\" WHERE rowid = ?", table->physical_name);
+    return sqlite3_str_finish(sql);
+}
+
 int mylite_dml_write_insert_candidate_row(mylite_db *database, sqlite3_stmt *insert,
                                           const struct mylite_insert_table *table,
                                           const struct mylite_insert_bound_value *values,
@@ -108,6 +129,61 @@ int mylite_dml_write_insert_candidate_row(mylite_db *database, sqlite3_stmt *ins
         status = mylite_dml_advance_insert_row_auto_increment(table, values, state);
     }
     return status;
+}
+
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+int mylite_dml_write_replace_candidate_row(mylite_db *database, sqlite3_stmt *insert,
+                                           sqlite3_stmt *delete_stmt,
+                                           const struct mylite_insert_table *table,
+                                           struct mylite_insert_execution_state *state,
+                                           const struct mylite_insert_bound_value *values)
+{
+    if (database == NULL || insert == NULL || delete_stmt == NULL || table == NULL ||
+        state == NULL || values == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    for (;;) {
+        struct mylite_insert_unique_conflict conflict = {0};
+        int status = mylite_dml_find_insert_unique_conflict(database, table, values, &conflict);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        if (!conflict.conflicts) {
+            break;
+        }
+        status = delete_replace_conflict_row(database, delete_stmt, conflict.rowid, state);
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return mylite_dml_write_insert_candidate_row(database, insert, table, values, state);
+}
+
+static int delete_replace_conflict_row(mylite_db *database, sqlite3_stmt *delete_stmt,
+                                       sqlite3_int64 rowid,
+                                       struct mylite_insert_execution_state *state)
+{
+    int rc = SQLITE_OK;
+
+    if (database == NULL || delete_stmt == NULL || state == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    sqlite3_reset(delete_stmt);
+    sqlite3_clear_bindings(delete_stmt);
+    rc = sqlite3_bind_int64(delete_stmt, 1, rowid);
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+
+    rc = sqlite3_step(delete_stmt);
+    if (rc != SQLITE_DONE) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+    ++state->duplicate_count;
+    return MYLITE_OK;
 }
 
 int mylite_dml_write_insert_update_candidate(mylite_db *database,

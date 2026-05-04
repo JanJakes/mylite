@@ -377,6 +377,7 @@ only the core object model and transitional shared helpers listed here:
 - [x] Move insert target validation into `mylite_dml`.
 - [x] Move insert-table metadata loading behind catalog/metadata helper APIs.
 - [x] Move insert bound-value conversion into `mylite_dml`.
+- [x] Move shared insert row-write helpers into `mylite_dml`.
 - [ ] Move insert row execution into `mylite_dml`.
 - [ ] Move insert unique-conflict checks into `mylite_dml`.
 - [ ] Move insert auto-increment reservation/update logic into `mylite_dml`

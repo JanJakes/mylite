@@ -2136,12 +2136,6 @@ static int finish_failed_insert_values_transaction(
     mylite_stmt *stmt, const char *schema_name, const struct mylite_insert_table *table,
     const struct mylite_insert_execution_state *state,
     const struct mylite_statement_atomicity *atomicity, int original_status);
-static int initialize_insert_ignore_warning_state(mylite_stmt *stmt,
-                                                  const struct mylite_insert_table *table,
-                                                  struct mylite_insert_execution_state *state);
-static void insert_execution_state_deinit(struct mylite_insert_execution_state *state);
-static char *build_insert_physical_sql(mylite_db *database,
-                                       const struct mylite_insert_table *table);
 static int execute_insert_row(mylite_stmt *stmt, sqlite3_stmt *insert,
                               const struct mylite_insert_table *table,
                               const struct mylite_insert_row_column_indexes *column_indexes,
@@ -2156,10 +2150,6 @@ static int execute_insert_duplicate_update_branch(
     struct mylite_insert_execution_state *state,
     const struct mylite_insert_bound_value *candidate_values,
     const struct mylite_insert_unique_conflict *conflict);
-static int write_insert_candidate_row(mylite_stmt *stmt, sqlite3_stmt *insert,
-                                      const struct mylite_insert_table *table,
-                                      const struct mylite_insert_bound_value *values,
-                                      struct mylite_insert_execution_state *state);
 static int load_insert_conflict_row(mylite_stmt *stmt, const struct mylite_insert_table *table,
                                     sqlite3_int64 rowid, struct mylite_insert_bound_value *values);
 static char *build_insert_conflict_row_sql(mylite_db *database,
@@ -2251,12 +2241,6 @@ static int set_insert_update_ambiguous_column_error(mylite_db *database, const c
 static int set_insert_alias_column_count_error(mylite_db *database);
 static int append_insert_values_deprecated_warnings(mylite_stmt *stmt);
 static int append_insert_values_deprecated_warning(mylite_db *database);
-static void record_insert_row_auto_increment_id(const struct mylite_insert_table *table,
-                                                const struct mylite_insert_bound_value *values,
-                                                struct mylite_insert_execution_state *state);
-static int advance_insert_row_auto_increment(const struct mylite_insert_table *table,
-                                             const struct mylite_insert_bound_value *values,
-                                             struct mylite_insert_execution_state *state);
 static int validate_insert_set_assignments(mylite_stmt *stmt,
                                            const struct mylite_insert_table *table,
                                            const char *schema_name, size_t **out_column_indexes,
@@ -24506,21 +24490,22 @@ static int execute_insert_values_transaction(mylite_stmt *stmt, const char *sche
     }
     row_column_indexes.source_column_count = source_column_count;
 
-    status = initialize_insert_ignore_warning_state(stmt, table, &state);
+    status = mylite_dml_initialize_insert_ignore_warning_state(stmt->database, &stmt->insert_values,
+                                                               table, &state);
     if (status != MYLITE_OK) {
         mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
         return status;
     }
     status = append_insert_values_deprecated_warnings(stmt);
     if (status != MYLITE_OK) {
-        insert_execution_state_deinit(&state);
+        mylite_dml_insert_execution_state_deinit(&state);
         mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
         return status;
     }
 
-    insert_sql = build_insert_physical_sql(stmt->database, table);
+    insert_sql = mylite_dml_build_insert_physical_sql(stmt->database, table);
     if (insert_sql == NULL) {
-        insert_execution_state_deinit(&state);
+        mylite_dml_insert_execution_state_deinit(&state);
         mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
@@ -24530,7 +24515,7 @@ static int execute_insert_values_transaction(mylite_stmt *stmt, const char *sche
                             &insert, NULL);
     sqlite3_free(insert_sql);
     if (rc != SQLITE_OK) {
-        insert_execution_state_deinit(&state);
+        mylite_dml_insert_execution_state_deinit(&state);
         mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
         return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
@@ -24544,7 +24529,7 @@ static int execute_insert_values_transaction(mylite_stmt *stmt, const char *sche
     sqlite3_finalize(insert);
 
     if (status != MYLITE_OK) {
-        insert_execution_state_deinit(&state);
+        mylite_dml_insert_execution_state_deinit(&state);
         return finish_failed_insert_values_transaction(stmt, schema_name, table, &state, &atomicity,
                                                        status);
     }
@@ -24556,7 +24541,7 @@ static int execute_insert_values_transaction(mylite_stmt *stmt, const char *sche
     if (status == MYLITE_OK) {
         status = mylite_transaction_commit_statement_atomicity(stmt->database, &atomicity);
         if (status == MYLITE_OK) {
-            insert_execution_state_deinit(&state);
+            mylite_dml_insert_execution_state_deinit(&state);
             stmt->affected_rows = (int64_t)state.accepted_row_count;
             if (state.generated_insert_id) {
                 stmt->database->last_insert_id = state.first_insert_id;
@@ -24566,7 +24551,7 @@ static int execute_insert_values_transaction(mylite_stmt *stmt, const char *sche
     }
 
     mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
-    insert_execution_state_deinit(&state);
+    mylite_dml_insert_execution_state_deinit(&state);
     return status;
 }
 
@@ -24589,63 +24574,6 @@ static int finish_failed_insert_values_transaction(
         stmt->database->last_insert_id = state->first_insert_id;
     }
     return original_status;
-}
-
-static int initialize_insert_ignore_warning_state(mylite_stmt *stmt,
-                                                  const struct mylite_insert_table *table,
-                                                  struct mylite_insert_execution_state *state)
-{
-    if (!stmt->insert_values.ignore || table->column_count == 0U) {
-        return MYLITE_OK;
-    }
-
-    state->warned_omitted_no_default_columns =
-        calloc(table->column_count, sizeof(*state->warned_omitted_no_default_columns));
-    state->warned_null_columns = calloc(table->column_count, sizeof(*state->warned_null_columns));
-    if (state->warned_omitted_no_default_columns == NULL || state->warned_null_columns == NULL) {
-        insert_execution_state_deinit(state);
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    return MYLITE_OK;
-}
-
-static void insert_execution_state_deinit(struct mylite_insert_execution_state *state)
-{
-    if (state == NULL) {
-        return;
-    }
-
-    free(state->warned_omitted_no_default_columns);
-    state->warned_omitted_no_default_columns = NULL;
-    free(state->warned_null_columns);
-    state->warned_null_columns = NULL;
-}
-
-static char *build_insert_physical_sql(mylite_db *database, const struct mylite_insert_table *table)
-{
-    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
-
-    if (sql == NULL) {
-        return NULL;
-    }
-
-    sqlite3_str_appendf(sql, "INSERT INTO \"%w\"(", table->physical_name);
-    for (size_t index = 0U; index < table->column_count; ++index) {
-        if (index != 0U) {
-            sqlite3_str_append(sql, ",", 1);
-        }
-        sqlite3_str_appendf(sql, "\"%w\"", table->columns[index].name);
-    }
-    sqlite3_str_append(sql, ") VALUES(", (int)strlen(") VALUES("));
-    for (size_t index = 0U; index < table->column_count; ++index) {
-        if (index != 0U) {
-            sqlite3_str_append(sql, ",", 1);
-        }
-        sqlite3_str_append(sql, "?", 1);
-    }
-    sqlite3_str_append(sql, ")", 1);
-    return sqlite3_str_finish(sql);
 }
 
 static int execute_insert_row(mylite_stmt *stmt, sqlite3_stmt *insert,
@@ -24678,7 +24606,8 @@ static int execute_insert_row(mylite_stmt *stmt, sqlite3_stmt *insert,
     } else if (status == MYLITE_OK) {
         status = validate_insert_unique_indexes(stmt, table, values, state, &ignored);
         if (status == MYLITE_OK && !ignored) {
-            status = write_insert_candidate_row(stmt, insert, table, values, state);
+            status =
+                mylite_dml_write_insert_candidate_row(stmt->database, insert, table, values, state);
         }
     }
 
@@ -24698,7 +24627,7 @@ static int execute_insert_row_with_duplicate_update(
         return status;
     }
     if (!conflict.conflicts) {
-        return write_insert_candidate_row(stmt, insert, table, values, state);
+        return mylite_dml_write_insert_candidate_row(stmt->database, insert, table, values, state);
     }
 
     ++state->duplicate_count;
@@ -24760,31 +24689,6 @@ static int execute_insert_duplicate_update_branch(
 
     mylite_dml_insert_bound_values_deinit(stored_values, table->column_count);
     mylite_dml_insert_bound_values_deinit(updated_values, table->column_count);
-    return status;
-}
-
-static int write_insert_candidate_row(mylite_stmt *stmt, sqlite3_stmt *insert,
-                                      const struct mylite_insert_table *table,
-                                      const struct mylite_insert_bound_value *values,
-                                      struct mylite_insert_execution_state *state)
-{
-    int status = MYLITE_OK;
-    int rc = SQLITE_OK;
-
-    sqlite3_reset(insert);
-    sqlite3_clear_bindings(insert);
-    status = mylite_dml_bind_insert_row_values(stmt->database, insert, values, table->column_count);
-    if (status == MYLITE_OK) {
-        rc = sqlite3_step(insert);
-        if (rc != SQLITE_DONE) {
-            status = mylite_diagnostics_set_sqlite_error(stmt->database);
-        }
-    }
-    if (status == MYLITE_OK) {
-        ++state->accepted_row_count;
-        record_insert_row_auto_increment_id(table, values, state);
-        status = advance_insert_row_auto_increment(table, values, state);
-    }
     return status;
 }
 
@@ -25286,7 +25190,7 @@ static int write_insert_update_candidate(mylite_stmt *stmt, const struct mylite_
     }
     sqlite3_finalize(update);
     if (status == MYLITE_OK) {
-        status = advance_insert_row_auto_increment(table, values, state);
+        status = mylite_dml_advance_insert_row_auto_increment(table, values, state);
     }
     return status;
 }
@@ -25496,42 +25400,6 @@ static int append_insert_values_deprecated_warning(mylite_db *database)
                                              message);
 }
 
-static void record_insert_row_auto_increment_id(const struct mylite_insert_table *table,
-                                                const struct mylite_insert_bound_value *values,
-                                                struct mylite_insert_execution_state *state)
-{
-    const struct mylite_insert_bound_value *auto_value = NULL;
-
-    if (!table->has_auto_increment || state->generated_insert_id) {
-        return;
-    }
-
-    auto_value = &values[table->auto_increment_column_index];
-    if (auto_value->generated_auto_increment && auto_value->kind == MYLITE_INSERT_BOUND_INTEGER &&
-        auto_value->integer_value > 0) {
-        state->first_insert_id = (uint64_t)auto_value->integer_value;
-        state->generated_insert_id = true;
-    }
-}
-
-static int advance_insert_row_auto_increment(const struct mylite_insert_table *table,
-                                             const struct mylite_insert_bound_value *values,
-                                             struct mylite_insert_execution_state *state)
-{
-    const struct mylite_insert_bound_value *auto_value = NULL;
-
-    if (!table->has_auto_increment) {
-        return MYLITE_OK;
-    }
-
-    auto_value = &values[table->auto_increment_column_index];
-    if (auto_value->kind == MYLITE_INSERT_BOUND_INTEGER && auto_value->integer_value > 0 &&
-        (uint64_t)auto_value->integer_value >= state->next_auto_increment) {
-        state->next_auto_increment = (uint64_t)auto_value->integer_value + 1U;
-    }
-    return MYLITE_OK;
-}
-
 static int validate_insert_set_assignments(mylite_stmt *stmt,
                                            const struct mylite_insert_table *table,
                                            const char *schema_name, size_t **out_column_indexes,
@@ -25617,14 +25485,15 @@ static int execute_insert_set_transaction(mylite_stmt *stmt, const char *schema_
     if (status != MYLITE_OK) {
         return status;
     }
-    status = initialize_insert_ignore_warning_state(stmt, table, &state);
+    status = mylite_dml_initialize_insert_ignore_warning_state(stmt->database, &stmt->insert_values,
+                                                               table, &state);
     if (status != MYLITE_OK) {
         mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
         return status;
     }
     status = append_insert_values_deprecated_warnings(stmt);
     if (status != MYLITE_OK) {
-        insert_execution_state_deinit(&state);
+        mylite_dml_insert_execution_state_deinit(&state);
         mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
         return status;
     }
@@ -25640,7 +25509,7 @@ static int execute_insert_set_transaction(mylite_stmt *stmt, const char *schema_
         goto cleanup;
     }
 
-    insert_sql = build_insert_physical_sql(stmt->database, table);
+    insert_sql = mylite_dml_build_insert_physical_sql(stmt->database, table);
     if (insert_sql == NULL) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         status = MYLITE_NOMEM;
@@ -25667,7 +25536,7 @@ cleanup:
     free(row_state.assigned_columns);
 
     if (status != MYLITE_OK) {
-        insert_execution_state_deinit(&state);
+        mylite_dml_insert_execution_state_deinit(&state);
         return finish_failed_insert_values_transaction(stmt, schema_name, table, &state, &atomicity,
                                                        status);
     }
@@ -25679,7 +25548,7 @@ cleanup:
     if (status == MYLITE_OK) {
         status = mylite_transaction_commit_statement_atomicity(stmt->database, &atomicity);
         if (status == MYLITE_OK) {
-            insert_execution_state_deinit(&state);
+            mylite_dml_insert_execution_state_deinit(&state);
             stmt->affected_rows = (int64_t)state.accepted_row_count;
             if (state.generated_insert_id) {
                 stmt->database->last_insert_id = state.first_insert_id;
@@ -25689,7 +25558,7 @@ cleanup:
     }
 
     mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
-    insert_execution_state_deinit(&state);
+    mylite_dml_insert_execution_state_deinit(&state);
     return status;
 }
 
@@ -25717,7 +25586,7 @@ static int execute_insert_set_row(mylite_stmt *stmt, const char *schema_name,
         return status;
     }
 
-    return write_insert_candidate_row(stmt, insert, table, values, state);
+    return mylite_dml_write_insert_candidate_row(stmt->database, insert, table, values, state);
 }
 
 static int execute_replace_values_transaction(mylite_stmt *stmt, const char *schema_name,
@@ -25747,7 +25616,7 @@ static int execute_replace_values_transaction(mylite_stmt *stmt, const char *sch
     }
     row_column_indexes.source_column_count = source_column_count;
 
-    insert_sql = build_insert_physical_sql(stmt->database, table);
+    insert_sql = mylite_dml_build_insert_physical_sql(stmt->database, table);
     delete_sql = build_replace_delete_sql(stmt->database, table);
     if (insert_sql == NULL || delete_sql == NULL) {
         sqlite3_free(insert_sql);
@@ -25843,7 +25712,7 @@ static int execute_replace_candidate_row(mylite_stmt *stmt, sqlite3_stmt *insert
             return status;
         }
     }
-    return write_insert_candidate_row(stmt, insert, table, values, state);
+    return mylite_dml_write_insert_candidate_row(stmt->database, insert, table, values, state);
 }
 
 static int delete_replace_conflict_row(mylite_stmt *stmt, sqlite3_stmt *delete_stmt,
@@ -25905,7 +25774,7 @@ static int execute_replace_set_transaction(mylite_stmt *stmt, const char *schema
         goto cleanup;
     }
 
-    insert_sql = build_insert_physical_sql(stmt->database, table);
+    insert_sql = mylite_dml_build_insert_physical_sql(stmt->database, table);
     delete_sql = build_replace_delete_sql(stmt->database, table);
     if (insert_sql == NULL || delete_sql == NULL) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");

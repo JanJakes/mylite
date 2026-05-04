@@ -20,6 +20,49 @@ int mylite_dml_validate_insert_target(mylite_db *database, const char *selected_
                                       const char **out_schema_name);
 int mylite_dml_load_write_table(mylite_db *database, const char *schema_name,
                                 const char *table_name, struct mylite_insert_table *out_table);
+int mylite_dml_resolve_insert_row_values(mylite_db *database,
+                                         const struct mylite_insert_values_plan *plan,
+                                         const struct mylite_insert_table *table,
+                                         const size_t *column_indexes, uint64_t statement_row_count,
+                                         struct mylite_insert_execution_state *state,
+                                         size_t row_index,
+                                         struct mylite_insert_bound_value *out_values);
+int mylite_dml_resolve_insert_set_row_values(
+    mylite_db *database, const char *schema_name,
+    const struct mylite_insert_values_plan *values_plan,
+    const struct mylite_insert_set_plan *set_plan, const struct mylite_insert_table *table,
+    const size_t *column_indexes, size_t column_index_count, uint64_t statement_row_count,
+    struct mylite_insert_execution_state *state, struct mylite_insert_bound_value *values,
+    struct mylite_insert_set_row_state *row_state);
+int mylite_dml_resolve_insert_default_bound_value(mylite_db *database,
+                                                  const struct mylite_insert_table_column *column,
+                                                  uint64_t statement_row_count,
+                                                  struct mylite_insert_execution_state *state,
+                                                  struct mylite_insert_bound_value *out_value);
+int mylite_dml_resolve_insert_implicit_expression_default(
+    mylite_db *database, const struct mylite_insert_table_column *column,
+    struct mylite_insert_bound_value *out_value);
+int mylite_dml_resolve_insert_current_timestamp_bound_value(
+    mylite_db *database, struct mylite_insert_bound_value *out_value);
+uint64_t
+mylite_dml_insert_auto_increment_next_value(const struct mylite_insert_execution_state *state);
+int mylite_dml_bind_insert_row_values(mylite_db *database, sqlite3_stmt *insert,
+                                      const struct mylite_insert_bound_value *values,
+                                      size_t value_count);
+int mylite_dml_bind_insert_bound_value(sqlite3_stmt *stmt, int index,
+                                       const struct mylite_insert_bound_value *value);
+int mylite_dml_copy_insert_sqlite_column_value(sqlite3_stmt *scan, int column,
+                                               struct mylite_insert_bound_value *out_value);
+int mylite_dml_copy_insert_bound_value(const struct mylite_insert_bound_value *value,
+                                       struct mylite_insert_bound_value *out_value);
+int mylite_dml_copy_insert_bound_values(mylite_db *database,
+                                        const struct mylite_insert_bound_value *values,
+                                        size_t value_count,
+                                        struct mylite_insert_bound_value **out_values);
+bool mylite_dml_insert_bound_value_is_numeric(const struct mylite_insert_bound_value *value,
+                                              double *out_value, bool *out_is_integer);
+bool mylite_dml_parse_insert_integer_text(const char *text, int64_t *out_value);
+bool mylite_dml_parse_insert_real_text(const char *text, double *out_value);
 int mylite_dml_copy_update_statement(const struct mylite_sql_ast_node *statement,
                                      struct mylite_update_plan *plan);
 int mylite_dml_copy_delete_statement(const struct mylite_sql_ast_node *statement,

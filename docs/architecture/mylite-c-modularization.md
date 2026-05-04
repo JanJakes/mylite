@@ -102,48 +102,50 @@ Rules for future moves:
 
 ## Current `mylite.c` Map
 
-`mylite.c` is still over 40k lines. The remaining major regions are:
+`mylite.c` is now about 23.5k lines after the initial type, diagnostics,
+connection, catalog, SHOW/information-schema, DDL, transaction, and DML slices.
+The remaining major regions are:
 
-- Lines 1-333: includes, MySQL/runtime constants, storage engine registry, and
-  static `SHOW`/`information_schema` SQL strings. Split by owner: metadata
-  constants to metadata, show strings to show, information-schema strings to
-  information schema.
-- Lines 334-3669: file-local prototype wall. Treat this as a symptom, not a
+- Lines 1-55: includes and small process-wide constants. Split only when a
+  concrete owner needs each constant.
+- Lines 56-2068: file-local prototype wall. Treat this as a symptom, not a
   module. It should shrink naturally as statement families move.
-- Lines 3671-3979: public `mylite_prepare()`, public `mylite_step()`, parsed
-  statement dispatch, SQLite fallback translation, and custom statement
-  allocation. Move to `mylite_statement` after statement families expose narrow
-  prepare/execute entry points.
-- Lines 3981-4598: prepare wrappers for schema lifecycle, connection charset,
-  table/index DDL, DML, and transactions. Extract with statement dispatch or
-  with family-owned prepare APIs.
-- Lines 4599-7245: `SHOW`, `DESCRIBE`, `SHOW CREATE`, diagnostics display,
-  dynamic metadata builders, and SHOW result metadata. Split into `mylite_show`
-  first, then `mylite_information_schema`.
-- Lines 7246-18860: information-schema SELECT recognition, table SELECT
-  planning, SELECT metadata inference, descriptor inference, FROM/JOIN binding,
-  grouping/order/limit validation, unions, and AST cloning. Move late; extract
-  metadata inference first.
-- Lines 18861-19119: SQLite/custom statement allocation and custom execution
-  dispatch. Move to `mylite_statement` only after family modules expose narrow
-  execute APIs.
-- Lines 19120-19257 plus 35421-35493: schema lifecycle execution and connection
-  charset/session state. Move selected schema and charset mutation into
-  connection, then schema execution into schema.
-- Lines 19258-23796 plus 35817-36437 and 39624-40834: table/index DDL
-  execution and AST-to-plan copy. Extract in slices: create/drop, rename/truncate,
-  index DDL, then alter table.
-- Lines 23797-26219 plus 31751-35420 and 36438-39568: DML execution,
-  validation, table loading, insert/replace/update/delete expression handling,
-  uniqueness checks, plan copy, and auto-increment. Move after catalog exposes
-  narrow column/index loaders.
-- Lines 26220-31750 plus 36560-38666: scalar SELECT, table SELECT runtime,
-  UNION runtime, aggregates, grouping/order execution, and subquery evaluation.
-  Split after shared expression callback contexts are stable.
-- Lines 38678-41273: trailing plan-copy and utility helpers for insert/update,
-  table DDL, schema options, diagnostics, parsing, and SELECT/subquery
-  classifiers. Move each helper with its owning family; do not create a generic
-  catch-all utility module.
+- Lines 2069-2748: public `mylite_prepare()`, parsed statement dispatch,
+  SQLite fallback translation, and family prepare wrappers. Move to
+  `mylite_statement` after family-owned prepare entry points are stable.
+- Lines 2749-3615: table SELECT, scalar SELECT, and UNION preparation. Move
+  only after SELECT planning, scalar-select, and union boundaries are narrower
+  than the current implementation.
+- Lines 3616-8449: result metadata attachment, descriptor inference, function
+  descriptor inference, catalog-column descriptor loading, and scalar/text
+  helper predicates. Extract metadata inference before larger SELECT runtime
+  moves.
+- Lines 8450-13744: SELECT AST copy, FROM/JOIN planning, output expansion,
+  predicate binding, grouping/order/limit validation, and reference resolution.
+  Move into focused SELECT planning modules instead of one broad select runtime.
+- Lines 13745-15340: custom statement allocation/dispatch and remaining
+  table-DDL warning helpers. Move allocation/dispatch to `mylite_statement`
+  after every statement family exposes narrow execute APIs; move DDL warnings
+  with alter/index DDL.
+- Lines 15341-15663: thin INSERT/REPLACE/UPDATE/DELETE execution orchestrators.
+  Keep them thin until SELECT table loading and DML statement-result reporting
+  have stmt-free boundaries.
+- Lines 15664-17145: scalar SELECT execution, session functions, current
+  temporal functions, `STRCMP()`, charset/collation/coercibility evaluation,
+  and collation inference. Split into session, temporal, string, and collation
+  modules before moving larger SELECT execution.
+- Lines 17146-21088: table SELECT and UNION execution: materialization,
+  joins, outer joins, grouping, aggregates, sorting, distinct, limits, row
+  copying, expression callbacks, and predicate diagnostics. Split by rowset,
+  join, aggregate, sort/limit, and expression-runtime concerns.
+- Lines 21089-23219: scalar SELECT planning/evaluation helpers, subquery
+  preparation/scanning/evaluation, row-value comparison, and subquery
+  diagnostics. Move after SELECT entry points and expression callback APIs are
+  stable.
+- Lines 23220-23553: remaining utility/classifier tail: SQLite affinity,
+  write-statement classification, row-subquery classifiers, parse/translate
+  status mapping, and the SQLite transient destructor. Move each helper with
+  its owning family; do not create a generic catch-all utility module.
 
 ## Target Layout
 
@@ -403,7 +405,7 @@ only the core object model and transitional shared helpers listed here:
 - [ ] Move `INSERT IGNORE` warning/error downgrade logic into `mylite_dml`.
 - [x] Move `REPLACE` delete-then-insert behavior into `mylite_dml`.
 - [x] Move update target copy and assignment target binding into `mylite_dml`.
-- [ ] Move remaining update clause and assignment value validation into
+- [x] Move remaining update clause and assignment value validation into
   `mylite_dml`.
 - [x] Move update/delete rowset sorting and LIMIT trimming into a focused DML
   companion module.
@@ -437,11 +439,11 @@ only the core object model and transitional shared helpers listed here:
 - [x] Move UPDATE/DELETE prepare-time plan cloning into a focused DML companion
   module.
 - [x] Move UPDATE-specific diagnostics into a focused DML companion module.
-- [ ] Move update row materialization logic into `mylite_dml`.
-- [ ] Move update row writeback into `mylite_dml`.
+- [x] Move update row materialization logic into `mylite_dml`.
+- [x] Move update row writeback into `mylite_dml`.
 - [x] Move delete target copy into `mylite_dml`.
 - [ ] Move remaining delete target validation into `mylite_dml`.
-- [ ] Move delete row materialization/sorting/limit logic into `mylite_dml`.
+- [x] Move delete row materialization/sorting/limit logic into `mylite_dml`.
 - [x] Move delete physical row execution into `mylite_dml`.
 - [x] Move DELETE-specific diagnostics into a focused DML companion module.
 - [x] Move shared DML NOT NULL column diagnostics into a focused DML companion

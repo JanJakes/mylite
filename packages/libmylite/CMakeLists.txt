@@ -80,6 +80,7 @@ add_library(mylite STATIC
   src/runtime/mylite_select.c
   src/runtime/mylite_select_catalog.c
   src/runtime/mylite_select_from.c
+  src/runtime/mylite_select_resolve.c
   src/runtime/mylite_select_rowset.c
   src/runtime/mylite_select_sql.c
   src/runtime/mylite_session_functions.c

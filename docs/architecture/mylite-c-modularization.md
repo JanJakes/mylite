@@ -474,6 +474,8 @@ only the core object model and transitional shared helpers listed here:
   `mylite_select`.
 - [x] Move shared table-target and column-reference resolution helpers into
   `mylite_select`.
+- [x] Move plan-level wildcard and column-reference resolution into
+  `mylite_select_resolve`.
 - [ ] Move SELECT AST copy/bind helpers into `mylite_select`.
 - [x] Move table-column catalog loading behind a focused `mylite_select_catalog`
   helper.

@@ -26,8 +26,8 @@ after every step.
   Public statement lifecycle, `mylite_prepare()`, `mylite_finalize()`,
   `mylite_step()`, statement dispatch, and public result accessors.
 - `src/runtime/mylite_catalog.{h,c}`
-  `__mylite_*` catalog schema, catalog lookup helpers, metadata loading, and
-  physical table naming.
+  `__mylite_*` catalog bootstrap, catalog lookup helpers, metadata loading,
+  and physical table naming.
 - `src/runtime/mylite_schema.{h,c}`
   `CREATE/ALTER/DROP/USE DATABASE` and schema defaults.
 - `src/runtime/mylite_table_ddl.{h,c}`
@@ -61,12 +61,14 @@ after every step.
 - [x] Extract public connection state accessors into
   `src/runtime/mylite_connection.{h,c}`.
 - [ ] Extract public connection lifecycle into `src/runtime/mylite_connection`.
+- [x] Extract catalog bootstrap DDL and system schema seeding into
+  `src/runtime/mylite_catalog.{h,c}`.
 - [x] Extract reusable span, string, and AST-child helpers into
   `src/runtime/mylite_span.{h,c}`.
 - [ ] Extract public statement lifecycle and result accessors into
   `src/runtime/mylite_statement.{h,c}` while keeping statement-family execution
   in `mylite.c`.
-- [ ] Split catalog schema and lookup helpers into `src/runtime/mylite_catalog`.
+- [ ] Split catalog lookup helpers into `src/runtime/mylite_catalog`.
 - [ ] Split `SHOW` and `information_schema` dynamic result builders.
 - [ ] Split schema lifecycle and table/index DDL plans and execution.
 - [ ] Split DML plans and execution.

@@ -206,9 +206,13 @@ static const uint64_t mylite_mysql_int_signed_display_length = 11U;
 static const uint64_t mylite_mysql_year_display_length = 4U;
 static const uint64_t mylite_mysql_date_display_length = 10U;
 static const uint64_t mylite_mysql_time_display_length = 10U;
+static const uint64_t mylite_mysql_current_time_display_length = 8U;
+static const uint64_t mylite_mysql_current_time_fraction_display_base = 9U;
 static const uint64_t mylite_mysql_time_fraction_display_base = 11U;
 static const uint64_t mylite_mysql_datetime_display_length = 19U;
 static const uint64_t mylite_mysql_datetime_fraction_display_base = 20U;
+static const long mylite_nanoseconds_per_microsecond = 1000L;
+static const long mylite_max_microsecond = 999999L;
 static const uint64_t mylite_mysql_tiny_text_length = 255U;
 static const uint64_t mylite_mysql_text_length = 65535U;
 static const uint64_t mylite_mysql_medium_text_length = 16777215U;
@@ -1381,6 +1385,11 @@ struct mylite_db {
     const char *collation_connection;
 };
 
+struct mylite_statement_timestamp {
+    time_t seconds;
+    long microseconds;
+};
+
 struct mylite_stmt {
     mylite_db *database;
     enum mylite_stmt_kind kind;
@@ -1391,6 +1400,8 @@ struct mylite_stmt {
     bool executed;
     bool previous_row_count_recorded;
     bool preserve_prepare_warnings;
+    bool has_statement_timestamp;
+    struct mylite_statement_timestamp statement_timestamp;
     struct mylite_schema_options options;
     struct mylite_create_table_plan create_table;
     struct mylite_drop_table_plan drop_table;
@@ -2116,6 +2127,12 @@ static uint64_t text_function_result_length(mylite_db *database,
 static bool infer_session_function_descriptor(mylite_db *database,
                                               const struct mylite_sql_ast_node *name,
                                               struct mylite_field_descriptor *out_descriptor);
+static bool
+infer_current_temporal_function_descriptor(const struct mylite_sql_ast_node *expression,
+                                           struct mylite_field_descriptor *out_descriptor);
+static struct mylite_field_descriptor current_datetime_function_descriptor(unsigned int fsp);
+static struct mylite_field_descriptor current_date_function_descriptor(void);
+static struct mylite_field_descriptor current_time_function_descriptor(unsigned int fsp);
 static bool infer_fixed_integer_function_descriptor(const struct mylite_sql_ast_node *name,
                                                     bool result_nullable,
                                                     struct mylite_field_descriptor *out_descriptor);
@@ -2417,6 +2434,10 @@ static bool function_name_is_field(const struct mylite_sql_ast_node *name);
 static bool function_name_is_find_in_set(const struct mylite_sql_ast_node *name);
 static bool function_name_is_greatest_least(const struct mylite_sql_ast_node *name);
 static bool function_name_is_strcmp(const struct mylite_sql_ast_node *name);
+static bool function_name_is_current_temporal(const struct mylite_sql_ast_node *name);
+static bool function_name_is_current_temporal_datetime(const struct mylite_sql_ast_node *name);
+static bool function_name_is_current_temporal_date(const struct mylite_sql_ast_node *name);
+static bool function_name_is_current_temporal_time(const struct mylite_sql_ast_node *name);
 static bool function_name_has_integer_result(const struct mylite_sql_ast_node *name);
 static bool function_name_is_exp(const struct mylite_sql_ast_node *name);
 static bool function_name_is_logarithm(const struct mylite_sql_ast_node *name);
@@ -3342,6 +3363,23 @@ static int evaluate_statement_session_function(
     const struct mylite_expression_eval_context *expression_context,
     struct mylite_expression_warnings *warnings, const struct mylite_select_table *table,
     struct mylite_expression_value *out_value);
+static int evaluate_current_temporal_function(mylite_stmt *stmt,
+                                              const struct mylite_sql_ast_node *function_call,
+                                              struct mylite_expression_value *out_value);
+static int ensure_statement_timestamp(mylite_stmt *stmt);
+static void capture_current_utc_timestamp(struct mylite_statement_timestamp *out_timestamp);
+static int set_current_temporal_datetime_value(mylite_stmt *stmt, unsigned int fsp,
+                                               struct mylite_expression_value *out_value);
+static int set_current_temporal_date_value(mylite_stmt *stmt,
+                                           struct mylite_expression_value *out_value);
+static int set_current_temporal_time_value(mylite_stmt *stmt, unsigned int fsp,
+                                           struct mylite_expression_value *out_value);
+static int set_current_temporal_value(mylite_stmt *stmt, const char *format, size_t base_length,
+                                      unsigned int fsp, struct mylite_expression_value *out_value);
+static bool current_temporal_function_fsp(const struct mylite_sql_ast_node *function_call,
+                                          unsigned int *out_fsp);
+static bool temporal_fsp_from_literal(const struct mylite_sql_ast_node *argument,
+                                      unsigned int *out_fsp);
 static int evaluate_strcmp_function(mylite_stmt *stmt,
                                     const struct mylite_sql_ast_node *function_call,
                                     const struct mylite_expression_eval_context *expression_context,
@@ -5963,6 +6001,7 @@ static int prepare_schema_lifecycle_statement(mylite_db *database,
     case MYLITE_SQL_AST_EXPRESSION_LIST:
     case MYLITE_SQL_AST_FUNCTION_CALL:
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
     case MYLITE_SQL_AST_CASE_EXPRESSION:
     case MYLITE_SQL_AST_CASE_WHEN_LIST:
     case MYLITE_SQL_AST_CASE_WHEN:
@@ -6034,7 +6073,6 @@ static int prepare_schema_lifecycle_statement(mylite_db *database,
     case MYLITE_SQL_AST_COLUMN_TYPE_ATTRIBUTE_LIST:
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST:
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE:
-    case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
     case MYLITE_SQL_AST_PRIMARY_KEY_CONSTRAINT:
     case MYLITE_SQL_AST_KEY_PART_LIST:
     case MYLITE_SQL_AST_KEY_PART:
@@ -6109,6 +6147,7 @@ static int prepare_connection_charset_statement(mylite_db *database,
     case MYLITE_SQL_AST_EXPRESSION_LIST:
     case MYLITE_SQL_AST_FUNCTION_CALL:
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
     case MYLITE_SQL_AST_CASE_EXPRESSION:
     case MYLITE_SQL_AST_CASE_WHEN_LIST:
     case MYLITE_SQL_AST_CASE_WHEN:
@@ -6187,7 +6226,6 @@ static int prepare_connection_charset_statement(mylite_db *database,
     case MYLITE_SQL_AST_COLUMN_TYPE_ATTRIBUTE_LIST:
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST:
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE:
-    case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
     case MYLITE_SQL_AST_PRIMARY_KEY_CONSTRAINT:
     case MYLITE_SQL_AST_KEY_PART_LIST:
     case MYLITE_SQL_AST_KEY_PART:
@@ -6424,6 +6462,7 @@ static int prepare_transaction_statement(mylite_db *database,
     case MYLITE_SQL_AST_LITERAL:
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
     case MYLITE_SQL_AST_SUBQUERY_EXPRESSION:
     case MYLITE_SQL_AST_EXISTS_EXPRESSION:
     case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
@@ -6455,7 +6494,6 @@ static int prepare_transaction_statement(mylite_db *database,
     case MYLITE_SQL_AST_COLUMN_TYPE_ATTRIBUTE_LIST:
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST:
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE:
-    case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
     case MYLITE_SQL_AST_PRIMARY_KEY_CONSTRAINT:
     case MYLITE_SQL_AST_KEY_PART_LIST:
     case MYLITE_SQL_AST_KEY_PART:
@@ -9968,6 +10006,7 @@ static int bind_union_global_order_expression(mylite_db *database,
 
     switch (expression->kind) {
     case MYLITE_SQL_AST_LITERAL:
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
         return MYLITE_OK;
     case MYLITE_SQL_AST_IDENTIFIER:
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER: {
@@ -10240,6 +10279,15 @@ static int infer_expression_descriptor(mylite_db *database, const struct mylite_
         return infer_aggregate_expression_descriptor(database, plan, node, out_descriptor);
     case MYLITE_SQL_AST_CAST_EXPRESSION:
         return infer_cast_expression_descriptor(database, plan, node, value, out_descriptor);
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP: {
+        unsigned int fsp = 0U;
+
+        if (node->has_column_precision) {
+            fsp = (unsigned int)node->column_precision;
+        }
+        *out_descriptor = current_datetime_function_descriptor(fsp);
+        return MYLITE_OK;
+    }
     case MYLITE_SQL_AST_SUBQUERY_EXPRESSION:
         return infer_scalar_subquery_expression_descriptor(database, node, out_descriptor);
     case MYLITE_SQL_AST_EXISTS_EXPRESSION:
@@ -10324,7 +10372,6 @@ static int infer_expression_descriptor(mylite_db *database, const struct mylite_
     case MYLITE_SQL_AST_COLUMN_TYPE_ATTRIBUTE_LIST:
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST:
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE:
-    case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
     case MYLITE_SQL_AST_PRIMARY_KEY_CONSTRAINT:
     case MYLITE_SQL_AST_KEY_PART_LIST:
     case MYLITE_SQL_AST_KEY_PART:
@@ -10741,6 +10788,9 @@ static int infer_function_expression_descriptor(mylite_db *database,
     result_nullable = function_result_nullable(nullable, value);
 
     if (infer_common_scalar_function_descriptor(database, name, result_nullable, out_descriptor)) {
+        return MYLITE_OK;
+    }
+    if (infer_current_temporal_function_descriptor(expression, out_descriptor)) {
         return MYLITE_OK;
     }
     status = infer_variadic_scalar_function_descriptor(database, plan, expression, value,
@@ -11698,6 +11748,77 @@ static bool infer_session_function_descriptor(mylite_db *database,
         return true;
     }
     return false;
+}
+
+static bool
+infer_current_temporal_function_descriptor(const struct mylite_sql_ast_node *expression,
+                                           struct mylite_field_descriptor *out_descriptor)
+{
+    const struct mylite_sql_ast_node *name = child_at(expression, 0U);
+    unsigned int fsp = 0U;
+
+    if (!current_temporal_function_fsp(expression, &fsp)) {
+        return false;
+    }
+    if (function_name_is_current_temporal_datetime(name)) {
+        *out_descriptor = current_datetime_function_descriptor(fsp);
+        return true;
+    }
+    if (function_name_is_current_temporal_date(name)) {
+        *out_descriptor = current_date_function_descriptor();
+        return true;
+    }
+    if (function_name_is_current_temporal_time(name)) {
+        *out_descriptor = current_time_function_descriptor(fsp);
+        return true;
+    }
+    return false;
+}
+
+static struct mylite_field_descriptor current_datetime_function_descriptor(unsigned int fsp)
+{
+    struct mylite_field_descriptor descriptor = {
+        .type = MYLITE_FIELD_TYPE_DATETIME,
+        .flags = MYLITE_FIELD_FLAG_BINARY,
+        .length = fsp == 0U ? mylite_mysql_datetime_display_length
+                            : mylite_mysql_datetime_fraction_display_base + fsp,
+        .decimals = fsp,
+        .charset_id = mylite_mysql_binary_charset_id,
+        .nullable = false,
+    };
+
+    field_descriptor_set_nullable(&descriptor, false);
+    return descriptor;
+}
+
+static struct mylite_field_descriptor current_date_function_descriptor(void)
+{
+    struct mylite_field_descriptor descriptor = {
+        .type = MYLITE_FIELD_TYPE_DATE,
+        .flags = MYLITE_FIELD_FLAG_BINARY,
+        .length = mylite_mysql_date_display_length,
+        .charset_id = mylite_mysql_binary_charset_id,
+        .nullable = false,
+    };
+
+    field_descriptor_set_nullable(&descriptor, false);
+    return descriptor;
+}
+
+static struct mylite_field_descriptor current_time_function_descriptor(unsigned int fsp)
+{
+    struct mylite_field_descriptor descriptor = {
+        .type = MYLITE_FIELD_TYPE_TIME,
+        .flags = MYLITE_FIELD_FLAG_BINARY,
+        .length = fsp == 0U ? mylite_mysql_current_time_display_length
+                            : mylite_mysql_current_time_fraction_display_base + fsp,
+        .decimals = fsp,
+        .charset_id = mylite_mysql_binary_charset_id,
+        .nullable = false,
+    };
+
+    field_descriptor_set_nullable(&descriptor, false);
+    return descriptor;
 }
 
 static bool infer_list_index_function_descriptor(const struct mylite_sql_ast_node *name,
@@ -13463,6 +13584,36 @@ static bool function_name_is_greatest_least(const struct mylite_sql_ast_node *na
 static bool function_name_is_strcmp(const struct mylite_sql_ast_node *name)
 {
     static const char *const names[] = {"STRCMP"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_is_current_temporal(const struct mylite_sql_ast_node *name)
+{
+    if (function_name_is_current_temporal_datetime(name) ||
+        function_name_is_current_temporal_date(name)) {
+        return true;
+    }
+    return function_name_is_current_temporal_time(name);
+}
+
+static bool function_name_is_current_temporal_datetime(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"NOW", "LOCALTIME", "LOCALTIMESTAMP"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_is_current_temporal_date(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"CURDATE", "CURRENT_DATE"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_is_current_temporal_time(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"CURTIME", "CURRENT_TIME"};
 
     return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }
@@ -15378,6 +15529,8 @@ static int bind_select_predicate_expression_in_clause(mylite_db *database,
             return MYLITE_OK;
         }
         return set_select_unsupported_where_error(database);
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
+        return MYLITE_OK;
     case MYLITE_SQL_AST_IDENTIFIER:
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER: {
         size_t column_index = select_plan_column_count(plan);
@@ -15498,7 +15651,6 @@ static int bind_select_predicate_expression_in_clause(mylite_db *database,
     case MYLITE_SQL_AST_COLUMN_TYPE_ATTRIBUTE_LIST:
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST:
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE:
-    case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
     case MYLITE_SQL_AST_PRIMARY_KEY_CONSTRAINT:
     case MYLITE_SQL_AST_KEY_PART_LIST:
     case MYLITE_SQL_AST_KEY_PART:
@@ -16101,6 +16253,8 @@ static int bind_select_aggregate_aware_expression(mylite_db *database,
             return MYLITE_OK;
         }
         return set_select_unsupported_projection_error(database);
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
+        return MYLITE_OK;
     case MYLITE_SQL_AST_IDENTIFIER:
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
         if (clause_context != NULL && strcmp(clause_context, "having clause") == 0) {
@@ -16209,7 +16363,6 @@ static int bind_select_aggregate_aware_expression(mylite_db *database,
     case MYLITE_SQL_AST_COLUMN_TYPE_ATTRIBUTE_LIST:
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST:
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE:
-    case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
     case MYLITE_SQL_AST_PRIMARY_KEY_CONSTRAINT:
     case MYLITE_SQL_AST_KEY_PART_LIST:
     case MYLITE_SQL_AST_KEY_PART:
@@ -16748,6 +16901,7 @@ static int bind_select_order_expression(mylite_db *database,
 
     switch (expression->kind) {
     case MYLITE_SQL_AST_LITERAL:
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
         return MYLITE_OK;
     case MYLITE_SQL_AST_IDENTIFIER:
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER: {
@@ -16887,7 +17041,6 @@ static int bind_select_order_expression(mylite_db *database,
     case MYLITE_SQL_AST_COLUMN_TYPE_ATTRIBUTE_LIST:
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST:
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE:
-    case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
     case MYLITE_SQL_AST_PRIMARY_KEY_CONSTRAINT:
     case MYLITE_SQL_AST_KEY_PART_LIST:
     case MYLITE_SQL_AST_KEY_PART:
@@ -17083,6 +17236,7 @@ static int validate_select_distinct_order_expression_node(
 
     switch (expression->kind) {
     case MYLITE_SQL_AST_LITERAL:
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
         return MYLITE_OK;
     case MYLITE_SQL_AST_IDENTIFIER:
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
@@ -17482,6 +17636,7 @@ static bool select_expression_is_group_invariant( // NOLINT(misc-no-recursion)
 
     switch (expression->kind) {
     case MYLITE_SQL_AST_LITERAL:
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
     case MYLITE_SQL_AST_AGGREGATE_CALL:
         return true;
     case MYLITE_SQL_AST_IDENTIFIER:
@@ -17592,7 +17747,6 @@ static bool select_expression_is_group_invariant( // NOLINT(misc-no-recursion)
     case MYLITE_SQL_AST_COLUMN_TYPE_ATTRIBUTE_LIST:
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST:
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE:
-    case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
     case MYLITE_SQL_AST_PRIMARY_KEY_CONSTRAINT:
     case MYLITE_SQL_AST_KEY_PART_LIST:
     case MYLITE_SQL_AST_KEY_PART:
@@ -25532,6 +25686,7 @@ static int bind_update_predicate_expression(mylite_stmt *stmt,
 
     switch (expression->kind) {
     case MYLITE_SQL_AST_LITERAL:
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
         return MYLITE_OK;
     case MYLITE_SQL_AST_IDENTIFIER:
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER: {
@@ -25655,7 +25810,6 @@ static int bind_update_predicate_expression(mylite_stmt *stmt,
     case MYLITE_SQL_AST_COLUMN_TYPE_ATTRIBUTE_LIST:
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST:
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE:
-    case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
     case MYLITE_SQL_AST_PRIMARY_KEY_CONSTRAINT:
     case MYLITE_SQL_AST_KEY_PART_LIST:
     case MYLITE_SQL_AST_KEY_PART:
@@ -27070,6 +27224,7 @@ static int bind_delete_predicate_expression(mylite_stmt *stmt,
 
     switch (expression->kind) {
     case MYLITE_SQL_AST_LITERAL:
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
         return MYLITE_OK;
     case MYLITE_SQL_AST_IDENTIFIER:
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER: {
@@ -27193,7 +27348,6 @@ static int bind_delete_predicate_expression(mylite_stmt *stmt,
     case MYLITE_SQL_AST_COLUMN_TYPE_ATTRIBUTE_LIST:
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST:
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE:
-    case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
     case MYLITE_SQL_AST_PRIMARY_KEY_CONSTRAINT:
     case MYLITE_SQL_AST_KEY_PART_LIST:
     case MYLITE_SQL_AST_KEY_PART:
@@ -27684,11 +27838,22 @@ static int evaluate_statement_session_function(
     struct mylite_expression_warnings *warnings, const struct mylite_select_table *table,
     struct mylite_expression_value *out_value)
 {
-    const struct mylite_sql_ast_node *name = child_at(function_call, 0U);
     mylite_db *database = stmt == NULL ? NULL : stmt->database;
+    const struct mylite_sql_ast_node *name = NULL;
 
-    if (database == NULL || name == NULL || name->kind != MYLITE_SQL_AST_IDENTIFIER) {
+    if (database == NULL || function_call == NULL) {
         return -1;
+    }
+    if (function_call->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP) {
+        return evaluate_current_temporal_function(stmt, function_call, out_value);
+    }
+
+    name = child_at(function_call, 0U);
+    if (name == NULL || name->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        return -1;
+    }
+    if (function_name_is_current_temporal(name)) {
+        return evaluate_current_temporal_function(stmt, function_call, out_value);
     }
     if (ascii_span_equal_ci(name->span, "DATABASE") || ascii_span_equal_ci(name->span, "SCHEMA")) {
         if (database->selected_schema == NULL) {
@@ -27748,6 +27913,198 @@ static int evaluate_statement_session_function(
                                                    warnings, table, out_value);
     }
     return -1;
+}
+
+static int evaluate_current_temporal_function(mylite_stmt *stmt,
+                                              const struct mylite_sql_ast_node *function_call,
+                                              struct mylite_expression_value *out_value)
+{
+    const struct mylite_sql_ast_node *name = child_at(function_call, 0U);
+    unsigned int fsp = 0U;
+
+    if (!current_temporal_function_fsp(function_call, &fsp)) {
+        return -1;
+    }
+    if (function_call->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP ||
+        function_name_is_current_temporal_datetime(name)) {
+        return set_current_temporal_datetime_value(stmt, fsp, out_value);
+    }
+    if (function_name_is_current_temporal_date(name)) {
+        return set_current_temporal_date_value(stmt, out_value);
+    }
+    if (function_name_is_current_temporal_time(name)) {
+        return set_current_temporal_time_value(stmt, fsp, out_value);
+    }
+    return -1;
+}
+
+static int ensure_statement_timestamp(mylite_stmt *stmt)
+{
+    if (stmt == NULL) {
+        return -1;
+    }
+    if (!stmt->has_statement_timestamp) {
+        capture_current_utc_timestamp(&stmt->statement_timestamp);
+        stmt->has_statement_timestamp = true;
+    }
+    return MYLITE_OK;
+}
+
+static void capture_current_utc_timestamp(struct mylite_statement_timestamp *out_timestamp)
+{
+    time_t seconds = time(NULL);
+    long microseconds = 0;
+
+#ifdef TIME_UTC
+    struct timespec now;
+
+    if (timespec_get(&now, TIME_UTC) == TIME_UTC) {
+        seconds = now.tv_sec;
+        microseconds = now.tv_nsec / mylite_nanoseconds_per_microsecond;
+    }
+#endif
+
+    *out_timestamp = (struct mylite_statement_timestamp){
+        .seconds = seconds,
+        .microseconds = microseconds,
+    };
+}
+
+static int set_current_temporal_datetime_value(mylite_stmt *stmt, unsigned int fsp,
+                                               struct mylite_expression_value *out_value)
+{
+    return set_current_temporal_value(stmt, "%Y-%m-%d %H:%M:%S",
+                                      (size_t)mylite_mysql_datetime_display_length, fsp, out_value);
+}
+
+static int set_current_temporal_date_value(mylite_stmt *stmt,
+                                           struct mylite_expression_value *out_value)
+{
+    return set_current_temporal_value(stmt, "%Y-%m-%d", (size_t)mylite_mysql_date_display_length,
+                                      0U, out_value);
+}
+
+static int set_current_temporal_time_value(mylite_stmt *stmt, unsigned int fsp,
+                                           struct mylite_expression_value *out_value)
+{
+    return set_current_temporal_value(
+        stmt, "%H:%M:%S", (size_t)mylite_mysql_current_time_display_length, fsp, out_value);
+}
+
+static int set_current_temporal_value(mylite_stmt *stmt, const char *format, size_t base_length,
+                                      unsigned int fsp, struct mylite_expression_value *out_value)
+{
+    enum { microsecond_text_length = 6U };
+    char microsecond_text[microsecond_text_length + 1U];
+    struct tm tm_value;
+    size_t text_length = base_length + (fsp == 0U ? 0U : 1U + fsp);
+    long microseconds = 0;
+    char *text = NULL;
+    int status = ensure_statement_timestamp(stmt);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    text = malloc(text_length + 1U);
+    if (text == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+#ifdef _WIN32
+    if (gmtime_s(&tm_value, &stmt->statement_timestamp.seconds) != 0) {
+        free(text);
+        return -1;
+    }
+#else
+    if (gmtime_r(&stmt->statement_timestamp.seconds, &tm_value) == NULL) {
+        free(text);
+        return -1;
+    }
+#endif
+    if (strftime(text, base_length + 1U, format, &tm_value) != base_length) {
+        free(text);
+        return -1;
+    }
+    if (fsp != 0U) {
+        microseconds = stmt->statement_timestamp.microseconds;
+        if (microseconds < 0L) {
+            microseconds = 0L;
+        } else if (microseconds > mylite_max_microsecond) {
+            microseconds = mylite_max_microsecond;
+        }
+        if (snprintf(microsecond_text, sizeof(microsecond_text), "%06ld", microseconds) !=
+            microsecond_text_length) {
+            free(text);
+            return -1;
+        }
+        text[base_length] = '.';
+        memcpy(text + base_length + 1U, microsecond_text, fsp);
+        text[text_length] = '\0';
+    }
+
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_TEXT,
+        .text_value = text,
+        .text_length = text_length,
+    };
+    return MYLITE_OK;
+}
+
+static bool current_temporal_function_fsp(const struct mylite_sql_ast_node *function_call,
+                                          unsigned int *out_fsp)
+{
+    const struct mylite_sql_ast_node *arguments = NULL;
+    size_t arity = 0U;
+
+    if (function_call == NULL || out_fsp == NULL) {
+        return false;
+    }
+    if (function_call->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP) {
+        *out_fsp = 0U;
+        if (function_call->has_column_precision) {
+            *out_fsp = (unsigned int)function_call->column_precision;
+        }
+        return true;
+    }
+    if (function_call->kind != MYLITE_SQL_AST_FUNCTION_CALL) {
+        return false;
+    }
+
+    arguments = child_at(function_call, 1U);
+    arity = arguments == NULL ? 0U : mylite_sql_ast_node_child_count(arguments);
+    if (arity == 0U) {
+        *out_fsp = 0U;
+        return true;
+    }
+    if (arity == 1U) {
+        return temporal_fsp_from_literal(child_at(arguments, 0U), out_fsp);
+    }
+    return false;
+}
+
+static bool temporal_fsp_from_literal(const struct mylite_sql_ast_node *argument,
+                                      unsigned int *out_fsp)
+{
+    enum { max_fsp = 6U, decimal_base = 10U };
+    unsigned int value = 0U;
+
+    if (argument == NULL || argument->kind != MYLITE_SQL_AST_LITERAL ||
+        argument->literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER || out_fsp == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < argument->span.length; ++index) {
+        char character = argument->span.text[index];
+
+        if (character < '0' || character > '9') {
+            return false;
+        }
+        value = (value * decimal_base) + (unsigned int)(character - '0');
+        if (value > max_fsp) {
+            return false;
+        }
+    }
+    *out_fsp = value;
+    return true;
 }
 
 static int evaluate_strcmp_function(mylite_stmt *stmt,
@@ -28221,6 +28578,7 @@ static int infer_expression_collation_info(
     case MYLITE_SQL_AST_SUBQUERY_EXPRESSION:
     case MYLITE_SQL_AST_EXISTS_EXPRESSION:
     case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
         return infer_descriptor_collation_info(database, context, node,
                                                mylite_mysql_coercibility_coercible, out_info);
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
@@ -28299,7 +28657,6 @@ static int infer_expression_collation_info(
     case MYLITE_SQL_AST_COLUMN_TYPE_ATTRIBUTE_LIST:
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST:
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE:
-    case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
     case MYLITE_SQL_AST_PRIMARY_KEY_CONSTRAINT:
     case MYLITE_SQL_AST_KEY_PART_LIST:
     case MYLITE_SQL_AST_KEY_PART:

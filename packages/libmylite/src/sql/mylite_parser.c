@@ -67,6 +67,14 @@ static bool span_text_equals(struct mylite_sql_source_span span, const char *tex
 static bool function_name_is_position(const struct mylite_sql_ast_node *name);
 static bool function_name_has_parser_checked_arity(const struct mylite_sql_ast_node *name,
                                                    size_t *out_arity);
+static bool
+validate_current_temporal_function_call(struct mylite_sql_parser_state *state,
+                                        const struct mylite_sql_ast_node *name, size_t arity,
+                                        const struct mylite_sql_ast_node *first_argument);
+static bool function_name_is_current_temporal_datetime(const struct mylite_sql_ast_node *name);
+static bool function_name_is_current_temporal_time(const struct mylite_sql_ast_node *name);
+static bool function_name_is_current_temporal_date(const struct mylite_sql_ast_node *name);
+static bool temporal_fsp_argument(const struct mylite_sql_ast_node *argument, uint64_t *out_fsp);
 static bool function_name_is_trim(const struct mylite_sql_ast_node *name);
 static bool function_name_is_substring(const struct mylite_sql_ast_node *name);
 static bool function_name_matches(const struct mylite_sql_ast_node *name, const char *text);
@@ -4905,6 +4913,15 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_function_call(
             return NULL;
         }
     }
+    {
+        size_t arity = arguments == NULL ? 0U : mylite_sql_ast_node_child_count(arguments);
+        const struct mylite_sql_ast_node *first_argument =
+            arguments == NULL ? NULL : arguments->first_child;
+
+        if (!validate_current_temporal_function_call(state, name, arity, first_argument)) {
+            return NULL;
+        }
+    }
     if (function_name_is_position(name)) {
         mylite_sql_parser_state_parse_failed(state);
         return NULL;
@@ -6273,6 +6290,86 @@ static bool function_name_has_parser_checked_arity(const struct mylite_sql_ast_n
         return true;
     }
     return false;
+}
+
+static bool
+validate_current_temporal_function_call(struct mylite_sql_parser_state *state,
+                                        const struct mylite_sql_ast_node *name, size_t arity,
+                                        const struct mylite_sql_ast_node *first_argument)
+{
+    if (function_name_is_current_temporal_date(name)) {
+        if (arity == 0U) {
+            return true;
+        }
+        mylite_sql_parser_state_parse_failed(state);
+        return false;
+    }
+    if (function_name_is_current_temporal_datetime(name) ||
+        function_name_is_current_temporal_time(name)) {
+        uint64_t fsp = 0U;
+
+        if (arity == 0U) {
+            return true;
+        }
+        if (arity == 1U && temporal_fsp_argument(first_argument, &fsp)) {
+            (void)fsp;
+            return true;
+        }
+        mylite_sql_parser_state_parse_failed(state);
+        return false;
+    }
+    return true;
+}
+
+static bool function_name_is_current_temporal_datetime(const struct mylite_sql_ast_node *name)
+{
+    if (function_name_matches(name, "NOW")) {
+        return true;
+    }
+    if (function_name_matches(name, "LOCALTIME")) {
+        return true;
+    }
+    return function_name_matches(name, "LOCALTIMESTAMP");
+}
+
+static bool function_name_is_current_temporal_time(const struct mylite_sql_ast_node *name)
+{
+    if (function_name_matches(name, "CURTIME")) {
+        return true;
+    }
+    return function_name_matches(name, "CURRENT_TIME");
+}
+
+static bool function_name_is_current_temporal_date(const struct mylite_sql_ast_node *name)
+{
+    if (function_name_matches(name, "CURDATE")) {
+        return true;
+    }
+    return function_name_matches(name, "CURRENT_DATE");
+}
+
+static bool temporal_fsp_argument(const struct mylite_sql_ast_node *argument, uint64_t *out_fsp)
+{
+    enum { max_fsp = 6U, decimal_base = 10U };
+    uint64_t value = 0U;
+
+    if (argument == NULL || argument->kind != MYLITE_SQL_AST_LITERAL ||
+        argument->literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER || out_fsp == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < argument->span.length; ++index) {
+        char character = argument->span.text[index];
+
+        if (character < '0' || character > '9') {
+            return false;
+        }
+        value = (value * decimal_base) + (uint64_t)(character - '0');
+        if (value > max_fsp) {
+            return false;
+        }
+    }
+    *out_fsp = value;
+    return true;
 }
 
 static bool function_name_is_trim(const struct mylite_sql_ast_node *name)

@@ -5634,6 +5634,84 @@ static int test_scalar_function_call_syntax(void)
                                      "bare UTC_TIMESTAMP call");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SELECT NOW(), NOW(0), NOW(6), CURDATE(), CURTIME(), CURTIME(6), "
+                          "CURRENT_TIME(6), LOCALTIME(6), LOCALTIMESTAMP(6), "
+                          "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP(6), "
+                          "CURRENT_DATE, CURRENT_DATE(), CURRENT_TIME, LOCALTIME, "
+                          "LOCALTIMESTAMP;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures +=
+        expect_function_call(child_at(child_at(select_list, 0U), 0U), "NOW", 0U, "NOW call");
+    failures += expect_function_call(child_at(child_at(select_list, 1U), 0U), "NOW", 1U,
+                                     "NOW fsp zero call");
+    failures += expect_function_call(child_at(child_at(select_list, 2U), 0U), "NOW", 1U,
+                                     "NOW fsp six call");
+    failures += expect_function_call(child_at(child_at(select_list, 3U), 0U), "CURDATE", 0U,
+                                     "CURDATE call");
+    failures += expect_function_call(child_at(child_at(select_list, 4U), 0U), "CURTIME", 0U,
+                                     "CURTIME call");
+    failures += expect_function_call(child_at(child_at(select_list, 5U), 0U), "CURTIME", 1U,
+                                     "CURTIME fsp call");
+    failures += expect_function_call(child_at(child_at(select_list, 6U), 0U), "CURRENT_TIME", 1U,
+                                     "CURRENT_TIME fsp call");
+    failures += expect_function_call(child_at(child_at(select_list, 7U), 0U), "LOCALTIME", 1U,
+                                     "LOCALTIME fsp call");
+    failures += expect_function_call(child_at(child_at(select_list, 8U), 0U), "LOCALTIMESTAMP", 1U,
+                                     "LOCALTIMESTAMP fsp call");
+    failures += expect_current_timestamp(child_at(child_at(select_list, 9U), 0U), false, 0U,
+                                         "bare CURRENT_TIMESTAMP");
+    failures += expect_current_timestamp(child_at(child_at(select_list, 10U), 0U), false, 0U,
+                                         "CURRENT_TIMESTAMP empty parens");
+    failures += expect_current_timestamp(child_at(child_at(select_list, 11U), 0U), true, 6U,
+                                         "CURRENT_TIMESTAMP fsp");
+    failures += expect_function_call(child_at(child_at(select_list, 12U), 0U), "CURRENT_DATE", 0U,
+                                     "bare CURRENT_DATE current temporal");
+    failures += expect_function_call(child_at(child_at(select_list, 13U), 0U), "CURRENT_DATE", 0U,
+                                     "CURRENT_DATE call current temporal");
+    failures += expect_function_call(child_at(child_at(select_list, 14U), 0U), "CURRENT_TIME", 0U,
+                                     "bare CURRENT_TIME current temporal");
+    failures += expect_function_call(child_at(child_at(select_list, 15U), 0U), "LOCALTIME", 0U,
+                                     "bare LOCALTIME current temporal");
+    failures += expect_function_call(child_at(child_at(select_list, 16U), 0U), "LOCALTIMESTAMP", 0U,
+                                     "bare LOCALTIMESTAMP current temporal");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT NOW, CURDATE, CURTIME;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_node(child_at(child_at(select_list, 0U), 0U), MYLITE_SQL_AST_IDENTIFIER,
+                            "bare NOW identifier");
+    failures += expect_node(child_at(child_at(select_list, 1U), 0U), MYLITE_SQL_AST_IDENTIFIER,
+                            "bare CURDATE identifier");
+    failures += expect_node(child_at(child_at(select_list, 2U), 0U), MYLITE_SQL_AST_IDENTIFIER,
+                            "bare CURTIME identifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT NOW(7)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT NOW(-1)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT NOW('3')", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT NOW(NULL)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT NOW(1 + 1)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT NOW(1, 2)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT CURTIME(7)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT CURRENT_TIME(7)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT LOCALTIME(7)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT LOCALTIMESTAMP(7)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT CURDATE(0)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT CURRENT_DATE(0)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("SELECT IF(1,2)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 

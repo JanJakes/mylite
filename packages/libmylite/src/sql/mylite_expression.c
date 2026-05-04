@@ -440,6 +440,13 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_LEAST = 88,
     MYLITE_SCALAR_FUNCTION_STRCMP = 89,
     MYLITE_SCALAR_FUNCTION_FORMAT = 90,
+    MYLITE_SCALAR_FUNCTION_NOW = 91,
+    MYLITE_SCALAR_FUNCTION_CURDATE = 92,
+    MYLITE_SCALAR_FUNCTION_CURRENT_DATE = 93,
+    MYLITE_SCALAR_FUNCTION_CURTIME = 94,
+    MYLITE_SCALAR_FUNCTION_CURRENT_TIME = 95,
+    MYLITE_SCALAR_FUNCTION_LOCALTIME = 96,
+    MYLITE_SCALAR_FUNCTION_LOCALTIMESTAMP = 97,
 };
 
 struct angle_conversion_input {
@@ -1554,9 +1561,10 @@ static bool expression_is_supported_no_table(const struct mylite_sql_ast_node *e
             }
         }
         return true;
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
+        return !require_cacheable;
     case MYLITE_SQL_AST_IDENTIFIER:
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
-    case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
     default:
         return false;
     }
@@ -1677,8 +1685,15 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_CONNECTION_ID:
     case MYLITE_SCALAR_FUNCTION_USER:
     case MYLITE_SCALAR_FUNCTION_CURRENT_USER:
+    case MYLITE_SCALAR_FUNCTION_CURDATE:
+    case MYLITE_SCALAR_FUNCTION_CURRENT_DATE:
         return arity == 0U;
     case MYLITE_SCALAR_FUNCTION_LAST_INSERT_ID:
+    case MYLITE_SCALAR_FUNCTION_NOW:
+    case MYLITE_SCALAR_FUNCTION_CURTIME:
+    case MYLITE_SCALAR_FUNCTION_CURRENT_TIME:
+    case MYLITE_SCALAR_FUNCTION_LOCALTIME:
+    case MYLITE_SCALAR_FUNCTION_LOCALTIMESTAMP:
         return arity == 0U || arity == 1U;
     case MYLITE_SCALAR_FUNCTION_COALESCE:
         return arity >= 1U;
@@ -1741,6 +1756,11 @@ static int eval_node(const struct mylite_sql_ast_node *node,
         return eval_quantified_comparison(node, context, warnings, out_value);
     case MYLITE_SQL_AST_FUNCTION_CALL:
         return eval_function_call(node, context, warnings, out_value);
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
+        return context == NULL || context->eval_session_function == NULL
+                   ? -1
+                   : context->eval_session_function(context->user_data, node, context, warnings,
+                                                    out_value);
     default:
         return -1;
     }
@@ -2523,6 +2543,13 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
     case MYLITE_SCALAR_FUNCTION_COLLATION:
     case MYLITE_SCALAR_FUNCTION_COERCIBILITY:
     case MYLITE_SCALAR_FUNCTION_STRCMP:
+    case MYLITE_SCALAR_FUNCTION_NOW:
+    case MYLITE_SCALAR_FUNCTION_CURDATE:
+    case MYLITE_SCALAR_FUNCTION_CURRENT_DATE:
+    case MYLITE_SCALAR_FUNCTION_CURTIME:
+    case MYLITE_SCALAR_FUNCTION_CURRENT_TIME:
+    case MYLITE_SCALAR_FUNCTION_LOCALTIME:
+    case MYLITE_SCALAR_FUNCTION_LOCALTIMESTAMP:
         return context == NULL || context->eval_session_function == NULL
                    ? -1
                    : context->eval_session_function(context->user_data, node, context, warnings,
@@ -5482,6 +5509,13 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_CONV:
         return eval_conv_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_UNKNOWN:
+    case MYLITE_SCALAR_FUNCTION_NOW:
+    case MYLITE_SCALAR_FUNCTION_CURDATE:
+    case MYLITE_SCALAR_FUNCTION_CURRENT_DATE:
+    case MYLITE_SCALAR_FUNCTION_CURTIME:
+    case MYLITE_SCALAR_FUNCTION_CURRENT_TIME:
+    case MYLITE_SCALAR_FUNCTION_LOCALTIME:
+    case MYLITE_SCALAR_FUNCTION_LOCALTIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_CONCAT:
     case MYLITE_SCALAR_FUNCTION_CONCAT_WS:
     case MYLITE_SCALAR_FUNCTION_LENGTH:
@@ -7309,6 +7343,13 @@ static int trigonometric_function_result(struct trigonometric_input input,
     case MYLITE_SCALAR_FUNCTION_ATAN:
     case MYLITE_SCALAR_FUNCTION_ATAN2:
     case MYLITE_SCALAR_FUNCTION_UNKNOWN:
+    case MYLITE_SCALAR_FUNCTION_NOW:
+    case MYLITE_SCALAR_FUNCTION_CURDATE:
+    case MYLITE_SCALAR_FUNCTION_CURRENT_DATE:
+    case MYLITE_SCALAR_FUNCTION_CURTIME:
+    case MYLITE_SCALAR_FUNCTION_CURRENT_TIME:
+    case MYLITE_SCALAR_FUNCTION_LOCALTIME:
+    case MYLITE_SCALAR_FUNCTION_LOCALTIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_CONCAT:
     case MYLITE_SCALAR_FUNCTION_CONCAT_WS:
     case MYLITE_SCALAR_FUNCTION_LENGTH:
@@ -7585,6 +7626,13 @@ static int inverse_trigonometric_function_result(struct inverse_trigonometric_in
     case MYLITE_SCALAR_FUNCTION_ATAN:
     case MYLITE_SCALAR_FUNCTION_ATAN2:
     case MYLITE_SCALAR_FUNCTION_UNKNOWN:
+    case MYLITE_SCALAR_FUNCTION_NOW:
+    case MYLITE_SCALAR_FUNCTION_CURDATE:
+    case MYLITE_SCALAR_FUNCTION_CURRENT_DATE:
+    case MYLITE_SCALAR_FUNCTION_CURTIME:
+    case MYLITE_SCALAR_FUNCTION_CURRENT_TIME:
+    case MYLITE_SCALAR_FUNCTION_LOCALTIME:
+    case MYLITE_SCALAR_FUNCTION_LOCALTIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_CONCAT:
     case MYLITE_SCALAR_FUNCTION_CONCAT_WS:
     case MYLITE_SCALAR_FUNCTION_LENGTH:
@@ -7771,6 +7819,13 @@ static int angle_conversion_result(struct angle_conversion_input conversion, dou
         *out_result = (conversion.input / mylite_angle_straight_degrees) * mylite_pi_double_value;
         return 0;
     case MYLITE_SCALAR_FUNCTION_UNKNOWN:
+    case MYLITE_SCALAR_FUNCTION_NOW:
+    case MYLITE_SCALAR_FUNCTION_CURDATE:
+    case MYLITE_SCALAR_FUNCTION_CURRENT_DATE:
+    case MYLITE_SCALAR_FUNCTION_CURTIME:
+    case MYLITE_SCALAR_FUNCTION_CURRENT_TIME:
+    case MYLITE_SCALAR_FUNCTION_LOCALTIME:
+    case MYLITE_SCALAR_FUNCTION_LOCALTIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_CONCAT:
     case MYLITE_SCALAR_FUNCTION_CONCAT_WS:
     case MYLITE_SCALAR_FUNCTION_LENGTH:
@@ -11516,6 +11571,13 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"SESSION_USER", MYLITE_SCALAR_FUNCTION_USER},
         {"SYSTEM_USER", MYLITE_SCALAR_FUNCTION_USER},
         {"CURRENT_USER", MYLITE_SCALAR_FUNCTION_CURRENT_USER},
+        {"NOW", MYLITE_SCALAR_FUNCTION_NOW},
+        {"CURDATE", MYLITE_SCALAR_FUNCTION_CURDATE},
+        {"CURRENT_DATE", MYLITE_SCALAR_FUNCTION_CURRENT_DATE},
+        {"CURTIME", MYLITE_SCALAR_FUNCTION_CURTIME},
+        {"CURRENT_TIME", MYLITE_SCALAR_FUNCTION_CURRENT_TIME},
+        {"LOCALTIME", MYLITE_SCALAR_FUNCTION_LOCALTIME},
+        {"LOCALTIMESTAMP", MYLITE_SCALAR_FUNCTION_LOCALTIMESTAMP},
         {"BIT_COUNT", MYLITE_SCALAR_FUNCTION_BIT_COUNT},
         {"BIT_LENGTH", MYLITE_SCALAR_FUNCTION_BIT_LENGTH},
         {"CRC32", MYLITE_SCALAR_FUNCTION_CRC32},
@@ -11549,6 +11611,13 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_COLLATION:
     case MYLITE_SCALAR_FUNCTION_COERCIBILITY:
     case MYLITE_SCALAR_FUNCTION_STRCMP:
+    case MYLITE_SCALAR_FUNCTION_NOW:
+    case MYLITE_SCALAR_FUNCTION_CURDATE:
+    case MYLITE_SCALAR_FUNCTION_CURRENT_DATE:
+    case MYLITE_SCALAR_FUNCTION_CURTIME:
+    case MYLITE_SCALAR_FUNCTION_CURRENT_TIME:
+    case MYLITE_SCALAR_FUNCTION_LOCALTIME:
+    case MYLITE_SCALAR_FUNCTION_LOCALTIMESTAMP:
         return true;
     case MYLITE_SCALAR_FUNCTION_UNKNOWN:
     case MYLITE_SCALAR_FUNCTION_CONCAT:

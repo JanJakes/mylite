@@ -6,6 +6,7 @@
 #include "sql/mylite_lexer.h"
 #include "sqlite3.h"
 
+#include <ctype.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -253,6 +254,7 @@ static int test_select_integer_literal(void);
 static int test_select_integer_literal_with_semicolon(void);
 static int test_expression_operator_foundation(void);
 static int test_scalar_builtin_functions_execution(void);
+static int test_current_temporal_functions_execution(void);
 static int test_round_scalar_function_execution(mylite_db *database);
 static int test_format_scalar_function_execution(mylite_db *database);
 static int test_truncate_scalar_function_execution(mylite_db *database);
@@ -444,6 +446,11 @@ static int expect_int(int actual, int expected, const char *context);
 static int expect_int64(int64_t actual, int64_t expected, const char *context);
 static int expect_u16(unsigned int actual, unsigned int expected, const char *context);
 static int expect_string(const char *actual, const char *expected, const char *context);
+static int expect_datetime_text(const char *actual, unsigned int fsp, const char *context);
+static int expect_date_text(const char *actual, const char *context);
+static int expect_time_text(const char *actual, unsigned int fsp, const char *context);
+static int expect_temporal_prefix(const char *actual, const char *expected_prefix, size_t length,
+                                  const char *context);
 static int expect_unsigned_decimal_text(const char *actual, const char *context);
 static int expect_null_text(const char *actual, const char *context);
 static int expect_contains(const char *actual, const char *expected_fragment, const char *context);
@@ -458,6 +465,7 @@ int main(void)
     failures += test_select_integer_literal_with_semicolon();
     failures += test_expression_operator_foundation();
     failures += test_scalar_builtin_functions_execution();
+    failures += test_current_temporal_functions_execution();
     failures += test_inet_ipv4_functions_execution();
     failures += test_charset_collation_functions_execution();
     failures += test_session_information_functions_execution();
@@ -5518,6 +5526,361 @@ static int test_scalar_builtin_functions_execution(void)
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)
     return failures;
+}
+
+static int test_current_temporal_functions_execution(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    enum { temporal_max_fsp = 6U };
+    static const struct expected_result_metadata metadata[] = {
+        {"now_value", NULL, NULL, NULL, NULL, NULL, 19U, MYLITE_FIELD_TYPE_DATETIME, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, MYLITE_FIELD_FLAG_NUM, 0},
+        {"current_timestamp_fsp", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DATETIME, 3U,
+         63U, MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, MYLITE_FIELD_FLAG_NUM, 0},
+        {"localtime_fsp", NULL, NULL, NULL, NULL, NULL, 22U, MYLITE_FIELD_TYPE_DATETIME, 2U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, MYLITE_FIELD_FLAG_NUM, 0},
+        {"current_date_value", NULL, NULL, NULL, NULL, NULL, 10U, MYLITE_FIELD_TYPE_DATE, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, MYLITE_FIELD_FLAG_NUM, 0},
+        {"curtime_value", NULL, NULL, NULL, NULL, NULL, 8U, MYLITE_FIELD_TYPE_TIME, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, MYLITE_FIELD_FLAG_NUM, 0},
+        {"current_time_fsp", NULL, NULL, NULL, NULL, NULL, 12U, MYLITE_FIELD_TYPE_TIME, 3U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, MYLITE_FIELD_FLAG_NUM, 0},
+    };
+    static const char *const one_table_columns[] = {"id", "dt", "d", "t"};
+    static const char *const remaining_columns[] = {"id"};
+    static const char *const remaining_values[] = {"1"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    char first_dt[32] = {0};
+    char first_date[16] = {0};
+    char first_time[24] = {0};
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open memory database");
+    failures += prepare_sql(database,
+                            "SELECT NOW() AS now_value, "
+                            "CURRENT_TIMESTAMP AS current_timestamp_value, "
+                            "CURRENT_TIMESTAMP() AS current_timestamp_call, "
+                            "CURRENT_TIMESTAMP(6) AS current_timestamp_fsp, "
+                            "LOCALTIME AS localtime_value, "
+                            "LOCALTIME(6) AS localtime_fsp, "
+                            "LOCALTIMESTAMP AS localtimestamp_value, "
+                            "CURDATE() AS curdate_value, "
+                            "CURRENT_DATE AS current_date_value, "
+                            "CURRENT_DATE() AS current_date_call, "
+                            "CURTIME() AS curtime_value, "
+                            "CURRENT_TIME AS current_time_value, "
+                            "CURRENT_TIME(6) AS current_time_fsp",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "current temporal scalar row");
+    failures += expect_datetime_text(mylite_column_text(stmt, 0), 0U, "NOW shape");
+    failures += expect_string(mylite_column_text(stmt, 1), mylite_column_text(stmt, 0),
+                              "CURRENT_TIMESTAMP equals NOW");
+    failures += expect_string(mylite_column_text(stmt, 2), mylite_column_text(stmt, 0),
+                              "CURRENT_TIMESTAMP() equals NOW");
+    failures += expect_datetime_text(mylite_column_text(stmt, 3), 6U, "CURRENT_TIMESTAMP(6) shape");
+    failures += expect_temporal_prefix(mylite_column_text(stmt, 3), mylite_column_text(stmt, 0),
+                                       19U, "CURRENT_TIMESTAMP(6) prefix");
+    failures += expect_string(mylite_column_text(stmt, 4), mylite_column_text(stmt, 0),
+                              "LOCALTIME equals NOW");
+    failures += expect_datetime_text(mylite_column_text(stmt, 5), 6U, "LOCALTIME(6) shape");
+    failures += expect_string(mylite_column_text(stmt, 6), mylite_column_text(stmt, 0),
+                              "LOCALTIMESTAMP equals NOW");
+    failures += expect_date_text(mylite_column_text(stmt, 7), "CURDATE shape");
+    failures += expect_string(mylite_column_text(stmt, 8), mylite_column_text(stmt, 7),
+                              "CURRENT_DATE equals CURDATE");
+    failures += expect_string(mylite_column_text(stmt, 9), mylite_column_text(stmt, 7),
+                              "CURRENT_DATE() equals CURDATE");
+    failures += expect_temporal_prefix(mylite_column_text(stmt, 7), mylite_column_text(stmt, 0),
+                                       10U, "CURDATE derives from NOW");
+    failures += expect_time_text(mylite_column_text(stmt, 10), 0U, "CURTIME shape");
+    failures += expect_string(mylite_column_text(stmt, 11), mylite_column_text(stmt, 10),
+                              "CURRENT_TIME equals CURTIME");
+    failures += expect_time_text(mylite_column_text(stmt, 12), 6U, "CURRENT_TIME(6) shape");
+    failures += expect_temporal_prefix(
+        mylite_column_text(stmt, 10),
+        mylite_column_text(stmt, 0) == NULL ? NULL : mylite_column_text(stmt, 0) + 11, 8U,
+        "CURTIME derives from NOW");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "current temporal scalar done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT NOW(0), NOW(1), NOW(2), NOW(3), NOW(4), NOW(5), NOW(6), "
+                            "CURTIME(0), CURTIME(1), CURTIME(2), CURTIME(3), "
+                            "CURTIME(4), CURTIME(5), CURTIME(6)",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "current temporal fsp row");
+    for (unsigned int fsp = 0U; fsp <= temporal_max_fsp; ++fsp) {
+        char context[64];
+        size_t datetime_prefix_length = fsp == 0U ? 19U : 20U + fsp;
+        size_t time_prefix_length = fsp == 0U ? 8U : 9U + fsp;
+
+        (void)snprintf(context, sizeof(context), "NOW(%u) fsp shape", fsp);
+        failures += expect_datetime_text(mylite_column_text(stmt, (int)fsp), fsp, context);
+        (void)snprintf(context, sizeof(context), "NOW(%u) truncates statement timestamp", fsp);
+        failures += expect_temporal_prefix(mylite_column_text(stmt, (int)fsp),
+                                           mylite_column_text(stmt, temporal_max_fsp),
+                                           datetime_prefix_length, context);
+        (void)snprintf(context, sizeof(context), "CURTIME(%u) fsp shape", fsp);
+        failures += expect_time_text(mylite_column_text(stmt, (int)(temporal_max_fsp + 1U + fsp)),
+                                     fsp, context);
+        (void)snprintf(context, sizeof(context), "CURTIME(%u) truncates statement timestamp", fsp);
+        failures +=
+            expect_temporal_prefix(mylite_column_text(stmt, (int)(temporal_max_fsp + 1U + fsp)),
+                                   mylite_column_text(stmt, (int)((temporal_max_fsp * 2U) + 1U)),
+                                   time_prefix_length, context);
+    }
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "current temporal fsp done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT NOW() AS now_value, "
+                            "CURRENT_TIMESTAMP(3) AS current_timestamp_fsp, "
+                            "LOCALTIME(2) AS localtime_fsp, "
+                            "CURRENT_DATE AS current_date_value, "
+                            "CURTIME() AS curtime_value, "
+                            "CURRENT_TIME(3) AS current_time_fsp",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "current temporal metadata");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE DATABASE current_temporal_functions", MYLITE_DONE);
+    failures += execute_sql(database, "USE current_temporal_functions", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE temporal_functions ("
+                            "id INT PRIMARY KEY, "
+                            "dt DATETIME(6), "
+                            "d DATE, "
+                            "t TIME(6), "
+                            "note VARCHAR(32))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO temporal_functions VALUES "
+                            "(1, NULL, NULL, NULL, 'one'), "
+                            "(2, NULL, NULL, NULL, 'two')",
+                            MYLITE_DONE);
+
+    failures += prepare_sql(database,
+                            "SELECT id, NOW(6) AS dt, CURDATE() AS d, CURTIME(6) AS t "
+                            "FROM temporal_functions "
+                            "WHERE NOW() = LOCALTIME "
+                            "ORDER BY CURRENT_TIMESTAMP, CURTIME(6), id",
+                            MYLITE_OK, &stmt);
+    failures += expect_column_names(stmt, one_table_columns, 4, "current temporal table columns");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "current temporal table first row");
+    failures += expect_string(mylite_column_text(stmt, 0), "1", "current temporal first id");
+    failures +=
+        expect_datetime_text(mylite_column_text(stmt, 1), 6U, "current temporal first datetime");
+    failures += expect_date_text(mylite_column_text(stmt, 2), "current temporal first date");
+    failures += expect_time_text(mylite_column_text(stmt, 3), 6U, "current temporal first time");
+    (void)snprintf(first_dt, sizeof(first_dt), "%s",
+                   mylite_column_text(stmt, 1) == NULL ? "" : mylite_column_text(stmt, 1));
+    (void)snprintf(first_date, sizeof(first_date), "%s",
+                   mylite_column_text(stmt, 2) == NULL ? "" : mylite_column_text(stmt, 2));
+    (void)snprintf(first_time, sizeof(first_time), "%s",
+                   mylite_column_text(stmt, 3) == NULL ? "" : mylite_column_text(stmt, 3));
+
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "current temporal table second row");
+    failures += expect_string(mylite_column_text(stmt, 0), "2", "current temporal second id");
+    failures += expect_string(mylite_column_text(stmt, 1), first_dt,
+                              "current temporal datetime statement stability");
+    failures += expect_string(mylite_column_text(stmt, 2), first_date,
+                              "current temporal date statement stability");
+    failures += expect_string(mylite_column_text(stmt, 3), first_time,
+                              "current temporal time statement stability");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "current temporal table done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "UPDATE temporal_functions "
+                            "SET dt = NOW(6), d = CURDATE(), t = CURTIME(6), note = 'updated' "
+                            "WHERE id = 1 AND CURRENT_TIMESTAMP = LOCALTIME",
+                            MYLITE_OK, &stmt);
+    int update_status = mylite_step(stmt);
+
+    if (update_status != MYLITE_DONE) {
+        fprintf(stderr, "current temporal update error: %s\n", mylite_error_message(database));
+    }
+    failures += expect_status(update_status, MYLITE_DONE, "current temporal update");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT dt, d, t FROM temporal_functions WHERE id = 1",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "current temporal update row");
+    failures +=
+        expect_datetime_text(mylite_column_text(stmt, 0), 6U, "current temporal updated datetime");
+    failures += expect_date_text(mylite_column_text(stmt, 1), "current temporal updated date");
+    failures += expect_time_text(mylite_column_text(stmt, 2), 6U, "current temporal updated time");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "current temporal update done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "DELETE FROM temporal_functions "
+                            "WHERE id = 2 AND CURTIME() = CURRENT_TIME",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "current temporal delete");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM temporal_functions ORDER BY id",
+                                   remaining_columns, 1, remaining_values, 1,
+                                   "current temporal delete result");
+
+    failures += prepare_sql(database, "SELECT UTC_TIMESTAMP()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "UTC_TIMESTAMP remains deferred");
+    failures += prepare_sql(database, "SELECT UTC_DATE", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "UTC_DATE remains deferred");
+    failures += prepare_sql(database, "SELECT NOW(7)", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "NOW invalid fsp");
+    failures += prepare_sql(database, "SELECT CURRENT_TIMESTAMP(7)", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "CURRENT_TIMESTAMP invalid fsp");
+    failures += prepare_sql(database, "SELECT NOW('3')", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "NOW string fsp");
+    failures += prepare_sql(database, "SELECT CURTIME(1, 2)", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "CURTIME invalid arity");
+    failures += prepare_sql(database, "SELECT CURRENT_DATE(0)", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "CURRENT_DATE invalid arity");
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int expect_datetime_text(const char *actual, unsigned int fsp, const char *context)
+{
+    enum {
+        datetime_year_separator = 4U,
+        datetime_month_separator = 7U,
+        datetime_date_time_separator = 10U,
+        datetime_hour_separator = 13U,
+        datetime_minute_separator = 16U,
+        datetime_fraction_separator = 19U,
+        datetime_base_length = 19U,
+        datetime_fraction_base_length = 20U,
+    };
+    size_t expected_length = fsp == 0U ? datetime_base_length : datetime_fraction_base_length + fsp;
+    int failures = expect_int64(actual == NULL ? -1 : (int64_t)strlen(actual),
+                                (int64_t)expected_length, context);
+
+    if (actual == NULL || failures != 0) {
+        return failures;
+    }
+    for (size_t index = 0U; index < expected_length; ++index) {
+        bool separator = false;
+        char expected = '\0';
+
+        if (index == datetime_year_separator || index == datetime_month_separator) {
+            separator = true;
+            expected = '-';
+        } else if (index == datetime_date_time_separator) {
+            separator = true;
+            expected = ' ';
+        } else if (index == datetime_hour_separator || index == datetime_minute_separator) {
+            separator = true;
+            expected = ':';
+        } else if (fsp != 0U && index == datetime_fraction_separator) {
+            separator = true;
+            expected = '.';
+        }
+        if (!separator) {
+            if (!isdigit((unsigned char)actual[index])) {
+                fprintf(stderr, "%s: expected datetime digit at %zu, got '%s'\n", context, index,
+                        actual);
+                return 1;
+            }
+            continue;
+        }
+        if (actual[index] != expected) {
+            fprintf(stderr, "%s: expected datetime separator '%c' at %zu, got '%s'\n", context,
+                    expected, index, actual);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int expect_date_text(const char *actual, const char *context)
+{
+    enum {
+        date_year_separator = 4U,
+        date_month_separator = 7U,
+        date_text_length = 10U,
+    };
+    int failures =
+        expect_int64(actual == NULL ? -1 : (int64_t)strlen(actual), date_text_length, context);
+
+    if (actual == NULL || failures != 0) {
+        return failures;
+    }
+    for (size_t index = 0U; index < date_text_length; ++index) {
+        if (index == date_year_separator || index == date_month_separator) {
+            if (actual[index] != '-') {
+                fprintf(stderr, "%s: expected date separator at %zu, got '%s'\n", context, index,
+                        actual);
+                return 1;
+            }
+        } else if (!isdigit((unsigned char)actual[index])) {
+            fprintf(stderr, "%s: expected date digit at %zu, got '%s'\n", context, index, actual);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int expect_time_text(const char *actual, unsigned int fsp, const char *context)
+{
+    enum {
+        time_hour_separator = 2U,
+        time_minute_separator = 5U,
+        time_fraction_separator = 8U,
+        time_base_length = 8U,
+        time_fraction_base_length = 9U,
+    };
+    size_t expected_length = fsp == 0U ? time_base_length : time_fraction_base_length + fsp;
+    int failures = expect_int64(actual == NULL ? -1 : (int64_t)strlen(actual),
+                                (int64_t)expected_length, context);
+
+    if (actual == NULL || failures != 0) {
+        return failures;
+    }
+    for (size_t index = 0U; index < expected_length; ++index) {
+        if (index == time_hour_separator || index == time_minute_separator ||
+            (fsp != 0U && index == time_fraction_separator)) {
+            char expected = ':';
+
+            if (index == time_fraction_separator) {
+                expected = '.';
+            }
+
+            if (actual[index] != expected) {
+                fprintf(stderr, "%s: expected time separator '%c' at %zu, got '%s'\n", context,
+                        expected, index, actual);
+                return 1;
+            }
+        } else if (!isdigit((unsigned char)actual[index])) {
+            fprintf(stderr, "%s: expected time digit at %zu, got '%s'\n", context, index, actual);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int expect_temporal_prefix(const char *actual, const char *expected_prefix, size_t length,
+                                  const char *context)
+{
+    if (actual == NULL || expected_prefix == NULL ||
+        strncmp(actual, expected_prefix, length) != 0) {
+        fprintf(stderr, "%s: expected prefix '%.*s', got '%s'\n", context, (int)length,
+                expected_prefix == NULL ? "" : expected_prefix, actual == NULL ? "(null)" : actual);
+        return 1;
+    }
+    return 0;
 }
 
 static int test_round_scalar_function_execution(mylite_db *database)
@@ -11925,7 +12288,6 @@ static int test_unsupported_statement(void)
     int failures = 0;
 
     failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open memory database");
-    failures += prepare_sql(database, "SELECT CURRENT_TIMESTAMP", MYLITE_UNSUPPORTED, &stmt);
     failures += prepare_sql(database, "SELECT x'0a'", MYLITE_UNSUPPORTED, &stmt);
     failures += prepare_sql(database, "SELECT b'1010'", MYLITE_UNSUPPORTED, &stmt);
     if (stmt != NULL) {

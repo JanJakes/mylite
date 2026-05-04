@@ -44,6 +44,7 @@ add_library(mylite STATIC
   src/runtime/mylite_diagnostics.c
   src/runtime/mylite_dml.c
   src/runtime/mylite_metadata.c
+  src/runtime/mylite_schema.c
   src/runtime/mylite_span.c
   src/runtime/mylite_statement.c
   src/runtime/mylite_table_ddl.c

@@ -10,6 +10,7 @@
 #include "runtime/mylite_dml.h"
 #include "runtime/mylite_metadata.h"
 #include "runtime/mylite_runtime.h"
+#include "runtime/mylite_schema.h"
 #include "runtime/mylite_span.h"
 #include "runtime/mylite_statement.h"
 #include "runtime/mylite_table_ddl.h"
@@ -3683,7 +3684,6 @@ static bool column_default_is_current_timestamp(const char *default_text);
 static bool parse_insert_integer_text(const char *text, int64_t *out_value);
 static bool parse_insert_real_text(const char *text, double *out_value);
 static char *insert_current_timestamp_text(void);
-static void schema_options_deinit(struct mylite_schema_options *options);
 static void select_plan_deinit(struct mylite_select_plan *plan);
 static void select_table_deinit(struct mylite_select_table *table);
 static void select_column_deinit(struct mylite_select_column *column);
@@ -3757,7 +3757,7 @@ void mylite_finalize(mylite_stmt *stmt)
     free(stmt->schema_name);
     free(stmt->character_set_name);
     free(stmt->collation_name);
-    schema_options_deinit(&stmt->options);
+    mylite_schema_options_deinit(&stmt->options);
     mylite_table_ddl_create_table_plan_deinit(&stmt->create_table);
     mylite_table_ddl_drop_table_plan_deinit(&stmt->drop_table);
     mylite_table_ddl_rename_table_plan_deinit(&stmt->rename_table);
@@ -41519,18 +41519,6 @@ static char *insert_current_timestamp_text(void)
         return NULL;
     }
     return timestamp;
-}
-
-static void schema_options_deinit(struct mylite_schema_options *options)
-{
-    if (options == NULL) {
-        return;
-    }
-
-    free(options->character_set);
-    free(options->collation);
-    free(options->encryption);
-    *options = (struct mylite_schema_options){0};
 }
 
 static void table_select_group_deinit(struct mylite_table_select_group *group)

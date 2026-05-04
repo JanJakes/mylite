@@ -140,8 +140,6 @@ validate_scalar_select_order_function_call(mylite_db *database,
 static int resolve_scalar_select_order_reference(mylite_db *database,
                                                  const struct mylite_result_metadata *metadata,
                                                  const struct mylite_sql_ast_node *expression);
-static size_t scalar_result_label_count(const struct mylite_result_metadata *metadata,
-                                        const char *label, size_t *out_index);
 static int prepare_union_query_expression_statement(mylite_db *database,
                                                     const struct mylite_sql_ast_node *statement,
                                                     const char *sql, size_t sql_length,
@@ -18864,7 +18862,8 @@ static int resolve_scalar_select_order_reference(mylite_db *database,
 
     {
         size_t output_index = 0U;
-        size_t output_matches = scalar_result_label_count(metadata, parts[0], &output_index);
+        size_t output_matches =
+            mylite_result_metadata_label_count(metadata, parts[0], &output_index);
 
         (void)output_index;
         if (output_matches > 1U) {
@@ -18881,24 +18880,6 @@ cleanup:
         free(parts[index]);
     }
     return status;
-}
-
-static size_t scalar_result_label_count(const struct mylite_result_metadata *metadata,
-                                        const char *label, size_t *out_index)
-{
-    size_t count = 0U;
-
-    *out_index = metadata == NULL ? 0U : metadata->column_count;
-    for (size_t index = 0U; metadata != NULL && index < metadata->column_count; ++index) {
-        if (metadata->columns[index].name != NULL &&
-            mylite_ascii_case_equal(metadata->columns[index].name, label)) {
-            if (count == 0U) {
-                *out_index = index;
-            }
-            ++count;
-        }
-    }
-    return count;
 }
 
 static int append_scalar_select_warnings_to_database(mylite_stmt *stmt)

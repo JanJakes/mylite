@@ -48,6 +48,24 @@ void mylite_result_metadata_deinit(struct mylite_result_metadata *metadata)
     *metadata = (struct mylite_result_metadata){0};
 }
 
+size_t mylite_result_metadata_label_count(const struct mylite_result_metadata *metadata,
+                                          const char *label, size_t *out_index)
+{
+    size_t count = 0U;
+
+    *out_index = metadata == NULL ? 0U : metadata->column_count;
+    for (size_t index = 0U; metadata != NULL && index < metadata->column_count; ++index) {
+        if (metadata->columns[index].name != NULL &&
+            mylite_ascii_case_equal(metadata->columns[index].name, label)) {
+            if (count == 0U) {
+                *out_index = index;
+            }
+            ++count;
+        }
+    }
+    return count;
+}
+
 int mylite_column_count(const mylite_stmt *stmt)
 {
     if (stmt == NULL) {

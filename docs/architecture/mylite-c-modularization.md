@@ -507,6 +507,7 @@ only the core object model and transitional shared helpers listed here:
   `mylite_metadata` or function-family helpers.
 - [ ] Move aggregate metadata inference into `mylite_metadata`.
 - [ ] Move result metadata attachment for SELECT/UNION into `mylite_metadata`.
+- [x] Move reusable result metadata label lookup into `mylite_metadata`.
 - [ ] Move column type descriptor to SQLite affinity mapping into metadata or
   DDL according to final ownership.
 - [x] Move temporal statement timestamp helpers out of `mylite.c`.

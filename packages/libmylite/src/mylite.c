@@ -25,6 +25,7 @@
 #include "runtime/mylite_schema_types.h"
 #include "runtime/mylite_select.h"
 #include "runtime/mylite_select_from.h"
+#include "runtime/mylite_select_rowset.h"
 #include "runtime/mylite_select_sql.h"
 #include "runtime/mylite_select_types.h"
 #include "runtime/mylite_session_functions.h"
@@ -1152,12 +1153,6 @@ append_select_null_extended_right_row(mylite_stmt *stmt, const struct mylite_sel
 static int append_empty_joined_table_select_row(mylite_stmt *stmt,
                                                 struct mylite_table_select_table_rowset *rowset,
                                                 struct mylite_table_select_row **out_row);
-static int append_table_select_row_copy_to_rowset(mylite_stmt *stmt,
-                                                  struct mylite_table_select_table_rowset *rowset,
-                                                  const struct mylite_table_select_row *row);
-static int append_table_select_row_to_rowset(mylite_stmt *stmt,
-                                             struct mylite_table_select_table_rowset *rowset,
-                                             struct mylite_table_select_row *row);
 static int copy_select_base_table_row_values(mylite_db *database,
                                              struct mylite_table_select_row *row,
                                              const struct mylite_select_table *table,
@@ -1168,7 +1163,6 @@ static int copy_select_row_range_values(struct mylite_table_select_row *target,
                                         const struct mylite_table_select_row *source,
                                         struct mylite_select_table_range range,
                                         const struct mylite_select_plan *plan);
-static void table_select_table_rowset_deinit(struct mylite_table_select_table_rowset *rowset);
 static int process_outer_joined_table_range_rows(
     mylite_stmt *stmt, struct mylite_table_select_join_materialize_state *state,
     const struct mylite_table_select_table_rowset *range_rowsets, size_t range_count);
@@ -1289,20 +1283,6 @@ static int evaluate_table_select_row_matches(mylite_stmt *stmt,
 static int check_table_select_distinct_duplicate(mylite_stmt *stmt,
                                                  struct mylite_table_select_row *row,
                                                  bool *out_duplicate);
-static int append_table_select_result_row(mylite_stmt *stmt, struct mylite_table_select_row *row);
-static int append_table_select_result_row_copy(mylite_stmt *stmt,
-                                               const struct mylite_table_select_row *row);
-static int table_select_row_copy(const struct mylite_table_select_row *row,
-                                 struct mylite_table_select_row *out_row);
-static int allocate_table_select_row_copy(struct mylite_table_select_row *out_row);
-static int allocate_table_select_expression_values(struct mylite_expression_value **out_values,
-                                                   size_t value_count);
-static int allocate_table_select_source_row_indexes(size_t **out_indexes, size_t index_count);
-static int copy_table_select_row_copy_values(const struct mylite_table_select_row *row,
-                                             struct mylite_table_select_row *out_row);
-static int copy_table_select_expression_values(const struct mylite_expression_value *values,
-                                               struct mylite_expression_value *out_values,
-                                               size_t value_count);
 static int copy_table_select_sqlite_row(mylite_stmt *stmt, struct mylite_table_select_row *out_row);
 static int copy_sqlite_column_value(sqlite3_stmt *sqlite_stmt, size_t column_index,
                                     struct mylite_expression_value *out_value);
@@ -1393,7 +1373,6 @@ static int compare_table_select_distinct_values(const struct mylite_expression_v
 static size_t expression_value_text_length(const struct mylite_expression_value *value);
 static bool
 table_select_text_descriptor_is_binary(const struct mylite_field_descriptor *descriptor);
-static int apply_table_select_limit(mylite_stmt *stmt);
 static int set_table_select_current_row(mylite_stmt *stmt,
                                         const struct mylite_table_select_row *row);
 static int evaluate_table_select_cached_output_value(mylite_stmt *stmt,
@@ -1407,8 +1386,6 @@ static int evaluate_table_select_output_value(mylite_stmt *stmt,
 static int copy_table_select_row_value(const struct mylite_table_select_row *row,
                                        size_t column_index,
                                        struct mylite_expression_value *out_value);
-static void table_select_table_rowsets_deinit(struct mylite_table_select_table_rowset *rowsets,
-                                              size_t rowset_count);
 static void
 table_select_join_condition_cache_deinit(struct mylite_table_select_join_condition_cache *cache);
 static int evaluate_table_select_constant_predicate(mylite_stmt *stmt);
@@ -12215,7 +12192,7 @@ static int execute_table_select_statement(mylite_stmt *stmt)
         return status;
     }
     if (stmt->select_result.next_row >= stmt->select_result.row_count) {
-        mylite_statement_table_select_current_values_deinit(&stmt->select_result);
+        mylite_select_result_current_values_deinit(&stmt->select_result);
         stmt->select_result.has_current_row = false;
         return MYLITE_DONE;
     }
@@ -12241,7 +12218,7 @@ static int execute_union_query_statement(mylite_stmt *stmt)
         return status;
     }
     if (stmt->select_result.next_row >= stmt->select_result.row_count) {
-        mylite_statement_table_select_current_values_deinit(&stmt->select_result);
+        mylite_select_result_current_values_deinit(&stmt->select_result);
         stmt->select_result.has_current_row = false;
         return MYLITE_DONE;
     }
@@ -12291,7 +12268,7 @@ static int materialize_union_query_result(mylite_stmt *stmt)
         }
     }
     if (status == MYLITE_OK) {
-        status = apply_table_select_limit(stmt);
+        status = mylite_select_result_apply_limit(&stmt->select_result, &stmt->select_plan.limit);
     }
     if (status == MYLITE_OK) {
         stmt->select_result.materialized = true;
@@ -12348,10 +12325,10 @@ static int append_union_operand_current_row(mylite_stmt *stmt, mylite_stmt *oper
         if (distinct) {
             status = append_union_distinct_row(stmt, &row);
         } else {
-            status = append_table_select_result_row(stmt, &row);
+            status = mylite_select_result_append_row(stmt->database, &stmt->select_result, &row);
         }
     }
-    mylite_statement_table_select_row_deinit(&row);
+    mylite_select_row_deinit(&row);
     return status;
 }
 
@@ -12440,10 +12417,10 @@ static int copy_union_operand_current_row(mylite_stmt *stmt, mylite_stmt *operan
 static int append_union_distinct_row(mylite_stmt *stmt, struct mylite_table_select_row *row)
 {
     if (table_select_distinct_row_exists(stmt, row)) {
-        mylite_statement_table_select_row_deinit(row);
+        mylite_select_row_deinit(row);
         return MYLITE_OK;
     }
-    return append_table_select_result_row(stmt, row);
+    return mylite_select_result_append_row(stmt->database, &stmt->select_result, row);
 }
 
 static int deduplicate_union_result_rows(mylite_stmt *stmt)
@@ -12461,7 +12438,7 @@ static int deduplicate_union_result_rows(mylite_stmt *stmt)
             }
         }
         if (duplicate) {
-            mylite_statement_table_select_row_deinit(&stmt->select_result.rows[index]);
+            mylite_select_row_deinit(&stmt->select_result.rows[index]);
             continue;
         }
         if (kept != index) {
@@ -12642,11 +12619,11 @@ static int materialize_ordered_table_select_result(mylite_stmt *stmt)
         }
         status = evaluate_table_select_row_matches(stmt, &row, &matches);
         if (status != MYLITE_OK) {
-            mylite_statement_table_select_row_deinit(&row);
+            mylite_select_row_deinit(&row);
             return status;
         }
         if (!matches) {
-            mylite_statement_table_select_row_deinit(&row);
+            mylite_select_row_deinit(&row);
             continue;
         }
 
@@ -12655,20 +12632,20 @@ static int materialize_ordered_table_select_result(mylite_stmt *stmt)
 
             status = check_table_select_distinct_duplicate(stmt, &row, &duplicate);
             if (status != MYLITE_OK) {
-                mylite_statement_table_select_row_deinit(&row);
+                mylite_select_row_deinit(&row);
                 return status;
             }
             if (duplicate) {
-                mylite_statement_table_select_row_deinit(&row);
+                mylite_select_row_deinit(&row);
                 continue;
             }
         }
         status = evaluate_table_select_order_values(stmt, &row);
         if (status == MYLITE_OK) {
-            status = append_table_select_result_row(stmt, &row);
+            status = mylite_select_result_append_row(stmt->database, &stmt->select_result, &row);
         }
         if (status != MYLITE_OK) {
-            mylite_statement_table_select_row_deinit(&row);
+            mylite_select_row_deinit(&row);
             return status;
         }
     }
@@ -12678,7 +12655,7 @@ static int materialize_ordered_table_select_result(mylite_stmt *stmt)
 
     status = sort_table_select_result_rows(stmt);
     if (status == MYLITE_OK) {
-        status = apply_table_select_limit(stmt);
+        status = mylite_select_result_apply_limit(&stmt->select_result, &stmt->select_plan.limit);
     }
     return status;
 }
@@ -12712,16 +12689,16 @@ static int materialize_unordered_table_select_result(mylite_stmt *stmt)
         }
         status = evaluate_table_select_row_matches(stmt, &row, &matches);
         if (status != MYLITE_OK) {
-            mylite_statement_table_select_row_deinit(&row);
+            mylite_select_row_deinit(&row);
             return status;
         }
         if (!matches) {
-            mylite_statement_table_select_row_deinit(&row);
+            mylite_select_row_deinit(&row);
             continue;
         }
         status = append_unordered_table_select_matched_row(stmt, &row, &append_state, distinct);
         if (status != MYLITE_OK) {
-            mylite_statement_table_select_row_deinit(&row);
+            mylite_select_row_deinit(&row);
             return status;
         }
         if (append_state.stop) {
@@ -12733,7 +12710,7 @@ static int materialize_unordered_table_select_result(mylite_stmt *stmt)
         return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
     if (distinct) {
-        return apply_table_select_limit(stmt);
+        return mylite_select_result_apply_limit(&stmt->select_result, &stmt->select_plan.limit);
     }
     return MYLITE_OK;
 }
@@ -12759,10 +12736,10 @@ static int append_unordered_table_select_distinct_row(mylite_stmt *stmt,
         return status;
     }
     if (duplicate) {
-        mylite_statement_table_select_row_deinit(row);
+        mylite_select_row_deinit(row);
         return MYLITE_OK;
     }
-    return append_table_select_result_row(stmt, row);
+    return mylite_select_result_append_row(stmt->database, &stmt->select_result, row);
 }
 
 static int
@@ -12774,13 +12751,13 @@ append_unordered_table_select_limited_row(mylite_stmt *stmt, struct mylite_table
                                             .matched_row = state->matched_row,
                                             .kept_count = stmt->select_result.row_count,
                                         })) {
-        int status = append_table_select_result_row(stmt, row);
+        int status = mylite_select_result_append_row(stmt->database, &stmt->select_result, row);
 
         if (status != MYLITE_OK) {
             return status;
         }
     } else {
-        mylite_statement_table_select_row_deinit(row);
+        mylite_select_row_deinit(row);
     }
     if (state->matched_row != UINT64_MAX) {
         ++state->matched_row;
@@ -12830,7 +12807,7 @@ static int materialize_joined_table_select_result(mylite_stmt *stmt)
     if (row.value_count != 0U) {
         row.values = calloc(row.value_count, sizeof(*row.values));
         if (row.values == NULL) {
-            table_select_table_rowsets_deinit(state.rowsets, table_count);
+            mylite_select_rowsets_deinit(state.rowsets, table_count);
             (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
@@ -12853,16 +12830,16 @@ static int materialize_joined_table_select_result(mylite_stmt *stmt)
     }
     if (status == MYLITE_OK &&
         (aggregate_query || stmt->select_plan.order_key_count != 0U || distinct)) {
-        status = apply_table_select_limit(stmt);
+        status = mylite_select_result_apply_limit(&stmt->select_result, &stmt->select_plan.limit);
     }
 
     for (size_t index = 0U; index < state.group_count; ++index) {
         table_select_group_deinit(&state.groups[index]);
     }
     free(state.groups);
-    mylite_statement_table_select_row_deinit(&row);
+    mylite_select_row_deinit(&row);
     table_select_join_condition_cache_deinit(&state.condition_cache);
-    table_select_table_rowsets_deinit(state.rowsets, table_count);
+    mylite_select_rowsets_deinit(state.rowsets, table_count);
     return status;
 }
 
@@ -12914,7 +12891,7 @@ static int materialize_outer_joined_table_select_result(mylite_stmt *stmt)
     }
     if (status == MYLITE_OK &&
         (aggregate_query || stmt->select_plan.order_key_count != 0U || distinct)) {
-        status = apply_table_select_limit(stmt);
+        status = mylite_select_result_apply_limit(&stmt->select_result, &stmt->select_plan.limit);
     }
 
     for (size_t index = 0U; index < state.group_count; ++index) {
@@ -12922,7 +12899,7 @@ static int materialize_outer_joined_table_select_result(mylite_stmt *stmt)
     }
     free(state.groups);
     table_select_join_condition_cache_deinit(&state.condition_cache);
-    table_select_table_rowsets_deinit(state.rowsets, table_count);
+    mylite_select_rowsets_deinit(state.rowsets, table_count);
     return status;
 }
 
@@ -12998,7 +12975,7 @@ static int append_table_select_join_scan_row(mylite_stmt *stmt, sqlite3_stmt *sc
 
     for (size_t index = 0U; index < row.value_count; ++index) {
         if (copy_sqlite_column_value(scan, index, &row.values[index]) != 0) {
-            mylite_statement_table_select_row_deinit(&row);
+            mylite_select_row_deinit(&row);
             (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
@@ -13006,7 +12983,7 @@ static int append_table_select_join_scan_row(mylite_stmt *stmt, sqlite3_stmt *sc
 
     rows = realloc(rowset->rows, (rowset->row_count + 1U) * sizeof(*rowset->rows));
     if (rows == NULL) {
-        mylite_statement_table_select_row_deinit(&row);
+        mylite_select_row_deinit(&row);
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
@@ -13081,7 +13058,7 @@ scan_outer_joined_table_select_rows(mylite_stmt *stmt,
     }
 
     for (size_t index = 0U; index < range_count; ++index) {
-        table_select_table_rowset_deinit(&range_rowsets[index]);
+        mylite_select_rowset_deinit(&range_rowsets[index]);
     }
     free(range_rowsets);
     return status;
@@ -13157,10 +13134,10 @@ static int apply_select_join_step_to_rowset(
 
     free(right_matched);
     if (status != MYLITE_OK) {
-        table_select_table_rowset_deinit(&next);
+        mylite_select_rowset_deinit(&next);
         return status;
     }
-    table_select_table_rowset_deinit(rowset);
+    mylite_select_rowset_deinit(rowset);
     *rowset = next;
     return MYLITE_OK;
 }
@@ -13237,7 +13214,7 @@ static int append_select_join_step_match(mylite_stmt *stmt,
     const struct mylite_select_table *right_table =
         mylite_select_plan_table_const(&stmt->select_plan, step->right_range.first_table);
     struct mylite_table_select_row candidate = {0};
-    int status = table_select_row_copy(rows->left, &candidate);
+    int status = mylite_select_row_copy(rows->left, &candidate);
 
     *out_matches = false;
     if (status == MYLITE_NOMEM) {
@@ -13245,7 +13222,7 @@ static int append_select_join_step_match(mylite_stmt *stmt,
         return MYLITE_NOMEM;
     }
     if (right_table == NULL) {
-        mylite_statement_table_select_row_deinit(&candidate);
+        mylite_select_row_deinit(&candidate);
         return MYLITE_UNSUPPORTED;
     }
 
@@ -13257,9 +13234,9 @@ static int append_select_join_step_match(mylite_stmt *stmt,
             evaluate_table_select_join_step_conditions(stmt, state, &candidate, step, out_matches);
     }
     if (status == MYLITE_OK && *out_matches) {
-        status = append_table_select_row_to_rowset(stmt, out_rowset, &candidate);
+        status = mylite_select_rowset_append_row(stmt->database, out_rowset, &candidate);
     }
-    mylite_statement_table_select_row_deinit(&candidate);
+    mylite_select_row_deinit(&candidate);
     return status;
 }
 
@@ -13267,7 +13244,7 @@ static int append_select_null_extended_left_row(mylite_stmt *stmt,
                                                 const struct mylite_table_select_row *left_row,
                                                 struct mylite_table_select_table_rowset *out_rowset)
 {
-    return append_table_select_row_copy_to_rowset(stmt, out_rowset, left_row);
+    return mylite_select_rowset_append_row_copy(stmt->database, out_rowset, left_row);
 }
 
 static int append_select_null_extended_right_rows(
@@ -13336,7 +13313,7 @@ static int append_empty_joined_table_select_row(mylite_stmt *stmt,
         }
     }
     if (status != MYLITE_OK) {
-        mylite_statement_table_select_row_deinit(&row);
+        mylite_select_row_deinit(&row);
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return status;
     }
@@ -13344,47 +13321,12 @@ static int append_empty_joined_table_select_row(mylite_stmt *stmt,
         row.source_row_indexes[index] = SIZE_MAX;
     }
 
-    status = append_table_select_row_to_rowset(stmt, rowset, &row);
+    status = mylite_select_rowset_append_row(stmt->database, rowset, &row);
     if (status != MYLITE_OK) {
-        mylite_statement_table_select_row_deinit(&row);
+        mylite_select_row_deinit(&row);
         return status;
     }
     *out_row = &rowset->rows[rowset->row_count - 1U];
-    return MYLITE_OK;
-}
-
-static int append_table_select_row_copy_to_rowset(mylite_stmt *stmt,
-                                                  struct mylite_table_select_table_rowset *rowset,
-                                                  const struct mylite_table_select_row *row)
-{
-    struct mylite_table_select_row copy = {0};
-    int status = table_select_row_copy(row, &copy);
-
-    if (status == MYLITE_NOMEM) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    status = append_table_select_row_to_rowset(stmt, rowset, &copy);
-    if (status != MYLITE_OK) {
-        mylite_statement_table_select_row_deinit(&copy);
-    }
-    return status;
-}
-
-static int append_table_select_row_to_rowset(mylite_stmt *stmt,
-                                             struct mylite_table_select_table_rowset *rowset,
-                                             struct mylite_table_select_row *row)
-{
-    struct mylite_table_select_row *rows =
-        realloc(rowset->rows, (rowset->row_count + 1U) * sizeof(*rowset->rows));
-
-    if (rows == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    rowset->rows = rows;
-    rowset->rows[rowset->row_count++] = *row;
-    *row = (struct mylite_table_select_row){0};
     return MYLITE_OK;
 }
 
@@ -13443,18 +13385,6 @@ static int copy_select_row_range_values(struct mylite_table_select_row *target,
         }
     }
     return MYLITE_OK;
-}
-
-static void table_select_table_rowset_deinit(struct mylite_table_select_table_rowset *rowset)
-{
-    if (rowset == NULL) {
-        return;
-    }
-    for (size_t row_index = 0U; row_index < rowset->row_count; ++row_index) {
-        mylite_statement_table_select_row_deinit(&rowset->rows[row_index]);
-    }
-    free(rowset->rows);
-    *rowset = (struct mylite_table_select_table_rowset){0};
 }
 
 static int process_outer_joined_table_range_rows(
@@ -13527,7 +13457,7 @@ process_outer_joined_table_range_row(mylite_stmt *stmt,
         }
     }
     if (status != MYLITE_OK) {
-        mylite_statement_table_select_row_deinit(&row);
+        mylite_select_row_deinit(&row);
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return status;
     }
@@ -13545,7 +13475,7 @@ process_outer_joined_table_range_row(mylite_stmt *stmt,
     if (status == MYLITE_OK) {
         status = process_joined_table_select_full_row(stmt, state, &row);
     }
-    mylite_statement_table_select_row_deinit(&row);
+    mylite_select_row_deinit(&row);
     return status;
 }
 
@@ -14203,7 +14133,7 @@ static int process_joined_table_select_nonaggregate_row(
 
     if (stmt->select_plan.order_key_count != 0U || distinct) {
         struct mylite_table_select_row copy = {0};
-        int status = table_select_row_copy(row, &copy);
+        int status = mylite_select_row_copy(row, &copy);
         bool duplicate = false;
 
         if (status == MYLITE_NOMEM) {
@@ -14213,16 +14143,16 @@ static int process_joined_table_select_nonaggregate_row(
             status = check_table_select_distinct_duplicate(stmt, &copy, &duplicate);
         }
         if (status == MYLITE_OK && duplicate) {
-            mylite_statement_table_select_row_deinit(&copy);
+            mylite_select_row_deinit(&copy);
             return MYLITE_OK;
         }
         if (status == MYLITE_OK && stmt->select_plan.order_key_count != 0U) {
             status = evaluate_table_select_order_values(stmt, &copy);
         }
         if (status == MYLITE_OK) {
-            status = append_table_select_result_row(stmt, &copy);
+            status = mylite_select_result_append_row(stmt->database, &stmt->select_result, &copy);
         }
-        mylite_statement_table_select_row_deinit(&copy);
+        mylite_select_row_deinit(&copy);
         return status;
     }
 
@@ -14231,7 +14161,8 @@ static int process_joined_table_select_nonaggregate_row(
                                             .matched_row = state->matched_row,
                                             .kept_count = stmt->select_result.row_count,
                                         })) {
-        int status = append_table_select_result_row_copy(stmt, row);
+        int status =
+            mylite_select_result_append_row_copy(stmt->database, &stmt->select_result, row);
 
         if (status != MYLITE_OK) {
             return status;
@@ -14262,7 +14193,7 @@ static int materialize_aggregate_table_select_result(mylite_stmt *stmt)
         status = sort_table_select_result_rows(stmt);
     }
     if (status == MYLITE_OK) {
-        status = apply_table_select_limit(stmt);
+        status = mylite_select_result_apply_limit(&stmt->select_result, &stmt->select_plan.limit);
     }
 
     for (size_t index = 0U; index < group_count; ++index) {
@@ -14299,11 +14230,11 @@ static int scan_aggregate_table_select_groups(mylite_stmt *stmt,
         }
         status = evaluate_table_select_row_matches(stmt, &row, &matches);
         if (status != MYLITE_OK) {
-            mylite_statement_table_select_row_deinit(&row);
+            mylite_select_row_deinit(&row);
             return status;
         }
         if (!matches) {
-            mylite_statement_table_select_row_deinit(&row);
+            mylite_select_row_deinit(&row);
             continue;
         }
 
@@ -14314,7 +14245,7 @@ static int scan_aggregate_table_select_groups(mylite_stmt *stmt,
         if (status == MYLITE_OK) {
             status = update_table_select_group(stmt, group, &row);
         }
-        mylite_statement_table_select_row_deinit(&row);
+        mylite_select_row_deinit(&row);
         if (status != MYLITE_OK) {
             return status;
         }
@@ -14377,16 +14308,16 @@ static int append_finalized_table_select_group(mylite_stmt *stmt,
         status = check_table_select_distinct_duplicate(stmt, &row, &duplicate);
     }
     if (status == MYLITE_OK && duplicate) {
-        mylite_statement_table_select_row_deinit(&row);
+        mylite_select_row_deinit(&row);
         return MYLITE_OK;
     }
     if (status == MYLITE_OK && having_matches && stmt->select_plan.order_key_count != 0U) {
         status = evaluate_table_select_order_values(stmt, &row);
     }
     if (status == MYLITE_OK && having_matches) {
-        status = append_table_select_result_row(stmt, &row);
+        status = mylite_select_result_append_row(stmt->database, &stmt->select_result, &row);
     }
-    mylite_statement_table_select_row_deinit(&row);
+    mylite_select_row_deinit(&row);
     return status;
 }
 
@@ -14475,140 +14406,6 @@ static int check_table_select_distinct_duplicate(mylite_stmt *stmt,
     return MYLITE_OK;
 }
 
-static int append_table_select_result_row(mylite_stmt *stmt, struct mylite_table_select_row *row)
-{
-    struct mylite_table_select_row *rows =
-        realloc(stmt->select_result.rows,
-                (stmt->select_result.row_count + 1U) * sizeof(*stmt->select_result.rows));
-
-    if (rows == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    stmt->select_result.rows = rows;
-    stmt->select_result.rows[stmt->select_result.row_count++] = *row;
-    *row = (struct mylite_table_select_row){0};
-    return MYLITE_OK;
-}
-
-static int append_table_select_result_row_copy(mylite_stmt *stmt,
-                                               const struct mylite_table_select_row *row)
-{
-    struct mylite_table_select_row copy = {0};
-    int status = table_select_row_copy(row, &copy);
-
-    if (status == MYLITE_NOMEM) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-    }
-    if (status == MYLITE_OK) {
-        status = append_table_select_result_row(stmt, &copy);
-    }
-    mylite_statement_table_select_row_deinit(&copy);
-    return status;
-}
-
-static int table_select_row_copy(const struct mylite_table_select_row *row,
-                                 struct mylite_table_select_row *out_row)
-{
-    int status = MYLITE_OK;
-
-    *out_row = (struct mylite_table_select_row){0};
-    out_row->value_count = row->value_count;
-    out_row->output_value_count = row->output_value_count;
-    out_row->order_value_count = row->order_value_count;
-    out_row->aggregate_value_count = row->aggregate_value_count;
-    out_row->source_row_index_count = row->source_row_index_count;
-
-    status = allocate_table_select_row_copy(out_row);
-    if (status == MYLITE_OK) {
-        status = copy_table_select_row_copy_values(row, out_row);
-    }
-    if (status != MYLITE_OK) {
-        mylite_statement_table_select_row_deinit(out_row);
-    }
-    return status;
-}
-
-static int allocate_table_select_row_copy(struct mylite_table_select_row *out_row)
-{
-    int status = allocate_table_select_expression_values(&out_row->values, out_row->value_count);
-
-    if (status == MYLITE_OK) {
-        status = allocate_table_select_expression_values(&out_row->output_values,
-                                                         out_row->output_value_count);
-    }
-    if (status == MYLITE_OK) {
-        status = allocate_table_select_expression_values(&out_row->order_values,
-                                                         out_row->order_value_count);
-    }
-    if (status == MYLITE_OK) {
-        status = allocate_table_select_expression_values(&out_row->aggregate_values,
-                                                         out_row->aggregate_value_count);
-    }
-    if (status == MYLITE_OK) {
-        status = allocate_table_select_source_row_indexes(&out_row->source_row_indexes,
-                                                          out_row->source_row_index_count);
-    }
-    return status;
-}
-
-static int allocate_table_select_expression_values(struct mylite_expression_value **out_values,
-                                                   size_t value_count)
-{
-    if (value_count == 0U) {
-        return MYLITE_OK;
-    }
-    *out_values = calloc(value_count, sizeof(**out_values));
-    return *out_values == NULL ? MYLITE_NOMEM : MYLITE_OK;
-}
-
-static int allocate_table_select_source_row_indexes(size_t **out_indexes, size_t index_count)
-{
-    if (index_count == 0U) {
-        return MYLITE_OK;
-    }
-    *out_indexes = calloc(index_count, sizeof(**out_indexes));
-    return *out_indexes == NULL ? MYLITE_NOMEM : MYLITE_OK;
-}
-
-static int copy_table_select_row_copy_values(const struct mylite_table_select_row *row,
-                                             struct mylite_table_select_row *out_row)
-{
-    int status =
-        copy_table_select_expression_values(row->values, out_row->values, out_row->value_count);
-
-    if (status == MYLITE_OK) {
-        status = copy_table_select_expression_values(row->output_values, out_row->output_values,
-                                                     out_row->output_value_count);
-    }
-    if (status == MYLITE_OK) {
-        status = copy_table_select_expression_values(row->order_values, out_row->order_values,
-                                                     out_row->order_value_count);
-    }
-    if (status == MYLITE_OK) {
-        status = copy_table_select_expression_values(
-            row->aggregate_values, out_row->aggregate_values, out_row->aggregate_value_count);
-    }
-    if (status == MYLITE_OK && out_row->source_row_index_count != 0U) {
-        memcpy(out_row->source_row_indexes, row->source_row_indexes,
-               out_row->source_row_index_count * sizeof(*out_row->source_row_indexes));
-    }
-    return status;
-}
-
-static int copy_table_select_expression_values(const struct mylite_expression_value *values,
-                                               struct mylite_expression_value *out_values,
-                                               size_t value_count)
-{
-    for (size_t index = 0U; index < value_count; ++index) {
-        if (mylite_expression_value_copy(&values[index], &out_values[index]) != 0) {
-            return MYLITE_NOMEM;
-        }
-    }
-    return MYLITE_OK;
-}
-
 static int copy_table_select_sqlite_row(mylite_stmt *stmt, struct mylite_table_select_row *out_row)
 {
     size_t column_count = mylite_select_plan_column_count(&stmt->select_plan);
@@ -14628,7 +14425,7 @@ static int copy_table_select_sqlite_row(mylite_stmt *stmt, struct mylite_table_s
         int status = copy_table_select_column_value(stmt, index, &out_row->values[index]);
 
         if (status != 0) {
-            mylite_statement_table_select_row_deinit(out_row);
+            mylite_select_row_deinit(out_row);
             (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
@@ -15604,37 +15401,10 @@ static bool table_select_text_descriptor_is_binary(const struct mylite_field_des
     }
 }
 
-static int apply_table_select_limit(mylite_stmt *stmt)
-{
-    const struct mylite_select_limit *limit = &stmt->select_plan.limit;
-    size_t kept = 0U;
-
-    if (!limit->has_limit) {
-        return MYLITE_OK;
-    }
-
-    for (size_t index = 0U; index < stmt->select_result.row_count; ++index) {
-        if (mylite_select_limit_row_is_kept(limit, (struct mylite_select_limit_position){
-                                                       .matched_row = (uint64_t)index,
-                                                       .kept_count = kept,
-                                                   })) {
-            if (kept != index) {
-                stmt->select_result.rows[kept] = stmt->select_result.rows[index];
-                stmt->select_result.rows[index] = (struct mylite_table_select_row){0};
-            }
-            ++kept;
-        } else {
-            mylite_statement_table_select_row_deinit(&stmt->select_result.rows[index]);
-        }
-    }
-    stmt->select_result.row_count = kept;
-    return MYLITE_OK;
-}
-
 static int set_table_select_current_row(mylite_stmt *stmt,
                                         const struct mylite_table_select_row *row)
 {
-    mylite_statement_table_select_current_values_deinit(&stmt->select_result);
+    mylite_select_result_current_values_deinit(&stmt->select_result);
 
     stmt->select_result.current_values =
         calloc(stmt->select_plan.output_count, sizeof(*stmt->select_result.current_values));
@@ -15730,21 +15500,6 @@ static int copy_table_select_row_value(const struct mylite_table_select_row *row
         return -1;
     }
     return mylite_expression_value_copy(&row->values[column_index], out_value);
-}
-
-static void table_select_table_rowsets_deinit(struct mylite_table_select_table_rowset *rowsets,
-                                              size_t rowset_count)
-{
-    if (rowsets == NULL) {
-        return;
-    }
-    for (size_t rowset_index = 0U; rowset_index < rowset_count; ++rowset_index) {
-        for (size_t row_index = 0U; row_index < rowsets[rowset_index].row_count; ++row_index) {
-            mylite_statement_table_select_row_deinit(&rowsets[rowset_index].rows[row_index]);
-        }
-        free(rowsets[rowset_index].rows);
-    }
-    free(rowsets);
 }
 
 static void
@@ -18196,7 +17951,7 @@ static void table_select_group_deinit(struct mylite_table_select_group *group)
         return;
     }
 
-    mylite_statement_table_select_row_deinit(&group->representative);
+    mylite_select_row_deinit(&group->representative);
     for (size_t index = 0U; index < group->group_value_count; ++index) {
         mylite_expression_value_deinit(&group->group_values[index]);
     }

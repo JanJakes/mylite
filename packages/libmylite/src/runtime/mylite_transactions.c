@@ -206,6 +206,17 @@ int mylite_transaction_execute_statement(mylite_stmt *stmt)
     return MYLITE_MISUSE;
 }
 
+void mylite_transaction_savepoint_plan_deinit(struct mylite_savepoint_plan *plan)
+{
+    if (plan == NULL) {
+        return;
+    }
+
+    free(plan->name);
+    free(plan->normalized_name);
+    *plan = (struct mylite_savepoint_plan){0};
+}
+
 static int execute_start_transaction_statement(mylite_stmt *stmt)
 {
     enum mylite_transaction_access_mode access_mode = MYLITE_TRANSACTION_ACCESS_READ_WRITE;

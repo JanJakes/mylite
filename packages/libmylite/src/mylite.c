@@ -3808,8 +3808,7 @@ void mylite_finalize(mylite_stmt *stmt)
     insert_duplicate_update_plan_deinit(&stmt->insert_update);
     update_plan_deinit(&stmt->update);
     delete_plan_deinit(&stmt->delete_plan);
-    free(stmt->savepoint.name);
-    free(stmt->savepoint.normalized_name);
+    mylite_transaction_savepoint_plan_deinit(&stmt->savepoint);
     mylite_statement_union_plan_deinit(&stmt->union_plan);
     select_plan_deinit(&stmt->select_plan);
     mylite_result_metadata_deinit(&stmt->result_metadata);

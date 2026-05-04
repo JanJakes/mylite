@@ -16,6 +16,7 @@ int mylite_transaction_copy_statement(const struct mylite_sql_ast_node *statemen
 int mylite_transaction_copy_savepoint_statement(const struct mylite_sql_ast_node *statement,
                                                 mylite_stmt *stmt);
 int mylite_transaction_execute_statement(mylite_stmt *stmt);
+void mylite_transaction_savepoint_plan_deinit(struct mylite_savepoint_plan *plan);
 int mylite_transaction_create_savepoint(mylite_db *database, const char *name,
                                         const char *normalized_name);
 size_t mylite_transaction_find_savepoint(const mylite_db *database, const char *normalized_name);

@@ -69,6 +69,7 @@ after every step.
   `src/runtime/mylite_span.{h,c}`.
 - [x] Extract transaction statements, state, savepoints, pending auto-increment
   tracking, and statement atomicity into `src/runtime/mylite_transactions.{h,c}`.
+- [x] Move savepoint statement cleanup into `src/runtime/mylite_transactions`.
 - [ ] Extract public statement lifecycle and result accessors into
   `src/runtime/mylite_statement.{h,c}` while keeping statement-family execution
   in `mylite.c`.

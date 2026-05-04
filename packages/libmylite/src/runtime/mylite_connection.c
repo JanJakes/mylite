@@ -2,6 +2,7 @@
 
 #include "mylite_catalog.h"
 #include "mylite_charset.h"
+#include "mylite_diagnostics.h"
 #include "mylite_expression.h"
 #include "mylite_runtime.h"
 #include "mylite_transactions.h"
@@ -98,6 +99,14 @@ int mylite_connection_set_default_state(mylite_db *database)
     database->character_set_results = mylite_charset_default_name();
     database->collation_connection = mylite_charset_default_collation_name();
     return MYLITE_OK;
+}
+
+int mylite_connection_set_released_error(mylite_db *database)
+{
+    int status = mylite_diagnostics_set_error_message(
+        database, "Connection was released by transaction completion");
+
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int open_sqlite_database(const char *filename, int flags, const char *vfs_name,

@@ -3675,7 +3675,6 @@ static int set_unknown_table_error(mylite_db *database, const char *schema_name,
 static int append_unknown_table_note(mylite_db *database, const char *schema_name,
                                      const char *table_name);
 static bool write_statement_kind(enum mylite_stmt_kind kind);
-static int set_connection_released_error(mylite_db *database);
 static bool is_valid_encryption_value(const char *value);
 static bool
 insert_column_uses_numeric_implicit_default(const struct mylite_insert_table_column *column);
@@ -3760,7 +3759,7 @@ int mylite_prepare(mylite_db *database, const char *sql, size_t length, mylite_s
 
     mylite_diagnostics_clear_error_message(database);
     if (database->transaction_released) {
-        return set_connection_released_error(database);
+        return mylite_connection_set_released_error(database);
     }
     parse_status = mylite_sql_parse(
         (struct mylite_sql_parse_config){
@@ -3846,7 +3845,7 @@ int mylite_step(mylite_stmt *stmt)
 
     mylite_diagnostics_clear_error_message(stmt->database);
     if (stmt->database->transaction_released) {
-        return set_connection_released_error(stmt->database);
+        return mylite_connection_set_released_error(stmt->database);
     }
     if (!stmt->executed && !stmt->preserve_prepare_warnings) {
         mylite_diagnostics_clear_warnings(stmt->database);
@@ -41451,14 +41450,6 @@ static bool write_statement_kind(enum mylite_stmt_kind kind)
         return true;
     }
     return false;
-}
-
-static int set_connection_released_error(mylite_db *database)
-{
-    int status = mylite_diagnostics_set_error_message(
-        database, "Connection was released by transaction completion");
-
-    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static bool is_valid_encryption_value(const char *value)

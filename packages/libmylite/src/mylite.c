@@ -41,22 +41,7 @@
 #include <string.h>
 #include <time.h>
 
-static const unsigned int mylite_mysql_binary_charset_id = 63U;
-static const unsigned int mylite_mysql_utf8mb4_bin_charset_id = 46U;
-static const unsigned int mylite_mysql_utf8mb4_0900_ai_ci_charset_id = 255U;
-static const char mylite_mysql_binary_charset_name[] = "binary";
-static const char mylite_mysql_latin1_charset_name[] = "latin1";
-static const char mylite_mysql_latin1_swedish_ci_collation_name[] = "latin1_swedish_ci";
-static const char mylite_mysql_utf8mb3_charset_name[] = "utf8mb3";
-static const char mylite_mysql_utf8mb3_general_ci_collation_name[] = "utf8mb3_general_ci";
-static const char mylite_mysql_ascii_charset_name[] = "ascii";
-static const char mylite_mysql_ascii_general_ci_collation_name[] = "ascii_general_ci";
 static const char mylite_embedded_identity[] = "mylite@localhost";
-static const int mylite_mysql_coercibility_implicit = 2;
-static const int mylite_mysql_coercibility_system_constant = 3;
-static const int mylite_mysql_coercibility_coercible = 4;
-static const int mylite_mysql_coercibility_numeric = 5;
-static const int mylite_mysql_coercibility_ignorable = 6;
 static const unsigned int mylite_utf8_continuation_mask = 0xC0U;
 static const unsigned int mylite_utf8_continuation_marker = 0x80U;
 static const int mylite_mysql_decimal_conversion_base = 10;

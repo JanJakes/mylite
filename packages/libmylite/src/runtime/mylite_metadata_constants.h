@@ -4,6 +4,21 @@
 #include <stdint.h>
 
 extern const unsigned int mylite_mysql_not_fixed_decimals;
+extern const unsigned int mylite_mysql_binary_charset_id;
+extern const unsigned int mylite_mysql_utf8mb4_bin_charset_id;
+extern const unsigned int mylite_mysql_utf8mb4_0900_ai_ci_charset_id;
+extern const char mylite_mysql_binary_charset_name[];
+extern const char mylite_mysql_latin1_charset_name[];
+extern const char mylite_mysql_latin1_swedish_ci_collation_name[];
+extern const char mylite_mysql_utf8mb3_charset_name[];
+extern const char mylite_mysql_utf8mb3_general_ci_collation_name[];
+extern const char mylite_mysql_ascii_charset_name[];
+extern const char mylite_mysql_ascii_general_ci_collation_name[];
+extern const int mylite_mysql_coercibility_implicit;
+extern const int mylite_mysql_coercibility_system_constant;
+extern const int mylite_mysql_coercibility_coercible;
+extern const int mylite_mysql_coercibility_numeric;
+extern const int mylite_mysql_coercibility_ignorable;
 extern const uint64_t mylite_mysql_decimal_divide_display_length;
 extern const unsigned int mylite_mysql_decimal_divide_scale;
 extern const uint64_t mylite_mysql_sum_integer_display_length;

@@ -251,7 +251,7 @@ only the core object model and transitional shared helpers listed here:
   modules without creating unused-header warnings.
 - [x] Move MySQL display-length constants used by metadata inference into
   `mylite_metadata`.
-- [ ] Move charset/collation constant names and ids into charset/metadata
+- [x] Move charset/collation constant names and ids into charset/metadata
   boundaries.
 - [x] Move storage-engine registry rows into `mylite_show` or
   `mylite_information_schema`.

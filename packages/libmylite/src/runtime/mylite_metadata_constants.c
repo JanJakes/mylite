@@ -1,6 +1,21 @@
 #include "mylite_metadata_constants.h"
 
 const unsigned int mylite_mysql_not_fixed_decimals = 31U;
+const unsigned int mylite_mysql_binary_charset_id = 63U;
+const unsigned int mylite_mysql_utf8mb4_bin_charset_id = 46U;
+const unsigned int mylite_mysql_utf8mb4_0900_ai_ci_charset_id = 255U;
+const char mylite_mysql_binary_charset_name[] = "binary";
+const char mylite_mysql_latin1_charset_name[] = "latin1";
+const char mylite_mysql_latin1_swedish_ci_collation_name[] = "latin1_swedish_ci";
+const char mylite_mysql_utf8mb3_charset_name[] = "utf8mb3";
+const char mylite_mysql_utf8mb3_general_ci_collation_name[] = "utf8mb3_general_ci";
+const char mylite_mysql_ascii_charset_name[] = "ascii";
+const char mylite_mysql_ascii_general_ci_collation_name[] = "ascii_general_ci";
+const int mylite_mysql_coercibility_implicit = 2;
+const int mylite_mysql_coercibility_system_constant = 3;
+const int mylite_mysql_coercibility_coercible = 4;
+const int mylite_mysql_coercibility_numeric = 5;
+const int mylite_mysql_coercibility_ignorable = 6;
 const uint64_t mylite_mysql_decimal_divide_display_length = 7U;
 const unsigned int mylite_mysql_decimal_divide_scale = 4U;
 const uint64_t mylite_mysql_sum_integer_display_length = 33U;

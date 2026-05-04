@@ -1,7 +1,7 @@
 #ifndef MYLITE_RUNTIME_MYLITE_TABLE_DDL_H
 #define MYLITE_RUNTIME_MYLITE_TABLE_DDL_H
 
-#include "mylite_runtime.h"
+#include "mylite_table_ddl_types.h"
 
 void mylite_table_ddl_create_table_plan_deinit(struct mylite_create_table_plan *plan);
 void mylite_table_ddl_drop_table_plan_deinit(struct mylite_drop_table_plan *plan);

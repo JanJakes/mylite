@@ -201,7 +201,7 @@ Rules for future moves:
 - [x] Add `mylite_schema_types.h`; move schema option/default/presence structs.
 - [x] Add `mylite_transaction_types.h`; move transaction enums, savepoint
   state, pending auto-increment state, and statement atomicity structs.
-- [ ] Add `mylite_table_ddl_types.h`; move create/drop/rename/truncate/alter
+- [x] Add `mylite_table_ddl_types.h`; move create/drop/rename/truncate/alter
   table and index DDL plan structs.
 - [ ] Add `mylite_dml_types.h`; move insert/update/delete plan and execution
   structs.

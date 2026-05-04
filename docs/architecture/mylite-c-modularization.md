@@ -375,6 +375,8 @@ only the core object model and transitional shared helpers listed here:
 - [x] Move insert/replacement AST copy helpers into `mylite_dml`.
 - [x] Move update/delete AST copy helpers into `mylite_dml`.
 - [x] Move insert target validation into `mylite_dml`.
+- [x] Move insert column-list, row-alias, and `INSERT ... SET` target
+  validation into `mylite_dml`.
 - [x] Move insert-table metadata loading behind catalog/metadata helper APIs.
 - [x] Move insert bound-value conversion into `mylite_dml`.
 - [x] Move shared insert row-write helpers into `mylite_dml`.

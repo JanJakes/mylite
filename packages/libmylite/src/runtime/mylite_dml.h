@@ -18,6 +18,19 @@ int mylite_dml_copy_replace_set_statement(const struct mylite_sql_ast_node *stat
 int mylite_dml_validate_insert_target(mylite_db *database, const char *selected_schema,
                                       const struct mylite_insert_values_plan *plan,
                                       const char **out_schema_name);
+int mylite_dml_validate_insert_column_list(mylite_db *database,
+                                           const struct mylite_insert_values_plan *plan,
+                                           const struct mylite_insert_table *table,
+                                           size_t **out_column_indexes);
+int mylite_dml_validate_insert_row_alias(mylite_db *database,
+                                         const struct mylite_insert_values_plan *plan,
+                                         size_t source_column_count);
+int mylite_dml_validate_insert_set_assignments(mylite_db *database,
+                                               const struct mylite_insert_values_plan *values_plan,
+                                               const struct mylite_insert_set_plan *set_plan,
+                                               const struct mylite_insert_table *table,
+                                               const char *schema_name, size_t **out_column_indexes,
+                                               size_t *out_column_index_count);
 int mylite_dml_load_write_table(mylite_db *database, const char *schema_name,
                                 const char *table_name, struct mylite_insert_table *out_table);
 int mylite_dml_initialize_insert_ignore_warning_state(mylite_db *database,

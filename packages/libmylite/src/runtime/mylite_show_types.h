@@ -2,7 +2,6 @@
 #define MYLITE_RUNTIME_MYLITE_SHOW_TYPES_H
 
 #include "sql/mylite_ast.h"
-#include "sqlite3.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -93,30 +92,11 @@ struct mylite_show_index_query {
     const char *table_name;
 };
 
-struct mylite_show_create_table_target {
-    char *schema_name;
-    char *table_name;
-};
-
 struct mylite_show_diagnostics_query {
     enum mylite_sql_ast_show_diagnostics_kind kind;
     uint64_t offset;
     uint64_t row_count;
     bool has_limit;
-};
-
-struct mylite_show_create_table_info {
-    char *engine;
-    bool has_auto_increment;
-    sqlite3_int64 auto_increment;
-    char *table_collation;
-    char *table_comment;
-};
-
-struct mylite_show_create_column_collation {
-    const char *character_set_name;
-    const char *column_collation;
-    const char *table_collation;
 };
 
 #endif

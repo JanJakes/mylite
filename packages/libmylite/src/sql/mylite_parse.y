@@ -29,6 +29,8 @@
 %type quantified_comparison_operator { struct mylite_sql_parser_comparison_operator }
 %type subquery_quantifier { enum mylite_sql_ast_subquery_quantifier }
 %type trim_direction { enum mylite_sql_ast_trim_direction }
+%type interval_unit { enum mylite_sql_ast_interval_unit }
+%type date_interval_function_name { struct mylite_sql_ast_node * }
 %type index_class { enum mylite_sql_ast_index_class }
 %type fulltext_or_spatial { struct mylite_sql_parser_index_class_token }
 %type index_or_key { struct mylite_sql_parser_alter_table_index_spelling_token }
@@ -101,12 +103,12 @@
 %right UPLUS UMINUS BIT_NOT.
 %right LOGICAL_NOT.
 %right KEY.
-%fallback IDENTIFIER AFTER AUTO_INCREMENT BEGIN BOOL BOOLEAN BTREE CHAIN CHARSET COLLATION
-    COLUMN_FORMAT COMMENT COMMIT CONSISTENT COUNT DATE DATETIME DISK DYNAMIC ENGINE
-    ENGINES ENGINE_ATTRIBUTE ENCRYPTION ERRORS FIRST FIXED HASH INSTANT INVISIBLE KEY_BLOCK_SIZE
-    MEMORY MODIFY NCHAR NO NVARCHAR OFFSET ONLY POSITION ROLLBACK SAVEPOINT SECONDARY_ENGINE_ATTRIBUTE
-    SIGNED SNAPSHOT START STORAGE TEMPORARY TEXT TIME TIMESTAMP TRANSACTION TYPE VISIBLE VALUE
-    WARNINGS WORK YEAR.
+%fallback IDENTIFIER ADDDATE AFTER AUTO_INCREMENT BEGIN BOOL BOOLEAN BTREE CHAIN CHARSET COLLATION
+    COLUMN_FORMAT COMMENT COMMIT CONSISTENT COUNT DATE DATETIME DATE_ADD DATE_SUB DAY DISK DYNAMIC
+    ENGINE ENGINES ENGINE_ATTRIBUTE ENCRYPTION ERRORS FIRST FIXED HASH HOUR INSTANT INVISIBLE
+    KEY_BLOCK_SIZE MEMORY MINUTE MODIFY MONTH NCHAR NO NVARCHAR OFFSET ONLY POSITION ROLLBACK
+    SAVEPOINT SECOND SECONDARY_ENGINE_ATTRIBUTE SIGNED SNAPSHOT START STORAGE SUBDATE TEMPORARY TEXT
+    TIME TIMESTAMP TRANSACTION TYPE VISIBLE VALUE WARNINGS WEEK WORK YEAR.
 
 input ::= statement_list(A). {
     mylite_sql_parser_state_set_root(state, A);
@@ -3310,6 +3312,16 @@ scalar_function_call(A) ::= function_name(B) LPAREN(L) RPAREN(R). {
 scalar_function_call(A) ::= function_name(B) LPAREN(L) function_argument_list(C) RPAREN(R). {
     A = mylite_sql_parser_make_function_call(state, B, L, C, R);
 }
+scalar_function_call(A) ::= date_interval_function_name(B) LPAREN(L) expression(C) COMMA INTERVAL expression(D) interval_unit(U) RPAREN(R). {
+    A = mylite_sql_parser_make_interval_function_call(
+        state, B, (struct mylite_sql_parser_interval_function_call_parts){
+                      .left_paren = L,
+                      .temporal = C,
+                      .amount = D,
+                      .unit = U,
+                      .right_paren = R,
+                  });
+}
 scalar_function_call(A) ::= CHAR(T) LPAREN(L) function_argument_list(C) RPAREN(R). {
     A = mylite_sql_parser_make_char_function_call(
         state, (struct mylite_sql_parser_char_function_call_parts){
@@ -3387,6 +3399,41 @@ trim_direction(A) ::= LEADING. {
 }
 trim_direction(A) ::= TRAILING. {
     A = MYLITE_SQL_AST_TRIM_DIRECTION_TRAILING;
+}
+
+interval_unit(A) ::= DAY. {
+    A = MYLITE_SQL_AST_INTERVAL_UNIT_DAY;
+}
+interval_unit(A) ::= WEEK. {
+    A = MYLITE_SQL_AST_INTERVAL_UNIT_WEEK;
+}
+interval_unit(A) ::= MONTH. {
+    A = MYLITE_SQL_AST_INTERVAL_UNIT_MONTH;
+}
+interval_unit(A) ::= YEAR. {
+    A = MYLITE_SQL_AST_INTERVAL_UNIT_YEAR;
+}
+interval_unit(A) ::= HOUR. {
+    A = MYLITE_SQL_AST_INTERVAL_UNIT_HOUR;
+}
+interval_unit(A) ::= MINUTE. {
+    A = MYLITE_SQL_AST_INTERVAL_UNIT_MINUTE;
+}
+interval_unit(A) ::= SECOND. {
+    A = MYLITE_SQL_AST_INTERVAL_UNIT_SECOND;
+}
+
+date_interval_function_name(A) ::= DATE_ADD(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+date_interval_function_name(A) ::= DATE_SUB(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+date_interval_function_name(A) ::= ADDDATE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+date_interval_function_name(A) ::= SUBDATE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
 }
 
 function_name(A) ::= identifier(B). {

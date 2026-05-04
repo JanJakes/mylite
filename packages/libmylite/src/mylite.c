@@ -206,6 +206,7 @@ static const uint64_t mylite_mysql_int_signed_display_length = 11U;
 static const uint64_t mylite_mysql_year_display_length = 4U;
 static const uint64_t mylite_mysql_date_display_length = 10U;
 static const uint64_t mylite_mysql_datediff_function_display_length = 9U;
+static const uint64_t mylite_mysql_date_arithmetic_string_result_chars = 29U;
 static const uint64_t mylite_mysql_time_display_length = 10U;
 static const uint64_t mylite_mysql_current_time_display_length = 8U;
 static const uint64_t mylite_mysql_current_time_fraction_display_base = 9U;
@@ -2131,12 +2132,24 @@ static bool infer_session_function_descriptor(mylite_db *database,
 static bool
 infer_current_temporal_function_descriptor(const struct mylite_sql_ast_node *expression,
                                            struct mylite_field_descriptor *out_descriptor);
+static int infer_temporal_function_descriptor(mylite_db *database,
+                                              const struct mylite_select_plan *plan,
+                                              const struct mylite_sql_ast_node *expression,
+                                              struct mylite_field_descriptor *out_descriptor);
 static struct mylite_field_descriptor current_datetime_function_descriptor(unsigned int fsp);
 static struct mylite_field_descriptor current_date_function_descriptor(void);
 static struct mylite_field_descriptor current_time_function_descriptor(unsigned int fsp);
 static bool
 infer_temporal_scalar_function_descriptor(const struct mylite_sql_ast_node *name,
                                           struct mylite_field_descriptor *out_descriptor);
+static int infer_date_interval_function_descriptor(mylite_db *database,
+                                                   const struct mylite_select_plan *plan,
+                                                   const struct mylite_sql_ast_node *expression,
+                                                   struct mylite_field_descriptor *out_descriptor);
+static struct mylite_field_descriptor date_interval_string_descriptor(mylite_db *database);
+static struct mylite_field_descriptor date_interval_datetime_descriptor(unsigned int decimals);
+static bool function_name_is_date_interval_arithmetic(const struct mylite_sql_ast_node *name);
+static bool interval_unit_has_time_part(enum mylite_sql_ast_interval_unit unit);
 static bool infer_fixed_integer_function_descriptor(const struct mylite_sql_ast_node *name,
                                                     bool result_nullable,
                                                     struct mylite_field_descriptor *out_descriptor);
@@ -2334,6 +2347,8 @@ static bool field_descriptor_has_text_result(const struct mylite_field_descripto
 static bool field_descriptor_has_numeric_result(const struct mylite_field_descriptor *descriptor);
 static bool field_descriptor_has_decimal_result(const struct mylite_field_descriptor *descriptor);
 static bool field_descriptor_has_double_result(const struct mylite_field_descriptor *descriptor);
+static bool field_descriptor_preserves_temporal_fraction_digits(
+    const struct mylite_field_descriptor *descriptor);
 static struct mylite_field_descriptor null_expression_descriptor(void);
 static struct mylite_field_descriptor
 cast_signed_descriptor(const struct mylite_field_descriptor *source);
@@ -3192,6 +3207,7 @@ static char *build_update_scan_sql(mylite_db *database, const struct mylite_sele
 static int copy_update_sqlite_row(mylite_stmt *stmt, const struct mylite_select_table *table,
                                   sqlite3_stmt *scan, struct mylite_update_row *out_row);
 static int copy_update_sqlite_column_value(sqlite3_stmt *scan, int column,
+                                           const struct mylite_field_descriptor *descriptor,
                                            struct mylite_expression_value *out_value);
 static int evaluate_update_row_matches(mylite_stmt *stmt, const struct mylite_select_table *table,
                                        const struct mylite_update_row *row, bool *out_matches);
@@ -10796,8 +10812,9 @@ static int infer_function_expression_descriptor(mylite_db *database,
     if (infer_common_scalar_function_descriptor(database, name, result_nullable, out_descriptor)) {
         return MYLITE_OK;
     }
-    if (infer_current_temporal_function_descriptor(expression, out_descriptor)) {
-        return MYLITE_OK;
+    status = infer_temporal_function_descriptor(database, plan, expression, out_descriptor);
+    if (status != MYLITE_UNSUPPORTED) {
+        return status;
     }
     status = infer_variadic_scalar_function_descriptor(database, plan, expression, value,
                                                        result_nullable, out_descriptor);
@@ -10872,6 +10889,18 @@ static int infer_function_expression_descriptor(mylite_db *database,
 
     *out_descriptor = expression_value_descriptor(value);
     return MYLITE_OK;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int infer_temporal_function_descriptor(mylite_db *database,
+                                              const struct mylite_select_plan *plan,
+                                              const struct mylite_sql_ast_node *expression,
+                                              struct mylite_field_descriptor *out_descriptor)
+{
+    if (infer_current_temporal_function_descriptor(expression, out_descriptor)) {
+        return MYLITE_OK;
+    }
+    return infer_date_interval_function_descriptor(database, plan, expression, out_descriptor);
 }
 
 static bool infer_common_scalar_function_descriptor(mylite_db *database,
@@ -11853,6 +11882,87 @@ infer_temporal_scalar_function_descriptor(const struct mylite_sql_ast_node *name
         return true;
     }
     return false;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int infer_date_interval_function_descriptor(mylite_db *database,
+                                                   const struct mylite_select_plan *plan,
+                                                   const struct mylite_sql_ast_node *expression,
+                                                   struct mylite_field_descriptor *out_descriptor)
+{
+    const struct mylite_sql_ast_node *name = child_at(expression, 0U);
+    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *temporal = child_at(arguments, 0U);
+    struct mylite_field_descriptor temporal_descriptor = field_descriptor_defaults();
+    int status = MYLITE_OK;
+
+    if (!function_name_is_date_interval_arithmetic(name) || !expression->interval_spec) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    status = infer_expression_descriptor(database, plan, temporal, NULL, &temporal_descriptor);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (temporal_descriptor.type == MYLITE_FIELD_TYPE_DATE) {
+        if (interval_unit_has_time_part(expression->interval_unit)) {
+            *out_descriptor = date_interval_datetime_descriptor(0U);
+        } else {
+            *out_descriptor = (struct mylite_field_descriptor){
+                .type = MYLITE_FIELD_TYPE_DATE,
+                .flags = MYLITE_FIELD_FLAG_BINARY,
+                .length = mylite_mysql_date_display_length,
+                .charset_id = mylite_mysql_binary_charset_id,
+                .nullable = true,
+            };
+            field_descriptor_set_nullable(out_descriptor, true);
+        }
+        return MYLITE_OK;
+    }
+    if (temporal_descriptor.type == MYLITE_FIELD_TYPE_DATETIME ||
+        temporal_descriptor.type == MYLITE_FIELD_TYPE_TIMESTAMP) {
+        *out_descriptor = date_interval_datetime_descriptor(temporal_descriptor.decimals);
+        return MYLITE_OK;
+    }
+
+    *out_descriptor = date_interval_string_descriptor(database);
+    return MYLITE_OK;
+}
+
+static struct mylite_field_descriptor date_interval_string_descriptor(mylite_db *database)
+{
+    uint64_t max_bytes_per_character = connection_character_max_length(database);
+    uint64_t length =
+        max_bytes_per_character > UINT64_MAX / mylite_mysql_date_arithmetic_string_result_chars
+            ? mylite_mysql_long_text_length
+            : mylite_mysql_date_arithmetic_string_result_chars * max_bytes_per_character;
+    struct mylite_field_descriptor descriptor = {
+        .type = MYLITE_FIELD_TYPE_STRING,
+        .flags = 0U,
+        .length = length,
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = field_descriptor_connection_charset_id(database),
+        .nullable = true,
+    };
+
+    field_descriptor_set_nullable(&descriptor, true);
+    return descriptor;
+}
+
+static struct mylite_field_descriptor date_interval_datetime_descriptor(unsigned int decimals)
+{
+    struct mylite_field_descriptor descriptor = {
+        .type = MYLITE_FIELD_TYPE_DATETIME,
+        .flags = MYLITE_FIELD_FLAG_BINARY,
+        .length = decimals == 0U ? mylite_mysql_datetime_display_length
+                                 : mylite_mysql_datetime_fraction_display_base + decimals,
+        .decimals = decimals,
+        .charset_id = mylite_mysql_binary_charset_id,
+        .nullable = true,
+    };
+
+    field_descriptor_set_nullable(&descriptor, true);
+    return descriptor;
 }
 
 static bool infer_list_index_function_descriptor(const struct mylite_sql_ast_node *name,
@@ -12856,6 +12966,18 @@ static bool field_descriptor_has_double_result(const struct mylite_field_descrip
     return false;
 }
 
+static bool field_descriptor_preserves_temporal_fraction_digits(
+    const struct mylite_field_descriptor *descriptor)
+{
+    if (descriptor == NULL) {
+        return false;
+    }
+    if (descriptor->type == MYLITE_FIELD_TYPE_DATETIME) {
+        return true;
+    }
+    return descriptor->type == MYLITE_FIELD_TYPE_TIMESTAMP;
+}
+
 static struct mylite_field_descriptor null_expression_descriptor(void)
 {
     return (struct mylite_field_descriptor){
@@ -13664,6 +13786,24 @@ static bool function_name_is_datediff(const struct mylite_sql_ast_node *name)
     static const char *const names[] = {"DATEDIFF"};
 
     return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_is_date_interval_arithmetic(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"DATE_ADD", "DATE_SUB", "ADDDATE", "SUBDATE"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool interval_unit_has_time_part(enum mylite_sql_ast_interval_unit unit)
+{
+    if (unit == MYLITE_SQL_AST_INTERVAL_UNIT_HOUR) {
+        return true;
+    }
+    if (unit == MYLITE_SQL_AST_INTERVAL_UNIT_MINUTE) {
+        return true;
+    }
+    return unit == MYLITE_SQL_AST_INTERVAL_UNIT_SECOND;
 }
 
 static bool function_name_is_concat_ws(const struct mylite_sql_ast_node *name)
@@ -26078,7 +26218,8 @@ static int copy_update_sqlite_row(mylite_stmt *stmt, const struct mylite_select_
     out_row->value_count = table->column_count;
 
     for (size_t index = 0U; index < table->column_count; ++index) {
-        if (copy_update_sqlite_column_value(scan, (int)index + 1, &out_row->values[index]) != 0) {
+        if (copy_update_sqlite_column_value(scan, (int)index + 1, &table->columns[index].descriptor,
+                                            &out_row->values[index]) != 0) {
             update_row_deinit(out_row);
             (void)set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
@@ -26088,6 +26229,7 @@ static int copy_update_sqlite_row(mylite_stmt *stmt, const struct mylite_select_
 }
 
 static int copy_update_sqlite_column_value(sqlite3_stmt *scan, int column,
+                                           const struct mylite_field_descriptor *descriptor,
                                            struct mylite_expression_value *out_value)
 {
     int sqlite_type = sqlite3_column_type(scan, column);
@@ -26116,6 +26258,8 @@ static int copy_update_sqlite_column_value(sqlite3_stmt *scan, int column,
         out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
         out_value->text_length = bytes < 0 ? 0U : (size_t)bytes;
         out_value->text_value = copy_span_text((const char *)text, out_value->text_length);
+        out_value->preserve_temporal_fraction_digits =
+            field_descriptor_preserves_temporal_fraction_digits(descriptor);
         return out_value->text_value == NULL ? -1 : 0;
     }
     default:
@@ -28092,6 +28236,7 @@ static int set_current_temporal_value(mylite_stmt *stmt, const char *format, siz
 
     *out_value = (struct mylite_expression_value){
         .kind = MYLITE_EXPRESSION_VALUE_TEXT,
+        .preserve_temporal_fraction_digits = true,
         .text_value = text,
         .text_length = text_length,
     };
@@ -31739,6 +31884,7 @@ static int copy_sqlite_column_value(sqlite3_stmt *sqlite_stmt, size_t column_ind
         int bytes = sqlite3_column_bytes(sqlite_stmt, (int)column_index);
 
         out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
+        out_value->preserve_temporal_fraction_digits = false;
         out_value->text_length = bytes < 0 ? 0U : (size_t)bytes;
         out_value->text_value = copy_span_text((const char *)text, out_value->text_length);
         return out_value->text_value == NULL ? -1 : 0;
@@ -33269,12 +33415,22 @@ static int resolve_table_select_expression_identifier(void *user_data,
 static int copy_table_select_column_value(mylite_stmt *stmt, size_t column_index,
                                           struct mylite_expression_value *out_value)
 {
+    const struct mylite_select_column *column = NULL;
+    int status = 0;
+
     if (stmt == NULL || stmt->sqlite_stmt == NULL ||
         column_index >= select_plan_column_count(&stmt->select_plan)) {
         return -1;
     }
 
-    return copy_sqlite_column_value(stmt->sqlite_stmt, column_index, out_value);
+    status = copy_sqlite_column_value(stmt->sqlite_stmt, column_index, out_value);
+    if (status == 0) {
+        column = select_plan_column_const(&stmt->select_plan, column_index, NULL);
+        out_value->preserve_temporal_fraction_digits =
+            field_descriptor_preserves_temporal_fraction_digits(
+                column == NULL ? NULL : &column->descriptor);
+    }
+    return status;
 }
 
 static int map_table_select_expression_eval_status(mylite_stmt *stmt, int status)

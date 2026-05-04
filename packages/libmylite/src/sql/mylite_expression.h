@@ -39,6 +39,7 @@ struct mylite_expression_value {
     double real_value;
     bool compact_real_text;
     bool suppress_text_numeric_warnings;
+    bool preserve_temporal_fraction_digits;
     char *text_value;
     size_t text_length;
 };

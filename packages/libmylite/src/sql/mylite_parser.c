@@ -65,6 +65,7 @@ static bool lexer_next_non_comment(struct mylite_sql_lexer *lexer,
 static bool token_text_equals(const struct mylite_sql_token *token, const char *text);
 static bool span_text_equals(struct mylite_sql_source_span span, const char *text);
 static bool function_name_is_position(const struct mylite_sql_ast_node *name);
+static bool function_name_is_date_interval_arithmetic(const struct mylite_sql_ast_node *name);
 static bool function_name_has_parser_checked_arity(const struct mylite_sql_ast_node *name,
                                                    size_t *out_arity);
 static bool
@@ -4951,6 +4952,27 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_function_call(
     return call;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_interval_function_call(
+    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
+    struct mylite_sql_parser_interval_function_call_parts parts)
+{
+    struct mylite_sql_ast_node *argument_list = NULL;
+    struct mylite_sql_ast_node *call = NULL;
+
+    if (!function_name_is_date_interval_arithmetic(name) ||
+        parts.unit == MYLITE_SQL_AST_INTERVAL_UNIT_NONE) {
+        mylite_sql_parser_state_parse_failed(state);
+        return NULL;
+    }
+
+    argument_list = mylite_sql_parser_make_function_argument_list(state, parts.temporal);
+    argument_list = mylite_sql_parser_append_function_argument(state, argument_list, parts.amount);
+    call = mylite_sql_parser_make_function_call(state, name, parts.left_paren, argument_list,
+                                                parts.right_paren);
+    mylite_sql_ast_node_set_interval_spec(call, parts.unit);
+    return call;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_from_function_call(
     struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
     struct mylite_sql_token left_paren, struct mylite_sql_ast_node *first,
@@ -5840,6 +5862,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
     static const struct mylite_sql_parser_keyword_token keywords[] = {
         {"ACTION", MYLITE_SQL_PARSE_ACTION},
         {"ADD", MYLITE_SQL_PARSE_ADD},
+        {"ADDDATE", MYLITE_SQL_PARSE_ADDDATE},
         {"AFTER", MYLITE_SQL_PARSE_AFTER},
         {"ALL", MYLITE_SQL_PARSE_ALL},
         {"ALGORITHM", MYLITE_SQL_PARSE_ALGORITHM},
@@ -5891,6 +5914,9 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"DATABASES", MYLITE_SQL_PARSE_DATABASES},
         {"DATE", MYLITE_SQL_PARSE_DATE},
         {"DATETIME", MYLITE_SQL_PARSE_DATETIME},
+        {"DATE_ADD", MYLITE_SQL_PARSE_DATE_ADD},
+        {"DATE_SUB", MYLITE_SQL_PARSE_DATE_SUB},
+        {"DAY", MYLITE_SQL_PARSE_DAY},
         {"DEC", MYLITE_SQL_PARSE_DEC},
         {"DECIMAL", MYLITE_SQL_PARSE_DECIMALKW},
         {"DEFAULT", MYLITE_SQL_PARSE_DEFAULT},
@@ -5936,6 +5962,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"GROUP", MYLITE_SQL_PARSE_GROUP},
         {"HASH", MYLITE_SQL_PARSE_HASH},
         {"HAVING", MYLITE_SQL_PARSE_HAVING},
+        {"HOUR", MYLITE_SQL_PARSE_HOUR},
         {"IF", MYLITE_SQL_PARSE_IF},
         {"IGNORE", MYLITE_SQL_PARSE_IGNORE},
         {"IN", MYLITE_SQL_PARSE_IN},
@@ -5952,6 +5979,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"INSTANT", MYLITE_SQL_PARSE_INSTANT},
         {"INNER", MYLITE_SQL_PARSE_INNER},
         {"INPLACE", MYLITE_SQL_PARSE_INPLACE},
+        {"INTERVAL", MYLITE_SQL_PARSE_INTERVAL},
         {"INVISIBLE", MYLITE_SQL_PARSE_INVISIBLE},
         {"INTO", MYLITE_SQL_PARSE_INTO},
         {"IS", MYLITE_SQL_PARSE_IS},
@@ -5977,8 +6005,10 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"MEDIUMTEXT", MYLITE_SQL_PARSE_MEDIUMTEXT},
         {"MEMORY", MYLITE_SQL_PARSE_MEMORY},
         {"MIDDLEINT", MYLITE_SQL_PARSE_MIDDLEINT},
+        {"MINUTE", MYLITE_SQL_PARSE_MINUTE},
         {"MOD", MYLITE_SQL_PARSE_MOD},
         {"MODIFY", MYLITE_SQL_PARSE_MODIFY},
+        {"MONTH", MYLITE_SQL_PARSE_MONTH},
         {"NAMES", MYLITE_SQL_PARSE_NAMES},
         {"NATIONAL", MYLITE_SQL_PARSE_NATIONAL},
         {"NCHAR", MYLITE_SQL_PARSE_NCHAR},
@@ -6012,6 +6042,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"SCHEMA", MYLITE_SQL_PARSE_SCHEMA},
         {"SCHEMAS", MYLITE_SQL_PARSE_SCHEMAS},
         {"SAVEPOINT", MYLITE_SQL_PARSE_SAVEPOINT},
+        {"SECOND", MYLITE_SQL_PARSE_SECOND},
         {"SECONDARY_ENGINE_ATTRIBUTE", MYLITE_SQL_PARSE_SECONDARY_ENGINE_ATTRIBUTE},
         {"SELECT", MYLITE_SQL_PARSE_SELECT},
         {"SESSION", MYLITE_SQL_PARSE_SESSION},
@@ -6027,6 +6058,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"START", MYLITE_SQL_PARSE_START},
         {"STATUS", MYLITE_SQL_PARSE_STATUS},
         {"STORAGE", MYLITE_SQL_PARSE_STORAGE},
+        {"SUBDATE", MYLITE_SQL_PARSE_SUBDATE},
         {"TABLE", MYLITE_SQL_PARSE_TABLE},
         {"TABLES", MYLITE_SQL_PARSE_TABLES},
         {"TEMPORARY", MYLITE_SQL_PARSE_TEMPORARY},
@@ -6059,6 +6091,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"VALUES", MYLITE_SQL_PARSE_VALUES},
         {"VARCHAR", MYLITE_SQL_PARSE_VARCHAR},
         {"VARYING", MYLITE_SQL_PARSE_VARYING},
+        {"WEEK", MYLITE_SQL_PARSE_WEEK},
         {"WHEN", MYLITE_SQL_PARSE_WHEN},
         {"WHERE", MYLITE_SQL_PARSE_WHERE},
         {"VISIBLE", MYLITE_SQL_PARSE_VISIBLE},
@@ -6272,6 +6305,17 @@ static bool span_text_equals(struct mylite_sql_source_span span, const char *tex
 static bool function_name_is_position(const struct mylite_sql_ast_node *name)
 {
     return function_name_matches(name, "POSITION");
+}
+
+static bool function_name_is_date_interval_arithmetic(const struct mylite_sql_ast_node *name)
+{
+    if (function_name_matches(name, "DATE_ADD") || function_name_matches(name, "DATE_SUB")) {
+        return true;
+    }
+    if (function_name_matches(name, "ADDDATE")) {
+        return true;
+    }
+    return function_name_matches(name, "SUBDATE");
 }
 
 static bool function_name_has_parser_checked_arity(const struct mylite_sql_ast_node *name,

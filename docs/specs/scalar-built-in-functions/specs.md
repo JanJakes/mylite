@@ -178,9 +178,10 @@ by common scalar expressions:
   `docs/specs/session-identity-functions/specs.md`
 - temporal functions: `NOW`, `CURRENT_TIMESTAMP`, `LOCALTIME`,
   `LOCALTIMESTAMP`, `CURDATE`/`CURRENT_DATE`, `CURTIME`/`CURRENT_TIME`,
-  `DATE`, and `DATEDIFF`; see
+  `DATE`, `DATEDIFF`, `DATE_ADD`, `DATE_SUB`, `ADDDATE`, and `SUBDATE`; see
   `docs/specs/current-temporal-functions/specs.md` and
-  `docs/specs/date-and-datediff-functions/specs.md`
+  `docs/specs/date-and-datediff-functions/specs.md` and
+  `docs/specs/date-add-sub-functions/specs.md`
 - grammar-level cast expressions: `CAST(expr AS type)`, `CONVERT(expr, type)`,
   and `CONVERT(expr USING charset_name)` for the supported CAST target and
   charset-registry subsets; see `docs/specs/cast-expression/specs.md` and
@@ -223,11 +224,14 @@ semantics and text conversion, `COT()` radian semantics and range errors,
 warning counts deferred to the dedicated `TRUNCATE()` spec, table projection,
 filters, ordering, update assignment expressions, delete
 predicates, `STRCMP()` NULL short-circuiting, numeric-to-string comparison,
-PAD SPACE / NO PAD trailing-space comparison, unsupported functions,
-unsupported arity, and selected result metadata.
+PAD SPACE / NO PAD trailing-space comparison, DATE_ADD/DATE_SUB interval
+arithmetic over supported simple units, month-end clipping, date-arithmetic
+warning propagation, unsupported functions, unsupported arity, and selected
+result metadata.
 
 This checkpoint intentionally does not yet implement `INSERT ... VALUES` or
-`INSERT ... SET` function expressions, temporal functions, information
+`INSERT ... SET` function expressions, temporal functions outside the current,
+date extraction/difference, and first date-arithmetic slices, information
 functions outside the session-state and session-identity slices,
 aggregate/window functions, JSON,
 regular expressions, spatial, full-text, encryption, loadable functions,

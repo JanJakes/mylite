@@ -78,6 +78,10 @@ static int expect_span_text(const struct mylite_sql_ast_node *node, const char *
                             const char *context);
 static int expect_function_call(const struct mylite_sql_ast_node *node, const char *expected_name,
                                 size_t expected_arg_count, const char *context);
+static int expect_interval_function_call(const struct mylite_sql_ast_node *node,
+                                         const char *expected_name,
+                                         enum mylite_sql_ast_interval_unit expected_unit,
+                                         const char *context);
 static int expect_aggregate_call(const struct mylite_sql_ast_node *node,
                                  enum mylite_sql_ast_aggregate_kind expected_kind,
                                  enum mylite_sql_ast_aggregate_argument expected_argument,
@@ -5629,6 +5633,42 @@ static int test_scalar_function_call_syntax(void)
                                      "DATEDIFF nested current temporal call");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SELECT DATE_ADD('2024-02-29', INTERVAL 1 DAY), "
+                          "DATE_SUB('2024-03-01', INTERVAL -1 WEEK), "
+                          "ADDDATE(CURDATE(), INTERVAL 1 MONTH), "
+                          "SUBDATE(DATE(NOW()), INTERVAL 1 YEAR), "
+                          "DATE_ADD('2024-01-01', INTERVAL 1 HOUR), "
+                          "DATE_ADD('2024-01-01', INTERVAL 1 MINUTE), "
+                          "DATE_ADD('2024-01-01', INTERVAL 1 SECOND);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_interval_function_call(child_at(child_at(select_list, 0U), 0U), "DATE_ADD",
+                                              MYLITE_SQL_AST_INTERVAL_UNIT_DAY,
+                                              "DATE_ADD DAY interval call");
+    failures += expect_interval_function_call(child_at(child_at(select_list, 1U), 0U), "DATE_SUB",
+                                              MYLITE_SQL_AST_INTERVAL_UNIT_WEEK,
+                                              "DATE_SUB WEEK interval call");
+    failures += expect_interval_function_call(child_at(child_at(select_list, 2U), 0U), "ADDDATE",
+                                              MYLITE_SQL_AST_INTERVAL_UNIT_MONTH,
+                                              "ADDDATE MONTH interval call");
+    failures += expect_interval_function_call(child_at(child_at(select_list, 3U), 0U), "SUBDATE",
+                                              MYLITE_SQL_AST_INTERVAL_UNIT_YEAR,
+                                              "SUBDATE YEAR interval call");
+    failures += expect_interval_function_call(child_at(child_at(select_list, 4U), 0U), "DATE_ADD",
+                                              MYLITE_SQL_AST_INTERVAL_UNIT_HOUR,
+                                              "DATE_ADD HOUR interval call");
+    failures += expect_interval_function_call(child_at(child_at(select_list, 5U), 0U), "DATE_ADD",
+                                              MYLITE_SQL_AST_INTERVAL_UNIT_MINUTE,
+                                              "DATE_ADD MINUTE interval call");
+    failures += expect_interval_function_call(child_at(child_at(select_list, 6U), 0U), "DATE_ADD",
+                                              MYLITE_SQL_AST_INTERVAL_UNIT_SECOND,
+                                              "DATE_ADD SECOND interval call");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT DATE_ADD('2024-01-01', INTERVAL 1 BOGUS)",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("SELECT CURRENT_DATE, CURRENT_TIME, LOCALTIME, LOCALTIMESTAMP, "
                           "UTC_DATE, UTC_TIME, UTC_TIMESTAMP;",
                           MYLITE_SQL_PARSE_OK, &result);
@@ -8067,6 +8107,25 @@ static int expect_function_call(const struct mylite_sql_ast_node *node, const ch
     failures += expect_span_text(name, expected_name, context);
     failures += expect_node(arguments, MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST, context);
     failures += expect_child_count(arguments, expected_arg_count, context);
+    return failures;
+}
+
+static int expect_interval_function_call(const struct mylite_sql_ast_node *node,
+                                         const char *expected_name,
+                                         enum mylite_sql_ast_interval_unit expected_unit,
+                                         const char *context)
+{
+    int failures = expect_function_call(node, expected_name, 2U, context);
+
+    if (node == NULL) {
+        return failures;
+    }
+    failures += expect_bool(node->interval_spec, true, context);
+    if (node->interval_unit != expected_unit) {
+        fprintf(stderr, "%s: expected interval unit %d, got %d\n", context, (int)expected_unit,
+                (int)node->interval_unit);
+        failures = 1;
+    }
     return failures;
 }
 

@@ -590,6 +590,17 @@ void mylite_sql_ast_node_set_trim_spec(struct mylite_sql_ast_node *node,
     node->trim_direction = direction;
 }
 
+void mylite_sql_ast_node_set_interval_spec(struct mylite_sql_ast_node *node,
+                                           enum mylite_sql_ast_interval_unit unit)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->interval_spec = true;
+    node->interval_unit = unit;
+}
+
 void mylite_sql_ast_node_set_show_tables_extended(struct mylite_sql_ast_node *node)
 {
     if (node == NULL) {

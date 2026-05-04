@@ -256,6 +256,7 @@ static int test_expression_operator_foundation(void);
 static int test_scalar_builtin_functions_execution(void);
 static int test_current_temporal_functions_execution(void);
 static int test_date_and_datediff_functions_execution(void);
+static int test_date_add_sub_functions_execution(void);
 static int test_round_scalar_function_execution(mylite_db *database);
 static int test_format_scalar_function_execution(mylite_db *database);
 static int test_truncate_scalar_function_execution(mylite_db *database);
@@ -468,6 +469,7 @@ int main(void)
     failures += test_scalar_builtin_functions_execution();
     failures += test_current_temporal_functions_execution();
     failures += test_date_and_datediff_functions_execution();
+    failures += test_date_add_sub_functions_execution();
     failures += test_inet_ipv4_functions_execution();
     failures += test_charset_collation_functions_execution();
     failures += test_session_information_functions_execution();
@@ -6016,6 +6018,244 @@ static int test_date_and_datediff_functions_execution(void)
     failures += prepare_sql(database, "SELECT DATEDIFF('2024-01-01','2024-01-02','x')",
                             MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "DATEDIFF three arity");
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_date_add_sub_functions_execution(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const struct expected_result_metadata metadata[] = {
+        {"date_add_text", NULL, NULL, NULL, NULL, NULL, 116U, MYLITE_FIELD_TYPE_STRING, 31U, 255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"date_add_date", NULL, NULL, NULL, NULL, NULL, 10U, MYLITE_FIELD_TYPE_DATE, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"date_add_datetime", NULL, NULL, NULL, NULL, NULL, 19U, MYLITE_FIELD_TYPE_DATETIME, 0U,
+         63U, MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+    };
+    static const char *const updated_columns[] = {"id", "d", "dt"};
+    static const char *const updated_values[] = {"1", "2024-01-02", "2024-01-01 00:00:01"};
+    static const char *const unchanged_values[] = {"1", "2024-01-02", "2024-01-01 00:00:01"};
+    static const char *const fraction_columns[] = {"id", "v_add", "dt3_add", "dt6_add"};
+    static const char *const fraction_values[] = {
+        "1", "2024-03-01 00:00:00.123400", "2024-03-01 00:00:00.123", "2024-03-01 00:00:00.123456",
+        "2", "2024-03-01 00:00:00",        "2024-03-01 00:00:00.000", "2024-03-01 00:00:00.000000"};
+    static const char *const remaining_columns[] = {"id"};
+    static const char *const remaining_values[] = {"1", "2"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK,
+                              "open date add/sub function database");
+
+    failures += prepare_sql(database,
+                            "SELECT DATE_ADD('2024-02-29', INTERVAL 1 DAY) AS date_add_text, "
+                            "DATE_ADD(CURDATE(), INTERVAL 1 DAY) AS date_add_date, "
+                            "DATE_ADD(CURDATE(), INTERVAL 1 HOUR) AS date_add_datetime",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "DATE_ADD metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "DATE_ADD metadata row");
+    failures += expect_string(mylite_column_text(stmt, 0), "2024-03-01", "DATE_ADD text value");
+    failures += expect_date_text(mylite_column_text(stmt, 1), "DATE_ADD date metadata shape");
+    failures +=
+        expect_datetime_text(mylite_column_text(stmt, 2), 0U, "DATE_ADD datetime metadata shape");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "DATE_ADD metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT DATE_ADD('2024-02-29', INTERVAL 1 DAY) AS add_day, "
+                            "DATE_SUB('2024-03-01', INTERVAL 1 DAY) AS sub_day, "
+                            "ADDDATE('2024-02-29', INTERVAL 1 DAY) AS alias_add, "
+                            "SUBDATE('2024-03-01', INTERVAL 1 DAY) AS alias_sub, "
+                            "DATE_ADD('2024-01-01', INTERVAL 1 WEEK) AS add_week, "
+                            "DATE_ADD('2024-01-31', INTERVAL 1 MONTH) AS add_month_clip, "
+                            "DATE_ADD('2024-02-29', INTERVAL 1 YEAR) AS add_year_clip, "
+                            "DATE_SUB('2024-03-31', INTERVAL 1 MONTH) AS sub_month_clip, "
+                            "DATE_ADD('2024-01-01', INTERVAL -1 DAY) AS add_negative, "
+                            "DATE_SUB('2024-01-01', INTERVAL -1 DAY) AS sub_negative, "
+                            "DATE_ADD('2024-01-01', INTERVAL 1 HOUR) AS add_hour, "
+                            "DATE_ADD('2024-01-01 23:59:59', INTERVAL 1 SECOND) AS add_second, "
+                            "DATE_ADD('2024-01-01 00:01:00', INTERVAL -1 MINUTE) AS add_minute, "
+                            "DATE_ADD(20240229, INTERVAL 1 DAY) AS numeric_date, "
+                            "DATE_ADD('20240101235959', INTERVAL 1 SECOND) AS compact_datetime",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "DATE_ADD scalar row");
+    failures += expect_string(mylite_column_text(stmt, 0), "2024-03-01", "DATE_ADD day");
+    failures += expect_string(mylite_column_text(stmt, 1), "2024-02-29", "DATE_SUB day");
+    failures += expect_string(mylite_column_text(stmt, 2), "2024-03-01", "ADDDATE interval");
+    failures += expect_string(mylite_column_text(stmt, 3), "2024-02-29", "SUBDATE interval");
+    failures += expect_string(mylite_column_text(stmt, 4), "2024-01-08", "DATE_ADD week");
+    failures += expect_string(mylite_column_text(stmt, 5), "2024-02-29", "DATE_ADD month clip");
+    failures += expect_string(mylite_column_text(stmt, 6), "2025-02-28", "DATE_ADD year clip");
+    failures += expect_string(mylite_column_text(stmt, 7), "2024-02-29", "DATE_SUB month clip");
+    failures += expect_string(mylite_column_text(stmt, 8), "2023-12-31", "DATE_ADD negative");
+    failures += expect_string(mylite_column_text(stmt, 9), "2024-01-02", "DATE_SUB negative");
+    failures += expect_string(mylite_column_text(stmt, 10), "2024-01-01 01:00:00", "DATE_ADD hour");
+    failures +=
+        expect_string(mylite_column_text(stmt, 11), "2024-01-02 00:00:00", "DATE_ADD second");
+    failures +=
+        expect_string(mylite_column_text(stmt, 12), "2024-01-01 00:00:00", "DATE_ADD minute");
+    failures += expect_string(mylite_column_text(stmt, 13), "2024-03-01", "DATE_ADD numeric date");
+    failures += expect_string(mylite_column_text(stmt, 14), "2024-01-02 00:00:00",
+                              "DATE_ADD compact datetime");
+    failures += expect_int(mylite_warning_count(database), 0, "DATE_ADD scalar warning count");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "DATE_ADD scalar done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT DATE_ADD('2024-02-29 23:59:59.1234', "
+                            "INTERVAL 1 SECOND) AS text_f4, "
+                            "DATE_ADD('2024-02-29 23:59:59.0000005', "
+                            "INTERVAL 0 SECOND) AS round_up, "
+                            "DATE_ADD('2024-02-29 23:59:59.9999995', "
+                            "INTERVAL 0 SECOND) AS carry_up, "
+                            "DATE_ADD('2024-02-29 23:59:59.000000', "
+                            "INTERVAL 0 SECOND) AS zero_fraction, "
+                            "DATE_ADD('2024-02-29 23:59:59.1234567', "
+                            "INTERVAL 1 SECOND) AS seven_digits",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "DATE_ADD fractional scalar row");
+    failures += expect_string(mylite_column_text(stmt, 0), "2024-03-01 00:00:00.123400",
+                              "DATE_ADD text fractional padding");
+    failures += expect_string(mylite_column_text(stmt, 1), "2024-02-29 23:59:59.000001",
+                              "DATE_ADD fractional rounding");
+    failures += expect_string(mylite_column_text(stmt, 2), "2024-03-01 00:00:00",
+                              "DATE_ADD fractional carry");
+    failures += expect_string(mylite_column_text(stmt, 3), "2024-02-29 23:59:59",
+                              "DATE_ADD zero string fraction");
+    failures += expect_string(mylite_column_text(stmt, 4), "2024-03-01 00:00:00.123457",
+                              "DATE_ADD seven digit rounding");
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "DATE_ADD fractional scalar warning count");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "DATE_ADD fractional scalar done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT DATE_ADD(NULL, INTERVAL 1/0 DAY) AS null_short, "
+                            "DATE_ADD('bad', INTERVAL 'bad' DAY) AS bad_date_first, "
+                            "DATE_ADD('2024-01-01', INTERVAL 'bad' DAY) AS bad_interval, "
+                            "DATE_ADD('2006-05-00', INTERVAL 1 DAY) AS incomplete_date",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "DATE_ADD invalid row");
+    failures += expect_null_text(mylite_column_text(stmt, 0), "DATE_ADD null short");
+    failures += expect_null_text(mylite_column_text(stmt, 1), "DATE_ADD bad date");
+    failures += expect_string(mylite_column_text(stmt, 2), "2024-01-01", "DATE_ADD bad interval");
+    failures += expect_null_text(mylite_column_text(stmt, 3), "DATE_ADD incomplete date");
+    failures += expect_int(mylite_warning_count(database), 3, "DATE_ADD invalid warning count");
+    for (int index = 0; index < 3; ++index) {
+        failures +=
+            expect_int((int)mylite_warning_code(database, index),
+                       mysql_warning_truncated_wrong_value, "DATE_ADD invalid warning code");
+    }
+    failures += expect_string(mylite_warning_message(database, 0),
+                              "Incorrect datetime value: 'bad'", "DATE_ADD bad date warning");
+    failures +=
+        expect_string(mylite_warning_message(database, 1),
+                      "Truncated incorrect INTEGER value: 'bad'", "DATE_ADD bad interval warning");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "DATE_ADD invalid done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT DATE_SUB(DATE_ADD(CURDATE(), INTERVAL 1 DAY), "
+                            "INTERVAL 1 DAY) = CURDATE() AS stable_current",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "DATE_ADD current temporal row");
+    failures += expect_string(mylite_column_text(stmt, 0), "1", "DATE_ADD current temporal");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "DATE_ADD current temporal done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE DATABASE date_add_sub_functions", MYLITE_DONE);
+    failures += execute_sql(database, "USE date_add_sub_functions", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE temporal_add ("
+                            "id INT PRIMARY KEY, d DATE, dt DATETIME)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE temporal_add_fraction ("
+                            "id INT PRIMARY KEY, v VARCHAR(40), dt3 DATETIME(3), "
+                            "dt6 DATETIME(6))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO temporal_add VALUES "
+                            "(1, '2024-01-01', '2024-01-01 00:00:00'), "
+                            "(2, '2024-01-31', '2024-01-31 23:59:59')",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO temporal_add_fraction VALUES "
+                            "(1, '2024-02-29 23:59:59.1234', "
+                            "'2024-02-29 23:59:59.123', "
+                            "'2024-02-29 23:59:59.123456'), "
+                            "(2, '2024-02-29 23:59:59.000000', "
+                            "'2024-02-29 23:59:59.000', "
+                            "'2024-02-29 23:59:59.000000')",
+                            MYLITE_DONE);
+    failures += expect_select_rows(database,
+                                   "SELECT id, "
+                                   "DATE_ADD(v, INTERVAL 1 SECOND) AS v_add, "
+                                   "DATE_ADD(dt3, INTERVAL 1 SECOND) AS dt3_add, "
+                                   "DATE_ADD(dt6, INTERVAL 1 SECOND) AS dt6_add "
+                                   "FROM temporal_add_fraction ORDER BY id",
+                                   fraction_columns, 4, fraction_values, 2,
+                                   "DATE_ADD fractional temporal columns");
+    failures += execute_sql_expect_done_affected(database,
+                                                 "UPDATE temporal_add "
+                                                 "SET d = DATE_ADD(d, INTERVAL 1 DAY), "
+                                                 "dt = DATE_ADD(dt, INTERVAL 1 SECOND) "
+                                                 "WHERE id = 1",
+                                                 1, "DATE_ADD update");
+    failures += expect_select_rows(database, "SELECT id, d, dt FROM temporal_add WHERE id = 1",
+                                   updated_columns, 3, updated_values, 1, "DATE_ADD updated row");
+    failures += prepare_sql(database,
+                            "UPDATE temporal_add "
+                            "SET d = DATE_ADD('bad', INTERVAL 1 DAY) WHERE id = 1",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "DATE_ADD invalid update promoted");
+    failures += expect_contains(mylite_error_message(database), "Incorrect datetime value: 'bad'",
+                                "DATE_ADD invalid update error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id, d, dt FROM temporal_add WHERE id = 1",
+                                   updated_columns, 3, unchanged_values, 1,
+                                   "DATE_ADD invalid update unchanged");
+    failures += prepare_sql(database,
+                            "DELETE FROM temporal_add "
+                            "WHERE DATE_ADD('bad', INTERVAL 1 DAY) IS NULL",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "DATE_ADD invalid delete promoted");
+    failures += expect_contains(mylite_error_message(database), "Incorrect datetime value: 'bad'",
+                                "DATE_ADD invalid delete error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_select_rows(database, "SELECT id FROM temporal_add ORDER BY id", remaining_columns,
+                           1, remaining_values, 2, "DATE_ADD invalid delete unchanged");
+
+    failures +=
+        prepare_sql(database, "SELECT DATE_ADD('2024-01-01', 1)", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "DATE_ADD missing interval");
+    failures += prepare_sql(database, "SELECT ADDDATE('2024-01-01', 1)", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "ADDDATE day overload deferred");
+    failures += prepare_sql(database, "SELECT SUBDATE('2024-01-01', 1)", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "SUBDATE day overload deferred");
+    failures += prepare_sql(database, "SELECT DATE_ADD('2024-01-01', INTERVAL 1 MICROSECOND)",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "DATE_ADD microsecond deferred");
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)

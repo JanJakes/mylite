@@ -478,6 +478,17 @@ enum mylite_sql_ast_trim_direction {
     MYLITE_SQL_AST_TRIM_DIRECTION_TRAILING = 3,
 };
 
+enum mylite_sql_ast_interval_unit {
+    MYLITE_SQL_AST_INTERVAL_UNIT_NONE = 0,
+    MYLITE_SQL_AST_INTERVAL_UNIT_DAY = 1,
+    MYLITE_SQL_AST_INTERVAL_UNIT_WEEK = 2,
+    MYLITE_SQL_AST_INTERVAL_UNIT_MONTH = 3,
+    MYLITE_SQL_AST_INTERVAL_UNIT_YEAR = 4,
+    MYLITE_SQL_AST_INTERVAL_UNIT_HOUR = 5,
+    MYLITE_SQL_AST_INTERVAL_UNIT_MINUTE = 6,
+    MYLITE_SQL_AST_INTERVAL_UNIT_SECOND = 7,
+};
+
 struct mylite_sql_ast_select_duplicate_mode_spans {
     struct mylite_sql_source_span first;
     struct mylite_sql_source_span last;
@@ -533,6 +544,7 @@ struct mylite_sql_ast_node {
     enum mylite_sql_ast_set_duplicate_mode set_duplicate_mode;
     enum mylite_sql_ast_subquery_quantifier subquery_quantifier;
     enum mylite_sql_ast_trim_direction trim_direction;
+    enum mylite_sql_ast_interval_unit interval_unit;
     enum mylite_sql_ast_show_diagnostics_kind show_diagnostics_kind;
     enum mylite_sql_ast_show_variables_scope show_variables_scope;
     enum mylite_sql_ast_show_status_scope show_status_scope;
@@ -568,6 +580,7 @@ struct mylite_sql_ast_node {
     bool show_index_extended;
     bool show_create_schema_if_not_exists;
     bool trim_spec;
+    bool interval_spec;
 };
 
 struct mylite_sql_ast {
@@ -674,6 +687,8 @@ void mylite_sql_ast_node_set_subquery_quantifier(
     struct mylite_sql_ast_node *node, enum mylite_sql_ast_subquery_quantifier quantifier);
 void mylite_sql_ast_node_set_trim_spec(struct mylite_sql_ast_node *node,
                                        enum mylite_sql_ast_trim_direction direction);
+void mylite_sql_ast_node_set_interval_spec(struct mylite_sql_ast_node *node,
+                                           enum mylite_sql_ast_interval_unit unit);
 void mylite_sql_ast_node_set_show_tables_extended(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_show_tables_full(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_show_columns_extended(struct mylite_sql_ast_node *node);

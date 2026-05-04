@@ -2309,6 +2309,40 @@ static int infer_function_arguments_nullable(mylite_db *database,
                                              const struct mylite_select_plan *plan,
                                              const struct mylite_sql_ast_node *arguments,
                                              bool *out_nullable);
+// NOLINTNEXTLINE(misc-no-recursion)
+static int infer_variadic_scalar_function_descriptor(
+    mylite_db *database, const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression, const struct mylite_expression_value *value,
+    bool result_nullable, struct mylite_field_descriptor *out_descriptor);
+static int infer_greatest_least_function_descriptor(mylite_db *database,
+                                                    const struct mylite_select_plan *plan,
+                                                    const struct mylite_sql_ast_node *expression,
+                                                    bool result_nullable,
+                                                    struct mylite_field_descriptor *out_descriptor);
+static int greatest_least_function_uses_string_domain(mylite_db *database,
+                                                      const struct mylite_select_plan *plan,
+                                                      const struct mylite_sql_ast_node *arguments,
+                                                      bool *out_string_domain);
+static int infer_greatest_least_string_descriptor(mylite_db *database,
+                                                  const struct mylite_select_plan *plan,
+                                                  const struct mylite_sql_ast_node *arguments,
+                                                  bool result_nullable,
+                                                  struct mylite_field_descriptor *out_descriptor);
+static uint64_t greatest_least_string_result_length(mylite_db *database,
+                                                    const struct mylite_select_plan *plan,
+                                                    const struct mylite_sql_ast_node *arguments);
+static uint64_t
+greatest_least_argument_string_length(mylite_db *database,
+                                      const struct mylite_field_descriptor *descriptor);
+static int infer_greatest_least_numeric_descriptor(mylite_db *database,
+                                                   const struct mylite_select_plan *plan,
+                                                   const struct mylite_sql_ast_node *arguments,
+                                                   bool result_nullable,
+                                                   struct mylite_field_descriptor *out_descriptor);
+static void
+aggregate_greatest_least_numeric_descriptor(const struct mylite_field_descriptor *argument,
+                                            struct mylite_field_descriptor *aggregate,
+                                            bool *out_saw_nonnull);
 static int infer_round_function_descriptor(mylite_db *database,
                                            const struct mylite_select_plan *plan,
                                            const struct mylite_sql_ast_node *expression,
@@ -2332,6 +2366,7 @@ static bool function_name_is_ord(const struct mylite_sql_ast_node *name);
 static bool function_name_has_search_result(const struct mylite_sql_ast_node *name);
 static bool function_name_is_field(const struct mylite_sql_ast_node *name);
 static bool function_name_is_find_in_set(const struct mylite_sql_ast_node *name);
+static bool function_name_is_greatest_least(const struct mylite_sql_ast_node *name);
 static bool function_name_has_integer_result(const struct mylite_sql_ast_node *name);
 static bool function_name_is_exp(const struct mylite_sql_ast_node *name);
 static bool function_name_is_logarithm(const struct mylite_sql_ast_node *name);
@@ -10577,12 +10612,8 @@ static int infer_function_expression_descriptor(mylite_db *database,
     if (infer_common_scalar_function_descriptor(database, name, result_nullable, out_descriptor)) {
         return MYLITE_OK;
     }
-    status = infer_round_function_descriptor(database, plan, expression, value, result_nullable,
-                                             out_descriptor);
-    if (status != MYLITE_UNSUPPORTED) {
-        return status;
-    }
-    status = infer_char_function_descriptor(database, expression, out_descriptor);
+    status = infer_variadic_scalar_function_descriptor(database, plan, expression, value,
+                                                       result_nullable, out_descriptor);
     if (status != MYLITE_UNSUPPORTED) {
         return status;
     }
@@ -10689,6 +10720,28 @@ static bool infer_common_scalar_function_descriptor(mylite_db *database,
         return true;
     }
     return infer_base_conversion_function_descriptor(database, name, out_descriptor);
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int infer_variadic_scalar_function_descriptor(mylite_db *database,
+                                                     const struct mylite_select_plan *plan,
+                                                     const struct mylite_sql_ast_node *expression,
+                                                     const struct mylite_expression_value *value,
+                                                     bool result_nullable,
+                                                     struct mylite_field_descriptor *out_descriptor)
+{
+    int status = infer_round_function_descriptor(database, plan, expression, value, result_nullable,
+                                                 out_descriptor);
+
+    if (status != MYLITE_UNSUPPORTED) {
+        return status;
+    }
+    status = infer_greatest_least_function_descriptor(database, plan, expression, result_nullable,
+                                                      out_descriptor);
+    if (status != MYLITE_UNSUPPORTED) {
+        return status;
+    }
+    return infer_char_function_descriptor(database, expression, out_descriptor);
 }
 
 static bool infer_exp_function_descriptor(const struct mylite_sql_ast_node *name,
@@ -12617,6 +12670,206 @@ static int infer_function_arguments_nullable(mylite_db *database,
     return MYLITE_OK;
 }
 
+// NOLINTNEXTLINE(misc-no-recursion)
+static int infer_greatest_least_function_descriptor(mylite_db *database,
+                                                    const struct mylite_select_plan *plan,
+                                                    const struct mylite_sql_ast_node *expression,
+                                                    bool result_nullable,
+                                                    struct mylite_field_descriptor *out_descriptor)
+{
+    const struct mylite_sql_ast_node *name = child_at(expression, 0U);
+    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+    bool string_domain = false;
+    int status = MYLITE_OK;
+
+    if (!function_name_is_greatest_least(name)) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    status = greatest_least_function_uses_string_domain(database, plan, arguments, &string_domain);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (string_domain) {
+        return infer_greatest_least_string_descriptor(database, plan, arguments, result_nullable,
+                                                      out_descriptor);
+    }
+    return infer_greatest_least_numeric_descriptor(database, plan, arguments, result_nullable,
+                                                   out_descriptor);
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int greatest_least_function_uses_string_domain(mylite_db *database,
+                                                      const struct mylite_select_plan *plan,
+                                                      const struct mylite_sql_ast_node *arguments,
+                                                      bool *out_string_domain)
+{
+    *out_string_domain = false;
+    for (const struct mylite_sql_ast_node *child = arguments == NULL ? NULL
+                                                                     : arguments->first_child;
+         child != NULL; child = child->next_sibling) {
+        struct mylite_field_descriptor descriptor = field_descriptor_defaults();
+        int status = infer_expression_descriptor(database, plan, child, NULL, &descriptor);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        if (field_descriptor_has_text_result(&descriptor) ||
+            descriptor.type == MYLITE_FIELD_TYPE_BLOB) {
+            *out_string_domain = true;
+            return MYLITE_OK;
+        }
+    }
+    return MYLITE_OK;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int infer_greatest_least_string_descriptor(mylite_db *database,
+                                                  const struct mylite_select_plan *plan,
+                                                  const struct mylite_sql_ast_node *arguments,
+                                                  bool result_nullable,
+                                                  struct mylite_field_descriptor *out_descriptor)
+{
+    *out_descriptor = (struct mylite_field_descriptor){
+        .type = MYLITE_FIELD_TYPE_VAR_STRING,
+        .flags = 0U,
+        .length = greatest_least_string_result_length(database, plan, arguments),
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = field_descriptor_connection_charset_id(database),
+        .nullable = result_nullable,
+    };
+    field_descriptor_set_nullable(out_descriptor, result_nullable);
+    return MYLITE_OK;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static uint64_t greatest_least_string_result_length(mylite_db *database,
+                                                    const struct mylite_select_plan *plan,
+                                                    const struct mylite_sql_ast_node *arguments)
+{
+    uint64_t length = 0U;
+
+    for (const struct mylite_sql_ast_node *child = arguments == NULL ? NULL
+                                                                     : arguments->first_child;
+         child != NULL; child = child->next_sibling) {
+        struct mylite_field_descriptor descriptor = field_descriptor_defaults();
+
+        if (infer_expression_descriptor(database, plan, child, NULL, &descriptor) != MYLITE_OK) {
+            return mylite_mysql_long_text_length;
+        }
+        length = max_u64(length, greatest_least_argument_string_length(database, &descriptor));
+    }
+    return length;
+}
+
+static uint64_t
+greatest_least_argument_string_length(mylite_db *database,
+                                      const struct mylite_field_descriptor *descriptor)
+{
+    uint64_t max_bytes_per_character = connection_character_max_length(database);
+
+    if (descriptor == NULL || descriptor->type == MYLITE_FIELD_TYPE_NULL) {
+        return 0U;
+    }
+    if (field_descriptor_has_text_result(descriptor) ||
+        descriptor->type == MYLITE_FIELD_TYPE_BLOB) {
+        return descriptor->length;
+    }
+    if (max_bytes_per_character != 0U &&
+        descriptor->length > UINT64_MAX / max_bytes_per_character) {
+        return mylite_mysql_long_text_length;
+    }
+    return descriptor->length * max_bytes_per_character;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int infer_greatest_least_numeric_descriptor(mylite_db *database,
+                                                   const struct mylite_select_plan *plan,
+                                                   const struct mylite_sql_ast_node *arguments,
+                                                   bool result_nullable,
+                                                   struct mylite_field_descriptor *out_descriptor)
+{
+    struct mylite_field_descriptor aggregate = field_descriptor_defaults();
+    bool saw_nonnull = false;
+
+    for (const struct mylite_sql_ast_node *child = arguments == NULL ? NULL
+                                                                     : arguments->first_child;
+         child != NULL; child = child->next_sibling) {
+        struct mylite_field_descriptor descriptor = field_descriptor_defaults();
+        int status = infer_expression_descriptor(database, plan, child, NULL, &descriptor);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        aggregate_greatest_least_numeric_descriptor(&descriptor, &aggregate, &saw_nonnull);
+    }
+
+    if (!saw_nonnull) {
+        *out_descriptor = null_expression_descriptor();
+    } else {
+        *out_descriptor = aggregate;
+    }
+    field_descriptor_set_nullable(out_descriptor, result_nullable);
+    return MYLITE_OK;
+}
+
+static void
+aggregate_greatest_least_numeric_descriptor(const struct mylite_field_descriptor *argument,
+                                            struct mylite_field_descriptor *aggregate,
+                                            bool *out_saw_nonnull)
+{
+    if (argument == NULL || argument->type == MYLITE_FIELD_TYPE_NULL) {
+        return;
+    }
+
+    if (!*out_saw_nonnull) {
+        *aggregate = *argument;
+        aggregate->flags |= MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM;
+        aggregate->charset_id = mylite_mysql_binary_charset_id;
+        *out_saw_nonnull = true;
+        return;
+    }
+
+    if (field_descriptor_has_double_result(argument) || argument->type == MYLITE_FIELD_TYPE_FLOAT ||
+        field_descriptor_has_double_result(aggregate) ||
+        aggregate->type == MYLITE_FIELD_TYPE_FLOAT) {
+        *aggregate = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_DOUBLE,
+            .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+            .length = max_u64(max_u64(aggregate->length, argument->length),
+                              mylite_mysql_double_display_length),
+            .decimals = mylite_mysql_not_fixed_decimals,
+            .charset_id = mylite_mysql_binary_charset_id,
+            .nullable = true,
+        };
+        return;
+    }
+
+    if (field_descriptor_has_decimal_result(argument) ||
+        field_descriptor_has_decimal_result(aggregate)) {
+        *aggregate = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_NEWDECIMAL,
+            .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+            .length = max_u64(aggregate->length, argument->length),
+            .decimals =
+                aggregate->decimals > argument->decimals ? aggregate->decimals : argument->decimals,
+            .charset_id = mylite_mysql_binary_charset_id,
+            .nullable = true,
+        };
+        return;
+    }
+
+    aggregate->type = MYLITE_FIELD_TYPE_LONGLONG;
+    aggregate->flags |= MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM;
+    if (((aggregate->flags & MYLITE_FIELD_FLAG_UNSIGNED) == 0U) ||
+        ((argument->flags & MYLITE_FIELD_FLAG_UNSIGNED) == 0U)) {
+        aggregate->flags &= ~(unsigned int)MYLITE_FIELD_FLAG_UNSIGNED;
+    }
+    aggregate->charset_id = mylite_mysql_binary_charset_id;
+    aggregate->length = max_u64(aggregate->length, argument->length);
+    aggregate->decimals = 0U;
+}
+
 static bool infer_code_search_function_descriptor(const struct mylite_sql_ast_node *name,
                                                   bool nullable,
                                                   struct mylite_field_descriptor *out_descriptor)
@@ -12755,6 +13008,13 @@ static bool function_name_is_field(const struct mylite_sql_ast_node *name)
 static bool function_name_is_find_in_set(const struct mylite_sql_ast_node *name)
 {
     static const char *const names[] = {"FIND_IN_SET"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_is_greatest_least(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"GREATEST", "LEAST"};
 
     return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }
@@ -25497,6 +25757,7 @@ static int apply_update_assignments(mylite_stmt *stmt, const struct mylite_selec
             return status;
         }
 
+        value.suppress_text_numeric_warnings = false;
         mylite_expression_value_deinit(&candidate->values[column_index]);
         candidate->values[column_index] = value;
     }

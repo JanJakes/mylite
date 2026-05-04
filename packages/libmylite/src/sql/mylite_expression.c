@@ -200,6 +200,18 @@ struct text_compare_input {
     size_t right_length;
 };
 
+struct greatest_least_argument {
+    struct mylite_expression_value value;
+    char *text;
+    char *compare_text;
+    size_t text_length;
+};
+
+struct greatest_least_eval_state {
+    bool string_domain;
+    bool null_result;
+};
+
 struct insert_range {
     int64_t position;
     int64_t length;
@@ -390,6 +402,8 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_ASIN = 83,
     MYLITE_SCALAR_FUNCTION_ATAN = 84,
     MYLITE_SCALAR_FUNCTION_ATAN2 = 85,
+    MYLITE_SCALAR_FUNCTION_GREATEST = 86,
+    MYLITE_SCALAR_FUNCTION_LEAST = 87,
 };
 
 struct angle_conversion_input {
@@ -1020,6 +1034,43 @@ static int eval_coalesce_function(const struct mylite_sql_ast_node *arguments,
                                   const struct mylite_expression_eval_context *context,
                                   struct mylite_expression_warnings *warnings,
                                   struct mylite_expression_value *out_value);
+static int eval_greatest_least_function(enum mylite_scalar_function_id function_id,
+                                        const struct mylite_sql_ast_node *arguments,
+                                        const struct mylite_expression_eval_context *context,
+                                        struct mylite_expression_warnings *warnings,
+                                        struct mylite_expression_value *out_value);
+static int eval_greatest_least_arguments(const struct mylite_sql_ast_node *arguments,
+                                         const struct mylite_expression_eval_context *context,
+                                         struct mylite_expression_warnings *warnings,
+                                         struct greatest_least_argument *values,
+                                         struct greatest_least_eval_state *out_state);
+static int set_greatest_least_result(enum mylite_scalar_function_id function_id,
+                                     struct greatest_least_argument *values, size_t value_count,
+                                     bool string_domain,
+                                     struct mylite_expression_warnings *warnings,
+                                     struct mylite_expression_value *out_value);
+static int set_greatest_least_string_result(enum mylite_scalar_function_id function_id,
+                                            struct greatest_least_argument *values,
+                                            size_t value_count,
+                                            struct mylite_expression_value *out_value);
+static int set_greatest_least_numeric_result(enum mylite_scalar_function_id function_id,
+                                             struct greatest_least_argument *values,
+                                             size_t value_count,
+                                             struct mylite_expression_warnings *warnings,
+                                             struct mylite_expression_value *out_value);
+static int greatest_least_argument_to_text(struct greatest_least_argument *argument);
+static int greatest_least_argument_prepare_compare_text(struct greatest_least_argument *argument,
+                                                        size_t length);
+static int compare_greatest_least_text(const struct greatest_least_argument *left,
+                                       const struct greatest_least_argument *right);
+static int compare_greatest_least_numeric_values(const struct mylite_expression_value *left,
+                                                 const struct mylite_expression_value *right,
+                                                 struct mylite_expression_warnings *warnings,
+                                                 int *out_compare);
+static bool greatest_least_candidate_replaces_selected(enum mylite_scalar_function_id function_id,
+                                                       int selected_vs_candidate);
+static void greatest_least_arguments_deinit(struct greatest_least_argument *values,
+                                            size_t value_count);
 static int eval_isnull_function(const struct mylite_sql_ast_node *arguments,
                                 const struct mylite_expression_eval_context *context,
                                 struct mylite_expression_warnings *warnings,
@@ -1096,6 +1147,9 @@ static int value_to_numeric(const struct mylite_expression_value *value,
 static int text_value_to_numeric(const struct mylite_expression_value *value,
                                  struct mylite_expression_warnings *warnings,
                                  struct numeric_value *out_numeric);
+static int text_value_to_numeric_without_warnings(const struct mylite_expression_value *value,
+                                                  struct numeric_value *out_numeric);
+static bool numeric_text_prefix_is_integer(const char *start, const char *end);
 static bool numeric_text_has_digit(const char *start);
 static bool numeric_text_is_hex_like(const char *start);
 static int parse_numeric_text_double(struct numeric_text_parse_input input,
@@ -1439,6 +1493,8 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_CONCAT_WS:
     case MYLITE_SCALAR_FUNCTION_ELT:
     case MYLITE_SCALAR_FUNCTION_FIELD:
+    case MYLITE_SCALAR_FUNCTION_GREATEST:
+    case MYLITE_SCALAR_FUNCTION_LEAST:
     case MYLITE_SCALAR_FUNCTION_MAKE_SET:
         return arity >= 2U;
     case MYLITE_SCALAR_FUNCTION_LENGTH:
@@ -2354,6 +2410,9 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_nullif_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_COALESCE:
         return eval_coalesce_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_GREATEST:
+    case MYLITE_SCALAR_FUNCTION_LEAST:
+        return eval_greatest_least_function(function_id, arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_ISNULL:
         return eval_isnull_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_DATABASE:
@@ -5366,6 +5425,8 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_IFNULL:
     case MYLITE_SCALAR_FUNCTION_NULLIF:
     case MYLITE_SCALAR_FUNCTION_COALESCE:
+    case MYLITE_SCALAR_FUNCTION_GREATEST:
+    case MYLITE_SCALAR_FUNCTION_LEAST:
     case MYLITE_SCALAR_FUNCTION_ISNULL:
     case MYLITE_SCALAR_FUNCTION_DATABASE:
     case MYLITE_SCALAR_FUNCTION_SCHEMA:
@@ -7202,6 +7263,8 @@ static int trigonometric_function_result(struct trigonometric_input input,
     case MYLITE_SCALAR_FUNCTION_IFNULL:
     case MYLITE_SCALAR_FUNCTION_NULLIF:
     case MYLITE_SCALAR_FUNCTION_COALESCE:
+    case MYLITE_SCALAR_FUNCTION_GREATEST:
+    case MYLITE_SCALAR_FUNCTION_LEAST:
     case MYLITE_SCALAR_FUNCTION_ISNULL:
     case MYLITE_SCALAR_FUNCTION_DATABASE:
     case MYLITE_SCALAR_FUNCTION_SCHEMA:
@@ -7477,6 +7540,8 @@ static int inverse_trigonometric_function_result(struct inverse_trigonometric_in
     case MYLITE_SCALAR_FUNCTION_IFNULL:
     case MYLITE_SCALAR_FUNCTION_NULLIF:
     case MYLITE_SCALAR_FUNCTION_COALESCE:
+    case MYLITE_SCALAR_FUNCTION_GREATEST:
+    case MYLITE_SCALAR_FUNCTION_LEAST:
     case MYLITE_SCALAR_FUNCTION_ISNULL:
     case MYLITE_SCALAR_FUNCTION_DATABASE:
     case MYLITE_SCALAR_FUNCTION_SCHEMA:
@@ -7660,6 +7725,8 @@ static int angle_conversion_result(struct angle_conversion_input conversion, dou
     case MYLITE_SCALAR_FUNCTION_IFNULL:
     case MYLITE_SCALAR_FUNCTION_NULLIF:
     case MYLITE_SCALAR_FUNCTION_COALESCE:
+    case MYLITE_SCALAR_FUNCTION_GREATEST:
+    case MYLITE_SCALAR_FUNCTION_LEAST:
     case MYLITE_SCALAR_FUNCTION_ISNULL:
     case MYLITE_SCALAR_FUNCTION_DATABASE:
     case MYLITE_SCALAR_FUNCTION_SCHEMA:
@@ -8547,6 +8614,246 @@ static int eval_coalesce_function(const struct mylite_sql_ast_node *arguments,
     return 0;
 }
 
+static int eval_greatest_least_function(enum mylite_scalar_function_id function_id,
+                                        const struct mylite_sql_ast_node *arguments,
+                                        const struct mylite_expression_eval_context *context,
+                                        struct mylite_expression_warnings *warnings,
+                                        struct mylite_expression_value *out_value)
+{
+    size_t value_count = child_count(arguments);
+    struct greatest_least_argument *values = NULL;
+    struct greatest_least_eval_state state = {0};
+    int status = 0;
+
+    if (value_count < 2U) {
+        return -1;
+    }
+    values = calloc(value_count, sizeof(values[0]));
+    if (values == NULL) {
+        return -1;
+    }
+
+    status = eval_greatest_least_arguments(arguments, context, warnings, values, &state);
+    if (status == 0 && state.null_result) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+    } else if (status == 0) {
+        status = set_greatest_least_result(function_id, values, value_count, state.string_domain,
+                                           warnings, out_value);
+    }
+
+    greatest_least_arguments_deinit(values, value_count);
+    free(values);
+    return status;
+}
+
+static int eval_greatest_least_arguments(const struct mylite_sql_ast_node *arguments,
+                                         const struct mylite_expression_eval_context *context,
+                                         struct mylite_expression_warnings *warnings,
+                                         struct greatest_least_argument *values,
+                                         struct greatest_least_eval_state *out_state)
+{
+    size_t index = 0U;
+
+    *out_state = (struct greatest_least_eval_state){0};
+    for (const struct mylite_sql_ast_node *argument = arguments == NULL ? NULL
+                                                                        : arguments->first_child;
+         argument != NULL; argument = argument->next_sibling, ++index) {
+        int status = eval_node(argument, context, warnings, &values[index].value);
+
+        if (status != 0) {
+            return status;
+        }
+        if (is_null(&values[index].value)) {
+            out_state->null_result = true;
+            return 0;
+        }
+        if (values[index].value.kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+            out_state->string_domain = true;
+        }
+    }
+    return 0;
+}
+
+static int set_greatest_least_result(enum mylite_scalar_function_id function_id,
+                                     struct greatest_least_argument *values, size_t value_count,
+                                     bool string_domain,
+                                     struct mylite_expression_warnings *warnings,
+                                     struct mylite_expression_value *out_value)
+{
+    if (string_domain) {
+        return set_greatest_least_string_result(function_id, values, value_count, out_value);
+    }
+    return set_greatest_least_numeric_result(function_id, values, value_count, warnings, out_value);
+}
+
+static int set_greatest_least_string_result(enum mylite_scalar_function_id function_id,
+                                            struct greatest_least_argument *values,
+                                            size_t value_count,
+                                            struct mylite_expression_value *out_value)
+{
+    size_t selected = 0U;
+
+    for (size_t index = 0U; index < value_count; ++index) {
+        int status = greatest_least_argument_to_text(&values[index]);
+
+        if (status != 0) {
+            return status;
+        }
+    }
+
+    for (size_t index = 1U; index < value_count; ++index) {
+        int comparison = compare_greatest_least_text(&values[selected], &values[index]);
+
+        if (greatest_least_candidate_replaces_selected(function_id, comparison)) {
+            selected = index;
+        }
+    }
+
+    int status = set_text_value(values[selected].text, values[selected].text_length, out_value);
+
+    if (status == 0) {
+        out_value->suppress_text_numeric_warnings = true;
+    }
+    return status;
+}
+
+static int set_greatest_least_numeric_result(enum mylite_scalar_function_id function_id,
+                                             struct greatest_least_argument *values,
+                                             size_t value_count,
+                                             struct mylite_expression_warnings *warnings,
+                                             struct mylite_expression_value *out_value)
+{
+    size_t selected = 0U;
+
+    for (size_t index = 1U; index < value_count; ++index) {
+        int comparison = 0;
+        int status = compare_greatest_least_numeric_values(
+            &values[selected].value, &values[index].value, warnings, &comparison);
+
+        if (status != 0) {
+            return status;
+        }
+        if (greatest_least_candidate_replaces_selected(function_id, comparison)) {
+            selected = index;
+        }
+    }
+
+    return mylite_expression_value_copy(&values[selected].value, out_value);
+}
+
+static int greatest_least_argument_to_text(struct greatest_least_argument *argument)
+{
+    if (argument->value.kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+        const char *text = argument->value.text_value == NULL ? "" : argument->value.text_value;
+        size_t length = argument->value.text_value == NULL ? 0U : argument->value.text_length;
+
+        argument->text = copy_span_text(text, length);
+        argument->text_length = length;
+        return argument->text == NULL
+                   ? -1
+                   : greatest_least_argument_prepare_compare_text(argument, length);
+    }
+
+    int status = cast_value_to_string(&argument->value, &argument->text);
+
+    if (status == 0) {
+        size_t length = strlen(argument->text);
+
+        argument->text_length = length;
+        status = greatest_least_argument_prepare_compare_text(argument, length);
+    }
+    return status;
+}
+
+static int greatest_least_argument_prepare_compare_text(struct greatest_least_argument *argument,
+                                                        size_t length)
+{
+    const char *text = argument->text == NULL ? "" : argument->text;
+
+    while (length > 0U && text[length - 1U] == ' ') {
+        --length;
+    }
+
+    argument->compare_text = malloc(length + 1U);
+    if (argument->compare_text == NULL) {
+        return -1;
+    }
+    if (length != 0U) {
+        memcpy(argument->compare_text, text, length);
+    }
+    argument->compare_text[length] = '\0';
+    for (size_t index = 0U; index < length; ++index) {
+        argument->compare_text[index] =
+            (char)ascii_case_fold((unsigned char)argument->compare_text[index]);
+    }
+    return 0;
+}
+
+static int compare_greatest_least_text(const struct greatest_least_argument *left,
+                                       const struct greatest_least_argument *right)
+{
+    int comparison = strcmp(left->compare_text == NULL ? "" : left->compare_text,
+                            right->compare_text == NULL ? "" : right->compare_text);
+
+    return (comparison > 0) - (comparison < 0);
+}
+
+static int compare_greatest_least_numeric_values(const struct mylite_expression_value *left,
+                                                 const struct mylite_expression_value *right,
+                                                 struct mylite_expression_warnings *warnings,
+                                                 int *out_compare)
+{
+    if (left->kind == MYLITE_EXPRESSION_VALUE_INT64 &&
+        right->kind == MYLITE_EXPRESSION_VALUE_INT64) {
+        *out_compare =
+            (left->int64_value > right->int64_value) - (left->int64_value < right->int64_value);
+        return 0;
+    }
+    if (left->kind == MYLITE_EXPRESSION_VALUE_UINT64 &&
+        right->kind == MYLITE_EXPRESSION_VALUE_UINT64) {
+        *out_compare =
+            (left->uint64_value > right->uint64_value) - (left->uint64_value < right->uint64_value);
+        return 0;
+    }
+    if (left->kind == MYLITE_EXPRESSION_VALUE_INT64 &&
+        right->kind == MYLITE_EXPRESSION_VALUE_UINT64) {
+        *out_compare = left->int64_value < 0
+                           ? -1
+                           : ((uint64_t)left->int64_value > right->uint64_value) -
+                                 ((uint64_t)left->int64_value < right->uint64_value);
+        return 0;
+    }
+    if (left->kind == MYLITE_EXPRESSION_VALUE_UINT64 &&
+        right->kind == MYLITE_EXPRESSION_VALUE_INT64) {
+        *out_compare = right->int64_value < 0
+                           ? 1
+                           : (left->uint64_value > (uint64_t)right->int64_value) -
+                                 (left->uint64_value < (uint64_t)right->int64_value);
+        return 0;
+    }
+    return compare_values(left, right, warnings, out_compare);
+}
+
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+static bool greatest_least_candidate_replaces_selected(enum mylite_scalar_function_id function_id,
+                                                       int selected_vs_candidate)
+{
+    if (function_id == MYLITE_SCALAR_FUNCTION_GREATEST) {
+        return selected_vs_candidate <= 0;
+    }
+    return selected_vs_candidate > 0;
+}
+
+static void greatest_least_arguments_deinit(struct greatest_least_argument *values,
+                                            size_t value_count)
+{
+    for (size_t index = 0U; index < value_count; ++index) {
+        mylite_expression_value_deinit(&values[index].value);
+        free(values[index].text);
+        free(values[index].compare_text);
+    }
+}
+
 static int eval_isnull_function(const struct mylite_sql_ast_node *arguments,
                                 const struct mylite_expression_eval_context *context,
                                 struct mylite_expression_warnings *warnings,
@@ -9398,6 +9705,10 @@ static int text_value_to_numeric(const struct mylite_expression_value *value,
                                  struct mylite_expression_warnings *warnings,
                                  struct numeric_value *out_numeric)
 {
+    if (value->suppress_text_numeric_warnings) {
+        return text_value_to_numeric_without_warnings(value, out_numeric);
+    }
+
     char *text = value->text_value == NULL
                      ? copy_span_text("", 0U)
                      : copy_span_text(value->text_value, strlen(value->text_value));
@@ -9422,6 +9733,60 @@ static int text_value_to_numeric(const struct mylite_expression_value *value,
     }
     free(text);
     return status;
+}
+
+static int text_value_to_numeric_without_warnings(const struct mylite_expression_value *value,
+                                                  struct numeric_value *out_numeric)
+{
+    char *text = value->text_value == NULL
+                     ? copy_span_text("", 0U)
+                     : copy_span_text(value->text_value, strlen(value->text_value));
+    char *start = text;
+    char *end = NULL;
+    bool overflow = false;
+
+    if (text == NULL) {
+        return -1;
+    }
+    while (isspace((unsigned char)*start)) {
+        ++start;
+    }
+    if (!numeric_text_has_digit(start) || numeric_text_is_hex_like(start)) {
+        out_numeric->is_integer = true;
+        free(text);
+        return 0;
+    }
+
+    errno = 0;
+    out_numeric->real_value = strtod(start, &end);
+    overflow = errno == ERANGE && isinf(out_numeric->real_value);
+    if (overflow) {
+        clamp_numeric_text_range(out_numeric);
+    } else {
+        out_numeric->int64_value = numeric_real_to_truncated_int64(out_numeric->real_value);
+    }
+    out_numeric->uint64_value = (uint64_t)out_numeric->int64_value;
+    out_numeric->is_integer = !overflow && numeric_text_prefix_is_integer(start, end);
+    free(text);
+    return 0;
+}
+
+static bool numeric_text_prefix_is_integer(const char *start, const char *end)
+{
+    const char *scan = start;
+
+    if (scan == NULL || end == NULL || end <= scan) {
+        return true;
+    }
+    if (*scan == '+' || *scan == '-') {
+        ++scan;
+    }
+    for (; scan < end; ++scan) {
+        if (*scan == '.' || *scan == 'e' || *scan == 'E') {
+            return false;
+        }
+    }
+    return true;
 }
 
 static bool numeric_text_has_digit(const char *start)
@@ -9923,6 +10288,7 @@ static int set_text_value(const char *text, size_t length,
         return -1;
     }
     out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
+    out_value->suppress_text_numeric_warnings = false;
     out_value->text_length = length;
     return 0;
 }
@@ -10361,6 +10727,8 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"IFNULL", MYLITE_SCALAR_FUNCTION_IFNULL},
         {"NULLIF", MYLITE_SCALAR_FUNCTION_NULLIF},
         {"COALESCE", MYLITE_SCALAR_FUNCTION_COALESCE},
+        {"GREATEST", MYLITE_SCALAR_FUNCTION_GREATEST},
+        {"LEAST", MYLITE_SCALAR_FUNCTION_LEAST},
         {"ISNULL", MYLITE_SCALAR_FUNCTION_ISNULL},
         {"DATABASE", MYLITE_SCALAR_FUNCTION_DATABASE},
         {"SCHEMA", MYLITE_SCALAR_FUNCTION_SCHEMA},
@@ -10479,6 +10847,8 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_IFNULL:
     case MYLITE_SCALAR_FUNCTION_NULLIF:
     case MYLITE_SCALAR_FUNCTION_COALESCE:
+    case MYLITE_SCALAR_FUNCTION_GREATEST:
+    case MYLITE_SCALAR_FUNCTION_LEAST:
     case MYLITE_SCALAR_FUNCTION_ISNULL:
         return false;
     }

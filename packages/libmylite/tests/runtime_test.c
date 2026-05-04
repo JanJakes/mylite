@@ -262,6 +262,7 @@ static int test_cot_scalar_function_execution(mylite_db *database);
 static int test_inverse_trigonometric_scalar_function_execution(mylite_db *database);
 static int test_atan_scalar_function_execution(mylite_db *database);
 static int test_angle_conversion_scalar_function_execution(mylite_db *database);
+static int test_greatest_least_scalar_function_execution(mylite_db *database);
 static int test_uuid_scalar_functions(mylite_db *database);
 static int test_inet_ipv4_functions_execution(void);
 static int test_charset_collation_functions_execution(void);
@@ -4051,6 +4052,8 @@ static int test_scalar_builtin_functions_execution(void)
     failures += test_atan_scalar_function_execution(database);
 
     failures += test_angle_conversion_scalar_function_execution(database);
+
+    failures += test_greatest_least_scalar_function_execution(database);
 
     failures += test_uuid_scalar_functions(database);
 
@@ -8489,6 +8492,204 @@ static int test_angle_conversion_scalar_function_execution(mylite_db *database)
     failures += expect_no_stmt_handle(&stmt, "RADIANS zero arity unsupported");
     failures += prepare_sql(database, "SELECT RADIANS(1,2)", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "RADIANS two arity unsupported");
+
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_greatest_least_scalar_function_execution(mylite_db *database)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const struct expected_result_metadata metadata[] = {
+        {"greatest_int_meta", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"least_int_meta", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"greatest_decimal_meta", NULL, NULL, NULL, NULL, NULL, 5U, MYLITE_FIELD_TYPE_NEWDECIMAL,
+         1U, 63U, MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U,
+         0},
+        {"least_decimal_meta", NULL, NULL, NULL, NULL, NULL, 5U, MYLITE_FIELD_TYPE_NEWDECIMAL, 1U,
+         63U, MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"greatest_mixed_meta", NULL, NULL, NULL, NULL, NULL, 8U, MYLITE_FIELD_TYPE_VAR_STRING, 31U,
+         255U, MYLITE_FIELD_FLAG_NOT_NULL,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 0},
+        {"least_mixed_meta", NULL, NULL, NULL, NULL, NULL, 12U, MYLITE_FIELD_TYPE_VAR_STRING, 31U,
+         255U, MYLITE_FIELD_FLAG_NOT_NULL,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 0},
+        {"greatest_text_meta", NULL, NULL, NULL, NULL, NULL, 4U, MYLITE_FIELD_TYPE_VAR_STRING, 31U,
+         255U, MYLITE_FIELD_FLAG_NOT_NULL,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 0},
+        {"greatest_null_meta", NULL, NULL, NULL, NULL, NULL, 2U, MYLITE_FIELD_TYPE_LONGLONG, 0U,
+         63U, MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"greatest_all_null_meta", NULL, NULL, NULL, NULL, NULL, 0U, MYLITE_FIELD_TYPE_NULL, 0U,
+         63U, MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"least_all_null_meta", NULL, NULL, NULL, NULL, NULL, 0U, MYLITE_FIELD_TYPE_NULL, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    static const char *const scalar_columns[] = {
+        "greatest_int",   "least_int",     "greatest_text",  "least_text",
+        "greatest_null",  "least_null",    "greatest_short", "least_short",
+        "greatest_mixed", "least_mixed",   "greatest_10_2",  "greatest_bad_mix",
+        "least_bad_mix",  "greatest_foo",  "least_foo",      "greatest_ci",
+        "least_ci",       "greatest_tie",  "least_tie",      "greatest_trailing",
+        "least_trailing", "greatest_num",  "least_num",      "greatest_pred",
+        "least_pred",     "greatest_uint", "least_uint",
+    };
+    static const char *const scalar_values[] = {
+        "45", "2",
+        "45", "11",
+        NULL, NULL,
+        NULL, NULL,
+        "9",  "10",
+        "2",  "2",
+        "1x", "foo",
+        "0",  "B",
+        "a",  "A",
+        "a",  "6120",
+        "61", "2",
+        "1",  "1",
+        "1",  "18446744073709551615",
+        "-1",
+    };
+    static const char *const ordered_columns[] = {"id", "g"};
+    static const char *const ordered_values[] = {"1", "7", "2", "7", "4", "foo"};
+    static const char *const id_n_columns[] = {"id", "n"};
+    static const char *const id_n_two_values[] = {"2", "7"};
+    static const char *const id_n_one_values[] = {"1", "1"};
+    static const char *const id_s_n_columns[] = {"id", "s", "n"};
+    static const char *const id_s_n_one_values[] = {"1", "3", "1"};
+    static const char *const id_column[] = {"id"};
+    static const char *const remaining_values[] = {"3"};
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
+
+    failures += expect_select_rows(
+        database,
+        "SELECT GREATEST(11,45,2) AS greatest_int, "
+        "LEAST(11,45,2) AS least_int, "
+        "GREATEST('11','45','2') AS greatest_text, "
+        "LEAST('11','45','2') AS least_text, "
+        "GREATEST(1,NULL,2) AS greatest_null, "
+        "LEAST(1,NULL,2) AS least_null, "
+        "GREATEST(NULL,1/0) AS greatest_short, "
+        "LEAST(NULL,1/0) AS least_short, "
+        "GREATEST(2,'9') AS greatest_mixed, "
+        "LEAST(10,'2') AS least_mixed, "
+        "GREATEST(10,'2') AS greatest_10_2, "
+        "GREATEST('1x',2) AS greatest_bad_mix, "
+        "LEAST('1x',2) AS least_bad_mix, "
+        "GREATEST('foo',0) AS greatest_foo, "
+        "LEAST('foo',0) AS least_foo, "
+        "GREATEST('a','B') AS greatest_ci, "
+        "LEAST('a','B') AS least_ci, "
+        "GREATEST('a','A') AS greatest_tie, "
+        "LEAST('a','A') AS least_tie, "
+        "HEX(GREATEST('a','a ')) AS greatest_trailing, "
+        "HEX(LEAST('a','a ')) AS least_trailing, "
+        "GREATEST('1x',2)+0 AS greatest_num, "
+        "LEAST('1x',2)+0 AS least_num, "
+        "GREATEST('foo',0)=0 AS greatest_pred, "
+        "LEAST('foo',0)=0 AS least_pred, "
+        "GREATEST(CAST(-1 AS SIGNED), CAST(18446744073709551615 AS UNSIGNED)) AS greatest_uint, "
+        "LEAST(CAST(-1 AS SIGNED), CAST(18446744073709551615 AS UNSIGNED)) AS least_uint",
+        scalar_columns, (int)(sizeof(scalar_columns) / sizeof(scalar_columns[0])), scalar_values, 1,
+        "GREATEST/LEAST scalar values");
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "GREATEST/LEAST scalar warning count");
+
+    failures += prepare_sql(database,
+                            "SELECT GREATEST(11,45,2) AS greatest_int_meta, "
+                            "LEAST(11,45,2) AS least_int_meta, "
+                            "GREATEST(34.0,3,5) AS greatest_decimal_meta, "
+                            "LEAST(34.0,3,5) AS least_decimal_meta, "
+                            "GREATEST(2,'9') AS greatest_mixed_meta, "
+                            "LEAST(10,'2') AS least_mixed_meta, "
+                            "GREATEST('a','B') AS greatest_text_meta, "
+                            "GREATEST(1,NULL,2) AS greatest_null_meta, "
+                            "GREATEST(NULL,NULL) AS greatest_all_null_meta, "
+                            "LEAST(NULL,NULL) AS least_all_null_meta",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "GREATEST/LEAST metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "GREATEST/LEAST metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "GREATEST/LEAST metadata done");
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "GREATEST/LEAST metadata warning count");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database,
+                            "CREATE TABLE greatest_least_sites ("
+                            "id INT PRIMARY KEY, "
+                            "s VARCHAR(20), "
+                            "n INT NOT NULL)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO greatest_least_sites VALUES "
+                            "(1,'3',1),"
+                            "(2,'20x',2),"
+                            "(3,NULL,3),"
+                            "(4,'foo',4)",
+                            MYLITE_DONE);
+
+    failures += expect_select_rows(database,
+                                   "SELECT id, GREATEST(s,7) AS g FROM greatest_least_sites "
+                                   "WHERE LEAST(s,0)=0 ORDER BY GREATEST(s,7), id",
+                                   ordered_columns, 2, ordered_values, 3,
+                                   "GREATEST/LEAST projection where order");
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "GREATEST/LEAST projection warning count");
+
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE greatest_least_sites SET n = GREATEST(s,7) WHERE id=2", 1,
+        "GREATEST update mixed string assignment");
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "GREATEST update mixed string warning count");
+    failures += expect_select_rows(database, "SELECT id, n FROM greatest_least_sites WHERE id=2",
+                                   id_n_columns, 2, id_n_two_values, 1,
+                                   "GREATEST update mixed string value");
+
+    failures += prepare_sql(
+        database, "UPDATE greatest_least_sites SET s = GREATEST('foo',0), n = s + 0 WHERE id=1",
+        MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Truncated incorrect DOUBLE value",
+                                  "GREATEST update assignment flag scope");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id, s, n FROM greatest_least_sites WHERE id=1",
+                                   id_s_n_columns, 3, id_s_n_one_values, 1,
+                                   "GREATEST update assignment flag rollback");
+
+    failures +=
+        prepare_sql(database, "UPDATE greatest_least_sites SET n = GREATEST(NULL,7) WHERE id=1",
+                    MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "cannot be null",
+                                  "GREATEST update null not null assignment");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id, n FROM greatest_least_sites WHERE id=1",
+                                   id_n_columns, 2, id_n_one_values, 1,
+                                   "GREATEST null assignment rollback");
+
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM greatest_least_sites WHERE LEAST(s,0)=0", 3,
+        "LEAST delete predicate");
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "LEAST delete predicate warning count");
+    failures +=
+        expect_select_rows(database, "SELECT id FROM greatest_least_sites ORDER BY id", id_column,
+                           1, remaining_values, 1, "LEAST delete predicate remaining rows");
+
+    failures += prepare_sql(database, "SELECT GREATEST()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "GREATEST zero arity unsupported");
+    failures += prepare_sql(database, "SELECT GREATEST(1)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "GREATEST one arity unsupported");
+    failures += prepare_sql(database, "SELECT LEAST()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "LEAST zero arity unsupported");
+    failures += prepare_sql(database, "SELECT LEAST(1)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "LEAST one arity unsupported");
 
     // NOLINTEND(readability-magic-numbers)
     return failures;

@@ -399,10 +399,29 @@ Representative runtime results:
 | `GREATEST('11','45','2')` | `45` |
 | `GREATEST(11,45,2)` | `45` |
 | `LEAST('11','45','2')` | `11` |
+| `GREATEST(2,'9')` | `9` |
+| `LEAST(10,'2')` | `10` |
+| `GREATEST(10,'2')` | `2` |
+| `GREATEST('1x',2)` | `2` |
+| `LEAST('1x',2)` | `1x` |
+| `GREATEST('a','B')` | `B` |
+| `LEAST('a','B')` | `a` |
+| `HEX(GREATEST('a','a '))` | `6120` |
+| `HEX(LEAST('a','a '))` | `61` |
 | `GREATEST(1,NULL,2)` | `NULL` |
 | `LEAST(1,NULL,2)` | `NULL` |
 | `ISNULL(NULL)` | `1` |
 | `CASE WHEN n > 0 THEN 'pos' WHEN n < 0 THEN 'neg' ELSE 'nil' END` | `pos`, `neg`, `nil` over fixture rows |
+
+`GREATEST` and `LEAST` follow MySQL's string-domain rule for this function
+family: if any ordinary string argument is present, mixed string/numeric calls
+compare as strings and return string metadata without numeric conversion
+warnings. The implemented default-collation subset handles ASCII
+case-insensitive comparison, ignores trailing ASCII spaces for comparison, and
+uses MySQL's tie rule where `GREATEST` chooses the later collation-equal
+argument while `LEAST` keeps the first. Full collation repertoire, binary-string
+aggregation, and temporal aggregation remain deferred in the dedicated
+`GREATEST`/`LEAST` slice.
 
 `IF` and `COALESCE` short-circuit unchosen branches. The verified query:
 
@@ -984,7 +1003,8 @@ and `LIMIT 0` queries for:
 - string functions: `CONCAT`, `CONCAT_WS`, `LENGTH`, `CHAR_LENGTH`,
   `SUBSTRING`, `SUBSTR`, `MID`, `SUBSTRING_INDEX`, `TRIM`, `LTRIM`, `RTRIM`
 - numeric functions: `ABS`, `ROUND`, `POW`, `SQRT`
-- conditional/comparison functions: `IF`, `IFNULL`, `COALESCE`, `GREATEST`
+- conditional/comparison functions: `IF`, `IFNULL`, `COALESCE`, `GREATEST`,
+  `LEAST`
 - temporal functions: `NOW(6)`, `CURDATE`, `DATEDIFF`, `DATE_ADD`
 - information functions: `DATABASE`, `SCHEMA`, `VERSION`, `LAST_INSERT_ID`,
   `ROW_COUNT`, `CONNECTION_ID`

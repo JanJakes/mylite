@@ -63,6 +63,7 @@ add_library(mylite STATIC
   src/runtime/mylite_dml_update_conflict.c
   src/runtime/mylite_dml_update_delete_copy.c
   src/runtime/mylite_dml_update_diagnostics.c
+  src/runtime/mylite_dml_update_delete_materialize.c
   src/runtime/mylite_dml_update_rowset.c
   src/runtime/mylite_dml_update_value.c
   src/runtime/mylite_dml_value_diagnostics.c

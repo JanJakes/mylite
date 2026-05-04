@@ -11,6 +11,9 @@
 #include <stdint.h>
 
 struct mylite_expression_value;
+struct mylite_expression_eval_context;
+struct mylite_expression_warnings;
+struct mylite_dml_expression_callbacks;
 struct mylite_select_order_key;
 struct mylite_select_table;
 
@@ -237,10 +240,24 @@ struct mylite_update_rowset {
     size_t row_count;
 };
 
+typedef int (*mylite_dml_eval_session_function_fn)(
+    void *user_data, const struct mylite_select_table *table,
+    const struct mylite_sql_ast_node *function_call,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value);
+typedef int (*mylite_dml_set_where_predicate_eval_error_fn)(void *user_data);
+
+struct mylite_dml_expression_callbacks {
+    void *user_data;
+    mylite_dml_eval_session_function_fn eval_session_function;
+    mylite_dml_set_where_predicate_eval_error_fn set_where_predicate_eval_error;
+};
+
 struct mylite_update_expression_context {
     mylite_stmt *stmt;
     const struct mylite_select_table *table;
     const struct mylite_update_row *row;
+    const struct mylite_dml_expression_callbacks *callbacks;
 };
 
 #endif

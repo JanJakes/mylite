@@ -256,6 +256,16 @@ int mylite_dml_copy_update_sqlite_row(mylite_db *database, const struct mylite_s
                                       sqlite3_stmt *scan, struct mylite_update_row *out_row);
 int mylite_dml_append_update_row(mylite_db *database, struct mylite_update_rowset *rowset,
                                  struct mylite_update_row *row);
+int mylite_dml_materialize_update_rows(mylite_db *database, const struct mylite_update_plan *plan,
+                                       const struct mylite_select_table *table,
+                                       const struct mylite_update_order_plan *order_plan,
+                                       const struct mylite_dml_expression_callbacks *callbacks,
+                                       struct mylite_update_rowset *rowset);
+int mylite_dml_materialize_delete_rows(mylite_db *database, const struct mylite_delete_plan *plan,
+                                       const struct mylite_select_table *table,
+                                       const struct mylite_update_order_plan *order_plan,
+                                       const struct mylite_dml_expression_callbacks *callbacks,
+                                       struct mylite_update_rowset *rowset);
 int mylite_dml_add_update_order_key(struct mylite_update_order_plan *plan,
                                     const struct mylite_select_order_key *order_key);
 int mylite_dml_copy_update_candidate_values(mylite_db *database,

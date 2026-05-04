@@ -413,6 +413,8 @@ only the core object model and transitional shared helpers listed here:
   companion module without depending on `mylite_stmt`.
 - [x] Move DELETE WHERE, LIMIT, and ORDER binding into a focused DML companion
   module without depending on `mylite_stmt`.
+- [x] Move UPDATE/DELETE row materialization into a focused DML companion module
+  behind narrow session-function and WHERE-diagnostic callbacks.
 - [x] Move update/delete rowset scan and update write SQL builders into a
   focused DML companion module.
 - [x] Move update unique-check SQL and SQLite value binding into a focused DML

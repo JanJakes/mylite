@@ -1259,18 +1259,6 @@ static int resolve_union_expression_identifier(void *user_data,
                                                struct mylite_expression_value *out_value);
 static int append_and_clear_union_database_warnings(mylite_db *database,
                                                     struct mylite_expression_warnings *warnings);
-static int materialize_update_rows(mylite_stmt *stmt, const struct mylite_select_table *table,
-                                   const struct mylite_update_order_plan *order_plan,
-                                   struct mylite_update_rowset *rowset);
-static int evaluate_update_row_matches(mylite_stmt *stmt, const struct mylite_select_table *table,
-                                       const struct mylite_update_row *row, bool *out_matches);
-static int evaluate_update_order_values(mylite_stmt *stmt, const struct mylite_select_table *table,
-                                        const struct mylite_update_order_plan *order_plan,
-                                        struct mylite_update_row *row);
-static int evaluate_update_order_key(mylite_stmt *stmt, const struct mylite_select_table *table,
-                                     const struct mylite_update_row *row,
-                                     const struct mylite_select_order_key *order_key,
-                                     struct mylite_expression_value *out_value);
 static int execute_update_rows_transaction(mylite_stmt *stmt,
                                            const struct mylite_select_table *table,
                                            const struct mylite_insert_table *write_table,
@@ -1298,18 +1286,6 @@ static int evaluate_update_assignment_value(mylite_stmt *stmt,
                                             size_t target_column,
                                             const struct mylite_sql_ast_node *expression,
                                             struct mylite_expression_value *out_value);
-static int materialize_delete_rows(mylite_stmt *stmt, const struct mylite_select_table *table,
-                                   const struct mylite_update_order_plan *order_plan,
-                                   struct mylite_update_rowset *rowset);
-static int evaluate_delete_row_matches(mylite_stmt *stmt, const struct mylite_select_table *table,
-                                       const struct mylite_update_row *row, bool *out_matches);
-static int evaluate_delete_order_values(mylite_stmt *stmt, const struct mylite_select_table *table,
-                                        const struct mylite_update_order_plan *order_plan,
-                                        struct mylite_update_row *row);
-static int evaluate_delete_order_key(mylite_stmt *stmt, const struct mylite_select_table *table,
-                                     const struct mylite_update_row *row,
-                                     const struct mylite_select_order_key *order_key,
-                                     struct mylite_expression_value *out_value);
 static int execute_scalar_select_statement(mylite_stmt *stmt);
 static int evaluate_scalar_select_result(mylite_stmt *stmt);
 static int evaluate_scalar_select_result_item(mylite_stmt *stmt, size_t index);
@@ -1327,6 +1303,12 @@ evaluate_update_session_function(void *user_data, const struct mylite_sql_ast_no
                                  const struct mylite_expression_eval_context *expression_context,
                                  struct mylite_expression_warnings *warnings,
                                  struct mylite_expression_value *out_value);
+static int evaluate_dml_materialize_session_function(
+    void *user_data, const struct mylite_select_table *table,
+    const struct mylite_sql_ast_node *function_call,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value);
+static int set_dml_materialize_where_predicate_eval_error(void *user_data);
 static int evaluate_statement_session_function(
     mylite_stmt *stmt, const struct mylite_sql_ast_node *function_call,
     const struct mylite_expression_eval_context *expression_context,
@@ -15585,6 +15567,11 @@ static int execute_update_statement(mylite_stmt *stmt)
     struct mylite_update_order_plan order_plan = {0};
     struct mylite_update_bound_assignment *assignments = NULL;
     struct mylite_update_rowset rowset = {0};
+    const struct mylite_dml_expression_callbacks expression_callbacks = {
+        .user_data = stmt,
+        .eval_session_function = evaluate_dml_materialize_session_function,
+        .set_where_predicate_eval_error = set_dml_materialize_where_predicate_eval_error,
+    };
     size_t assignment_count = stmt->update.assignment_count;
     int status = MYLITE_OK;
 
@@ -15610,7 +15597,8 @@ static int execute_update_statement(mylite_stmt *stmt)
                                                         &order_plan);
     }
     if (status == MYLITE_OK) {
-        status = materialize_update_rows(stmt, &table, &order_plan, &rowset);
+        status = mylite_dml_materialize_update_rows(stmt->database, &stmt->update, &table,
+                                                    &order_plan, &expression_callbacks, &rowset);
     }
     if (status == MYLITE_OK) {
         status = mylite_dml_sort_update_rowset(&rowset, &order_plan);
@@ -15634,152 +15622,6 @@ static int execute_update_statement(mylite_stmt *stmt)
         stmt->affected_rows = -1;
     }
     return status;
-}
-
-static int materialize_update_rows(mylite_stmt *stmt, const struct mylite_select_table *table,
-                                   const struct mylite_update_order_plan *order_plan,
-                                   struct mylite_update_rowset *rowset)
-{
-    sqlite3_stmt *scan = NULL;
-    char *scan_sql = mylite_dml_build_update_scan_sql(stmt->database, table);
-    int rc = SQLITE_OK;
-    int status = MYLITE_OK;
-
-    if (scan_sql == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    rc = sqlite3_prepare_v3(stmt->database->sqlite, scan_sql, -1, SQLITE_PREPARE_PERSISTENT, &scan,
-                            NULL);
-    sqlite3_free(scan_sql);
-    if (rc != SQLITE_OK) {
-        return mylite_diagnostics_set_sqlite_error(stmt->database);
-    }
-
-    while ((rc = sqlite3_step(scan)) == SQLITE_ROW) {
-        struct mylite_update_row row = {0};
-        bool matches = false;
-
-        status = mylite_dml_copy_update_sqlite_row(stmt->database, table, scan, &row);
-        if (status == MYLITE_OK) {
-            status = evaluate_update_row_matches(stmt, table, &row, &matches);
-        }
-        if (status == MYLITE_OK && matches) {
-            status = evaluate_update_order_values(stmt, table, order_plan, &row);
-        }
-        if (status == MYLITE_OK && matches) {
-            status = mylite_dml_append_update_row(stmt->database, rowset, &row);
-        }
-        mylite_dml_update_row_deinit(&row);
-        if (status != MYLITE_OK) {
-            sqlite3_finalize(scan);
-            return status;
-        }
-    }
-    sqlite3_finalize(scan);
-    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
-}
-
-static int evaluate_update_row_matches(mylite_stmt *stmt, const struct mylite_select_table *table,
-                                       const struct mylite_update_row *row, bool *out_matches)
-{
-    struct mylite_update_expression_context user_context = {
-        .stmt = stmt,
-        .table = table,
-        .row = row,
-    };
-    struct mylite_expression_eval_context context = {
-        .user_data = &user_context,
-        .resolve_identifier = mylite_dml_resolve_update_expression_identifier,
-        .eval_session_function = evaluate_update_session_function,
-    };
-    struct mylite_expression_value value = {0};
-    size_t warning_start = stmt->database->warnings.count;
-    int truth = -1;
-    int status = 0;
-
-    *out_matches = true;
-    if (stmt->update.where_clause == NULL) {
-        return MYLITE_OK;
-    }
-
-    status = mylite_expression_eval_with_context(mylite_ast_child_at(stmt->update.where_clause, 0U),
-                                                 &context, &stmt->database->warnings, &value);
-    if (status == 0) {
-        status = mylite_expression_value_truth(&value, &stmt->database->warnings, &truth);
-    }
-    mylite_expression_value_deinit(&value);
-    if (status != 0) {
-        int condition_status =
-            mylite_dml_set_expression_condition_error(stmt->database, warning_start);
-
-        return condition_status == MYLITE_OK ? set_where_predicate_eval_error(stmt)
-                                             : condition_status;
-    }
-    status = mylite_dml_promote_expression_warnings(stmt->database, warning_start);
-    if (status != MYLITE_OK) {
-        return status;
-    }
-
-    *out_matches = truth == 1;
-    return MYLITE_OK;
-}
-
-static int evaluate_update_order_values(mylite_stmt *stmt, const struct mylite_select_table *table,
-                                        const struct mylite_update_order_plan *order_plan,
-                                        struct mylite_update_row *row)
-{
-    if (order_plan->order_key_count == 0U) {
-        return MYLITE_OK;
-    }
-
-    row->order_values = calloc(order_plan->order_key_count, sizeof(*row->order_values));
-    if (row->order_values == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    row->order_value_count = order_plan->order_key_count;
-
-    for (size_t index = 0U; index < order_plan->order_key_count; ++index) {
-        int status = evaluate_update_order_key(stmt, table, row, &order_plan->order_keys[index],
-                                               &row->order_values[index]);
-
-        if (status != MYLITE_OK) {
-            return status;
-        }
-    }
-    return MYLITE_OK;
-}
-
-static int evaluate_update_order_key(mylite_stmt *stmt, const struct mylite_select_table *table,
-                                     const struct mylite_update_row *row,
-                                     const struct mylite_select_order_key *order_key,
-                                     struct mylite_expression_value *out_value)
-{
-    struct mylite_update_expression_context user_context = {
-        .stmt = stmt,
-        .table = table,
-        .row = row,
-    };
-    struct mylite_expression_eval_context context = {
-        .user_data = &user_context,
-        .resolve_identifier = mylite_dml_resolve_update_expression_identifier,
-        .eval_session_function = evaluate_update_session_function,
-    };
-    size_t warning_start = stmt->database->warnings.count;
-    int status = mylite_expression_eval_with_context(order_key->expression, &context,
-                                                     &stmt->database->warnings, out_value);
-
-    if (status != 0) {
-        int condition_status =
-            mylite_dml_set_expression_condition_error(stmt->database, warning_start);
-
-        return condition_status == MYLITE_OK
-                   ? mylite_dml_set_update_unsupported_clause_error(stmt->database)
-                   : condition_status;
-    }
-    return mylite_dml_promote_expression_warnings(stmt->database, warning_start);
 }
 
 static int execute_update_rows_transaction(mylite_stmt *stmt,
@@ -15981,6 +15823,11 @@ static int execute_delete_statement(mylite_stmt *stmt)
     struct mylite_select_table table = {0};
     struct mylite_update_order_plan order_plan = {0};
     struct mylite_update_rowset rowset = {0};
+    const struct mylite_dml_expression_callbacks expression_callbacks = {
+        .user_data = stmt,
+        .eval_session_function = evaluate_dml_materialize_session_function,
+        .set_where_predicate_eval_error = set_dml_materialize_where_predicate_eval_error,
+    };
     int64_t affected_rows = 0;
     int status = MYLITE_OK;
 
@@ -16008,7 +15855,8 @@ static int execute_delete_statement(mylite_stmt *stmt)
                                                         &order_plan);
     }
     if (status == MYLITE_OK) {
-        status = materialize_delete_rows(stmt, &table, &order_plan, &rowset);
+        status = mylite_dml_materialize_delete_rows(stmt->database, &stmt->delete_plan, &table,
+                                                    &order_plan, &expression_callbacks, &rowset);
     }
     if (status == MYLITE_OK) {
         status = mylite_dml_sort_update_rowset(&rowset, &order_plan);
@@ -16032,153 +15880,6 @@ static int execute_delete_statement(mylite_stmt *stmt)
         stmt->affected_rows = -1;
     }
     return status;
-}
-
-static int materialize_delete_rows(mylite_stmt *stmt, const struct mylite_select_table *table,
-                                   const struct mylite_update_order_plan *order_plan,
-                                   struct mylite_update_rowset *rowset)
-{
-    sqlite3_stmt *scan = NULL;
-    char *scan_sql = mylite_dml_build_update_scan_sql(stmt->database, table);
-    int rc = SQLITE_OK;
-    int status = MYLITE_OK;
-
-    if (scan_sql == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    rc = sqlite3_prepare_v3(stmt->database->sqlite, scan_sql, -1, SQLITE_PREPARE_PERSISTENT, &scan,
-                            NULL);
-    sqlite3_free(scan_sql);
-    if (rc != SQLITE_OK) {
-        return mylite_diagnostics_set_sqlite_error(stmt->database);
-    }
-
-    while ((rc = sqlite3_step(scan)) == SQLITE_ROW) {
-        struct mylite_update_row row = {0};
-        bool matches = false;
-
-        status = mylite_dml_copy_update_sqlite_row(stmt->database, table, scan, &row);
-        if (status == MYLITE_OK) {
-            status = evaluate_delete_row_matches(stmt, table, &row, &matches);
-        }
-        if (status == MYLITE_OK && matches) {
-            status = evaluate_delete_order_values(stmt, table, order_plan, &row);
-        }
-        if (status == MYLITE_OK && matches) {
-            status = mylite_dml_append_update_row(stmt->database, rowset, &row);
-        }
-        mylite_dml_update_row_deinit(&row);
-        if (status != MYLITE_OK) {
-            sqlite3_finalize(scan);
-            return status;
-        }
-    }
-    sqlite3_finalize(scan);
-    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
-}
-
-static int evaluate_delete_row_matches(mylite_stmt *stmt, const struct mylite_select_table *table,
-                                       const struct mylite_update_row *row, bool *out_matches)
-{
-    struct mylite_update_expression_context user_context = {
-        .stmt = stmt,
-        .table = table,
-        .row = row,
-    };
-    struct mylite_expression_eval_context context = {
-        .user_data = &user_context,
-        .resolve_identifier = mylite_dml_resolve_update_expression_identifier,
-        .eval_session_function = evaluate_update_session_function,
-    };
-    struct mylite_expression_value value = {0};
-    size_t warning_start = stmt->database->warnings.count;
-    int truth = -1;
-    int status = 0;
-
-    *out_matches = true;
-    if (stmt->delete_plan.where_clause == NULL) {
-        return MYLITE_OK;
-    }
-
-    status =
-        mylite_expression_eval_with_context(mylite_ast_child_at(stmt->delete_plan.where_clause, 0U),
-                                            &context, &stmt->database->warnings, &value);
-    if (status == 0) {
-        status = mylite_expression_value_truth(&value, &stmt->database->warnings, &truth);
-    }
-    mylite_expression_value_deinit(&value);
-    if (status != 0) {
-        int condition_status =
-            mylite_dml_set_expression_condition_error(stmt->database, warning_start);
-
-        return condition_status == MYLITE_OK ? set_where_predicate_eval_error(stmt)
-                                             : condition_status;
-    }
-    status = mylite_dml_promote_expression_warnings(stmt->database, warning_start);
-    if (status != MYLITE_OK) {
-        return status;
-    }
-
-    *out_matches = truth == 1;
-    return MYLITE_OK;
-}
-
-static int evaluate_delete_order_values(mylite_stmt *stmt, const struct mylite_select_table *table,
-                                        const struct mylite_update_order_plan *order_plan,
-                                        struct mylite_update_row *row)
-{
-    if (order_plan->order_key_count == 0U) {
-        return MYLITE_OK;
-    }
-
-    row->order_values = calloc(order_plan->order_key_count, sizeof(*row->order_values));
-    if (row->order_values == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    row->order_value_count = order_plan->order_key_count;
-
-    for (size_t index = 0U; index < order_plan->order_key_count; ++index) {
-        int status = evaluate_delete_order_key(stmt, table, row, &order_plan->order_keys[index],
-                                               &row->order_values[index]);
-
-        if (status != MYLITE_OK) {
-            return status;
-        }
-    }
-    return MYLITE_OK;
-}
-
-static int evaluate_delete_order_key(mylite_stmt *stmt, const struct mylite_select_table *table,
-                                     const struct mylite_update_row *row,
-                                     const struct mylite_select_order_key *order_key,
-                                     struct mylite_expression_value *out_value)
-{
-    struct mylite_update_expression_context user_context = {
-        .stmt = stmt,
-        .table = table,
-        .row = row,
-    };
-    struct mylite_expression_eval_context context = {
-        .user_data = &user_context,
-        .resolve_identifier = mylite_dml_resolve_update_expression_identifier,
-        .eval_session_function = evaluate_update_session_function,
-    };
-    size_t warning_start = stmt->database->warnings.count;
-    int status = mylite_expression_eval_with_context(order_key->expression, &context,
-                                                     &stmt->database->warnings, out_value);
-
-    if (status != 0) {
-        int condition_status =
-            mylite_dml_set_expression_condition_error(stmt->database, warning_start);
-
-        return condition_status == MYLITE_OK
-                   ? mylite_dml_set_delete_unsupported_clause_error(stmt->database)
-                   : condition_status;
-    }
-    return mylite_dml_promote_expression_warnings(stmt->database, warning_start);
 }
 
 static int execute_scalar_select_statement(mylite_stmt *stmt)
@@ -16276,6 +15977,21 @@ evaluate_update_session_function(void *user_data, const struct mylite_sql_ast_no
     return evaluate_statement_session_function(context == NULL ? NULL : context->stmt,
                                                function_call, expression_context, warnings,
                                                context == NULL ? NULL : context->table, out_value);
+}
+
+static int evaluate_dml_materialize_session_function(
+    void *user_data, const struct mylite_select_table *table,
+    const struct mylite_sql_ast_node *function_call,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value)
+{
+    return evaluate_statement_session_function((mylite_stmt *)user_data, function_call,
+                                               expression_context, warnings, table, out_value);
+}
+
+static int set_dml_materialize_where_predicate_eval_error(void *user_data)
+{
+    return set_where_predicate_eval_error((mylite_stmt *)user_data);
 }
 
 static int evaluate_statement_session_function(

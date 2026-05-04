@@ -249,7 +249,7 @@ only the core object model and transitional shared helpers listed here:
   feature-owned type prefixes in `mylite_runtime.h`.
 - [ ] Move immutable runtime constants from `mylite.c` into focused private
   modules without creating unused-header warnings.
-- [ ] Move MySQL display-length constants used by metadata inference into
+- [x] Move MySQL display-length constants used by metadata inference into
   `mylite_metadata`.
 - [ ] Move charset/collation constant names and ids into charset/metadata
   boundaries.

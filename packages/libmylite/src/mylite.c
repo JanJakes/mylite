@@ -12,6 +12,7 @@
 #include "runtime/mylite_error_codes.h"
 #include "runtime/mylite_field_descriptor.h"
 #include "runtime/mylite_metadata.h"
+#include "runtime/mylite_metadata_constants.h"
 #include "runtime/mylite_metadata_types.h"
 #include "runtime/mylite_runtime.h"
 #include "runtime/mylite_schema.h"
@@ -56,76 +57,11 @@ static const int mylite_mysql_coercibility_system_constant = 3;
 static const int mylite_mysql_coercibility_coercible = 4;
 static const int mylite_mysql_coercibility_numeric = 5;
 static const int mylite_mysql_coercibility_ignorable = 6;
-static const unsigned int mylite_mysql_not_fixed_decimals = 31U;
 static const unsigned int mylite_utf8_continuation_mask = 0xC0U;
 static const unsigned int mylite_utf8_continuation_marker = 0x80U;
-static const uint64_t mylite_mysql_decimal_divide_display_length = 7U;
-static const unsigned int mylite_mysql_decimal_divide_scale = 4U;
-static const uint64_t mylite_mysql_sum_integer_display_length = 33U;
-static const uint64_t mylite_mysql_sum_decimal_display_length = 34U;
-static const uint64_t mylite_mysql_avg_display_length = 16U;
-static const unsigned int mylite_mysql_avg_integer_scale = 4U;
-static const unsigned int mylite_mysql_avg_decimal_scale = 6U;
-static const unsigned int mylite_mysql_cast_default_decimal_precision = 10U;
 static const int mylite_mysql_decimal_conversion_base = 10;
-static const uint64_t mylite_mysql_double_display_length = 22U;
-static const uint64_t mylite_mysql_length_function_display_length = 10U;
-static const uint64_t mylite_mysql_bit_count_function_display_length = 21U;
-static const uint64_t mylite_mysql_crc32_function_display_length = 10U;
-static const uint64_t mylite_mysql_inet_ntoa_result_chars = 31U;
-static const uint64_t mylite_mysql_uuid_text_result_chars = 36U;
-static const uint64_t mylite_mysql_uuid_binary_result_bytes = 16U;
-static const uint64_t mylite_mysql_ascii_function_display_length = 3U;
-static const uint64_t mylite_mysql_search_function_display_length = 11U;
-static const uint64_t mylite_mysql_list_index_function_display_length = 3U;
-static const uint64_t mylite_mysql_char_function_argument_bytes = 4U;
-static const uint64_t mylite_mysql_hex_numeric_result_chars = 16U;
-static const uint64_t mylite_mysql_base64_input_group = 3U;
-static const uint64_t mylite_mysql_base64_output_group = 4U;
-static const uint64_t mylite_mysql_base64_line_length = 76U;
-static const uint64_t mylite_mysql_base_conversion_result_chars = 65U;
-static const uint64_t mylite_mysql_integer_function_display_length = 21U;
-static const uint64_t mylite_mysql_ord_function_display_length = 21U;
-static const uint64_t mylite_mysql_schema_function_display_length = 256U;
-static const uint64_t mylite_mysql_version_function_display_length = 20U;
-static const uint64_t mylite_mysql_session_integer_function_display_length = 21U;
-static const uint64_t mylite_mysql_identity_function_display_chars = 288U;
-static const uint64_t mylite_mysql_charset_collation_function_display_chars = 64U;
-static const uint64_t mylite_mysql_coercibility_function_display_length = 10U;
-static const uint64_t mylite_mysql_pi_function_display_length = 8U;
-static const unsigned int mylite_mysql_pi_function_scale = 6U;
-static const uint64_t mylite_mysql_signed_longlong_display_length = 21U;
-static const uint64_t mylite_mysql_to_days_function_display_length = 8U;
-static const uint64_t mylite_mysql_to_seconds_function_display_length = 21U;
-static const uint64_t mylite_mysql_unsigned_longlong_display_length = 20U;
-static const uint64_t mylite_mysql_tinyint_unsigned_display_length = 3U;
-static const uint64_t mylite_mysql_tinyint_signed_display_length = 4U;
-static const uint64_t mylite_mysql_smallint_unsigned_display_length = 5U;
-static const uint64_t mylite_mysql_smallint_signed_display_length = 6U;
-static const uint64_t mylite_mysql_mediumint_unsigned_display_length = 8U;
-static const uint64_t mylite_mysql_mediumint_signed_display_length = 9U;
-static const uint64_t mylite_mysql_int_unsigned_display_length = 10U;
-static const uint64_t mylite_mysql_int_signed_display_length = 11U;
-static const uint64_t mylite_mysql_year_display_length = 4U;
-static const uint64_t mylite_mysql_date_display_length = 10U;
-static const uint64_t mylite_mysql_datediff_function_display_length = 9U;
-static const uint64_t mylite_mysql_temporal_part_short_display_length = 3U;
-static const uint64_t mylite_mysql_temporal_part_hour_display_length = 4U;
-static const uint64_t mylite_mysql_extract_year_display_length = 5U;
-static const uint64_t mylite_mysql_date_arithmetic_string_result_chars = 29U;
-static const uint64_t mylite_mysql_time_display_length = 10U;
-static const uint64_t mylite_mysql_current_time_display_length = 8U;
-static const uint64_t mylite_mysql_current_time_fraction_display_base = 9U;
-static const uint64_t mylite_mysql_time_fraction_display_base = 11U;
-static const unsigned int mylite_mysql_temporal_max_fsp = 6U;
-static const uint64_t mylite_mysql_datetime_display_length = 19U;
-static const uint64_t mylite_mysql_datetime_fraction_display_base = 20U;
 static const long mylite_nanoseconds_per_microsecond = 1000L;
 static const long mylite_max_microsecond = 999999L;
-static const uint64_t mylite_mysql_tiny_text_length = 255U;
-static const uint64_t mylite_mysql_text_length = 65535U;
-static const uint64_t mylite_mysql_medium_text_length = 16777215U;
-static const uint64_t mylite_mysql_long_text_length = UINT64_C(4294967295);
 static const uint64_t mylite_decimal_radix = 10U;
 
 static const char show_schemas_sql[] =

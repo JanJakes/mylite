@@ -1267,7 +1267,6 @@ static struct mylite_sql_source_span remap_source_span(struct mylite_sql_source_
 static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind kind,
                                     const struct mylite_sql_ast_node *statement,
                                     mylite_stmt **out_stmt);
-static int execute_create_table_statement(mylite_stmt *stmt);
 static int execute_drop_table_statement(mylite_stmt *stmt);
 static int execute_rename_table_statement(mylite_stmt *stmt);
 static int execute_truncate_table_statement(mylite_stmt *stmt);
@@ -2018,8 +2017,6 @@ static int copy_table_select_column_value(mylite_stmt *stmt, size_t column_index
 static int map_table_select_expression_eval_status(mylite_stmt *stmt, int status);
 static int set_where_predicate_eval_error(mylite_stmt *stmt);
 static void table_select_group_deinit(struct mylite_table_select_group *group);
-static int create_table_transaction(mylite_stmt *stmt, const char *schema_name,
-                                    const struct mylite_schema_default *schema_default);
 static int validate_drop_table_plan(mylite_stmt *stmt);
 static int validate_drop_table_temporary_target(mylite_stmt *stmt,
                                                 const struct mylite_drop_table_target *target);
@@ -15424,7 +15421,9 @@ int mylite_statement_execute_custom(mylite_stmt *stmt)
         status = mylite_connection_execute_set_character_set_statement(stmt);
         break;
     case MYLITE_STMT_CREATE_TABLE:
-        status = execute_create_table_statement(stmt);
+        status = mylite_table_ddl_execute_create_table_statement(
+            stmt->database, stmt->database->selected_schema, &stmt->create_table,
+            stmt->if_not_exists);
         break;
     case MYLITE_STMT_DROP_TABLE:
         status = execute_drop_table_statement(stmt);
@@ -15485,33 +15484,6 @@ int mylite_statement_execute_custom(mylite_stmt *stmt)
     return status == MYLITE_OK ? MYLITE_DONE : status;
 }
 
-static int execute_create_table_statement(mylite_stmt *stmt)
-{
-    const char *schema_name = stmt->create_table.schema_name == NULL
-                                  ? stmt->database->selected_schema
-                                  : stmt->create_table.schema_name;
-    struct mylite_schema_default schema_default;
-    bool skip_create = false;
-    int status = MYLITE_OK;
-
-    if (schema_name == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "No database selected");
-        return MYLITE_EXEC_ERROR;
-    }
-
-    status = mylite_table_ddl_validate_create_table_plan(stmt->database, schema_name,
-                                                         &stmt->create_table, stmt->if_not_exists,
-                                                         &schema_default, &skip_create);
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    if (skip_create) {
-        return MYLITE_OK;
-    }
-
-    return create_table_transaction(stmt, schema_name, &schema_default);
-}
-
 static int execute_drop_table_statement(mylite_stmt *stmt)
 {
     int status = validate_drop_table_plan(stmt);
@@ -15530,32 +15502,6 @@ static int execute_drop_table_statement(mylite_stmt *stmt)
     }
 
     return drop_table_transaction(stmt);
-}
-
-static int create_table_transaction(mylite_stmt *stmt, const char *schema_name,
-                                    const struct mylite_schema_default *schema_default)
-{
-    int status = mylite_transaction_begin_storage(stmt->database);
-
-    if (status != MYLITE_OK) {
-        return status;
-    }
-
-    status = mylite_table_ddl_create_physical_table(stmt->database, schema_name, schema_default,
-                                                    &stmt->create_table);
-    if (status == MYLITE_OK) {
-        status = mylite_table_ddl_insert_create_table_catalog_rows(
-            stmt->database, schema_name, schema_default, &stmt->create_table);
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_transaction_commit_storage(stmt->database);
-        if (status == MYLITE_OK) {
-            return MYLITE_OK;
-        }
-    }
-
-    mylite_transaction_rollback_storage(stmt->database);
-    return status;
 }
 
 static int validate_drop_table_plan(mylite_stmt *stmt)

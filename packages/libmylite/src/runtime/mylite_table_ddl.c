@@ -6,6 +6,7 @@
 #include "mylite_error_codes.h"
 #include "mylite_runtime.h"
 #include "mylite_span.h"
+#include "mylite_transactions.h"
 #include "sqlite3.h"
 
 #include <mylite/mylite.h>
@@ -14,6 +15,19 @@
 #include <stdlib.h>
 #include <string.h>
 
+static int validate_create_table_plan(mylite_db *database, const char *schema_name,
+                                      struct mylite_create_table_plan *plan, bool if_not_exists,
+                                      struct mylite_schema_default *schema_default,
+                                      bool *out_skip_create);
+static int create_table_transaction(mylite_db *database, const char *schema_name,
+                                    const struct mylite_schema_default *schema_default,
+                                    const struct mylite_create_table_plan *plan);
+static int create_physical_table(mylite_db *database, const char *schema_name,
+                                 const struct mylite_schema_default *schema_default,
+                                 const struct mylite_create_table_plan *plan);
+static int insert_create_table_catalog_rows(mylite_db *database, const char *schema_name,
+                                            const struct mylite_schema_default *schema_default,
+                                            const struct mylite_create_table_plan *plan);
 static int normalize_create_table_options(mylite_db *database, const char *schema_name,
                                           const struct mylite_schema_default *schema_default,
                                           struct mylite_create_table_options *options);
@@ -55,6 +69,8 @@ static char *build_create_physical_table_sql(mylite_db *database, const char *ph
                                              const struct mylite_create_table_plan *plan);
 static const char *
 sqlite_affinity_for_descriptor(const struct mylite_column_type_descriptor *descriptor);
+static const char *create_table_column_key(const struct mylite_create_table_plan *plan,
+                                           const char *column_name);
 static struct mylite_create_table_column_index_status
 create_table_column_index_status(const struct mylite_create_table_plan *plan,
                                  const char *column_name);
@@ -84,14 +100,42 @@ static int add_inline_create_table_column_indexes(struct mylite_create_table_pla
                                                   const struct mylite_create_table_column *column);
 static int add_single_column_index(struct mylite_create_table_plan *plan, const char *column_name,
                                    bool is_primary, bool is_unique);
+static const struct mylite_create_table_column *
+find_create_table_column(const struct mylite_create_table_plan *plan, const char *name);
 static char *copy_expression_text(const struct mylite_sql_ast_node *node);
 static void create_table_options_deinit(struct mylite_create_table_options *options);
 
-int mylite_table_ddl_validate_create_table_plan(mylite_db *database, const char *schema_name,
-                                                struct mylite_create_table_plan *plan,
-                                                bool if_not_exists,
-                                                struct mylite_schema_default *schema_default,
-                                                bool *out_skip_create)
+int mylite_table_ddl_execute_create_table_statement(mylite_db *database,
+                                                    const char *selected_schema,
+                                                    struct mylite_create_table_plan *plan,
+                                                    bool if_not_exists)
+{
+    const char *schema_name = plan->schema_name == NULL ? selected_schema : plan->schema_name;
+    struct mylite_schema_default schema_default;
+    bool skip_create = false;
+    int status = MYLITE_OK;
+
+    if (schema_name == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "No database selected");
+        return MYLITE_EXEC_ERROR;
+    }
+
+    status = validate_create_table_plan(database, schema_name, plan, if_not_exists, &schema_default,
+                                        &skip_create);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (skip_create) {
+        return MYLITE_OK;
+    }
+
+    return create_table_transaction(database, schema_name, &schema_default, plan);
+}
+
+static int validate_create_table_plan(mylite_db *database, const char *schema_name,
+                                      struct mylite_create_table_plan *plan, bool if_not_exists,
+                                      struct mylite_schema_default *schema_default,
+                                      bool *out_skip_create)
 {
     struct mylite_schema_presence presence;
     bool exists = false;
@@ -158,24 +202,34 @@ int mylite_table_ddl_validate_create_table_plan(mylite_db *database, const char 
     return MYLITE_OK;
 }
 
-int mylite_table_ddl_insert_create_table_catalog_rows(
-    mylite_db *database, const char *schema_name,
-    const struct mylite_schema_default *schema_default, const struct mylite_create_table_plan *plan)
+static int create_table_transaction(mylite_db *database, const char *schema_name,
+                                    const struct mylite_schema_default *schema_default,
+                                    const struct mylite_create_table_plan *plan)
 {
-    int status = insert_table_catalog_row(database, schema_name, schema_default, plan);
+    int status = mylite_transaction_begin_storage(database);
 
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    status = create_physical_table(database, schema_name, schema_default, plan);
     if (status == MYLITE_OK) {
-        status = insert_column_catalog_rows(database, schema_name, schema_default, plan);
+        status = insert_create_table_catalog_rows(database, schema_name, schema_default, plan);
     }
     if (status == MYLITE_OK) {
-        status = insert_index_catalog_rows(database, schema_name, plan);
+        status = mylite_transaction_commit_storage(database);
+        if (status == MYLITE_OK) {
+            return MYLITE_OK;
+        }
     }
+
+    mylite_transaction_rollback_storage(database);
     return status;
 }
 
-int mylite_table_ddl_create_physical_table(mylite_db *database, const char *schema_name,
-                                           const struct mylite_schema_default *schema_default,
-                                           const struct mylite_create_table_plan *plan)
+static int create_physical_table(mylite_db *database, const char *schema_name,
+                                 const struct mylite_schema_default *schema_default,
+                                 const struct mylite_create_table_plan *plan)
 {
     char *physical_name = mylite_catalog_physical_table_name(schema_name, plan->table_name);
     char *sql = NULL;
@@ -199,6 +253,21 @@ int mylite_table_ddl_create_physical_table(mylite_db *database, const char *sche
         return mylite_diagnostics_set_sqlite_error(database);
     }
     return MYLITE_OK;
+}
+
+static int insert_create_table_catalog_rows(mylite_db *database, const char *schema_name,
+                                            const struct mylite_schema_default *schema_default,
+                                            const struct mylite_create_table_plan *plan)
+{
+    int status = insert_table_catalog_row(database, schema_name, schema_default, plan);
+
+    if (status == MYLITE_OK) {
+        status = insert_column_catalog_rows(database, schema_name, schema_default, plan);
+    }
+    if (status == MYLITE_OK) {
+        status = insert_index_catalog_rows(database, schema_name, plan);
+    }
+    return status;
 }
 
 static char *build_create_physical_table_sql(mylite_db *database, const char *physical_name,
@@ -280,8 +349,8 @@ int mylite_table_ddl_describe_create_table_column(
     return status == MYLITE_COLUMN_TYPE_OK ? MYLITE_OK : MYLITE_EXEC_ERROR;
 }
 
-const char *mylite_table_ddl_create_table_column_key(const struct mylite_create_table_plan *plan,
-                                                     const char *column_name)
+static const char *create_table_column_key(const struct mylite_create_table_plan *plan,
+                                           const char *column_name)
 {
     struct mylite_create_table_column_index_status status =
         create_table_column_index_status(plan, column_name);
@@ -444,7 +513,7 @@ static int insert_column_catalog_row(mylite_db *database, sqlite3_stmt *insert,
         bind_column_comment = 18,
     };
     struct mylite_column_type_descriptor descriptor;
-    const char *column_key = mylite_table_ddl_create_table_column_key(plan, column->name);
+    const char *column_key = create_table_column_key(plan, column->name);
     const char *extra = mylite_table_ddl_create_table_column_extra(column);
     const char *is_nullable = "NO";
     const char *comment = "";
@@ -586,7 +655,7 @@ static int insert_index_catalog_part(mylite_db *database, sqlite3_stmt *insert,
         bind_is_visible = 13,
     };
     const struct mylite_create_table_column *column =
-        mylite_table_ddl_find_create_table_column(plan, part->column_name);
+        find_create_table_column(plan, part->column_name);
     int non_unique = 1;
     const char *nullable = "";
     const char *index_type = "BTREE";
@@ -890,9 +959,8 @@ char *mylite_table_ddl_generated_index_name_candidate(const char *base, unsigned
     return candidate;
 }
 
-const struct mylite_create_table_column *
-mylite_table_ddl_find_create_table_column(const struct mylite_create_table_plan *plan,
-                                          const char *name)
+static const struct mylite_create_table_column *
+find_create_table_column(const struct mylite_create_table_plan *plan, const char *name)
 {
     for (size_t index = 0U; index < plan->column_count; ++index) {
         if (mylite_ascii_case_equal(plan->columns[index].name, name)) {
@@ -1558,8 +1626,7 @@ static bool validate_create_table_indexes(mylite_db *database,
             return false;
         }
         for (size_t part = 0U; part < table_index->part_count; ++part) {
-            if (mylite_table_ddl_find_create_table_column(
-                    plan, table_index->parts[part].column_name) == NULL) {
+            if (find_create_table_column(plan, table_index->parts[part].column_name) == NULL) {
                 (void)mylite_diagnostics_set_error_message_parts(
                     database, "Key column '", table_index->parts[part].column_name,
                     "' doesn't exist in table");

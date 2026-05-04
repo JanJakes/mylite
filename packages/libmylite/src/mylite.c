@@ -1299,6 +1299,7 @@ static int resolve_union_expression_identifier(void *user_data,
 static int append_and_clear_union_database_warnings(mylite_db *database,
                                                     struct mylite_expression_warnings *warnings);
 static int bind_update_subset(mylite_stmt *stmt, const struct mylite_select_table *table,
+                              size_t assignment_count,
                               struct mylite_update_bound_assignment **out_assignments);
 static int reject_deferred_update_clauses(mylite_stmt *stmt);
 static int bind_update_assignment_values(mylite_stmt *stmt, const struct mylite_select_table *table,
@@ -1341,20 +1342,6 @@ static int evaluate_update_order_key(mylite_stmt *stmt, const struct mylite_sele
                                      struct mylite_expression_value *out_value);
 static int append_update_row(mylite_stmt *stmt, struct mylite_update_rowset *rowset,
                              struct mylite_update_row *row);
-static int sort_update_rowset(struct mylite_update_rowset *rowset,
-                              const struct mylite_update_order_plan *order_plan);
-// NOLINTNEXTLINE(misc-no-recursion)
-static int merge_sort_update_rows(struct mylite_update_row *rows, struct mylite_update_row *scratch,
-                                  size_t first, size_t last,
-                                  const struct mylite_update_order_plan *order_plan);
-static void merge_update_rows(struct mylite_update_row *rows, struct mylite_update_row *scratch,
-                              size_t first, size_t middle, size_t last,
-                              const struct mylite_update_order_plan *order_plan);
-static int compare_update_rows(const struct mylite_update_row *left,
-                               const struct mylite_update_row *right,
-                               const struct mylite_update_order_plan *order_plan);
-static void apply_update_limit(const struct mylite_sql_ast_node *limit_clause,
-                               struct mylite_update_rowset *rowset);
 static int execute_update_rows_transaction(mylite_stmt *stmt,
                                            const struct mylite_select_table *table,
                                            const struct mylite_insert_table *write_table,
@@ -16282,6 +16269,7 @@ static int execute_update_statement(mylite_stmt *stmt)
     struct mylite_update_order_plan order_plan = {0};
     struct mylite_update_bound_assignment *assignments = NULL;
     struct mylite_update_rowset rowset = {0};
+    size_t assignment_count = stmt->update.assignment_count;
     int status = MYLITE_OK;
 
     stmt->affected_rows = 0;
@@ -16299,7 +16287,7 @@ static int execute_update_statement(mylite_stmt *stmt)
                                              &write_table);
     }
     if (status == MYLITE_OK) {
-        status = bind_update_subset(stmt, &table, &assignments);
+        status = bind_update_subset(stmt, &table, assignment_count, &assignments);
     }
     if (status == MYLITE_OK) {
         status = bind_update_order_by_clause(stmt, &table, &order_plan);
@@ -16308,16 +16296,16 @@ static int execute_update_statement(mylite_stmt *stmt)
         status = materialize_update_rows(stmt, &table, &order_plan, &rowset);
     }
     if (status == MYLITE_OK) {
-        status = sort_update_rowset(&rowset, &order_plan);
+        status = mylite_dml_sort_update_rowset(&rowset, &order_plan);
         if (status == MYLITE_NOMEM) {
             (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         }
     }
     if (status == MYLITE_OK) {
-        apply_update_limit(stmt->update.limit_clause, &rowset);
+        mylite_dml_apply_update_limit(stmt->update.limit_clause, &rowset);
         stmt->matched_rows = rowset.row_count;
         status = execute_update_rows_transaction(stmt, &table, &write_table, assignments,
-                                                 stmt->update.assignment_count, &rowset);
+                                                 assignment_count, &rowset);
     }
 
     free(assignments);
@@ -16332,9 +16320,9 @@ static int execute_update_statement(mylite_stmt *stmt)
 }
 
 static int bind_update_subset(mylite_stmt *stmt, const struct mylite_select_table *table,
+                              size_t assignment_count,
                               struct mylite_update_bound_assignment **out_assignments)
 {
-    size_t assignment_count = stmt->update.assignment_count;
     struct mylite_update_bound_assignment *assignments = NULL;
     int status = reject_deferred_update_clauses(stmt);
 
@@ -16948,118 +16936,6 @@ static int append_update_row(mylite_stmt *stmt, struct mylite_update_rowset *row
     rowset->rows[rowset->row_count++] = *row;
     *row = (struct mylite_update_row){0};
     return MYLITE_OK;
-}
-
-static int sort_update_rowset(struct mylite_update_rowset *rowset,
-                              const struct mylite_update_order_plan *order_plan)
-{
-    struct mylite_update_row *scratch = NULL;
-    int status = MYLITE_OK;
-
-    if (order_plan->order_key_count == 0U || rowset->row_count < 2U) {
-        return MYLITE_OK;
-    }
-
-    scratch = calloc(rowset->row_count, sizeof(*scratch));
-    if (scratch == NULL) {
-        return MYLITE_NOMEM;
-    }
-    status = merge_sort_update_rows(rowset->rows, scratch, 0U, rowset->row_count, order_plan);
-    free(scratch);
-    return status;
-}
-
-// NOLINTNEXTLINE(misc-no-recursion)
-static int merge_sort_update_rows(struct mylite_update_row *rows, struct mylite_update_row *scratch,
-                                  size_t first, size_t last,
-                                  const struct mylite_update_order_plan *order_plan)
-{
-    size_t count = last - first;
-    size_t middle = first + (count / 2U);
-    int status = MYLITE_OK;
-
-    if (count < 2U) {
-        return MYLITE_OK;
-    }
-
-    status = merge_sort_update_rows(rows, scratch, first, middle, order_plan);
-    if (status == MYLITE_OK) {
-        status = merge_sort_update_rows(rows, scratch, middle, last, order_plan);
-    }
-    if (status == MYLITE_OK) {
-        merge_update_rows(rows, scratch, first, middle, last, order_plan);
-    }
-    return status;
-}
-
-static void merge_update_rows(struct mylite_update_row *rows, struct mylite_update_row *scratch,
-                              size_t first, size_t middle, size_t last,
-                              const struct mylite_update_order_plan *order_plan)
-{
-    size_t left = first;
-    size_t right = middle;
-    size_t output = first;
-
-    while (left < middle && right < last) {
-        if (compare_update_rows(&rows[left], &rows[right], order_plan) <= 0) {
-            scratch[output++] = rows[left++];
-        } else {
-            scratch[output++] = rows[right++];
-        }
-    }
-    while (left < middle) {
-        scratch[output++] = rows[left++];
-    }
-    while (right < last) {
-        scratch[output++] = rows[right++];
-    }
-    for (size_t index = first; index < last; ++index) {
-        rows[index] = scratch[index];
-    }
-}
-
-static int compare_update_rows(const struct mylite_update_row *left,
-                               const struct mylite_update_row *right,
-                               const struct mylite_update_order_plan *order_plan)
-{
-    for (size_t index = 0U; index < order_plan->order_key_count; ++index) {
-        int comparison =
-            mylite_select_compare_values(&left->order_values[index], &right->order_values[index]);
-
-        if (comparison != 0) {
-            if (order_plan->order_keys[index].direction == MYLITE_SQL_AST_KEY_PART_ORDER_DESC) {
-                comparison = -comparison;
-            }
-            return comparison;
-        }
-    }
-    return 0;
-}
-
-static void apply_update_limit(const struct mylite_sql_ast_node *limit_clause,
-                               struct mylite_update_rowset *rowset)
-{
-    const struct mylite_sql_ast_node *bound = mylite_ast_child_at(limit_clause, 0U);
-    size_t keep_count = 0U;
-
-    if (limit_clause == NULL) {
-        return;
-    }
-    if (bound == NULL || !bound->has_limit_bound_value) {
-        return;
-    }
-    if (bound->limit_bound_value > (uint64_t)SIZE_MAX) {
-        return;
-    }
-
-    keep_count = (size_t)bound->limit_bound_value;
-    if (keep_count >= rowset->row_count) {
-        return;
-    }
-    for (size_t index = keep_count; index < rowset->row_count; ++index) {
-        mylite_dml_update_row_deinit(&rowset->rows[index]);
-    }
-    rowset->row_count = keep_count;
 }
 
 static int execute_update_rows_transaction(mylite_stmt *stmt,
@@ -17806,13 +17682,13 @@ static int execute_delete_statement(mylite_stmt *stmt)
         status = materialize_delete_rows(stmt, &table, &order_plan, &rowset);
     }
     if (status == MYLITE_OK) {
-        status = sort_update_rowset(&rowset, &order_plan);
+        status = mylite_dml_sort_update_rowset(&rowset, &order_plan);
         if (status == MYLITE_NOMEM) {
             (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         }
     }
     if (status == MYLITE_OK) {
-        apply_update_limit(stmt->delete_plan.limit_clause, &rowset);
+        mylite_dml_apply_update_limit(stmt->delete_plan.limit_clause, &rowset);
         status = execute_delete_rows_transaction(stmt, &table, &rowset);
     }
 

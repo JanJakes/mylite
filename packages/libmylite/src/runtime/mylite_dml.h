@@ -218,6 +218,10 @@ int mylite_dml_bind_update_assignment_targets(mylite_db *database,
                                               const struct mylite_select_table *table,
                                               struct mylite_update_bound_assignment *assignments,
                                               size_t assignment_count);
+int mylite_dml_sort_update_rowset(struct mylite_update_rowset *rowset,
+                                  const struct mylite_update_order_plan *order_plan);
+void mylite_dml_apply_update_limit(const struct mylite_sql_ast_node *limit_clause,
+                                   struct mylite_update_rowset *rowset);
 void mylite_dml_insert_values_plan_deinit(struct mylite_insert_values_plan *plan);
 void mylite_dml_insert_set_plan_deinit(struct mylite_insert_set_plan *plan);
 void mylite_dml_insert_set_assignment_deinit(struct mylite_insert_set_assignment *assignment);

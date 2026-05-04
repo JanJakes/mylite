@@ -405,7 +405,9 @@ only the core object model and transitional shared helpers listed here:
 - [x] Move update target copy and assignment target binding into `mylite_dml`.
 - [ ] Move remaining update clause and assignment value validation into
   `mylite_dml`.
-- [ ] Move update row materialization/sorting/limit logic into `mylite_dml`.
+- [x] Move update/delete rowset sorting and LIMIT trimming into a focused DML
+  companion module.
+- [ ] Move update row materialization logic into `mylite_dml`.
 - [ ] Move update row writeback into `mylite_dml`.
 - [ ] Move delete target binding and validation into `mylite_dml`.
 - [ ] Move delete row materialization/sorting/limit logic into `mylite_dml`.

@@ -373,7 +373,7 @@ only the core object model and transitional shared helpers listed here:
 - [ ] Split DML plans and execution.
 - [x] Start `src/runtime/mylite_dml.{h,c}` with DML plan and row cleanup.
 - [x] Move insert/replacement AST copy helpers into `mylite_dml`.
-- [ ] Move update/delete AST copy helpers into `mylite_dml`.
+- [x] Move update/delete AST copy helpers into `mylite_dml`.
 - [ ] Move insert target validation into `mylite_dml`.
 - [ ] Move insert-table metadata loading behind catalog/metadata helper APIs.
 - [ ] Move insert bound-value conversion into `mylite_dml`.

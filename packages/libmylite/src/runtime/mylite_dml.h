@@ -15,6 +15,10 @@ int mylite_dml_copy_replace_values_statement(const struct mylite_sql_ast_node *s
 int mylite_dml_copy_replace_set_statement(const struct mylite_sql_ast_node *statement,
                                           struct mylite_insert_values_plan *values_plan,
                                           struct mylite_insert_set_plan *set_plan);
+int mylite_dml_copy_update_statement(const struct mylite_sql_ast_node *statement,
+                                     struct mylite_update_plan *plan);
+int mylite_dml_copy_delete_statement(const struct mylite_sql_ast_node *statement,
+                                     struct mylite_delete_plan *plan);
 void mylite_dml_insert_values_plan_deinit(struct mylite_insert_values_plan *plan);
 void mylite_dml_insert_set_plan_deinit(struct mylite_insert_set_plan *plan);
 void mylite_dml_insert_set_assignment_deinit(struct mylite_insert_set_assignment *assignment);

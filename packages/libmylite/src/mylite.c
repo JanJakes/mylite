@@ -2534,8 +2534,6 @@ static int append_insert_null_warning_once(mylite_stmt *stmt,
                                            size_t column_index);
 static char *copy_insert_duplicate_entry_value(const struct mylite_insert_unique_index *index,
                                                const struct mylite_insert_bound_value *values);
-static int copy_update_statement(const struct mylite_sql_ast_node *statement, mylite_stmt *stmt);
-static int copy_delete_statement(const struct mylite_sql_ast_node *statement, mylite_stmt *stmt);
 static int copy_scalar_select_statement(const struct mylite_sql_ast_node *statement,
                                         mylite_stmt *stmt);
 static int append_scalar_select_warnings_to_database(mylite_stmt *stmt);
@@ -2714,24 +2712,6 @@ static int set_in_subquery_limit_error(mylite_db *database);
 static int set_row_quantified_non_alias_error(mylite_db *database,
                                               const struct mylite_sql_ast_node *expression);
 static int set_scalar_subquery_cardinality_error(mylite_db *database);
-static int copy_update_target(const struct mylite_sql_ast_node *target,
-                              struct mylite_update_target *out_target);
-static int copy_update_table_name(const struct mylite_sql_ast_node *table_name,
-                                  struct mylite_update_target *target);
-static int copy_update_assignments(const struct mylite_sql_ast_node *assignments,
-                                   struct mylite_update_plan *plan);
-static int copy_update_assignment(const struct mylite_sql_ast_node *assignment,
-                                  struct mylite_update_plan *plan);
-static int add_update_assignment(struct mylite_update_plan *plan,
-                                 struct mylite_update_assignment assignment);
-static int copy_update_column_reference(const struct mylite_sql_ast_node *identifier,
-                                        struct mylite_update_column_reference *out_reference);
-static int copy_update_column_reference_parts(const struct mylite_sql_ast_node *identifier,
-                                              char **parts, size_t *part_count);
-static int copy_delete_target(const struct mylite_sql_ast_node *target,
-                              struct mylite_delete_target *out_target);
-static int copy_delete_table_name(const struct mylite_sql_ast_node *table_name,
-                                  struct mylite_delete_target *target);
 static const char *sqlite_affinity_for_catalog_data_type(const char *data_type);
 static bool write_statement_kind(enum mylite_stmt_kind kind);
 static bool
@@ -3260,7 +3240,7 @@ static int prepare_update_statement(mylite_db *database,
         .affected_rows = 0,
     };
 
-    status = copy_update_statement(statement, stmt);
+    status = mylite_dml_copy_update_statement(statement, &stmt->update);
     if (status == MYLITE_OK) {
         status = clone_update_plan_nodes(stmt, statement, sql, sql_length);
     }
@@ -3294,7 +3274,7 @@ static int prepare_delete_statement(mylite_db *database,
         .affected_rows = 0,
     };
 
-    status = copy_delete_statement(statement, stmt);
+    status = mylite_dml_copy_delete_statement(statement, &stmt->delete_plan);
     if (status == MYLITE_OK) {
         status = clone_delete_plan_nodes(stmt, statement, sql, sql_length);
     }
@@ -28161,25 +28141,6 @@ static char *copy_insert_duplicate_entry_value(const struct mylite_insert_unique
     return sqlite3_str_finish(text);
 }
 
-static int copy_update_statement(const struct mylite_sql_ast_node *statement, mylite_stmt *stmt)
-{
-    const struct mylite_sql_ast_node *target = mylite_ast_child_at(statement, 0U);
-    const struct mylite_sql_ast_node *assignments = mylite_ast_child_at(statement, 1U);
-    int status = copy_update_target(target, &stmt->update.target);
-
-    if (status == MYLITE_OK) {
-        status = copy_update_assignments(assignments, &stmt->update);
-    }
-    return status;
-}
-
-static int copy_delete_statement(const struct mylite_sql_ast_node *statement, mylite_stmt *stmt)
-{
-    const struct mylite_sql_ast_node *target = mylite_ast_child_at(statement, 0U);
-
-    return copy_delete_target(target, &stmt->delete_plan.target);
-}
-
 // NOLINTNEXTLINE(misc-no-recursion)
 static int copy_scalar_select_statement(const struct mylite_sql_ast_node *statement,
                                         mylite_stmt *stmt)
@@ -30297,233 +30258,6 @@ static int set_scalar_subquery_cardinality_error(mylite_db *database)
             mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_SUBQUERY_NO_1_ROW, message);
     }
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-}
-
-static int copy_update_target(const struct mylite_sql_ast_node *target,
-                              struct mylite_update_target *out_target)
-{
-    const struct mylite_sql_ast_node *table_name = mylite_ast_child_at(target, 0U);
-    const struct mylite_sql_ast_node *alias = mylite_ast_child_at(target, 1U);
-    int status = MYLITE_OK;
-
-    if (target == NULL || target->kind != MYLITE_SQL_AST_UPDATE_TARGET) {
-        return MYLITE_UNSUPPORTED;
-    }
-
-    status = copy_update_table_name(table_name, out_target);
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    if (alias != NULL) {
-        out_target->alias = mylite_copy_identifier_span(alias);
-        if (out_target->alias == NULL) {
-            return MYLITE_NOMEM;
-        }
-    }
-    return MYLITE_OK;
-}
-
-static int copy_update_table_name(const struct mylite_sql_ast_node *table_name,
-                                  struct mylite_update_target *target)
-{
-    if (table_name == NULL) {
-        return MYLITE_NOMEM;
-    }
-    if (table_name->kind == MYLITE_SQL_AST_IDENTIFIER) {
-        target->table_name = mylite_copy_identifier_span(table_name);
-        return target->table_name == NULL ? MYLITE_NOMEM : MYLITE_OK;
-    }
-    if (table_name->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER &&
-        mylite_ast_child_at(table_name, 0U) != NULL &&
-        mylite_ast_child_at(table_name, 1U) != NULL &&
-        mylite_ast_child_at(table_name, 0U)->kind == MYLITE_SQL_AST_IDENTIFIER &&
-        mylite_ast_child_at(table_name, 1U)->kind == MYLITE_SQL_AST_IDENTIFIER) {
-        target->schema_name = mylite_copy_identifier_span(mylite_ast_child_at(table_name, 0U));
-        target->table_name = mylite_copy_identifier_span(mylite_ast_child_at(table_name, 1U));
-        if (target->schema_name == NULL || target->table_name == NULL) {
-            return MYLITE_NOMEM;
-        }
-        return MYLITE_OK;
-    }
-    return MYLITE_UNSUPPORTED;
-}
-
-static int copy_delete_target(const struct mylite_sql_ast_node *target,
-                              struct mylite_delete_target *out_target)
-{
-    const struct mylite_sql_ast_node *table_name = NULL;
-    const struct mylite_sql_ast_node *alias = NULL;
-    int status = MYLITE_OK;
-
-    if (target == NULL || target->kind != MYLITE_SQL_AST_DELETE_TARGET) {
-        return MYLITE_UNSUPPORTED;
-    }
-
-    table_name = mylite_ast_child_at(target, 0U);
-    alias = mylite_ast_child_at(target, 1U);
-    status = copy_delete_table_name(table_name, out_target);
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    if (alias != NULL) {
-        out_target->alias = mylite_copy_identifier_span(alias);
-        if (out_target->alias == NULL) {
-            return MYLITE_NOMEM;
-        }
-    }
-    return MYLITE_OK;
-}
-
-static int copy_delete_table_name(const struct mylite_sql_ast_node *table_name,
-                                  struct mylite_delete_target *target)
-{
-    if (table_name == NULL) {
-        return MYLITE_NOMEM;
-    }
-    if (table_name->kind == MYLITE_SQL_AST_IDENTIFIER) {
-        target->table_name = mylite_copy_identifier_span(table_name);
-        return target->table_name == NULL ? MYLITE_NOMEM : MYLITE_OK;
-    }
-    if (table_name->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER &&
-        mylite_ast_child_at(table_name, 0U) != NULL &&
-        mylite_ast_child_at(table_name, 1U) != NULL &&
-        mylite_ast_child_at(table_name, 0U)->kind == MYLITE_SQL_AST_IDENTIFIER &&
-        mylite_ast_child_at(table_name, 1U)->kind == MYLITE_SQL_AST_IDENTIFIER) {
-        target->schema_name = mylite_copy_identifier_span(mylite_ast_child_at(table_name, 0U));
-        target->table_name = mylite_copy_identifier_span(mylite_ast_child_at(table_name, 1U));
-        if (target->schema_name == NULL || target->table_name == NULL) {
-            return MYLITE_NOMEM;
-        }
-        return MYLITE_OK;
-    }
-    return MYLITE_UNSUPPORTED;
-}
-
-static int copy_update_assignments(const struct mylite_sql_ast_node *assignments,
-                                   struct mylite_update_plan *plan)
-{
-    if (assignments == NULL || assignments->kind != MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST) {
-        return MYLITE_UNSUPPORTED;
-    }
-
-    for (const struct mylite_sql_ast_node *assignment = assignments->first_child;
-         assignment != NULL; assignment = assignment->next_sibling) {
-        int status = copy_update_assignment(assignment, plan);
-
-        if (status != MYLITE_OK) {
-            return status;
-        }
-    }
-    return plan->assignment_count == 0U ? MYLITE_UNSUPPORTED : MYLITE_OK;
-}
-
-static int copy_update_assignment(const struct mylite_sql_ast_node *assignment,
-                                  struct mylite_update_plan *plan)
-{
-    struct mylite_update_assignment update_assignment = {0};
-    int status = MYLITE_OK;
-
-    if (assignment == NULL || assignment->kind != MYLITE_SQL_AST_UPDATE_ASSIGNMENT) {
-        return MYLITE_UNSUPPORTED;
-    }
-
-    status = copy_update_column_reference(mylite_ast_child_at(assignment, 0U),
-                                          &update_assignment.target);
-    if (status == MYLITE_OK) {
-        status = add_update_assignment(plan, update_assignment);
-    }
-    if (status != MYLITE_OK) {
-        mylite_dml_update_assignment_deinit(&update_assignment);
-    }
-    return status;
-}
-
-static int add_update_assignment(struct mylite_update_plan *plan,
-                                 struct mylite_update_assignment assignment)
-{
-    struct mylite_update_assignment *assignments =
-        realloc(plan->assignments, (plan->assignment_count + 1U) * sizeof(*plan->assignments));
-
-    if (assignments == NULL) {
-        return MYLITE_NOMEM;
-    }
-
-    plan->assignments = assignments;
-    plan->assignments[plan->assignment_count++] = assignment;
-    return MYLITE_OK;
-}
-
-static int copy_update_column_reference(const struct mylite_sql_ast_node *identifier,
-                                        struct mylite_update_column_reference *out_reference)
-{
-    char *parts[3] = {0};
-    size_t part_count = 0U;
-    int status = copy_update_column_reference_parts(identifier, parts, &part_count);
-
-    if (status != MYLITE_OK) {
-        for (size_t index = 0U; index < part_count; ++index) {
-            free(parts[index]);
-        }
-        return status;
-    }
-
-    if (part_count == 1U) {
-        out_reference->column_name = parts[0];
-        return MYLITE_OK;
-    }
-    if (part_count == 2U) {
-        out_reference->table_name = parts[0];
-        out_reference->column_name = parts[1];
-        return MYLITE_OK;
-    }
-    if (part_count == 3U) {
-        out_reference->schema_name = parts[0];
-        out_reference->table_name = parts[1];
-        out_reference->column_name = parts[2];
-        return MYLITE_OK;
-    }
-
-    return MYLITE_UNSUPPORTED;
-}
-
-static int copy_update_column_reference_parts(const struct mylite_sql_ast_node *identifier,
-                                              char **parts, size_t *part_count)
-{
-    const struct mylite_sql_ast_node *segments[3] = {0};
-    const struct mylite_sql_ast_node *current = identifier;
-    size_t segment_count = 0U;
-
-    *part_count = 0U;
-    while (current != NULL && current->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
-        if (segment_count >= 3U) {
-            return MYLITE_UNSUPPORTED;
-        }
-        segments[segment_count++] = mylite_ast_child_at(current, 1U);
-        current = mylite_ast_child_at(current, 0U);
-    }
-    if (current == NULL || current->kind != MYLITE_SQL_AST_IDENTIFIER || segment_count >= 3U) {
-        return MYLITE_UNSUPPORTED;
-    }
-    segments[segment_count++] = current;
-
-    for (size_t index = 0U; index < segment_count; ++index) {
-        const struct mylite_sql_ast_node *segment = segments[segment_count - index - 1U];
-
-        if (segment == NULL || segment->kind != MYLITE_SQL_AST_IDENTIFIER) {
-            return MYLITE_UNSUPPORTED;
-        }
-        parts[index] = mylite_copy_identifier_span(segment);
-        if (parts[index] == NULL) {
-            for (size_t previous = 0U; previous < index; ++previous) {
-                free(parts[previous]);
-                parts[previous] = NULL;
-            }
-            *part_count = 0U;
-            return MYLITE_NOMEM;
-        }
-        *part_count += 1U;
-    }
-    return MYLITE_OK;
 }
 
 static const char *sqlite_affinity_for_catalog_data_type(const char *data_type)

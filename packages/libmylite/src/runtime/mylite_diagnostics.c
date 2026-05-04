@@ -52,16 +52,6 @@ void mylite_diagnostics_clear_warnings(mylite_db *database)
     mylite_expression_warnings_deinit(&database->warnings);
 }
 
-int mylite_diagnostics_set_sqlite_error(mylite_db *database)
-{
-    if (mylite_diagnostics_set_error_message(database, sqlite3_errmsg(database->sqlite)) ==
-        MYLITE_NOMEM) {
-        return MYLITE_NOMEM;
-    }
-
-    return MYLITE_SQLITE_ERROR;
-}
-
 int mylite_diagnostics_set_error_message(mylite_db *database, const char *message)
 {
     size_t length = message == NULL ? 0U : strlen(message);

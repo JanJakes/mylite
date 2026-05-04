@@ -404,6 +404,7 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_ATAN2 = 85,
     MYLITE_SCALAR_FUNCTION_GREATEST = 86,
     MYLITE_SCALAR_FUNCTION_LEAST = 87,
+    MYLITE_SCALAR_FUNCTION_STRCMP = 88,
 };
 
 struct angle_conversion_input {
@@ -1497,6 +1498,8 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_LEAST:
     case MYLITE_SCALAR_FUNCTION_MAKE_SET:
         return arity >= 2U;
+    case MYLITE_SCALAR_FUNCTION_STRCMP:
+        return arity == 2U;
     case MYLITE_SCALAR_FUNCTION_LENGTH:
     case MYLITE_SCALAR_FUNCTION_CHAR_LENGTH:
     case MYLITE_SCALAR_FUNCTION_LOWER:
@@ -2426,6 +2429,7 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
     case MYLITE_SCALAR_FUNCTION_CHARSET:
     case MYLITE_SCALAR_FUNCTION_COLLATION:
     case MYLITE_SCALAR_FUNCTION_COERCIBILITY:
+    case MYLITE_SCALAR_FUNCTION_STRCMP:
         return context == NULL || context->eval_session_function == NULL
                    ? -1
                    : context->eval_session_function(context->user_data, node, context, warnings,
@@ -5427,6 +5431,7 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_COALESCE:
     case MYLITE_SCALAR_FUNCTION_GREATEST:
     case MYLITE_SCALAR_FUNCTION_LEAST:
+    case MYLITE_SCALAR_FUNCTION_STRCMP:
     case MYLITE_SCALAR_FUNCTION_ISNULL:
     case MYLITE_SCALAR_FUNCTION_DATABASE:
     case MYLITE_SCALAR_FUNCTION_SCHEMA:
@@ -7265,6 +7270,7 @@ static int trigonometric_function_result(struct trigonometric_input input,
     case MYLITE_SCALAR_FUNCTION_COALESCE:
     case MYLITE_SCALAR_FUNCTION_GREATEST:
     case MYLITE_SCALAR_FUNCTION_LEAST:
+    case MYLITE_SCALAR_FUNCTION_STRCMP:
     case MYLITE_SCALAR_FUNCTION_ISNULL:
     case MYLITE_SCALAR_FUNCTION_DATABASE:
     case MYLITE_SCALAR_FUNCTION_SCHEMA:
@@ -7542,6 +7548,7 @@ static int inverse_trigonometric_function_result(struct inverse_trigonometric_in
     case MYLITE_SCALAR_FUNCTION_COALESCE:
     case MYLITE_SCALAR_FUNCTION_GREATEST:
     case MYLITE_SCALAR_FUNCTION_LEAST:
+    case MYLITE_SCALAR_FUNCTION_STRCMP:
     case MYLITE_SCALAR_FUNCTION_ISNULL:
     case MYLITE_SCALAR_FUNCTION_DATABASE:
     case MYLITE_SCALAR_FUNCTION_SCHEMA:
@@ -7727,6 +7734,7 @@ static int angle_conversion_result(struct angle_conversion_input conversion, dou
     case MYLITE_SCALAR_FUNCTION_COALESCE:
     case MYLITE_SCALAR_FUNCTION_GREATEST:
     case MYLITE_SCALAR_FUNCTION_LEAST:
+    case MYLITE_SCALAR_FUNCTION_STRCMP:
     case MYLITE_SCALAR_FUNCTION_ISNULL:
     case MYLITE_SCALAR_FUNCTION_DATABASE:
     case MYLITE_SCALAR_FUNCTION_SCHEMA:
@@ -10729,6 +10737,7 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"COALESCE", MYLITE_SCALAR_FUNCTION_COALESCE},
         {"GREATEST", MYLITE_SCALAR_FUNCTION_GREATEST},
         {"LEAST", MYLITE_SCALAR_FUNCTION_LEAST},
+        {"STRCMP", MYLITE_SCALAR_FUNCTION_STRCMP},
         {"ISNULL", MYLITE_SCALAR_FUNCTION_ISNULL},
         {"DATABASE", MYLITE_SCALAR_FUNCTION_DATABASE},
         {"SCHEMA", MYLITE_SCALAR_FUNCTION_SCHEMA},
@@ -10772,6 +10781,7 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_CHARSET:
     case MYLITE_SCALAR_FUNCTION_COLLATION:
     case MYLITE_SCALAR_FUNCTION_COERCIBILITY:
+    case MYLITE_SCALAR_FUNCTION_STRCMP:
         return true;
     case MYLITE_SCALAR_FUNCTION_UNKNOWN:
     case MYLITE_SCALAR_FUNCTION_CONCAT:

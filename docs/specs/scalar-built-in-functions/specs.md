@@ -77,6 +77,7 @@ In scope for the initial implementation:
   - `COALESCE`
   - searched and simple `CASE` expressions
   - `GREATEST`, `LEAST`
+  - `STRCMP`
   - `ISNULL`
 - information functions:
   - `DATABASE`, `SCHEMA`
@@ -159,8 +160,10 @@ by common scalar expressions:
   `docs/specs/bit-utility-functions/specs.md` and
   `docs/specs/crc32-function/specs.md` and
   `docs/specs/inet-ipv4-functions/specs.md`
-- conditional/comparison functions: `IF`, `IFNULL`, `NULLIF`, `COALESCE`, and
-  `ISNULL`
+- conditional/comparison functions: `IF`, `IFNULL`, `NULLIF`, `COALESCE`,
+  `GREATEST`, `LEAST`, `STRCMP`, and `ISNULL`; see
+  `docs/specs/greatest-least-functions/specs.md` and
+  `docs/specs/strcmp-function/specs.md`
 - session information functions: `DATABASE`, `SCHEMA`, `VERSION`,
   `LAST_INSERT_ID`, and `ROW_COUNT`; see
   `docs/specs/session-information-functions/specs.md`
@@ -197,8 +200,9 @@ semantics and text conversion, `COT()` radian semantics and range errors,
 `ATAN()` / `ATAN2()` arctangent and quadrant behavior,
 `DEGREES()` / `RADIANS()` conversion semantics, `DEGREES()` overflow behavior,
 table projection, filters, ordering, update assignment expressions, delete
-predicates, unsupported functions, unsupported arity, and selected result
-metadata.
+predicates, `STRCMP()` NULL short-circuiting, numeric-to-string comparison,
+PAD SPACE / NO PAD trailing-space comparison, unsupported functions,
+unsupported arity, and selected result metadata.
 
 This checkpoint intentionally does not yet implement `INSERT ... VALUES` or
 `INSERT ... SET` function expressions, temporal functions, information
@@ -410,6 +414,13 @@ Representative runtime results:
 | `HEX(LEAST('a','a '))` | `61` |
 | `GREATEST(1,NULL,2)` | `NULL` |
 | `LEAST(1,NULL,2)` | `NULL` |
+| `STRCMP('text','text2')` | `-1` |
+| `STRCMP('text2','text')` | `1` |
+| `STRCMP('text','text')` | `0` |
+| `STRCMP(NULL,1/0)` | `NULL` without division warnings |
+| `STRCMP(10,'2')` | `-1` |
+| `STRCMP(1.50,'1.50')` | `0` |
+| `STRCMP(CAST(1.50 AS DECIMAL(5,2)),'1.50')` | `0` |
 | `ISNULL(NULL)` | `1` |
 | `CASE WHEN n > 0 THEN 'pos' WHEN n < 0 THEN 'neg' ELSE 'nil' END` | `pos`, `neg`, `nil` over fixture rows |
 
@@ -422,6 +433,16 @@ uses MySQL's tie rule where `GREATEST` chooses the later collation-equal
 argument while `LEAST` keeps the first. Full collation repertoire, binary-string
 aggregation, and temporal aggregation remain deferred in the dedicated
 `GREATEST`/`LEAST` slice.
+
+`STRCMP` compares two non-`NULL` arguments as strings and returns `-1`, `0`,
+or `1` as a signed `LONGLONG` with display length `2`. Numeric arguments are
+converted to strings without numeric truncation warnings. The supported
+collation subset uses MyLite's current argument collation inference and
+registry PAD attribute: `latin1_swedish_ci` ignores trailing spaces, while
+`utf8mb4_0900_ai_ci` keeps trailing spaces significant. Full Unicode collation
+weights, explicit character-set introducers, mixed-collation diagnostics, and
+the `BINARY expr` deprecation warning remain deferred to the dedicated
+`STRCMP` slice.
 
 `IF` and `COALESCE` short-circuit unchosen branches. The verified query:
 
@@ -565,6 +586,7 @@ Verified `mysql --column-type-info -vvv` examples:
 | `IFNULL(NULL,'fallback') AS ifnull_value` | `VAR_STRING` | `32` | `31` | `utf8mb4_0900_ai_ci` | `NOT_NULL` |
 | `COALESCE(NULL,1.25) AS coalesce_value` | `NEWDECIMAL` | `5` | `2` | `binary` | `NOT_NULL BINARY NUM` |
 | `GREATEST(11,45,2) AS greatest_value` | `LONGLONG` | `3` | `0` | `binary` | `NOT_NULL BINARY NUM` |
+| `STRCMP('text','text2') AS strcmp_value` | `LONGLONG` | `2` | `0` | `binary` | `NOT_NULL BINARY NUM` |
 | `NOW(6) AS now6` | `DATETIME` | `26` | `6` | `binary` | `NOT_NULL BINARY` |
 | `CURDATE() AS curdate_value` | `DATE` | `10` | `0` | `binary` | `NOT_NULL BINARY` |
 | `DATEDIFF(...) AS datediff_value` | `LONGLONG` | `9` | `0` | `binary` | `BINARY NUM` |
@@ -866,13 +888,14 @@ SELECT
   GREATEST(11,45,2),
   LEAST('11','45','2'),
   GREATEST(1,NULL,2),
+  STRCMP('text','text2'),
   ISNULL(NULL);
 ```
 
 Expected row:
 
 ```text
-no, no, fallback, NULL, a, x, 45, 45, 11, NULL, 1
+no, no, fallback, NULL, a, x, 45, 45, 11, NULL, -1, 1
 ```
 
 Short-circuit test:
@@ -1004,7 +1027,7 @@ and `LIMIT 0` queries for:
   `SUBSTRING`, `SUBSTR`, `MID`, `SUBSTRING_INDEX`, `TRIM`, `LTRIM`, `RTRIM`
 - numeric functions: `ABS`, `ROUND`, `POW`, `SQRT`
 - conditional/comparison functions: `IF`, `IFNULL`, `COALESCE`, `GREATEST`,
-  `LEAST`
+  `LEAST`, `STRCMP`
 - temporal functions: `NOW(6)`, `CURDATE`, `DATEDIFF`, `DATE_ADD`
 - information functions: `DATABASE`, `SCHEMA`, `VERSION`, `LAST_INSERT_ID`,
   `ROW_COUNT`, `CONNECTION_ID`

@@ -263,6 +263,7 @@ static int test_inverse_trigonometric_scalar_function_execution(mylite_db *datab
 static int test_atan_scalar_function_execution(mylite_db *database);
 static int test_angle_conversion_scalar_function_execution(mylite_db *database);
 static int test_greatest_least_scalar_function_execution(mylite_db *database);
+static int test_strcmp_scalar_function_execution(mylite_db *database);
 static int test_uuid_scalar_functions(mylite_db *database);
 static int test_inet_ipv4_functions_execution(void);
 static int test_charset_collation_functions_execution(void);
@@ -4054,6 +4055,8 @@ static int test_scalar_builtin_functions_execution(void)
     failures += test_angle_conversion_scalar_function_execution(database);
 
     failures += test_greatest_least_scalar_function_execution(database);
+
+    failures += test_strcmp_scalar_function_execution(database);
 
     failures += test_uuid_scalar_functions(database);
 
@@ -8690,6 +8693,176 @@ static int test_greatest_least_scalar_function_execution(mylite_db *database)
     failures += expect_no_stmt_handle(&stmt, "LEAST zero arity unsupported");
     failures += prepare_sql(database, "SELECT LEAST(1)", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "LEAST one arity unsupported");
+
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_strcmp_scalar_function_execution(mylite_db *database)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const struct expected_result_metadata scalar_metadata[] = {
+        {"cmp_text", NULL, NULL, NULL, NULL, NULL, 2U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"cmp_null", NULL, NULL, NULL, NULL, NULL, 2U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"cmp_mixed", NULL, NULL, NULL, NULL, NULL, 2U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+    };
+    static const struct expected_result_metadata table_metadata[] = {
+        {"cmp_nullable", NULL, NULL, NULL, NULL, NULL, 2U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"cmp_not_null", NULL, NULL, NULL, NULL, NULL, 2U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+    };
+    static const char *const scalar_columns[] = {
+        "text_lt", "text_gt",  "text_eq",  "null_left", "null_right",      "null_short",
+        "ci_eq",   "no_pad_r", "no_pad_l", "num_text",  "text_num",        "num_num",
+        "two_ten", "foo_zero", "zero_foo", "real_text", "decimal_literal", "decimal_text",
+    };
+    static const char *const scalar_values[] = {
+        "-1", "1",  "0",  NULL, NULL, NULL, "0",  "-1", "1",
+        "-1", "-1", "-1", "1",  "1",  "-1", "-1", "0",  "0",
+    };
+    static const char *const latin1_columns[] = {"pad_right", "pad_left"};
+    static const char *const latin1_values[] = {"0", "0"};
+    static const char *const cmp_columns[] = {"id", "cmp"};
+    static const char *const ordered_values[] = {
+        "4", NULL, "1", "-1", "2", "0", "3", "1",
+    };
+    static const char *const id_column[] = {"id"};
+    static const char *const matched_id_values[] = {"2"};
+    static const char *const remaining_id_values[] = {"2", "3", "4"};
+    static const char *const id_outn_columns[] = {"id", "outn"};
+    static const char *const updated_outn_values[] = {
+        "1", "-1", "2", "0", "3", "1", "4", "9",
+    };
+    static const char *const rollback_outn_values[] = {"1", "-1"};
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
+
+    failures += expect_select_rows(database,
+                                   "SELECT STRCMP('text','text2') AS text_lt, "
+                                   "STRCMP('text2','text') AS text_gt, "
+                                   "STRCMP('text','text') AS text_eq, "
+                                   "STRCMP(NULL,'a') AS null_left, "
+                                   "STRCMP('a',NULL) AS null_right, "
+                                   "STRCMP(NULL,1/0) AS null_short, "
+                                   "STRCMP('a','A') AS ci_eq, "
+                                   "STRCMP('a','a ') AS no_pad_r, "
+                                   "STRCMP('a ','a') AS no_pad_l, "
+                                   "STRCMP(10,'2') AS num_text, "
+                                   "STRCMP('10',2) AS text_num, "
+                                   "STRCMP(10,2) AS num_num, "
+                                   "STRCMP(2,'10') AS two_ten, "
+                                   "STRCMP('foo',0) AS foo_zero, "
+                                   "STRCMP(0,'foo') AS zero_foo, "
+                                   "STRCMP(1.5,'1.50') AS real_text, "
+                                   "STRCMP(1.50,'1.50') AS decimal_literal, "
+                                   "STRCMP(CAST(1.50 AS DECIMAL(5,2)),'1.50') AS decimal_text",
+                                   scalar_columns,
+                                   (int)(sizeof(scalar_columns) / sizeof(scalar_columns[0])),
+                                   scalar_values, 1, "STRCMP scalar values");
+    failures += expect_int(mylite_warning_count(database), 0, "STRCMP scalar warning count");
+
+    failures += prepare_sql(database,
+                            "SELECT STRCMP('text','text2') AS cmp_text, "
+                            "STRCMP(NULL,'a') AS cmp_null, "
+                            "STRCMP(10,'2') AS cmp_mixed",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, scalar_metadata,
+                                       (int)(sizeof(scalar_metadata) / sizeof(scalar_metadata[0])),
+                                       "STRCMP scalar metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "STRCMP scalar metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "STRCMP scalar metadata done");
+    failures += expect_int(mylite_warning_count(database), 0, "STRCMP metadata warning count");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "SET NAMES latin1", MYLITE_DONE);
+    failures +=
+        expect_select_rows(database,
+                           "SELECT STRCMP('a','a ') AS pad_right, "
+                           "STRCMP('a ','a') AS pad_left",
+                           latin1_columns, 2, latin1_values, 1, "STRCMP latin1 PAD SPACE values");
+    failures += expect_int(mylite_warning_count(database), 0, "STRCMP latin1 warning count");
+    failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
+
+    failures += execute_sql(database,
+                            "CREATE TABLE strcmp_sites ("
+                            "id INT PRIMARY KEY, "
+                            "s VARCHAR(16), "
+                            "outn INT NOT NULL DEFAULT 9)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO strcmp_sites VALUES "
+                            "(1,'apple',9),"
+                            "(2,'Banana',9),"
+                            "(3,'banana ',9),"
+                            "(4,NULL,9)",
+                            MYLITE_DONE);
+
+    failures += prepare_sql(database,
+                            "SELECT STRCMP(s,'banana') AS cmp_nullable, "
+                            "STRCMP(outn,'9') AS cmp_not_null FROM strcmp_sites",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, table_metadata,
+                                       (int)(sizeof(table_metadata) / sizeof(table_metadata[0])),
+                                       "STRCMP table metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "STRCMP table metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "STRCMP table metadata second row");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "STRCMP table metadata third row");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "STRCMP table metadata fourth row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "STRCMP table metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_select_rows(database,
+                                   "SELECT id, STRCMP(s,'banana') AS cmp FROM strcmp_sites "
+                                   "ORDER BY STRCMP(s,'banana'), id",
+                                   cmp_columns, 2, ordered_values, 4, "STRCMP projection order");
+    failures += expect_int(mylite_warning_count(database), 0, "STRCMP projection warning count");
+    failures += expect_select_rows(database,
+                                   "SELECT id FROM strcmp_sites "
+                                   "WHERE STRCMP(s,'banana')=0 ORDER BY id",
+                                   id_column, 1, matched_id_values, 1, "STRCMP WHERE predicate");
+    failures += expect_int(mylite_warning_count(database), 0, "STRCMP WHERE warning count");
+
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE strcmp_sites SET outn = STRCMP(s,'banana') WHERE id IN (1,2,3)", 3,
+        "STRCMP update assignment");
+    failures += expect_int(mylite_warning_count(database), 0, "STRCMP update warning count");
+    failures +=
+        expect_select_rows(database, "SELECT id, outn FROM strcmp_sites ORDER BY id",
+                           id_outn_columns, 2, updated_outn_values, 4, "STRCMP updated values");
+
+    failures +=
+        prepare_sql(database, "UPDATE strcmp_sites SET outn = STRCMP(NULL,'banana') WHERE id=1",
+                    MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "cannot be null",
+                                  "STRCMP update null not null assignment");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id, outn FROM strcmp_sites WHERE id=1",
+                                   id_outn_columns, 2, rollback_outn_values, 1,
+                                   "STRCMP null assignment rollback");
+
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM strcmp_sites WHERE STRCMP(s,'banana') < 0", 1,
+        "STRCMP delete predicate");
+    failures += expect_int(mylite_warning_count(database), 0, "STRCMP delete warning count");
+    failures +=
+        expect_select_rows(database, "SELECT id FROM strcmp_sites ORDER BY id", id_column, 1,
+                           remaining_id_values, 3, "STRCMP delete predicate remaining rows");
+
+    failures += prepare_sql(database, "SELECT STRCMP()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "STRCMP zero arity unsupported");
+    failures += prepare_sql(database, "SELECT STRCMP('a')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "STRCMP one arity unsupported");
+    failures += prepare_sql(database, "SELECT STRCMP('a','b','c')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "STRCMP three arity unsupported");
 
     // NOLINTEND(readability-magic-numbers)
     return failures;

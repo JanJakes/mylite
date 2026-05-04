@@ -5180,7 +5180,7 @@ static int test_scalar_function_call_syntax(void)
 {
     // NOLINTBEGIN(readability-magic-numbers)
     enum {
-        expected_select_item_count = 38,
+        expected_select_item_count = 39,
         string_function_item_count = 17,
         padding_function_item_count = 6,
         quote_function_item_count = 2,
@@ -5203,7 +5203,8 @@ static int test_scalar_function_call_syntax(void)
                           "ROUND(123.456, 2), Exp(2), Ln(2), LOG(2), Log(10, 100), "
                           "LOG2(8), LOG10(1000), POW(2, 10), Power(2, -2), Sqrt(9), "
                           "Sin(1), COS(1), Tan(1), AtAn(1), ATAN(1, 2), ATAN2(1), "
-                          "AtAn2(1, 2), Greatest(1, 2), least(1, 2, 3) "
+                          "AtAn2(1, 2), Greatest(1, 2), least(1, 2, 3), "
+                          "StRcMp('a', 'b') "
                           "FROM DUAL;",
                           MYLITE_SQL_PARSE_OK, &result);
     select_list = child_at(child_at(result.root, 0U), 0U);
@@ -5294,6 +5295,8 @@ static int test_scalar_function_call_syntax(void)
                                      "GREATEST call");
     failures +=
         expect_function_call(child_at(child_at(select_list, 37U), 0U), "least", 3U, "LEAST call");
+    failures +=
+        expect_function_call(child_at(child_at(select_list, 38U), 0U), "StRcMp", 2U, "STRCMP call");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT CONCAT_WS(',', 'a', 'b'), "

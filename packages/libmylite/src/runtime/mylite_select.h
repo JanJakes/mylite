@@ -8,6 +8,11 @@ void mylite_select_table_deinit(struct mylite_select_table *table);
 void mylite_select_column_deinit(struct mylite_select_column *column);
 void mylite_select_output_column_deinit(struct mylite_select_output_column *column);
 void mylite_select_aggregate_binding_deinit(struct mylite_select_aggregate_binding *binding);
+int mylite_select_bind_limit_clause(const struct mylite_sql_ast_node *limit_clause,
+                                    struct mylite_select_plan *plan);
+bool mylite_select_limit_row_is_kept(const struct mylite_select_limit *limit,
+                                     struct mylite_select_limit_position position);
+bool mylite_select_limit_is_full(const struct mylite_select_limit *limit, size_t kept_count);
 int mylite_select_resolve_table_target(mylite_db *database, struct mylite_select_table *table);
 bool mylite_select_schema_name_is_system(const char *schema_name);
 int mylite_select_resolve_column_reference(const struct mylite_select_table *table,

@@ -827,8 +827,6 @@ static int bind_select_having_clause(mylite_db *database,
                                      const struct mylite_sql_ast_node *having_clause,
                                      struct mylite_select_plan *plan);
 static bool select_literal_is_supported(const struct mylite_sql_ast_node *expression);
-static int bind_select_limit_clause(const struct mylite_sql_ast_node *limit_clause,
-                                    struct mylite_select_plan *plan);
 static int bind_select_order_by_clause(mylite_db *database,
                                        const struct mylite_sql_ast_node *order_by_clause,
                                        struct mylite_select_plan *plan);
@@ -1605,9 +1603,6 @@ static size_t expression_value_text_length(const struct mylite_expression_value 
 static bool
 table_select_text_descriptor_is_binary(const struct mylite_field_descriptor *descriptor);
 static int apply_table_select_limit(mylite_stmt *stmt);
-static bool table_select_limit_row_is_kept(const struct mylite_select_limit *limit,
-                                           struct mylite_select_limit_position position);
-static bool table_select_limit_is_full(const struct mylite_select_limit *limit, size_t kept_count);
 static int set_table_select_current_row(mylite_stmt *stmt,
                                         const struct mylite_table_select_row *row);
 static int evaluate_table_select_cached_output_value(mylite_stmt *stmt,
@@ -2884,7 +2879,7 @@ static int bind_union_query_clauses(mylite_db *database,
     int status = MYLITE_OK;
 
     if (limit_clause != NULL) {
-        status = bind_select_limit_clause(limit_clause, &stmt->select_plan);
+        status = mylite_select_bind_limit_clause(limit_clause, &stmt->select_plan);
     }
     if (status == MYLITE_OK && order_by_clause != NULL) {
         status = bind_union_global_order_by_clause(database, order_by_clause, &stmt->select_plan);
@@ -8311,7 +8306,7 @@ static int bind_table_select_clauses(mylite_db *database,
         status = bind_select_having_clause(database, clauses->having, plan);
     }
     if (status == MYLITE_OK && clauses->limit != NULL) {
-        status = bind_select_limit_clause(clauses->limit, plan);
+        status = mylite_select_bind_limit_clause(clauses->limit, plan);
     }
     if (status == MYLITE_OK && clauses->order_by != NULL) {
         status = bind_select_order_by_clause(database, clauses->order_by, plan);
@@ -9623,27 +9618,6 @@ static bool select_literal_is_supported(const struct mylite_sql_ast_node *expres
         return false;
     }
     return false;
-}
-
-static int bind_select_limit_clause(const struct mylite_sql_ast_node *limit_clause,
-                                    struct mylite_select_plan *plan)
-{
-    const struct mylite_sql_ast_node *offset = mylite_ast_child_at(limit_clause, 0U);
-    const struct mylite_sql_ast_node *row_count = mylite_ast_child_at(limit_clause, 1U);
-
-    if (limit_clause == NULL || limit_clause->kind != MYLITE_SQL_AST_LIMIT_CLAUSE ||
-        offset == NULL || offset->kind != MYLITE_SQL_AST_LIMIT_BOUND ||
-        !offset->has_limit_bound_value || row_count == NULL ||
-        row_count->kind != MYLITE_SQL_AST_LIMIT_BOUND || !row_count->has_limit_bound_value) {
-        return MYLITE_UNSUPPORTED;
-    }
-
-    plan->limit = (struct mylite_select_limit){
-        .offset = offset->limit_bound_value,
-        .row_count = row_count->limit_bound_value,
-        .has_limit = true,
-    };
-    return MYLITE_OK;
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
@@ -15647,7 +15621,7 @@ static int materialize_unordered_table_select_result(mylite_stmt *stmt)
         }
     }
     if (rc != SQLITE_DONE &&
-        !table_select_limit_is_full(&stmt->select_plan.limit, stmt->select_result.row_count)) {
+        !mylite_select_limit_is_full(&stmt->select_plan.limit, stmt->select_result.row_count)) {
         return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
     if (distinct) {
@@ -15687,11 +15661,11 @@ static int
 append_unordered_table_select_limited_row(mylite_stmt *stmt, struct mylite_table_select_row *row,
                                           struct mylite_unordered_table_select_append_state *state)
 {
-    if (table_select_limit_row_is_kept(&stmt->select_plan.limit,
-                                       (struct mylite_select_limit_position){
-                                           .matched_row = state->matched_row,
-                                           .kept_count = stmt->select_result.row_count,
-                                       })) {
+    if (mylite_select_limit_row_is_kept(&stmt->select_plan.limit,
+                                        (struct mylite_select_limit_position){
+                                            .matched_row = state->matched_row,
+                                            .kept_count = stmt->select_result.row_count,
+                                        })) {
         int status = append_table_select_result_row(stmt, row);
 
         if (status != MYLITE_OK) {
@@ -15704,7 +15678,7 @@ append_unordered_table_select_limited_row(mylite_stmt *stmt, struct mylite_table
         ++state->matched_row;
     }
     state->stop =
-        table_select_limit_is_full(&stmt->select_plan.limit, stmt->select_result.row_count);
+        mylite_select_limit_is_full(&stmt->select_plan.limit, stmt->select_result.row_count);
     return MYLITE_OK;
 }
 
@@ -17175,11 +17149,11 @@ static int process_joined_table_select_nonaggregate_row(
         return status;
     }
 
-    if (table_select_limit_row_is_kept(&stmt->select_plan.limit,
-                                       (struct mylite_select_limit_position){
-                                           .matched_row = state->matched_row,
-                                           .kept_count = stmt->select_result.row_count,
-                                       })) {
+    if (mylite_select_limit_row_is_kept(&stmt->select_plan.limit,
+                                        (struct mylite_select_limit_position){
+                                            .matched_row = state->matched_row,
+                                            .kept_count = stmt->select_result.row_count,
+                                        })) {
         int status = append_table_select_result_row_copy(stmt, row);
 
         if (status != MYLITE_OK) {
@@ -17189,7 +17163,7 @@ static int process_joined_table_select_nonaggregate_row(
     if (state->matched_row != UINT64_MAX) {
         ++state->matched_row;
     }
-    if (table_select_limit_is_full(&stmt->select_plan.limit, stmt->select_result.row_count)) {
+    if (mylite_select_limit_is_full(&stmt->select_plan.limit, stmt->select_result.row_count)) {
         state->stop = true;
     }
     return MYLITE_OK;
@@ -18563,10 +18537,10 @@ static int apply_table_select_limit(mylite_stmt *stmt)
     }
 
     for (size_t index = 0U; index < stmt->select_result.row_count; ++index) {
-        if (table_select_limit_row_is_kept(limit, (struct mylite_select_limit_position){
-                                                      .matched_row = (uint64_t)index,
-                                                      .kept_count = kept,
-                                                  })) {
+        if (mylite_select_limit_row_is_kept(limit, (struct mylite_select_limit_position){
+                                                       .matched_row = (uint64_t)index,
+                                                       .kept_count = kept,
+                                                   })) {
             if (kept != index) {
                 stmt->select_result.rows[kept] = stmt->select_result.rows[index];
                 stmt->select_result.rows[index] = (struct mylite_table_select_row){0};
@@ -18578,32 +18552,6 @@ static int apply_table_select_limit(mylite_stmt *stmt)
     }
     stmt->select_result.row_count = kept;
     return MYLITE_OK;
-}
-
-static bool table_select_limit_row_is_kept(const struct mylite_select_limit *limit,
-                                           struct mylite_select_limit_position position)
-{
-    if (!limit->has_limit) {
-        return true;
-    }
-    if (position.matched_row < limit->offset) {
-        return false;
-    }
-    if (table_select_limit_is_full(limit, position.kept_count)) {
-        return false;
-    }
-    return true;
-}
-
-static bool table_select_limit_is_full(const struct mylite_select_limit *limit, size_t kept_count)
-{
-    if (!limit->has_limit) {
-        return false;
-    }
-    if (limit->row_count > (uint64_t)SIZE_MAX) {
-        return false;
-    }
-    return kept_count >= (size_t)limit->row_count;
 }
 
 static int set_table_select_current_row(mylite_stmt *stmt,
@@ -19138,12 +19086,12 @@ static int copy_scalar_select_statement(const struct mylite_sql_ast_node *statem
 static int bind_scalar_select_limit_clause(mylite_stmt *stmt,
                                            const struct mylite_sql_ast_node *limit_clause)
 {
-    int status = bind_select_limit_clause(limit_clause, &stmt->select_plan);
+    int status = mylite_select_bind_limit_clause(limit_clause, &stmt->select_plan);
 
     if (status != MYLITE_OK) {
         return status;
     }
-    stmt->scalar_result.row_available = table_select_limit_row_is_kept(
+    stmt->scalar_result.row_available = mylite_select_limit_row_is_kept(
         &stmt->select_plan.limit, (struct mylite_select_limit_position){
                                       .matched_row = 0U,
                                       .kept_count = 0U,

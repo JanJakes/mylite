@@ -469,6 +469,7 @@ only the core object model and transitional shared helpers listed here:
 - [ ] Move join planning and `USING` resolution into `mylite_select`.
 - [ ] Move `ORDER BY`, `GROUP BY`, `HAVING`, and `LIMIT` binding into
   `mylite_select`.
+- [x] Move SELECT LIMIT binding and row-keeping helpers into `mylite_select`.
 - [ ] Move DISTINCT validation into `mylite_select`.
 - [ ] Move grouping validation into `mylite_select`.
 - [ ] Move SELECT SQL construction into `mylite_select`.

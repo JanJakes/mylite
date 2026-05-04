@@ -4,8 +4,7 @@
 #include "mylite_expression.h"
 #include "mylite_parser.h"
 #include "mylite_sqlite_translator.h"
-#include "mylite_vfs.h"
-#include "runtime/mylite_catalog.h"
+#include "runtime/mylite_connection.h"
 #include "runtime/mylite_diagnostics.h"
 #include "runtime/mylite_runtime.h"
 #include "runtime/mylite_span.h"
@@ -34,7 +33,6 @@ static const char mylite_mysql_utf8mb3_charset_name[] = "utf8mb3";
 static const char mylite_mysql_utf8mb3_general_ci_collation_name[] = "utf8mb3_general_ci";
 static const char mylite_mysql_ascii_charset_name[] = "ascii";
 static const char mylite_mysql_ascii_general_ci_collation_name[] = "ascii_general_ci";
-static const uint64_t mylite_embedded_connection_id = 1U;
 static const char mylite_embedded_identity[] = "mylite@localhost";
 static const int mylite_mysql_coercibility_implicit = 2;
 static const int mylite_mysql_coercibility_system_constant = 3;
@@ -325,8 +323,6 @@ static const char information_schema_referential_constraints_sql[] =
     "'' AS REFERENCED_TABLE_NAME "
     "WHERE 0";
 
-static int open_sqlite_database(const char *filename, int flags, const char *vfs_name,
-                                mylite_db **out_db);
 static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql_ast_node *root,
                                     const char *sql, size_t sql_length, mylite_stmt **out_stmt);
 static int prepare_schema_lifecycle_statement(mylite_db *database,
@@ -3262,7 +3258,6 @@ static int schema_default_by_name(mylite_db *database, const char *schema_name,
 static int set_names_connection_state(mylite_db *database,
                                       struct mylite_connection_charset_request request);
 static int set_character_set_connection_state(mylite_db *database, const char *character_set_name);
-static int set_default_connection_state(mylite_db *database);
 static int selected_schema_default(mylite_db *database, struct mylite_schema_default *out_default);
 static int schema_exists(mylite_db *database, const char *schema_name,
                          struct mylite_schema_presence *out_presence);
@@ -3823,34 +3818,6 @@ const char *mylite_status_name(int status)
     }
 }
 
-int mylite_open(const char *filename, mylite_db **out_db)
-{
-    int rc = SQLITE_OK;
-
-    if (filename == NULL || out_db == NULL) {
-        return MYLITE_MISUSE;
-    }
-
-    *out_db = NULL;
-    rc = mylite_vfs_register();
-    if (rc != SQLITE_OK) {
-        return MYLITE_SQLITE_ERROR;
-    }
-
-    return open_sqlite_database(filename, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
-                                mylite_vfs_name(), out_db);
-}
-
-int mylite_open_memory(mylite_db **out_db)
-{
-    if (out_db == NULL) {
-        return MYLITE_MISUSE;
-    }
-
-    return open_sqlite_database(
-        ":memory:", SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_MEMORY, NULL, out_db);
-}
-
 void mylite_close(mylite_db *database)
 {
     if (database == NULL) {
@@ -4206,39 +4173,6 @@ static void record_statement_row_count(mylite_stmt *stmt)
 
     stmt->database->previous_row_count = stmt->affected_rows;
     stmt->previous_row_count_recorded = true;
-}
-
-static int open_sqlite_database(const char *filename, int flags, const char *vfs_name,
-                                mylite_db **out_db)
-{
-    mylite_db *database = calloc(1U, sizeof(*database));
-    int rc = SQLITE_OK;
-
-    *out_db = NULL;
-    if (database == NULL) {
-        return MYLITE_NOMEM;
-    }
-    database->status_started_at = time(NULL);
-    database->connection_id = mylite_embedded_connection_id;
-
-    rc = sqlite3_open_v2(filename, &database->sqlite, flags, vfs_name);
-    if (rc != SQLITE_OK) {
-        sqlite3_close(database->sqlite);
-        free(database);
-        return MYLITE_SQLITE_ERROR;
-    }
-
-    rc = mylite_catalog_initialize(database);
-    if (rc != MYLITE_OK) {
-        sqlite3_close(database->sqlite);
-        free(database->error_message);
-        free(database);
-        return rc;
-    }
-
-    (void)set_default_connection_state(database);
-    *out_db = database;
-    return MYLITE_OK;
 }
 
 static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql_ast_node *root,
@@ -19883,7 +19817,7 @@ static int execute_use_schema_statement(mylite_stmt *stmt)
 static int execute_set_names_statement(mylite_stmt *stmt)
 {
     if (stmt->use_default_connection_charset) {
-        return set_default_connection_state(stmt->database);
+        return mylite_connection_set_default_state(stmt->database);
     }
     return set_names_connection_state(stmt->database,
                                       (struct mylite_connection_charset_request){
@@ -36167,15 +36101,6 @@ static int set_character_set_connection_state(mylite_db *database, const char *c
     database->character_set_connection = connection_collation->character_set;
     database->character_set_results = character_set->name;
     database->collation_connection = connection_collation->name;
-    return MYLITE_OK;
-}
-
-static int set_default_connection_state(mylite_db *database)
-{
-    database->character_set_client = mylite_charset_default_name();
-    database->character_set_connection = mylite_charset_default_name();
-    database->character_set_results = mylite_charset_default_name();
-    database->collation_connection = mylite_charset_default_collation_name();
     return MYLITE_OK;
 }
 

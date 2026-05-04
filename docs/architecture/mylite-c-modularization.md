@@ -60,7 +60,9 @@ after every step.
 - [x] Extract diagnostics into `src/runtime/mylite_diagnostics.{h,c}`.
 - [x] Extract public connection state accessors into
   `src/runtime/mylite_connection.{h,c}`.
-- [ ] Extract public connection lifecycle into `src/runtime/mylite_connection`.
+- [x] Extract public connection opening into `src/runtime/mylite_connection`.
+- [ ] Extract public connection close after transaction cleanup moves out of
+  `mylite.c`.
 - [x] Extract catalog bootstrap DDL and system schema seeding into
   `src/runtime/mylite_catalog.{h,c}`.
 - [x] Extract reusable span, string, and AST-child helpers into

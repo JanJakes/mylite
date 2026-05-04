@@ -213,6 +213,9 @@ int mylite_dml_copy_delete_statement(const struct mylite_sql_ast_node *statement
 int mylite_dml_copy_update_target_to_select_table(mylite_db *database,
                                                   const struct mylite_update_plan *plan,
                                                   struct mylite_select_table *table);
+int mylite_dml_copy_delete_target_to_select_table(mylite_db *database,
+                                                  const struct mylite_delete_plan *plan,
+                                                  struct mylite_select_table *table);
 int mylite_dml_bind_update_assignment_targets(mylite_db *database,
                                               const struct mylite_update_plan *plan,
                                               const struct mylite_select_table *table,

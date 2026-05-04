@@ -1427,7 +1427,6 @@ static char *copy_update_duplicate_entry_value(const struct mylite_insert_unique
 static int set_update_unsupported_expression_error(mylite_db *database, const char *clause_context);
 static int set_update_unsupported_clause_error(mylite_db *database);
 static int set_update_unsupported_assignment_error(mylite_db *database);
-static int copy_delete_target_to_select_table(mylite_stmt *stmt, struct mylite_select_table *table);
 static int bind_delete_subset(mylite_stmt *stmt, const struct mylite_select_table *table);
 static int reject_deferred_delete_clauses(mylite_stmt *stmt);
 static int bind_delete_where_clause(mylite_stmt *stmt, const struct mylite_select_table *table);
@@ -17659,7 +17658,8 @@ static int execute_delete_statement(mylite_stmt *stmt)
 
     stmt->affected_rows = 0;
 
-    status = copy_delete_target_to_select_table(stmt, &table);
+    status =
+        mylite_dml_copy_delete_target_to_select_table(stmt->database, &stmt->delete_plan, &table);
     if (status == MYLITE_OK) {
         status = resolve_select_table_target(stmt->database, &table);
         if (status == MYLITE_UNSUPPORTED && table.schema_name != NULL &&
@@ -17699,32 +17699,6 @@ static int execute_delete_statement(mylite_stmt *stmt)
         stmt->affected_rows = -1;
     }
     return status;
-}
-
-static int copy_delete_target_to_select_table(mylite_stmt *stmt, struct mylite_select_table *table)
-{
-    const struct mylite_delete_target *target = &stmt->delete_plan.target;
-
-    if (target->schema_name != NULL) {
-        table->schema_name = mylite_copy_nonempty_cstring(target->schema_name);
-        if (table->schema_name == NULL) {
-            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-            return MYLITE_NOMEM;
-        }
-    }
-    table->table_name = mylite_copy_nonempty_cstring(target->table_name);
-    if (table->table_name == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    if (target->alias != NULL) {
-        table->alias = mylite_copy_nonempty_cstring(target->alias);
-        if (table->alias == NULL) {
-            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-            return MYLITE_NOMEM;
-        }
-    }
-    return MYLITE_OK;
 }
 
 static int bind_delete_subset(mylite_stmt *stmt, const struct mylite_select_table *table)

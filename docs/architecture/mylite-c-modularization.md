@@ -409,7 +409,8 @@ only the core object model and transitional shared helpers listed here:
   companion module.
 - [ ] Move update row materialization logic into `mylite_dml`.
 - [ ] Move update row writeback into `mylite_dml`.
-- [ ] Move delete target binding and validation into `mylite_dml`.
+- [x] Move delete target copy into `mylite_dml`.
+- [ ] Move remaining delete target validation into `mylite_dml`.
 - [ ] Move delete row materialization/sorting/limit logic into `mylite_dml`.
 - [ ] Move delete execution into `mylite_dml`.
 - [ ] Move DML-specific diagnostics into `mylite_dml`.

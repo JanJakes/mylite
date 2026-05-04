@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int copy_update_target_name(mylite_db *database, const char *source, char **out_name);
+static int copy_dml_target_name(mylite_db *database, const char *source, char **out_name);
 static size_t update_column_reference_index(const struct mylite_select_table *table,
                                             const struct mylite_update_column_reference *reference);
 static bool
@@ -34,17 +34,48 @@ int mylite_dml_copy_update_target_to_select_table(mylite_db *database,
 
     target = &plan->target;
     if (target->schema_name != NULL) {
-        status = copy_update_target_name(database, target->schema_name, &table->schema_name);
+        status = copy_dml_target_name(database, target->schema_name, &table->schema_name);
         if (status != MYLITE_OK) {
             return status;
         }
     }
-    status = copy_update_target_name(database, target->table_name, &table->table_name);
+    status = copy_dml_target_name(database, target->table_name, &table->table_name);
     if (status != MYLITE_OK) {
         return status;
     }
     if (target->alias != NULL) {
-        status = copy_update_target_name(database, target->alias, &table->alias);
+        status = copy_dml_target_name(database, target->alias, &table->alias);
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
+}
+
+int mylite_dml_copy_delete_target_to_select_table(mylite_db *database,
+                                                  const struct mylite_delete_plan *plan,
+                                                  struct mylite_select_table *table)
+{
+    const struct mylite_delete_target *target = NULL;
+    int status = MYLITE_OK;
+
+    if (database == NULL || plan == NULL || table == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    target = &plan->target;
+    if (target->schema_name != NULL) {
+        status = copy_dml_target_name(database, target->schema_name, &table->schema_name);
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    status = copy_dml_target_name(database, target->table_name, &table->table_name);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (target->alias != NULL) {
+        status = copy_dml_target_name(database, target->alias, &table->alias);
         if (status != MYLITE_OK) {
             return status;
         }
@@ -92,7 +123,7 @@ int mylite_dml_bind_update_assignment_targets(mylite_db *database,
     return MYLITE_OK;
 }
 
-static int copy_update_target_name(mylite_db *database, const char *source, char **out_name)
+static int copy_dml_target_name(mylite_db *database, const char *source, char **out_name)
 {
     *out_name = mylite_copy_nonempty_cstring(source);
     if (*out_name == NULL) {

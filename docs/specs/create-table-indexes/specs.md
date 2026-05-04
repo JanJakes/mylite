@@ -310,4 +310,3 @@ Runtime boundary tests should verify:
   with no statement handle
 - no table, column, or statistics rows are created
 - malformed or excluded forms return `MYLITE_PARSE_ERROR`
-

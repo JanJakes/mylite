@@ -229,6 +229,10 @@ int mylite_dml_execute_delete_rows_transaction(mylite_db *database,
                                                const struct mylite_select_table *table,
                                                const struct mylite_update_rowset *rowset,
                                                int64_t *out_affected_rows);
+char *mylite_dml_build_update_scan_sql(mylite_db *database,
+                                       const struct mylite_select_table *table);
+char *mylite_dml_build_update_physical_sql(mylite_db *database,
+                                           const struct mylite_select_table *table);
 void mylite_dml_insert_values_plan_deinit(struct mylite_insert_values_plan *plan);
 void mylite_dml_insert_set_plan_deinit(struct mylite_insert_set_plan *plan);
 void mylite_dml_insert_set_assignment_deinit(struct mylite_insert_set_assignment *assignment);

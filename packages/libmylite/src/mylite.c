@@ -1325,7 +1325,6 @@ static int add_update_order_key(struct mylite_update_order_plan *plan,
 static int materialize_update_rows(mylite_stmt *stmt, const struct mylite_select_table *table,
                                    const struct mylite_update_order_plan *order_plan,
                                    struct mylite_update_rowset *rowset);
-static char *build_update_scan_sql(mylite_db *database, const struct mylite_select_table *table);
 static int copy_update_sqlite_row(mylite_stmt *stmt, const struct mylite_select_table *table,
                                   sqlite3_stmt *scan, struct mylite_update_row *out_row);
 static int copy_update_sqlite_column_value(sqlite3_stmt *scan, int column,
@@ -1359,8 +1358,6 @@ static int write_update_candidate(mylite_stmt *stmt, sqlite3_stmt *update,
                                   const struct mylite_insert_table *write_table,
                                   const struct mylite_update_row *candidate,
                                   uint64_t *next_auto_increment);
-static char *build_update_physical_sql(mylite_db *database,
-                                       const struct mylite_select_table *table);
 static int copy_update_candidate_values(mylite_stmt *stmt, const struct mylite_update_row *row,
                                         struct mylite_update_row *candidate);
 static int apply_update_assignments(mylite_stmt *stmt, const struct mylite_select_table *table,
@@ -16693,7 +16690,7 @@ static int materialize_update_rows(mylite_stmt *stmt, const struct mylite_select
                                    struct mylite_update_rowset *rowset)
 {
     sqlite3_stmt *scan = NULL;
-    char *scan_sql = build_update_scan_sql(stmt->database, table);
+    char *scan_sql = mylite_dml_build_update_scan_sql(stmt->database, table);
     int rc = SQLITE_OK;
     int status = MYLITE_OK;
 
@@ -16731,22 +16728,6 @@ static int materialize_update_rows(mylite_stmt *stmt, const struct mylite_select
     }
     sqlite3_finalize(scan);
     return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
-}
-
-static char *build_update_scan_sql(mylite_db *database, const struct mylite_select_table *table)
-{
-    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
-
-    if (sql == NULL) {
-        return NULL;
-    }
-
-    sqlite3_str_append(sql, "SELECT rowid", (int)strlen("SELECT rowid"));
-    for (size_t index = 0U; index < table->column_count; ++index) {
-        sqlite3_str_appendf(sql, ",\"%w\"", table->columns[index].name);
-    }
-    sqlite3_str_appendf(sql, " FROM \"%w\"", table->physical_name);
-    return sqlite3_str_finish(sql);
 }
 
 static int copy_update_sqlite_row(mylite_stmt *stmt, const struct mylite_select_table *table,
@@ -16950,7 +16931,7 @@ static int execute_update_rows_transaction(mylite_stmt *stmt,
         return status;
     }
 
-    update_sql = build_update_physical_sql(stmt->database, table);
+    update_sql = mylite_dml_build_update_physical_sql(stmt->database, table);
     if (update_sql == NULL) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
@@ -17045,25 +17026,6 @@ static int write_update_candidate(mylite_stmt *stmt, sqlite3_stmt *update,
 
     ++stmt->affected_rows;
     return advance_update_auto_increment(stmt, table, write_table, candidate, next_auto_increment);
-}
-
-static char *build_update_physical_sql(mylite_db *database, const struct mylite_select_table *table)
-{
-    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
-
-    if (sql == NULL) {
-        return NULL;
-    }
-
-    sqlite3_str_appendf(sql, "UPDATE \"%w\" SET ", table->physical_name);
-    for (size_t index = 0U; index < table->column_count; ++index) {
-        if (index != 0U) {
-            sqlite3_str_append(sql, ",", 1);
-        }
-        sqlite3_str_appendf(sql, "\"%w\" = ?", table->columns[index].name);
-    }
-    sqlite3_str_append(sql, " WHERE rowid = ?", (int)strlen(" WHERE rowid = ?"));
-    return sqlite3_str_finish(sql);
 }
 
 static int copy_update_candidate_values(mylite_stmt *stmt, const struct mylite_update_row *row,
@@ -18016,7 +17978,7 @@ static int materialize_delete_rows(mylite_stmt *stmt, const struct mylite_select
                                    struct mylite_update_rowset *rowset)
 {
     sqlite3_stmt *scan = NULL;
-    char *scan_sql = build_update_scan_sql(stmt->database, table);
+    char *scan_sql = mylite_dml_build_update_scan_sql(stmt->database, table);
     int rc = SQLITE_OK;
     int status = MYLITE_OK;
 

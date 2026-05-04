@@ -51,14 +51,6 @@ static const unsigned int mylite_show_not_fixed_decimals = 31U;
 
 static const char show_schemas_sql[] =
     "SELECT name AS \"Database\" FROM __mylite_schema_catalog ORDER BY name COLLATE BINARY";
-static const char information_schema_schemata_sql[] =
-    "SELECT 'def' AS CATALOG_NAME,"
-    "name AS SCHEMA_NAME,"
-    "default_character_set AS DEFAULT_CHARACTER_SET_NAME,"
-    "default_collation AS DEFAULT_COLLATION_NAME,"
-    "NULL AS SQL_PATH,"
-    "CASE WHEN upper(default_encryption) = 'Y' THEN 'YES' ELSE 'NO' END AS DEFAULT_ENCRYPTION "
-    "FROM __mylite_schema_catalog ORDER BY name COLLATE BINARY";
 
 static const struct mylite_storage_engine_row mylite_storage_engine_registry[] = {
     {"InnoDB", "DEFAULT", "MyLite SQLite-backed transactional engine facade", "YES", "NO", "YES"},
@@ -618,11 +610,6 @@ int mylite_show_variables_sql(mylite_db *database, const struct mylite_show_vari
 const char *mylite_show_schemas_sql(void)
 {
     return show_schemas_sql;
-}
-
-const char *mylite_show_information_schema_schemata_sql(void)
-{
-    return information_schema_schemata_sql;
 }
 
 int mylite_show_attach_engines_result_metadata(mylite_db *database, mylite_stmt *stmt)

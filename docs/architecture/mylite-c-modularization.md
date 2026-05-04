@@ -330,15 +330,15 @@ only the core object model and transitional shared helpers listed here:
 - [ ] Move `SHOW CREATE DATABASE` prepare/build code into `mylite_show`.
 - [x] Move `SHOW WARNINGS`, `SHOW ERRORS`, and diagnostic count display into
   `mylite_show` or diagnostics.
-- [ ] Create `src/runtime/mylite_information_schema.{h,c}` and wire it into
+- [x] Create `src/runtime/mylite_information_schema.{h,c}` and wire it into
   CMake.
-- [ ] Move information-schema table detection into
+- [x] Move information-schema table detection into
   `mylite_information_schema`.
-- [ ] Move static information-schema SQL strings into
+- [x] Move static information-schema SQL strings into
   `mylite_information_schema`.
 - [ ] Move dynamic information-schema character set/collation/keyword/engine
   builders into `mylite_information_schema`.
-- [ ] Move information-schema SELECT passthrough preparation into
+- [x] Move information-schema SELECT passthrough preparation into
   `mylite_information_schema`.
 - [ ] Split schema lifecycle and table/index DDL plans and execution.
 - [x] Start `src/runtime/mylite_schema.{h,c}` with schema option cleanup.

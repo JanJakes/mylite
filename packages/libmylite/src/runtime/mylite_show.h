@@ -43,7 +43,6 @@ char *mylite_show_table_status_sql(mylite_db *database,
 int mylite_show_variables_sql(mylite_db *database, const struct mylite_show_variables_query *query,
                               char **out_sql);
 const char *mylite_show_schemas_sql(void);
-const char *mylite_show_information_schema_schemata_sql(void);
 int mylite_show_attach_engines_result_metadata(mylite_db *database, mylite_stmt *stmt);
 
 #endif

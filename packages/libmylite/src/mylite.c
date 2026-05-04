@@ -11,6 +11,7 @@
 #include "runtime/mylite_metadata.h"
 #include "runtime/mylite_runtime.h"
 #include "runtime/mylite_schema.h"
+#include "runtime/mylite_select.h"
 #include "runtime/mylite_span.h"
 #include "runtime/mylite_statement.h"
 #include "runtime/mylite_table_ddl.h"
@@ -1560,7 +1561,6 @@ static int add_select_group_key(struct mylite_select_plan *plan,
                                 const struct mylite_select_group_key *group_key);
 static int add_select_aggregate_binding(struct mylite_select_plan *plan,
                                         const struct mylite_select_aggregate_binding *binding);
-static void select_aggregate_binding_deinit(struct mylite_select_aggregate_binding *binding);
 static int collect_select_aggregate_bindings(mylite_db *database,
                                              const struct mylite_sql_ast_node *expression,
                                              struct mylite_select_plan *plan);
@@ -3684,10 +3684,6 @@ static bool column_default_is_current_timestamp(const char *default_text);
 static bool parse_insert_integer_text(const char *text, int64_t *out_value);
 static bool parse_insert_real_text(const char *text, double *out_value);
 static char *insert_current_timestamp_text(void);
-static void select_plan_deinit(struct mylite_select_plan *plan);
-static void select_table_deinit(struct mylite_select_table *table);
-static void select_column_deinit(struct mylite_select_column *column);
-static void select_output_column_deinit(struct mylite_select_output_column *column);
 static bool binary_expression_is_in_subquery(const struct mylite_sql_ast_node *expression);
 static bool statement_preserves_diagnostics(const struct mylite_sql_ast_node *statement);
 static int map_parse_status(mylite_db *database, enum mylite_sql_parse_status status);
@@ -3771,7 +3767,7 @@ void mylite_finalize(mylite_stmt *stmt)
     mylite_dml_delete_plan_deinit(&stmt->delete_plan);
     mylite_transaction_savepoint_plan_deinit(&stmt->savepoint);
     mylite_statement_union_plan_deinit(&stmt->union_plan);
-    select_plan_deinit(&stmt->select_plan);
+    mylite_select_plan_deinit(&stmt->select_plan);
     mylite_result_metadata_deinit(&stmt->result_metadata);
     mylite_statement_scalar_result_deinit(&stmt->scalar_result);
     mylite_statement_table_select_result_deinit(&stmt->select_result);
@@ -7513,7 +7509,7 @@ static int prepare_table_select_statement(mylite_db *database,
         status = prepare_table_select_sqlite_statement(database, &plan, out_stmt);
     }
 
-    select_plan_deinit(&plan);
+    mylite_select_plan_deinit(&plan);
     return status;
 }
 
@@ -7917,7 +7913,7 @@ static int add_union_output_column(mylite_db *database, struct mylite_select_pla
         int status = add_select_output_column(plan, &output);
 
         if (status != MYLITE_OK) {
-            select_output_column_deinit(&output);
+            mylite_select_output_column_deinit(&output);
             (void)mylite_diagnostics_set_error_message(database, "out of memory");
         }
         return status;
@@ -13397,7 +13393,7 @@ static int copy_select_base_table_reference_node(mylite_db *database,
         status = add_select_plan_table(database, plan, &table, &out_range->first_table);
     }
     if (status != MYLITE_OK) {
-        select_table_deinit(&table);
+        mylite_select_table_deinit(&table);
         return status;
     }
     out_range->table_count = 1U;
@@ -13898,13 +13894,13 @@ static int load_select_column_from_catalog_row(mylite_db *database,
     }
     int status = load_column_field_descriptor(database, select, &column.descriptor);
     if (status != MYLITE_OK) {
-        select_column_deinit(&column);
+        mylite_select_column_deinit(&column);
         return status;
     }
 
     columns = realloc(table->columns, (table->column_count + 1U) * sizeof(*table->columns));
     if (columns == NULL) {
-        select_column_deinit(&column);
+        mylite_select_column_deinit(&column);
         return MYLITE_NOMEM;
     }
 
@@ -15265,13 +15261,13 @@ static int bind_select_aggregate_call(mylite_db *database,
             infer_count_distinct_argument_descriptors(database, plan, binding.argument, &binding);
     }
     if (status != MYLITE_OK) {
-        select_aggregate_binding_deinit(&binding);
+        mylite_select_aggregate_binding_deinit(&binding);
         return status;
     }
     plan->has_aggregate = true;
     status = add_select_aggregate_binding(plan, &binding);
     if (status != MYLITE_OK) {
-        select_aggregate_binding_deinit(&binding);
+        mylite_select_aggregate_binding_deinit(&binding);
     }
     return status;
 }
@@ -17242,16 +17238,6 @@ static int add_select_aggregate_binding(struct mylite_select_plan *plan,
     return MYLITE_OK;
 }
 
-static void select_aggregate_binding_deinit(struct mylite_select_aggregate_binding *binding)
-{
-    if (binding == NULL) {
-        return;
-    }
-
-    free(binding->argument_descriptors);
-    *binding = (struct mylite_select_aggregate_binding){0};
-}
-
 // NOLINTNEXTLINE(misc-no-recursion)
 static int collect_select_aggregate_bindings(mylite_db *database,
                                              const struct mylite_sql_ast_node *expression,
@@ -17279,7 +17265,7 @@ static int collect_select_aggregate_bindings(mylite_db *database,
             status = add_select_aggregate_binding(plan, &binding);
         }
         if (status != MYLITE_OK) {
-            select_aggregate_binding_deinit(&binding);
+            mylite_select_aggregate_binding_deinit(&binding);
             return status;
         }
         plan->has_aggregate = true;
@@ -17308,7 +17294,7 @@ static void clear_select_aggregate_bindings(struct mylite_select_plan *plan)
     }
 
     for (size_t index = 0U; index < plan->aggregate_binding_count; ++index) {
-        select_aggregate_binding_deinit(&plan->aggregate_bindings[index]);
+        mylite_select_aggregate_binding_deinit(&plan->aggregate_bindings[index]);
     }
     free(plan->aggregate_bindings);
     plan->aggregate_bindings = NULL;
@@ -24097,7 +24083,7 @@ static int execute_update_statement(mylite_stmt *stmt)
     mylite_dml_update_rowset_deinit(&rowset);
     mylite_dml_update_order_plan_deinit(&order_plan);
     mylite_dml_insert_table_deinit(&write_table);
-    select_table_deinit(&table);
+    mylite_select_table_deinit(&table);
     if (status != MYLITE_OK) {
         stmt->affected_rows = -1;
     }
@@ -25732,7 +25718,7 @@ static int execute_delete_statement(mylite_stmt *stmt)
 
     mylite_dml_update_rowset_deinit(&rowset);
     mylite_dml_update_order_plan_deinit(&order_plan);
-    select_table_deinit(&table);
+    mylite_select_table_deinit(&table);
     if (status != MYLITE_OK) {
         stmt->affected_rows = -1;
     }
@@ -41537,82 +41523,6 @@ static void table_select_group_deinit(struct mylite_table_select_group *group)
     free(group->group_values);
     free(group->aggregate_states);
     *group = (struct mylite_table_select_group){0};
-}
-
-static void select_plan_deinit(struct mylite_select_plan *plan)
-{
-    if (plan == NULL) {
-        return;
-    }
-
-    select_table_deinit(&plan->table);
-    for (size_t index = 0U; index < plan->table_count; ++index) {
-        select_table_deinit(&plan->tables[index]);
-    }
-    free(plan->tables);
-    free(plan->from_ranges);
-    free(plan->join_steps);
-    for (size_t index = 0U; index < plan->output_count; ++index) {
-        select_output_column_deinit(&plan->outputs[index]);
-    }
-    free(plan->outputs);
-    free(plan->order_keys);
-    free(plan->group_keys);
-    for (size_t index = 0U; index < plan->aggregate_binding_count; ++index) {
-        select_aggregate_binding_deinit(&plan->aggregate_bindings[index]);
-    }
-    free(plan->aggregate_bindings);
-    free(plan->join_predicates);
-    for (size_t index = 0U; index < plan->using_column_count; ++index) {
-        free(plan->using_columns[index].name);
-    }
-    free(plan->using_columns);
-    for (size_t index = 0U; index < plan->using_request_count; ++index) {
-        for (size_t name_index = 0U; name_index < plan->using_requests[index].name_count;
-             ++name_index) {
-            free(plan->using_requests[index].names[name_index]);
-        }
-        free((void *)plan->using_requests[index].names);
-    }
-    free(plan->using_requests);
-    *plan = (struct mylite_select_plan){0};
-}
-
-static void select_table_deinit(struct mylite_select_table *table)
-{
-    if (table == NULL) {
-        return;
-    }
-
-    free(table->schema_name);
-    free(table->table_name);
-    free(table->alias);
-    free(table->physical_name);
-    for (size_t index = 0U; index < table->column_count; ++index) {
-        select_column_deinit(&table->columns[index]);
-    }
-    free(table->columns);
-    *table = (struct mylite_select_table){0};
-}
-
-static void select_column_deinit(struct mylite_select_column *column)
-{
-    if (column == NULL) {
-        return;
-    }
-
-    free(column->name);
-    *column = (struct mylite_select_column){0};
-}
-
-static void select_output_column_deinit(struct mylite_select_output_column *column)
-{
-    if (column == NULL) {
-        return;
-    }
-
-    free(column->label);
-    *column = (struct mylite_select_output_column){0};
 }
 
 static bool row_subquery_expression_is_supported(const struct mylite_sql_ast_node *expression)

@@ -92,6 +92,7 @@ after every step.
 - [ ] Split DML plans and execution.
 - [x] Start `src/runtime/mylite_dml.{h,c}` with DML plan and row cleanup.
 - [ ] Split SELECT, UNION, aggregate, and subquery planning/execution.
+- [x] Start `src/runtime/mylite_select.{h,c}` with SELECT plan cleanup.
 - [ ] Move reusable field descriptor and metadata inference code into
   `src/runtime/mylite_metadata`.
 - [ ] Keep `mylite.c` as a thin integration file only while extraction is in

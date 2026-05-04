@@ -75,6 +75,7 @@ add_library(mylite STATIC
   src/runtime/mylite_metadata_constants.c
   src/runtime/mylite_schema.c
   src/runtime/mylite_select.c
+  src/runtime/mylite_select_catalog.c
   src/runtime/mylite_session_functions.c
   src/runtime/mylite_show.c
   src/runtime/mylite_show_create.c

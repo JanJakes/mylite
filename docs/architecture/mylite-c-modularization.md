@@ -199,12 +199,6 @@ only the core object model and transitional shared helpers listed here:
 - `enum mylite_information_schema_table`
   Information-schema routing. Move to an information-schema type header when
   that module is extracted.
-- `struct mylite_catalog_text_match`
-  Catalog descriptor helper. Move with the catalog-to-field-descriptor inference
-  helpers.
-- `struct mylite_catalog_column_descriptor_source`
-  Catalog-to-result-descriptor adapter. Move to the descriptor inference module
-  that currently still lives inside `mylite.c`.
 - `struct mylite_charset_collation_info`
   Expression/metadata collation coercibility helper. Move with collation-aware
   metadata inference.
@@ -454,7 +448,9 @@ only the core object model and transitional shared helpers listed here:
 - [x] Move shared table-target and column-reference resolution helpers into
   `mylite_select`.
 - [ ] Move SELECT AST copy/bind helpers into `mylite_select`.
-- [ ] Move table target resolution and column loading behind catalog/metadata
+- [x] Move table-column catalog loading behind a focused `mylite_select_catalog`
+  helper.
+- [ ] Move table target resolution and remaining column loading behind catalog/metadata
   helper APIs.
 - [ ] Move wildcard expansion and output-column planning into `mylite_select`.
 - [ ] Move SELECT predicate binding into `mylite_select`.
@@ -480,7 +476,9 @@ only the core object model and transitional shared helpers listed here:
 - [ ] Move reusable field descriptor and metadata inference code into
   `src/runtime/mylite_metadata`.
 - [x] Move shared expression charset validation helpers out of `mylite.c`.
-- [ ] Move catalog column descriptor source helpers into `mylite_metadata`.
+- [x] Move catalog column descriptor source helpers out of `mylite_runtime.h`.
+- [ ] Move reusable catalog-to-field-descriptor inference into `mylite_metadata`
+  after SELECT owns its table-column loading boundary.
 - [ ] Move field descriptor inference for literals into `mylite_metadata`.
 - [ ] Move field descriptor inference for identifiers into `mylite_metadata`.
 - [ ] Move field descriptor inference for unary/binary/ternary expressions into

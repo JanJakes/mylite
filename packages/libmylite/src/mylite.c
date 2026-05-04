@@ -3717,8 +3717,6 @@ static void insert_value_child_deinit(struct mylite_insert_value *value);
 static void insert_table_deinit(struct mylite_insert_table *table);
 static void insert_table_column_deinit(struct mylite_insert_table_column *column);
 static void insert_unique_index_deinit(struct mylite_insert_unique_index *index);
-static void result_metadata_deinit(struct mylite_result_metadata *metadata);
-static void result_column_metadata_deinit(struct mylite_result_column_metadata *metadata);
 static void select_plan_deinit(struct mylite_select_plan *plan);
 static void select_table_deinit(struct mylite_select_table *table);
 static void select_column_deinit(struct mylite_select_column *column);
@@ -3814,7 +3812,7 @@ void mylite_finalize(mylite_stmt *stmt)
     free(stmt->savepoint.normalized_name);
     mylite_statement_union_plan_deinit(&stmt->union_plan);
     select_plan_deinit(&stmt->select_plan);
-    result_metadata_deinit(&stmt->result_metadata);
+    mylite_result_metadata_deinit(&stmt->result_metadata);
     mylite_statement_scalar_result_deinit(&stmt->scalar_result);
     mylite_statement_table_select_result_deinit(&stmt->select_result);
     mylite_sql_ast_deinit(&stmt->select_predicate_ast);
@@ -5321,14 +5319,14 @@ static int attach_show_engines_result_metadata(mylite_db *database, mylite_stmt 
             copy_result_metadata_text(database, &metadata.columns[index].name, columns[index].name);
 
         if (status != MYLITE_OK) {
-            result_metadata_deinit(&metadata);
+            mylite_result_metadata_deinit(&metadata);
             return status;
         }
         metadata.columns[index].descriptor =
             show_engines_field_descriptor(columns[index].length, columns[index].nullable);
     }
 
-    result_metadata_deinit(&stmt->result_metadata);
+    mylite_result_metadata_deinit(&stmt->result_metadata);
     stmt->result_metadata = metadata;
     return MYLITE_OK;
 }
@@ -7913,12 +7911,12 @@ static int attach_union_result_metadata(mylite_stmt *stmt)
                 source == NULL ? field_descriptor_defaults() : source->descriptor;
         }
         if (status != MYLITE_OK) {
-            result_metadata_deinit(&metadata);
+            mylite_result_metadata_deinit(&metadata);
             return status;
         }
     }
 
-    result_metadata_deinit(&stmt->result_metadata);
+    mylite_result_metadata_deinit(&stmt->result_metadata);
     stmt->result_metadata = metadata;
     return aggregate_union_result_metadata(stmt);
 }
@@ -8370,12 +8368,12 @@ static int attach_select_result_metadata(mylite_stmt *stmt, const struct mylite_
                                                         plan, index);
 
         if (status != MYLITE_OK) {
-            result_metadata_deinit(&metadata);
+            mylite_result_metadata_deinit(&metadata);
             return status;
         }
     }
 
-    result_metadata_deinit(&stmt->result_metadata);
+    mylite_result_metadata_deinit(&stmt->result_metadata);
     stmt->result_metadata = metadata;
     return MYLITE_OK;
 }
@@ -42065,19 +42063,6 @@ static void insert_unique_index_deinit(struct mylite_insert_unique_index *index)
     *index = (struct mylite_insert_unique_index){0};
 }
 
-static void result_metadata_deinit(struct mylite_result_metadata *metadata)
-{
-    if (metadata == NULL) {
-        return;
-    }
-
-    for (size_t index = 0U; index < metadata->column_count; ++index) {
-        result_column_metadata_deinit(&metadata->columns[index]);
-    }
-    free(metadata->columns);
-    *metadata = (struct mylite_result_metadata){0};
-}
-
 static void table_select_group_deinit(struct mylite_table_select_group *group)
 {
     if (group == NULL) {
@@ -42094,21 +42079,6 @@ static void table_select_group_deinit(struct mylite_table_select_group *group)
     free(group->group_values);
     free(group->aggregate_states);
     *group = (struct mylite_table_select_group){0};
-}
-
-static void result_column_metadata_deinit(struct mylite_result_column_metadata *metadata)
-{
-    if (metadata == NULL) {
-        return;
-    }
-
-    free(metadata->name);
-    free(metadata->schema_name);
-    free(metadata->table_name);
-    free(metadata->origin_schema_name);
-    free(metadata->origin_table_name);
-    free(metadata->origin_column_name);
-    *metadata = (struct mylite_result_column_metadata){0};
 }
 
 static void select_plan_deinit(struct mylite_select_plan *plan)

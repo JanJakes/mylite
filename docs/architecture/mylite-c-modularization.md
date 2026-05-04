@@ -81,6 +81,7 @@ after every step.
 - [x] Move UNION plan cleanup into `src/runtime/mylite_statement`.
 - [x] Extract public result metadata accessors into
   `src/runtime/mylite_metadata.{h,c}`.
+- [x] Move result metadata cleanup into `src/runtime/mylite_metadata`.
 - [ ] Split catalog lookup helpers into `src/runtime/mylite_catalog`.
 - [ ] Split `SHOW` and `information_schema` dynamic result builders.
 - [ ] Split schema lifecycle and table/index DDL plans and execution.

@@ -2,6 +2,10 @@
 
 #include "sqlite3.h"
 
+#include <stdlib.h>
+
+static void result_column_metadata_deinit(struct mylite_result_column_metadata *metadata);
+
 const struct mylite_result_column_metadata *mylite_result_metadata_column(const mylite_stmt *stmt,
                                                                           int column)
 {
@@ -10,6 +14,19 @@ const struct mylite_result_column_metadata *mylite_result_metadata_column(const 
         return NULL;
     }
     return &stmt->result_metadata.columns[column];
+}
+
+void mylite_result_metadata_deinit(struct mylite_result_metadata *metadata)
+{
+    if (metadata == NULL) {
+        return;
+    }
+
+    for (size_t index = 0U; index < metadata->column_count; ++index) {
+        result_column_metadata_deinit(&metadata->columns[index]);
+    }
+    free(metadata->columns);
+    *metadata = (struct mylite_result_metadata){0};
 }
 
 int mylite_column_count(const mylite_stmt *stmt)
@@ -151,4 +168,19 @@ int mylite_column_is_nullable(const mylite_stmt *stmt, int column)
         return 1;
     }
     return 0;
+}
+
+static void result_column_metadata_deinit(struct mylite_result_column_metadata *metadata)
+{
+    if (metadata == NULL) {
+        return;
+    }
+
+    free(metadata->name);
+    free(metadata->schema_name);
+    free(metadata->table_name);
+    free(metadata->origin_schema_name);
+    free(metadata->origin_table_name);
+    free(metadata->origin_column_name);
+    *metadata = (struct mylite_result_column_metadata){0};
 }

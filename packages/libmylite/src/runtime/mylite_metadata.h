@@ -5,5 +5,6 @@
 
 const struct mylite_result_column_metadata *mylite_result_metadata_column(const mylite_stmt *stmt,
                                                                           int column);
+void mylite_result_metadata_deinit(struct mylite_result_metadata *metadata);
 
 #endif

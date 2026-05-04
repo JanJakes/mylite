@@ -51,4 +51,12 @@ function(mylite_add_developer_tool_targets)
       VERBATIM
     )
   endif()
+
+  add_custom_target(runtime-architecture-check
+    COMMAND "${CMAKE_COMMAND}"
+            "-DMYLITE_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+            -P "${PROJECT_SOURCE_DIR}/cmake/MyLiteRuntimeArchitectureCheck.cmake"
+    COMMENT "Checking runtime header architecture boundaries"
+    VERBATIM
+  )
 endfunction()

@@ -42,6 +42,13 @@
       "targets": [
         "tidy"
       ]
+    },
+    {
+      "name": "runtime-architecture-check",
+      "configurePreset": "dev",
+      "targets": [
+        "runtime-architecture-check"
+      ]
     }
   ],
   "testPresets": [
@@ -68,6 +75,10 @@
         {
           "type": "build",
           "name": "dev"
+        },
+        {
+          "type": "build",
+          "name": "runtime-architecture-check"
         },
         {
           "type": "test",

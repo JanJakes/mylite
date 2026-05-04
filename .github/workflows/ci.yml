@@ -75,5 +75,8 @@ jobs:
       - name: Check formatting
         run: cmake --build --preset format-check
 
+      - name: Check runtime architecture
+        run: cmake --build --preset runtime-architecture-check
+
       - name: Run clang-tidy
         run: cmake --build --preset tidy

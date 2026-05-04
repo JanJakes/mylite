@@ -185,6 +185,41 @@ Rules for future moves:
 - `src/runtime/mylite_span.{h,c}`
   AST span copying, identifier normalization, and small AST child helpers.
 
+## Remaining Runtime Header Ownership
+
+After the first runtime type split, `src/runtime/mylite_runtime.h` should keep
+only the core object model and transitional shared helpers listed here:
+
+- `enum mylite_stmt_kind`
+  Core statement dispatch state. Keep with `struct mylite_stmt` until statement
+  family dispatch is split out of `mylite.c`.
+- `enum mylite_information_schema_table`
+  Information-schema routing. Move to an information-schema type header when
+  that module is extracted.
+- `struct mylite_catalog_text_match`
+  Catalog descriptor helper. Move with the catalog-to-field-descriptor inference
+  helpers.
+- `struct mylite_catalog_column_descriptor_source`
+  Catalog-to-result-descriptor adapter. Move to the descriptor inference module
+  that currently still lives inside `mylite.c`.
+- `struct mylite_charset_collation_info`
+  Expression/metadata collation coercibility helper. Move with collation-aware
+  metadata inference.
+- `struct mylite_strcmp_compare_options`
+  String-comparison runtime helper. Move with the string comparison or collation
+  evaluation code.
+- `struct mylite_connection_charset_request`
+  Parser-to-connection charset copy helper. Keep private or move to a connection
+  type header only if a non-`mylite.c` caller needs it.
+- `struct mylite_db`
+  Core connection object layout. Keep here until a later private
+  `mylite_runtime_objects.h` split is justified.
+- `struct mylite_statement_timestamp`
+  Core statement execution timestamp state. Keep with `struct mylite_stmt`.
+- `struct mylite_stmt`
+  Core statement object layout. Keep here until feature-family execution plans
+  are no longer embedded directly.
+
 ## Task List
 
 - [x] Document the intended runtime module layout and migration order.
@@ -193,7 +228,7 @@ Rules for future moves:
   monolith.
 - [x] Move shared runtime structs and enums from `mylite.c` into
   `src/runtime/mylite_runtime.h`.
-- [ ] Classify every remaining type in `mylite_runtime.h` by owner module.
+- [x] Classify every remaining type in `mylite_runtime.h` by owner module.
 - [x] Add `mylite_error_codes.h`; move `enum mylite_mysql_condition_code` out
   of `mylite_runtime.h`.
 - [x] Add `mylite_field_descriptor.h`; move `struct mylite_field_descriptor`
@@ -209,9 +244,9 @@ Rules for future moves:
 - [x] Add `mylite_select_types.h`; move SELECT plan, row, join, group,
   aggregate, union, and subquery scan structs.
 - [x] Add `mylite_show_types.h`; move `SHOW` query/target/info structs.
-- [ ] Add an include-discipline check or documented review rule to prevent new
+- [x] Add an include-discipline check or documented review rule to prevent new
   broad `mylite_runtime.h` dependencies.
-- [ ] Add a lightweight CI guard for runtime header line count or forbidden
+- [x] Add a lightweight CI guard for runtime header line count or forbidden
   feature-owned type prefixes in `mylite_runtime.h`.
 - [ ] Move immutable runtime constants from `mylite.c` into focused private
   modules without creating unused-header warnings.

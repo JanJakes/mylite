@@ -1,7 +1,7 @@
 #include "mylite_show.h"
 
-#include "mylite_charset.h"
 #include "mylite_catalog.h"
+#include "mylite_charset.h"
 #include "mylite_diagnostics.h"
 #include "mylite_field_descriptor.h"
 #include "mylite_metadata.h"

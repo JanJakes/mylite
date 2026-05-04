@@ -5039,11 +5039,11 @@ static int prepare_show_table_status_statement(mylite_db *database,
         }
     }
     if (status == MYLITE_OK) {
-        sqlite_sql = mylite_show_table_status_sql(
-            database, &(const struct mylite_show_table_status_query){
-                          .schema_name = schema_name,
-                          .glob_pattern = glob_pattern,
-                      });
+        sqlite_sql =
+            mylite_show_table_status_sql(database, &(const struct mylite_show_table_status_query){
+                                                       .schema_name = schema_name,
+                                                       .glob_pattern = glob_pattern,
+                                                   });
         if (sqlite_sql == NULL) {
             status = MYLITE_NOMEM;
         }
@@ -6430,7 +6430,7 @@ static int information_schema_dynamic_table_sql(mylite_db *database,
         return mylite_show_information_schema_collations_sql(database, out_sql);
     case MYLITE_INFORMATION_SCHEMA_COLLATION_CHARACTER_SET_APPLICABILITY:
         return mylite_show_information_schema_collation_character_set_applicability_sql(database,
-                                                                                       out_sql);
+                                                                                        out_sql);
     case MYLITE_INFORMATION_SCHEMA_ENGINES:
         return mylite_show_information_schema_engines_sql(database, out_sql);
     case MYLITE_INFORMATION_SCHEMA_KEYWORDS:
@@ -7392,21 +7392,24 @@ static int copy_select_result_column_metadata(mylite_db *database,
     visible_table_name = table->alias == NULL ? table->table_name : table->alias;
     metadata->descriptor = column->descriptor;
     if (status == MYLITE_OK) {
-        status = mylite_result_metadata_copy_text(database, &metadata->schema_name, table->schema_name);
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_result_metadata_copy_text(database, &metadata->table_name, visible_table_name);
+        status =
+            mylite_result_metadata_copy_text(database, &metadata->schema_name, table->schema_name);
     }
     if (status == MYLITE_OK) {
         status =
-            mylite_result_metadata_copy_text(database, &metadata->origin_schema_name, table->schema_name);
+            mylite_result_metadata_copy_text(database, &metadata->table_name, visible_table_name);
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_result_metadata_copy_text(database, &metadata->origin_schema_name,
+                                                  table->schema_name);
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_result_metadata_copy_text(database, &metadata->origin_table_name,
+                                                  table->table_name);
     }
     if (status == MYLITE_OK) {
         status =
-            mylite_result_metadata_copy_text(database, &metadata->origin_table_name, table->table_name);
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_result_metadata_copy_text(database, &metadata->origin_column_name, column->name);
+            mylite_result_metadata_copy_text(database, &metadata->origin_column_name, column->name);
     }
     return status;
 }
@@ -30242,14 +30245,17 @@ static int compare_table_select_text_values(const char *left, size_t left_length
                                             size_t right_length)
 {
     size_t index = 0U;
-    size_t compare_length = left_length < right_length ? left_length : right_length;
+    size_t compare_length = 0U;
 
     if (left == NULL) {
         left = "";
+        left_length = 0U;
     }
     if (right == NULL) {
         right = "";
+        right_length = 0U;
     }
+    compare_length = left_length < right_length ? left_length : right_length;
     while (index < compare_length) {
         unsigned char left_byte = (unsigned char)left[index];
         unsigned char right_byte = (unsigned char)right[index];
@@ -30271,15 +30277,18 @@ static int compare_table_select_text_values(const char *left, size_t left_length
 static int compare_table_select_binary_text_values(const char *left, size_t left_length,
                                                    const char *right, size_t right_length)
 {
-    size_t compare_length = left_length < right_length ? left_length : right_length;
+    size_t compare_length = 0U;
     int comparison = 0;
 
     if (left == NULL) {
         left = "";
+        left_length = 0U;
     }
     if (right == NULL) {
         right = "";
+        right_length = 0U;
     }
+    compare_length = left_length < right_length ? left_length : right_length;
     comparison = compare_length == 0U ? 0 : memcmp(left, right, compare_length);
     if (comparison == 0) {
         return (left_length > right_length) - (left_length < right_length);

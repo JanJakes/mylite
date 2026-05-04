@@ -26,6 +26,7 @@
 #include "runtime/mylite_span.h"
 #include "runtime/mylite_statement.h"
 #include "runtime/mylite_table_ddl.h"
+#include "runtime/mylite_table_ddl_alter.h"
 #include "runtime/mylite_table_ddl_types.h"
 #include "runtime/mylite_transaction_types.h"
 #include "runtime/mylite_transactions.h"
@@ -2023,21 +2024,6 @@ static int validate_alter_table_plan(mylite_stmt *stmt, const char **out_schema_
 static int resolve_alter_table_schema(mylite_stmt *stmt);
 static int validate_alter_table_target(mylite_stmt *stmt);
 static int apply_alter_table_actions(mylite_stmt *stmt, struct mylite_alter_table_model *model);
-static int apply_alter_table_add_column(mylite_stmt *stmt,
-                                        const struct mylite_alter_table_action *action,
-                                        struct mylite_alter_table_model *model);
-static int apply_alter_table_drop_column(mylite_stmt *stmt,
-                                         const struct mylite_alter_table_action *action,
-                                         struct mylite_alter_table_model *model);
-static int apply_alter_table_rename_column(mylite_stmt *stmt,
-                                           const struct mylite_alter_table_action *action,
-                                           struct mylite_alter_table_model *model);
-static int apply_alter_table_change_column(mylite_stmt *stmt,
-                                           const struct mylite_alter_table_action *action,
-                                           struct mylite_alter_table_model *model);
-static int apply_alter_table_modify_column(mylite_stmt *stmt,
-                                           const struct mylite_alter_table_action *action,
-                                           struct mylite_alter_table_model *model);
 static int apply_alter_table_add_index(mylite_stmt *stmt,
                                        const struct mylite_alter_table_action *action,
                                        struct mylite_alter_table_model *model, bool is_primary);
@@ -2053,20 +2039,6 @@ static int apply_alter_table_alter_index_visibility(mylite_stmt *stmt,
                                                     const struct mylite_alter_table_action *action,
                                                     struct mylite_alter_table_model *model);
 static int set_alter_table_unsupported_action_error(mylite_db *database, const char *feature);
-static int apply_alter_table_column_position(mylite_stmt *stmt,
-                                             const struct mylite_alter_table_action *action,
-                                             struct mylite_alter_table_model *model,
-                                             size_t column_index);
-static int replace_alter_table_column_from_definition(
-    mylite_stmt *stmt, const struct mylite_create_table_column *definition, const char *source_name,
-    bool added, struct mylite_alter_table_column *target);
-static int init_alter_table_column_from_definition(
-    mylite_stmt *stmt, const struct mylite_create_table_column *definition, const char *source_name,
-    bool added, struct mylite_alter_table_column *out_column);
-static int alter_table_column_descriptor(mylite_stmt *stmt,
-                                         const struct mylite_create_table_column *definition,
-                                         struct mylite_column_type_descriptor *out_descriptor);
-static int remove_alter_table_column(struct mylite_alter_table_model *model, size_t column_index);
 static int insert_alter_table_index(struct mylite_alter_table_model *model,
                                     struct mylite_alter_table_index table_index, size_t position);
 static int remove_alter_table_index(struct mylite_alter_table_model *model, size_t index);
@@ -2187,23 +2159,11 @@ static const char *alter_table_column_key(const struct mylite_alter_table_model 
                                           const char *column_name);
 static int refresh_alter_table_column_keys(struct mylite_alter_table_model *model);
 static int refresh_alter_table_index_nullability(struct mylite_alter_table_model *model);
-static const struct mylite_alter_table_column *
-find_alter_table_column(const struct mylite_alter_table_model *model, const char *name);
-static size_t alter_table_column_index(const struct mylite_alter_table_model *model,
-                                       const char *name);
 static size_t alter_table_index_index(const struct mylite_alter_table_model *model,
                                       const char *name);
-static bool alter_table_column_definition_has_deferred_features(
-    const struct mylite_create_table_column *column);
 static int set_alter_table_unsupported_option_error(mylite_db *database, const char *kind,
                                                     const char *value);
-static int set_alter_table_duplicate_column_error(mylite_db *database, const char *column_name);
-static int set_alter_table_unknown_column_error(mylite_db *database, const char *table_name,
-                                                const char *column_name);
-static int set_alter_table_cant_drop_column_error(mylite_db *database, const char *column_name);
-static int set_alter_table_cant_remove_all_columns_error(mylite_db *database);
 static int set_alter_table_all_invisible_error(mylite_db *database);
-static int set_alter_table_wrong_auto_increment_error(mylite_db *database);
 static int set_alter_table_multiple_primary_key_error(mylite_db *database);
 static int set_alter_table_duplicate_key_name_error(mylite_db *database, const char *index_name);
 static int set_alter_table_missing_key_column_error(mylite_db *database, const char *column_name);
@@ -15581,6 +15541,8 @@ static int validate_alter_table_target(mylite_stmt *stmt)
 
 static int apply_alter_table_actions(mylite_stmt *stmt, struct mylite_alter_table_model *model)
 {
+    struct mylite_schema_default schema_default = {0};
+    bool schema_default_loaded = false;
     int status = MYLITE_OK;
 
     for (size_t index = 0U; index < stmt->alter_table.action_count; ++index) {
@@ -15588,22 +15550,23 @@ static int apply_alter_table_actions(mylite_stmt *stmt, struct mylite_alter_tabl
 
         switch (action->kind) {
         case MYLITE_ALTER_TABLE_ACTION_ADD_COLUMN:
-            status = apply_alter_table_add_column(stmt, action, model);
-            break;
         case MYLITE_ALTER_TABLE_ACTION_DROP_COLUMN:
-            status = apply_alter_table_drop_column(stmt, action, model);
-            break;
         case MYLITE_ALTER_TABLE_ACTION_RENAME_COLUMN:
-            status = apply_alter_table_rename_column(stmt, action, model);
+        case MYLITE_ALTER_TABLE_ACTION_CHANGE_COLUMN:
+        case MYLITE_ALTER_TABLE_ACTION_MODIFY_COLUMN:
+            if (!schema_default_loaded) {
+                status = mylite_catalog_schema_default_by_name(
+                    stmt->database, stmt->alter_table.schema_name, &schema_default);
+                if (status != MYLITE_OK) {
+                    break;
+                }
+                schema_default_loaded = true;
+            }
+            status = mylite_table_ddl_apply_alter_table_column_action(
+                stmt->database, &schema_default, action, model);
             break;
         case MYLITE_ALTER_TABLE_ACTION_RENAME_TABLE:
             status = set_alter_table_unsupported_action_error(stmt->database, "mixed table rename");
-            break;
-        case MYLITE_ALTER_TABLE_ACTION_CHANGE_COLUMN:
-            status = apply_alter_table_change_column(stmt, action, model);
-            break;
-        case MYLITE_ALTER_TABLE_ACTION_MODIFY_COLUMN:
-            status = apply_alter_table_modify_column(stmt, action, model);
             break;
         case MYLITE_ALTER_TABLE_ACTION_ADD_PRIMARY_KEY:
             status = apply_alter_table_add_index(stmt, action, model, true);
@@ -15654,200 +15617,6 @@ static int apply_alter_table_actions(mylite_stmt *stmt, struct mylite_alter_tabl
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
     }
     return status;
-}
-
-static int apply_alter_table_add_column(mylite_stmt *stmt,
-                                        const struct mylite_alter_table_action *action,
-                                        struct mylite_alter_table_model *model)
-{
-    struct mylite_alter_table_column column = {0};
-    int status = MYLITE_OK;
-
-    if (find_alter_table_column(model, action->column.name) != NULL) {
-        return set_alter_table_duplicate_column_error(stmt->database, action->column.name);
-    }
-    if (alter_table_column_definition_has_deferred_features(&action->column)) {
-        return set_alter_table_wrong_auto_increment_error(stmt->database);
-    }
-
-    status = init_alter_table_column_from_definition(stmt, &action->column, NULL, true, &column);
-    if (status == MYLITE_OK) {
-        status = mylite_table_ddl_add_alter_table_column(model, column);
-    }
-    if (status != MYLITE_OK) {
-        mylite_table_ddl_alter_table_column_deinit(&column);
-        return status;
-    }
-    return apply_alter_table_column_position(stmt, action, model, model->column_count - 1U);
-}
-
-static int apply_alter_table_drop_column(mylite_stmt *stmt,
-                                         const struct mylite_alter_table_action *action,
-                                         struct mylite_alter_table_model *model)
-{
-    size_t column_index = alter_table_column_index(model, action->old_name);
-
-    if (column_index == model->column_count) {
-        return set_alter_table_cant_drop_column_error(stmt->database, action->old_name);
-    }
-    if (model->column_count == 1U) {
-        return set_alter_table_cant_remove_all_columns_error(stmt->database);
-    }
-
-    for (size_t index = 0U; index < model->index_count;) {
-        struct mylite_alter_table_index *table_index = &model->indexes[index];
-
-        for (size_t part = 0U; part < table_index->part_count;) {
-            if (mylite_ascii_case_equal(table_index->parts[part].column_name, action->old_name)) {
-                mylite_table_ddl_alter_table_index_part_deinit(&table_index->parts[part]);
-                for (size_t next = part + 1U; next < table_index->part_count; ++next) {
-                    table_index->parts[next - 1U] = table_index->parts[next];
-                }
-                --table_index->part_count;
-                table_index->changed = true;
-                continue;
-            }
-            ++part;
-        }
-        if (table_index->part_count == 0U) {
-            mylite_table_ddl_alter_table_index_deinit(table_index);
-            for (size_t next = index + 1U; next < model->index_count; ++next) {
-                model->indexes[next - 1U] = model->indexes[next];
-            }
-            --model->index_count;
-            continue;
-        }
-        ++index;
-    }
-
-    if (model->columns[column_index].auto_increment) {
-        model->clear_auto_increment = true;
-        model->report_copied_rows = true;
-    }
-    return remove_alter_table_column(model, column_index);
-}
-
-static int apply_alter_table_rename_column(mylite_stmt *stmt,
-                                           const struct mylite_alter_table_action *action,
-                                           struct mylite_alter_table_model *model)
-{
-    size_t column_index = alter_table_column_index(model, action->old_name);
-    char *new_name = NULL;
-
-    if (column_index == model->column_count) {
-        return set_alter_table_unknown_column_error(stmt->database, model->table_name,
-                                                    action->old_name);
-    }
-    if (model->columns == NULL) {
-        return MYLITE_MISUSE;
-    }
-    if (!mylite_ascii_case_equal(action->old_name, action->new_name) &&
-        find_alter_table_column(model, action->new_name) != NULL) {
-        return set_alter_table_duplicate_column_error(stmt->database, action->new_name);
-    }
-
-    new_name = mylite_copy_nonempty_cstring(action->new_name);
-    if (new_name == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    free(model->columns[column_index].name);
-    model->columns[column_index].name = new_name;
-
-    for (size_t index = 0U; index < model->index_count; ++index) {
-        for (size_t part = 0U; part < model->indexes[index].part_count; ++part) {
-            if (mylite_ascii_case_equal(model->indexes[index].parts[part].column_name,
-                                        action->old_name)) {
-                char *part_name = mylite_copy_nonempty_cstring(action->new_name);
-
-                if (part_name == NULL) {
-                    (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-                    return MYLITE_NOMEM;
-                }
-                free(model->indexes[index].parts[part].column_name);
-                model->indexes[index].parts[part].column_name = part_name;
-                model->indexes[index].changed = true;
-            }
-        }
-    }
-    return MYLITE_OK;
-}
-
-static int apply_alter_table_change_column(mylite_stmt *stmt,
-                                           const struct mylite_alter_table_action *action,
-                                           struct mylite_alter_table_model *model)
-{
-    size_t column_index = alter_table_column_index(model, action->old_name);
-    const char *new_name = action->column.name;
-    int status = MYLITE_OK;
-
-    if (column_index == model->column_count) {
-        return set_alter_table_unknown_column_error(stmt->database, model->table_name,
-                                                    action->old_name);
-    }
-    if (model->columns == NULL) {
-        return MYLITE_MISUSE;
-    }
-    if (!mylite_ascii_case_equal(action->old_name, new_name) &&
-        find_alter_table_column(model, new_name) != NULL) {
-        return set_alter_table_duplicate_column_error(stmt->database, new_name);
-    }
-    if (alter_table_column_definition_has_deferred_features(&action->column)) {
-        return set_alter_table_wrong_auto_increment_error(stmt->database);
-    }
-
-    status = replace_alter_table_column_from_definition(stmt, &action->column,
-                                                        model->columns[column_index].source_name,
-                                                        false, &model->columns[column_index]);
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    model->report_copied_rows = true;
-
-    for (size_t index = 0U; index < model->index_count; ++index) {
-        for (size_t part = 0U; part < model->indexes[index].part_count; ++part) {
-            if (mylite_ascii_case_equal(model->indexes[index].parts[part].column_name,
-                                        action->old_name)) {
-                char *part_name = mylite_copy_nonempty_cstring(new_name);
-
-                if (part_name == NULL) {
-                    (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-                    return MYLITE_NOMEM;
-                }
-                free(model->indexes[index].parts[part].column_name);
-                model->indexes[index].parts[part].column_name = part_name;
-                model->indexes[index].changed = true;
-            }
-        }
-    }
-    return apply_alter_table_column_position(stmt, action, model, column_index);
-}
-
-static int apply_alter_table_modify_column(mylite_stmt *stmt,
-                                           const struct mylite_alter_table_action *action,
-                                           struct mylite_alter_table_model *model)
-{
-    size_t column_index = alter_table_column_index(model, action->column.name);
-    int status = MYLITE_OK;
-
-    if (column_index == model->column_count) {
-        return set_alter_table_unknown_column_error(stmt->database, model->table_name,
-                                                    action->column.name);
-    }
-    if (model->columns == NULL) {
-        return MYLITE_MISUSE;
-    }
-    if (alter_table_column_definition_has_deferred_features(&action->column)) {
-        return set_alter_table_wrong_auto_increment_error(stmt->database);
-    }
-
-    status = replace_alter_table_column_from_definition(stmt, &action->column,
-                                                        model->columns[column_index].source_name,
-                                                        false, &model->columns[column_index]);
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    return apply_alter_table_column_position(stmt, action, model, column_index);
 }
 
 static int apply_alter_table_add_index(mylite_stmt *stmt,
@@ -15911,14 +15680,14 @@ static int apply_alter_table_drop_primary_key(mylite_stmt *stmt,
     size_t primary_index = alter_table_index_index(model, "PRIMARY");
 
     if (primary_index == model->index_count) {
-        return set_alter_table_cant_drop_column_error(stmt->database, "PRIMARY");
+        return mylite_table_ddl_set_alter_table_cant_drop_column_error(stmt->database, "PRIMARY");
     }
     for (size_t part = 0U; part < model->indexes[primary_index].part_count; ++part) {
-        const struct mylite_alter_table_column *column =
-            find_alter_table_column(model, model->indexes[primary_index].parts[part].column_name);
+        const struct mylite_alter_table_column *column = mylite_table_ddl_find_alter_table_column(
+            model, model->indexes[primary_index].parts[part].column_name);
 
         if (column != NULL && column->auto_increment) {
-            return set_alter_table_wrong_auto_increment_error(stmt->database);
+            return mylite_table_ddl_set_alter_table_wrong_auto_increment_error(stmt->database);
         }
     }
     return remove_alter_table_index(model, primary_index);
@@ -15931,7 +15700,8 @@ static int apply_alter_table_drop_index(mylite_stmt *stmt,
     size_t index = alter_table_index_index(model, action->old_name);
 
     if (index == model->index_count || mylite_ascii_case_equal(action->old_name, "PRIMARY")) {
-        return set_alter_table_cant_drop_column_error(stmt->database, action->old_name);
+        return mylite_table_ddl_set_alter_table_cant_drop_column_error(stmt->database,
+                                                                       action->old_name);
     }
     return remove_alter_table_index(model, index);
 }
@@ -15944,7 +15714,8 @@ static int apply_alter_table_rename_index(mylite_stmt *stmt,
     char *new_name = NULL;
 
     if (index == model->index_count) {
-        return set_alter_table_cant_drop_column_error(stmt->database, action->old_name);
+        return mylite_table_ddl_set_alter_table_cant_drop_column_error(stmt->database,
+                                                                       action->old_name);
     }
     if (mylite_ascii_case_equal(action->old_name, "PRIMARY") ||
         mylite_ascii_case_equal(action->new_name, "PRIMARY")) {
@@ -15975,7 +15746,8 @@ static int apply_alter_table_alter_index_visibility(mylite_stmt *stmt,
     bool is_implicit_primary = false;
 
     if (index == model->index_count) {
-        return set_alter_table_cant_drop_column_error(stmt->database, action->old_name);
+        return mylite_table_ddl_set_alter_table_cant_drop_column_error(stmt->database,
+                                                                       action->old_name);
     }
     if (!action->index_visible) {
         if (!has_primary && model->indexes[index].non_unique == 0) {
@@ -15984,7 +15756,8 @@ static int apply_alter_table_alter_index_visibility(mylite_stmt *stmt,
         for (size_t part = 0U; is_implicit_primary && part < model->indexes[index].part_count;
              ++part) {
             const struct mylite_alter_table_column *column =
-                find_alter_table_column(model, model->indexes[index].parts[part].column_name);
+                mylite_table_ddl_find_alter_table_column(
+                    model, model->indexes[index].parts[part].column_name);
 
             if (column == NULL || column->nullable) {
                 is_implicit_primary = false;
@@ -16016,209 +15789,6 @@ static int set_alter_table_unsupported_action_error(mylite_db *database, const c
     int status = mylite_diagnostics_set_error_message_parts(database, "Unsupported ", feature, "");
 
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_UNSUPPORTED;
-}
-
-static int apply_alter_table_column_position(mylite_stmt *stmt,
-                                             const struct mylite_alter_table_action *action,
-                                             struct mylite_alter_table_model *model,
-                                             size_t column_index)
-{
-    struct mylite_alter_table_column moved = {0};
-    size_t target_index = 0U;
-
-    if (action->position == MYLITE_ALTER_TABLE_COLUMN_POSITION_NONE) {
-        return MYLITE_OK;
-    }
-    if (column_index >= model->column_count) {
-        return MYLITE_MISUSE;
-    }
-    if (action->position == MYLITE_ALTER_TABLE_COLUMN_POSITION_AFTER) {
-        if (mylite_ascii_case_equal(model->columns[column_index].name, action->after_column)) {
-            return MYLITE_OK;
-        }
-        target_index = alter_table_column_index(model, action->after_column);
-        if (target_index == model->column_count) {
-            return set_alter_table_unknown_column_error(stmt->database, model->table_name,
-                                                        action->after_column);
-        }
-    }
-
-    moved = model->columns[column_index];
-    for (size_t next = column_index + 1U; next < model->column_count; ++next) {
-        model->columns[next - 1U] = model->columns[next];
-    }
-    --model->column_count;
-
-    if (action->position == MYLITE_ALTER_TABLE_COLUMN_POSITION_FIRST) {
-        target_index = 0U;
-    } else {
-        target_index = alter_table_column_index(model, action->after_column);
-        if (target_index == model->column_count) {
-            model->columns[model->column_count++] = moved;
-            return set_alter_table_unknown_column_error(stmt->database, model->table_name,
-                                                        action->after_column);
-        }
-        ++target_index;
-    }
-    for (size_t index = model->column_count; index > target_index; --index) {
-        model->columns[index] = model->columns[index - 1U];
-    }
-    model->columns[target_index] = moved;
-    ++model->column_count;
-    return MYLITE_OK;
-}
-
-static int replace_alter_table_column_from_definition(
-    mylite_stmt *stmt, const struct mylite_create_table_column *definition, const char *source_name,
-    bool added, struct mylite_alter_table_column *target)
-{
-    char *source_copy = source_name == NULL ? NULL : mylite_copy_nonempty_cstring(source_name);
-    struct mylite_alter_table_column replacement = {0};
-    int status = MYLITE_OK;
-
-    if (source_name != NULL && source_copy == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    status =
-        init_alter_table_column_from_definition(stmt, definition, source_copy, added, &replacement);
-    free(source_copy);
-    if (status != MYLITE_OK) {
-        return status;
-    }
-
-    mylite_table_ddl_alter_table_column_deinit(target);
-    *target = replacement;
-    return MYLITE_OK;
-}
-
-static int init_alter_table_column_from_definition(
-    mylite_stmt *stmt, const struct mylite_create_table_column *definition, const char *source_name,
-    bool added, struct mylite_alter_table_column *out_column)
-{
-    struct mylite_column_type_descriptor descriptor;
-    const char *extra = mylite_table_ddl_create_table_column_extra(definition);
-    const char *nullable_text = "NO";
-    int status = alter_table_column_descriptor(stmt, definition, &descriptor);
-
-    *out_column = (struct mylite_alter_table_column){0};
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    if (definition->nullable) {
-        nullable_text = "YES";
-    }
-
-    out_column->name = mylite_copy_nonempty_cstring(definition->name);
-    if (source_name != NULL) {
-        out_column->source_name = mylite_copy_nonempty_cstring(source_name);
-    }
-    if (definition->default_text != NULL) {
-        out_column->column_default =
-            mylite_copy_span_text(definition->default_text, strlen(definition->default_text));
-    }
-    out_column->is_nullable = mylite_copy_span_text(nullable_text, strlen(nullable_text));
-    out_column->data_type = mylite_copy_nonempty_cstring(descriptor.data_type);
-    out_column->column_type = mylite_copy_nonempty_cstring(descriptor.column_type);
-    out_column->column_key = mylite_copy_span_text("", 0U);
-    out_column->extra =
-        mylite_copy_span_text(extra == NULL ? "" : extra, extra == NULL ? 0U : strlen(extra));
-    out_column->column_comment =
-        mylite_copy_span_text(definition->comment == NULL ? "" : definition->comment,
-                              definition->comment == NULL ? 0U : strlen(definition->comment));
-    out_column->generation_expression = mylite_copy_span_text("", 0U);
-    if (out_column->name == NULL || (source_name != NULL && out_column->source_name == NULL) ||
-        (definition->default_text != NULL && out_column->column_default == NULL) ||
-        out_column->is_nullable == NULL || out_column->data_type == NULL ||
-        out_column->column_type == NULL || out_column->column_key == NULL ||
-        out_column->extra == NULL || out_column->column_comment == NULL ||
-        out_column->generation_expression == NULL) {
-        mylite_table_ddl_alter_table_column_deinit(out_column);
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    if (descriptor.is_character_string || descriptor.is_binary_string) {
-        out_column->character_maximum_length = (int64_t)descriptor.character_maximum_length;
-        out_column->character_octet_length = (int64_t)descriptor.character_octet_length;
-        out_column->has_character_maximum_length = true;
-        out_column->has_character_octet_length = true;
-    }
-    if (descriptor.numeric_precision != 0U) {
-        out_column->numeric_precision = (int64_t)descriptor.numeric_precision;
-        out_column->has_numeric_precision = true;
-    }
-    if (descriptor.has_numeric_scale) {
-        out_column->numeric_scale = (int64_t)descriptor.numeric_scale;
-        out_column->has_numeric_scale = true;
-    }
-    if (descriptor.has_datetime_precision) {
-        out_column->datetime_precision = (int64_t)descriptor.datetime_precision;
-        out_column->has_datetime_precision = true;
-    }
-    if (descriptor.character_set_name != NULL) {
-        out_column->character_set_name =
-            mylite_copy_nonempty_cstring(descriptor.character_set_name);
-        if (out_column->character_set_name == NULL) {
-            mylite_table_ddl_alter_table_column_deinit(out_column);
-            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-            return MYLITE_NOMEM;
-        }
-    }
-    if (descriptor.collation_name != NULL) {
-        out_column->collation_name = mylite_copy_nonempty_cstring(descriptor.collation_name);
-        if (out_column->collation_name == NULL) {
-            mylite_table_ddl_alter_table_column_deinit(out_column);
-            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-            return MYLITE_NOMEM;
-        }
-    }
-    out_column->nullable = definition->nullable;
-    out_column->auto_increment = definition->auto_increment;
-    out_column->visible = definition->visible;
-    out_column->added = added;
-    return MYLITE_OK;
-}
-
-static int alter_table_column_descriptor(mylite_stmt *stmt,
-                                         const struct mylite_create_table_column *definition,
-                                         struct mylite_column_type_descriptor *out_descriptor)
-{
-    struct mylite_schema_default schema_default;
-    struct mylite_create_table_options options = {0};
-    int status = mylite_catalog_schema_default_by_name(
-        stmt->database, stmt->alter_table.schema_name, &schema_default);
-
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    if (definition == NULL) {
-        return MYLITE_MISUSE;
-    }
-    if (schema_default.character_set == NULL || schema_default.collation == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database,
-                                                   "Unsupported charset/collation registry entry");
-        return MYLITE_EXEC_ERROR;
-    }
-    options.character_set = (char *)schema_default.character_set;
-    options.collation = (char *)schema_default.collation;
-    return mylite_table_ddl_describe_create_table_column(definition, &schema_default, &options,
-                                                         out_descriptor);
-}
-
-static int remove_alter_table_column(struct mylite_alter_table_model *model, size_t column_index)
-{
-    if (column_index >= model->column_count) {
-        return MYLITE_MISUSE;
-    }
-
-    mylite_table_ddl_alter_table_column_deinit(&model->columns[column_index]);
-    for (size_t index = column_index + 1U; index < model->column_count; ++index) {
-        model->columns[index - 1U] = model->columns[index];
-    }
-    --model->column_count;
-    model->columns[model->column_count] = (struct mylite_alter_table_column){0};
-    return MYLITE_OK;
 }
 
 static int insert_alter_table_index(struct mylite_alter_table_model *model,
@@ -16317,7 +15887,7 @@ init_alter_table_index_part_from_key_part(mylite_stmt *stmt,
                                           struct mylite_alter_table_index_part *out_part)
 {
     const struct mylite_alter_table_column *column =
-        find_alter_table_column(model, source->column_name);
+        mylite_table_ddl_find_alter_table_column(model, source->column_name);
     const char *nullable = "";
     const char *collation = mylite_table_ddl_index_collation_for_order(source->order);
 
@@ -16402,15 +15972,16 @@ static int validate_alter_table_added_index(mylite_stmt *stmt,
         return set_alter_table_primary_invisible_error(stmt->database);
     }
     for (size_t part = 0U; part < index->part_count; ++part) {
-        if (find_alter_table_column(model, index->parts[part].column_name) == NULL) {
+        if (mylite_table_ddl_find_alter_table_column(model, index->parts[part].column_name) ==
+            NULL) {
             return set_alter_table_missing_key_column_error(stmt->database,
                                                             index->parts[part].column_name);
         }
         for (size_t previous = 0U; previous < part; ++previous) {
             if (mylite_ascii_case_equal(index->parts[previous].column_name,
                                         index->parts[part].column_name)) {
-                return set_alter_table_duplicate_column_error(stmt->database,
-                                                              index->parts[part].column_name);
+                return mylite_table_ddl_set_alter_table_duplicate_column_error(
+                    stmt->database, index->parts[part].column_name);
             }
         }
     }
@@ -16438,7 +16009,7 @@ validate_alter_table_primary_key_part_not_null(mylite_stmt *stmt,
                                                const struct mylite_create_table_key_part *part)
 {
     const struct mylite_alter_table_column *column =
-        find_alter_table_column(model, part->column_name);
+        mylite_table_ddl_find_alter_table_column(model, part->column_name);
     char *sql = NULL;
     sqlite3_stmt *select = NULL;
     int rc = SQLITE_OK;
@@ -16488,7 +16059,8 @@ apply_alter_table_primary_key_column_nullability(mylite_stmt *stmt,
 {
     for (size_t part = 0U; part < index->part_count; ++part) {
         struct mylite_alter_table_column *column = NULL;
-        size_t column_index = alter_table_column_index(model, index->parts[part].column_name);
+        size_t column_index =
+            mylite_table_ddl_alter_table_column_index(model, index->parts[part].column_name);
         int status = MYLITE_OK;
 
         if (column_index == model->column_count) {
@@ -16532,7 +16104,7 @@ static int validate_alter_table_final_model(mylite_stmt *stmt,
     int status = MYLITE_OK;
 
     if (model->column_count == 0U) {
-        return set_alter_table_cant_remove_all_columns_error(stmt->database);
+        return mylite_table_ddl_set_alter_table_cant_remove_all_columns_error(stmt->database);
     }
     status = validate_alter_table_columns(stmt, model, &has_visible_column, &auto_increment_count);
     if (status != MYLITE_OK) {
@@ -16557,8 +16129,8 @@ static int validate_alter_table_columns(mylite_stmt *stmt, struct mylite_alter_t
     for (size_t column = 0U; column < model->column_count; ++column) {
         for (size_t next = column + 1U; next < model->column_count; ++next) {
             if (mylite_ascii_case_equal(model->columns[column].name, model->columns[next].name)) {
-                return set_alter_table_duplicate_column_error(stmt->database,
-                                                              model->columns[next].name);
+                return mylite_table_ddl_set_alter_table_duplicate_column_error(
+                    stmt->database, model->columns[next].name);
             }
         }
         if (model->columns[column].visible) {
@@ -16611,7 +16183,7 @@ static int validate_alter_table_auto_increment_shape(mylite_stmt *stmt,
                                                      size_t auto_increment_count)
 {
     if (auto_increment_count > 1U) {
-        return set_alter_table_wrong_auto_increment_error(stmt->database);
+        return mylite_table_ddl_set_alter_table_wrong_auto_increment_error(stmt->database);
     }
     if (auto_increment_count == 1U) {
         const struct mylite_alter_table_column *auto_column =
@@ -16619,7 +16191,7 @@ static int validate_alter_table_auto_increment_shape(mylite_stmt *stmt,
 
         if (auto_column == NULL || auto_column->nullable ||
             !alter_table_auto_increment_column_is_indexed(model, auto_column)) {
-            return set_alter_table_wrong_auto_increment_error(stmt->database);
+            return mylite_table_ddl_set_alter_table_wrong_auto_increment_error(stmt->database);
         }
     }
     if (auto_increment_count == 0U) {
@@ -16764,7 +16336,7 @@ append_alter_table_unique_part_expression(mylite_stmt *stmt, sqlite3_str *sql,
                                           const struct mylite_alter_table_index_part *part)
 {
     const struct mylite_alter_table_column *column =
-        find_alter_table_column(model, part->column_name);
+        mylite_table_ddl_find_alter_table_column(model, part->column_name);
 
     if (column == NULL) {
         return MYLITE_MISUSE;
@@ -16793,7 +16365,7 @@ append_alter_table_unique_part_not_null_expression(mylite_stmt *stmt, sqlite3_st
                                                    const struct mylite_alter_table_index_part *part)
 {
     const struct mylite_alter_table_column *column =
-        find_alter_table_column(model, part->column_name);
+        mylite_table_ddl_find_alter_table_column(model, part->column_name);
 
     if (column == NULL) {
         return MYLITE_MISUSE;
@@ -17498,7 +17070,7 @@ static int refresh_alter_table_index_nullability(struct mylite_alter_table_model
         for (size_t part = 0U; part < model->indexes[index].part_count; ++part) {
             struct mylite_alter_table_index_part *index_part = &model->indexes[index].parts[part];
             const struct mylite_alter_table_column *column =
-                find_alter_table_column(model, index_part->column_name);
+                mylite_table_ddl_find_alter_table_column(model, index_part->column_name);
             const char *nullable = "";
             char *copy = NULL;
 
@@ -17517,25 +17089,6 @@ static int refresh_alter_table_index_nullability(struct mylite_alter_table_model
     return MYLITE_OK;
 }
 
-static const struct mylite_alter_table_column *
-find_alter_table_column(const struct mylite_alter_table_model *model, const char *name)
-{
-    size_t index = alter_table_column_index(model, name);
-
-    return index == model->column_count ? NULL : &model->columns[index];
-}
-
-static size_t alter_table_column_index(const struct mylite_alter_table_model *model,
-                                       const char *name)
-{
-    for (size_t index = 0U; index < model->column_count; ++index) {
-        if (mylite_ascii_case_equal(model->columns[index].name, name)) {
-            return index;
-        }
-    }
-    return model->column_count;
-}
-
 static size_t alter_table_index_index(const struct mylite_alter_table_model *model,
                                       const char *name)
 {
@@ -17545,22 +17098,6 @@ static size_t alter_table_index_index(const struct mylite_alter_table_model *mod
         }
     }
     return model->index_count;
-}
-
-static bool
-alter_table_column_definition_has_deferred_features(const struct mylite_create_table_column *column)
-{
-    if (column == NULL) {
-        return true;
-    }
-    if (column->primary_key || column->unique_key || column->auto_increment) {
-        return true;
-    }
-    if (column->has_generated_default &&
-        !mylite_column_default_is_current_timestamp(column->default_text)) {
-        return true;
-    }
-    return false;
 }
 
 static int set_alter_table_unsupported_option_error(mylite_db *database, const char *kind,
@@ -17578,71 +17115,6 @@ static int set_alter_table_unsupported_option_error(mylite_db *database, const c
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_UNSUPPORTED;
 }
 
-static int set_alter_table_duplicate_column_error(mylite_db *database, const char *column_name)
-{
-    int status = mylite_diagnostics_set_error_message_parts(database, "Duplicate column name '",
-                                                            column_name, "'");
-
-    if (status == MYLITE_NOMEM) {
-        return MYLITE_NOMEM;
-    }
-    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_DUP_FIELDNAME,
-                                             mylite_error_message(database));
-    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-}
-
-static int set_alter_table_unknown_column_error(mylite_db *database, const char *table_name,
-                                                const char *column_name)
-{
-    char *message = sqlite3_mprintf("Unknown column '%q' in '%q'", column_name, table_name);
-    int status = MYLITE_OK;
-
-    if (message == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    status = mylite_diagnostics_set_error_message(database, message);
-    sqlite3_free(message);
-    if (status == MYLITE_NOMEM) {
-        return MYLITE_NOMEM;
-    }
-    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
-                                             mylite_error_message(database));
-    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-}
-
-static int set_alter_table_cant_drop_column_error(mylite_db *database, const char *column_name)
-{
-    char *message = sqlite3_mprintf("Can't DROP '%q'; check that column/key exists", column_name);
-    int status = MYLITE_OK;
-
-    if (message == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    status = mylite_diagnostics_set_error_message(database, message);
-    sqlite3_free(message);
-    if (status == MYLITE_NOMEM) {
-        return MYLITE_NOMEM;
-    }
-    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_CANT_DROP_FIELD_OR_KEY,
-                                             mylite_error_message(database));
-    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-}
-
-static int set_alter_table_cant_remove_all_columns_error(mylite_db *database)
-{
-    int status = mylite_diagnostics_set_error_message(
-        database, "You can't delete all columns with ALTER TABLE; use DROP TABLE");
-
-    if (status == MYLITE_NOMEM) {
-        return MYLITE_NOMEM;
-    }
-    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_CANT_REMOVE_ALL_FIELDS,
-                                             mylite_error_message(database));
-    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-}
-
 static int set_alter_table_all_invisible_error(mylite_db *database)
 {
     int status = mylite_diagnostics_set_error_message(
@@ -17653,21 +17125,6 @@ static int set_alter_table_all_invisible_error(mylite_db *database)
     }
     status = mylite_diagnostics_append_error(database,
                                              MYLITE_MYSQL_ER_INVISIBLE_NOT_NULL_WITHOUT_DEFAULT,
-                                             mylite_error_message(database));
-    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-}
-
-static int set_alter_table_wrong_auto_increment_error(mylite_db *database)
-{
-    int status = mylite_diagnostics_set_error_message(
-        database,
-        "Incorrect table definition; there can be only one auto column and it must be defined "
-        "as a key");
-
-    if (status == MYLITE_NOMEM) {
-        return MYLITE_NOMEM;
-    }
-    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_WRONG_AUTO_KEY,
                                              mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }

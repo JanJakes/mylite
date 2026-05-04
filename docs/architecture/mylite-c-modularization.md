@@ -165,7 +165,8 @@ Rules for future moves:
   and physical table naming.
 - `src/runtime/mylite_schema.{h,c}`
   `CREATE/ALTER/DROP/USE DATABASE` and schema defaults.
-- `src/runtime/mylite_table_ddl.{h,c}`
+- `src/runtime/mylite_table_ddl.{h,c}` and focused companions such as
+  `mylite_table_ddl_alter.{h,c}`
   `CREATE/ALTER/DROP/RENAME/TRUNCATE TABLE` and index DDL.
 - `src/runtime/mylite_dml.{h,c}`
   `INSERT`, `REPLACE`, `UPDATE`, `DELETE`, affected rows, auto-increment, and
@@ -363,7 +364,7 @@ only the core object model and transitional shared helpers listed here:
 - [x] Move `TRUNCATE TABLE` validation and execution into `mylite_table_ddl`.
 - [x] Move alter-table AST copy helpers into `mylite_table_ddl`.
 - [x] Move alter-table catalog model loading behind table DDL/catalog APIs.
-- [ ] Move alter-table column operations into `mylite_table_ddl`.
+- [x] Move alter-table column operations into `mylite_table_ddl`.
 - [ ] Move alter-table key/index operations into `mylite_table_ddl`.
 - [ ] Move create/drop index AST copy helpers into `mylite_table_ddl`.
 - [ ] Move `CREATE INDEX` and `DROP INDEX` validation/execution into

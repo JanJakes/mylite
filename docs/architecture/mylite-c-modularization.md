@@ -492,6 +492,8 @@ only the core object model and transitional shared helpers listed here:
 - [ ] Move column type descriptor to SQLite affinity mapping into metadata or
   DDL according to final ownership.
 - [x] Move temporal statement timestamp helpers out of `mylite.c`.
+- [x] Move core session-function evaluation out of `mylite.c` without pulling
+  string/collation inference into the session module.
 - [ ] Move string/number conversion helpers used only by INSERT into
   `mylite_dml`.
 - [ ] Move parse/translate status mapping into `mylite_statement`.

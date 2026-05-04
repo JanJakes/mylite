@@ -159,6 +159,10 @@ int mylite_dml_validate_insert_update_unique_indexes(mylite_db *database, const 
                                                      const struct mylite_insert_table *table,
                                                      const struct mylite_insert_bound_value *values,
                                                      sqlite3_int64 rowid, bool *out_conflicts);
+int mylite_dml_validate_update_unique_indexes(mylite_db *database,
+                                              const struct mylite_select_table *table,
+                                              const struct mylite_insert_table *write_table,
+                                              const struct mylite_update_row *candidate);
 int mylite_dml_load_insert_conflict_row(mylite_db *database,
                                         const struct mylite_insert_table *table,
                                         sqlite3_int64 rowid,

@@ -344,10 +344,10 @@ only the core object model and transitional shared helpers listed here:
 - [x] Start `src/runtime/mylite_schema.{h,c}` with schema option cleanup.
 - [x] Move schema option normalization into `mylite_schema`.
 - [x] Move schema AST copy helpers into `mylite_schema`.
-- [ ] Move `CREATE DATABASE` execution into `mylite_schema`.
-- [ ] Move `ALTER DATABASE` execution into `mylite_schema`.
-- [ ] Move `DROP DATABASE` execution into `mylite_schema`.
-- [ ] Move `USE DATABASE` execution into `mylite_schema`.
+- [x] Move `CREATE DATABASE` execution into `mylite_schema`.
+- [x] Move `ALTER DATABASE` execution into `mylite_schema`.
+- [x] Move `DROP DATABASE` execution into `mylite_schema`.
+- [x] Move `USE DATABASE` execution into `mylite_schema`.
 - [x] Start `src/runtime/mylite_table_ddl.{h,c}` with table/index DDL plan
   cleanup.
 - [ ] Move create-table AST copy helpers into `mylite_table_ddl`.

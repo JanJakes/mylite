@@ -1,7 +1,11 @@
 #include "mylite_schema.h"
 
+#include "mylite_catalog.h"
 #include "mylite_charset.h"
+#include "mylite_connection.h"
 #include "mylite_diagnostics.h"
+#include "mylite_error_codes.h"
+#include "mylite_runtime.h"
 #include "mylite_span.h"
 
 #include <stdlib.h>
@@ -76,6 +80,124 @@ int mylite_schema_copy_options(const struct mylite_sql_ast_node *statement,
         }
     }
     return MYLITE_OK;
+}
+
+int mylite_schema_execute_create_statement(mylite_stmt *stmt)
+{
+    struct mylite_schema_presence presence;
+    int status = mylite_schema_normalize_options(stmt->database, &stmt->options);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    status = mylite_catalog_schema_exists(stmt->database, stmt->schema_name, &presence);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (presence.exists) {
+        if (stmt->if_not_exists) {
+            int note_status = mylite_diagnostics_set_error_message_parts(
+                stmt->database, "Can't create database '", stmt->schema_name, "'; database exists");
+
+            if (note_status == MYLITE_NOMEM) {
+                return MYLITE_NOMEM;
+            }
+            return mylite_diagnostics_append_note(stmt->database, MYLITE_MYSQL_ER_DB_CREATE_EXISTS,
+                                                  mylite_error_message(stmt->database));
+        }
+        (void)mylite_diagnostics_set_error_message_parts(stmt->database, "Can't create database '",
+                                                         stmt->schema_name, "'; database exists");
+        return MYLITE_EXEC_ERROR;
+    }
+
+    return mylite_catalog_insert_schema(stmt->database, stmt->schema_name, &stmt->options);
+}
+
+int mylite_schema_execute_alter_statement(mylite_stmt *stmt)
+{
+    const char *schema_name =
+        stmt->schema_name == NULL ? stmt->database->selected_schema : stmt->schema_name;
+    struct mylite_schema_presence presence;
+    int status = mylite_schema_normalize_options(stmt->database, &stmt->options);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (schema_name == NULL) {
+        (void)mylite_diagnostics_set_error_message(stmt->database, "No database selected");
+        return MYLITE_EXEC_ERROR;
+    }
+
+    status = mylite_catalog_schema_exists(stmt->database, schema_name, &presence);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (!presence.exists) {
+        (void)mylite_diagnostics_set_error_message_parts(stmt->database, "Database '", schema_name,
+                                                         "' doesn't exist");
+        return MYLITE_EXEC_ERROR;
+    }
+    if (presence.is_system) {
+        (void)mylite_diagnostics_set_error_message_parts(
+            stmt->database, "Access to system schema '", schema_name, "' is rejected.");
+        return MYLITE_EXEC_ERROR;
+    }
+
+    return mylite_catalog_update_schema(stmt->database, schema_name, &stmt->options);
+}
+
+int mylite_schema_execute_drop_statement(mylite_stmt *stmt)
+{
+    struct mylite_schema_presence presence;
+    int status = mylite_catalog_schema_exists(stmt->database, stmt->schema_name, &presence);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (!presence.exists) {
+        if (stmt->if_exists) {
+            return MYLITE_OK;
+        }
+        (void)mylite_diagnostics_set_error_message_parts(stmt->database, "Can't drop database '",
+                                                         stmt->schema_name,
+                                                         "'; database doesn't exist");
+        return MYLITE_EXEC_ERROR;
+    }
+    if (presence.is_system) {
+        (void)mylite_diagnostics_set_error_message_parts(
+            stmt->database, "Access to system schema '", stmt->schema_name, "' is rejected.");
+        return MYLITE_EXEC_ERROR;
+    }
+
+    status = mylite_catalog_delete_schema(stmt->database, stmt->schema_name);
+    if (status == MYLITE_OK) {
+        mylite_connection_clear_selected_schema_if_matches(stmt->database, stmt->schema_name);
+    }
+    return status;
+}
+
+int mylite_schema_execute_use_statement(mylite_stmt *stmt)
+{
+    struct mylite_schema_presence presence;
+    int status = MYLITE_OK;
+
+    if (mylite_span_contains_newline(stmt->schema_name, strlen(stmt->schema_name))) {
+        (void)mylite_diagnostics_set_error_message(stmt->database,
+                                                   "USE database names must be single-line");
+        return MYLITE_EXEC_ERROR;
+    }
+
+    status = mylite_catalog_schema_exists(stmt->database, stmt->schema_name, &presence);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (!presence.exists) {
+        (void)mylite_diagnostics_set_error_message_parts(stmt->database, "Unknown database '",
+                                                         stmt->schema_name, "'");
+        return MYLITE_EXEC_ERROR;
+    }
+
+    return mylite_connection_set_selected_schema(stmt->database, stmt->schema_name);
 }
 
 static int normalize_schema_charset_and_collation(mylite_db *database,

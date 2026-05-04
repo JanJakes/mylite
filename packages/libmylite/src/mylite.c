@@ -1669,7 +1669,6 @@ static int prepare_sqlite_statement(mylite_db *database, const char *sqlite_sql,
 static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind kind,
                                     const struct mylite_sql_ast_node *statement,
                                     mylite_stmt **out_stmt);
-static int execute_custom_statement(mylite_stmt *stmt);
 static int execute_create_schema_statement(mylite_stmt *stmt);
 static int execute_alter_schema_statement(mylite_stmt *stmt);
 static int execute_drop_schema_statement(mylite_stmt *stmt);
@@ -3631,54 +3630,6 @@ int mylite_prepare(mylite_db *database, const char *sql, size_t length, mylite_s
     }
     mylite_sql_parse_result_deinit(&parse_result);
     return status;
-}
-
-int mylite_step(mylite_stmt *stmt)
-{
-    int rc = SQLITE_OK;
-
-    if (stmt == NULL) {
-        return MYLITE_MISUSE;
-    }
-
-    mylite_diagnostics_clear_error_message(stmt->database);
-    if (stmt->database->transaction_released) {
-        return mylite_connection_set_released_error(stmt->database);
-    }
-    if (!stmt->executed && !stmt->preserve_prepare_warnings) {
-        mylite_diagnostics_clear_warnings(stmt->database);
-    }
-    if (stmt->kind != MYLITE_STMT_SQLITE) {
-        int status = execute_custom_statement(stmt);
-
-        if (status == MYLITE_DONE) {
-            mylite_statement_record_row_count(stmt);
-        }
-        if (status != MYLITE_ROW && status != MYLITE_DONE && status != MYLITE_OK &&
-            status != MYLITE_NOMEM) {
-            (void)mylite_diagnostics_ensure_current_error_condition(stmt->database,
-                                                                    MYLITE_MYSQL_ER_UNKNOWN_ERROR);
-        }
-        return status;
-    }
-
-    rc = sqlite3_step(stmt->sqlite_stmt);
-    if (rc == SQLITE_ROW) {
-        return MYLITE_ROW;
-    }
-    if (rc == SQLITE_DONE) {
-        stmt->affected_rows =
-            sqlite3_stmt_readonly(stmt->sqlite_stmt) ? -1 : sqlite3_changes(stmt->database->sqlite);
-        mylite_statement_record_row_count(stmt);
-        return MYLITE_DONE;
-    }
-
-    rc = mylite_diagnostics_set_sqlite_error(stmt->database);
-    if (rc != MYLITE_NOMEM) {
-        (void)mylite_diagnostics_ensure_current_error_condition(stmt->database,
-                                                                MYLITE_MYSQL_ER_UNKNOWN_ERROR);
-    }
-    return rc;
 }
 
 static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql_ast_node *root,
@@ -18763,7 +18714,7 @@ static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind k
     return MYLITE_OK;
 }
 
-static int execute_custom_statement(mylite_stmt *stmt)
+int mylite_statement_execute_custom(mylite_stmt *stmt)
 {
     int status = MYLITE_OK;
 

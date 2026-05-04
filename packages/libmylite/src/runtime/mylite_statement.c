@@ -1,6 +1,9 @@
 #include "mylite_statement.h"
 
+#include "mylite_connection.h"
+#include "mylite_diagnostics.h"
 #include "mylite_dml.h"
+#include "mylite_error_codes.h"
 #include "mylite_metadata.h"
 #include "mylite_schema.h"
 #include "mylite_select.h"
@@ -17,6 +20,54 @@ int64_t mylite_affected_rows(const mylite_stmt *stmt)
     }
 
     return stmt->affected_rows;
+}
+
+int mylite_step(mylite_stmt *stmt)
+{
+    int rc = SQLITE_OK;
+
+    if (stmt == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    mylite_diagnostics_clear_error_message(stmt->database);
+    if (stmt->database->transaction_released) {
+        return mylite_connection_set_released_error(stmt->database);
+    }
+    if (!stmt->executed && !stmt->preserve_prepare_warnings) {
+        mylite_diagnostics_clear_warnings(stmt->database);
+    }
+    if (stmt->kind != MYLITE_STMT_SQLITE) {
+        int status = mylite_statement_execute_custom(stmt);
+
+        if (status == MYLITE_DONE) {
+            mylite_statement_record_row_count(stmt);
+        }
+        if (status != MYLITE_ROW && status != MYLITE_DONE && status != MYLITE_OK &&
+            status != MYLITE_NOMEM) {
+            (void)mylite_diagnostics_ensure_current_error_condition(stmt->database,
+                                                                    MYLITE_MYSQL_ER_UNKNOWN_ERROR);
+        }
+        return status;
+    }
+
+    rc = sqlite3_step(stmt->sqlite_stmt);
+    if (rc == SQLITE_ROW) {
+        return MYLITE_ROW;
+    }
+    if (rc == SQLITE_DONE) {
+        stmt->affected_rows =
+            sqlite3_stmt_readonly(stmt->sqlite_stmt) ? -1 : sqlite3_changes(stmt->database->sqlite);
+        mylite_statement_record_row_count(stmt);
+        return MYLITE_DONE;
+    }
+
+    rc = mylite_diagnostics_set_sqlite_error(stmt->database);
+    if (rc != MYLITE_NOMEM) {
+        (void)mylite_diagnostics_ensure_current_error_condition(stmt->database,
+                                                                MYLITE_MYSQL_ER_UNKNOWN_ERROR);
+    }
+    return rc;
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)

@@ -323,9 +323,6 @@ static int prepare_show_collation_statement(mylite_db *database,
                                             const struct mylite_sql_ast_node *statement,
                                             mylite_stmt **out_stmt);
 static char *copy_show_collation_like_pattern(const struct mylite_sql_ast_node *statement);
-static int information_schema_keywords_sql(mylite_db *database, char **out_sql);
-static void append_information_schema_keyword_row(sqlite3_str *sql, bool *first, const char *word,
-                                                  unsigned int flags);
 static int information_schema_dynamic_table_sql(mylite_db *database,
                                                 enum mylite_information_schema_table table,
                                                 char **out_sql);
@@ -4800,43 +4797,6 @@ static char *copy_show_collation_like_pattern(const struct mylite_sql_ast_node *
     return copy_show_like_pattern_span(literal);
 }
 
-static int information_schema_keywords_sql(mylite_db *database, char **out_sql)
-{
-    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
-    bool first = true;
-
-    *out_sql = NULL;
-    if (sql == NULL) {
-        return MYLITE_NOMEM;
-    }
-
-    sqlite3_str_appendall(sql, "WITH keywords(WORD, RESERVED) AS (VALUES ");
-    for (size_t index = 0U; index < mylite_sql_keyword_catalog_count(); ++index) {
-        const char *word = NULL;
-        unsigned int flags = 0U;
-
-        if (mylite_sql_keyword_catalog_at(index, &word, &flags)) {
-            append_information_schema_keyword_row(sql, &first, word, flags);
-        }
-    }
-    sqlite3_str_appendall(sql, ") SELECT WORD, RESERVED FROM keywords");
-
-    *out_sql = sqlite3_str_finish(sql);
-    return *out_sql == NULL ? MYLITE_NOMEM : MYLITE_OK;
-}
-
-static void append_information_schema_keyword_row(sqlite3_str *sql, bool *first, const char *word,
-                                                  unsigned int flags)
-{
-    int reserved = (flags & MYLITE_SQL_KEYWORD_RESERVED) != 0U ? 1 : 0;
-
-    if (!*first) {
-        sqlite3_str_appendall(sql, ", ");
-    }
-    sqlite3_str_appendf(sql, "(%Q, %d)", word, reserved);
-    *first = false;
-}
-
 static int prepare_show_tables_statement(mylite_db *database,
                                          const struct mylite_sql_ast_node *statement,
                                          mylite_stmt **out_stmt)
@@ -6474,7 +6434,7 @@ static int information_schema_dynamic_table_sql(mylite_db *database,
     case MYLITE_INFORMATION_SCHEMA_ENGINES:
         return mylite_show_information_schema_engines_sql(database, out_sql);
     case MYLITE_INFORMATION_SCHEMA_KEYWORDS:
-        return information_schema_keywords_sql(database, out_sql);
+        return mylite_show_information_schema_keywords_sql(database, out_sql);
     case MYLITE_INFORMATION_SCHEMA_SCHEMATA:
     case MYLITE_INFORMATION_SCHEMA_TABLES:
     case MYLITE_INFORMATION_SCHEMA_COLUMNS:

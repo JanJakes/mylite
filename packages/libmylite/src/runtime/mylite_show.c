@@ -7,6 +7,7 @@
 #include "mylite_metadata.h"
 #include "mylite_runtime.h"
 #include "mylite_show_types.h"
+#include "sql/mylite_lexer.h"
 #include "sqlite3.h"
 
 #include <stdbool.h>
@@ -34,6 +35,8 @@ static void append_information_schema_collation_row(sqlite3_str *sql, bool *firs
                                                     const struct mylite_collation *collation);
 static void append_information_schema_collation_character_set_applicability_row(
     sqlite3_str *sql, bool *first, const struct mylite_collation *collation);
+static void append_information_schema_keyword_row(sqlite3_str *sql, bool *first, const char *word,
+                                                  unsigned int flags);
 static void append_storage_engine_row(sqlite3_str *sql, bool *first,
                                       const struct mylite_storage_engine_columns *columns,
                                       const struct mylite_storage_engine_row *engine);
@@ -223,6 +226,31 @@ int mylite_show_information_schema_collation_character_set_applicability_sql(myl
     }
     sqlite3_str_appendall(sql, ") ORDER BY COLLATION_NAME COLLATE NOCASE, "
                                "COLLATION_NAME COLLATE BINARY");
+
+    *out_sql = sqlite3_str_finish(sql);
+    return *out_sql == NULL ? MYLITE_NOMEM : MYLITE_OK;
+}
+
+int mylite_show_information_schema_keywords_sql(mylite_db *database, char **out_sql)
+{
+    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
+    bool first = true;
+
+    *out_sql = NULL;
+    if (sql == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    sqlite3_str_appendall(sql, "WITH keywords(WORD, RESERVED) AS (VALUES ");
+    for (size_t index = 0U; index < mylite_sql_keyword_catalog_count(); ++index) {
+        const char *word = NULL;
+        unsigned int flags = 0U;
+
+        if (mylite_sql_keyword_catalog_at(index, &word, &flags)) {
+            append_information_schema_keyword_row(sql, &first, word, flags);
+        }
+    }
+    sqlite3_str_appendall(sql, ") SELECT WORD, RESERVED FROM keywords");
 
     *out_sql = sqlite3_str_finish(sql);
     return *out_sql == NULL ? MYLITE_NOMEM : MYLITE_OK;
@@ -681,6 +709,18 @@ static void append_information_schema_collation_character_set_applicability_row(
     }
     sqlite3_str_appendf(sql, "SELECT %Q AS \"COLLATION_NAME\", %Q AS \"CHARACTER_SET_NAME\"",
                         collation->name, collation->character_set);
+    *first = false;
+}
+
+static void append_information_schema_keyword_row(sqlite3_str *sql, bool *first, const char *word,
+                                                  unsigned int flags)
+{
+    int reserved = (flags & MYLITE_SQL_KEYWORD_RESERVED) != 0U ? 1 : 0;
+
+    if (!*first) {
+        sqlite3_str_appendall(sql, ", ");
+    }
+    sqlite3_str_appendf(sql, "(%Q, %d)", word, reserved);
     *first = false;
 }
 

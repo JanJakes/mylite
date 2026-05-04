@@ -298,7 +298,7 @@ only the core object model and transitional shared helpers listed here:
 - [x] Move `SET CHARACTER SET` execution into `src/runtime/mylite_connection`.
 - [ ] Move connection charset AST copy/prepare helpers into the connection
   module or a small connection-statement module.
-- [ ] Split `SHOW` and `information_schema` dynamic result builders.
+- [x] Split `SHOW` and `information_schema` dynamic result builders.
 - [x] Create `src/runtime/mylite_show.{h,c}` and wire it into CMake.
 - [x] Move `SHOW DATABASES`/`SHOW SCHEMAS` SQL builders into `mylite_show`.
 - [ ] Move `SHOW DATABASES` prepare code into `mylite_show`.
@@ -316,6 +316,7 @@ only the core object model and transitional shared helpers listed here:
   `information_schema.COLLATION_CHARACTER_SET_APPLICABILITY` builders into
   `mylite_show`.
 - [ ] Move `SHOW COLLATION` prepare code into `mylite_show`.
+- [x] Move `information_schema.KEYWORDS` builder into `mylite_show`.
 - [x] Move `SHOW TABLES` builder into `mylite_show`.
 - [ ] Move `SHOW TABLES` prepare code into `mylite_show`.
 - [x] Move `SHOW TABLE STATUS` builder into `mylite_show`.

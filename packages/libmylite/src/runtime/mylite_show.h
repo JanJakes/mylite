@@ -25,6 +25,7 @@ char *mylite_show_index_sql(mylite_db *database, const struct mylite_show_index_
 int mylite_show_information_schema_collations_sql(mylite_db *database, char **out_sql);
 int mylite_show_information_schema_collation_character_set_applicability_sql(mylite_db *database,
                                                                              char **out_sql);
+int mylite_show_information_schema_keywords_sql(mylite_db *database, char **out_sql);
 int mylite_show_status_sql(mylite_db *database, const struct mylite_show_status_query *query,
                            char **out_sql);
 char *mylite_show_tables_sql(mylite_db *database, const struct mylite_show_tables_query *query);

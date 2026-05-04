@@ -532,6 +532,8 @@ only the core object model and transitional shared helpers listed here:
   `mylite_metadata`.
 - [ ] Move field descriptor inference for built-in functions into
   `mylite_metadata` or function-family helpers.
+- [x] Move pure SQL function-name classifiers into
+  `src/runtime/mylite_function_names`.
 - [ ] Move aggregate metadata inference into `mylite_metadata`.
 - [ ] Move result metadata attachment for SELECT/UNION into `mylite_metadata`.
 - [x] Move reusable result metadata label lookup into `mylite_metadata`.

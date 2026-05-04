@@ -72,6 +72,7 @@ add_library(mylite STATIC
   src/runtime/mylite_expression_descriptor.c
   src/runtime/mylite_expression_validation.c
   src/runtime/mylite_field_descriptor.c
+  src/runtime/mylite_function_names.c
   src/runtime/mylite_information_schema.c
   src/runtime/mylite_metadata.c
   src/runtime/mylite_metadata_constants.c

@@ -15,6 +15,7 @@
 #include "runtime/mylite_expression_descriptor.h"
 #include "runtime/mylite_expression_validation.h"
 #include "runtime/mylite_field_descriptor.h"
+#include "runtime/mylite_function_names.h"
 #include "runtime/mylite_information_schema.h"
 #include "runtime/mylite_metadata.h"
 #include "runtime/mylite_metadata_constants.h"
@@ -262,7 +263,7 @@ static int infer_date_interval_function_descriptor(mylite_db *database,
                                                    struct mylite_field_descriptor *out_descriptor);
 static struct mylite_field_descriptor date_interval_string_descriptor(mylite_db *database);
 static struct mylite_field_descriptor date_interval_datetime_descriptor(unsigned int decimals);
-static bool function_name_is_date_interval_arithmetic(const struct mylite_sql_ast_node *name);
+
 static bool interval_unit_has_time_part(enum mylite_sql_ast_interval_unit unit);
 static bool infer_fixed_integer_function_descriptor(const struct mylite_sql_ast_node *name,
                                                     bool result_nullable,
@@ -376,34 +377,6 @@ static uint64_t slice_string_function_result_length(mylite_db *database,
                                                     const struct mylite_select_plan *plan,
                                                     const struct mylite_sql_ast_node *expression,
                                                     const struct mylite_expression_value *value);
-static bool function_name_has_slice_string_result(const struct mylite_sql_ast_node *name);
-static bool function_name_is_make_set(const struct mylite_sql_ast_node *name);
-static bool function_name_is_elt(const struct mylite_sql_ast_node *name);
-static bool function_name_is_quote(const struct mylite_sql_ast_node *name);
-static bool function_name_is_insert(const struct mylite_sql_ast_node *name);
-static bool function_name_is_char(const struct mylite_sql_ast_node *name);
-static bool function_name_is_hex(const struct mylite_sql_ast_node *name);
-static bool function_name_is_unhex(const struct mylite_sql_ast_node *name);
-static bool function_name_is_to_base64(const struct mylite_sql_ast_node *name);
-static bool function_name_is_from_base64(const struct mylite_sql_ast_node *name);
-static bool function_name_is_format(const struct mylite_sql_ast_node *name);
-static bool function_name_has_binary_string_result(const struct mylite_sql_ast_node *name);
-static bool function_name_has_connection_string_result(const struct mylite_sql_ast_node *name);
-static bool function_name_has_base_conversion_result(const struct mylite_sql_ast_node *name);
-static bool function_name_is_concat_ws(const struct mylite_sql_ast_node *name);
-static bool function_name_uses_source_length(const struct mylite_sql_ast_node *name);
-static bool function_name_is_charset(const struct mylite_sql_ast_node *name);
-static bool function_name_is_collation(const struct mylite_sql_ast_node *name);
-static bool function_name_is_coercibility(const struct mylite_sql_ast_node *name);
-static bool
-function_name_is_charset_collation_introspection(const struct mylite_sql_ast_node *name);
-static bool function_name_is_bit_count(const struct mylite_sql_ast_node *name);
-static bool function_name_is_crc32(const struct mylite_sql_ast_node *name);
-static bool function_name_is_inet_aton(const struct mylite_sql_ast_node *name);
-static bool function_name_is_inet_ntoa(const struct mylite_sql_ast_node *name);
-static bool function_name_is_is_uuid(const struct mylite_sql_ast_node *name);
-static bool function_name_is_uuid_to_bin(const struct mylite_sql_ast_node *name);
-static bool function_name_is_bin_to_uuid(const struct mylite_sql_ast_node *name);
 static bool
 infer_session_or_inet_function_descriptor(mylite_db *database,
                                           const struct mylite_sql_ast_node *name,
@@ -546,40 +519,7 @@ truncate_decimal_descriptor_for_constant_scale(struct mylite_field_descriptor *d
 static bool infer_code_search_function_descriptor(const struct mylite_sql_ast_node *name,
                                                   bool nullable,
                                                   struct mylite_field_descriptor *out_descriptor);
-static bool function_name_has_text_result(const struct mylite_sql_ast_node *name);
-static bool function_name_has_length_result(const struct mylite_sql_ast_node *name);
-static bool function_name_is_ascii(const struct mylite_sql_ast_node *name);
-static bool function_name_is_ord(const struct mylite_sql_ast_node *name);
-static bool function_name_has_search_result(const struct mylite_sql_ast_node *name);
-static bool function_name_is_field(const struct mylite_sql_ast_node *name);
-static bool function_name_is_find_in_set(const struct mylite_sql_ast_node *name);
-static bool function_name_is_greatest_least(const struct mylite_sql_ast_node *name);
-static bool function_name_is_strcmp(const struct mylite_sql_ast_node *name);
-static bool function_name_is_date_extraction(const struct mylite_sql_ast_node *name);
-static bool function_name_is_datediff(const struct mylite_sql_ast_node *name);
-static bool function_name_is_timestampdiff(const struct mylite_sql_ast_node *name);
-static bool function_name_is_to_days(const struct mylite_sql_ast_node *name);
-static bool function_name_is_to_seconds(const struct mylite_sql_ast_node *name);
-static bool function_name_is_from_days(const struct mylite_sql_ast_node *name);
-static bool function_name_is_time_extraction(const struct mylite_sql_ast_node *name);
-static bool function_name_is_year_part(const struct mylite_sql_ast_node *name);
-static bool function_name_is_month_part(const struct mylite_sql_ast_node *name);
-static bool function_name_is_day_part(const struct mylite_sql_ast_node *name);
-static bool function_name_is_hour_part(const struct mylite_sql_ast_node *name);
-static bool function_name_is_minute_part(const struct mylite_sql_ast_node *name);
-static bool function_name_is_second_part(const struct mylite_sql_ast_node *name);
-static bool function_name_is_extract(const struct mylite_sql_ast_node *name);
 static bool extract_interval_unit_supported(enum mylite_sql_ast_interval_unit unit);
-static bool function_name_has_integer_result(const struct mylite_sql_ast_node *name);
-static bool function_name_is_exp(const struct mylite_sql_ast_node *name);
-static bool function_name_is_logarithm(const struct mylite_sql_ast_node *name);
-static bool function_name_is_power(const struct mylite_sql_ast_node *name);
-static bool function_name_is_sqrt(const struct mylite_sql_ast_node *name);
-static bool function_name_is_trigonometric(const struct mylite_sql_ast_node *name);
-static bool function_name_is_inverse_trigonometric(const struct mylite_sql_ast_node *name);
-static bool function_name_is_angle_conversion(const struct mylite_sql_ast_node *name);
-static bool function_name_matches_any(const struct mylite_sql_ast_node *name,
-                                      const char *const *candidates, size_t candidate_count);
 static int build_select_outputs(mylite_db *database, const struct mylite_sql_ast_node *select_list,
                                 bool allow_expression_outputs, struct mylite_select_plan *plan);
 static int prepare_table_select_custom_statement(mylite_db *database,
@@ -3752,7 +3692,7 @@ static int infer_function_expression_descriptor(mylite_db *database,
     if (status != MYLITE_OK || matched_slice_string) {
         return status;
     }
-    if (function_name_has_text_result(name)) {
+    if (mylite_function_name_has_text_result(name)) {
         *out_descriptor = (struct mylite_field_descriptor){
             .type = MYLITE_FIELD_TYPE_VAR_STRING,
             .flags = 0U,
@@ -3786,7 +3726,7 @@ static int infer_function_expression_descriptor(mylite_db *database,
         }
         return MYLITE_OK;
     }
-    if (function_name_has_integer_result(name)) {
+    if (mylite_function_name_has_integer_result(name)) {
         *out_descriptor = mylite_expression_descriptor_signed_longlong(result_nullable);
         out_descriptor->length = mylite_mysql_integer_function_display_length;
         return MYLITE_OK;
@@ -3908,7 +3848,7 @@ static int infer_variadic_scalar_function_descriptor(mylite_db *database,
 static bool infer_exp_function_descriptor(const struct mylite_sql_ast_node *name,
                                           struct mylite_field_descriptor *out_descriptor)
 {
-    if (!function_name_is_exp(name)) {
+    if (!mylite_function_name_is_exp(name)) {
         return false;
     }
 
@@ -3927,7 +3867,7 @@ static bool infer_exp_function_descriptor(const struct mylite_sql_ast_node *name
 static bool infer_logarithm_function_descriptor(const struct mylite_sql_ast_node *name,
                                                 struct mylite_field_descriptor *out_descriptor)
 {
-    if (!function_name_is_logarithm(name)) {
+    if (!mylite_function_name_is_logarithm(name)) {
         return false;
     }
 
@@ -3946,7 +3886,7 @@ static bool infer_logarithm_function_descriptor(const struct mylite_sql_ast_node
 static bool infer_power_function_descriptor(const struct mylite_sql_ast_node *name,
                                             struct mylite_field_descriptor *out_descriptor)
 {
-    if (!function_name_is_power(name)) {
+    if (!mylite_function_name_is_power(name)) {
         return false;
     }
 
@@ -3965,7 +3905,7 @@ static bool infer_power_function_descriptor(const struct mylite_sql_ast_node *na
 static bool infer_sqrt_function_descriptor(const struct mylite_sql_ast_node *name,
                                            struct mylite_field_descriptor *out_descriptor)
 {
-    if (!function_name_is_sqrt(name)) {
+    if (!mylite_function_name_is_sqrt(name)) {
         return false;
     }
 
@@ -3984,7 +3924,7 @@ static bool infer_sqrt_function_descriptor(const struct mylite_sql_ast_node *nam
 static bool infer_trigonometric_function_descriptor(const struct mylite_sql_ast_node *name,
                                                     struct mylite_field_descriptor *out_descriptor)
 {
-    if (!function_name_is_trigonometric(name)) {
+    if (!mylite_function_name_is_trigonometric(name)) {
         return false;
     }
 
@@ -4004,7 +3944,7 @@ static bool
 infer_inverse_trigonometric_function_descriptor(const struct mylite_sql_ast_node *name,
                                                 struct mylite_field_descriptor *out_descriptor)
 {
-    if (!function_name_is_inverse_trigonometric(name)) {
+    if (!mylite_function_name_is_inverse_trigonometric(name)) {
         return false;
     }
 
@@ -4025,7 +3965,7 @@ infer_angle_conversion_function_descriptor(const struct mylite_sql_ast_node *nam
                                            bool result_nullable,
                                            struct mylite_field_descriptor *out_descriptor)
 {
-    if (!function_name_is_angle_conversion(name)) {
+    if (!mylite_function_name_is_angle_conversion(name)) {
         return false;
     }
 
@@ -4151,7 +4091,7 @@ static int infer_format_function_descriptor(mylite_db *database,
     uint64_t character_length = 0U;
     int status = MYLITE_OK;
 
-    if (!function_name_is_format(name)) {
+    if (!mylite_function_name_is_format(name)) {
         return MYLITE_UNSUPPORTED;
     }
     status = infer_expression_descriptor(database, plan, value_argument, NULL, &value_descriptor);
@@ -4488,7 +4428,7 @@ static bool infer_strcmp_function_descriptor(const struct mylite_sql_ast_node *n
                                              bool result_nullable,
                                              struct mylite_field_descriptor *out_descriptor)
 {
-    if (!function_name_is_strcmp(name)) {
+    if (!mylite_function_name_is_strcmp(name)) {
         return false;
     }
 
@@ -4501,12 +4441,12 @@ static bool infer_inet_function_descriptor(mylite_db *database,
                                            const struct mylite_sql_ast_node *name,
                                            struct mylite_field_descriptor *out_descriptor)
 {
-    if (function_name_is_inet_aton(name)) {
+    if (mylite_function_name_is_inet_aton(name)) {
         *out_descriptor = mylite_expression_descriptor_unsigned_longlong(true);
         out_descriptor->length = mylite_mysql_signed_longlong_display_length;
         return true;
     }
-    if (function_name_is_inet_ntoa(name)) {
+    if (mylite_function_name_is_inet_ntoa(name)) {
         uint64_t max_bytes_per_character =
             mylite_expression_descriptor_connection_character_max_length(database);
         uint64_t length = max_bytes_per_character > UINT64_MAX / mylite_mysql_inet_ntoa_result_chars
@@ -4531,12 +4471,12 @@ static bool infer_uuid_function_descriptor(mylite_db *database,
                                            const struct mylite_sql_ast_node *name,
                                            struct mylite_field_descriptor *out_descriptor)
 {
-    if (function_name_is_is_uuid(name)) {
+    if (mylite_function_name_is_is_uuid(name)) {
         *out_descriptor = mylite_expression_descriptor_signed_longlong(true);
         out_descriptor->length = 1U;
         return true;
     }
-    if (function_name_is_uuid_to_bin(name)) {
+    if (mylite_function_name_is_uuid_to_bin(name)) {
         *out_descriptor = (struct mylite_field_descriptor){
             .type = MYLITE_FIELD_TYPE_VAR_STRING,
             .flags = MYLITE_FIELD_FLAG_BINARY,
@@ -4548,7 +4488,7 @@ static bool infer_uuid_function_descriptor(mylite_db *database,
         mylite_field_descriptor_set_nullable(out_descriptor, true);
         return true;
     }
-    if (function_name_is_bin_to_uuid(name)) {
+    if (mylite_function_name_is_bin_to_uuid(name)) {
         uint64_t max_bytes_per_character =
             mylite_expression_descriptor_connection_character_max_length(database);
         uint64_t length = max_bytes_per_character > UINT64_MAX / mylite_mysql_uuid_text_result_chars
@@ -4591,17 +4531,17 @@ static bool infer_fixed_integer_function_descriptor(const struct mylite_sql_ast_
                                                     bool result_nullable,
                                                     struct mylite_field_descriptor *out_descriptor)
 {
-    if (function_name_has_length_result(name)) {
+    if (mylite_function_name_has_length_result(name)) {
         *out_descriptor = mylite_expression_descriptor_signed_longlong(result_nullable);
         out_descriptor->length = mylite_mysql_length_function_display_length;
         return true;
     }
-    if (function_name_is_bit_count(name)) {
+    if (mylite_function_name_is_bit_count(name)) {
         *out_descriptor = mylite_expression_descriptor_signed_longlong(result_nullable);
         out_descriptor->length = mylite_mysql_bit_count_function_display_length;
         return true;
     }
-    if (function_name_is_crc32(name)) {
+    if (mylite_function_name_is_crc32(name)) {
         *out_descriptor = mylite_expression_descriptor_unsigned_longlong(result_nullable);
         out_descriptor->length = mylite_mysql_crc32_function_display_length;
         return true;
@@ -4616,7 +4556,7 @@ static bool infer_session_function_descriptor(mylite_db *database,
     if (name == NULL) {
         return false;
     }
-    if (function_name_is_charset(name) || function_name_is_collation(name)) {
+    if (mylite_function_name_is_charset(name) || mylite_function_name_is_collation(name)) {
         uint64_t max_bytes_per_character =
             mylite_expression_descriptor_connection_character_max_length(database);
         uint64_t length =
@@ -4635,7 +4575,7 @@ static bool infer_session_function_descriptor(mylite_db *database,
         };
         return true;
     }
-    if (function_name_is_coercibility(name)) {
+    if (mylite_function_name_is_coercibility(name)) {
         *out_descriptor = (struct mylite_field_descriptor){
             .type = MYLITE_FIELD_TYPE_LONGLONG,
             .flags = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
@@ -4800,7 +4740,7 @@ infer_temporal_scalar_function_descriptor(const struct mylite_sql_ast_node *name
                                           bool arguments_nullable,
                                           struct mylite_field_descriptor *out_descriptor)
 {
-    if (function_name_is_date_extraction(name)) {
+    if (mylite_function_name_is_date_extraction(name)) {
         struct mylite_field_descriptor descriptor = {
             .type = MYLITE_FIELD_TYPE_DATE,
             .flags = MYLITE_FIELD_FLAG_BINARY,
@@ -4813,27 +4753,27 @@ infer_temporal_scalar_function_descriptor(const struct mylite_sql_ast_node *name
         *out_descriptor = descriptor;
         return true;
     }
-    if (function_name_is_datediff(name)) {
+    if (mylite_function_name_is_datediff(name)) {
         *out_descriptor = mylite_expression_descriptor_signed_longlong(true);
         out_descriptor->length = mylite_mysql_datediff_function_display_length;
         return true;
     }
-    if (function_name_is_timestampdiff(name)) {
+    if (mylite_function_name_is_timestampdiff(name)) {
         *out_descriptor = mylite_expression_descriptor_signed_longlong(true);
         out_descriptor->length = mylite_mysql_signed_longlong_display_length;
         return true;
     }
-    if (function_name_is_to_days(name)) {
+    if (mylite_function_name_is_to_days(name)) {
         *out_descriptor = mylite_expression_descriptor_signed_longlong(true);
         out_descriptor->length = mylite_mysql_to_days_function_display_length;
         return true;
     }
-    if (function_name_is_to_seconds(name)) {
+    if (mylite_function_name_is_to_seconds(name)) {
         *out_descriptor = mylite_expression_descriptor_signed_longlong(true);
         out_descriptor->length = mylite_mysql_to_seconds_function_display_length;
         return true;
     }
-    if (function_name_is_from_days(name)) {
+    if (mylite_function_name_is_from_days(name)) {
         struct mylite_field_descriptor descriptor = {
             .type = MYLITE_FIELD_TYPE_DATE,
             .flags = MYLITE_FIELD_FLAG_BINARY,
@@ -4846,7 +4786,7 @@ infer_temporal_scalar_function_descriptor(const struct mylite_sql_ast_node *name
         *out_descriptor = descriptor;
         return true;
     }
-    if (function_name_is_year_part(name)) {
+    if (mylite_function_name_is_year_part(name)) {
         struct mylite_field_descriptor descriptor = {
             .type = MYLITE_FIELD_TYPE_YEAR,
             .flags = MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
@@ -4859,13 +4799,13 @@ infer_temporal_scalar_function_descriptor(const struct mylite_sql_ast_node *name
         *out_descriptor = descriptor;
         return true;
     }
-    if (function_name_is_month_part(name) || function_name_is_day_part(name) ||
-        function_name_is_minute_part(name) || function_name_is_second_part(name)) {
+    if (mylite_function_name_is_month_part(name) || mylite_function_name_is_day_part(name) ||
+        mylite_function_name_is_minute_part(name) || mylite_function_name_is_second_part(name)) {
         *out_descriptor = mylite_expression_descriptor_signed_longlong(true);
         out_descriptor->length = mylite_mysql_temporal_part_short_display_length;
         return true;
     }
-    if (function_name_is_hour_part(name)) {
+    if (mylite_function_name_is_hour_part(name)) {
         *out_descriptor = mylite_expression_descriptor_signed_longlong(true);
         out_descriptor->length = mylite_mysql_temporal_part_hour_display_length;
         return true;
@@ -4878,7 +4818,7 @@ static bool infer_temporal_part_function_descriptor(const struct mylite_sql_ast_
 {
     const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
 
-    if (function_name_is_extract(name)) {
+    if (mylite_function_name_is_extract(name)) {
         if (!expression->interval_spec ||
             !extract_interval_unit_supported(expression->interval_unit)) {
             return false;
@@ -4912,7 +4852,7 @@ static int infer_time_function_descriptor(mylite_db *database,
     unsigned int decimals = 0U;
     int status = MYLITE_OK;
 
-    if (!function_name_is_time_extraction(name)) {
+    if (!mylite_function_name_is_time_extraction(name)) {
         return MYLITE_UNSUPPORTED;
     }
     if (descriptor_value == NULL && mylite_expression_is_cacheable_no_table(expression) &&
@@ -5030,7 +4970,7 @@ static int infer_date_interval_function_descriptor(mylite_db *database,
     struct mylite_field_descriptor temporal_descriptor = mylite_expression_descriptor_defaults();
     int status = MYLITE_OK;
 
-    if (!function_name_is_date_interval_arithmetic(name) || !expression->interval_spec) {
+    if (!mylite_function_name_is_date_interval_arithmetic(name) || !expression->interval_spec) {
         return MYLITE_UNSUPPORTED;
     }
 
@@ -5104,12 +5044,12 @@ static bool infer_list_index_function_descriptor(const struct mylite_sql_ast_nod
                                                  bool nullable,
                                                  struct mylite_field_descriptor *out_descriptor)
 {
-    if (function_name_is_field(name)) {
+    if (mylite_function_name_is_field(name)) {
         *out_descriptor = mylite_expression_descriptor_signed_longlong(false);
         out_descriptor->length = mylite_mysql_list_index_function_display_length;
         return true;
     }
-    if (function_name_is_find_in_set(name)) {
+    if (mylite_function_name_is_find_in_set(name)) {
         *out_descriptor = mylite_expression_descriptor_signed_longlong(nullable);
         out_descriptor->length = mylite_mysql_list_index_function_display_length;
         return true;
@@ -5172,7 +5112,7 @@ infer_base_conversion_function_descriptor(mylite_db *database,
             ? mylite_mysql_long_text_length
             : mylite_mysql_base_conversion_result_chars * max_bytes_per_character;
 
-    if (!function_name_has_base_conversion_result(name)) {
+    if (!mylite_function_name_has_base_conversion_result(name)) {
         return false;
     }
     *out_descriptor = (struct mylite_field_descriptor){
@@ -5201,7 +5141,7 @@ static int infer_char_function_descriptor(mylite_db *database,
     unsigned int flags = 0U;
     unsigned int charset_id = mylite_expression_descriptor_connection_charset_id(database);
 
-    if (!function_name_is_char(name)) {
+    if (!mylite_function_name_is_char(name)) {
         return MYLITE_UNSUPPORTED;
     }
 
@@ -5266,16 +5206,16 @@ static int infer_string_encoding_function_descriptor(mylite_db *database,
     const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
 
     *out_matched = true;
-    if (function_name_is_hex(name)) {
+    if (mylite_function_name_is_hex(name)) {
         return infer_hex_function_descriptor(database, plan, expression, out_descriptor);
     }
-    if (function_name_is_unhex(name)) {
+    if (mylite_function_name_is_unhex(name)) {
         return infer_unhex_function_descriptor(database, plan, expression, out_descriptor);
     }
-    if (function_name_is_to_base64(name)) {
+    if (mylite_function_name_is_to_base64(name)) {
         return infer_to_base64_function_descriptor(database, plan, expression, out_descriptor);
     }
-    if (function_name_is_from_base64(name)) {
+    if (mylite_function_name_is_from_base64(name)) {
         return infer_from_base64_function_descriptor(database, plan, expression, out_descriptor);
     }
     *out_matched = false;
@@ -5730,11 +5670,11 @@ static int infer_slice_string_function_descriptor( // NOLINT(misc-no-recursion)
 {
     const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
 
-    *out_matched = function_name_has_slice_string_result(name);
+    *out_matched = mylite_function_name_has_slice_string_result(name);
     if (!*out_matched) {
         return MYLITE_OK;
     }
-    if (function_name_is_make_set(name)) {
+    if (mylite_function_name_is_make_set(name)) {
         (void)value;
         (void)nullable;
         return infer_make_set_function_descriptor(database, plan, expression, out_descriptor);
@@ -5761,20 +5701,20 @@ static uint64_t slice_string_function_result_length( // NOLINT(misc-no-recursion
     const struct mylite_sql_ast_node *source = mylite_ast_child_at(arguments, 0U);
     struct mylite_field_descriptor source_descriptor = mylite_expression_descriptor_defaults();
 
-    if (function_name_is_elt(name)) {
+    if (mylite_function_name_is_elt(name)) {
         return elt_function_result_length(database, plan, expression);
     }
-    if (function_name_is_quote(name)) {
+    if (mylite_function_name_is_quote(name)) {
         return quote_function_result_length(database, plan, expression);
     }
-    if (function_name_is_insert(name)) {
+    if (mylite_function_name_is_insert(name)) {
         return insert_function_result_length(database, plan, expression);
     }
-    if (!function_name_uses_source_length(name) && value != NULL &&
+    if (!mylite_function_name_uses_source_length(name) && value != NULL &&
         value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
         return mylite_expression_descriptor_string_length(database, value, NULL);
     }
-    if (function_name_is_concat_ws(name)) {
+    if (mylite_function_name_is_concat_ws(name)) {
         return mylite_mysql_text_length;
     }
     if (source != NULL && infer_expression_descriptor(database, plan, source, NULL,
@@ -6414,7 +6354,7 @@ static int infer_greatest_least_function_descriptor(mylite_db *database,
     bool string_domain = false;
     int status = MYLITE_OK;
 
-    if (!function_name_is_greatest_least(name)) {
+    if (!mylite_function_name_is_greatest_least(name)) {
         return MYLITE_UNSUPPORTED;
     }
 
@@ -6610,261 +6550,22 @@ static bool infer_code_search_function_descriptor(const struct mylite_sql_ast_no
                                                   bool nullable,
                                                   struct mylite_field_descriptor *out_descriptor)
 {
-    if (function_name_is_ascii(name)) {
+    if (mylite_function_name_is_ascii(name)) {
         *out_descriptor = mylite_expression_descriptor_signed_longlong(nullable);
         out_descriptor->length = mylite_mysql_ascii_function_display_length;
         return true;
     }
-    if (function_name_is_ord(name)) {
+    if (mylite_function_name_is_ord(name)) {
         *out_descriptor = mylite_expression_descriptor_signed_longlong(nullable);
         out_descriptor->length = mylite_mysql_ord_function_display_length;
         return true;
     }
-    if (function_name_has_search_result(name)) {
+    if (mylite_function_name_has_search_result(name)) {
         *out_descriptor = mylite_expression_descriptor_signed_longlong(nullable);
         out_descriptor->length = mylite_mysql_search_function_display_length;
         return true;
     }
     return false;
-}
-
-static bool function_name_has_text_result(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"CONCAT", "LOWER",  "LCASE",  "UPPER",
-                                        "UCASE",  "LEFT",   "RIGHT",  "REPLACE",
-                                        "IF",     "IFNULL", "NULLIF", "COALESCE"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_has_slice_string_result(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {
-        "CONCAT_WS", "SUBSTRING", "SUBSTR", "MID",   "SUBSTRING_INDEX", "TRIM",
-        "LTRIM",     "RTRIM",     "INSERT", "QUOTE", "REPEAT",          "SPACE",
-        "REVERSE",   "LPAD",      "RPAD",   "ELT",   "MAKE_SET"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_make_set(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"MAKE_SET"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_elt(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"ELT"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_quote(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"QUOTE"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_insert(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"INSERT"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_char(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"CHAR"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_hex(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"HEX"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_unhex(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"UNHEX"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_to_base64(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"TO_BASE64"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_from_base64(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"FROM_BASE64"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_format(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"FORMAT"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_has_binary_string_result(const struct mylite_sql_ast_node *name)
-{
-    if (function_name_is_unhex(name) || function_name_is_uuid_to_bin(name)) {
-        return true;
-    }
-    return function_name_is_from_base64(name);
-}
-
-static bool function_name_has_connection_string_result(const struct mylite_sql_ast_node *name)
-{
-    if (function_name_is_hex(name) || function_name_is_to_base64(name) ||
-        function_name_is_bin_to_uuid(name) || function_name_is_format(name)) {
-        return true;
-    }
-    return function_name_has_base_conversion_result(name);
-}
-
-static bool function_name_has_base_conversion_result(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"BIN", "OCT", "CONV"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_field(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"FIELD"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_find_in_set(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"FIND_IN_SET"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_greatest_least(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"GREATEST", "LEAST"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_strcmp(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"STRCMP"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_date_extraction(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"DATE"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_datediff(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"DATEDIFF"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_timestampdiff(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"TIMESTAMPDIFF"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_to_days(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"TO_DAYS"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_to_seconds(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"TO_SECONDS"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_from_days(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"FROM_DAYS"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_time_extraction(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"TIME"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_year_part(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"YEAR"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_month_part(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"MONTH"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_day_part(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"DAY", "DAYOFMONTH"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_hour_part(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"HOUR"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_minute_part(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"MINUTE"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_second_part(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"SECOND"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_extract(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"EXTRACT"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }
 
 static bool extract_interval_unit_supported(enum mylite_sql_ast_interval_unit unit)
@@ -6884,15 +6585,6 @@ static bool extract_interval_unit_supported(enum mylite_sql_ast_interval_unit un
     return false;
 }
 
-static bool function_name_is_date_interval_arithmetic(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {
-        "TIMESTAMPADD", "DATE_ADD", "DATE_SUB", "ADDDATE", "SUBDATE",
-    };
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
 static bool interval_unit_has_time_part(enum mylite_sql_ast_interval_unit unit)
 {
     if (unit == MYLITE_SQL_AST_INTERVAL_UNIT_HOUR) {
@@ -6902,197 +6594,6 @@ static bool interval_unit_has_time_part(enum mylite_sql_ast_interval_unit unit)
         return true;
     }
     return unit == MYLITE_SQL_AST_INTERVAL_UNIT_SECOND;
-}
-
-static bool function_name_is_concat_ws(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"CONCAT_WS"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_uses_source_length(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"TRIM", "LTRIM", "RTRIM", "SUBSTRING_INDEX"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_charset(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"CHARSET"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_collation(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"COLLATION"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_coercibility(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"COERCIBILITY"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_charset_collation_introspection(const struct mylite_sql_ast_node *name)
-{
-    if (function_name_is_charset(name) || function_name_is_collation(name)) {
-        return true;
-    }
-    return function_name_is_coercibility(name);
-}
-
-static bool function_name_has_length_result(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"LENGTH", "OCTET_LENGTH", "CHAR_LENGTH", "CHARACTER_LENGTH",
-                                        "BIT_LENGTH"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_bit_count(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"BIT_COUNT"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_crc32(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"CRC32"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_inet_aton(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"INET_ATON"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_inet_ntoa(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"INET_NTOA"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_is_uuid(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"IS_UUID"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_uuid_to_bin(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"UUID_TO_BIN"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_bin_to_uuid(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"BIN_TO_UUID"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_ascii(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"ASCII"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_ord(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"ORD"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_has_search_result(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"LOCATE", "POSITION", "INSTR"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_has_integer_result(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"SIGN", "FLOOR", "CEIL", "CEILING"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_exp(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"EXP"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_logarithm(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"LN", "LOG", "LOG2", "LOG10"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_power(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"POW", "POWER"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_sqrt(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"SQRT"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_trigonometric(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"SIN", "COS", "TAN", "COT"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_inverse_trigonometric(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"ACOS", "ASIN", "ATAN", "ATAN2"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_is_angle_conversion(const struct mylite_sql_ast_node *name)
-{
-    static const char *const names[] = {"DEGREES", "RADIANS"};
-
-    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
-}
-
-static bool function_name_matches_any(const struct mylite_sql_ast_node *name,
-                                      const char *const *candidates, size_t candidate_count)
-{
-    if (name == NULL) {
-        return false;
-    }
-    for (size_t index = 0U; index < candidate_count; ++index) {
-        if (mylite_span_equal_ci(name->span, candidates[index])) {
-            return true;
-        }
-    }
-    return false;
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
@@ -11670,11 +11171,11 @@ static int evaluate_statement_session_function(
     if (name == NULL || name->kind != MYLITE_SQL_AST_IDENTIFIER) {
         return -1;
     }
-    if (function_name_is_strcmp(name)) {
+    if (mylite_function_name_is_strcmp(name)) {
         return evaluate_strcmp_function(stmt, function_call, expression_context, warnings, table,
                                         out_value);
     }
-    if (function_name_is_charset_collation_introspection(name)) {
+    if (mylite_function_name_is_charset_collation_introspection(name)) {
         return evaluate_charset_collation_function(stmt, function_call, expression_context,
                                                    warnings, table, out_value);
     }
@@ -12094,13 +11595,13 @@ static int set_charset_collation_function_result(mylite_db *database,
                                                  const struct mylite_charset_collation_info *info,
                                                  struct mylite_expression_value *out_value)
 {
-    if (function_name_is_charset(name)) {
+    if (mylite_function_name_is_charset(name)) {
         return mylite_session_set_text_function_value(database, info->character_set, out_value);
     }
-    if (function_name_is_collation(name)) {
+    if (mylite_function_name_is_collation(name)) {
         return mylite_session_set_text_function_value(database, info->collation, out_value);
     }
-    if (function_name_is_coercibility(name)) {
+    if (mylite_function_name_is_coercibility(name)) {
         *out_value = (struct mylite_expression_value){
             .kind = MYLITE_EXPRESSION_VALUE_INT64,
             .int64_value = info->coercibility,
@@ -12328,22 +11829,22 @@ static int infer_function_collation_info(mylite_db *database,
     const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
 
-    if (function_name_is_char(name)) {
+    if (mylite_function_name_is_char(name)) {
         return infer_char_function_collation_info(database, expression, out_info);
     }
-    if (function_name_has_binary_string_result(name)) {
+    if (mylite_function_name_has_binary_string_result(name)) {
         *out_info = binary_collation_info(mylite_mysql_coercibility_coercible);
         return MYLITE_OK;
     }
-    if (function_name_has_connection_string_result(name)) {
+    if (mylite_function_name_has_connection_string_result(name)) {
         *out_info = connection_collation_info(database, mylite_mysql_coercibility_coercible);
         return MYLITE_OK;
     }
-    if (function_name_is_inet_ntoa(name)) {
+    if (mylite_function_name_is_inet_ntoa(name)) {
         *out_info = connection_collation_info(database, mylite_mysql_coercibility_coercible);
         return MYLITE_OK;
     }
-    if (function_name_is_charset(name) || function_name_is_collation(name)) {
+    if (mylite_function_name_is_charset(name) || mylite_function_name_is_collation(name)) {
         *out_info = utf8mb3_general_collation_info(mylite_mysql_coercibility_coercible);
         return MYLITE_OK;
     }
@@ -12374,12 +11875,13 @@ static int infer_function_collation_info(mylite_db *database,
         return infer_function_arguments_collation_info(database, context, arguments, 0U, false,
                                                        out_info);
     }
-    if (function_name_is_quote(name)) {
+    if (mylite_function_name_is_quote(name)) {
         return infer_quote_function_collation_info(database, context, arguments, out_info);
     }
-    if (function_name_has_text_result(name) || function_name_has_slice_string_result(name)) {
+    if (mylite_function_name_has_text_result(name) ||
+        mylite_function_name_has_slice_string_result(name)) {
         size_t first_argument =
-            function_name_is_make_set(name) || function_name_is_elt(name) ? 1U : 0U;
+            mylite_function_name_is_make_set(name) || mylite_function_name_is_elt(name) ? 1U : 0U;
 
         return infer_function_arguments_collation_info(database, context, arguments, first_argument,
                                                        true, out_info);
@@ -12445,10 +11947,11 @@ function_name_has_binary_numeric_collation_result(const struct mylite_sql_ast_no
 {
     struct mylite_field_descriptor descriptor = mylite_expression_descriptor_defaults();
 
-    if (function_name_is_coercibility(name) || function_name_has_length_result(name) ||
-        function_name_is_bit_count(name) || function_name_is_crc32(name) ||
-        function_name_is_inet_aton(name) || function_name_is_is_uuid(name) ||
-        function_name_has_integer_result(name) || function_name_is_strcmp(name)) {
+    if (mylite_function_name_is_coercibility(name) ||
+        mylite_function_name_has_length_result(name) || mylite_function_name_is_bit_count(name) ||
+        mylite_function_name_is_crc32(name) || mylite_function_name_is_inet_aton(name) ||
+        mylite_function_name_is_is_uuid(name) || mylite_function_name_has_integer_result(name) ||
+        mylite_function_name_is_strcmp(name)) {
         return true;
     }
     if (infer_code_search_function_descriptor(name, true, &descriptor) ||
@@ -12459,10 +11962,12 @@ function_name_has_binary_numeric_collation_result(const struct mylite_sql_ast_no
         return false;
     }
     if (mylite_span_equal_ci(name->span, "PI") || mylite_span_equal_ci(name->span, "MOD") ||
-        function_name_is_exp(name) || function_name_is_logarithm(name) ||
-        function_name_is_power(name) || function_name_is_sqrt(name) ||
-        function_name_is_trigonometric(name) || function_name_is_inverse_trigonometric(name) ||
-        function_name_is_angle_conversion(name) || mylite_span_equal_ci(name->span, "ISNULL") ||
+        mylite_function_name_is_exp(name) || mylite_function_name_is_logarithm(name) ||
+        mylite_function_name_is_power(name) || mylite_function_name_is_sqrt(name) ||
+        mylite_function_name_is_trigonometric(name) ||
+        mylite_function_name_is_inverse_trigonometric(name) ||
+        mylite_function_name_is_angle_conversion(name) ||
+        mylite_span_equal_ci(name->span, "ISNULL") ||
         mylite_span_equal_ci(name->span, "LAST_INSERT_ID") ||
         mylite_span_equal_ci(name->span, "CONNECTION_ID")) {
         return true;

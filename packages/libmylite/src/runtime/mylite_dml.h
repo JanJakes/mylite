@@ -33,6 +33,18 @@ int mylite_dml_write_insert_candidate_row(mylite_db *database, sqlite3_stmt *ins
                                           const struct mylite_insert_table *table,
                                           const struct mylite_insert_bound_value *values,
                                           struct mylite_insert_execution_state *state);
+int mylite_dml_execute_insert_row(mylite_db *database, const struct mylite_insert_values_plan *plan,
+                                  sqlite3_stmt *insert, const struct mylite_insert_table *table,
+                                  const struct mylite_insert_row_column_indexes *column_indexes,
+                                  struct mylite_insert_execution_state *state, size_t row_index);
+int mylite_dml_execute_insert_set_row(mylite_db *database, const char *schema_name,
+                                      const struct mylite_insert_values_plan *values_plan,
+                                      const struct mylite_insert_set_plan *set_plan,
+                                      sqlite3_stmt *insert, const struct mylite_insert_table *table,
+                                      const size_t *column_indexes, size_t column_index_count,
+                                      struct mylite_insert_execution_state *state,
+                                      struct mylite_insert_bound_value *values,
+                                      struct mylite_insert_set_row_state *row_state);
 int mylite_dml_write_replace_candidate_row(mylite_db *database, sqlite3_stmt *insert,
                                            sqlite3_stmt *delete_stmt,
                                            const struct mylite_insert_table *table,

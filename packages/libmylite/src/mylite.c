@@ -24438,7 +24438,13 @@ static int execute_insert_values_transaction(mylite_stmt *stmt, const char *sche
     }
 
     for (size_t row_index = 0U; row_index < stmt->insert_values.row_count; ++row_index) {
-        status = execute_insert_row(stmt, insert, table, &row_column_indexes, &state, row_index);
+        if (stmt->insert_update.has_clause) {
+            status =
+                execute_insert_row(stmt, insert, table, &row_column_indexes, &state, row_index);
+        } else {
+            status = mylite_dml_execute_insert_row(stmt->database, &stmt->insert_values, insert,
+                                                   table, &row_column_indexes, &state, row_index);
+        }
         if (status != MYLITE_OK) {
             break;
         }
@@ -24499,7 +24505,6 @@ static int execute_insert_row(mylite_stmt *stmt, sqlite3_stmt *insert,
                               struct mylite_insert_execution_state *state, size_t row_index)
 {
     struct mylite_insert_bound_value *values = NULL;
-    bool ignored = false;
     int status = MYLITE_OK;
 
     if (table->column_count == 0U) {
@@ -24517,17 +24522,9 @@ static int execute_insert_row(mylite_stmt *stmt, sqlite3_stmt *insert,
     status = mylite_dml_resolve_insert_row_values(
         stmt->database, &stmt->insert_values, table, column_indexes->insert_columns,
         stmt->insert_values.row_count, state, row_index, values);
-    if (status == MYLITE_OK && stmt->insert_update.has_clause) {
+    if (status == MYLITE_OK) {
         status = execute_insert_row_with_duplicate_update(stmt, insert, table, column_indexes,
                                                           state, values);
-    } else if (status == MYLITE_OK) {
-        status = mylite_dml_validate_insert_unique_indexes(
-            stmt->database, stmt->insert_values.table_name, stmt->insert_values.ignore, table,
-            values, state, &ignored);
-        if (status == MYLITE_OK && !ignored) {
-            status =
-                mylite_dml_write_insert_candidate_row(stmt->database, insert, table, values, state);
-        }
     }
 
     mylite_dml_insert_bound_values_deinit(values, table->column_count);
@@ -25249,8 +25246,15 @@ static int execute_insert_set_transaction(mylite_stmt *stmt, const char *schema_
         goto cleanup;
     }
 
-    status = execute_insert_set_row(stmt, schema_name, table, column_indexes, column_index_count,
-                                    insert, &row_column_indexes, &state, values, &row_state);
+    if (stmt->insert_update.has_clause) {
+        status =
+            execute_insert_set_row(stmt, schema_name, table, column_indexes, column_index_count,
+                                   insert, &row_column_indexes, &state, values, &row_state);
+    } else {
+        status = mylite_dml_execute_insert_set_row(
+            stmt->database, schema_name, &stmt->insert_values, &stmt->insert_set, insert, table,
+            column_indexes, column_index_count, &state, values, &row_state);
+    }
 
 cleanup:
     sqlite3_free(insert_sql);
@@ -25295,24 +25299,14 @@ static int execute_insert_set_row(mylite_stmt *stmt, const char *schema_name,
                                   struct mylite_insert_bound_value *values,
                                   struct mylite_insert_set_row_state *row_state)
 {
-    bool ignored = false;
     int status = mylite_dml_resolve_insert_set_row_values(
         stmt->database, schema_name, &stmt->insert_values, &stmt->insert_set, table, column_indexes,
         column_index_count, 1U, state, values, row_state);
-    if (status == MYLITE_OK && stmt->insert_update.has_clause) {
+    if (status == MYLITE_OK) {
         return execute_insert_row_with_duplicate_update(stmt, insert, table, row_column_indexes,
                                                         state, values);
     }
-    if (status == MYLITE_OK) {
-        status = mylite_dml_validate_insert_unique_indexes(
-            stmt->database, stmt->insert_values.table_name, stmt->insert_values.ignore, table,
-            values, state, &ignored);
-    }
-    if (status != MYLITE_OK || ignored) {
-        return status;
-    }
-
-    return mylite_dml_write_insert_candidate_row(stmt->database, insert, table, values, state);
+    return status;
 }
 
 static int execute_replace_values_transaction(mylite_stmt *stmt, const char *schema_name,

@@ -131,6 +131,76 @@ int mylite_dml_write_insert_candidate_row(mylite_db *database, sqlite3_stmt *ins
     return status;
 }
 
+int mylite_dml_execute_insert_row(mylite_db *database, const struct mylite_insert_values_plan *plan,
+                                  sqlite3_stmt *insert, const struct mylite_insert_table *table,
+                                  const struct mylite_insert_row_column_indexes *column_indexes,
+                                  struct mylite_insert_execution_state *state, size_t row_index)
+{
+    struct mylite_insert_bound_value *values = NULL;
+    bool ignored = false;
+    int status = MYLITE_OK;
+
+    if (database == NULL || plan == NULL || insert == NULL || table == NULL ||
+        column_indexes == NULL || state == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (table->column_count == 0U) {
+        (void)mylite_diagnostics_set_error_message(database, "INSERT target table has no columns");
+        return MYLITE_EXEC_ERROR;
+    }
+
+    values = calloc(table->column_count, sizeof(*values));
+    if (values == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    status =
+        mylite_dml_resolve_insert_row_values(database, plan, table, column_indexes->insert_columns,
+                                             plan->row_count, state, row_index, values);
+    if (status == MYLITE_OK) {
+        status = mylite_dml_validate_insert_unique_indexes(database, plan->table_name, plan->ignore,
+                                                           table, values, state, &ignored);
+    }
+    if (status == MYLITE_OK && !ignored) {
+        status = mylite_dml_write_insert_candidate_row(database, insert, table, values, state);
+    }
+
+    mylite_dml_insert_bound_values_deinit(values, table->column_count);
+    return status;
+}
+
+int mylite_dml_execute_insert_set_row(mylite_db *database, const char *schema_name,
+                                      const struct mylite_insert_values_plan *values_plan,
+                                      const struct mylite_insert_set_plan *set_plan,
+                                      sqlite3_stmt *insert, const struct mylite_insert_table *table,
+                                      const size_t *column_indexes, size_t column_index_count,
+                                      struct mylite_insert_execution_state *state,
+                                      struct mylite_insert_bound_value *values,
+                                      struct mylite_insert_set_row_state *row_state)
+{
+    bool ignored = false;
+    int status = MYLITE_OK;
+
+    if (database == NULL || values_plan == NULL || set_plan == NULL || insert == NULL ||
+        table == NULL || state == NULL || values == NULL || row_state == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    status = mylite_dml_resolve_insert_set_row_values(database, schema_name, values_plan, set_plan,
+                                                      table, column_indexes, column_index_count, 1U,
+                                                      state, values, row_state);
+    if (status == MYLITE_OK) {
+        status = mylite_dml_validate_insert_unique_indexes(
+            database, values_plan->table_name, values_plan->ignore, table, values, state, &ignored);
+    }
+    if (status != MYLITE_OK || ignored) {
+        return status;
+    }
+
+    return mylite_dml_write_insert_candidate_row(database, insert, table, values, state);
+}
+
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 int mylite_dml_write_replace_candidate_row(mylite_db *database, sqlite3_stmt *insert,
                                            sqlite3_stmt *delete_stmt,

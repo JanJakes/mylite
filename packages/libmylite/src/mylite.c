@@ -8,6 +8,7 @@
 #include "runtime/mylite_connection.h"
 #include "runtime/mylite_diagnostics.h"
 #include "runtime/mylite_dml.h"
+#include "runtime/mylite_error_codes.h"
 #include "runtime/mylite_metadata.h"
 #include "runtime/mylite_runtime.h"
 #include "runtime/mylite_schema.h"

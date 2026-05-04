@@ -1,5 +1,6 @@
 #include "mylite_diagnostics.h"
 
+#include "mylite_error_codes.h"
 #include "sqlite3.h"
 
 #include <stdlib.h>

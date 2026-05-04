@@ -194,7 +194,7 @@ Rules for future moves:
 - [x] Move shared runtime structs and enums from `mylite.c` into
   `src/runtime/mylite_runtime.h`.
 - [ ] Classify every remaining type in `mylite_runtime.h` by owner module.
-- [ ] Add `mylite_error_codes.h`; move `enum mylite_mysql_condition_code` out
+- [x] Add `mylite_error_codes.h`; move `enum mylite_mysql_condition_code` out
   of `mylite_runtime.h`.
 - [ ] Add `mylite_field_descriptor.h`; move `struct mylite_field_descriptor`
   and `enum mylite_format_metadata_length`.

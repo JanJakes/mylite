@@ -2,6 +2,7 @@
 
 #include "mylite_catalog.h"
 #include "mylite_diagnostics.h"
+#include "mylite_error_codes.h"
 #include "mylite_span.h"
 #include "sqlite3.h"
 

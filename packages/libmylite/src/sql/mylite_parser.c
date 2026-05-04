@@ -5059,6 +5059,35 @@ mylite_sql_parser_make_aggregate_star_call(struct mylite_sql_parser_state *state
     return call;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_count_distinct_call(
+    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
+    struct mylite_sql_token left_paren, struct mylite_sql_ast_node *arguments,
+    struct mylite_sql_token right_paren)
+{
+    struct mylite_sql_source_span span = name == NULL ? span_from_token(&left_paren) : name->span;
+    struct mylite_sql_ast_node *call = NULL;
+
+    if (aggregate_kind_from_name(name == NULL ? (struct mylite_sql_source_span){0} : name->span) !=
+            MYLITE_SQL_AST_AGGREGATE_COUNT ||
+        arguments == NULL || mylite_sql_ast_node_child_count(arguments) == 0U) {
+        mylite_sql_parser_state_parse_failed(state);
+        return NULL;
+    }
+
+    (void)left_paren;
+    span = span_join(span, span_from_token(&right_paren));
+    call = make_node(state, MYLITE_SQL_AST_AGGREGATE_CALL, span);
+    if (name == NULL || call == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_aggregate(call, MYLITE_SQL_AST_AGGREGATE_COUNT,
+                                      MYLITE_SQL_AST_AGGREGATE_ARGUMENT_DISTINCT_EXPRESSION_LIST);
+    mylite_sql_ast_node_append_child(call, name);
+    mylite_sql_ast_node_append_child(call, arguments);
+    return call;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_cast_expression(
     struct mylite_sql_parser_state *state, struct mylite_sql_token cast_token,
     struct mylite_sql_ast_node *expression, struct mylite_sql_ast_node *target_type,

@@ -3105,6 +3105,9 @@ primary_expression(A) ::= convert_expression(B). {
 primary_expression(A) ::= case_expression(B). {
     A = B;
 }
+primary_expression(A) ::= aggregate_distinct_call(B). {
+    A = B;
+}
 primary_expression(A) ::= aggregate_star_call(B). {
     A = B;
 }
@@ -3294,6 +3297,10 @@ aggregate_star_call(A) ::= function_name(B) LPAREN(L) STAR(S) RPAREN(R). {
             .star = S,
             .right_paren = R,
         });
+}
+
+aggregate_distinct_call(A) ::= function_name(B) LPAREN(L) DISTINCT expression_list(C) RPAREN(R). {
+    A = mylite_sql_parser_make_count_distinct_call(state, B, L, C, R);
 }
 
 scalar_function_call(A) ::= function_name(B) LPAREN(L) RPAREN(R). {

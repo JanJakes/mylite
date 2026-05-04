@@ -1396,6 +1396,8 @@ mylite_sql_ast_aggregate_argument_name(enum mylite_sql_ast_aggregate_argument ag
         return "star";
     case MYLITE_SQL_AST_AGGREGATE_ARGUMENT_EXPRESSION:
         return "expression";
+    case MYLITE_SQL_AST_AGGREGATE_ARGUMENT_DISTINCT_EXPRESSION_LIST:
+        return "distinct expression list";
     }
 
     return "unknown";

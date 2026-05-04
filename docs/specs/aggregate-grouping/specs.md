@@ -37,7 +37,8 @@ Out of scope for the first implementable slice:
 
 - joins, comma joins, derived tables, CTEs, views, subqueries, set operations,
   lateral references, table functions, and information-schema aggregate queries
-- `DISTINCT`, `DISTINCTROW`, and `COUNT(DISTINCT ...)`
+- `DISTINCT`, `DISTINCTROW`, and aggregate-local `DISTINCT` forms other than
+  `COUNT(DISTINCT ...)`
 - `GROUP BY ... WITH ROLLUP` and `GROUPING()`
 - window-function execution and aggregate `OVER (...)` clauses
 - aggregate functions beyond `COUNT`, `SUM`, `AVG`, `MIN`, and `MAX`, including
@@ -85,6 +86,7 @@ metadata, and statement side effects.
   - `docs/specs/result-metadata-expression-labels/specs.md`
   - `docs/specs/scalar-built-in-functions/specs.md`
   - `docs/specs/case-expression/specs.md`
+  - `docs/specs/count-distinct-aggregate/specs.md`
   - `docs/specs/create-table-base-execution/specs.md`
   - `docs/specs/create-table-indexes/specs.md`
 
@@ -437,10 +439,10 @@ aggregate_name(A) ::= MIN.   { A = MYLITE_AGG_MIN; }
 aggregate_name(A) ::= MAX.   { A = MYLITE_AGG_MAX; }
 ```
 
-The first runtime slice may parse `DISTINCT` aggregate forms only to return an
-explicit unsupported diagnostic. `SUM(DISTINCT ...)`, `AVG(DISTINCT ...)`,
-`MIN(DISTINCT ...)`, and `MAX(DISTINCT ...)` should remain unsupported until
-their deduplication behavior and metadata are specified.
+`COUNT(DISTINCT ...)` is specified and implemented separately in
+`docs/specs/count-distinct-aggregate/specs.md`. `SUM(DISTINCT ...)`,
+`AVG(DISTINCT ...)`, `MIN(DISTINCT ...)`, and `MAX(DISTINCT ...)` should remain
+unsupported until their deduplication behavior and metadata are specified.
 
 ## Analyzer semantics
 
@@ -521,7 +523,9 @@ be deferred, but the design should avoid making that hard to add.
 - `COUNT(expr)` evaluates `expr` per accepted row and counts non-`NULL` results.
 - Result type is MySQL `LONGLONG`, length `21`, decimals `0`, not nullable.
 - `COUNT()` and `COUNT(*, expr)` are syntax errors in MySQL.
-- `COUNT(DISTINCT ...)` is deferred.
+- `COUNT(DISTINCT expr [, expr ...])` counts distinct non-`NULL` argument
+  tuples in the currently supported aggregate execution surfaces. See
+  `docs/specs/count-distinct-aggregate/specs.md`.
 
 ### `SUM`
 
@@ -599,7 +603,7 @@ expectations:
 | deferred primary-key dependence | `SELECT id, name, MAX(age) FROM fd_t GROUP BY id` | MySQL returns `(1,'ann',10)`, `(2,'bob',20)`; MyLite first slice rejects with 1055 until functional-dependence proof is implemented |
 | unresolved group key | `SELECT COUNT(*) FROM t GROUP BY missing_col` | error 1054 / `42S22` |
 | invalid aggregate arity | `SELECT COUNT() FROM t` | syntax error 1064 / `42000` |
-| deferred distinct aggregate | `SELECT COUNT(DISTINCT grp) FROM t` | initially unsupported by MyLite; MySQL result is `2` |
+| count distinct aggregate | `SELECT COUNT(DISTINCT grp) FROM t` | one row: `2` |
 | ambiguous alias | `SELECT COUNT(col1) AS col2 FROM alias_t GROUP BY col2 HAVING col2 = 2` | result `2`; warnings 1052 for group and having ambiguity |
 | metadata | `SELECT COUNT(*), SUM(n), AVG(n), SUM(decv), AVG(decv), MIN(n), MAX(txt) FROM t` | descriptors match the metadata table above where MyLite exposes fields |
 
@@ -615,8 +619,9 @@ aggregate results and `HAVING`-filtered empty result sets.
   this first implementation slice.
 - Implement aggregate execution in MyLite so diagnostics, warnings, metadata,
   and type conversion remain MySQL-facing rather than SQLite-facing.
-- Defer `COUNT(DISTINCT)` even though it is a top-priority feature row, because
-  it depends on duplicate-elimination semantics that also affect `DISTINCT`.
+- Implement `COUNT(DISTINCT)` through MyLite-owned aggregate state, using the
+  current duplicate comparison semantics already shared with top-level
+  `SELECT DISTINCT`.
 - Defer `WITH ROLLUP` and `GROUPING()` as a separate grouping modifier feature.
 - Do not expose SQLite aggregate names or SQLite permissive grouping behavior
   through the MyLite SQL surface.

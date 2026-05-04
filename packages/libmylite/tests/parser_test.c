@@ -7297,6 +7297,20 @@ static int test_aggregate_grouping_syntax(void)
                               MYLITE_SQL_AST_AGGREGATE_ARGUMENT_STAR, "COUNT", "having COUNT star");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SELECT COUNT(DISTINCT n, nullable + 1) AS c FROM t;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    failures += expect_aggregate_call(child_at(child_at(select_list, 0U), 0U),
+                                      MYLITE_SQL_AST_AGGREGATE_COUNT,
+                                      MYLITE_SQL_AST_AGGREGATE_ARGUMENT_DISTINCT_EXPRESSION_LIST,
+                                      "COUNT", "COUNT distinct aggregate");
+    failures += expect_node(child_at(child_at(child_at(select_list, 0U), 0U), 1U),
+                            MYLITE_SQL_AST_EXPRESSION_LIST, "COUNT distinct arguments");
+    failures += expect_child_count(child_at(child_at(child_at(select_list, 0U), 0U), 1U), 2U,
+                                   "COUNT distinct argument count");
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("SELECT COUNT(*);", MYLITE_SQL_PARSE_OK, &result);
     select = child_at(result.root, 0U);
     failures += expect_aggregate_call(
@@ -7311,6 +7325,16 @@ static int test_aggregate_grouping_syntax(void)
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT COUNT(*, n) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT COUNT(DISTINCT) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT COUNT(DISTINCT *) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT SUM(DISTINCT n) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT SUM(*) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

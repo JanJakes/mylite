@@ -892,6 +892,8 @@ struct mylite_select_aggregate_binding {
     enum mylite_sql_ast_aggregate_kind kind;
     enum mylite_sql_ast_aggregate_argument argument_kind;
     struct mylite_field_descriptor descriptor;
+    struct mylite_field_descriptor *argument_descriptors;
+    size_t argument_descriptor_count;
 };
 
 struct mylite_select_limit {
@@ -1076,12 +1078,19 @@ struct mylite_table_select_join_materialize_state {
 
 struct mylite_select_aggregate_state {
     struct mylite_expression_value value;
+    struct mylite_count_distinct_tuple *distinct_tuples;
     uint64_t count;
     uint64_t non_null_count;
     double sum;
+    size_t distinct_tuple_count;
     bool integral_sum;
     bool unsigned_sum;
     bool has_value;
+};
+
+struct mylite_count_distinct_tuple {
+    struct mylite_expression_value *values;
+    size_t value_count;
 };
 
 struct mylite_aggregate_numeric_value {
@@ -2882,9 +2891,16 @@ static int add_select_group_key(struct mylite_select_plan *plan,
                                 const struct mylite_select_group_key *group_key);
 static int add_select_aggregate_binding(struct mylite_select_plan *plan,
                                         const struct mylite_select_aggregate_binding *binding);
+static void select_aggregate_binding_deinit(struct mylite_select_aggregate_binding *binding);
 static int collect_select_aggregate_bindings(mylite_db *database,
                                              const struct mylite_sql_ast_node *expression,
                                              struct mylite_select_plan *plan);
+static int bind_select_count_distinct_arguments(mylite_db *database,
+                                                const struct mylite_sql_ast_node *arguments,
+                                                struct mylite_select_plan *plan);
+static int infer_count_distinct_argument_descriptors(
+    mylite_db *database, const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *arguments, struct mylite_select_aggregate_binding *binding);
 static void clear_select_aggregate_bindings(struct mylite_select_plan *plan);
 static void mark_select_output_order_reference(struct mylite_select_plan *plan,
                                                size_t output_index);
@@ -3673,10 +3689,29 @@ update_table_select_aggregate_state(mylite_stmt *stmt, struct mylite_select_aggr
                                     const struct mylite_select_aggregate_binding *binding,
                                     const struct mylite_table_select_row *row);
 static int
+update_table_select_count_distinct_state(mylite_stmt *stmt,
+                                         struct mylite_select_aggregate_state *state,
+                                         const struct mylite_select_aggregate_binding *binding,
+                                         const struct mylite_table_select_row *row);
+static int evaluate_table_select_count_distinct_tuple(
+    mylite_stmt *stmt, const struct mylite_select_aggregate_binding *binding,
+    const struct mylite_table_select_row *row, struct mylite_count_distinct_tuple *out_tuple,
+    bool *out_has_null);
+static bool count_distinct_tuple_exists(const struct mylite_select_aggregate_state *state,
+                                        const struct mylite_count_distinct_tuple *tuple,
+                                        const struct mylite_select_aggregate_binding *binding);
+static bool count_distinct_tuples_equal(const struct mylite_count_distinct_tuple *left,
+                                        const struct mylite_count_distinct_tuple *right,
+                                        const struct mylite_select_aggregate_binding *binding);
+static int append_count_distinct_tuple(struct mylite_select_aggregate_state *state,
+                                       struct mylite_count_distinct_tuple *tuple);
+static int
 finalize_table_select_aggregate_state(mylite_stmt *stmt,
                                       const struct mylite_select_aggregate_state *state,
                                       const struct mylite_select_aggregate_binding *binding,
                                       struct mylite_expression_value *out_value);
+static void count_distinct_tuple_deinit(struct mylite_count_distinct_tuple *tuple);
+static void select_aggregate_state_deinit(struct mylite_select_aggregate_state *state);
 static int evaluate_table_select_aggregate_argument(
     mylite_stmt *stmt, const struct mylite_select_aggregate_binding *binding,
     const struct mylite_table_select_row *row, struct mylite_expression_value *out_value);
@@ -4435,6 +4470,14 @@ static int resolve_insert_text_value(mylite_stmt *stmt,
                                      const struct mylite_insert_table_column *column,
                                      const char *text, struct mylite_insert_execution_state *state,
                                      struct mylite_insert_bound_value *out_value);
+static int resolve_insert_quoted_text_value(mylite_stmt *stmt,
+                                            const struct mylite_insert_table_column *column,
+                                            const char *text,
+                                            struct mylite_insert_execution_state *state,
+                                            struct mylite_insert_bound_value *out_value);
+static bool insert_column_uses_text_storage(const struct mylite_insert_table_column *column);
+static int set_insert_bound_text_value(mylite_stmt *stmt, const char *text,
+                                       struct mylite_insert_bound_value *out_value);
 static int allocate_insert_auto_increment(mylite_stmt *stmt,
                                           struct mylite_insert_execution_state *state,
                                           struct mylite_insert_bound_value *out_value);
@@ -4640,6 +4683,11 @@ static int evaluate_scalar_select_expression(mylite_stmt *stmt,
 static int evaluate_scalar_aggregate_expression(mylite_stmt *stmt,
                                                 const struct mylite_sql_ast_node *expression,
                                                 struct mylite_expression_value *out_value);
+static int
+evaluate_scalar_count_distinct_expression(mylite_stmt *stmt,
+                                          const struct mylite_sql_ast_node *arguments,
+                                          const struct mylite_expression_eval_context *context,
+                                          struct mylite_expression_value *out_value);
 static int evaluate_scalar_numeric_aggregate_expression(
     mylite_stmt *stmt, enum mylite_sql_ast_aggregate_kind aggregate_kind,
     const struct mylite_expression_value *argument, struct mylite_expression_value *out_value);
@@ -16348,13 +16396,82 @@ static int bind_select_aggregate_call(mylite_db *database,
         if (status != MYLITE_OK) {
             return status;
         }
+    } else if (binding.argument_kind ==
+               MYLITE_SQL_AST_AGGREGATE_ARGUMENT_DISTINCT_EXPRESSION_LIST) {
+        status = bind_select_count_distinct_arguments(database, binding.argument, plan);
+        if (status != MYLITE_OK) {
+            return status;
+        }
     }
     status = infer_aggregate_expression_descriptor(database, plan, expression, &binding.descriptor);
+    if (status == MYLITE_OK &&
+        binding.argument_kind == MYLITE_SQL_AST_AGGREGATE_ARGUMENT_DISTINCT_EXPRESSION_LIST) {
+        status =
+            infer_count_distinct_argument_descriptors(database, plan, binding.argument, &binding);
+    }
     if (status != MYLITE_OK) {
+        select_aggregate_binding_deinit(&binding);
         return status;
     }
     plan->has_aggregate = true;
-    return add_select_aggregate_binding(plan, &binding);
+    status = add_select_aggregate_binding(plan, &binding);
+    if (status != MYLITE_OK) {
+        select_aggregate_binding_deinit(&binding);
+    }
+    return status;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int bind_select_count_distinct_arguments(mylite_db *database,
+                                                const struct mylite_sql_ast_node *arguments,
+                                                struct mylite_select_plan *plan)
+{
+    if (arguments == NULL || arguments->kind != MYLITE_SQL_AST_EXPRESSION_LIST ||
+        arguments->first_child == NULL) {
+        return set_select_invalid_group_function_error(database);
+    }
+
+    for (const struct mylite_sql_ast_node *argument = arguments->first_child; argument != NULL;
+         argument = argument->next_sibling) {
+        int status = bind_select_predicate_expression(database, argument, plan);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int infer_count_distinct_argument_descriptors(
+    mylite_db *database, const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *arguments, struct mylite_select_aggregate_binding *binding)
+{
+    size_t argument_count = mylite_sql_ast_node_child_count(arguments);
+
+    if (argument_count == 0U) {
+        return set_select_invalid_group_function_error(database);
+    }
+
+    binding->argument_descriptors = calloc(argument_count, sizeof(*binding->argument_descriptors));
+    if (binding->argument_descriptors == NULL) {
+        (void)set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    binding->argument_descriptor_count = argument_count;
+
+    size_t index = 0U;
+    for (const struct mylite_sql_ast_node *argument = arguments->first_child; argument != NULL;
+         argument = argument->next_sibling) {
+        int status = infer_expression_descriptor(database, plan, argument, NULL,
+                                                 &binding->argument_descriptors[index]);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        ++index;
+    }
+    return MYLITE_OK;
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
@@ -18268,6 +18385,16 @@ static int add_select_aggregate_binding(struct mylite_select_plan *plan,
     return MYLITE_OK;
 }
 
+static void select_aggregate_binding_deinit(struct mylite_select_aggregate_binding *binding)
+{
+    if (binding == NULL) {
+        return;
+    }
+
+    free(binding->argument_descriptors);
+    *binding = (struct mylite_select_aggregate_binding){0};
+}
+
 // NOLINTNEXTLINE(misc-no-recursion)
 static int collect_select_aggregate_bindings(mylite_db *database,
                                              const struct mylite_sql_ast_node *expression,
@@ -18286,11 +18413,20 @@ static int collect_select_aggregate_bindings(mylite_db *database,
         int status =
             infer_aggregate_expression_descriptor(database, plan, expression, &binding.descriptor);
 
+        if (status == MYLITE_OK &&
+            binding.argument_kind == MYLITE_SQL_AST_AGGREGATE_ARGUMENT_DISTINCT_EXPRESSION_LIST) {
+            status = infer_count_distinct_argument_descriptors(database, plan, binding.argument,
+                                                               &binding);
+        }
+        if (status == MYLITE_OK) {
+            status = add_select_aggregate_binding(plan, &binding);
+        }
         if (status != MYLITE_OK) {
+            select_aggregate_binding_deinit(&binding);
             return status;
         }
         plan->has_aggregate = true;
-        return add_select_aggregate_binding(plan, &binding);
+        return MYLITE_OK;
     }
     if (expression->kind == MYLITE_SQL_AST_QUANTIFIED_COMPARISON) {
         return collect_select_aggregate_bindings(database, child_at(expression, 0U), plan);
@@ -18313,6 +18449,9 @@ static void clear_select_aggregate_bindings(struct mylite_select_plan *plan)
         return;
     }
 
+    for (size_t index = 0U; index < plan->aggregate_binding_count; ++index) {
+        select_aggregate_binding_deinit(&plan->aggregate_bindings[index]);
+    }
     free(plan->aggregate_bindings);
     plan->aggregate_bindings = NULL;
     plan->aggregate_binding_count = 0U;
@@ -31479,6 +31618,9 @@ update_table_select_aggregate_state(mylite_stmt *stmt, struct mylite_select_aggr
     if (binding->argument_kind == MYLITE_SQL_AST_AGGREGATE_ARGUMENT_STAR) {
         return MYLITE_OK;
     }
+    if (binding->argument_kind == MYLITE_SQL_AST_AGGREGATE_ARGUMENT_DISTINCT_EXPRESSION_LIST) {
+        return update_table_select_count_distinct_state(stmt, state, binding, row);
+    }
 
     status = evaluate_table_select_aggregate_argument(stmt, binding, row, &value);
     if (status != MYLITE_OK) {
@@ -31533,6 +31675,154 @@ update_table_select_aggregate_state(mylite_stmt *stmt, struct mylite_select_aggr
         (void)set_error_message(stmt->database, "out of memory");
     }
     return status;
+}
+
+static int
+update_table_select_count_distinct_state(mylite_stmt *stmt,
+                                         struct mylite_select_aggregate_state *state,
+                                         const struct mylite_select_aggregate_binding *binding,
+                                         const struct mylite_table_select_row *row)
+{
+    struct mylite_count_distinct_tuple tuple = {0};
+    bool has_null = false;
+    int status = evaluate_table_select_count_distinct_tuple(stmt, binding, row, &tuple, &has_null);
+
+    if (status != MYLITE_OK) {
+        count_distinct_tuple_deinit(&tuple);
+        return status;
+    }
+    if (has_null || count_distinct_tuple_exists(state, &tuple, binding)) {
+        count_distinct_tuple_deinit(&tuple);
+        return MYLITE_OK;
+    }
+
+    status = append_count_distinct_tuple(state, &tuple);
+    if (status != MYLITE_OK) {
+        count_distinct_tuple_deinit(&tuple);
+        if (status == MYLITE_NOMEM) {
+            (void)set_error_message(stmt->database, "out of memory");
+        }
+        return status;
+    }
+    if (state->non_null_count != UINT64_MAX) {
+        ++state->non_null_count;
+    }
+    return MYLITE_OK;
+}
+
+static int evaluate_table_select_count_distinct_tuple(
+    mylite_stmt *stmt, const struct mylite_select_aggregate_binding *binding,
+    const struct mylite_table_select_row *row, struct mylite_count_distinct_tuple *out_tuple,
+    bool *out_has_null)
+{
+    size_t value_count = mylite_sql_ast_node_child_count(binding->argument);
+
+    *out_tuple = (struct mylite_count_distinct_tuple){0};
+    *out_has_null = false;
+    if (value_count == 0U) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    out_tuple->values = calloc(value_count, sizeof(*out_tuple->values));
+    if (out_tuple->values == NULL) {
+        (void)set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    out_tuple->value_count = value_count;
+
+    size_t index = 0U;
+    for (const struct mylite_sql_ast_node *argument = binding->argument->first_child;
+         argument != NULL; argument = argument->next_sibling) {
+        struct mylite_select_aggregate_binding argument_binding = {
+            .argument = argument,
+            .argument_kind = MYLITE_SQL_AST_AGGREGATE_ARGUMENT_EXPRESSION,
+        };
+        int status = evaluate_table_select_aggregate_argument(stmt, &argument_binding, row,
+                                                              &out_tuple->values[index]);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        if (out_tuple->values[index].kind == MYLITE_EXPRESSION_VALUE_NULL) {
+            *out_has_null = true;
+        }
+        ++index;
+    }
+    return MYLITE_OK;
+}
+
+static bool count_distinct_tuple_exists(const struct mylite_select_aggregate_state *state,
+                                        const struct mylite_count_distinct_tuple *tuple,
+                                        const struct mylite_select_aggregate_binding *binding)
+{
+    for (size_t index = 0U; index < state->distinct_tuple_count; ++index) {
+        if (count_distinct_tuples_equal(&state->distinct_tuples[index], tuple, binding)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool count_distinct_tuples_equal(const struct mylite_count_distinct_tuple *left,
+                                        const struct mylite_count_distinct_tuple *right,
+                                        const struct mylite_select_aggregate_binding *binding)
+{
+    if (left->value_count != right->value_count ||
+        left->value_count != binding->argument_descriptor_count) {
+        return false;
+    }
+
+    for (size_t index = 0U; index < left->value_count; ++index) {
+        if (compare_table_select_distinct_values(&left->values[index], &right->values[index],
+                                                 &binding->argument_descriptors[index]) != 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static int append_count_distinct_tuple(struct mylite_select_aggregate_state *state,
+                                       struct mylite_count_distinct_tuple *tuple)
+{
+    struct mylite_count_distinct_tuple *tuples =
+        realloc(state->distinct_tuples,
+                (state->distinct_tuple_count + 1U) * sizeof(*state->distinct_tuples));
+
+    if (tuples == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    state->distinct_tuples = tuples;
+    state->distinct_tuples[state->distinct_tuple_count++] = *tuple;
+    *tuple = (struct mylite_count_distinct_tuple){0};
+    return MYLITE_OK;
+}
+
+static void count_distinct_tuple_deinit(struct mylite_count_distinct_tuple *tuple)
+{
+    if (tuple == NULL) {
+        return;
+    }
+
+    for (size_t index = 0U; index < tuple->value_count; ++index) {
+        mylite_expression_value_deinit(&tuple->values[index]);
+    }
+    free(tuple->values);
+    *tuple = (struct mylite_count_distinct_tuple){0};
+}
+
+static void select_aggregate_state_deinit(struct mylite_select_aggregate_state *state)
+{
+    if (state == NULL) {
+        return;
+    }
+
+    mylite_expression_value_deinit(&state->value);
+    for (size_t index = 0U; index < state->distinct_tuple_count; ++index) {
+        count_distinct_tuple_deinit(&state->distinct_tuples[index]);
+    }
+    free(state->distinct_tuples);
+    *state = (struct mylite_select_aggregate_state){0};
 }
 
 static int
@@ -35458,7 +35748,7 @@ static int resolve_insert_explicit_value(mylite_stmt *stmt,
         }
         return resolve_insert_text_value(stmt, column, value->text, state, out_value);
     case MYLITE_INSERT_VALUE_TEXT:
-        return resolve_insert_text_value(stmt, column, value->text, state, out_value);
+        return resolve_insert_quoted_text_value(stmt, column, value->text, state, out_value);
     case MYLITE_INSERT_VALUE_CURRENT_TIMESTAMP:
         if (column->auto_increment) {
             return set_insert_unsupported_expression_error(stmt->database);
@@ -35589,6 +35879,42 @@ static int resolve_insert_text_value(mylite_stmt *stmt,
         return MYLITE_OK;
     }
 
+    return set_insert_bound_text_value(stmt, text, out_value);
+}
+
+static int resolve_insert_quoted_text_value(mylite_stmt *stmt,
+                                            const struct mylite_insert_table_column *column,
+                                            const char *text,
+                                            struct mylite_insert_execution_state *state,
+                                            struct mylite_insert_bound_value *out_value)
+{
+    if (text == NULL || !insert_column_uses_text_storage(column)) {
+        return resolve_insert_text_value(stmt, column, text, state, out_value);
+    }
+    return set_insert_bound_text_value(stmt, text, out_value);
+}
+
+static bool insert_column_uses_text_storage(const struct mylite_insert_table_column *column)
+{
+    static const char *const text_types[] = {
+        "char",   "varchar",   "tinytext", "text", "mediumtext", "longtext",
+        "binary", "varbinary", "tinyblob", "blob", "mediumblob", "longblob",
+    };
+
+    if (column == NULL || column->data_type == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < sizeof(text_types) / sizeof(text_types[0]); ++index) {
+        if (ascii_case_equal(column->data_type, text_types[index])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static int set_insert_bound_text_value(mylite_stmt *stmt, const char *text,
+                                       struct mylite_insert_bound_value *out_value)
+{
     out_value->text_value = copy_span_text(text, strlen(text));
     if (out_value->text_value == NULL) {
         (void)set_error_message(stmt->database, "out of memory");
@@ -38186,6 +38512,12 @@ static int evaluate_scalar_aggregate_expression(mylite_stmt *stmt,
         return MYLITE_OK;
     }
     if (expression->aggregate_argument != MYLITE_SQL_AST_AGGREGATE_ARGUMENT_EXPRESSION) {
+        if (expression->aggregate_kind == MYLITE_SQL_AST_AGGREGATE_COUNT &&
+            expression->aggregate_argument ==
+                MYLITE_SQL_AST_AGGREGATE_ARGUMENT_DISTINCT_EXPRESSION_LIST) {
+            return evaluate_scalar_count_distinct_expression(stmt, child_at(expression, 1U),
+                                                             &context, out_value);
+        }
         return MYLITE_UNSUPPORTED;
     }
 
@@ -38240,6 +38572,52 @@ static int evaluate_scalar_aggregate_expression(mylite_stmt *stmt,
     }
 
     mylite_expression_value_deinit(&argument);
+    return MYLITE_OK;
+}
+
+static int evaluate_scalar_count_distinct_expression(
+    mylite_stmt *stmt, const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context, struct mylite_expression_value *out_value)
+{
+    bool has_null = false;
+
+    if (arguments == NULL || arguments->kind != MYLITE_SQL_AST_EXPRESSION_LIST ||
+        arguments->first_child == NULL) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    for (const struct mylite_sql_ast_node *argument_node = arguments->first_child;
+         argument_node != NULL; argument_node = argument_node->next_sibling) {
+        struct mylite_expression_value argument = {0};
+        int status = mylite_expression_eval_with_context(argument_node, context,
+                                                         &stmt->scalar_result.warnings, &argument);
+
+        if (status != 0) {
+            mylite_expression_value_deinit(&argument);
+            if (status == MYLITE_NOMEM) {
+                (void)set_error_message(stmt->database, "out of memory");
+                return MYLITE_NOMEM;
+            }
+            if (stmt->database->error_message != NULL) {
+                return status > 0 ? status : MYLITE_EXEC_ERROR;
+            }
+            return MYLITE_UNSUPPORTED;
+        }
+        if (argument.kind == MYLITE_EXPRESSION_VALUE_NULL) {
+            has_null = true;
+        }
+        mylite_expression_value_deinit(&argument);
+    }
+
+    int64_t count = 1;
+
+    if (has_null) {
+        count = 0;
+    }
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_INT64,
+        .int64_value = count,
+    };
     return MYLITE_OK;
 }
 
@@ -43487,7 +43865,7 @@ static void table_select_group_deinit(struct mylite_table_select_group *group)
         mylite_expression_value_deinit(&group->group_values[index]);
     }
     for (size_t index = 0U; index < group->aggregate_state_count; ++index) {
-        mylite_expression_value_deinit(&group->aggregate_states[index].value);
+        select_aggregate_state_deinit(&group->aggregate_states[index]);
     }
     free(group->group_values);
     free(group->aggregate_states);
@@ -43528,6 +43906,9 @@ static void select_plan_deinit(struct mylite_select_plan *plan)
     free(plan->outputs);
     free(plan->order_keys);
     free(plan->group_keys);
+    for (size_t index = 0U; index < plan->aggregate_binding_count; ++index) {
+        select_aggregate_binding_deinit(&plan->aggregate_bindings[index]);
+    }
     free(plan->aggregate_bindings);
     free(plan->join_predicates);
     for (size_t index = 0U; index < plan->using_column_count; ++index) {

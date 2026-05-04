@@ -312,6 +312,7 @@ static int test_show_create_table_execution(void);
 static int test_show_diagnostics_execution(void);
 static int test_describe_table_execution(void);
 static int test_insert_values_execution(void);
+static int test_insert_values_quoted_text_storage(mylite_db *database, const char *path);
 static int test_insert_set_execution(void);
 static int test_replace_execution(void);
 static int test_insert_ignore_execution(void);
@@ -11470,6 +11471,25 @@ static int test_aggregate_grouping_execution(void)
     static const char *const alias_count_column[] = {"col2"};
     static const char *const alias_count_all[] = {"3"};
     static const char *const alias_count_group[] = {"2"};
+    static const char *const count_distinct_columns[] = {"ca", "cb", "cs", "cab", "cas"};
+    static const char *const count_distinct_values[] = {"3", "3", "5", "3", "4"};
+    static const char *const count_distinct_grouped_columns[] = {"g", "ca", "cab", "cs"};
+    static const char *const count_distinct_grouped_values[] = {
+        "x", "2", "2", "3", "y", "1", "1", "1", NULL, "1", "1", "1",
+    };
+    static const char *const count_distinct_empty_values[] = {"0"};
+    static const char *const count_distinct_rowless_columns[] = {"c_null", "c_one", "c_one_null"};
+    static const char *const count_distinct_rowless_values[] = {"0", "1", "0"};
+    static const char *const count_distinct_cast_columns[] = {"c_cast"};
+    static const char *const count_distinct_cast_values[] = {"4"};
+    static const char *const count_distinct_cast_twice_columns[] = {"c1", "c2"};
+    static const char *const count_distinct_cast_twice_values[] = {"4", "4"};
+    static const char *const count_distinct_numeric_columns[] = {"c_num", "c_tuple"};
+    static const char *const count_distinct_numeric_values[] = {"4", "4"};
+    static const char *const count_distinct_repeat_columns[] = {"c_aba", "c_aa", "c_ss"};
+    static const char *const count_distinct_repeat_values[] = {"3", "3", "5"};
+    static const char *const count_distinct_alias_values[] = {"3"};
+    static const char *const count_distinct_group_having_values[] = {"x", "2"};
     static const char *const conversion_columns[] = {"sum_s", "avg_s", "min_s", "max_s"};
     static const char *const conversion_values[] = {"12.5", "4.166666666666667", "10", "bad"};
     static const struct expected_result_metadata metadata[] = {
@@ -11483,6 +11503,12 @@ static int test_aggregate_grouping_execution(void)
          MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
         {"min_txt", NULL, NULL, NULL, NULL, NULL, 80U, MYLITE_FIELD_TYPE_VAR_STRING, 0U, 255U, 0U,
          MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    static const struct expected_result_metadata count_distinct_metadata[] = {
+        {"ca", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"cab", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
     };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
@@ -11666,6 +11692,120 @@ static int test_aggregate_grouping_execution(void)
                            "ambiguous group warning code");
     failures += expect_int((int)mylite_warning_code(database, 1), mysql_warning_ambiguous_column,
                            "ambiguous having warning code");
+
+    failures += execute_sql(database,
+                            "CREATE TABLE cd_t ("
+                            "id INT PRIMARY KEY, "
+                            "grp VARCHAR(10), "
+                            "a INT NULL, "
+                            "b INT NULL, "
+                            "s VARCHAR(20) NULL)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO cd_t VALUES "
+                            "(1,'x',1,1,'1'),"
+                            "(2,'x',1,1,'1'),"
+                            "(3,'x',1,2,'01'),"
+                            "(4,'x',2,NULL,'bad'),"
+                            "(5,'y',NULL,2,'2'),"
+                            "(6,'y',NULL,2,'2'),"
+                            "(7,'y',3,3,NULL),"
+                            "(8,NULL,3,3,'3')",
+                            MYLITE_DONE);
+    failures +=
+        execute_sql(database, "CREATE TABLE cd_empty (a INT NULL, b INT NULL, s VARCHAR(20) NULL)",
+                    MYLITE_DONE);
+    failures += expect_select_rows(database,
+                                   "SELECT COUNT(DISTINCT a) AS ca, "
+                                   "COUNT(DISTINCT b) AS cb, "
+                                   "COUNT(DISTINCT s) AS cs, "
+                                   "COUNT(DISTINCT a,b) AS cab, "
+                                   "COUNT(DISTINCT a,s) AS cas FROM cd_t",
+                                   count_distinct_columns, 5, count_distinct_values, 1,
+                                   "count distinct implicit group");
+    failures += expect_select_rows(database,
+                                   "SELECT grp AS g, COUNT(DISTINCT a) AS ca, "
+                                   "COUNT(DISTINCT a,b) AS cab, COUNT(DISTINCT s) AS cs "
+                                   "FROM cd_t GROUP BY grp ORDER BY grp IS NULL, grp",
+                                   count_distinct_grouped_columns, 4, count_distinct_grouped_values,
+                                   3, "count distinct grouped rows");
+    failures +=
+        expect_select_rows(database, "SELECT COUNT(DISTINCT a) AS c FROM cd_empty", count_column, 1,
+                           count_distinct_empty_values, 1, "count distinct empty table");
+    failures += expect_select_rows(
+        database, "SELECT COUNT(DISTINCT a) AS c FROM cd_t WHERE id > 100", count_column, 1,
+        count_distinct_empty_values, 1, "count distinct no matches");
+    failures += expect_select_rows(database,
+                                   "SELECT COUNT(DISTINCT NULL) AS c_null, "
+                                   "COUNT(DISTINCT 1) AS c_one, "
+                                   "COUNT(DISTINCT 1,NULL) AS c_one_null",
+                                   count_distinct_rowless_columns, 3, count_distinct_rowless_values,
+                                   1, "rowless count distinct");
+    failures +=
+        expect_select_rows(database, "SELECT COUNT(DISTINCT CAST(s AS SIGNED)) AS c_cast FROM cd_t",
+                           count_distinct_cast_columns, 1, count_distinct_cast_values, 1,
+                           "count distinct cast warning");
+    failures += expect_int(mylite_warning_count(database), 1, "count distinct cast warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "count distinct cast warning code");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT COUNT(DISTINCT CAST(s AS SIGNED)) AS c1, "
+                           "COUNT(DISTINCT CAST(s AS SIGNED)) AS c2 FROM cd_t",
+                           count_distinct_cast_twice_columns, 2, count_distinct_cast_twice_values,
+                           1, "count distinct duplicate cast warnings");
+    failures += expect_int(mylite_warning_count(database), 2,
+                           "count distinct duplicate cast warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_truncated_wrong_value,
+                   "count distinct duplicate cast first warning code");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 1), mysql_warning_truncated_wrong_value,
+                   "count distinct duplicate cast second warning code");
+    failures += expect_select_rows(database,
+                                   "SELECT COUNT(DISTINCT s+0) AS c_num, "
+                                   "COUNT(DISTINCT s,a) AS c_tuple FROM cd_t",
+                                   count_distinct_numeric_columns, 2, count_distinct_numeric_values,
+                                   1, "count distinct numeric and text tuples");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "count distinct numeric warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_truncated_wrong_value,
+                   "count distinct numeric warning code");
+    failures += expect_select_rows(database,
+                                   "SELECT COUNT(DISTINCT a,b,s) AS c_aba, "
+                                   "COUNT(DISTINCT a,a) AS c_aa, "
+                                   "COUNT(DISTINCT s,s) AS c_ss FROM cd_t",
+                                   count_distinct_repeat_columns, 3, count_distinct_repeat_values,
+                                   1, "count distinct tuple and repeated arguments");
+    failures += expect_select_rows(database, "SELECT COUNT(DISTINCT a) AS c FROM cd_t HAVING c = 3",
+                                   count_column, 1, count_distinct_alias_values, 1,
+                                   "count distinct having alias");
+    failures += expect_select_rows(database, "SELECT COUNT(DISTINCT a) AS c FROM cd_t HAVING c = 2",
+                                   count_column, 1, NULL, 0, "count distinct having filters alias");
+    failures += expect_select_rows(database,
+                                   "SELECT grp AS g, COUNT(DISTINCT a) AS total "
+                                   "FROM cd_t GROUP BY grp HAVING total > 1 ORDER BY total DESC, g",
+                                   total_columns, 2, count_distinct_group_having_values, 1,
+                                   "count distinct grouped having order alias");
+    failures += prepare_sql(database,
+                            "SELECT COUNT(DISTINCT a) AS ca, "
+                            "COUNT(DISTINCT a,b) AS cab FROM cd_t",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, count_distinct_metadata,
+        (int)(sizeof(count_distinct_metadata) / sizeof(count_distinct_metadata[0])),
+        "count distinct metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "count distinct metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "count distinct metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_prepare_error(database, "SELECT COUNT(DISTINCT COUNT(*)) FROM cd_t",
+                                     MYLITE_EXEC_ERROR, "Invalid use of group function",
+                                     "count distinct nested aggregate");
+    failures += expect_prepare_error(
+        database, "SELECT COUNT(DISTINCT a) FROM cd_t WHERE COUNT(DISTINCT a) > 0",
+        MYLITE_EXEC_ERROR, "Invalid use of group function", "count distinct aggregate in where");
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)
@@ -16303,6 +16443,8 @@ static int test_insert_values_execution(void)
                                         "default row without column list");
     }
 
+    failures += test_insert_values_quoted_text_storage(database, path);
+
     failures +=
         execute_sql(database, "CREATE TABLE unique_insert (a INT UNIQUE, b INT)", MYLITE_DONE);
     unique_physical = expected_physical_table_name("mylite_iv13", "unique_insert");
@@ -16661,6 +16803,32 @@ static int test_insert_values_execution(void)
     free(expr_physical);
     mylite_close(database);
     remove_runtime_test_files();
+    return failures;
+}
+
+static int test_insert_values_quoted_text_storage(mylite_db *database, const char *path)
+{
+    char *quoted_physical = NULL;
+    int failures = 0;
+
+    failures += execute_sql(database,
+                            "CREATE TABLE quoted_text_insert ("
+                            "id INT PRIMARY KEY, v VARCHAR(10), t TEXT, n INT)",
+                            MYLITE_DONE);
+    quoted_physical = expected_physical_table_name("mylite_iv13", "quoted_text_insert");
+    if (quoted_physical == NULL) {
+        fprintf(stderr, "out of memory while building quoted_text_insert physical table name\n");
+        return 1;
+    }
+    failures += execute_sql(database, "INSERT INTO quoted_text_insert VALUES (1, '01', '01', '01')",
+                            MYLITE_DONE);
+    failures += expect_sqlite_physical_text(path, quoted_physical, "v", "WHERE id = 1", "01",
+                                            "quoted VARCHAR insert preserves text");
+    failures += expect_sqlite_physical_text(path, quoted_physical, "t", "WHERE id = 1", "01",
+                                            "quoted TEXT insert preserves text");
+    failures += expect_sqlite_physical_int64(path, quoted_physical, "n", "WHERE id = 1", 1,
+                                             "quoted numeric insert converts for INT");
+    free(quoted_physical);
     return failures;
 }
 

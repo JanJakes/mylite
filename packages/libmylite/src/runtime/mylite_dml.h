@@ -233,6 +233,15 @@ char *mylite_dml_build_update_scan_sql(mylite_db *database,
                                        const struct mylite_select_table *table);
 char *mylite_dml_build_update_physical_sql(mylite_db *database,
                                            const struct mylite_select_table *table);
+char *mylite_dml_build_update_unique_check_sql(mylite_db *database,
+                                               const struct mylite_select_table *table,
+                                               const struct mylite_insert_table *write_table,
+                                               const struct mylite_insert_unique_index *index);
+int mylite_dml_bind_update_unique_check_values(mylite_db *database, sqlite3_stmt *check,
+                                               const struct mylite_insert_unique_index *index,
+                                               const struct mylite_update_row *candidate);
+int mylite_dml_bind_update_row_values(mylite_db *database, sqlite3_stmt *update,
+                                      const struct mylite_update_row *candidate);
 void mylite_dml_insert_values_plan_deinit(struct mylite_insert_values_plan *plan);
 void mylite_dml_insert_set_plan_deinit(struct mylite_insert_set_plan *plan);
 void mylite_dml_insert_set_assignment_deinit(struct mylite_insert_set_assignment *assignment);

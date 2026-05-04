@@ -1390,17 +1390,6 @@ static int update_unique_index_conflicts(mylite_stmt *stmt, const struct mylite_
                                          const struct mylite_insert_unique_index *index,
                                          const struct mylite_update_row *candidate,
                                          bool *out_conflicts);
-static char *build_update_unique_check_sql(mylite_db *database,
-                                           const struct mylite_select_table *table,
-                                           const struct mylite_insert_table *write_table,
-                                           const struct mylite_insert_unique_index *index);
-static int bind_update_unique_check_values(mylite_db *database, sqlite3_stmt *check,
-                                           const struct mylite_insert_unique_index *index,
-                                           const struct mylite_update_row *candidate);
-static int bind_update_row_values(mylite_db *database, sqlite3_stmt *update,
-                                  const struct mylite_update_row *candidate);
-static int bind_update_value(sqlite3_stmt *stmt, int index,
-                             const struct mylite_expression_value *value);
 static int advance_update_auto_increment(mylite_stmt *stmt, const struct mylite_select_table *table,
                                          const struct mylite_insert_table *write_table,
                                          const struct mylite_update_row *candidate,
@@ -17009,7 +16998,7 @@ static int write_update_candidate(mylite_stmt *stmt, sqlite3_stmt *update,
 
     sqlite3_reset(update);
     sqlite3_clear_bindings(update);
-    status = bind_update_row_values(stmt->database, update, candidate);
+    status = mylite_dml_bind_update_row_values(stmt->database, update, candidate);
     if (status != MYLITE_OK) {
         return status;
     }
@@ -17287,7 +17276,7 @@ static int update_unique_index_conflicts(mylite_stmt *stmt, const struct mylite_
         }
     }
 
-    sql = build_update_unique_check_sql(stmt->database, table, write_table, index);
+    sql = mylite_dml_build_update_unique_check_sql(stmt->database, table, write_table, index);
     if (sql == NULL) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
@@ -17300,7 +17289,7 @@ static int update_unique_index_conflicts(mylite_stmt *stmt, const struct mylite_
         return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
-    status = bind_update_unique_check_values(stmt->database, check, index, candidate);
+    status = mylite_dml_bind_update_unique_check_values(stmt->database, check, index, candidate);
     if (status == MYLITE_OK) {
         rc = sqlite3_step(check);
         if (rc == SQLITE_ROW) {
@@ -17311,95 +17300,6 @@ static int update_unique_index_conflicts(mylite_stmt *stmt, const struct mylite_
     }
     sqlite3_finalize(check);
     return status;
-}
-
-static char *build_update_unique_check_sql(mylite_db *database,
-                                           const struct mylite_select_table *table,
-                                           const struct mylite_insert_table *write_table,
-                                           const struct mylite_insert_unique_index *index)
-{
-    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
-
-    if (sql == NULL) {
-        return NULL;
-    }
-
-    sqlite3_str_appendf(sql, "SELECT 1 FROM \"%w\" WHERE ", table->physical_name);
-    for (size_t part = 0U; part < index->column_count; ++part) {
-        size_t column_index = index->column_indexes[part];
-
-        if (part != 0U) {
-            sqlite3_str_append(sql, " AND ", (int)strlen(" AND "));
-        }
-        if (index->prefix_lengths[part] != 0U) {
-            sqlite3_str_appendf(sql, "substr(\"%w\",1,%llu) = substr(?,1,%llu)",
-                                write_table->columns[column_index].name,
-                                (unsigned long long)index->prefix_lengths[part],
-                                (unsigned long long)index->prefix_lengths[part]);
-        } else {
-            sqlite3_str_appendf(sql, "\"%w\" = ?", write_table->columns[column_index].name);
-        }
-    }
-    sqlite3_str_append(sql, " AND rowid <> ? LIMIT 1", (int)strlen(" AND rowid <> ? LIMIT 1"));
-    return sqlite3_str_finish(sql);
-}
-
-static int bind_update_unique_check_values(mylite_db *database, sqlite3_stmt *check,
-                                           const struct mylite_insert_unique_index *index,
-                                           const struct mylite_update_row *candidate)
-{
-    for (size_t part = 0U; part < index->column_count; ++part) {
-        int rc = bind_update_value(check, (int)part + 1,
-                                   &candidate->values[index->column_indexes[part]]);
-
-        if (rc != SQLITE_OK) {
-            return mylite_diagnostics_set_sqlite_error(database);
-        }
-    }
-
-    {
-        int rc = sqlite3_bind_int64(check, (int)index->column_count + 1, candidate->rowid);
-
-        if (rc != SQLITE_OK) {
-            return mylite_diagnostics_set_sqlite_error(database);
-        }
-    }
-    return MYLITE_OK;
-}
-
-static int bind_update_row_values(mylite_db *database, sqlite3_stmt *update,
-                                  const struct mylite_update_row *candidate)
-{
-    for (size_t index = 0U; index < candidate->value_count; ++index) {
-        int rc = bind_update_value(update, (int)index + 1, &candidate->values[index]);
-
-        if (rc != SQLITE_OK) {
-            return mylite_diagnostics_set_sqlite_error(database);
-        }
-    }
-    return MYLITE_OK;
-}
-
-static int bind_update_value(sqlite3_stmt *stmt, int index,
-                             const struct mylite_expression_value *value)
-{
-    switch (value->kind) {
-    case MYLITE_EXPRESSION_VALUE_NULL:
-        return sqlite3_bind_null(stmt, index);
-    case MYLITE_EXPRESSION_VALUE_INT64:
-        return sqlite3_bind_int64(stmt, index, value->int64_value);
-    case MYLITE_EXPRESSION_VALUE_UINT64:
-        if (value->uint64_value > (uint64_t)INT64_MAX) {
-            return SQLITE_RANGE;
-        }
-        return sqlite3_bind_int64(stmt, index, (sqlite3_int64)value->uint64_value);
-    case MYLITE_EXPRESSION_VALUE_REAL:
-        return sqlite3_bind_double(stmt, index, value->real_value);
-    case MYLITE_EXPRESSION_VALUE_TEXT:
-        return sqlite3_bind_text(stmt, index, value->text_value, (int)value->text_length,
-                                 sqlite_transient_destructor());
-    }
-    return SQLITE_MISUSE;
 }
 
 static int advance_update_auto_increment(mylite_stmt *stmt, const struct mylite_select_table *table,

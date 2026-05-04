@@ -58,8 +58,9 @@ after every step.
 - [ ] Move immutable runtime constants from `mylite.c` into focused private
   modules without creating unused-header warnings.
 - [x] Extract diagnostics into `src/runtime/mylite_diagnostics.{h,c}`.
-- [ ] Extract public connection lifecycle and session charset accessors into
+- [x] Extract public connection state accessors into
   `src/runtime/mylite_connection.{h,c}`.
+- [ ] Extract public connection lifecycle into `src/runtime/mylite_connection`.
 - [ ] Extract public statement lifecycle and result accessors into
   `src/runtime/mylite_statement.{h,c}` while keeping statement-family execution
   in `mylite.c`.

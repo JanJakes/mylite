@@ -2,7 +2,6 @@
 
 #include "mylite_charset.h"
 #include "mylite_expression.h"
-#include "mylite_internal.h"
 #include "mylite_parser.h"
 #include "mylite_sqlite_translator.h"
 #include "mylite_vfs.h"
@@ -4112,15 +4111,6 @@ int64_t mylite_affected_rows(const mylite_stmt *stmt)
     return stmt->affected_rows;
 }
 
-uint64_t mylite_last_insert_id(const mylite_db *database)
-{
-    if (database == NULL) {
-        return 0U;
-    }
-
-    return database->last_insert_id;
-}
-
 int mylite_column_count(const mylite_stmt *stmt)
 {
     if (stmt == NULL) {
@@ -4297,26 +4287,6 @@ const char *mylite_column_text(const mylite_stmt *stmt, int column)
     }
 
     return (const char *)sqlite3_column_text(stmt->sqlite_stmt, column);
-}
-
-const char *mylite_connection_character_set_client(const mylite_db *database)
-{
-    return database == NULL ? NULL : database->character_set_client;
-}
-
-const char *mylite_connection_character_set_connection(const mylite_db *database)
-{
-    return database == NULL ? NULL : database->character_set_connection;
-}
-
-const char *mylite_connection_character_set_results(const mylite_db *database)
-{
-    return database == NULL ? NULL : database->character_set_results;
-}
-
-const char *mylite_connection_collation_connection(const mylite_db *database)
-{
-    return database == NULL ? NULL : database->collation_connection;
 }
 
 static void record_statement_row_count(mylite_stmt *stmt)

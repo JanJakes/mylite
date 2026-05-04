@@ -402,7 +402,9 @@ only the core object model and transitional shared helpers listed here:
   companion module.
 - [ ] Move `INSERT IGNORE` warning/error downgrade logic into `mylite_dml`.
 - [x] Move `REPLACE` delete-then-insert behavior into `mylite_dml`.
-- [ ] Move update target binding and validation into `mylite_dml`.
+- [x] Move update target copy and assignment target binding into `mylite_dml`.
+- [ ] Move remaining update clause and assignment value validation into
+  `mylite_dml`.
 - [ ] Move update row materialization/sorting/limit logic into `mylite_dml`.
 - [ ] Move update row writeback into `mylite_dml`.
 - [ ] Move delete target binding and validation into `mylite_dml`.

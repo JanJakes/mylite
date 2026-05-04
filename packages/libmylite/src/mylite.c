@@ -1298,14 +1298,9 @@ static int resolve_union_expression_identifier(void *user_data,
                                                struct mylite_expression_value *out_value);
 static int append_and_clear_union_database_warnings(mylite_db *database,
                                                     struct mylite_expression_warnings *warnings);
-static int copy_update_target_to_select_table(mylite_stmt *stmt, struct mylite_select_table *table);
 static int bind_update_subset(mylite_stmt *stmt, const struct mylite_select_table *table,
                               struct mylite_update_bound_assignment **out_assignments);
 static int reject_deferred_update_clauses(mylite_stmt *stmt);
-static int bind_update_assignment_targets(mylite_stmt *stmt,
-                                          const struct mylite_select_table *table,
-                                          struct mylite_update_bound_assignment *assignments,
-                                          size_t assignment_count);
 static int bind_update_assignment_values(mylite_stmt *stmt, const struct mylite_select_table *table,
                                          struct mylite_update_bound_assignment *assignments,
                                          size_t assignment_count);
@@ -1435,16 +1430,8 @@ static bool update_values_equal(const struct mylite_expression_value *left,
 static int resolve_update_expression_identifier(void *user_data,
                                                 const struct mylite_sql_ast_node *identifier,
                                                 struct mylite_expression_value *out_value);
-static size_t update_column_reference_index(const struct mylite_select_table *table,
-                                            const struct mylite_update_column_reference *reference);
-static bool
-update_column_reference_qualifiers_match(const struct mylite_select_table *table,
-                                         const struct mylite_update_column_reference *reference);
-static char *
-copy_update_column_reference_name(const struct mylite_update_column_reference *reference);
 static int set_update_unknown_column_error(mylite_db *database, const char *column_name,
                                            const char *clause_context);
-static int set_update_unknown_field_error(mylite_db *database, const char *column_name);
 static int set_update_duplicate_entry_error(mylite_db *database, const char *table_name,
                                             const struct mylite_insert_unique_index *index,
                                             const struct mylite_update_row *candidate);
@@ -16307,7 +16294,7 @@ static int execute_update_statement(mylite_stmt *stmt)
     stmt->affected_rows = 0;
     stmt->matched_rows = 0U;
 
-    status = copy_update_target_to_select_table(stmt, &table);
+    status = mylite_dml_copy_update_target_to_select_table(stmt->database, &stmt->update, &table);
     if (status == MYLITE_OK) {
         status = resolve_select_table_target(stmt->database, &table);
     }
@@ -16351,32 +16338,6 @@ static int execute_update_statement(mylite_stmt *stmt)
     return status;
 }
 
-static int copy_update_target_to_select_table(mylite_stmt *stmt, struct mylite_select_table *table)
-{
-    const struct mylite_update_target *target = &stmt->update.target;
-
-    if (target->schema_name != NULL) {
-        table->schema_name = mylite_copy_nonempty_cstring(target->schema_name);
-        if (table->schema_name == NULL) {
-            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-            return MYLITE_NOMEM;
-        }
-    }
-    table->table_name = mylite_copy_nonempty_cstring(target->table_name);
-    if (table->table_name == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    if (target->alias != NULL) {
-        table->alias = mylite_copy_nonempty_cstring(target->alias);
-        if (table->alias == NULL) {
-            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-            return MYLITE_NOMEM;
-        }
-    }
-    return MYLITE_OK;
-}
-
 static int bind_update_subset(mylite_stmt *stmt, const struct mylite_select_table *table,
                               struct mylite_update_bound_assignment **out_assignments)
 {
@@ -16398,7 +16359,8 @@ static int bind_update_subset(mylite_stmt *stmt, const struct mylite_select_tabl
         return MYLITE_NOMEM;
     }
 
-    status = bind_update_assignment_targets(stmt, table, assignments, assignment_count);
+    status = mylite_dml_bind_update_assignment_targets(stmt->database, &stmt->update, table,
+                                                       assignments, assignment_count);
     if (status == MYLITE_OK) {
         status = bind_update_assignment_values(stmt, table, assignments, assignment_count);
     }
@@ -16426,35 +16388,6 @@ static int reject_deferred_update_clauses(mylite_stmt *stmt)
         mylite_ast_child_at(limit, 0U)->kind != MYLITE_SQL_AST_LIMIT_BOUND ||
         !mylite_ast_child_at(limit, 0U)->has_limit_bound_value) {
         return set_update_unsupported_clause_error(stmt->database);
-    }
-    return MYLITE_OK;
-}
-
-static int bind_update_assignment_targets(mylite_stmt *stmt,
-                                          const struct mylite_select_table *table,
-                                          struct mylite_update_bound_assignment *assignments,
-                                          size_t assignment_count)
-{
-    for (size_t index = 0U; index < assignment_count; ++index) {
-        const struct mylite_update_assignment *assignment = &stmt->update.assignments[index];
-        size_t column_index = update_column_reference_index(table, &assignment->target);
-
-        if (column_index == table->column_count) {
-            char *reference = copy_update_column_reference_name(&assignment->target);
-            int status = MYLITE_OK;
-
-            if (reference == NULL) {
-                (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-                return MYLITE_NOMEM;
-            }
-            status = set_update_unknown_field_error(stmt->database, reference);
-            free(reference);
-            return status;
-        }
-        assignments[index] = (struct mylite_update_bound_assignment){
-            .column_index = column_index,
-            .value = assignment->value,
-        };
     }
     return MYLITE_OK;
 }
@@ -17741,61 +17674,6 @@ static int resolve_update_expression_identifier(void *user_data,
     return mylite_expression_value_copy(&context->row->values[column_index], out_value);
 }
 
-static size_t update_column_reference_index(const struct mylite_select_table *table,
-                                            const struct mylite_update_column_reference *reference)
-{
-    if (!update_column_reference_qualifiers_match(table, reference)) {
-        return table->column_count;
-    }
-    return select_column_index(table, reference->column_name);
-}
-
-static bool
-update_column_reference_qualifiers_match(const struct mylite_select_table *table,
-                                         const struct mylite_update_column_reference *reference)
-{
-    if (reference->schema_name != NULL) {
-        if (table->alias != NULL || reference->table_name == NULL) {
-            return false;
-        }
-        if (strcmp(reference->schema_name, table->schema_name) != 0) {
-            return false;
-        }
-        if (strcmp(reference->table_name, table->table_name) != 0) {
-            return false;
-        }
-        return true;
-    }
-    if (reference->table_name != NULL) {
-        const char *visible_table = table->alias == NULL ? table->table_name : table->alias;
-
-        if (strcmp(reference->table_name, visible_table) != 0) {
-            return false;
-        }
-        return true;
-    }
-    return true;
-}
-
-static char *
-copy_update_column_reference_name(const struct mylite_update_column_reference *reference)
-{
-    sqlite3_str *text = sqlite3_str_new(NULL);
-
-    if (text == NULL) {
-        return NULL;
-    }
-    if (reference->schema_name != NULL) {
-        sqlite3_str_appendf(text, "%s.", reference->schema_name);
-    }
-    if (reference->table_name != NULL) {
-        sqlite3_str_appendf(text, "%s.", reference->table_name);
-    }
-    sqlite3_str_append(text, reference->column_name == NULL ? "" : reference->column_name,
-                       reference->column_name == NULL ? 0 : (int)strlen(reference->column_name));
-    return sqlite3_str_finish(text);
-}
-
 static int set_update_unknown_column_error(mylite_db *database, const char *column_name,
                                            const char *clause_context)
 {
@@ -17811,11 +17689,6 @@ static int set_update_unknown_column_error(mylite_db *database, const char *colu
     status = mylite_diagnostics_set_error_message(database, message);
     sqlite3_free(message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-}
-
-static int set_update_unknown_field_error(mylite_db *database, const char *column_name)
-{
-    return set_update_unknown_column_error(database, column_name, "field list");
 }
 
 static int set_update_duplicate_entry_error(mylite_db *database, const char *table_name,

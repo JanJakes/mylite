@@ -23,4 +23,9 @@ struct mylite_field_descriptor {
     bool nullable;
 };
 
+void mylite_field_descriptor_set_nullable(struct mylite_field_descriptor *descriptor,
+                                          bool nullable);
+void mylite_field_descriptor_set_not_null(struct mylite_field_descriptor *descriptor,
+                                          bool not_null);
+
 #endif

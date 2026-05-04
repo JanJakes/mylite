@@ -1128,10 +1128,6 @@ static void apply_catalog_column_flags(const struct mylite_catalog_column_descri
 static struct mylite_field_descriptor field_descriptor_defaults(void);
 static int field_descriptor_collation_id(mylite_db *database, const char *collation_name,
                                          unsigned int *out_charset_id);
-static void field_descriptor_set_nullable(struct mylite_field_descriptor *descriptor,
-                                          bool nullable);
-static void field_descriptor_set_not_null(struct mylite_field_descriptor *descriptor,
-                                          bool not_null);
 static bool catalog_text_contains_word(struct mylite_catalog_text_match match);
 static uint64_t catalog_int64_or_zero(sqlite3_stmt *stmt, int column);
 static uint64_t catalog_text_type_length(const char *data_type);
@@ -5097,7 +5093,7 @@ static struct mylite_field_descriptor show_engines_field_descriptor(uint64_t len
         .nullable = nullable,
     };
 
-    field_descriptor_set_nullable(&descriptor, nullable);
+    mylite_field_descriptor_set_nullable(&descriptor, nullable);
     return descriptor;
 }
 
@@ -7759,11 +7755,11 @@ static void aggregate_union_field_descriptor(mylite_db *database,
     }
     if (descriptor->type == MYLITE_FIELD_TYPE_NULL) {
         *descriptor = *operand;
-        field_descriptor_set_nullable(descriptor, nullable);
+        mylite_field_descriptor_set_nullable(descriptor, nullable);
         return;
     }
     if (operand->type == MYLITE_FIELD_TYPE_NULL) {
-        field_descriptor_set_nullable(descriptor, nullable);
+        mylite_field_descriptor_set_nullable(descriptor, nullable);
         return;
     }
 
@@ -7818,7 +7814,7 @@ static void aggregate_union_field_descriptor(mylite_db *database,
         descriptor->charset_id = mylite_mysql_binary_charset_id;
     }
 
-    field_descriptor_set_nullable(descriptor, nullable);
+    mylite_field_descriptor_set_nullable(descriptor, nullable);
 }
 
 static bool union_field_descriptor_has_text_result(const struct mylite_field_descriptor *descriptor)
@@ -8444,7 +8440,7 @@ static int infer_literal_descriptor(mylite_db *database,
         descriptor.length = expression_string_length(database, value, expression);
         descriptor.decimals = mylite_mysql_not_fixed_decimals;
         descriptor.charset_id = field_descriptor_connection_charset_id(database);
-        field_descriptor_set_not_null(&descriptor, true);
+        mylite_field_descriptor_set_not_null(&descriptor, true);
         break;
     case MYLITE_SQL_AST_LITERAL_HEX:
     case MYLITE_SQL_AST_LITERAL_BIT:
@@ -8507,7 +8503,7 @@ static int infer_unary_expression_descriptor(mylite_db *database,
         nullable = expression_descriptor_is_nullable(&operand);
         operand.flags &= ~(unsigned int)MYLITE_FIELD_FLAG_UNSIGNED;
         operand.length = max_u64(operand.length, 2U);
-        field_descriptor_set_nullable(&operand, nullable);
+        mylite_field_descriptor_set_nullable(&operand, nullable);
         *out_descriptor = operand;
         return MYLITE_OK;
     case MYLITE_SQL_AST_OPERATOR_NONE:
@@ -8783,7 +8779,7 @@ static int infer_function_expression_descriptor(mylite_db *database,
             .charset_id = field_descriptor_connection_charset_id(database),
             .nullable = result_nullable,
         };
-        field_descriptor_set_nullable(out_descriptor, result_nullable);
+        mylite_field_descriptor_set_nullable(out_descriptor, result_nullable);
         return MYLITE_OK;
     }
     if (infer_fixed_integer_function_descriptor(name, result_nullable, out_descriptor)) {
@@ -8804,7 +8800,7 @@ static int infer_function_expression_descriptor(mylite_db *database,
         *out_descriptor = signed_longlong_expression_descriptor(result_nullable);
         if (value != NULL && value->kind != MYLITE_EXPRESSION_VALUE_NULL) {
             *out_descriptor = expression_value_descriptor(value);
-            field_descriptor_set_nullable(out_descriptor, result_nullable);
+            mylite_field_descriptor_set_nullable(out_descriptor, result_nullable);
         }
         return MYLITE_OK;
     }
@@ -8942,7 +8938,7 @@ static bool infer_exp_function_descriptor(const struct mylite_sql_ast_node *name
         .charset_id = mylite_mysql_binary_charset_id,
         .nullable = true,
     };
-    field_descriptor_set_nullable(out_descriptor, true);
+    mylite_field_descriptor_set_nullable(out_descriptor, true);
     return true;
 }
 
@@ -8961,7 +8957,7 @@ static bool infer_logarithm_function_descriptor(const struct mylite_sql_ast_node
         .charset_id = mylite_mysql_binary_charset_id,
         .nullable = true,
     };
-    field_descriptor_set_nullable(out_descriptor, true);
+    mylite_field_descriptor_set_nullable(out_descriptor, true);
     return true;
 }
 
@@ -8980,7 +8976,7 @@ static bool infer_power_function_descriptor(const struct mylite_sql_ast_node *na
         .charset_id = mylite_mysql_binary_charset_id,
         .nullable = true,
     };
-    field_descriptor_set_nullable(out_descriptor, true);
+    mylite_field_descriptor_set_nullable(out_descriptor, true);
     return true;
 }
 
@@ -8999,7 +8995,7 @@ static bool infer_sqrt_function_descriptor(const struct mylite_sql_ast_node *nam
         .charset_id = mylite_mysql_binary_charset_id,
         .nullable = true,
     };
-    field_descriptor_set_nullable(out_descriptor, true);
+    mylite_field_descriptor_set_nullable(out_descriptor, true);
     return true;
 }
 
@@ -9018,7 +9014,7 @@ static bool infer_trigonometric_function_descriptor(const struct mylite_sql_ast_
         .charset_id = mylite_mysql_binary_charset_id,
         .nullable = true,
     };
-    field_descriptor_set_nullable(out_descriptor, true);
+    mylite_field_descriptor_set_nullable(out_descriptor, true);
     return true;
 }
 
@@ -9038,7 +9034,7 @@ infer_inverse_trigonometric_function_descriptor(const struct mylite_sql_ast_node
         .charset_id = mylite_mysql_binary_charset_id,
         .nullable = true,
     };
-    field_descriptor_set_nullable(out_descriptor, true);
+    mylite_field_descriptor_set_nullable(out_descriptor, true);
     return true;
 }
 
@@ -9059,7 +9055,7 @@ infer_angle_conversion_function_descriptor(const struct mylite_sql_ast_node *nam
         .charset_id = mylite_mysql_binary_charset_id,
         .nullable = result_nullable,
     };
-    field_descriptor_set_nullable(out_descriptor, result_nullable);
+    mylite_field_descriptor_set_nullable(out_descriptor, result_nullable);
     return true;
 }
 
@@ -9096,7 +9092,7 @@ static int infer_round_function_descriptor(mylite_db *database,
             .charset_id = mylite_mysql_binary_charset_id,
             .nullable = result_nullable,
         };
-        field_descriptor_set_nullable(out_descriptor, result_nullable);
+        mylite_field_descriptor_set_nullable(out_descriptor, result_nullable);
         return MYLITE_OK;
     }
 
@@ -9115,7 +9111,7 @@ static int infer_round_function_descriptor(mylite_db *database,
                 out_descriptor->decimals = (unsigned int)rounded_scale;
             }
         }
-        field_descriptor_set_nullable(out_descriptor, result_nullable);
+        mylite_field_descriptor_set_nullable(out_descriptor, result_nullable);
         return MYLITE_OK;
     }
     if (value_descriptor.type == MYLITE_FIELD_TYPE_TINY ||
@@ -9154,7 +9150,7 @@ static int infer_round_function_descriptor(mylite_db *database,
         .charset_id = mylite_mysql_binary_charset_id,
         .nullable = result_nullable,
     };
-    field_descriptor_set_nullable(out_descriptor, result_nullable);
+    mylite_field_descriptor_set_nullable(out_descriptor, result_nullable);
     return MYLITE_OK;
 }
 
@@ -9189,7 +9185,7 @@ static int infer_format_function_descriptor(mylite_db *database,
         .charset_id = field_descriptor_connection_charset_id(database),
         .nullable = true,
     };
-    field_descriptor_set_nullable(out_descriptor, true);
+    mylite_field_descriptor_set_nullable(out_descriptor, true);
     return MYLITE_OK;
 }
 
@@ -9328,7 +9324,7 @@ static int infer_truncate_function_descriptor(mylite_db *database,
             .charset_id = mylite_mysql_binary_charset_id,
             .nullable = result_nullable,
         };
-        field_descriptor_set_nullable(out_descriptor, result_nullable);
+        mylite_field_descriptor_set_nullable(out_descriptor, result_nullable);
         return MYLITE_OK;
     }
 
@@ -9339,7 +9335,7 @@ static int infer_truncate_function_descriptor(mylite_db *database,
             truncate_decimal_descriptor_for_constant_scale(out_descriptor, &value_descriptor,
                                                            scale);
         }
-        field_descriptor_set_nullable(out_descriptor, result_nullable);
+        mylite_field_descriptor_set_nullable(out_descriptor, result_nullable);
         return MYLITE_OK;
     }
     if (value_descriptor.type == MYLITE_FIELD_TYPE_TINY ||
@@ -9378,7 +9374,7 @@ static int infer_truncate_function_descriptor(mylite_db *database,
         .charset_id = mylite_mysql_binary_charset_id,
         .nullable = result_nullable,
     };
-    field_descriptor_set_nullable(out_descriptor, result_nullable);
+    mylite_field_descriptor_set_nullable(out_descriptor, result_nullable);
     return MYLITE_OK;
 }
 
@@ -9541,7 +9537,7 @@ static bool infer_inet_function_descriptor(mylite_db *database,
             .charset_id = field_descriptor_connection_charset_id(database),
             .nullable = true,
         };
-        field_descriptor_set_nullable(out_descriptor, true);
+        mylite_field_descriptor_set_nullable(out_descriptor, true);
         return true;
     }
     return false;
@@ -9565,7 +9561,7 @@ static bool infer_uuid_function_descriptor(mylite_db *database,
             .charset_id = mylite_mysql_binary_charset_id,
             .nullable = true,
         };
-        field_descriptor_set_nullable(out_descriptor, true);
+        mylite_field_descriptor_set_nullable(out_descriptor, true);
         return true;
     }
     if (function_name_is_bin_to_uuid(name)) {
@@ -9582,7 +9578,7 @@ static bool infer_uuid_function_descriptor(mylite_db *database,
             .charset_id = field_descriptor_connection_charset_id(database),
             .nullable = true,
         };
-        field_descriptor_set_nullable(out_descriptor, true);
+        mylite_field_descriptor_set_nullable(out_descriptor, true);
         return true;
     }
     return false;
@@ -9778,7 +9774,7 @@ static struct mylite_field_descriptor current_datetime_function_descriptor(unsig
         .nullable = false,
     };
 
-    field_descriptor_set_nullable(&descriptor, false);
+    mylite_field_descriptor_set_nullable(&descriptor, false);
     return descriptor;
 }
 
@@ -9792,7 +9788,7 @@ static struct mylite_field_descriptor current_date_function_descriptor(void)
         .nullable = false,
     };
 
-    field_descriptor_set_nullable(&descriptor, false);
+    mylite_field_descriptor_set_nullable(&descriptor, false);
     return descriptor;
 }
 
@@ -9808,7 +9804,7 @@ static struct mylite_field_descriptor current_time_function_descriptor(unsigned 
         .nullable = false,
     };
 
-    field_descriptor_set_nullable(&descriptor, false);
+    mylite_field_descriptor_set_nullable(&descriptor, false);
     return descriptor;
 }
 
@@ -9826,7 +9822,7 @@ infer_temporal_scalar_function_descriptor(const struct mylite_sql_ast_node *name
             .nullable = true,
         };
 
-        field_descriptor_set_nullable(&descriptor, true);
+        mylite_field_descriptor_set_nullable(&descriptor, true);
         *out_descriptor = descriptor;
         return true;
     }
@@ -9859,7 +9855,7 @@ infer_temporal_scalar_function_descriptor(const struct mylite_sql_ast_node *name
             .nullable = arguments_nullable,
         };
 
-        field_descriptor_set_nullable(&descriptor, arguments_nullable);
+        mylite_field_descriptor_set_nullable(&descriptor, arguments_nullable);
         *out_descriptor = descriptor;
         return true;
     }
@@ -9872,7 +9868,7 @@ infer_temporal_scalar_function_descriptor(const struct mylite_sql_ast_node *name
             .nullable = true,
         };
 
-        field_descriptor_set_nullable(&descriptor, true);
+        mylite_field_descriptor_set_nullable(&descriptor, true);
         *out_descriptor = descriptor;
         return true;
     }
@@ -10017,7 +10013,7 @@ static struct mylite_field_descriptor time_function_descriptor(unsigned int deci
         .nullable = true,
     };
 
-    field_descriptor_set_nullable(&descriptor, true);
+    mylite_field_descriptor_set_nullable(&descriptor, true);
     return descriptor;
 }
 
@@ -10066,7 +10062,7 @@ static int infer_date_interval_function_descriptor(mylite_db *database,
                 .charset_id = mylite_mysql_binary_charset_id,
                 .nullable = true,
             };
-            field_descriptor_set_nullable(out_descriptor, true);
+            mylite_field_descriptor_set_nullable(out_descriptor, true);
         }
         return MYLITE_OK;
     }
@@ -10096,7 +10092,7 @@ static struct mylite_field_descriptor date_interval_string_descriptor(mylite_db 
         .nullable = true,
     };
 
-    field_descriptor_set_nullable(&descriptor, true);
+    mylite_field_descriptor_set_nullable(&descriptor, true);
     return descriptor;
 }
 
@@ -10112,7 +10108,7 @@ static struct mylite_field_descriptor date_interval_datetime_descriptor(unsigned
         .nullable = true,
     };
 
-    field_descriptor_set_nullable(&descriptor, true);
+    mylite_field_descriptor_set_nullable(&descriptor, true);
     return descriptor;
 }
 
@@ -10172,7 +10168,7 @@ static int infer_make_set_function_descriptor(mylite_db *database,
         .charset_id = charset_id,
         .nullable = nullable,
     };
-    field_descriptor_set_nullable(out_descriptor, nullable);
+    mylite_field_descriptor_set_nullable(out_descriptor, nullable);
     return MYLITE_OK;
 }
 
@@ -10198,7 +10194,7 @@ infer_base_conversion_function_descriptor(mylite_db *database,
         .charset_id = field_descriptor_connection_charset_id(database),
         .nullable = true,
     };
-    field_descriptor_set_nullable(out_descriptor, true);
+    mylite_field_descriptor_set_nullable(out_descriptor, true);
     return true;
 }
 
@@ -10266,7 +10262,7 @@ static int infer_char_function_descriptor(mylite_db *database,
         .charset_id = charset_id,
         .nullable = true,
     };
-    field_descriptor_set_nullable(out_descriptor, true);
+    mylite_field_descriptor_set_nullable(out_descriptor, true);
     return MYLITE_OK;
 }
 
@@ -10391,7 +10387,7 @@ static int infer_hex_function_descriptor(mylite_db *database, const struct mylit
         .charset_id = field_descriptor_connection_charset_id(database),
         .nullable = true,
     };
-    field_descriptor_set_nullable(out_descriptor, true);
+    mylite_field_descriptor_set_nullable(out_descriptor, true);
     return MYLITE_OK;
 }
 
@@ -10426,7 +10422,7 @@ static int infer_unhex_function_descriptor(mylite_db *database,
         .charset_id = mylite_mysql_binary_charset_id,
         .nullable = true,
     };
-    field_descriptor_set_nullable(out_descriptor, true);
+    mylite_field_descriptor_set_nullable(out_descriptor, true);
     return MYLITE_OK;
 }
 
@@ -10462,7 +10458,7 @@ static int infer_to_base64_function_descriptor(mylite_db *database,
         .charset_id = field_descriptor_connection_charset_id(database),
         .nullable = true,
     };
-    field_descriptor_set_nullable(out_descriptor, true);
+    mylite_field_descriptor_set_nullable(out_descriptor, true);
     return MYLITE_OK;
 }
 
@@ -10493,7 +10489,7 @@ static int infer_from_base64_function_descriptor(mylite_db *database,
         .charset_id = mylite_mysql_binary_charset_id,
         .nullable = true,
     };
-    field_descriptor_set_nullable(out_descriptor, true);
+    mylite_field_descriptor_set_nullable(out_descriptor, true);
     return MYLITE_OK;
 }
 
@@ -10814,7 +10810,7 @@ static int infer_slice_string_function_descriptor( // NOLINT(misc-no-recursion)
         .charset_id = field_descriptor_connection_charset_id(database),
         .nullable = true,
     };
-    field_descriptor_set_nullable(out_descriptor, true);
+    mylite_field_descriptor_set_nullable(out_descriptor, true);
     return MYLITE_OK;
 }
 
@@ -10873,7 +10869,7 @@ static int infer_aggregate_expression_descriptor(mylite_db *database,
     case MYLITE_SQL_AST_AGGREGATE_COUNT:
         descriptor = signed_longlong_expression_descriptor(false);
         descriptor.length = mylite_mysql_signed_longlong_display_length;
-        field_descriptor_set_not_null(&descriptor, true);
+        mylite_field_descriptor_set_not_null(&descriptor, true);
         *out_descriptor = descriptor;
         return MYLITE_OK;
     case MYLITE_SQL_AST_AGGREGATE_SUM:
@@ -10896,7 +10892,7 @@ static int infer_aggregate_expression_descriptor(mylite_db *database,
                 .charset_id = mylite_mysql_binary_charset_id,
                 .nullable = true,
             };
-            field_descriptor_set_nullable(&descriptor, true);
+            mylite_field_descriptor_set_nullable(&descriptor, true);
         }
         *out_descriptor = descriptor;
         return MYLITE_OK;
@@ -10912,7 +10908,7 @@ static int infer_aggregate_expression_descriptor(mylite_db *database,
                 .charset_id = mylite_mysql_binary_charset_id,
                 .nullable = true,
             };
-            field_descriptor_set_nullable(&descriptor, true);
+            mylite_field_descriptor_set_nullable(&descriptor, true);
         } else {
             descriptor = decimal_expression_descriptor(true);
             descriptor.length = mylite_mysql_avg_display_length;
@@ -10925,7 +10921,7 @@ static int infer_aggregate_expression_descriptor(mylite_db *database,
     case MYLITE_SQL_AST_AGGREGATE_MIN:
     case MYLITE_SQL_AST_AGGREGATE_MAX:
         descriptor = argument_descriptor;
-        field_descriptor_set_nullable(&descriptor, true);
+        mylite_field_descriptor_set_nullable(&descriptor, true);
         *out_descriptor = descriptor;
         return MYLITE_OK;
     case MYLITE_SQL_AST_AGGREGATE_NONE:
@@ -11069,7 +11065,7 @@ finalize_case_descriptor(mylite_db *database,
         descriptor.flags |= MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM;
         descriptor.charset_id = mylite_mysql_binary_charset_id;
     }
-    field_descriptor_set_nullable(&descriptor, aggregate->nullable);
+    mylite_field_descriptor_set_nullable(&descriptor, aggregate->nullable);
     return descriptor;
 }
 
@@ -11415,7 +11411,7 @@ cast_signed_descriptor(const struct mylite_field_descriptor *source)
         .nullable = expression_descriptor_is_nullable(source),
     };
 
-    field_descriptor_set_nullable(&descriptor, descriptor.nullable);
+    mylite_field_descriptor_set_nullable(&descriptor, descriptor.nullable);
     return descriptor;
 }
 
@@ -11443,7 +11439,7 @@ cast_decimal_descriptor(const struct mylite_sql_ast_node *target,
         .nullable = expression_descriptor_is_nullable(source),
     };
 
-    field_descriptor_set_nullable(&descriptor, descriptor.nullable);
+    mylite_field_descriptor_set_nullable(&descriptor, descriptor.nullable);
     return descriptor;
 }
 
@@ -11465,7 +11461,7 @@ cast_character_descriptor(mylite_db *database, const struct mylite_sql_ast_node 
     if (charset_id == mylite_mysql_binary_charset_id) {
         descriptor.flags |= MYLITE_FIELD_FLAG_BINARY;
     }
-    field_descriptor_set_nullable(&descriptor, descriptor.nullable);
+    mylite_field_descriptor_set_nullable(&descriptor, descriptor.nullable);
     return descriptor;
 }
 
@@ -11647,7 +11643,7 @@ static int infer_greatest_least_string_descriptor(mylite_db *database,
         .charset_id = field_descriptor_connection_charset_id(database),
         .nullable = result_nullable,
     };
-    field_descriptor_set_nullable(out_descriptor, result_nullable);
+    mylite_field_descriptor_set_nullable(out_descriptor, result_nullable);
     return MYLITE_OK;
 }
 
@@ -11718,7 +11714,7 @@ static int infer_greatest_least_numeric_descriptor(mylite_db *database,
     } else {
         *out_descriptor = aggregate;
     }
-    field_descriptor_set_nullable(out_descriptor, result_nullable);
+    mylite_field_descriptor_set_nullable(out_descriptor, result_nullable);
     return MYLITE_OK;
 }
 
@@ -12349,7 +12345,7 @@ static struct mylite_field_descriptor boolean_expression_descriptor(bool nullabl
         .nullable = nullable,
     };
 
-    field_descriptor_set_nullable(&descriptor, nullable);
+    mylite_field_descriptor_set_nullable(&descriptor, nullable);
     return descriptor;
 }
 
@@ -12363,7 +12359,7 @@ static struct mylite_field_descriptor signed_longlong_expression_descriptor(bool
         .nullable = nullable,
     };
 
-    field_descriptor_set_nullable(&descriptor, nullable);
+    mylite_field_descriptor_set_nullable(&descriptor, nullable);
     return descriptor;
 }
 
@@ -12387,7 +12383,7 @@ static struct mylite_field_descriptor decimal_expression_descriptor(bool nullabl
         .nullable = nullable,
     };
 
-    field_descriptor_set_nullable(&descriptor, nullable);
+    mylite_field_descriptor_set_nullable(&descriptor, nullable);
     return descriptor;
 }
 
@@ -12402,7 +12398,7 @@ static bool expression_descriptor_is_nullable(const struct mylite_field_descript
 static void
 field_descriptor_set_scalar_subquery_nullable(struct mylite_field_descriptor *descriptor)
 {
-    field_descriptor_set_nullable(descriptor, true);
+    mylite_field_descriptor_set_nullable(descriptor, true);
 }
 
 static bool expression_operator_forces_not_null(enum mylite_sql_ast_operator operator_kind)
@@ -12468,7 +12464,7 @@ static int load_column_field_descriptor(mylite_db *database, sqlite3_stmt *selec
         return status;
     }
     apply_catalog_column_flags(&source, &descriptor);
-    field_descriptor_set_nullable(&descriptor, source.nullable);
+    mylite_field_descriptor_set_nullable(&descriptor, source.nullable);
 
     *out_descriptor = descriptor;
     return MYLITE_OK;
@@ -12823,29 +12819,6 @@ static int field_descriptor_collation_id(mylite_db *database, const char *collat
 
     *out_charset_id = (unsigned int)collation->id;
     return MYLITE_OK;
-}
-
-static void field_descriptor_set_nullable(struct mylite_field_descriptor *descriptor, bool nullable)
-{
-    if (nullable) {
-        field_descriptor_set_not_null(descriptor, false);
-    } else {
-        field_descriptor_set_not_null(descriptor, true);
-    }
-}
-
-static void field_descriptor_set_not_null(struct mylite_field_descriptor *descriptor, bool not_null)
-{
-    if (descriptor == NULL) {
-        return;
-    }
-    if (not_null) {
-        descriptor->nullable = false;
-        descriptor->flags |= MYLITE_FIELD_FLAG_NOT_NULL;
-    } else {
-        descriptor->nullable = true;
-        descriptor->flags &= ~(unsigned int)MYLITE_FIELD_FLAG_NOT_NULL;
-    }
 }
 
 static bool catalog_text_contains_word(struct mylite_catalog_text_match match)
@@ -13389,7 +13362,7 @@ static void mark_select_range_nullable(struct mylite_select_plan *plan,
             continue;
         }
         for (size_t column_index = 0U; column_index < table->column_count; ++column_index) {
-            field_descriptor_set_nullable(&table->columns[column_index].descriptor, true);
+            mylite_field_descriptor_set_nullable(&table->columns[column_index].descriptor, true);
         }
     }
 }

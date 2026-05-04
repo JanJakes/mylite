@@ -230,6 +230,8 @@ only the core object model and transitional shared helpers listed here:
   of `mylite_runtime.h`.
 - [x] Add `mylite_field_descriptor.h`; move `struct mylite_field_descriptor`
   and `enum mylite_format_metadata_length`.
+- [x] Move field-descriptor nullability flag helpers into
+  `src/runtime/mylite_field_descriptor.{h,c}`.
 - [x] Add `mylite_schema_types.h`; move schema option/default/presence structs.
 - [x] Add `mylite_transaction_types.h`; move transaction enums, savepoint
   state, pending auto-increment state, and statement atomicity structs.

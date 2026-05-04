@@ -1649,25 +1649,6 @@ static int
 validate_alter_table_primary_key_part_not_null(void *user_data,
                                                const struct mylite_alter_table_model *model,
                                                const struct mylite_create_table_key_part *part);
-static int validate_alter_table_unique_indexes(mylite_stmt *stmt,
-                                               const struct mylite_alter_table_model *model);
-static int validate_alter_table_unique_index(mylite_stmt *stmt,
-                                             const struct mylite_alter_table_model *model,
-                                             const struct mylite_alter_table_index *index);
-static int build_alter_table_unique_duplicate_sql(mylite_stmt *stmt,
-                                                  const struct mylite_alter_table_model *model,
-                                                  const struct mylite_alter_table_index *index,
-                                                  char **out_sql);
-static int
-append_alter_table_unique_part_expression(mylite_stmt *stmt, sqlite3_str *sql,
-                                          const struct mylite_alter_table_model *model,
-                                          const struct mylite_alter_table_index_part *part);
-static int append_alter_table_unique_part_not_null_expression(
-    mylite_stmt *stmt, sqlite3_str *sql, const struct mylite_alter_table_model *model,
-    const struct mylite_alter_table_index_part *part);
-static int
-append_alter_table_added_column_value_literal(mylite_stmt *stmt, sqlite3_str *sql,
-                                              const struct mylite_alter_table_column *column);
 static int execute_alter_table_transaction(mylite_stmt *stmt,
                                            struct mylite_alter_table_model *model);
 static int create_alter_table_shadow_table(mylite_stmt *stmt,
@@ -1683,9 +1664,6 @@ static char *build_alter_table_copy_sql(mylite_db *database,
                                         const char *shadow_name);
 static int bind_alter_table_added_column_values(mylite_stmt *stmt, sqlite3_stmt *insert,
                                                 const struct mylite_alter_table_model *model);
-static int resolve_alter_table_added_column_value(mylite_stmt *stmt,
-                                                  const struct mylite_alter_table_column *column,
-                                                  struct mylite_insert_bound_value *out_value);
 static int swap_alter_table_physical_table(mylite_stmt *stmt, const char *shadow_name,
                                            const char *physical_name);
 static char *alter_table_shadow_physical_name(mylite_db *database, const char *physical_name);
@@ -12778,7 +12756,7 @@ static int execute_alter_table_statement(mylite_stmt *stmt)
         status = mylite_table_ddl_validate_alter_table_final_model(stmt->database, &model);
     }
     if (status == MYLITE_OK) {
-        status = validate_alter_table_unique_indexes(stmt, &model);
+        status = mylite_table_ddl_validate_alter_table_unique_indexes(stmt->database, &model);
     }
     if (status == MYLITE_OK) {
         status = execute_alter_table_transaction(stmt, &model);
@@ -12968,7 +12946,8 @@ validate_alter_table_primary_key_part_not_null(void *user_data,
     }
     if (column->source_name == NULL) {
         struct mylite_insert_bound_value value = {0};
-        int status = resolve_alter_table_added_column_value(stmt, column, &value);
+        int status =
+            mylite_table_ddl_resolve_alter_table_added_column_value(stmt->database, column, &value);
         bool is_null = value.kind == MYLITE_INSERT_BOUND_NULL;
 
         mylite_dml_insert_bound_value_deinit(&value);
@@ -12999,188 +12978,6 @@ validate_alter_table_primary_key_part_not_null(void *user_data,
         return set_alter_table_invalid_null_error(stmt->database);
     }
     return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
-}
-
-static int validate_alter_table_unique_indexes(mylite_stmt *stmt,
-                                               const struct mylite_alter_table_model *model)
-{
-    for (size_t index = 0U; index < model->index_count; ++index) {
-        if (model->indexes[index].non_unique == 0) {
-            int status = validate_alter_table_unique_index(stmt, model, &model->indexes[index]);
-
-            if (status != MYLITE_OK) {
-                return status;
-            }
-        }
-    }
-    return MYLITE_OK;
-}
-
-static int validate_alter_table_unique_index(mylite_stmt *stmt,
-                                             const struct mylite_alter_table_model *model,
-                                             const struct mylite_alter_table_index *index)
-{
-    char *sql = NULL;
-    sqlite3_stmt *select = NULL;
-    int status = build_alter_table_unique_duplicate_sql(stmt, model, index, &sql);
-    int rc = SQLITE_OK;
-
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    if (sql == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    rc = sqlite3_prepare_v3(stmt->database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select,
-                            NULL);
-    sqlite3_free(sql);
-    if (rc != SQLITE_OK) {
-        return mylite_diagnostics_set_sqlite_error(stmt->database);
-    }
-    rc = sqlite3_step(select);
-    sqlite3_finalize(select);
-    if (rc == SQLITE_ROW) {
-        (void)mylite_diagnostics_set_error_message_parts(
-            stmt->database, "Duplicate entry for key '", index->name, "'");
-        return MYLITE_EXEC_ERROR;
-    }
-    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
-}
-
-static int build_alter_table_unique_duplicate_sql(mylite_stmt *stmt,
-                                                  const struct mylite_alter_table_model *model,
-                                                  const struct mylite_alter_table_index *index,
-                                                  char **out_sql)
-{
-    sqlite3_str *sql = sqlite3_str_new(stmt->database->sqlite);
-    int status = MYLITE_OK;
-
-    *out_sql = NULL;
-    if (sql == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    sqlite3_str_append(sql, "SELECT 1 FROM (SELECT ", (int)strlen("SELECT 1 FROM (SELECT "));
-    for (size_t part = 0U; part < index->part_count; ++part) {
-        if (part != 0U) {
-            sqlite3_str_append(sql, ",", 1);
-        }
-        status = append_alter_table_unique_part_expression(stmt, sql, model, &index->parts[part]);
-        if (status != MYLITE_OK) {
-            sqlite3_free(sqlite3_str_finish(sql));
-            return status;
-        }
-    }
-    sqlite3_str_appendf(sql, " FROM \"%w\" WHERE ", model->physical_name);
-    for (size_t part = 0U; part < index->part_count; ++part) {
-        if (part != 0U) {
-            sqlite3_str_append(sql, " AND ", (int)strlen(" AND "));
-        }
-        status = append_alter_table_unique_part_not_null_expression(stmt, sql, model,
-                                                                    &index->parts[part]);
-        if (status != MYLITE_OK) {
-            sqlite3_free(sqlite3_str_finish(sql));
-            return status;
-        }
-    }
-    sqlite3_str_append(sql, " GROUP BY ", (int)strlen(" GROUP BY "));
-    for (size_t part = 0U; part < index->part_count; ++part) {
-        if (part != 0U) {
-            sqlite3_str_append(sql, ",", 1);
-        }
-        sqlite3_str_appendf(sql, "%d", (int)(part + 1U));
-    }
-    sqlite3_str_append(sql, " HAVING COUNT(*) > 1) LIMIT 1",
-                       (int)strlen(" HAVING COUNT(*) > 1) LIMIT 1"));
-    *out_sql = sqlite3_str_finish(sql);
-    if (*out_sql == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    return MYLITE_OK;
-}
-
-static int
-append_alter_table_unique_part_expression(mylite_stmt *stmt, sqlite3_str *sql,
-                                          const struct mylite_alter_table_model *model,
-                                          const struct mylite_alter_table_index_part *part)
-{
-    const struct mylite_alter_table_column *column =
-        mylite_table_ddl_find_alter_table_column(model, part->column_name);
-
-    if (column == NULL) {
-        return MYLITE_MISUSE;
-    }
-    if (part->has_sub_part) {
-        sqlite3_str_append(sql, "substr(", (int)strlen("substr("));
-    }
-    if (column->source_name == NULL) {
-        int status = append_alter_table_added_column_value_literal(stmt, sql, column);
-
-        if (status != MYLITE_OK) {
-            return status;
-        }
-    } else {
-        sqlite3_str_appendf(sql, "\"%w\"", column->source_name);
-    }
-    if (part->has_sub_part) {
-        sqlite3_str_appendf(sql, ",1,%lld)", (long long)part->sub_part);
-    }
-    return MYLITE_OK;
-}
-
-static int
-append_alter_table_unique_part_not_null_expression(mylite_stmt *stmt, sqlite3_str *sql,
-                                                   const struct mylite_alter_table_model *model,
-                                                   const struct mylite_alter_table_index_part *part)
-{
-    const struct mylite_alter_table_column *column =
-        mylite_table_ddl_find_alter_table_column(model, part->column_name);
-
-    if (column == NULL) {
-        return MYLITE_MISUSE;
-    }
-    if (column->source_name == NULL) {
-        int status = append_alter_table_added_column_value_literal(stmt, sql, column);
-
-        if (status != MYLITE_OK) {
-            return status;
-        }
-    } else {
-        sqlite3_str_appendf(sql, "\"%w\"", column->source_name);
-    }
-    sqlite3_str_append(sql, " IS NOT NULL", (int)strlen(" IS NOT NULL"));
-    return MYLITE_OK;
-}
-
-static int
-append_alter_table_added_column_value_literal(mylite_stmt *stmt, sqlite3_str *sql,
-                                              const struct mylite_alter_table_column *column)
-{
-    struct mylite_insert_bound_value value = {0};
-    int status = resolve_alter_table_added_column_value(stmt, column, &value);
-
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    switch (value.kind) {
-    case MYLITE_INSERT_BOUND_NULL:
-        sqlite3_str_append(sql, "NULL", (int)strlen("NULL"));
-        break;
-    case MYLITE_INSERT_BOUND_INTEGER:
-        sqlite3_str_appendf(sql, "%lld", (long long)value.integer_value);
-        break;
-    case MYLITE_INSERT_BOUND_REAL:
-        sqlite3_str_appendf(sql, "%.15g", value.real_value);
-        break;
-    case MYLITE_INSERT_BOUND_TEXT:
-        sqlite3_str_appendf(sql, "%Q", value.text_value);
-        break;
-    }
-    mylite_dml_insert_bound_value_deinit(&value);
-    return MYLITE_OK;
 }
 
 static int execute_alter_table_transaction(mylite_stmt *stmt,
@@ -13350,7 +13147,8 @@ static int bind_alter_table_added_column_values(mylite_stmt *stmt, sqlite3_stmt 
             continue;
         }
 
-        status = resolve_alter_table_added_column_value(stmt, &model->columns[index], &value);
+        status = mylite_table_ddl_resolve_alter_table_added_column_value(
+            stmt->database, &model->columns[index], &value);
         if (status == MYLITE_OK &&
             mylite_dml_bind_insert_bound_value(insert, bind_index, &value) != SQLITE_OK) {
             status = mylite_diagnostics_set_sqlite_error(stmt->database);
@@ -13362,35 +13160,6 @@ static int bind_alter_table_added_column_values(mylite_stmt *stmt, sqlite3_stmt 
         ++bind_index;
     }
     return MYLITE_OK;
-}
-
-static int resolve_alter_table_added_column_value(mylite_stmt *stmt,
-                                                  const struct mylite_alter_table_column *column,
-                                                  struct mylite_insert_bound_value *out_value)
-{
-    struct mylite_insert_table_column insert_column = {
-        .name = column->name,
-        .default_text = column->column_default,
-        .data_type = column->data_type,
-        .extra = column->extra,
-        .nullable = column->nullable,
-        .auto_increment = column->auto_increment,
-        .generated_default = mylite_text_contains_word(column->extra, "DEFAULT_GENERATED"),
-    };
-
-    if (column->auto_increment) {
-        return mylite_table_ddl_set_alter_table_wrong_auto_increment_error(stmt->database);
-    }
-    if (column->column_default != NULL) {
-        return mylite_dml_resolve_insert_default_bound_value(stmt->database, &insert_column, 0U,
-                                                             NULL, out_value);
-    }
-    if (column->nullable) {
-        *out_value = (struct mylite_insert_bound_value){.kind = MYLITE_INSERT_BOUND_NULL};
-        return MYLITE_OK;
-    }
-    return mylite_dml_resolve_insert_implicit_expression_default(stmt->database, &insert_column,
-                                                                 out_value);
 }
 
 static int swap_alter_table_physical_table(mylite_stmt *stmt, const char *shadow_name,

@@ -365,6 +365,8 @@ only the core object model and transitional shared helpers listed here:
 - [x] Move alter-table column operations into `mylite_table_ddl`.
 - [x] Move alter-table key/index operations into `mylite_table_ddl`.
 - [x] Move alter-table final model validation into `mylite_table_ddl`.
+- [x] Move alter-table unique-index data validation into a focused table DDL
+  validation companion module.
 - [x] Move create/drop index AST copy helpers into `mylite_table_ddl`.
 - [x] Move `CREATE INDEX` and `DROP INDEX` validation/execution into
   `mylite_table_ddl`.

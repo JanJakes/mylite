@@ -7,6 +7,7 @@
 
 #include <stddef.h>
 
+struct mylite_insert_bound_value;
 struct mylite_schema_default;
 
 struct mylite_table_ddl_alter_callbacks {
@@ -27,6 +28,11 @@ int mylite_table_ddl_refresh_alter_table_index_metadata(mylite_db *database,
                                                         struct mylite_alter_table_model *model);
 int mylite_table_ddl_validate_alter_table_final_model(mylite_db *database,
                                                       struct mylite_alter_table_model *model);
+int mylite_table_ddl_validate_alter_table_unique_indexes(
+    mylite_db *database, const struct mylite_alter_table_model *model);
+int mylite_table_ddl_resolve_alter_table_added_column_value(
+    mylite_db *database, const struct mylite_alter_table_column *column,
+    struct mylite_insert_bound_value *out_value);
 const struct mylite_alter_table_column *
 mylite_table_ddl_find_alter_table_column(const struct mylite_alter_table_model *model,
                                          const char *name);

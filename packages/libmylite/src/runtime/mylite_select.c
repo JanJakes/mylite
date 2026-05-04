@@ -1,5 +1,9 @@
 #include "mylite_select.h"
 
+#include "mylite_catalog.h"
+#include "mylite_diagnostics.h"
+#include "mylite_span.h"
+
 #include <stdlib.h>
 #include <string.h>
 
@@ -92,6 +96,182 @@ void mylite_select_aggregate_binding_deinit(struct mylite_select_aggregate_bindi
 
     free(binding->argument_descriptors);
     *binding = (struct mylite_select_aggregate_binding){0};
+}
+
+int mylite_select_resolve_table_target(mylite_db *database, struct mylite_select_table *table)
+{
+    struct mylite_schema_presence presence;
+    bool exists = false;
+    int status = MYLITE_OK;
+
+    if (table->schema_name == NULL) {
+        if (database->selected_schema == NULL || database->selected_schema[0] == '\0') {
+            (void)mylite_diagnostics_set_error_message(database, "No database selected");
+            return MYLITE_EXEC_ERROR;
+        }
+        table->schema_name = mylite_copy_nonempty_cstring(database->selected_schema);
+        if (table->schema_name == NULL) {
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+    }
+    if (mylite_select_schema_name_is_system(table->schema_name)) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    status = mylite_catalog_schema_exists(database, table->schema_name, &presence);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (!presence.exists) {
+        (void)mylite_diagnostics_set_error_message_parts(database, "Unknown database '",
+                                                         table->schema_name, "'");
+        return MYLITE_EXEC_ERROR;
+    }
+    if (presence.is_system) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    status = mylite_catalog_table_exists(database, table->schema_name, table->table_name, &exists);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (!exists) {
+        return mylite_diagnostics_set_table_doesnt_exist_error(database, table->schema_name,
+                                                               table->table_name);
+    }
+
+    table->physical_name =
+        mylite_catalog_physical_table_name(table->schema_name, table->table_name);
+    if (table->physical_name == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    return MYLITE_OK;
+}
+
+bool mylite_select_schema_name_is_system(const char *schema_name)
+{
+    if (mylite_ascii_case_equal(schema_name, "information_schema")) {
+        return true;
+    }
+    if (mylite_ascii_case_equal(schema_name, "mysql")) {
+        return true;
+    }
+    if (mylite_ascii_case_equal(schema_name, "performance_schema")) {
+        return true;
+    }
+    if (mylite_ascii_case_equal(schema_name, "sys")) {
+        return true;
+    }
+    return false;
+}
+
+int mylite_select_resolve_column_reference(const struct mylite_select_table *table,
+                                           const struct mylite_sql_ast_node *expression,
+                                           size_t *out_index)
+{
+    char *parts[3] = {0};
+    size_t part_count = 0U;
+    int status = mylite_copy_identifier_parts(expression, parts, &part_count);
+
+    *out_index = table->column_count;
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    if (part_count >= 1U && part_count <= 3U &&
+        mylite_select_reference_qualifiers_match(table, parts, part_count)) {
+        *out_index = mylite_select_column_index(table, parts[part_count - 1U]);
+    }
+
+    for (size_t index = 0U; index < part_count && index < 3U; ++index) {
+        free(parts[index]);
+    }
+    return MYLITE_OK;
+}
+
+bool mylite_select_reference_qualifiers_match(const struct mylite_select_table *table, char **parts,
+                                              size_t part_count)
+{
+    if (part_count == 1U) {
+        return true;
+    }
+    if (part_count == 2U) {
+        const char *visible_table = table->alias == NULL ? table->table_name : table->alias;
+
+        if (strcmp(parts[0], visible_table) == 0) {
+            return true;
+        }
+        return false;
+    }
+    if (part_count == 3U && table->alias == NULL) {
+        if (strcmp(parts[0], table->schema_name) == 0 && strcmp(parts[1], table->table_name) == 0) {
+            return true;
+        }
+        return false;
+    }
+    return false;
+}
+
+size_t mylite_select_column_index(const struct mylite_select_table *table, const char *column_name)
+{
+    for (size_t index = 0U; index < table->column_count; ++index) {
+        if (mylite_ascii_case_equal(table->columns[index].name, column_name)) {
+            return index;
+        }
+    }
+    return table->column_count;
+}
+
+char *mylite_select_copy_reference_name(const struct mylite_sql_ast_node *identifier)
+{
+    char *parts[3] = {0};
+    size_t part_count = 0U;
+    size_t length = 0U;
+    char *name = NULL;
+    int status = mylite_copy_identifier_parts(identifier, parts, &part_count);
+
+    if (status != MYLITE_OK) {
+        for (size_t index = 0U; index < part_count; ++index) {
+            free(parts[index]);
+        }
+        if (status == MYLITE_NOMEM) {
+            return NULL;
+        }
+        return mylite_copy_span_text(identifier->span.text, identifier->span.length);
+    }
+    if (part_count == 0U) {
+        return mylite_copy_span_text(identifier->span.text, identifier->span.length);
+    }
+
+    for (size_t index = 0U; index < part_count; ++index) {
+        length += strlen(parts[index]);
+        if (index != 0U) {
+            length += 1U;
+        }
+    }
+
+    name = malloc(length + 1U);
+    if (name != NULL) {
+        size_t offset = 0U;
+
+        for (size_t index = 0U; index < part_count; ++index) {
+            size_t part_length = strlen(parts[index]);
+
+            if (index != 0U) {
+                name[offset++] = '.';
+            }
+            memcpy(name + offset, parts[index], part_length);
+            offset += part_length;
+        }
+        name[offset] = '\0';
+    }
+
+    for (size_t index = 0U; index < part_count; ++index) {
+        free(parts[index]);
+    }
+    return name;
 }
 
 int mylite_select_compare_values(const struct mylite_expression_value *left,

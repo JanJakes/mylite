@@ -381,7 +381,6 @@ static int copy_show_index_selected_schema(mylite_db *database,
 static int normalize_show_index_schema_name(char **schema_name);
 static int validate_show_index_target(mylite_db *database,
                                       const struct mylite_show_index_target *target);
-static char *show_index_sql(mylite_db *database, const struct mylite_show_index_query *query);
 static void show_index_target_deinit(struct mylite_show_index_target *target);
 static int prepare_show_create_table_statement(mylite_db *database,
                                                const struct mylite_sql_ast_node *statement,
@@ -5455,10 +5454,10 @@ static int prepare_show_index_statement(mylite_db *database,
         status = MYLITE_UNSUPPORTED;
     }
     if (status == MYLITE_OK) {
-        sqlite_sql = show_index_sql(database, &(const struct mylite_show_index_query){
-                                                  .schema_name = target.schema_name,
-                                                  .table_name = target.table_name,
-                                              });
+        sqlite_sql = mylite_show_index_sql(database, &(const struct mylite_show_index_query){
+                                                         .schema_name = target.schema_name,
+                                                         .table_name = target.table_name,
+                                                     });
         if (sqlite_sql == NULL) {
             status = MYLITE_NOMEM;
         }
@@ -5621,29 +5620,6 @@ static int validate_show_index_target(mylite_db *database,
         return set_table_doesnt_exist_error(database, target->schema_name, target->table_name);
     }
     return MYLITE_OK;
-}
-
-static char *show_index_sql(mylite_db *database, const struct mylite_show_index_query *query)
-{
-    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
-
-    if (sql == NULL) {
-        return NULL;
-    }
-
-    sqlite3_str_appendf(sql,
-                        "SELECT table_name AS \"Table\", non_unique AS \"Non_unique\", "
-                        "index_name AS \"Key_name\", seq_in_index AS \"Seq_in_index\", "
-                        "column_name AS \"Column_name\", collation AS \"Collation\", "
-                        "cardinality AS \"Cardinality\", sub_part AS \"Sub_part\", "
-                        "packed AS \"Packed\", nullable AS \"Null\", index_type AS \"Index_type\", "
-                        "comment AS \"Comment\", index_comment AS \"Index_comment\", "
-                        "is_visible AS \"Visible\", expression AS \"Expression\" "
-                        "FROM __mylite_index_catalog "
-                        "WHERE table_schema = %Q AND table_name = %Q "
-                        "ORDER BY rowid",
-                        query->schema_name, query->table_name);
-    return sqlite3_str_finish(sql);
 }
 
 static void show_index_target_deinit(struct mylite_show_index_target *target)

@@ -228,6 +228,29 @@ int mylite_show_information_schema_collation_character_set_applicability_sql(myl
     return *out_sql == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
 
+char *mylite_show_index_sql(mylite_db *database, const struct mylite_show_index_query *query)
+{
+    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
+
+    if (sql == NULL) {
+        return NULL;
+    }
+
+    sqlite3_str_appendf(sql,
+                        "SELECT table_name AS \"Table\", non_unique AS \"Non_unique\", "
+                        "index_name AS \"Key_name\", seq_in_index AS \"Seq_in_index\", "
+                        "column_name AS \"Column_name\", collation AS \"Collation\", "
+                        "cardinality AS \"Cardinality\", sub_part AS \"Sub_part\", "
+                        "packed AS \"Packed\", nullable AS \"Null\", index_type AS \"Index_type\", "
+                        "comment AS \"Comment\", index_comment AS \"Index_comment\", "
+                        "is_visible AS \"Visible\", expression AS \"Expression\" "
+                        "FROM __mylite_index_catalog "
+                        "WHERE table_schema = %Q AND table_name = %Q "
+                        "ORDER BY rowid",
+                        query->schema_name, query->table_name);
+    return sqlite3_str_finish(sql);
+}
+
 int mylite_show_status_sql(mylite_db *database, const struct mylite_show_status_query *query,
                            char **out_sql)
 {

@@ -327,7 +327,7 @@ only the core object model and transitional shared helpers listed here:
 - [x] Move `SHOW INDEX` builder into `mylite_show`.
 - [x] Move `SHOW INDEX` prepare code into `mylite_show`.
 - [ ] Move `SHOW CREATE TABLE` prepare/build code into `mylite_show`.
-- [ ] Move `SHOW CREATE DATABASE` prepare/build code into `mylite_show`.
+- [x] Move `SHOW CREATE DATABASE` prepare/build code into `mylite_show`.
 - [x] Move `SHOW WARNINGS`, `SHOW ERRORS`, and diagnostic count display into
   `mylite_show` or diagnostics.
 - [x] Create `src/runtime/mylite_information_schema.{h,c}` and wire it into

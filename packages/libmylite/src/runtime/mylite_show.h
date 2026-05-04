@@ -28,6 +28,9 @@ int mylite_show_prepare_collation_statement(mylite_db *database,
 int mylite_show_prepare_columns_statement(mylite_db *database,
                                           const struct mylite_sql_ast_node *statement,
                                           mylite_stmt **out_stmt);
+int mylite_show_prepare_create_schema_statement(mylite_db *database,
+                                                const struct mylite_sql_ast_node *statement,
+                                                mylite_stmt **out_stmt);
 int mylite_show_prepare_describe_table_statement(mylite_db *database,
                                                  const struct mylite_sql_ast_node *statement,
                                                  mylite_stmt **out_stmt);

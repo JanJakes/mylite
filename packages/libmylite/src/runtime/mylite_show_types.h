@@ -98,13 +98,6 @@ struct mylite_show_create_table_target {
     char *table_name;
 };
 
-struct mylite_show_create_schema_info {
-    char *name;
-    char *character_set;
-    char *collation;
-    char *encryption;
-};
-
 struct mylite_show_diagnostics_query {
     enum mylite_sql_ast_show_diagnostics_kind kind;
     uint64_t offset;

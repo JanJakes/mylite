@@ -1148,7 +1148,6 @@ static uint64_t expression_string_length(const mylite_db *database,
 static uint64_t connection_character_max_length(const mylite_db *database);
 static uint64_t utf8_display_character_count(const char *text);
 static uint64_t max_u64(uint64_t left, uint64_t right);
-static int copy_result_metadata_text(mylite_db *database, char **out_text, const char *text);
 static int copy_select_from_clause(mylite_db *database,
                                    const struct mylite_sql_ast_node *from_clause,
                                    struct mylite_select_plan *plan);
@@ -5068,7 +5067,7 @@ static int attach_show_engines_result_metadata(mylite_db *database, mylite_stmt 
 
     for (size_t index = 0U; index < metadata.column_count; ++index) {
         int status =
-            copy_result_metadata_text(database, &metadata.columns[index].name, columns[index].name);
+            mylite_result_metadata_copy_text(database, &metadata.columns[index].name, columns[index].name);
 
         if (status != MYLITE_OK) {
             mylite_result_metadata_deinit(&metadata);
@@ -7658,7 +7657,7 @@ static int attach_union_result_metadata(mylite_stmt *stmt)
             mylite_result_metadata_column(first_operand, (int)index);
         const char *label = mylite_column_name(first_operand, (int)index);
         int status =
-            copy_result_metadata_text(stmt->database, &metadata.columns[index].name, label);
+            mylite_result_metadata_copy_text(stmt->database, &metadata.columns[index].name, label);
 
         if (status == MYLITE_OK) {
             metadata.columns[index].descriptor =
@@ -8139,7 +8138,7 @@ static int copy_select_result_column_metadata(mylite_db *database,
                                               size_t output_index)
 {
     const struct mylite_select_output_column *output = &plan->outputs[output_index];
-    int status = copy_result_metadata_text(database, &metadata->name, output->label);
+    int status = mylite_result_metadata_copy_text(database, &metadata->name, output->label);
 
     if (output->kind == MYLITE_SELECT_OUTPUT_EXPRESSION) {
         if (status == MYLITE_OK) {
@@ -8160,21 +8159,21 @@ static int copy_select_result_column_metadata(mylite_db *database,
     visible_table_name = table->alias == NULL ? table->table_name : table->alias;
     metadata->descriptor = column->descriptor;
     if (status == MYLITE_OK) {
-        status = copy_result_metadata_text(database, &metadata->schema_name, table->schema_name);
+        status = mylite_result_metadata_copy_text(database, &metadata->schema_name, table->schema_name);
     }
     if (status == MYLITE_OK) {
-        status = copy_result_metadata_text(database, &metadata->table_name, visible_table_name);
-    }
-    if (status == MYLITE_OK) {
-        status =
-            copy_result_metadata_text(database, &metadata->origin_schema_name, table->schema_name);
+        status = mylite_result_metadata_copy_text(database, &metadata->table_name, visible_table_name);
     }
     if (status == MYLITE_OK) {
         status =
-            copy_result_metadata_text(database, &metadata->origin_table_name, table->table_name);
+            mylite_result_metadata_copy_text(database, &metadata->origin_schema_name, table->schema_name);
     }
     if (status == MYLITE_OK) {
-        status = copy_result_metadata_text(database, &metadata->origin_column_name, column->name);
+        status =
+            mylite_result_metadata_copy_text(database, &metadata->origin_table_name, table->table_name);
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_result_metadata_copy_text(database, &metadata->origin_column_name, column->name);
     }
     return status;
 }
@@ -13046,21 +13045,6 @@ static uint64_t utf8_display_character_count(const char *text)
 static uint64_t max_u64(uint64_t left, uint64_t right)
 {
     return left > right ? left : right;
-}
-
-static int copy_result_metadata_text(mylite_db *database, char **out_text, const char *text)
-{
-    *out_text = NULL;
-    if (text == NULL) {
-        return MYLITE_OK;
-    }
-
-    *out_text = mylite_copy_span_text(text, strlen(text));
-    if (*out_text == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    return MYLITE_OK;
 }
 
 static int copy_select_from_clause(mylite_db *database,

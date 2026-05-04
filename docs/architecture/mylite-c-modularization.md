@@ -285,6 +285,8 @@ only the core object model and transitional shared helpers listed here:
 - [x] Extract public result metadata accessors into
   `src/runtime/mylite_metadata.{h,c}`.
 - [x] Move result metadata cleanup into `src/runtime/mylite_metadata`.
+- [x] Move result metadata text-copy ownership into
+  `src/runtime/mylite_metadata`.
 - [x] Split catalog lookup helpers into `src/runtime/mylite_catalog`.
 - [x] Move physical table naming into `src/runtime/mylite_catalog`.
 - [x] Move selected schema mutation helpers into `src/runtime/mylite_connection`.

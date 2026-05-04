@@ -1,9 +1,12 @@
 #include "mylite_metadata.h"
 
+#include "mylite_diagnostics.h"
 #include "mylite_runtime.h"
+#include "mylite_span.h"
 #include "sqlite3.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 static void result_column_metadata_deinit(struct mylite_result_column_metadata *metadata);
 
@@ -15,6 +18,21 @@ const struct mylite_result_column_metadata *mylite_result_metadata_column(const 
         return NULL;
     }
     return &stmt->result_metadata.columns[column];
+}
+
+int mylite_result_metadata_copy_text(mylite_db *database, char **out_text, const char *text)
+{
+    *out_text = NULL;
+    if (text == NULL) {
+        return MYLITE_OK;
+    }
+
+    *out_text = mylite_copy_span_text(text, strlen(text));
+    if (*out_text == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    return MYLITE_OK;
 }
 
 void mylite_result_metadata_deinit(struct mylite_result_metadata *metadata)

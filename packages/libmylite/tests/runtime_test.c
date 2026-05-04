@@ -258,6 +258,7 @@ static int test_current_temporal_functions_execution(void);
 static int test_date_and_datediff_functions_execution(void);
 static int test_timestampdiff_function_execution(void);
 static int test_timestampadd_function_execution(void);
+static int test_to_days_function_execution(void);
 static int test_date_add_sub_functions_execution(void);
 static int test_round_scalar_function_execution(mylite_db *database);
 static int test_format_scalar_function_execution(mylite_db *database);
@@ -473,6 +474,7 @@ int main(void)
     failures += test_date_and_datediff_functions_execution();
     failures += test_timestampdiff_function_execution();
     failures += test_timestampadd_function_execution();
+    failures += test_to_days_function_execution();
     failures += test_date_add_sub_functions_execution();
     failures += test_inet_ipv4_functions_execution();
     failures += test_charset_collation_functions_execution();
@@ -6788,6 +6790,206 @@ static int test_timestampadd_function_execution(void)
     failures += prepare_sql(database, "SELECT TIMESTAMPADD(DAY,1,'2024-01-01','x')",
                             MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "TIMESTAMPADD extra argument rejected");
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_to_days_function_execution(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const struct expected_result_metadata metadata[] = {
+        {"to_days_value", NULL, NULL, NULL, NULL, NULL, 8U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"to_days_null", NULL, NULL, NULL, NULL, NULL, 8U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+    };
+    static const char *const projection_columns[] = {"id", "days", "dt_days"};
+    static const char *const projection_values[] = {
+        "3", "739311", "739311", "2", "739310", "739310",
+    };
+    static const char *const updated_columns[] = {"id", "n", "note"};
+    static const char *const updated_values[] = {"2", "739310", "leap"};
+    static const char *const remaining_columns[] = {"id"};
+    static const char *const remaining_values[] = {"2", "3", "4"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open TO_DAYS function database");
+
+    failures += prepare_sql(database,
+                            "SELECT TO_DAYS('2024-02-29') AS to_days_value, "
+                            "TO_DAYS(NULL) AS to_days_null",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "TO_DAYS metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TO_DAYS metadata row");
+    failures += expect_string(mylite_column_text(stmt, 0), "739310", "TO_DAYS metadata value");
+    failures += expect_null_text(mylite_column_text(stmt, 1), "TO_DAYS metadata null");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TO_DAYS metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT TO_DAYS('0000-01-01') AS year_zero, "
+                            "TO_DAYS('0001-01-01') AS year_one, "
+                            "TO_DAYS('2024-02-29') AS leap_day, "
+                            "TO_DAYS('2024-02-29 23:59:59') AS leap_datetime, "
+                            "TO_DAYS('9999-12-31') AS max_date, "
+                            "TO_DAYS('20240229') AS compact_string, "
+                            "TO_DAYS(20240229) AS compact_number, "
+                            "TO_DAYS(DATE_ADD('2024-02-28', INTERVAL 1 DAY)) AS nested_date",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TO_DAYS scalar row");
+    failures += expect_string(mylite_column_text(stmt, 0), "1", "TO_DAYS year zero");
+    failures += expect_string(mylite_column_text(stmt, 1), "366", "TO_DAYS year one");
+    failures += expect_string(mylite_column_text(stmt, 2), "739310", "TO_DAYS leap day");
+    failures += expect_string(mylite_column_text(stmt, 3), "739310", "TO_DAYS ignores time");
+    failures += expect_string(mylite_column_text(stmt, 4), "3652424", "TO_DAYS max date");
+    failures += expect_string(mylite_column_text(stmt, 5), "739310", "TO_DAYS compact string");
+    failures += expect_string(mylite_column_text(stmt, 6), "739310", "TO_DAYS compact number");
+    failures += expect_string(mylite_column_text(stmt, 7), "739310", "TO_DAYS nested DATE_ADD");
+    failures += expect_int(mylite_warning_count(database), 0, "TO_DAYS scalar warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TO_DAYS scalar done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT TO_DAYS(NULL) AS null_value, "
+                            "TO_DAYS('bad') AS bad_text, "
+                            "TO_DAYS('0000-00-00') AS zero_date, "
+                            "TO_DAYS('2006-05-00') AS zero_day, "
+                            "TO_DAYS('0000-02-29') AS impossible_year_zero",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TO_DAYS invalid row");
+    for (int index = 0; index < 5; ++index) {
+        failures += expect_null_text(mylite_column_text(stmt, index), "TO_DAYS invalid null");
+    }
+    failures += expect_int(mylite_warning_count(database), 4, "TO_DAYS invalid warning count");
+    for (int index = 0; index < 4; ++index) {
+        failures += expect_int((int)mylite_warning_code(database, index),
+                               mysql_warning_truncated_wrong_value, "TO_DAYS invalid warning code");
+    }
+    failures += expect_string(mylite_warning_message(database, 0),
+                              "Incorrect datetime value: 'bad'", "TO_DAYS bad warning");
+    failures +=
+        expect_string(mylite_warning_message(database, 1), "Incorrect datetime value: '0000-00-00'",
+                      "TO_DAYS zero-date warning");
+    failures += expect_string(mylite_warning_message(database, 2),
+                              "Incorrect datetime value: '2006-05-00'", "TO_DAYS zero-day warning");
+    failures +=
+        expect_string(mylite_warning_message(database, 3), "Incorrect datetime value: '0000-02-29'",
+                      "TO_DAYS impossible year-zero warning");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TO_DAYS invalid done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "SELECT TO_DAYS(20240229.9) AS fractional_numeric", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TO_DAYS fractional numeric row");
+    failures +=
+        expect_string(mylite_column_text(stmt, 0), "739310", "TO_DAYS fractional numeric value");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "TO_DAYS fractional numeric warnings");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_truncated_wrong_value,
+                   "TO_DAYS fractional numeric warning code");
+    failures += expect_string(mylite_warning_message(database, 0),
+                              "Truncated incorrect date value: '20240229.9'",
+                              "TO_DAYS fractional numeric warning");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TO_DAYS fractional numeric done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT TO_DAYS(NOW(6)) = TO_DAYS(CURDATE()) AS stable_current, "
+                            "TO_DAYS(DATE_ADD(CURDATE(), INTERVAL 1 DAY)) - "
+                            "TO_DAYS(CURDATE()) AS nested_current",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TO_DAYS current row");
+    failures += expect_string(mylite_column_text(stmt, 0), "1", "TO_DAYS stable current");
+    failures += expect_string(mylite_column_text(stmt, 1), "1", "TO_DAYS nested current");
+    failures += expect_int(mylite_warning_count(database), 0, "TO_DAYS current warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TO_DAYS current done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE DATABASE to_days_functions", MYLITE_DONE);
+    failures += execute_sql(database, "USE to_days_functions", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE temporal_to_days ("
+                            "id INT PRIMARY KEY, d DATE, dt DATETIME, n BIGINT, "
+                            "note VARCHAR(32))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO temporal_to_days VALUES "
+                            "(1, '2024-02-28', '2024-02-28 23:59:59', 0, 'before'), "
+                            "(2, '2024-02-29', '2024-02-29 12:00:00', 0, 'leap'), "
+                            "(3, '2024-03-01', '2024-03-01 00:00:00', 0, 'after'), "
+                            "(4, NULL, NULL, 0, 'null')",
+                            MYLITE_DONE);
+    failures +=
+        expect_select_rows(database,
+                           "SELECT id, TO_DAYS(d) AS days, "
+                           "TO_DAYS(dt) AS dt_days "
+                           "FROM temporal_to_days "
+                           "WHERE TO_DAYS(d) >= 739310 "
+                           "ORDER BY TO_DAYS(dt) DESC, id",
+                           projection_columns, 3, projection_values, 2, "TO_DAYS table projection");
+    failures += execute_sql_expect_done_affected(database,
+                                                 "UPDATE temporal_to_days "
+                                                 "SET n = TO_DAYS(d) "
+                                                 "WHERE TO_DAYS(dt) = 739310",
+                                                 1, "TO_DAYS update");
+    failures +=
+        expect_select_rows(database, "SELECT id, n, note FROM temporal_to_days WHERE id = 2",
+                           updated_columns, 3, updated_values, 1, "TO_DAYS updated row");
+    failures += execute_sql_expect_done_affected(database,
+                                                 "DELETE FROM temporal_to_days "
+                                                 "WHERE TO_DAYS(d) < 739310",
+                                                 1, "TO_DAYS delete");
+    failures +=
+        expect_select_rows(database, "SELECT id FROM temporal_to_days ORDER BY id",
+                           remaining_columns, 1, remaining_values, 3, "TO_DAYS delete result");
+    failures += prepare_sql(database,
+                            "UPDATE temporal_to_days "
+                            "SET n = TO_DAYS('bad') WHERE id = 2",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "TO_DAYS invalid update promoted");
+    failures += expect_contains(mylite_error_message(database), "Incorrect datetime value: 'bad'",
+                                "TO_DAYS invalid update error");
+    failures += expect_int(mylite_warning_count(database), 1, "TO_DAYS invalid update warnings");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database, "SELECT id, n, note FROM temporal_to_days WHERE id = 2", updated_columns, 3,
+        updated_values, 1, "TO_DAYS invalid update unchanged");
+    failures += prepare_sql(database,
+                            "DELETE FROM temporal_to_days "
+                            "WHERE TO_DAYS('bad') IS NULL",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "TO_DAYS invalid delete promoted");
+    failures += expect_contains(mylite_error_message(database), "Incorrect datetime value: 'bad'",
+                                "TO_DAYS invalid delete error");
+    failures += expect_int(mylite_warning_count(database), 1, "TO_DAYS invalid delete warnings");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM temporal_to_days ORDER BY id",
+                                   remaining_columns, 1, remaining_values, 3,
+                                   "TO_DAYS invalid delete unchanged");
+
+    failures += prepare_sql(database, "SELECT TO_DAYS()", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "TO_DAYS missing argument rejected");
+    failures +=
+        prepare_sql(database, "SELECT TO_DAYS('2024-01-01','x')", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "TO_DAYS extra argument rejected");
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)

@@ -194,6 +194,7 @@ static const uint64_t mylite_mysql_coercibility_function_display_length = 10U;
 static const uint64_t mylite_mysql_pi_function_display_length = 8U;
 static const unsigned int mylite_mysql_pi_function_scale = 6U;
 static const uint64_t mylite_mysql_signed_longlong_display_length = 21U;
+static const uint64_t mylite_mysql_to_days_function_display_length = 8U;
 static const uint64_t mylite_mysql_unsigned_longlong_display_length = 20U;
 static const uint64_t mylite_mysql_tinyint_unsigned_display_length = 3U;
 static const uint64_t mylite_mysql_tinyint_signed_display_length = 4U;
@@ -2465,6 +2466,7 @@ static bool function_name_is_current_temporal_time(const struct mylite_sql_ast_n
 static bool function_name_is_date_extraction(const struct mylite_sql_ast_node *name);
 static bool function_name_is_datediff(const struct mylite_sql_ast_node *name);
 static bool function_name_is_timestampdiff(const struct mylite_sql_ast_node *name);
+static bool function_name_is_to_days(const struct mylite_sql_ast_node *name);
 static bool function_name_is_year_part(const struct mylite_sql_ast_node *name);
 static bool function_name_is_month_part(const struct mylite_sql_ast_node *name);
 static bool function_name_is_day_part(const struct mylite_sql_ast_node *name);
@@ -11903,6 +11905,11 @@ infer_temporal_scalar_function_descriptor(const struct mylite_sql_ast_node *name
         out_descriptor->length = mylite_mysql_signed_longlong_display_length;
         return true;
     }
+    if (function_name_is_to_days(name)) {
+        *out_descriptor = signed_longlong_expression_descriptor(true);
+        out_descriptor->length = mylite_mysql_to_days_function_display_length;
+        return true;
+    }
     if (function_name_is_year_part(name)) {
         struct mylite_field_descriptor descriptor = {
             .type = MYLITE_FIELD_TYPE_YEAR,
@@ -13859,6 +13866,13 @@ static bool function_name_is_datediff(const struct mylite_sql_ast_node *name)
 static bool function_name_is_timestampdiff(const struct mylite_sql_ast_node *name)
 {
     static const char *const names[] = {"TIMESTAMPDIFF"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_is_to_days(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"TO_DAYS"};
 
     return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }

@@ -183,14 +183,16 @@ by common scalar expressions:
   `EXTRACT` for the simple `YEAR`, `MONTH`, `DAY`, `HOUR`, `MINUTE`, and
   `SECOND` units, `TIMESTAMPADD` for the simple `DAY`, `WEEK`, `MONTH`,
   `YEAR`, `HOUR`, `MINUTE`, and `SECOND` units, and `TIMESTAMPDIFF` for the
-  simple `DAY`, `WEEK`, `MONTH`, `YEAR`, `HOUR`, `MINUTE`, and `SECOND` units;
+  simple `DAY`, `WEEK`, `MONTH`, `YEAR`, `HOUR`, `MINUTE`, and `SECOND` units,
+  and `TO_DAYS`;
   see
   `docs/specs/current-temporal-functions/specs.md` and
   `docs/specs/date-and-datediff-functions/specs.md` and
   `docs/specs/date-add-sub-functions/specs.md` and
   `docs/specs/temporal-part-functions/specs.md` and
   `docs/specs/timestampadd-function/specs.md` and
-  `docs/specs/timestampdiff-function/specs.md`
+  `docs/specs/timestampdiff-function/specs.md` and
+  `docs/specs/to-days-function/specs.md`
 - grammar-level cast expressions: `CAST(expr AS type)`, `CONVERT(expr, type)`,
   and `CONVERT(expr USING charset_name)` for the supported CAST target and
   charset-registry subsets; see `docs/specs/cast-expression/specs.md` and
@@ -236,8 +238,9 @@ predicates, `STRCMP()` NULL short-circuiting, numeric-to-string comparison,
 PAD SPACE / NO PAD trailing-space comparison, DATE_ADD/DATE_SUB interval
 arithmetic over supported simple units, month-end clipping, date-arithmetic
 warning propagation, TIMESTAMPDIFF calendar and elapsed-time differences over
-supported simple units, unsupported functions, unsupported arity, and selected
-result metadata.
+supported simple units, TO_DAYS day-number conversion, zero and incomplete date
+warnings, unsupported functions, unsupported arity, and selected result
+metadata.
 
 This checkpoint intentionally does not yet implement `INSERT ... VALUES` or
 `INSERT ... SET` function expressions, temporal functions outside the current,
@@ -637,6 +640,7 @@ Verified `mysql --column-type-info -vvv` examples:
 | `DATE_ADD('2024-02-29', INTERVAL 1 DAY) AS date_add_value` | `STRING` | `116` | `31` | `utf8mb4_0900_ai_ci` | none |
 | `TIMESTAMPADD(DAY,...) AS timestampadd_value` | `STRING` / `DATE` / `DATETIME` depending on input | `116`, `10`, `19`, or fractional datetime length | `31`, `0`, or source datetime scale | connection collation or `binary` | none or `BINARY` |
 | `TIMESTAMPDIFF(DAY,...) AS timestampdiff_value` | `LONGLONG` | `21` | `0` | `binary` | `BINARY NUM` |
+| `TO_DAYS(...) AS to_days_value` | `LONGLONG` | `8` | `0` | `binary` | `BINARY NUM` |
 | `DATABASE() AS database_value` | `VAR_STRING` | `256` | `31` | `utf8mb4_0900_ai_ci` | nullable |
 | `VERSION() AS version_value` | `VAR_STRING` | `20` | `31` | `utf8mb4_0900_ai_ci` | `NOT_NULL` |
 | `LAST_INSERT_ID() AS last_insert_id_value` | `LONGLONG` | `21` | `0` | `binary` | `NOT_NULL UNSIGNED BINARY NUM` |
@@ -991,6 +995,7 @@ SELECT
   MICROSECOND('12:34:56.123456'),
   DATEDIFF('2024-03-01','2024-02-28'),
   TIMESTAMPDIFF(DAY,'2024-02-28','2024-03-01'),
+  TO_DAYS('2024-02-29'),
   DATE_ADD('2024-02-29', INTERVAL 1 DAY),
   DATE_SUB('2024-03-01', INTERVAL 1 DAY),
   EXTRACT(YEAR_MONTH FROM '2024-02-29 12:34:56'),
@@ -1002,7 +1007,7 @@ Expected row:
 ```text
 2023-11-14 22:13:20.000000, 1, 2023-11-14, 22:13:20.000000,
 2023-11-14 22:13:20, 2024-02-29, 2024, 2, 0, 3, 123456,
-2, 2, 2024-03-01, 2024-02-29, 202402, 2024-03-01
+2, 2, 739310, 2024-03-01, 2024-02-29, 202402, 2024-03-01
 ```
 
 Incomplete date warning test:

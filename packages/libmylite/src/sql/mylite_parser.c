@@ -6531,7 +6531,8 @@ static bool function_name_is_date_interval_arithmetic(const struct mylite_sql_as
 static bool function_name_has_parser_checked_arity(const struct mylite_sql_ast_node *name,
                                                    size_t *out_arity)
 {
-    if (function_name_matches(name, "ASCII") || function_name_matches(name, "REVERSE")) {
+    if (function_name_matches(name, "ASCII") || function_name_matches(name, "REVERSE") ||
+        function_name_matches(name, "TO_DAYS")) {
         *out_arity = 1U;
         return true;
     }

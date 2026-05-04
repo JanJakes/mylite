@@ -3784,24 +3784,6 @@ const char *mylite_status_name(int status)
     }
 }
 
-void mylite_close(mylite_db *database)
-{
-    if (database == NULL) {
-        return;
-    }
-
-    if (database->transaction_active) {
-        (void)mylite_transaction_rollback_explicit(database);
-    }
-    sqlite3_close(database->sqlite);
-    free(database->error_message);
-    mylite_expression_warnings_deinit(&database->warnings);
-    free(database->selected_schema);
-    mylite_transaction_savepoint_state_deinit(&database->savepoints);
-    mylite_transaction_clear_pending_auto_increments(database);
-    free(database);
-}
-
 int mylite_prepare(mylite_db *database, const char *sql, size_t length, mylite_stmt **out_stmt)
 {
     struct mylite_sql_parse_result parse_result;

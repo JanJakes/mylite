@@ -2,7 +2,9 @@
 
 #include "mylite_catalog.h"
 #include "mylite_charset.h"
+#include "mylite_expression.h"
 #include "mylite_runtime.h"
+#include "mylite_transactions.h"
 #include "mylite_vfs.h"
 #include "sqlite3.h"
 
@@ -40,6 +42,24 @@ int mylite_open_memory(mylite_db **out_db)
 
     return open_sqlite_database(
         ":memory:", SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_MEMORY, NULL, out_db);
+}
+
+void mylite_close(mylite_db *database)
+{
+    if (database == NULL) {
+        return;
+    }
+
+    if (database->transaction_active) {
+        (void)mylite_transaction_rollback_explicit(database);
+    }
+    sqlite3_close(database->sqlite);
+    free(database->error_message);
+    mylite_expression_warnings_deinit(&database->warnings);
+    free(database->selected_schema);
+    mylite_transaction_savepoint_state_deinit(&database->savepoints);
+    mylite_transaction_clear_pending_auto_increments(database);
+    free(database);
 }
 
 uint64_t mylite_last_insert_id(const mylite_db *database)

@@ -61,7 +61,7 @@ after every step.
 - [x] Extract public connection state accessors into
   `src/runtime/mylite_connection.{h,c}`.
 - [x] Extract public connection opening into `src/runtime/mylite_connection`.
-- [ ] Extract public connection close after transaction cleanup moves out of
+- [x] Extract public connection close after transaction cleanup moves out of
   `mylite.c`.
 - [x] Extract catalog bootstrap DDL and system schema seeding into
   `src/runtime/mylite_catalog.{h,c}`.

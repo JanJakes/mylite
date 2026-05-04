@@ -3202,7 +3202,6 @@ static bool write_statement_kind(enum mylite_stmt_kind kind);
 static bool is_valid_encryption_value(const char *value);
 static bool
 insert_column_uses_numeric_implicit_default(const struct mylite_insert_table_column *column);
-static bool column_default_is_current_timestamp(const char *default_text);
 static bool parse_insert_integer_text(const char *text, int64_t *out_value);
 static bool parse_insert_real_text(const char *text, double *out_value);
 static char *insert_current_timestamp_text(void);
@@ -4331,12 +4330,13 @@ static int append_show_create_table_column(sqlite3_str *create_sql, sqlite3_stmt
                                                     });
     if (!nullable) {
         sqlite3_str_appendall(create_sql, " NOT NULL");
-    } else if (column_default != NULL && column_default_is_current_timestamp(column_default)) {
+    } else if (column_default != NULL &&
+               mylite_column_default_is_current_timestamp(column_default)) {
         sqlite3_str_appendall(create_sql, " NULL");
     }
     if (column_default != NULL) {
         sqlite3_str_appendall(create_sql, " DEFAULT ");
-        if (column_default_is_current_timestamp(column_default)) {
+        if (mylite_column_default_is_current_timestamp(column_default)) {
             sqlite3_str_appendall(create_sql, "CURRENT_TIMESTAMP");
         } else {
             append_show_create_string_literal(create_sql, column_default);
@@ -20330,7 +20330,7 @@ alter_table_column_definition_has_deferred_features(const struct mylite_create_t
         return true;
     }
     if (column->has_generated_default &&
-        !column_default_is_current_timestamp(column->default_text)) {
+        !mylite_column_default_is_current_timestamp(column->default_text)) {
         return true;
     }
     return false;
@@ -22418,7 +22418,7 @@ static int resolve_update_default_value(mylite_stmt *stmt,
         }
         return set_insert_no_default_error(stmt->database, column->name);
     }
-    if (column_default_is_current_timestamp(column->default_text)) {
+    if (mylite_column_default_is_current_timestamp(column->default_text)) {
         char *timestamp = insert_current_timestamp_text();
 
         if (timestamp == NULL) {
@@ -30159,7 +30159,7 @@ static int resolve_insert_update_default_value(mylite_stmt *stmt,
         }
         return set_insert_no_default_error(stmt->database, column->name);
     }
-    if (column_default_is_current_timestamp(column->default_text)) {
+    if (mylite_column_default_is_current_timestamp(column->default_text)) {
         char *timestamp = insert_current_timestamp_text();
 
         if (timestamp == NULL) {
@@ -32034,7 +32034,7 @@ static int resolve_insert_default_value(mylite_stmt *stmt,
         }
         return set_insert_no_default_error(stmt->database, column->name);
     }
-    if (column_default_is_current_timestamp(column->default_text)) {
+    if (mylite_column_default_is_current_timestamp(column->default_text)) {
         char *timestamp = insert_current_timestamp_text();
 
         if (timestamp == NULL) {
@@ -37904,54 +37904,6 @@ insert_column_uses_numeric_implicit_default(const struct mylite_insert_table_col
         }
     }
     return false;
-}
-
-static bool column_default_is_current_timestamp(const char *default_text)
-{
-    const char *start = default_text;
-    const char *end = default_text == NULL ? NULL : default_text + strlen(default_text);
-    static const char *const supported_current_timestamp_defaults[] = {
-        "CURRENT_TIMESTAMP",
-        "CURRENT_TIMESTAMP()",
-        "now()",
-    };
-    char *copy = NULL;
-    bool matches = false;
-
-    if (default_text == NULL) {
-        return false;
-    }
-    while (start < end && isspace((unsigned char)*start)) {
-        ++start;
-    }
-    while (end > start && isspace((unsigned char)*(end - 1))) {
-        --end;
-    }
-    if (end > start + 1 && *start == '(' && *(end - 1) == ')') {
-        ++start;
-        --end;
-        while (start < end && isspace((unsigned char)*start)) {
-            ++start;
-        }
-        while (end > start && isspace((unsigned char)*(end - 1))) {
-            --end;
-        }
-    }
-
-    copy = mylite_copy_span_text(start, (size_t)(end - start));
-    if (copy == NULL) {
-        return false;
-    }
-    for (size_t index = 0U; index < sizeof(supported_current_timestamp_defaults) /
-                                        sizeof(supported_current_timestamp_defaults[0]);
-         ++index) {
-        if (mylite_ascii_case_equal(copy, supported_current_timestamp_defaults[index])) {
-            matches = true;
-            break;
-        }
-    }
-    free(copy);
-    return matches;
 }
 
 static bool parse_insert_integer_text(const char *text, int64_t *out_value)

@@ -19,6 +19,7 @@ char *mylite_copy_nonempty_cstring(const char *text);
 char *mylite_copy_span_text(const char *text, size_t length);
 bool mylite_span_contains_newline(const char *text, size_t length);
 bool mylite_text_contains_word(const char *text, const char *word);
+bool mylite_column_default_is_current_timestamp(const char *default_text);
 const struct mylite_sql_ast_node *mylite_ast_child_at(const struct mylite_sql_ast_node *node,
                                                       size_t index);
 const struct mylite_sql_ast_node *mylite_ast_find_child_kind(const struct mylite_sql_ast_node *node,

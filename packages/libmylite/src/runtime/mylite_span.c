@@ -2,6 +2,7 @@
 
 #include <mylite/mylite.h>
 
+#include <ctype.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -247,6 +248,54 @@ bool mylite_text_contains_word(const char *text, const char *word)
         return false;
     }
     return strstr(text, word) != NULL;
+}
+
+bool mylite_column_default_is_current_timestamp(const char *default_text)
+{
+    const char *start = default_text;
+    const char *end = default_text == NULL ? NULL : default_text + strlen(default_text);
+    static const char *const supported_current_timestamp_defaults[] = {
+        "CURRENT_TIMESTAMP",
+        "CURRENT_TIMESTAMP()",
+        "now()",
+    };
+    char *copy = NULL;
+    bool matches = false;
+
+    if (default_text == NULL) {
+        return false;
+    }
+    while (start < end && isspace((unsigned char)*start)) {
+        ++start;
+    }
+    while (end > start && isspace((unsigned char)*(end - 1))) {
+        --end;
+    }
+    if (end > start + 1 && *start == '(' && *(end - 1) == ')') {
+        ++start;
+        --end;
+        while (start < end && isspace((unsigned char)*start)) {
+            ++start;
+        }
+        while (end > start && isspace((unsigned char)*(end - 1))) {
+            --end;
+        }
+    }
+
+    copy = mylite_copy_span_text(start, (size_t)(end - start));
+    if (copy == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < sizeof(supported_current_timestamp_defaults) /
+                                        sizeof(supported_current_timestamp_defaults[0]);
+         ++index) {
+        if (mylite_ascii_case_equal(copy, supported_current_timestamp_defaults[index])) {
+            matches = true;
+            break;
+        }
+    }
+    free(copy);
+    return matches;
 }
 
 const struct mylite_sql_ast_node *mylite_ast_child_at(const struct mylite_sql_ast_node *node,

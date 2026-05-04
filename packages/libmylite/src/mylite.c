@@ -2020,8 +2020,6 @@ static int set_where_predicate_eval_error(mylite_stmt *stmt);
 static void table_select_group_deinit(struct mylite_table_select_group *group);
 static int create_table_transaction(mylite_stmt *stmt, const char *schema_name,
                                     const struct mylite_schema_default *schema_default);
-static int create_physical_table(mylite_stmt *stmt, const char *schema_name,
-                                 const struct mylite_schema_default *schema_default);
 static int validate_drop_table_plan(mylite_stmt *stmt);
 static int validate_drop_table_temporary_target(mylite_stmt *stmt,
                                                 const struct mylite_drop_table_target *target);
@@ -3035,11 +3033,7 @@ static int copy_delete_target(const struct mylite_sql_ast_node *target,
                               struct mylite_delete_target *out_target);
 static int copy_delete_table_name(const struct mylite_sql_ast_node *table_name,
                                   struct mylite_delete_target *target);
-static const char *
-sqlite_affinity_for_descriptor(const struct mylite_column_type_descriptor *descriptor);
 static const char *sqlite_affinity_for_catalog_data_type(const char *data_type);
-static char *build_create_physical_table_sql(mylite_stmt *stmt, const char *physical_name,
-                                             const struct mylite_schema_default *schema_default);
 static int set_unknown_table_error(mylite_db *database, const char *schema_name,
                                    const char *table_name);
 static int append_unknown_table_note(mylite_db *database, const char *schema_name,
@@ -15547,7 +15541,8 @@ static int create_table_transaction(mylite_stmt *stmt, const char *schema_name,
         return status;
     }
 
-    status = create_physical_table(stmt, schema_name, schema_default);
+    status = mylite_table_ddl_create_physical_table(stmt->database, schema_name, schema_default,
+                                                    &stmt->create_table);
     if (status == MYLITE_OK) {
         status = mylite_table_ddl_insert_create_table_catalog_rows(
             stmt->database, schema_name, schema_default, &stmt->create_table);
@@ -15561,34 +15556,6 @@ static int create_table_transaction(mylite_stmt *stmt, const char *schema_name,
 
     mylite_transaction_rollback_storage(stmt->database);
     return status;
-}
-
-static int create_physical_table(mylite_stmt *stmt, const char *schema_name,
-                                 const struct mylite_schema_default *schema_default)
-{
-    char *physical_name =
-        mylite_catalog_physical_table_name(schema_name, stmt->create_table.table_name);
-    char *sql = NULL;
-    int rc = SQLITE_OK;
-
-    if (physical_name == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    sql = build_create_physical_table_sql(stmt, physical_name, schema_default);
-    free(physical_name);
-    if (sql == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    rc = sqlite3_exec(stmt->database->sqlite, sql, NULL, NULL, NULL);
-    sqlite3_free(sql);
-    if (rc != SQLITE_OK) {
-        return mylite_diagnostics_set_sqlite_error(stmt->database);
-    }
-    return MYLITE_OK;
 }
 
 static int validate_drop_table_plan(mylite_stmt *stmt)
@@ -35038,24 +35005,6 @@ static int add_drop_table_target(struct mylite_drop_table_plan *plan,
     return MYLITE_OK;
 }
 
-static const char *
-sqlite_affinity_for_descriptor(const struct mylite_column_type_descriptor *descriptor)
-{
-    if (descriptor->integer_type != MYLITE_COLUMN_INTEGER_NONE || descriptor->is_boolean_alias) {
-        return "INTEGER";
-    }
-    if (descriptor->is_approximate_numeric) {
-        return "REAL";
-    }
-    if (descriptor->is_exact_numeric) {
-        return "NUMERIC";
-    }
-    if (descriptor->is_binary_string) {
-        return "BLOB";
-    }
-    return "TEXT";
-}
-
 static const char *sqlite_affinity_for_catalog_data_type(const char *data_type)
 {
     if (data_type == NULL) {
@@ -35085,36 +35034,6 @@ static const char *sqlite_affinity_for_catalog_data_type(const char *data_type)
         return "BLOB";
     }
     return "TEXT";
-}
-
-static char *build_create_physical_table_sql(mylite_stmt *stmt, const char *physical_name,
-                                             const struct mylite_schema_default *schema_default)
-{
-    sqlite3_str *sql = sqlite3_str_new(stmt->database->sqlite);
-
-    if (sql == NULL) {
-        return NULL;
-    }
-
-    sqlite3_str_appendf(sql, "CREATE TABLE \"%w\"(", physical_name);
-    for (size_t index = 0U; index < stmt->create_table.column_count; ++index) {
-        struct mylite_column_type_descriptor descriptor;
-        int status = mylite_table_ddl_describe_create_table_column(
-            &stmt->create_table.columns[index], schema_default, &stmt->create_table.options,
-            &descriptor);
-
-        if (status != MYLITE_OK) {
-            sqlite3_free(sqlite3_str_finish(sql));
-            return NULL;
-        }
-        if (index != 0U) {
-            sqlite3_str_append(sql, ",", 1);
-        }
-        sqlite3_str_appendf(sql, "\"%w\" %s", stmt->create_table.columns[index].name,
-                            sqlite_affinity_for_descriptor(&descriptor));
-    }
-    sqlite3_str_append(sql, ")", 1);
-    return sqlite3_str_finish(sql);
 }
 
 static int set_unknown_table_error(mylite_db *database, const char *schema_name,

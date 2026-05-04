@@ -4,6 +4,7 @@
 #include <mylite/mylite.h>
 
 #include "mylite_expression.h"
+#include "mylite_field_descriptor.h"
 #include "sql/mylite_ast.h"
 #include "sqlite3.h"
 #include "types/mylite_column_type.h"
@@ -61,15 +62,6 @@ enum mylite_information_schema_table {
     MYLITE_INFORMATION_SCHEMA_KEY_COLUMN_USAGE = 11,
     MYLITE_INFORMATION_SCHEMA_CHECK_CONSTRAINTS = 12,
     MYLITE_INFORMATION_SCHEMA_REFERENTIAL_CONSTRAINTS = 13,
-};
-
-enum mylite_format_metadata_length {
-    mylite_format_null_character_length = 32,
-    mylite_format_decimal_literal_extra_length = 33,
-    mylite_format_literal_extra_length = 34,
-    mylite_format_numeric_descriptor_extra_length = 35,
-    mylite_format_string_descriptor_extra_length = 42,
-    mylite_format_float_character_length = 61,
 };
 
 enum mylite_transaction_access_mode {
@@ -606,16 +598,6 @@ struct mylite_insert_row_column_indexes {
 struct mylite_insert_update_row_values {
     const struct mylite_insert_bound_value *target_values;
     const struct mylite_insert_bound_value *candidate_values;
-};
-
-struct mylite_field_descriptor {
-    int type;
-    unsigned int flags;
-    uint64_t length;
-    uint64_t max_length;
-    unsigned int decimals;
-    unsigned int charset_id;
-    bool nullable;
 };
 
 struct mylite_catalog_text_match {

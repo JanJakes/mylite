@@ -196,7 +196,7 @@ Rules for future moves:
 - [ ] Classify every remaining type in `mylite_runtime.h` by owner module.
 - [x] Add `mylite_error_codes.h`; move `enum mylite_mysql_condition_code` out
   of `mylite_runtime.h`.
-- [ ] Add `mylite_field_descriptor.h`; move `struct mylite_field_descriptor`
+- [x] Add `mylite_field_descriptor.h`; move `struct mylite_field_descriptor`
   and `enum mylite_format_metadata_length`.
 - [ ] Add `mylite_schema_types.h`; move schema option/default/presence structs.
 - [ ] Add `mylite_transaction_types.h`; move transaction enums, savepoint

@@ -205,7 +205,7 @@ Rules for future moves:
   table and index DDL plan structs.
 - [x] Add `mylite_dml_types.h`; move insert/update/delete plan and execution
   structs.
-- [ ] Add `mylite_metadata_types.h`; move result metadata structs.
+- [x] Add `mylite_metadata_types.h`; move result metadata structs.
 - [ ] Add `mylite_select_types.h`; move SELECT plan, row, join, group,
   aggregate, union, and subquery scan structs.
 - [ ] Add `mylite_show_types.h`; move `SHOW` query/target/info structs.

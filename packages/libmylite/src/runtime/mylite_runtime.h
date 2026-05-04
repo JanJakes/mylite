@@ -6,6 +6,7 @@
 #include "mylite_dml_types.h"
 #include "mylite_expression.h"
 #include "mylite_field_descriptor.h"
+#include "mylite_metadata_types.h"
 #include "mylite_schema_types.h"
 #include "mylite_table_ddl_types.h"
 #include "mylite_transaction_types.h"
@@ -273,21 +274,6 @@ struct mylite_select_clause_nodes {
     const struct mylite_sql_ast_node *having;
     const struct mylite_sql_ast_node *order_by;
     const struct mylite_sql_ast_node *limit;
-};
-
-struct mylite_result_column_metadata {
-    char *name;
-    char *schema_name;
-    char *table_name;
-    char *origin_schema_name;
-    char *origin_table_name;
-    char *origin_column_name;
-    struct mylite_field_descriptor descriptor;
-};
-
-struct mylite_result_metadata {
-    struct mylite_result_column_metadata *columns;
-    size_t column_count;
 };
 
 struct mylite_case_descriptor_aggregate {

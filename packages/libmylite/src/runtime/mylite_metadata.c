@@ -1,5 +1,6 @@
 #include "mylite_metadata.h"
 
+#include "mylite_runtime.h"
 #include "sqlite3.h"
 
 #include <stdlib.h>

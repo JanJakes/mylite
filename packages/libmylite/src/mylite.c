@@ -12,6 +12,7 @@
 #include "runtime/mylite_error_codes.h"
 #include "runtime/mylite_field_descriptor.h"
 #include "runtime/mylite_metadata.h"
+#include "runtime/mylite_metadata_types.h"
 #include "runtime/mylite_runtime.h"
 #include "runtime/mylite_schema.h"
 #include "runtime/mylite_schema_types.h"

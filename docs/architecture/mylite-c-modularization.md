@@ -455,6 +455,8 @@ only the core object model and transitional shared helpers listed here:
 - [ ] Move aggregate state and count-distinct state into `mylite_select`.
 - [ ] Move scalar SELECT planning/execution into `mylite_select` or a small
   scalar-select module after metadata inference is split.
+- [x] Move reusable prepared-statement AST clone/remap helpers out of
+  `mylite.c`.
 - [ ] Move UNION operand collection and preparation into `mylite_select`.
 - [ ] Move UNION materialization/dedup/order logic into `mylite_select`.
 - [ ] Move subquery preparation/scanning/evaluation into `mylite_select` after

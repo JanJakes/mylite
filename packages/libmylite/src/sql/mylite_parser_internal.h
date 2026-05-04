@@ -53,6 +53,18 @@ struct mylite_sql_parser_char_function_call_parts {
     struct mylite_sql_token right_paren;
 };
 
+struct mylite_sql_parser_cast_character_target_parts {
+    struct mylite_sql_ast_node *length;
+    struct mylite_sql_ast_node *attributes;
+};
+
+struct mylite_sql_parser_convert_using_expression_parts {
+    struct mylite_sql_token convert_token;
+    struct mylite_sql_ast_node *expression;
+    struct mylite_sql_ast_node *charset;
+    struct mylite_sql_token right_paren;
+};
+
 struct mylite_sql_parser_trim_operands {
     struct mylite_sql_ast_node *remove;
     struct mylite_sql_ast_node *source;
@@ -925,6 +937,9 @@ struct mylite_sql_ast_node *
 mylite_sql_parser_apply_column_type_attributes(struct mylite_sql_parser_state *state,
                                                struct mylite_sql_ast_node *column_type,
                                                struct mylite_sql_ast_node *attributes);
+struct mylite_sql_ast_node *mylite_sql_parser_make_cast_character_target(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token char_token,
+    struct mylite_sql_parser_cast_character_target_parts parts);
 struct mylite_sql_ast_node *
 mylite_sql_parser_set_column_type_national(struct mylite_sql_parser_state *state,
                                            struct mylite_sql_ast_node *column_type,
@@ -1110,6 +1125,9 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_cast_expression(
     struct mylite_sql_parser_state *state, struct mylite_sql_token cast_token,
     struct mylite_sql_ast_node *expression, struct mylite_sql_ast_node *target_type,
     struct mylite_sql_token right_paren);
+struct mylite_sql_ast_node *mylite_sql_parser_make_convert_using_expression(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_convert_using_expression_parts parts);
 struct mylite_sql_ast_node *mylite_sql_parser_make_simple_case_expression(
     struct mylite_sql_parser_state *state, struct mylite_sql_token case_token,
     struct mylite_sql_ast_node *base, struct mylite_sql_ast_node *when_list,

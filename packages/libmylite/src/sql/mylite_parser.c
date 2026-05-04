@@ -3964,6 +3964,29 @@ mylite_sql_parser_apply_column_type_attributes(struct mylite_sql_parser_state *s
     return mylite_sql_parser_validate_column_type(state, column_type);
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_cast_character_target(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token char_token,
+    struct mylite_sql_parser_cast_character_target_parts parts)
+{
+    struct mylite_sql_ast_node *column_type = mylite_sql_parser_set_column_length(
+        state,
+        mylite_sql_parser_make_column_type(state, char_token, MYLITE_SQL_AST_COLUMN_TYPE_CHAR),
+        parts.length);
+
+    if (!is_parse_ok(state) || column_type == NULL || parts.attributes == NULL) {
+        return column_type;
+    }
+    if (parts.attributes->has_column_character_set) {
+        mylite_sql_ast_node_set_column_character_set(column_type,
+                                                     parts.attributes->column_character_set);
+    }
+    if (parts.attributes->span.text != NULL) {
+        mylite_sql_ast_node_set_span(column_type,
+                                     span_join(column_type->span, parts.attributes->span));
+    }
+    return column_type;
+}
+
 struct mylite_sql_ast_node *
 mylite_sql_parser_set_column_type_national(struct mylite_sql_parser_state *state,
                                            struct mylite_sql_ast_node *column_type,
@@ -5053,6 +5076,23 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_cast_expression(
     return cast;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_convert_using_expression(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_convert_using_expression_parts parts)
+{
+    struct mylite_sql_ast_node *attributes = mylite_sql_parser_set_column_type_character_set(
+        state, mylite_sql_parser_make_column_type_attribute_list(state), parts.charset);
+    struct mylite_sql_ast_node *target = mylite_sql_parser_make_cast_character_target(
+        state, parts.convert_token,
+        (struct mylite_sql_parser_cast_character_target_parts){
+            .length = NULL,
+            .attributes = attributes,
+        });
+
+    return mylite_sql_parser_make_cast_expression(state, parts.convert_token, parts.expression,
+                                                  target, parts.right_paren);
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_simple_case_expression(
     struct mylite_sql_parser_state *state, struct mylite_sql_token case_token,
     struct mylite_sql_ast_node *base, struct mylite_sql_ast_node *when_list,
@@ -5792,6 +5832,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"COMMIT", MYLITE_SQL_PARSE_COMMIT},
         {"CONSISTENT", MYLITE_SQL_PARSE_CONSISTENT},
         {"CONSTRAINT", MYLITE_SQL_PARSE_CONSTRAINT},
+        {"CONVERT", MYLITE_SQL_PARSE_CONVERT},
         {"COPY", MYLITE_SQL_PARSE_COPY},
         {"COUNT", MYLITE_SQL_PARSE_COUNT},
         {"CREATE", MYLITE_SQL_PARSE_CREATE},

@@ -96,8 +96,11 @@ Out of scope for the initial implementation:
 - JSON, full-text, spatial, XML, encryption, compression, locking,
   replication, performance-schema, loadable, and internal-only functions
 - regular expression functions and `SOUNDS LIKE`
-- `CAST`, `CONVERT`, `BINARY`, `COLLATE`, character-set introducer expansion,
-  and full collation coercibility beyond the current charset foundation
+- `BINARY`, `COLLATE`, character-set introducer expansion, and full collation
+  coercibility beyond the current charset foundation; `CAST` and `CONVERT`
+  are grammar-level scalar expressions owned by
+  `docs/specs/cast-expression/specs.md` and
+  `docs/specs/convert-function/specs.md`
 - `DATE_FORMAT`, `STR_TO_DATE`, week-numbering functions, named time zones,
   locale-sensitive day/month names, and time-zone table integration
 - `RAND`, `UUID`, `UUID_SHORT`, `SLEEP`, `BENCHMARK`, and other
@@ -173,6 +176,10 @@ by common scalar expressions:
 - session identity functions: `CONNECTION_ID`, `USER`, `SESSION_USER`,
   `SYSTEM_USER`, and `CURRENT_USER` / bare `CURRENT_USER`; see
   `docs/specs/session-identity-functions/specs.md`
+- grammar-level cast expressions: `CAST(expr AS type)`, `CONVERT(expr, type)`,
+  and `CONVERT(expr USING charset_name)` for the supported CAST target and
+  charset-registry subsets; see `docs/specs/cast-expression/specs.md` and
+  `docs/specs/convert-function/specs.md`
 
 These functions are implemented in no-table scalar `SELECT`, one-table
 `SELECT` projection, `WHERE`, and `ORDER BY` expressions, and the existing

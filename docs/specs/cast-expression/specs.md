@@ -30,7 +30,6 @@ subset works:
 
 The following behavior is deferred:
 
-- `CONVERT(expr, type)` and `CONVERT(expr USING charset_name)`
 - `BINARY expr` prefix operator
 - fixed-length binary padding/truncation fidelity for `CAST(... AS BINARY(N))`
   because MyLite's public value API does not yet expose binary lengths
@@ -313,3 +312,7 @@ conversion engine. The main known differences after Task 26 are:
 - connection charset metadata is limited to the current MyLite charset registry
 - temporal, JSON, spatial, and timezone-aware casts are separate tasks
 - overflow and SQL-mode diagnostics are not exhaustive
+
+`CONVERT(expr, type)` and `CONVERT(expr USING charset_name)` are implemented as
+the CAST-family extension specified in
+`docs/specs/convert-function/specs.md`.

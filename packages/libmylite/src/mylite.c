@@ -2141,6 +2141,8 @@ static int infer_char_function_descriptor(mylite_db *database,
                                           struct mylite_field_descriptor *out_descriptor);
 static int validate_char_function_charset(mylite_db *database,
                                           const struct mylite_sql_ast_node *expression);
+static int validate_cast_expression_target_charset(mylite_db *database,
+                                                   const struct mylite_sql_ast_node *expression);
 static bool char_function_charset_name_is_supported(const char *name);
 // NOLINTNEXTLINE(misc-no-recursion)
 static int infer_string_encoding_function_descriptor(mylite_db *database,
@@ -9939,6 +9941,13 @@ static int bind_union_global_order_expression(mylite_db *database,
     case MYLITE_SQL_AST_CASE_WHEN_LIST:
     case MYLITE_SQL_AST_CASE_WHEN:
     case MYLITE_SQL_AST_CAST_EXPRESSION:
+        if (expression->kind == MYLITE_SQL_AST_CAST_EXPRESSION) {
+            int status = validate_cast_expression_target_charset(database, expression);
+
+            if (status != MYLITE_OK) {
+                return status;
+            }
+        }
         for (const struct mylite_sql_ast_node *child = expression->first_child; child != NULL;
              child = child->next_sibling) {
             int status = bind_union_global_order_expression(database, child, plan);
@@ -11817,6 +11826,30 @@ static int validate_char_function_charset(mylite_db *database,
     return status;
 }
 
+static int validate_cast_expression_target_charset(mylite_db *database,
+                                                   const struct mylite_sql_ast_node *expression)
+{
+    const struct mylite_sql_ast_node *target = child_at(expression, 1U);
+    char *charset_name = NULL;
+    int status = MYLITE_OK;
+
+    if (target == NULL || target->kind != MYLITE_SQL_AST_COLUMN_TYPE ||
+        target->column_type != MYLITE_SQL_AST_COLUMN_TYPE_CHAR ||
+        !target->has_column_character_set) {
+        return MYLITE_OK;
+    }
+
+    charset_name = copy_unquoted_span_text(target->column_character_set);
+    if (charset_name == NULL) {
+        return MYLITE_NOMEM;
+    }
+    if (mylite_charset_lookup(charset_name) == NULL) {
+        status = set_unknown_charset_error(database, charset_name);
+    }
+    free(charset_name);
+    return status;
+}
+
 static bool char_function_charset_name_is_supported(const char *name)
 {
     if (ascii_case_equal(name, mylite_mysql_binary_charset_name)) {
@@ -12648,6 +12681,11 @@ static int infer_cast_expression_descriptor(mylite_db *database,
     if (target == NULL || target->kind != MYLITE_SQL_AST_COLUMN_TYPE) {
         *out_descriptor = field_descriptor_defaults();
         return MYLITE_OK;
+    }
+    status = validate_cast_expression_target_charset(database, expression);
+    if (status != MYLITE_OK) {
+        *out_descriptor = field_descriptor_defaults();
+        return status;
     }
 
     switch (target->column_type) {
@@ -15365,9 +15403,15 @@ static int bind_select_predicate_expression_in_clause(mylite_db *database,
     case MYLITE_SQL_AST_INSERT_ROW_ALIAS:
     case MYLITE_SQL_AST_INSERT_ALIAS_COLUMN_LIST:
         return set_select_unsupported_where_error(database);
-    case MYLITE_SQL_AST_CAST_EXPRESSION:
+    case MYLITE_SQL_AST_CAST_EXPRESSION: {
+        int status = validate_cast_expression_target_charset(database, expression);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
         return bind_select_predicate_expression_in_clause(database, child_at(expression, 0U), plan,
                                                           clause_context, first_table, table_count);
+    }
     case MYLITE_SQL_AST_FUNCTION_CALL:
         return bind_select_function_arguments(database, expression, plan, clause_context,
                                               first_table, table_count);
@@ -16029,9 +16073,15 @@ static int bind_select_aggregate_aware_expression(mylite_db *database,
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
         return bind_select_aggregate_aware_binary_expression(database, expression, plan,
                                                              clause_context);
-    case MYLITE_SQL_AST_CAST_EXPRESSION:
+    case MYLITE_SQL_AST_CAST_EXPRESSION: {
+        int status = validate_cast_expression_target_charset(database, expression);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
         return bind_select_aggregate_aware_expression(database, child_at(expression, 0U), plan,
                                                       clause_context);
+    }
     case MYLITE_SQL_AST_FUNCTION_CALL:
         return bind_select_aggregate_aware_function(database, expression, plan, clause_context);
     case MYLITE_SQL_AST_AGGREGATE_CALL:
@@ -16653,8 +16703,14 @@ static int bind_select_order_expression(mylite_db *database,
     case MYLITE_SQL_AST_INSERT_ROW_ALIAS:
     case MYLITE_SQL_AST_INSERT_ALIAS_COLUMN_LIST:
         return set_select_unsupported_order_error(database);
-    case MYLITE_SQL_AST_CAST_EXPRESSION:
+    case MYLITE_SQL_AST_CAST_EXPRESSION: {
+        int status = validate_cast_expression_target_charset(database, expression);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
         return bind_select_order_expression(database, child_at(expression, 0U), plan);
+    }
     case MYLITE_SQL_AST_FUNCTION_CALL: {
         const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
 
@@ -25415,9 +25471,15 @@ static int bind_update_predicate_expression(mylite_stmt *stmt,
     case MYLITE_SQL_AST_INSERT_ROW_ALIAS:
     case MYLITE_SQL_AST_INSERT_ALIAS_COLUMN_LIST:
         return set_update_unsupported_clause_error(stmt->database);
-    case MYLITE_SQL_AST_CAST_EXPRESSION:
+    case MYLITE_SQL_AST_CAST_EXPRESSION: {
+        int status = validate_cast_expression_target_charset(stmt->database, expression);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
         return bind_update_predicate_expression(stmt, table, child_at(expression, 0U),
                                                 clause_context);
+    }
     case MYLITE_SQL_AST_FUNCTION_CALL:
         return bind_update_function_call(stmt, table, expression, clause_context);
     case MYLITE_SQL_AST_AGGREGATE_CALL:
@@ -26947,9 +27009,15 @@ static int bind_delete_predicate_expression(mylite_stmt *stmt,
     case MYLITE_SQL_AST_INSERT_ROW_ALIAS:
     case MYLITE_SQL_AST_INSERT_ALIAS_COLUMN_LIST:
         return set_delete_unsupported_clause_error(stmt->database);
-    case MYLITE_SQL_AST_CAST_EXPRESSION:
+    case MYLITE_SQL_AST_CAST_EXPRESSION: {
+        int status = validate_cast_expression_target_charset(stmt->database, expression);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
         return bind_delete_predicate_expression(stmt, table, child_at(expression, 0U),
                                                 clause_context);
+    }
     case MYLITE_SQL_AST_FUNCTION_CALL:
         return bind_delete_function_call(stmt, table, expression, clause_context);
     case MYLITE_SQL_AST_AGGREGATE_CALL:
@@ -37912,6 +37980,13 @@ static int validate_scalar_select_order_expression(mylite_db *database,
     case MYLITE_SQL_AST_CASE_WHEN_LIST:
     case MYLITE_SQL_AST_CASE_WHEN:
     case MYLITE_SQL_AST_CAST_EXPRESSION:
+        if (expression->kind == MYLITE_SQL_AST_CAST_EXPRESSION) {
+            int status = validate_cast_expression_target_charset(database, expression);
+
+            if (status != MYLITE_OK) {
+                return status;
+            }
+        }
         for (const struct mylite_sql_ast_node *child = expression->first_child; child != NULL;
              child = child->next_sibling) {
             int status = validate_scalar_select_order_expression(database, child, metadata);

@@ -48,6 +48,7 @@ static int test_expression_operator_foundation_syntax(void);
 static int test_scalar_function_call_syntax(void);
 static int test_case_expression_syntax(void);
 static int test_cast_expression_syntax(void);
+static int test_convert_expression_syntax(void);
 static int test_information_schema_select(void);
 static int test_select_table_core_syntax(void);
 static int test_select_inner_join_syntax(void);
@@ -198,6 +199,7 @@ int main(void)
     failures += test_scalar_function_call_syntax();
     failures += test_case_expression_syntax();
     failures += test_cast_expression_syntax();
+    failures += test_convert_expression_syntax();
     failures += test_information_schema_select();
     failures += test_select_table_core_syntax();
     failures += test_select_inner_join_syntax();
@@ -5892,6 +5894,115 @@ static int test_cast_expression_syntax(void)
                           MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SELECT CAST('x' AS BINARY(3))", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_convert_expression_syntax(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *cast_expression = NULL;
+    const struct mylite_sql_ast_node *target = NULL;
+    const struct mylite_sql_ast_node *case_expression = NULL;
+    const struct mylite_sql_ast_node *when_list = NULL;
+    bool signed_flag = false;
+    bool unsigned_flag = false;
+    int failures = 0;
+
+    failures += parse_sql("SELECT CONVERT('123', SIGNED INTEGER), "
+                          "CONVERT('12.34', DECIMAL(6,2)), "
+                          "CONVERT('abc', CHAR CHARACTER SET latin1), "
+                          "CONVERT('abc', NCHAR(4)), "
+                          "CONVERT('abc', BINARY);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    cast_expression = child_at(child_at(select_list, 0U), 0U);
+    target = child_at(cast_expression, 1U);
+    failures += expect_node(cast_expression, MYLITE_SQL_AST_CAST_EXPRESSION, "signed CONVERT node");
+    failures +=
+        expect_column_type(target, MYLITE_SQL_AST_COLUMN_TYPE_BIGINT, "signed CONVERT target");
+    if (target != NULL) {
+        signed_flag = target->column_type_signed;
+        unsigned_flag = target->column_type_unsigned;
+    }
+    failures += expect_bool(signed_flag, true, "signed CONVERT signed flag");
+    failures += expect_bool(unsigned_flag, false, "signed CONVERT unsigned flag");
+    failures +=
+        expect_span_text(cast_expression, "CONVERT('123', SIGNED INTEGER)", "signed CONVERT span");
+    cast_expression = child_at(child_at(select_list, 1U), 0U);
+    target = child_at(cast_expression, 1U);
+    failures +=
+        expect_column_type(target, MYLITE_SQL_AST_COLUMN_TYPE_DECIMAL, "decimal CONVERT target");
+    if (target != NULL && (!target->has_column_precision || target->column_precision != 6U ||
+                           !target->has_column_scale || target->column_scale != 2U)) {
+        fprintf(stderr, "decimal CONVERT did not record precision 6 and scale 2\n");
+        failures = 1;
+    }
+    cast_expression = child_at(child_at(select_list, 2U), 0U);
+    target = child_at(cast_expression, 1U);
+    failures += expect_column_type(target, MYLITE_SQL_AST_COLUMN_TYPE_CHAR, "CHAR CONVERT target");
+    if (target != NULL && !target->has_column_character_set) {
+        fprintf(stderr, "CHAR CONVERT did not record charset\n");
+        failures = 1;
+    }
+    cast_expression = child_at(child_at(select_list, 3U), 0U);
+    target = child_at(cast_expression, 1U);
+    failures += expect_column_type(target, MYLITE_SQL_AST_COLUMN_TYPE_CHAR, "NCHAR CONVERT target");
+    if (target != NULL && (!target->column_national_attribute || !target->has_column_length ||
+                           target->column_length != 4U)) {
+        fprintf(stderr, "NCHAR CONVERT did not record national length\n");
+        failures = 1;
+    }
+    cast_expression = child_at(child_at(select_list, 4U), 0U);
+    failures += expect_column_type(child_at(cast_expression, 1U), MYLITE_SQL_AST_COLUMN_TYPE_BINARY,
+                                   "BINARY CONVERT target");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT CONVERT('abc' USING latin1), "
+                          "CONVERT('abc' USING utf8mb4), "
+                          "CONVERT('abc' USING 'utf8mb3'), "
+                          "CONVERT('abc' USING binary);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    cast_expression = child_at(child_at(select_list, 0U), 0U);
+    target = child_at(cast_expression, 1U);
+    failures += expect_node(cast_expression, MYLITE_SQL_AST_CAST_EXPRESSION, "USING CONVERT node");
+    failures += expect_column_type(target, MYLITE_SQL_AST_COLUMN_TYPE_CHAR, "USING CONVERT target");
+    if (target != NULL && !target->has_column_character_set) {
+        fprintf(stderr, "USING CONVERT did not record charset\n");
+        failures = 1;
+    }
+    failures +=
+        expect_span_text(cast_expression, "CONVERT('abc' USING latin1)", "USING CONVERT span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT CASE WHEN 1 THEN CONVERT(1, UNSIGNED) "
+                          "ELSE CONVERT(0 USING latin1) END;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    case_expression = child_at(child_at(select_list, 0U), 0U);
+    when_list = child_at(case_expression, 0U);
+    failures += expect_node(child_at(child_at(when_list, 0U), 1U), MYLITE_SQL_AST_CAST_EXPRESSION,
+                            "CASE CONVERT result");
+    failures += expect_node(child_at(case_expression, 1U), MYLITE_SQL_AST_CAST_EXPRESSION,
+                            "CASE CONVERT else");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT CONVERT('1', INT)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT CONVERT()", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT CONVERT(1)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT CONVERT(1, SIGNED, 2)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT CONVERT('abc' USING)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT CONVERT('x', CHAR CHARACTER SET utf8mb4 COLLATE utf8mb4_bin)",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     // NOLINTEND(readability-magic-numbers)

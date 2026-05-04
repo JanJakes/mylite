@@ -3099,6 +3099,9 @@ primary_expression(A) ::= literal(B). {
 primary_expression(A) ::= cast_expression(B). {
     A = B;
 }
+primary_expression(A) ::= convert_expression(B). {
+    A = B;
+}
 primary_expression(A) ::= case_expression(B). {
     A = B;
 }
@@ -3161,6 +3164,20 @@ cast_expression(A) ::= CAST(T) LPAREN expression(B) AS cast_target_type(C) RPARE
     A = mylite_sql_parser_make_cast_expression(state, T, B, C, R);
 }
 
+convert_expression(A) ::= CONVERT(T) LPAREN expression(B) COMMA cast_target_type(C) RPAREN(R). {
+    A = mylite_sql_parser_make_cast_expression(state, T, B, C, R);
+}
+convert_expression(A) ::= CONVERT(T) LPAREN expression(B) USING charset_value(C) RPAREN(R). {
+    A = mylite_sql_parser_make_convert_using_expression(
+        state,
+        (struct mylite_sql_parser_convert_using_expression_parts){
+            .convert_token = T,
+            .expression = B,
+            .charset = C,
+            .right_paren = R,
+        });
+}
+
 cast_target_type(A) ::= SIGNED(T) opt_integer_keyword. {
     A = mylite_sql_parser_set_column_type_signed(
         state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_BIGINT), T);
@@ -3182,14 +3199,12 @@ cast_target_type(A) ::= DEC(T) opt_numeric_precision_scale(B). {
                    B));
 }
 cast_target_type(A) ::= CHAR(T) opt_column_length(B) opt_cast_character_set(C). {
-    A = mylite_sql_parser_validate_column_type(
-        state,
-        mylite_sql_parser_apply_column_type_attributes(
-            state,
-            mylite_sql_parser_set_column_length(
-                state,
-                mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_CHAR), B),
-            C));
+    A = mylite_sql_parser_make_cast_character_target(
+        state, T,
+        (struct mylite_sql_parser_cast_character_target_parts){
+            .length = B,
+            .attributes = C,
+        });
 }
 cast_target_type(A) ::= NCHAR(T) opt_column_length(B). {
     A = mylite_sql_parser_set_column_type_national(

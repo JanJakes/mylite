@@ -273,6 +273,7 @@ static int test_charset_collation_functions_execution(void);
 static int test_session_information_functions_execution(void);
 static int test_case_expression_execution(void);
 static int test_cast_expression_execution(void);
+static int test_convert_expression_execution(void);
 static int test_aggregate_grouping_execution(void);
 static int test_schema_lifecycle(void);
 static int test_character_set_collation_foundation(void);
@@ -461,6 +462,7 @@ int main(void)
     failures += test_session_information_functions_execution();
     failures += test_case_expression_execution();
     failures += test_cast_expression_execution();
+    failures += test_convert_expression_execution();
     failures += test_aggregate_grouping_execution();
     failures += test_schema_lifecycle();
     failures += test_character_set_collation_foundation();
@@ -11163,6 +11165,263 @@ static int test_cast_expression_execution(void)
         "CAST delete order");
     failures += expect_select_rows(database, "SELECT id FROM del ORDER BY id", id_column, 1, id_3,
                                    1, "CAST delete order remaining rows");
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_convert_expression_execution(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const char *const rowless_columns[] = {
+        "null_signed",  "null_binary",  "null_latin1",    "null_utf8mb3",
+        "null_utf8mb4", "signed_value", "unsigned_value", "decimal_value",
+        "char_value",   "binary_value", "using_latin1",
+    };
+    static const char *const rowless_values[] = {
+        NULL, NULL, NULL, NULL, NULL, "12", "18446744073709551615", "12.35", "abc", "abc", "abc",
+    };
+    static const struct expected_result_metadata metadata[] = {
+        {"signed_value", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_UNSIGNED, 0},
+        {"unsigned_value", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY |
+             MYLITE_FIELD_FLAG_NUM,
+         0U, 0},
+        {"decimal_value", NULL, NULL, NULL, NULL, NULL, 8U, MYLITE_FIELD_TYPE_NEWDECIMAL, 2U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"char_value", NULL, NULL, NULL, NULL, NULL, 12U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         MYLITE_FIELD_FLAG_NOT_NULL, MYLITE_FIELD_FLAG_BINARY, 0},
+        {"binary_value", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, MYLITE_FIELD_FLAG_NUM, 0},
+        {"using_latin1", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U,
+         MYLITE_FIELD_FLAG_NOT_NULL, MYLITE_FIELD_FLAG_BINARY, 0},
+        {"using_utf8mb3", NULL, NULL, NULL, NULL, NULL, 9U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 33U,
+         MYLITE_FIELD_FLAG_NOT_NULL, MYLITE_FIELD_FLAG_BINARY, 0},
+        {"using_utf8mb4", NULL, NULL, NULL, NULL, NULL, 12U, MYLITE_FIELD_TYPE_VAR_STRING, 31U,
+         255U, MYLITE_FIELD_FLAG_NOT_NULL, MYLITE_FIELD_FLAG_BINARY, 0},
+        {"using_binary", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, MYLITE_FIELD_FLAG_NUM, 0},
+        {"null_using", NULL, NULL, NULL, NULL, NULL, 0U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U, MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, 1},
+    };
+    static const char *const introspection_columns[] = {
+        "cs_latin1",  "co_latin1",  "cc_latin1",      "cs_utf8mb3", "co_utf8mb3",
+        "cc_utf8mb3", "cs_utf8mb4", "co_utf8mb4",     "cc_utf8mb4", "cs_binary",
+        "co_binary",  "cc_binary",  "cs_char_latin1",
+    };
+    static const char *const introspection_values[] = {
+        "latin1",
+        "latin1_swedish_ci",
+        "2",
+        "utf8mb3",
+        "utf8mb3_general_ci",
+        "2",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        "2",
+        "binary",
+        "binary",
+        "2",
+        "latin1",
+    };
+    static const char *const id_int_columns[] = {"id", "s_int"};
+    static const char *const projection_values[] = {"1", "12", "2", "0", "3", NULL};
+    static const char *const id_column[] = {"id"};
+    static const char *const where_values[] = {"1"};
+    static const char *const order_values[] = {"3", "2", "1"};
+    static const char *const ids_1_2_3[] = {"1", "2", "3"};
+    static const char *const id_text_columns[] = {"id", "s_text"};
+    static const char *const table_projection_values[] = {"1", "12.5", "2", "abc"};
+    static const char *const n_column[] = {"n"};
+    static const char *const n_12[] = {"12"};
+    static const char *const n_13[] = {"13"};
+    static const char *const n_7[] = {"7"};
+    static const char *const id_3[] = {"3"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open CONVERT database");
+    failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
+
+    failures +=
+        expect_select_rows(database,
+                           "SELECT CONVERT(NULL, SIGNED) AS null_signed, "
+                           "CONVERT(NULL USING binary) AS null_binary, "
+                           "CONVERT(NULL USING latin1) AS null_latin1, "
+                           "CONVERT(NULL USING utf8mb3) AS null_utf8mb3, "
+                           "CONVERT(NULL USING utf8mb4) AS null_utf8mb4, "
+                           "CONVERT('12.5', SIGNED) AS signed_value, "
+                           "CONVERT('-1', UNSIGNED) AS unsigned_value, "
+                           "CONVERT('12.345', DECIMAL(5,2)) AS decimal_value, "
+                           "CONVERT('abcdef', CHAR(3)) AS char_value, "
+                           "CONVERT('abc', BINARY) AS binary_value, "
+                           "CONVERT('abc' USING latin1) AS using_latin1",
+                           rowless_columns, 11, rowless_values, 1, "CONVERT rowless values");
+    failures += expect_int(mylite_warning_count(database), 3, "CONVERT rowless warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "CONVERT signed warning code");
+    failures += expect_contains(mylite_warning_message(database, 0), "INTEGER",
+                                "CONVERT signed warning message");
+    failures += expect_int((int)mylite_warning_code(database, 1), mysql_warning_unknown,
+                           "CONVERT unsigned warning code");
+    failures += expect_contains(mylite_warning_message(database, 1), "negative integer",
+                                "CONVERT unsigned warning message");
+    failures += expect_int((int)mylite_warning_code(database, 2),
+                           mysql_warning_truncated_wrong_value, "CONVERT char warning code");
+    failures += expect_contains(mylite_warning_message(database, 2), "CHAR(3)",
+                                "CONVERT char warning message");
+
+    failures += prepare_sql(database,
+                            "SELECT CONVERT('123', SIGNED) AS signed_value, "
+                            "CONVERT('123', UNSIGNED) AS unsigned_value, "
+                            "CONVERT('12.34', DECIMAL(6,2)) AS decimal_value, "
+                            "CONVERT('abc', CHAR) AS char_value, "
+                            "CONVERT('abc', BINARY) AS binary_value, "
+                            "CONVERT('abc' USING latin1) AS using_latin1, "
+                            "CONVERT('abc' USING utf8mb3) AS using_utf8mb3, "
+                            "CONVERT('abc' USING utf8mb4) AS using_utf8mb4, "
+                            "CONVERT('abc' USING binary) AS using_binary, "
+                            "CONVERT(NULL USING utf8mb4) AS null_using",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "CONVERT metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CONVERT metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CONVERT metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_select_rows(database,
+                                   "SELECT CHARSET(CONVERT('abc' USING latin1)) AS cs_latin1, "
+                                   "COLLATION(CONVERT('abc' USING latin1)) AS co_latin1, "
+                                   "COERCIBILITY(CONVERT('abc' USING latin1)) AS cc_latin1, "
+                                   "CHARSET(CONVERT('abc' USING utf8mb3)) AS cs_utf8mb3, "
+                                   "COLLATION(CONVERT('abc' USING utf8mb3)) AS co_utf8mb3, "
+                                   "COERCIBILITY(CONVERT('abc' USING utf8mb3)) AS cc_utf8mb3, "
+                                   "CHARSET(CONVERT('abc' USING utf8mb4)) AS cs_utf8mb4, "
+                                   "COLLATION(CONVERT('abc' USING utf8mb4)) AS co_utf8mb4, "
+                                   "COERCIBILITY(CONVERT('abc' USING utf8mb4)) AS cc_utf8mb4, "
+                                   "CHARSET(CONVERT('abc' USING binary)) AS cs_binary, "
+                                   "COLLATION(CONVERT('abc' USING binary)) AS co_binary, "
+                                   "COERCIBILITY(CONVERT('abc' USING binary)) AS cc_binary, "
+                                   "CHARSET(CONVERT('abc', CHAR CHARACTER SET latin1)) "
+                                   "AS cs_char_latin1",
+                                   introspection_columns, 13, introspection_values, 1,
+                                   "CONVERT charset introspection");
+
+    failures += expect_prepare_error(database, "SELECT CONVERT('abc' USING nosuchcharset)",
+                                     MYLITE_EXEC_ERROR, "Unknown character set",
+                                     "CONVERT USING unknown charset");
+    failures += expect_prepare_error(
+        database, "SELECT CONVERT('abc', CHAR CHARACTER SET nosuchcharset)", MYLITE_EXEC_ERROR,
+        "Unknown character set", "CONVERT target unknown charset");
+
+    failures += execute_sql(database,
+                            "CREATE DATABASE mylite_convert_expression "
+                            "DEFAULT CHARACTER SET utf8mb4",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_convert_expression", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE t ("
+                            "id INT PRIMARY KEY, "
+                            "s VARCHAR(20), "
+                            "n INT NULL, "
+                            "b VARBINARY(20) NULL) CHARACTER SET utf8mb4",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO t VALUES "
+                            "(1,'12.5',NULL,NULL),"
+                            "(2,'abc',NULL,NULL),"
+                            "(3,NULL,NULL,NULL)",
+                            MYLITE_DONE);
+
+    failures +=
+        expect_select_rows(database,
+                           "SELECT id, CONVERT(s, SIGNED) AS s_int "
+                           "FROM t ORDER BY id",
+                           id_int_columns, 2, projection_values, 3, "CONVERT table projection");
+    failures +=
+        expect_int(mylite_warning_count(database), 2, "CONVERT table projection warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_truncated_wrong_value,
+                   "CONVERT projection decimal warning code");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 1), mysql_warning_truncated_wrong_value,
+                   "CONVERT projection text warning code");
+
+    failures +=
+        expect_select_rows(database, "SELECT id FROM t WHERE CONVERT(s, SIGNED) = 12 ORDER BY id",
+                           id_column, 1, where_values, 1, "CONVERT table where");
+    failures += expect_int(mylite_warning_count(database), 2, "CONVERT where warning count");
+
+    failures += expect_select_rows(database, "SELECT id FROM t ORDER BY CONVERT(s, UNSIGNED), id",
+                                   id_column, 1, order_values, 3, "CONVERT table order");
+    failures += expect_int(mylite_warning_count(database), 2, "CONVERT order warning count");
+
+    failures += expect_select_rows(database,
+                                   "SELECT id, CONVERT(s USING latin1) AS s_text "
+                                   "FROM t WHERE id IN (1,2) ORDER BY id",
+                                   id_text_columns, 2, table_projection_values, 2,
+                                   "CONVERT USING table projection");
+
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE t SET n = CONVERT(12.4, SIGNED) WHERE id = 1", 1,
+        "CONVERT update assignment");
+    failures += expect_select_rows(database, "SELECT n FROM t WHERE id = 1", n_column, 1, n_12, 1,
+                                   "CONVERT update assignment value");
+    failures += prepare_sql(database, "UPDATE t SET n = CONVERT(s, SIGNED) WHERE id IN (1,2)",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Truncated incorrect INTEGER value",
+                                  "CONVERT update warning promoted");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM t ORDER BY id", id_column, 1,
+                                   ids_1_2_3, 3, "CONVERT update warning rollback");
+
+    failures += prepare_sql(database, "DELETE FROM t WHERE CONVERT(s, SIGNED)=0", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Truncated incorrect INTEGER value",
+                                  "CONVERT delete warning promoted");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM t ORDER BY id", id_column, 1,
+                                   ids_1_2_3, 3, "CONVERT delete warning rollback");
+
+    failures += execute_sql(database, "CREATE TABLE u (id INT PRIMARY KEY, s VARCHAR(20), n INT)",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO u VALUES (1,'12',12),(2,'2',2),(3,NULL,NULL)",
+                            MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE u SET n = n + 1 WHERE CONVERT(s, SIGNED) = 12", 1,
+        "CONVERT update predicate");
+    failures += expect_select_rows(database, "SELECT n FROM u WHERE id = 1", n_column, 1, n_13, 1,
+                                   "CONVERT update predicate value");
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE u SET n = 7 WHERE n IS NOT NULL ORDER BY CONVERT(s, UNSIGNED), id LIMIT 1", 1,
+        "CONVERT update order");
+    failures += expect_select_rows(database, "SELECT n FROM u WHERE id = 2", n_column, 1, n_7, 1,
+                                   "CONVERT update order value");
+
+    failures +=
+        execute_sql(database, "CREATE TABLE d (id INT PRIMARY KEY, s VARCHAR(20))", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO d VALUES (1,'12'),(2,'2'),(3,'30')", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM d WHERE CONVERT(s, SIGNED) = 12", 1, "CONVERT delete predicate");
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM d WHERE 1 ORDER BY CONVERT(s, UNSIGNED), id LIMIT 1", 1,
+        "CONVERT delete order");
+    failures += expect_select_rows(database, "SELECT id FROM d ORDER BY id", id_column, 1, id_3, 1,
+                                   "CONVERT delete remaining rows");
+
+    failures +=
+        expect_prepare_error(database,
+                             "SELECT CASE WHEN 1 THEN CONVERT(1, SIGNED) "
+                             "ELSE CONVERT(missing_col, SIGNED) END FROM t LIMIT 1",
+                             MYLITE_EXEC_ERROR, "missing_col", "CONVERT binds unselected branch");
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)

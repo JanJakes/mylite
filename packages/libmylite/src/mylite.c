@@ -25678,8 +25678,15 @@ static int apply_update_assignments(mylite_stmt *stmt, const struct mylite_selec
     for (size_t index = 0U; index < assignment_count; ++index) {
         size_t column_index = assignments[index].column_index;
         struct mylite_expression_value value = {0};
-        int status = evaluate_update_assignment_value(
-            stmt, table, write_table, candidate, column_index, assignments[index].value, &value);
+        int status = MYLITE_OK;
+
+        if (write_table->columns == NULL || candidate->values == NULL ||
+            column_index >= write_table->column_count || column_index >= candidate->value_count) {
+            return set_update_unsupported_assignment_error(stmt->database);
+        }
+
+        status = evaluate_update_assignment_value(stmt, table, write_table, candidate, column_index,
+                                                  assignments[index].value, &value);
 
         if (status != MYLITE_OK) {
             mylite_expression_value_deinit(&value);

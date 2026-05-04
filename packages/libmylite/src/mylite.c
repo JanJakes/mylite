@@ -24,6 +24,7 @@
 #include "runtime/mylite_schema_types.h"
 #include "runtime/mylite_select.h"
 #include "runtime/mylite_select_from.h"
+#include "runtime/mylite_select_sql.h"
 #include "runtime/mylite_select_types.h"
 #include "runtime/mylite_session_functions.h"
 #include "runtime/mylite_show.h"
@@ -995,8 +996,6 @@ static int set_select_unsupported_order_error(mylite_db *database);
 static int set_select_unsupported_join_grouping_error(mylite_db *database);
 static int set_union_column_count_error(mylite_db *database);
 static int set_union_global_order_table_error(mylite_db *database, const char *table_name);
-static char *build_select_physical_sql(mylite_db *database, const struct mylite_select_plan *plan);
-static char *build_select_scan_sql(mylite_db *database, const struct mylite_select_plan *plan);
 static int clone_table_select_expressions(mylite_stmt *stmt,
                                           const struct mylite_sql_ast_node *where_clause,
                                           const char *sql, size_t sql_length);
@@ -1170,8 +1169,6 @@ static int load_table_select_join_rowsets(mylite_stmt *stmt,
                                           struct mylite_table_select_table_rowset *rowsets);
 static int load_table_select_join_rowset(mylite_stmt *stmt, size_t table_index,
                                          struct mylite_table_select_table_rowset *rowset);
-static char *build_select_table_scan_sql(mylite_db *database,
-                                         const struct mylite_select_table *table);
 static int append_table_select_join_scan_row(mylite_stmt *stmt, sqlite3_stmt *scan,
                                              const struct mylite_select_table *table,
                                              struct mylite_table_select_table_rowset *rowset);
@@ -2493,7 +2490,7 @@ static int prepare_table_select_sqlite_statement(mylite_db *database,
                                                  const struct mylite_select_plan *plan,
                                                  mylite_stmt **out_stmt)
 {
-    char *sqlite_sql = build_select_physical_sql(database, plan);
+    char *sqlite_sql = mylite_select_build_physical_sql(database, plan);
     int status = MYLITE_OK;
 
     if (sqlite_sql == NULL) {
@@ -7179,7 +7176,7 @@ static int prepare_table_select_custom_statement(mylite_db *database,
     int status = MYLITE_OK;
 
     if (mylite_select_plan_table_count(plan) <= 1U) {
-        scan_sql = build_select_scan_sql(database, plan);
+        scan_sql = mylite_select_build_scan_sql(database, plan);
         if (scan_sql == NULL) {
             (void)mylite_diagnostics_set_error_message(database, "out of memory");
             return MYLITE_NOMEM;
@@ -11188,82 +11185,6 @@ static int set_union_global_order_table_error(mylite_db *database, const char *t
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
-static char *build_select_physical_sql(mylite_db *database, const struct mylite_select_plan *plan)
-{
-    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
-
-    if (sql == NULL) {
-        return NULL;
-    }
-
-    sqlite3_str_append(sql, "SELECT ", (int)strlen("SELECT "));
-    for (size_t index = 0U; index < plan->output_count; ++index) {
-        const struct mylite_select_output_column *output = &plan->outputs[index];
-        const struct mylite_select_column *column =
-            mylite_select_plan_column_const(plan, output->column_index, NULL);
-
-        if (index != 0U) {
-            sqlite3_str_append(sql, ",", 1);
-        }
-        if (column == NULL) {
-            sqlite3_free(sqlite3_str_finish(sql));
-            return NULL;
-        }
-        sqlite3_str_appendf(sql, "\"%w\" AS \"%w\"", column->name, output->label);
-    }
-    sqlite3_str_appendf(sql, " FROM \"%w\"",
-                        mylite_select_plan_table_const(plan, 0U)->physical_name);
-    return sqlite3_str_finish(sql);
-}
-
-static char *build_select_scan_sql(mylite_db *database, const struct mylite_select_plan *plan)
-{
-    enum { sqlite_table_alias_size = 32 };
-    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
-
-    if (sql == NULL) {
-        return NULL;
-    }
-
-    sqlite3_str_append(sql, "SELECT ", (int)strlen("SELECT "));
-    for (size_t table_index = 0U; table_index < mylite_select_plan_table_count(plan);
-         ++table_index) {
-        const struct mylite_select_table *table = mylite_select_plan_table_const(plan, table_index);
-        char table_alias[sqlite_table_alias_size];
-        int alias_length = snprintf(table_alias, sizeof(table_alias), "_m%zu", table_index);
-
-        if (table == NULL || alias_length < 0 || (size_t)alias_length >= sizeof(table_alias)) {
-            sqlite3_free(sqlite3_str_finish(sql));
-            return NULL;
-        }
-        for (size_t column_index = 0U; column_index < table->column_count; ++column_index) {
-            const struct mylite_select_column *column = &table->columns[column_index];
-
-            if (table_index != 0U || column_index != 0U) {
-                sqlite3_str_append(sql, ",", 1);
-            }
-            sqlite3_str_appendf(sql, "\"%w\".\"%w\"", table_alias, column->name);
-        }
-    }
-    sqlite3_str_append(sql, " FROM ", (int)strlen(" FROM "));
-    for (size_t table_index = 0U; table_index < mylite_select_plan_table_count(plan);
-         ++table_index) {
-        const struct mylite_select_table *table = mylite_select_plan_table_const(plan, table_index);
-        char table_alias[sqlite_table_alias_size];
-        int alias_length = snprintf(table_alias, sizeof(table_alias), "_m%zu", table_index);
-
-        if (table == NULL || alias_length < 0 || (size_t)alias_length >= sizeof(table_alias)) {
-            sqlite3_free(sqlite3_str_finish(sql));
-            return NULL;
-        }
-        if (table_index != 0U) {
-            sqlite3_str_append(sql, ",", 1);
-        }
-        sqlite3_str_appendf(sql, "\"%w\" AS \"%w\"", table->physical_name, table_alias);
-    }
-    return sqlite3_str_finish(sql);
-}
-
 // NOLINTNEXTLINE(misc-no-recursion)
 static int clone_table_select_expressions(mylite_stmt *stmt,
                                           const struct mylite_sql_ast_node *where_clause,
@@ -14195,7 +14116,7 @@ static int load_table_select_join_rowset(mylite_stmt *stmt, size_t table_index,
         return MYLITE_UNSUPPORTED;
     }
 
-    scan_sql = build_select_table_scan_sql(stmt->database, table);
+    scan_sql = mylite_select_build_table_scan_sql(stmt->database, table);
     if (scan_sql == NULL) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
@@ -14218,26 +14139,6 @@ static int load_table_select_join_rowset(mylite_stmt *stmt, size_t table_index,
     }
     sqlite3_finalize(scan);
     return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
-}
-
-static char *build_select_table_scan_sql(mylite_db *database,
-                                         const struct mylite_select_table *table)
-{
-    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
-
-    if (sql == NULL) {
-        return NULL;
-    }
-
-    sqlite3_str_append(sql, "SELECT ", (int)strlen("SELECT "));
-    for (size_t index = 0U; index < table->column_count; ++index) {
-        if (index != 0U) {
-            sqlite3_str_append(sql, ",", 1);
-        }
-        sqlite3_str_appendf(sql, "\"%w\"", table->columns[index].name);
-    }
-    sqlite3_str_appendf(sql, " FROM \"%w\"", table->physical_name);
-    return sqlite3_str_finish(sql);
 }
 
 static int append_table_select_join_scan_row(mylite_stmt *stmt, sqlite3_stmt *scan,

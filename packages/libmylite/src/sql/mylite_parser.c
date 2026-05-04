@@ -73,12 +73,18 @@ static bool token_text_equals(const struct mylite_sql_token *token, const char *
 static bool span_text_equals(struct mylite_sql_source_span span, const char *text);
 static bool function_name_is_position(const struct mylite_sql_ast_node *name);
 static bool function_name_is_extract(const struct mylite_sql_ast_node *name);
+static bool function_name_is_timestampadd(const struct mylite_sql_ast_node *name);
 static bool function_name_is_timestampdiff(const struct mylite_sql_ast_node *name);
 static bool normalize_timestampdiff_function_call(struct mylite_sql_parser_state *state,
                                                   const struct mylite_sql_ast_node *name,
                                                   struct mylite_sql_ast_node *arguments,
                                                   struct mylite_sql_ast_node **out_arguments,
                                                   enum mylite_sql_ast_interval_unit *out_unit);
+static bool normalize_timestampadd_function_call(struct mylite_sql_parser_state *state,
+                                                 const struct mylite_sql_ast_node *name,
+                                                 struct mylite_sql_ast_node *arguments,
+                                                 struct mylite_sql_ast_node **out_arguments,
+                                                 enum mylite_sql_ast_interval_unit *out_unit);
 static bool extract_interval_unit_from_expression(const struct mylite_sql_ast_node *expression,
                                                   enum mylite_sql_ast_interval_unit *out_unit);
 static bool function_name_is_date_interval_arithmetic(const struct mylite_sql_ast_node *name);
@@ -4897,7 +4903,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_function_call(
 {
     struct mylite_sql_source_span span = name == NULL ? span_from_token(&left_paren) : name->span;
     enum mylite_sql_ast_aggregate_kind aggregate_kind = MYLITE_SQL_AST_AGGREGATE_NONE;
-    enum mylite_sql_ast_interval_unit timestampdiff_unit = MYLITE_SQL_AST_INTERVAL_UNIT_NONE;
+    enum mylite_sql_ast_interval_unit interval_unit = MYLITE_SQL_AST_INTERVAL_UNIT_NONE;
     struct mylite_sql_ast_node *call = NULL;
 
     span = span_join(span, span_from_token(&right_paren));
@@ -4941,7 +4947,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_function_call(
         return NULL;
     }
     if (!normalize_timestampdiff_function_call(state, name, arguments, &arguments,
-                                               &timestampdiff_unit)) {
+                                               &interval_unit)) {
+        return NULL;
+    }
+    if (!normalize_timestampadd_function_call(state, name, arguments, &arguments, &interval_unit)) {
         return NULL;
     }
     if (function_name_is_substring(name)) {
@@ -4966,8 +4975,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_function_call(
 
     mylite_sql_ast_node_append_child(call, name);
     mylite_sql_ast_node_append_child(call, arguments);
-    if (timestampdiff_unit != MYLITE_SQL_AST_INTERVAL_UNIT_NONE) {
-        mylite_sql_ast_node_set_interval_spec(call, timestampdiff_unit);
+    if (interval_unit != MYLITE_SQL_AST_INTERVAL_UNIT_NONE) {
+        mylite_sql_ast_node_set_interval_spec(call, interval_unit);
     }
     return call;
 }
@@ -5036,6 +5045,46 @@ static bool normalize_timestampdiff_function_call(struct mylite_sql_parser_state
     }
 
     *out_arguments = datetime_arguments;
+    *out_unit = unit;
+    return true;
+}
+
+static bool normalize_timestampadd_function_call(struct mylite_sql_parser_state *state,
+                                                 const struct mylite_sql_ast_node *name,
+                                                 struct mylite_sql_ast_node *arguments,
+                                                 struct mylite_sql_ast_node **out_arguments,
+                                                 enum mylite_sql_ast_interval_unit *out_unit)
+{
+    struct mylite_sql_ast_node *unit_argument = arguments == NULL ? NULL : arguments->first_child;
+    struct mylite_sql_ast_node *amount_argument =
+        unit_argument == NULL ? NULL : unit_argument->next_sibling;
+    struct mylite_sql_ast_node *datetime_argument =
+        amount_argument == NULL ? NULL : amount_argument->next_sibling;
+    struct mylite_sql_ast_node *runtime_arguments = NULL;
+    enum mylite_sql_ast_interval_unit unit = MYLITE_SQL_AST_INTERVAL_UNIT_NONE;
+
+    if (out_arguments == NULL || out_unit == NULL) {
+        return false;
+    }
+
+    if (!function_name_is_timestampadd(name)) {
+        return true;
+    }
+
+    if (arguments == NULL || mylite_sql_ast_node_child_count(arguments) != 3U ||
+        !extract_interval_unit_from_expression(unit_argument, &unit)) {
+        mylite_sql_parser_state_parse_failed(state);
+        return false;
+    }
+
+    runtime_arguments = mylite_sql_parser_make_function_argument_list(state, datetime_argument);
+    runtime_arguments =
+        mylite_sql_parser_append_function_argument(state, runtime_arguments, amount_argument);
+    if (runtime_arguments == NULL) {
+        return false;
+    }
+
+    *out_arguments = runtime_arguments;
     *out_unit = unit;
     return true;
 }
@@ -6425,6 +6474,11 @@ static bool function_name_is_position(const struct mylite_sql_ast_node *name)
 static bool function_name_is_extract(const struct mylite_sql_ast_node *name)
 {
     return function_name_matches(name, "EXTRACT");
+}
+
+static bool function_name_is_timestampadd(const struct mylite_sql_ast_node *name)
+{
+    return function_name_matches(name, "TIMESTAMPADD");
 }
 
 static bool function_name_is_timestampdiff(const struct mylite_sql_ast_node *name)

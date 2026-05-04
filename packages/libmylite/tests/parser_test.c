@@ -5745,7 +5745,69 @@ static int test_scalar_function_call_syntax(void)
         parse_sql("SELECT timestampdiff FROM temporal_part_names;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SELECT TIMESTAMPADD(DAY,2,'2024-02-28'), "
+                          "TIMESTAMPADD(WEEK,2,'2024-02-01'), "
+                          "TIMESTAMPADD(MONTH,1,'2024-01-31'), "
+                          "TIMESTAMPADD(YEAR,1,'2024-02-29'), "
+                          "TIMESTAMPADD(HOUR,1,CURDATE()), "
+                          "TIMESTAMPADD(MINUTE,-1,'2024-01-01 00:01:00'), "
+                          "TIMESTAMPADD(SECOND,1,NOW(6));",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_interval_function_call(child_at(child_at(select_list, 0U), 0U),
+                                              "TIMESTAMPADD", MYLITE_SQL_AST_INTERVAL_UNIT_DAY,
+                                              "TIMESTAMPADD DAY interval call");
+    call = child_at(child_at(select_list, 0U), 0U);
+    arguments = child_at(call, 1U);
+    failures += expect_span_text(child_at(arguments, 0U), "'2024-02-28'",
+                                 "TIMESTAMPADD runtime datetime argument");
+    failures +=
+        expect_span_text(child_at(arguments, 1U), "2", "TIMESTAMPADD runtime interval argument");
+    failures += expect_interval_function_call(child_at(child_at(select_list, 1U), 0U),
+                                              "TIMESTAMPADD", MYLITE_SQL_AST_INTERVAL_UNIT_WEEK,
+                                              "TIMESTAMPADD WEEK interval call");
+    failures += expect_interval_function_call(child_at(child_at(select_list, 2U), 0U),
+                                              "TIMESTAMPADD", MYLITE_SQL_AST_INTERVAL_UNIT_MONTH,
+                                              "TIMESTAMPADD MONTH interval call");
+    failures += expect_interval_function_call(child_at(child_at(select_list, 3U), 0U),
+                                              "TIMESTAMPADD", MYLITE_SQL_AST_INTERVAL_UNIT_YEAR,
+                                              "TIMESTAMPADD YEAR interval call");
+    failures += expect_interval_function_call(child_at(child_at(select_list, 4U), 0U),
+                                              "TIMESTAMPADD", MYLITE_SQL_AST_INTERVAL_UNIT_HOUR,
+                                              "TIMESTAMPADD HOUR interval call");
+    failures += expect_interval_function_call(child_at(child_at(select_list, 5U), 0U),
+                                              "TIMESTAMPADD", MYLITE_SQL_AST_INTERVAL_UNIT_MINUTE,
+                                              "TIMESTAMPADD MINUTE interval call");
+    failures += expect_interval_function_call(child_at(child_at(select_list, 6U), 0U),
+                                              "TIMESTAMPADD", MYLITE_SQL_AST_INTERVAL_UNIT_SECOND,
+                                              "TIMESTAMPADD SECOND interval call");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT timestampadd FROM temporal_part_names;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("SELECT DATE_ADD('2024-01-01', INTERVAL 1 BOGUS)",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT TIMESTAMPADD(YEAR_MONTH,1,'2024-01-01')",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT TIMESTAMPADD(MICROSECOND,2,'2024-01-01')",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT TIMESTAMPADD(QUARTER,1,'2024-01-31')",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT TIMESTAMPADD(SQL_TSI_DAY,1,'2024-01-01')",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT TIMESTAMPADD('DAY',1,'2024-01-01')",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT TIMESTAMPADD(DAY,1)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT TIMESTAMPADD(DAY,1,'2024-01-01','x')",
                           MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SELECT TIMESTAMPDIFF(YEAR_MONTH,'2024-01-01','2024-02-01')",

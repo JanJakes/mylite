@@ -181,12 +181,15 @@ by common scalar expressions:
   `DATE`, `DATEDIFF`, `DATE_ADD`, `DATE_SUB`, `ADDDATE`, `SUBDATE`,
   `YEAR`, `MONTH`, `DAY`, `DAYOFMONTH`, `HOUR`, `MINUTE`, `SECOND`,
   `EXTRACT` for the simple `YEAR`, `MONTH`, `DAY`, `HOUR`, `MINUTE`, and
-  `SECOND` units, and `TIMESTAMPDIFF` for the simple `DAY`, `WEEK`, `MONTH`,
-  `YEAR`, `HOUR`, `MINUTE`, and `SECOND` units; see
+  `SECOND` units, `TIMESTAMPADD` for the simple `DAY`, `WEEK`, `MONTH`,
+  `YEAR`, `HOUR`, `MINUTE`, and `SECOND` units, and `TIMESTAMPDIFF` for the
+  simple `DAY`, `WEEK`, `MONTH`, `YEAR`, `HOUR`, `MINUTE`, and `SECOND` units;
+  see
   `docs/specs/current-temporal-functions/specs.md` and
   `docs/specs/date-and-datediff-functions/specs.md` and
   `docs/specs/date-add-sub-functions/specs.md` and
   `docs/specs/temporal-part-functions/specs.md` and
+  `docs/specs/timestampadd-function/specs.md` and
   `docs/specs/timestampdiff-function/specs.md`
 - grammar-level cast expressions: `CAST(expr AS type)`, `CONVERT(expr, type)`,
   and `CONVERT(expr USING charset_name)` for the supported CAST target and
@@ -632,6 +635,7 @@ Verified `mysql --column-type-info -vvv` examples:
 | `DATE(...) AS date_value` | `DATE` | `10` | `0` | `binary` | `BINARY` |
 | `DATEDIFF(...) AS datediff_value` | `LONGLONG` | `9` | `0` | `binary` | `BINARY NUM` |
 | `DATE_ADD('2024-02-29', INTERVAL 1 DAY) AS date_add_value` | `STRING` | `116` | `31` | `utf8mb4_0900_ai_ci` | none |
+| `TIMESTAMPADD(DAY,...) AS timestampadd_value` | `STRING` / `DATE` / `DATETIME` depending on input | `116`, `10`, `19`, or fractional datetime length | `31`, `0`, or source datetime scale | connection collation or `binary` | none or `BINARY` |
 | `TIMESTAMPDIFF(DAY,...) AS timestampdiff_value` | `LONGLONG` | `21` | `0` | `binary` | `BINARY NUM` |
 | `DATABASE() AS database_value` | `VAR_STRING` | `256` | `31` | `utf8mb4_0900_ai_ci` | nullable |
 | `VERSION() AS version_value` | `VAR_STRING` | `20` | `31` | `utf8mb4_0900_ai_ci` | `NOT_NULL` |
@@ -739,6 +743,12 @@ For `TIMESTAMPDIFF`, the generic function-call rule is parser-validated when
 the function name text matches `TIMESTAMPDIFF`: the first parsed argument must
 be a supported interval-unit identifier, and the two remaining arguments become
 the runtime datetime expressions with the unit stored as function-call metadata.
+
+For `TIMESTAMPADD`, the generic function-call rule is parser-validated when the
+function name text matches `TIMESTAMPADD`: the first parsed argument must be a
+supported interval-unit identifier, and the remaining arguments are normalized
+to runtime order `datetime_expr, interval` while the unit is stored as
+function-call metadata.
 
 The actual `mylite_parse.y` file may use precedence declarations and smaller
 productions, but the accepted language and AST shape must match this contract.

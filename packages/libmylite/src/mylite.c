@@ -13931,7 +13931,9 @@ static bool extract_interval_unit_supported(enum mylite_sql_ast_interval_unit un
 
 static bool function_name_is_date_interval_arithmetic(const struct mylite_sql_ast_node *name)
 {
-    static const char *const names[] = {"DATE_ADD", "DATE_SUB", "ADDDATE", "SUBDATE"};
+    static const char *const names[] = {
+        "TIMESTAMPADD", "DATE_ADD", "DATE_SUB", "ADDDATE", "SUBDATE",
+    };
 
     return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }

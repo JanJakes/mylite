@@ -257,6 +257,7 @@ static int test_scalar_builtin_functions_execution(void);
 static int test_current_temporal_functions_execution(void);
 static int test_date_and_datediff_functions_execution(void);
 static int test_timestampdiff_function_execution(void);
+static int test_timestampadd_function_execution(void);
 static int test_date_add_sub_functions_execution(void);
 static int test_round_scalar_function_execution(mylite_db *database);
 static int test_format_scalar_function_execution(mylite_db *database);
@@ -471,6 +472,7 @@ int main(void)
     failures += test_current_temporal_functions_execution();
     failures += test_date_and_datediff_functions_execution();
     failures += test_timestampdiff_function_execution();
+    failures += test_timestampadd_function_execution();
     failures += test_date_add_sub_functions_execution();
     failures += test_inet_ipv4_functions_execution();
     failures += test_charset_collation_functions_execution();
@@ -6528,6 +6530,264 @@ static int test_timestampdiff_function_execution(void)
     failures += prepare_sql(database, "SELECT TIMESTAMPDIFF(DAY,'2024-01-01','2024-01-02','x')",
                             MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "TIMESTAMPDIFF extra argument rejected");
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_timestampadd_function_execution(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const struct expected_result_metadata metadata[] = {
+        {"ta_text", NULL, NULL, NULL, NULL, NULL, 116U, MYLITE_FIELD_TYPE_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"ta_date", NULL, NULL, NULL, NULL, NULL, 10U, MYLITE_FIELD_TYPE_DATE, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"ta_datetime", NULL, NULL, NULL, NULL, NULL, 19U, MYLITE_FIELD_TYPE_DATETIME, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"ta_now6", NULL, NULL, NULL, NULL, NULL, 26U, MYLITE_FIELD_TYPE_DATETIME, 6U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+    };
+    static const char *const projection_columns[] = {"id", "next_day", "next_hour"};
+    static const char *const projection_values[] = {
+        "3", "2024-03-01", "2024-03-01 00:59:59", "2", "2024-02-01", "2024-02-01 00:59:59",
+        "1", "2024-02-29", "2024-01-01 01:00:00",
+    };
+    static const char *const updated_columns[] = {"id", "d", "shifted"};
+    static const char *const updated_values[] = {"1", "2024-02-28", "2024-01-01 00:00:01"};
+    static const char *const remaining_columns[] = {"id"};
+    static const char *const remaining_values[] = {"1", "3", "4"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK,
+                              "open TIMESTAMPADD function database");
+
+    failures += prepare_sql(database,
+                            "SELECT TIMESTAMPADD(DAY,2,'2024-02-28') AS ta_text, "
+                            "TIMESTAMPADD(DAY,2,CURDATE()) AS ta_date, "
+                            "TIMESTAMPADD(HOUR,2,CURDATE()) AS ta_datetime, "
+                            "TIMESTAMPADD(SECOND,1,NOW(6)) AS ta_now6",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "TIMESTAMPADD metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TIMESTAMPADD metadata row");
+    failures += expect_string(mylite_column_text(stmt, 0), "2024-03-01",
+                              "TIMESTAMPADD text metadata value");
+    failures += expect_date_text(mylite_column_text(stmt, 1), "TIMESTAMPADD date metadata shape");
+    failures += expect_datetime_text(mylite_column_text(stmt, 2), 0U,
+                                     "TIMESTAMPADD datetime metadata shape");
+    failures +=
+        expect_datetime_text(mylite_column_text(stmt, 3), 6U, "TIMESTAMPADD NOW(6) metadata shape");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TIMESTAMPADD metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT TIMESTAMPADD(DAY,2,'2024-02-28') AS add_day, "
+                            "TIMESTAMPADD(WEEK,2,'2024-02-01') AS add_week, "
+                            "TIMESTAMPADD(MONTH,1,'2024-01-31') AS add_month_clip, "
+                            "TIMESTAMPADD(YEAR,1,'2024-02-29') AS add_year_clip, "
+                            "TIMESTAMPADD(HOUR,1,'2024-01-01') AS add_hour, "
+                            "TIMESTAMPADD(MINUTE,-1,'2024-01-01 00:01:00') AS add_minute, "
+                            "TIMESTAMPADD(SECOND,1,'2024-01-01 23:59:59.999999') "
+                            "AS add_second_fraction, "
+                            "TIMESTAMPADD(DAY,1.9,'2024-01-01') AS add_fractional_interval, "
+                            "TIMESTAMPADD(DAY,-1.9,'2024-01-02') AS add_negative_fraction",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TIMESTAMPADD scalar row");
+    failures += expect_string(mylite_column_text(stmt, 0), "2024-03-01", "TIMESTAMPADD DAY");
+    failures += expect_string(mylite_column_text(stmt, 1), "2024-02-15", "TIMESTAMPADD WEEK");
+    failures += expect_string(mylite_column_text(stmt, 2), "2024-02-29", "TIMESTAMPADD MONTH clip");
+    failures += expect_string(mylite_column_text(stmt, 3), "2025-02-28", "TIMESTAMPADD YEAR clip");
+    failures +=
+        expect_string(mylite_column_text(stmt, 4), "2024-01-01 01:00:00", "TIMESTAMPADD HOUR");
+    failures += expect_string(mylite_column_text(stmt, 5), "2024-01-01 00:00:00",
+                              "TIMESTAMPADD MINUTE negative");
+    failures += expect_string(mylite_column_text(stmt, 6), "2024-01-02 00:00:00.999999",
+                              "TIMESTAMPADD SECOND fraction");
+    failures += expect_string(mylite_column_text(stmt, 7), "2024-01-03",
+                              "TIMESTAMPADD fractional interval");
+    failures += expect_string(mylite_column_text(stmt, 8), "2023-12-31",
+                              "TIMESTAMPADD negative fractional interval");
+    failures += expect_int(mylite_warning_count(database), 0, "TIMESTAMPADD scalar warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TIMESTAMPADD scalar done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT TIMESTAMPADD(DAY,NULL,'2024-01-01') AS null_interval, "
+                            "TIMESTAMPADD(DAY,1,NULL) AS null_datetime, "
+                            "TIMESTAMPADD(DAY,'bad','2024-01-01') AS bad_interval, "
+                            "TIMESTAMPADD(DAY,1,'bad') AS bad_datetime, "
+                            "TIMESTAMPADD(DAY,'bad',NULL) AS bad_interval_null_datetime, "
+                            "TIMESTAMPADD(DAY,1,'0000-00-00') AS zero_date",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TIMESTAMPADD invalid row");
+    failures += expect_null_text(mylite_column_text(stmt, 0), "TIMESTAMPADD null interval");
+    failures += expect_null_text(mylite_column_text(stmt, 1), "TIMESTAMPADD null datetime");
+    failures +=
+        expect_string(mylite_column_text(stmt, 2), "2024-01-01", "TIMESTAMPADD bad interval zero");
+    failures += expect_null_text(mylite_column_text(stmt, 3), "TIMESTAMPADD bad datetime");
+    failures +=
+        expect_null_text(mylite_column_text(stmt, 4), "TIMESTAMPADD bad interval null datetime");
+    failures += expect_null_text(mylite_column_text(stmt, 5), "TIMESTAMPADD zero date");
+    failures += expect_int(mylite_warning_count(database), 3, "TIMESTAMPADD invalid warnings");
+    for (int index = 0; index < 3; ++index) {
+        failures +=
+            expect_int((int)mylite_warning_code(database, index),
+                       mysql_warning_truncated_wrong_value, "TIMESTAMPADD invalid warning code");
+    }
+    failures += expect_string(mylite_warning_message(database, 0),
+                              "Truncated incorrect INTEGER value: 'bad'",
+                              "TIMESTAMPADD bad interval warning");
+    failures +=
+        expect_string(mylite_warning_message(database, 1), "Incorrect datetime value: 'bad'",
+                      "TIMESTAMPADD bad datetime warning");
+    failures +=
+        expect_string(mylite_warning_message(database, 2), "Incorrect datetime value: '0000-00-00'",
+                      "TIMESTAMPADD zero-date warning");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TIMESTAMPADD invalid done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT TIMESTAMPDIFF(SECOND, NOW(6), "
+                            "TIMESTAMPADD(SECOND, 2, NOW(6))) AS stable_current",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TIMESTAMPADD current row");
+    failures += expect_string(mylite_column_text(stmt, 0), "2", "TIMESTAMPADD nested current");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TIMESTAMPADD current done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE DATABASE timestampadd_functions", MYLITE_DONE);
+    failures += execute_sql(database, "USE timestampadd_functions", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE temporal_timestampadd ("
+                            "id INT PRIMARY KEY, d DATE, dt DATETIME, shifted DATETIME, "
+                            "note VARCHAR(32))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO temporal_timestampadd VALUES "
+                            "(1, '2024-02-28', '2024-01-01 00:00:00', NULL, 'day'), "
+                            "(2, '2024-01-31', '2024-01-31 23:59:59', NULL, 'month'), "
+                            "(3, '2024-02-29', '2024-02-29 23:59:59', NULL, 'leap'), "
+                            "(4, NULL, NULL, NULL, 'null')",
+                            MYLITE_DONE);
+    failures += expect_select_rows(database,
+                                   "SELECT id, TIMESTAMPADD(DAY,1,d) AS next_day, "
+                                   "TIMESTAMPADD(HOUR,1,dt) AS next_hour "
+                                   "FROM temporal_timestampadd "
+                                   "WHERE TIMESTAMPADD(DAY,1,d) >= '2024-02-01' "
+                                   "ORDER BY TIMESTAMPADD(HOUR,1,dt) DESC, id",
+                                   projection_columns, 3, projection_values, 3,
+                                   "TIMESTAMPADD table projection");
+    failures += execute_sql_expect_done_affected(database,
+                                                 "UPDATE temporal_timestampadd "
+                                                 "SET shifted = TIMESTAMPADD(SECOND,1,dt) "
+                                                 "WHERE TIMESTAMPADD(DAY,1,d) = '2024-02-29'",
+                                                 1, "TIMESTAMPADD update");
+    failures += expect_select_rows(
+        database, "SELECT id, d, shifted FROM temporal_timestampadd WHERE id = 1", updated_columns,
+        3, updated_values, 1, "TIMESTAMPADD updated row");
+    failures += execute_sql_expect_done_affected(database,
+                                                 "DELETE FROM temporal_timestampadd "
+                                                 "WHERE TIMESTAMPADD(DAY,-1,d) < '2024-02-01'",
+                                                 1, "TIMESTAMPADD delete");
+    failures +=
+        expect_select_rows(database, "SELECT id FROM temporal_timestampadd ORDER BY id",
+                           remaining_columns, 1, remaining_values, 3, "TIMESTAMPADD delete result");
+    failures += prepare_sql(database,
+                            "UPDATE temporal_timestampadd "
+                            "SET d = TIMESTAMPADD(DAY,'bad',d) WHERE id = 1",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "TIMESTAMPADD bad interval update");
+    failures +=
+        expect_contains(mylite_error_message(database), "Truncated incorrect INTEGER value: 'bad'",
+                        "TIMESTAMPADD bad interval update error");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "TIMESTAMPADD bad interval update warnings");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database, "SELECT id, d, shifted FROM temporal_timestampadd WHERE id = 1", updated_columns,
+        3, updated_values, 1, "TIMESTAMPADD bad interval update unchanged");
+    failures += prepare_sql(database,
+                            "UPDATE temporal_timestampadd "
+                            "SET d = TIMESTAMPADD(DAY,1,'bad') WHERE id = 1",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "TIMESTAMPADD invalid update promoted");
+    failures += expect_contains(mylite_error_message(database), "Incorrect datetime value: 'bad'",
+                                "TIMESTAMPADD invalid update error");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "TIMESTAMPADD invalid update warnings");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database, "SELECT id, d, shifted FROM temporal_timestampadd WHERE id = 1", updated_columns,
+        3, updated_values, 1, "TIMESTAMPADD invalid update unchanged");
+    failures += prepare_sql(database,
+                            "DELETE FROM temporal_timestampadd "
+                            "WHERE TIMESTAMPADD(DAY,'bad',d) IS NOT NULL",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "TIMESTAMPADD bad interval delete");
+    failures +=
+        expect_contains(mylite_error_message(database), "Truncated incorrect INTEGER value: 'bad'",
+                        "TIMESTAMPADD bad interval delete error");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "TIMESTAMPADD bad interval delete warnings");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM temporal_timestampadd ORDER BY id",
+                                   remaining_columns, 1, remaining_values, 3,
+                                   "TIMESTAMPADD bad interval delete unchanged");
+    failures += prepare_sql(database,
+                            "DELETE FROM temporal_timestampadd "
+                            "WHERE TIMESTAMPADD(DAY,1,'bad') IS NULL",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "TIMESTAMPADD invalid delete promoted");
+    failures += expect_contains(mylite_error_message(database), "Incorrect datetime value: 'bad'",
+                                "TIMESTAMPADD invalid delete error");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "TIMESTAMPADD invalid delete warnings");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM temporal_timestampadd ORDER BY id",
+                                   remaining_columns, 1, remaining_values, 3,
+                                   "TIMESTAMPADD invalid delete unchanged");
+
+    failures += prepare_sql(database, "SELECT TIMESTAMPADD(MICROSECOND,2,'2024-01-01')",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "TIMESTAMPADD MICROSECOND deferred");
+    failures += prepare_sql(database, "SELECT TIMESTAMPADD(QUARTER,1,'2024-01-31')",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "TIMESTAMPADD QUARTER deferred");
+    failures += prepare_sql(database, "SELECT TIMESTAMPADD(SQL_TSI_DAY,1,'2024-01-01')",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "TIMESTAMPADD SQL_TSI alias deferred");
+    failures += prepare_sql(database, "SELECT TIMESTAMPADD(YEAR_MONTH,1,'2024-01-01')",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "TIMESTAMPADD combined unit rejected");
+    failures += prepare_sql(database, "SELECT TIMESTAMPADD('DAY',1,'2024-01-01')",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "TIMESTAMPADD quoted unit rejected");
+    failures += prepare_sql(database, "SELECT TIMESTAMPADD(DAY,1)", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "TIMESTAMPADD missing argument rejected");
+    failures += prepare_sql(database, "SELECT TIMESTAMPADD(DAY,1,'2024-01-01','x')",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "TIMESTAMPADD extra argument rejected");
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)

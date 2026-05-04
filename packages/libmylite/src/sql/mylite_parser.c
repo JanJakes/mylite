@@ -6532,7 +6532,7 @@ static bool function_name_has_parser_checked_arity(const struct mylite_sql_ast_n
                                                    size_t *out_arity)
 {
     if (function_name_matches(name, "ASCII") || function_name_matches(name, "REVERSE") ||
-        function_name_matches(name, "TO_DAYS")) {
+        function_name_matches(name, "TO_DAYS") || function_name_matches(name, "TO_SECONDS")) {
         *out_arity = 1U;
         return true;
     }

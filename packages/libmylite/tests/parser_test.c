@@ -5621,7 +5621,9 @@ static int test_scalar_function_call_syntax(void)
     failures += parse_sql("SELECT DATE('2024-02-29 12:34:56'), "
                           "DATEDIFF('2024-03-01','2024-02-29'), DATE(NOW()), "
                           "DATEDIFF(CURDATE(), DATE(NOW())), "
-                          "TO_DAYS('2024-02-29'), TO_DAYS(DATE_ADD(CURDATE(), INTERVAL 1 DAY));",
+                          "TO_DAYS('2024-02-29'), TO_DAYS(DATE_ADD(CURDATE(), INTERVAL 1 DAY)), "
+                          "TO_SECONDS('2024-02-29 23:59:59'), "
+                          "TO_SECONDS(DATE_ADD(CURDATE(), INTERVAL 1 SECOND));",
                           MYLITE_SQL_PARSE_OK, &result);
     select_list = child_at(child_at(result.root, 0U), 0U);
     failures += expect_function_call(child_at(child_at(select_list, 0U), 0U), "DATE", 1U,
@@ -5636,15 +5638,27 @@ static int test_scalar_function_call_syntax(void)
                                      "TO_DAYS function call");
     failures += expect_function_call(child_at(child_at(select_list, 5U), 0U), "TO_DAYS", 1U,
                                      "TO_DAYS nested temporal call");
+    failures += expect_function_call(child_at(child_at(select_list, 6U), 0U), "TO_SECONDS", 1U,
+                                     "TO_SECONDS function call");
+    failures += expect_function_call(child_at(child_at(select_list, 7U), 0U), "TO_SECONDS", 1U,
+                                     "TO_SECONDS nested temporal call");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT to_days FROM temporal_part_names;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("SELECT to_seconds FROM temporal_part_names;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT TO_DAYS()", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parse_sql("SELECT TO_DAYS('2024-01-01','x')", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT TO_SECONDS()", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("SELECT TO_SECONDS('2024-01-01','x')", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     if (parse_sql("SELECT YEAR('2024-02-29'), MONTH('2024-02-29'), "

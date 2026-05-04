@@ -123,6 +123,7 @@ enum {
     mysql_warning_no_default = 1364,
     mysql_warning_division_by_zero = 1365,
     mysql_warning_incorrect_string_value = 1411,
+    mysql_warning_datetime_function_overflow = 1441,
     mysql_warning_unknown_locale = 1649,
     mysql_warning_out_of_range = 1690,
     mysql_warning_duplicate_index = 1831,
@@ -259,6 +260,7 @@ static int test_date_and_datediff_functions_execution(void);
 static int test_timestampdiff_function_execution(void);
 static int test_timestampadd_function_execution(void);
 static int test_to_days_function_execution(void);
+static int test_to_seconds_function_execution(void);
 static int test_date_add_sub_functions_execution(void);
 static int test_round_scalar_function_execution(mylite_db *database);
 static int test_format_scalar_function_execution(mylite_db *database);
@@ -475,6 +477,7 @@ int main(void)
     failures += test_timestampdiff_function_execution();
     failures += test_timestampadd_function_execution();
     failures += test_to_days_function_execution();
+    failures += test_to_seconds_function_execution();
     failures += test_date_add_sub_functions_execution();
     failures += test_inet_ipv4_functions_execution();
     failures += test_charset_collation_functions_execution();
@@ -6990,6 +6993,271 @@ static int test_to_days_function_execution(void)
     failures +=
         prepare_sql(database, "SELECT TO_DAYS('2024-01-01','x')", MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "TO_DAYS extra argument rejected");
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_to_seconds_function_execution(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const struct expected_result_metadata metadata[] = {
+        {"to_seconds_value", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"to_seconds_null", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+    };
+    static const char *const projection_columns[] = {"id", "seconds", "dt_seconds"};
+    static const char *const projection_values[] = {
+        "3", "63876470400", "63876470400", "2", "63876384000", "63876427200",
+    };
+    static const char *const updated_columns[] = {"id", "n", "note"};
+    static const char *const updated_values[] = {"2", "63876427200", "leap"};
+    static const char *const remaining_columns[] = {"id"};
+    static const char *const remaining_values[] = {"2", "3", "4"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK,
+                              "open TO_SECONDS function database");
+
+    failures += prepare_sql(database,
+                            "SELECT TO_SECONDS('2024-02-29') AS to_seconds_value, "
+                            "TO_SECONDS(NULL) AS to_seconds_null",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "TO_SECONDS metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TO_SECONDS metadata row");
+    failures +=
+        expect_string(mylite_column_text(stmt, 0), "63876384000", "TO_SECONDS metadata value");
+    failures += expect_null_text(mylite_column_text(stmt, 1), "TO_SECONDS metadata null");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TO_SECONDS metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT TO_SECONDS('0000-01-01') AS year_zero, "
+                            "TO_SECONDS('0001-01-01') AS year_one, "
+                            "TO_SECONDS('2024-02-29') AS leap_day, "
+                            "TO_SECONDS('2024-02-29 23:59:59') AS leap_datetime, "
+                            "TO_SECONDS('2024-02-29 00:00:00.999999') AS fractional_time, "
+                            "TO_SECONDS('2024-02-29 23:59:59.9999999') AS overlong_fraction, "
+                            "TO_SECONDS('9999-12-31 23:59:59') AS max_datetime, "
+                            "TO_SECONDS('20240229') AS compact_string, "
+                            "TO_SECONDS(20240229) AS compact_number, "
+                            "TO_SECONDS(20240229235959) AS compact_datetime_number, "
+                            "TO_SECONDS(DATE_ADD('2024-02-28 23:59:59', INTERVAL 1 SECOND)) "
+                            "AS nested_date",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TO_SECONDS scalar row");
+    failures += expect_string(mylite_column_text(stmt, 0), "86400", "TO_SECONDS year zero");
+    failures += expect_string(mylite_column_text(stmt, 1), "31622400", "TO_SECONDS year one");
+    failures += expect_string(mylite_column_text(stmt, 2), "63876384000", "TO_SECONDS leap day");
+    failures +=
+        expect_string(mylite_column_text(stmt, 3), "63876470399", "TO_SECONDS includes time");
+    failures +=
+        expect_string(mylite_column_text(stmt, 4), "63876384000", "TO_SECONDS ignores fraction");
+    failures += expect_string(mylite_column_text(stmt, 5), "63876470400",
+                              "TO_SECONDS rounds overlong fraction");
+    failures +=
+        expect_string(mylite_column_text(stmt, 6), "315569519999", "TO_SECONDS max datetime");
+    failures +=
+        expect_string(mylite_column_text(stmt, 7), "63876384000", "TO_SECONDS compact string");
+    failures +=
+        expect_string(mylite_column_text(stmt, 8), "63876384000", "TO_SECONDS compact number");
+    failures += expect_string(mylite_column_text(stmt, 9), "63876470399",
+                              "TO_SECONDS compact datetime number");
+    failures +=
+        expect_string(mylite_column_text(stmt, 10), "63876384000", "TO_SECONDS nested DATE_ADD");
+    failures += expect_int(mylite_warning_count(database), 0, "TO_SECONDS scalar warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TO_SECONDS scalar done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT TO_SECONDS(NULL) AS null_value, "
+                            "TO_SECONDS('bad') AS bad_text, "
+                            "TO_SECONDS('0000-00-00') AS zero_date, "
+                            "TO_SECONDS('2006-05-00') AS zero_day, "
+                            "TO_SECONDS('0000-02-29') AS impossible_year_zero",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TO_SECONDS invalid row");
+    for (int index = 0; index < 5; ++index) {
+        failures += expect_null_text(mylite_column_text(stmt, index), "TO_SECONDS invalid null");
+    }
+    failures += expect_int(mylite_warning_count(database), 4, "TO_SECONDS invalid warning count");
+    for (int index = 0; index < 4; ++index) {
+        failures +=
+            expect_int((int)mylite_warning_code(database, index),
+                       mysql_warning_truncated_wrong_value, "TO_SECONDS invalid warning code");
+    }
+    failures += expect_string(mylite_warning_message(database, 0),
+                              "Incorrect datetime value: 'bad'", "TO_SECONDS bad warning");
+    failures +=
+        expect_string(mylite_warning_message(database, 1), "Incorrect datetime value: '0000-00-00'",
+                      "TO_SECONDS zero-date warning");
+    failures +=
+        expect_string(mylite_warning_message(database, 2), "Incorrect datetime value: '2006-05-00'",
+                      "TO_SECONDS zero-day warning");
+    failures +=
+        expect_string(mylite_warning_message(database, 3), "Incorrect datetime value: '0000-02-29'",
+                      "TO_SECONDS impossible year-zero warning");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TO_SECONDS invalid done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT TO_SECONDS(20240229.9) AS fractional_numeric",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TO_SECONDS fractional numeric row");
+    failures += expect_string(mylite_column_text(stmt, 0), "63876384000",
+                              "TO_SECONDS fractional numeric value");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "TO_SECONDS fractional numeric warnings");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_truncated_wrong_value,
+                   "TO_SECONDS fractional numeric warning code");
+    failures += expect_string(mylite_warning_message(database, 0),
+                              "Truncated incorrect date value: '20240229.9'",
+                              "TO_SECONDS fractional numeric warning");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TO_SECONDS fractional numeric done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT TO_SECONDS('9999-12-31 23:59:59.9999999') AS overflow_fraction",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TO_SECONDS overflow fraction row");
+    failures += expect_null_text(mylite_column_text(stmt, 0), "TO_SECONDS overflow fraction null");
+    failures +=
+        expect_int(mylite_warning_count(database), 2, "TO_SECONDS overflow fraction warnings");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_datetime_function_overflow,
+                   "TO_SECONDS overflow fraction warning code");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 1), mysql_warning_truncated_wrong_value,
+                   "TO_SECONDS overflow fraction truncation code");
+    failures += expect_string(mylite_warning_message(database, 0),
+                              "Datetime function: datetime field overflow",
+                              "TO_SECONDS overflow fraction warning");
+    failures += expect_string(mylite_warning_message(database, 1),
+                              "Truncated incorrect datetime value: '9999-12-31 23:59:59.9999999'",
+                              "TO_SECONDS overflow fraction truncation");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TO_SECONDS overflow fraction done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT TO_SECONDS(NOW()) BETWEEN TO_SECONDS(CURDATE()) AND "
+                            "TO_SECONDS(DATE_ADD(CURDATE(), INTERVAL 1 DAY)) - 1 "
+                            "AS stable_current, "
+                            "TO_SECONDS(DATE_ADD(CURDATE(), INTERVAL 1 SECOND)) - "
+                            "TO_SECONDS(CURDATE()) AS nested_current",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TO_SECONDS current row");
+    failures += expect_string(mylite_column_text(stmt, 0), "1", "TO_SECONDS stable current");
+    failures += expect_string(mylite_column_text(stmt, 1), "1", "TO_SECONDS nested current");
+    failures += expect_int(mylite_warning_count(database), 0, "TO_SECONDS current warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TO_SECONDS current done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE DATABASE to_seconds_functions", MYLITE_DONE);
+    failures += execute_sql(database, "USE to_seconds_functions", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE temporal_to_seconds ("
+                            "id INT PRIMARY KEY, d DATE, dt DATETIME, n BIGINT, "
+                            "note VARCHAR(32))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO temporal_to_seconds VALUES "
+                            "(1, '2024-02-28', '2024-02-28 23:59:59', 0, 'before'), "
+                            "(2, '2024-02-29', '2024-02-29 12:00:00', 0, 'leap'), "
+                            "(3, '2024-03-01', '2024-03-01 00:00:00', 0, 'after'), "
+                            "(4, NULL, NULL, 0, 'null')",
+                            MYLITE_DONE);
+    failures += expect_select_rows(database,
+                                   "SELECT id, TO_SECONDS(d) AS seconds, "
+                                   "TO_SECONDS(dt) AS dt_seconds "
+                                   "FROM temporal_to_seconds "
+                                   "WHERE TO_SECONDS(dt) >= 63876384000 "
+                                   "ORDER BY TO_SECONDS(dt) DESC, id",
+                                   projection_columns, 3, projection_values, 2,
+                                   "TO_SECONDS table projection");
+    failures += execute_sql_expect_done_affected(database,
+                                                 "UPDATE temporal_to_seconds "
+                                                 "SET n = TO_SECONDS(dt) "
+                                                 "WHERE TO_SECONDS(d) = 63876384000",
+                                                 1, "TO_SECONDS update");
+    failures +=
+        expect_select_rows(database, "SELECT id, n, note FROM temporal_to_seconds WHERE id = 2",
+                           updated_columns, 3, updated_values, 1, "TO_SECONDS updated row");
+    failures += execute_sql_expect_done_affected(database,
+                                                 "DELETE FROM temporal_to_seconds "
+                                                 "WHERE TO_SECONDS(d) < 63876384000",
+                                                 1, "TO_SECONDS delete");
+    failures +=
+        expect_select_rows(database, "SELECT id FROM temporal_to_seconds ORDER BY id",
+                           remaining_columns, 1, remaining_values, 3, "TO_SECONDS delete result");
+    failures += prepare_sql(database,
+                            "UPDATE temporal_to_seconds "
+                            "SET n = TO_SECONDS('bad') WHERE id = 2",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "TO_SECONDS invalid update promoted");
+    failures += expect_contains(mylite_error_message(database), "Incorrect datetime value: 'bad'",
+                                "TO_SECONDS invalid update error");
+    failures += expect_int(mylite_warning_count(database), 1, "TO_SECONDS invalid update warnings");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database, "SELECT id, n, note FROM temporal_to_seconds WHERE id = 2", updated_columns, 3,
+        updated_values, 1, "TO_SECONDS invalid update unchanged");
+    failures += prepare_sql(database,
+                            "UPDATE temporal_to_seconds "
+                            "SET n = TO_SECONDS('9999-12-31 23:59:59.9999999') WHERE id = 2",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "TO_SECONDS overflow update promoted");
+    failures += expect_contains(mylite_error_message(database),
+                                "Datetime function: datetime field overflow",
+                                "TO_SECONDS overflow update error");
+    failures +=
+        expect_int(mylite_warning_count(database), 2, "TO_SECONDS overflow update warnings");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_datetime_function_overflow,
+                   "TO_SECONDS overflow update warning code");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 1), mysql_warning_truncated_wrong_value,
+                   "TO_SECONDS overflow update truncation code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database, "SELECT id, n, note FROM temporal_to_seconds WHERE id = 2", updated_columns, 3,
+        updated_values, 1, "TO_SECONDS overflow update unchanged");
+    failures += prepare_sql(database,
+                            "DELETE FROM temporal_to_seconds "
+                            "WHERE TO_SECONDS('bad') IS NULL",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "TO_SECONDS invalid delete promoted");
+    failures += expect_contains(mylite_error_message(database), "Incorrect datetime value: 'bad'",
+                                "TO_SECONDS invalid delete error");
+    failures += expect_int(mylite_warning_count(database), 1, "TO_SECONDS invalid delete warnings");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM temporal_to_seconds ORDER BY id",
+                                   remaining_columns, 1, remaining_values, 3,
+                                   "TO_SECONDS invalid delete unchanged");
+
+    failures += prepare_sql(database, "SELECT TO_SECONDS()", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "TO_SECONDS missing argument rejected");
+    failures +=
+        prepare_sql(database, "SELECT TO_SECONDS('2024-01-01','x')", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "TO_SECONDS extra argument rejected");
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)

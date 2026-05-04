@@ -16,24 +16,6 @@ struct mylite_show_status_query {
     const char *like_pattern;
 };
 
-struct mylite_storage_engine_row {
-    const char *engine;
-    const char *support;
-    const char *comment;
-    const char *transactions;
-    const char *xa;
-    const char *savepoints;
-};
-
-struct mylite_storage_engine_columns {
-    const char *engine;
-    const char *support;
-    const char *comment;
-    const char *transactions;
-    const char *xa;
-    const char *savepoints;
-};
-
 struct mylite_show_engines_metadata_column {
     const char *name;
     uint64_t length;

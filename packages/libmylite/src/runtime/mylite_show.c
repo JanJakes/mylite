@@ -8,6 +8,7 @@
 #include "mylite_runtime.h"
 #include "mylite_show_types.h"
 #include "mylite_statement.h"
+#include "mylite_storage_engine.h"
 #include "sqlite3.h"
 
 #include <stdbool.h>
@@ -15,8 +16,6 @@
 #include <stdlib.h>
 #include <time.h>
 
-static int storage_engines_sql(mylite_db *database,
-                               const struct mylite_storage_engine_columns *columns, char **out_sql);
 static bool diagnostic_condition_matches(const struct mylite_expression_warning *condition,
                                          enum mylite_sql_ast_show_diagnostics_kind kind);
 static const char *
@@ -29,36 +28,22 @@ static void append_show_status_row(sqlite3_str *sql, bool *first, const char *na
 static void append_show_status_integer_row(sqlite3_str *sql, bool *first, const char *name,
                                            uint64_t value);
 static struct mylite_field_descriptor show_engines_field_descriptor(uint64_t length, bool nullable);
+static int show_engines_sql(mylite_db *database, char **out_sql);
 static void append_show_character_set_row(sqlite3_str *sql, bool *first,
                                           const struct mylite_charset *character_set);
 static void append_show_collation_row(sqlite3_str *sql, bool *first,
                                       const struct mylite_collation *collation);
-static void append_storage_engine_row(sqlite3_str *sql, bool *first,
-                                      const struct mylite_storage_engine_columns *columns,
-                                      const struct mylite_storage_engine_row *engine);
-
 static const unsigned int mylite_show_latin1_swedish_ci_charset_id = 8U;
 static const unsigned int mylite_show_not_fixed_decimals = 31U;
 
 static const char show_schemas_sql[] =
     "SELECT name AS \"Database\" FROM __mylite_schema_catalog ORDER BY name COLLATE BINARY";
 
-static const struct mylite_storage_engine_row mylite_storage_engine_registry[] = {
-    {"InnoDB", "DEFAULT", "MyLite SQLite-backed transactional engine facade", "YES", "NO", "YES"},
-    {"MEMORY", "NO", "In-memory tables are not supported by MyLite", NULL, NULL, NULL},
-    {"MyISAM", "NO", "MyISAM tables are not supported by MyLite", NULL, NULL, NULL},
-    {"FEDERATED", "NO", "Federated tables are not supported by MyLite", NULL, NULL, NULL},
-    {"MRG_MYISAM", "NO", "Merge MyISAM tables are not supported by MyLite", NULL, NULL, NULL},
-    {"BLACKHOLE", "NO", "Blackhole tables are not supported by MyLite", NULL, NULL, NULL},
-    {"CSV", "NO", "CSV-backed tables are not supported by MyLite", NULL, NULL, NULL},
-    {"ARCHIVE", "NO", "Archive tables are not supported by MyLite", NULL, NULL, NULL},
-};
-
 int mylite_show_prepare_engines_statement(mylite_db *database, mylite_stmt **out_stmt)
 {
     char *sqlite_sql = NULL;
     mylite_stmt *stmt = NULL;
-    int status = mylite_show_engines_sql(database, &sqlite_sql);
+    int status = show_engines_sql(database, &sqlite_sql);
 
     *out_stmt = NULL;
     if (status == MYLITE_OK) {
@@ -85,22 +70,9 @@ int mylite_show_prepare_schemas_statement(mylite_db *database, mylite_stmt **out
     return mylite_statement_prepare_sqlite(database, mylite_show_schemas_sql(), out_stmt);
 }
 
-int mylite_show_engines_sql(mylite_db *database, char **out_sql)
+static int show_engines_sql(mylite_db *database, char **out_sql)
 {
-    static const struct mylite_storage_engine_columns columns = {
-        "Engine", "Support", "Comment", "Transactions", "XA", "Savepoints",
-    };
-
-    return storage_engines_sql(database, &columns, out_sql);
-}
-
-int mylite_show_information_schema_engines_sql(mylite_db *database, char **out_sql)
-{
-    static const struct mylite_storage_engine_columns columns = {
-        "ENGINE", "SUPPORT", "COMMENT", "TRANSACTIONS", "XA", "SAVEPOINTS",
-    };
-
-    return storage_engines_sql(database, &columns, out_sql);
+    return mylite_storage_engine_show_sql(database, out_sql);
 }
 
 int mylite_show_character_set_sql(mylite_db *database,
@@ -544,31 +516,6 @@ int mylite_show_attach_engines_result_metadata(mylite_db *database, mylite_stmt 
     return MYLITE_OK;
 }
 
-static int storage_engines_sql(mylite_db *database,
-                               const struct mylite_storage_engine_columns *columns, char **out_sql)
-{
-    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
-    bool first = true;
-
-    *out_sql = NULL;
-    if (sql == NULL) {
-        return MYLITE_NOMEM;
-    }
-
-    sqlite3_str_appendf(sql, "SELECT \"%w\", \"%w\", \"%w\", \"%w\", \"%w\", \"%w\" FROM (",
-                        columns->engine, columns->support, columns->comment, columns->transactions,
-                        columns->xa, columns->savepoints);
-    for (size_t index = 0U;
-         index < sizeof(mylite_storage_engine_registry) / sizeof(mylite_storage_engine_registry[0]);
-         ++index) {
-        append_storage_engine_row(sql, &first, columns, &mylite_storage_engine_registry[index]);
-    }
-    sqlite3_str_appendall(sql, ")");
-
-    *out_sql = sqlite3_str_finish(sql);
-    return *out_sql == NULL ? MYLITE_NOMEM : MYLITE_OK;
-}
-
 static bool diagnostic_condition_matches(const struct mylite_expression_warning *condition,
                                          enum mylite_sql_ast_show_diagnostics_kind kind)
 {
@@ -676,34 +623,5 @@ static void append_show_collation_row(sqlite3_str *sql, bool *first,
                         "%Q AS \"Pad_attribute\"",
                         collation->name, collation->character_set, collation->id, default_text,
                         collation->sort_length, collation->pad_attribute);
-    *first = false;
-}
-
-static void append_storage_engine_row(sqlite3_str *sql, bool *first,
-                                      const struct mylite_storage_engine_columns *columns,
-                                      const struct mylite_storage_engine_row *engine)
-{
-    if (!*first) {
-        sqlite3_str_appendall(sql, " UNION ALL ");
-    }
-
-    sqlite3_str_appendf(sql, "SELECT %Q AS \"%w\", %Q AS \"%w\", %Q AS \"%w\", ", engine->engine,
-                        columns->engine, engine->support, columns->support, engine->comment,
-                        columns->comment);
-    if (engine->transactions == NULL) {
-        sqlite3_str_appendf(sql, "NULL AS \"%w\", ", columns->transactions);
-    } else {
-        sqlite3_str_appendf(sql, "%Q AS \"%w\", ", engine->transactions, columns->transactions);
-    }
-    if (engine->xa == NULL) {
-        sqlite3_str_appendf(sql, "NULL AS \"%w\", ", columns->xa);
-    } else {
-        sqlite3_str_appendf(sql, "%Q AS \"%w\", ", engine->xa, columns->xa);
-    }
-    if (engine->savepoints == NULL) {
-        sqlite3_str_appendf(sql, "NULL AS \"%w\"", columns->savepoints);
-    } else {
-        sqlite3_str_appendf(sql, "%Q AS \"%w\"", engine->savepoints, columns->savepoints);
-    }
     *first = false;
 }

@@ -17,8 +17,6 @@ struct mylite_show_table_status_query;
 struct mylite_show_tables_query;
 struct mylite_show_variables_query;
 
-int mylite_show_engines_sql(mylite_db *database, char **out_sql);
-int mylite_show_information_schema_engines_sql(mylite_db *database, char **out_sql);
 int mylite_show_prepare_character_set_statement(mylite_db *database,
                                                 const struct mylite_sql_ast_node *statement,
                                                 mylite_stmt **out_stmt);

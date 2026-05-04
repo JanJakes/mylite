@@ -6,6 +6,7 @@
 #include "mylite_show.h"
 #include "mylite_span.h"
 #include "mylite_statement.h"
+#include "mylite_storage_engine.h"
 #include "sql/mylite_lexer.h"
 #include "sqlite3.h"
 
@@ -620,7 +621,7 @@ static int information_schema_dynamic_table_sql(mylite_db *database,
     case MYLITE_INFORMATION_SCHEMA_COLLATION_CHARACTER_SET_APPLICABILITY:
         return information_schema_collation_character_set_applicability_sql(database, out_sql);
     case MYLITE_INFORMATION_SCHEMA_ENGINES:
-        return mylite_show_information_schema_engines_sql(database, out_sql);
+        return mylite_storage_engine_information_schema_sql(database, out_sql);
     case MYLITE_INFORMATION_SCHEMA_KEYWORDS:
         return information_schema_keywords_sql(database, out_sql);
     case MYLITE_INFORMATION_SCHEMA_SCHEMATA:

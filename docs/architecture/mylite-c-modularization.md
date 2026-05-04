@@ -336,7 +336,7 @@ only the core object model and transitional shared helpers listed here:
   `mylite_information_schema`.
 - [x] Move static information-schema SQL strings into
   `mylite_information_schema`.
-- [ ] Move dynamic information-schema character set/collation/keyword/engine
+- [x] Move dynamic information-schema character set/collation/keyword/engine
   builders into `mylite_information_schema`.
 - [x] Move information-schema SELECT passthrough preparation into
   `mylite_information_schema`.

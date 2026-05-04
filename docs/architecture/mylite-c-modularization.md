@@ -471,7 +471,7 @@ only the core object model and transitional shared helpers listed here:
   helper APIs.
 - [ ] Move wildcard expansion and output-column planning into `mylite_select`.
 - [ ] Move SELECT predicate binding into `mylite_select`.
-- [ ] Move join planning and `USING` resolution into `mylite_select`.
+- [x] Move join planning and `USING` resolution into `mylite_select`.
 - [x] Move shared SELECT `USING` column resolution helpers into
   `mylite_select`.
 - [ ] Move `ORDER BY`, `GROUP BY`, `HAVING`, and `LIMIT` binding into

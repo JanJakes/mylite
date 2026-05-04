@@ -372,6 +372,8 @@ only the core object model and transitional shared helpers listed here:
   standalone index statements into a focused table DDL statement module.
 - [x] Move ALTER TABLE catalog rewrite helpers into a focused table DDL catalog
   companion module.
+- [x] Move ALTER TABLE warning generation into a focused table DDL warnings
+  companion module.
 - [ ] Split DML plans and execution.
 - [x] Start `src/runtime/mylite_dml.{h,c}` with DML plan and row cleanup.
 - [x] Move insert/replacement AST copy helpers into `mylite_dml`.

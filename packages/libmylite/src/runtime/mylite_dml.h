@@ -240,6 +240,12 @@ bool mylite_dml_update_expression_value_positive_uint64(const struct mylite_expr
                                                         uint64_t *out_value);
 bool mylite_dml_update_row_changed(const struct mylite_update_row *stored,
                                    const struct mylite_update_row *candidate);
+int mylite_dml_set_update_unknown_column_error(mylite_db *database, const char *column_name,
+                                               const char *clause_context);
+int mylite_dml_set_update_unsupported_expression_error(mylite_db *database,
+                                                       const char *clause_context);
+int mylite_dml_set_update_unsupported_clause_error(mylite_db *database);
+int mylite_dml_set_update_unsupported_assignment_error(mylite_db *database);
 int mylite_dml_sort_update_rowset(struct mylite_update_rowset *rowset,
                                   const struct mylite_update_order_plan *order_plan);
 void mylite_dml_apply_update_limit(const struct mylite_sql_ast_node *limit_clause,

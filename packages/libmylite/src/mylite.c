@@ -1371,11 +1371,6 @@ static int advance_update_auto_increment(mylite_stmt *stmt, const struct mylite_
 static int resolve_update_expression_identifier(void *user_data,
                                                 const struct mylite_sql_ast_node *identifier,
                                                 struct mylite_expression_value *out_value);
-static int set_update_unknown_column_error(mylite_db *database, const char *column_name,
-                                           const char *clause_context);
-static int set_update_unsupported_expression_error(mylite_db *database, const char *clause_context);
-static int set_update_unsupported_clause_error(mylite_db *database);
-static int set_update_unsupported_assignment_error(mylite_db *database);
 static int bind_delete_subset(mylite_stmt *stmt, const struct mylite_select_table *table);
 static int reject_deferred_delete_clauses(mylite_stmt *stmt);
 static int bind_delete_where_clause(mylite_stmt *stmt, const struct mylite_select_table *table);
@@ -16218,7 +16213,7 @@ static int bind_update_subset(mylite_stmt *stmt, const struct mylite_select_tabl
         return status;
     }
     if (assignment_count == 0U) {
-        return set_update_unsupported_assignment_error(stmt->database);
+        return mylite_dml_set_update_unsupported_assignment_error(stmt->database);
     }
 
     assignments = calloc(assignment_count, sizeof(*assignments));
@@ -16255,7 +16250,7 @@ static int reject_deferred_update_clauses(mylite_stmt *stmt)
         mylite_ast_child_at(limit, 0U) == NULL ||
         mylite_ast_child_at(limit, 0U)->kind != MYLITE_SQL_AST_LIMIT_BOUND ||
         !mylite_ast_child_at(limit, 0U)->has_limit_bound_value) {
-        return set_update_unsupported_clause_error(stmt->database);
+        return mylite_dml_set_update_unsupported_clause_error(stmt->database);
     }
     return MYLITE_OK;
 }
@@ -16293,7 +16288,7 @@ static int bind_update_where_clause(mylite_stmt *stmt, const struct mylite_selec
         return MYLITE_OK;
     }
     if (stmt->update.where_clause->kind != MYLITE_SQL_AST_WHERE_CLAUSE || predicate == NULL) {
-        return set_update_unsupported_clause_error(stmt->database);
+        return mylite_dml_set_update_unsupported_clause_error(stmt->database);
     }
     return bind_update_predicate_expression(stmt, table, predicate, "where clause");
 }
@@ -16305,7 +16300,7 @@ static int bind_update_predicate_expression(mylite_stmt *stmt,
                                             const char *clause_context)
 {
     if (expression == NULL) {
-        return set_update_unsupported_clause_error(stmt->database);
+        return mylite_dml_set_update_unsupported_clause_error(stmt->database);
     }
 
     switch (expression->kind) {
@@ -16327,7 +16322,8 @@ static int bind_update_predicate_expression(mylite_stmt *stmt,
                 (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
                 return MYLITE_NOMEM;
             }
-            status = set_update_unknown_column_error(stmt->database, reference, clause_context);
+            status = mylite_dml_set_update_unknown_column_error(stmt->database, reference,
+                                                                clause_context);
             free(reference);
             return status;
         }
@@ -16388,7 +16384,7 @@ static int bind_update_predicate_expression(mylite_stmt *stmt,
     case MYLITE_SQL_AST_INSERT_UPDATE_ASSIGNMENT:
     case MYLITE_SQL_AST_INSERT_ROW_ALIAS:
     case MYLITE_SQL_AST_INSERT_ALIAS_COLUMN_LIST:
-        return set_update_unsupported_clause_error(stmt->database);
+        return mylite_dml_set_update_unsupported_clause_error(stmt->database);
     case MYLITE_SQL_AST_CAST_EXPRESSION: {
         int status = validate_cast_expression_target_charset(stmt->database, expression);
 
@@ -16484,10 +16480,10 @@ static int bind_update_predicate_expression(mylite_stmt *stmt,
     case MYLITE_SQL_AST_SAVEPOINT_STATEMENT:
     case MYLITE_SQL_AST_ROLLBACK_TO_SAVEPOINT_STATEMENT:
     case MYLITE_SQL_AST_RELEASE_SAVEPOINT_STATEMENT:
-        return set_update_unsupported_expression_error(stmt->database, clause_context);
+        return mylite_dml_set_update_unsupported_expression_error(stmt->database, clause_context);
     }
 
-    return set_update_unsupported_expression_error(stmt->database, clause_context);
+    return mylite_dml_set_update_unsupported_expression_error(stmt->database, clause_context);
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
@@ -16499,7 +16495,7 @@ static int bind_update_function_call(mylite_stmt *stmt, const struct mylite_sele
     int status = MYLITE_OK;
 
     if (!mylite_expression_is_supported_function_call(expression)) {
-        return set_update_unsupported_expression_error(stmt->database, clause_context);
+        return mylite_dml_set_update_unsupported_expression_error(stmt->database, clause_context);
     }
     status = validate_char_function_charset(stmt->database, expression);
     if (status != MYLITE_OK) {
@@ -16527,7 +16523,7 @@ static int bind_update_order_by_clause(mylite_stmt *stmt, const struct mylite_se
     }
     if (stmt->update.order_by_clause->kind != MYLITE_SQL_AST_ORDER_BY_CLAUSE || items == NULL ||
         items->kind != MYLITE_SQL_AST_ORDER_ITEM_LIST) {
-        return set_update_unsupported_clause_error(stmt->database);
+        return mylite_dml_set_update_unsupported_clause_error(stmt->database);
     }
 
     for (const struct mylite_sql_ast_node *item = items->first_child; item != NULL;
@@ -16541,7 +16537,7 @@ static int bind_update_order_by_clause(mylite_stmt *stmt, const struct mylite_se
         int status = MYLITE_OK;
 
         if (item->kind != MYLITE_SQL_AST_ORDER_ITEM || expression == NULL) {
-            return set_update_unsupported_clause_error(stmt->database);
+            return mylite_dml_set_update_unsupported_clause_error(stmt->database);
         }
         if (item->key_part_order == MYLITE_SQL_AST_KEY_PART_ORDER_DESC) {
             order_key.direction = MYLITE_SQL_AST_KEY_PART_ORDER_DESC;
@@ -16557,8 +16553,9 @@ static int bind_update_order_by_clause(mylite_stmt *stmt, const struct mylite_se
             return status;
         }
     }
-    return order_plan->order_key_count == 0U ? set_update_unsupported_clause_error(stmt->database)
-                                             : MYLITE_OK;
+    return order_plan->order_key_count == 0U
+               ? mylite_dml_set_update_unsupported_clause_error(stmt->database)
+               : MYLITE_OK;
 }
 
 static int bind_update_order_expression(mylite_stmt *stmt, const struct mylite_select_table *table,
@@ -16720,8 +16717,9 @@ static int evaluate_update_order_key(mylite_stmt *stmt, const struct mylite_sele
         int condition_status =
             mylite_dml_set_expression_condition_error(stmt->database, warning_start);
 
-        return condition_status == MYLITE_OK ? set_update_unsupported_clause_error(stmt->database)
-                                             : condition_status;
+        return condition_status == MYLITE_OK
+                   ? mylite_dml_set_update_unsupported_clause_error(stmt->database)
+                   : condition_status;
     }
     return mylite_dml_promote_expression_warnings(stmt->database, warning_start);
 }
@@ -16854,7 +16852,7 @@ static int apply_update_assignments(mylite_stmt *stmt, const struct mylite_selec
 
         if (write_table->columns == NULL || candidate->values == NULL ||
             column_index >= write_table->column_count || column_index >= candidate->value_count) {
-            return set_update_unsupported_assignment_error(stmt->database);
+            return mylite_dml_set_update_unsupported_assignment_error(stmt->database);
         }
 
         status = evaluate_update_assignment_value(stmt, table, write_table, candidate, column_index,
@@ -16908,7 +16906,7 @@ static int evaluate_update_assignment_value(mylite_stmt *stmt,
         } else {
             status = mylite_dml_set_expression_condition_error(stmt->database, warning_start);
             if (status == MYLITE_OK) {
-                status = set_update_unsupported_assignment_error(stmt->database);
+                status = mylite_dml_set_update_unsupported_assignment_error(stmt->database);
             }
         }
         if (status == MYLITE_OK) {
@@ -16973,7 +16971,7 @@ static int validate_update_assignment_value(mylite_stmt *stmt,
         };
         return MYLITE_OK;
     }
-    return set_update_unsupported_assignment_error(stmt->database);
+    return mylite_dml_set_update_unsupported_assignment_error(stmt->database);
 }
 
 static int advance_update_auto_increment(mylite_stmt *stmt, const struct mylite_select_table *table,
@@ -17018,49 +17016,6 @@ static int resolve_update_expression_identifier(void *user_data,
         return -1;
     }
     return mylite_expression_value_copy(&context->row->values[column_index], out_value);
-}
-
-static int set_update_unknown_column_error(mylite_db *database, const char *column_name,
-                                           const char *clause_context)
-{
-    char *message = sqlite3_mprintf("Unknown column '%q' in '%q'", column_name,
-                                    clause_context == NULL ? "field list" : clause_context);
-    int status = MYLITE_OK;
-
-    if (message == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    status = mylite_diagnostics_set_error_message(database, message);
-    sqlite3_free(message);
-    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-}
-
-static int set_update_unsupported_expression_error(mylite_db *database, const char *clause_context)
-{
-    if (clause_context != NULL && strcmp(clause_context, "field list") == 0) {
-        return set_update_unsupported_assignment_error(database);
-    }
-    return set_update_unsupported_clause_error(database);
-}
-
-static int set_update_unsupported_clause_error(mylite_db *database)
-{
-    if (mylite_diagnostics_set_error_message(database, "Unsupported UPDATE clause") ==
-        MYLITE_NOMEM) {
-        return MYLITE_NOMEM;
-    }
-    return MYLITE_EXEC_ERROR;
-}
-
-static int set_update_unsupported_assignment_error(mylite_db *database)
-{
-    if (mylite_diagnostics_set_error_message(database, "Unsupported UPDATE assignment") ==
-        MYLITE_NOMEM) {
-        return MYLITE_NOMEM;
-    }
-    return MYLITE_EXEC_ERROR;
 }
 
 static int execute_delete_statement(mylite_stmt *stmt)

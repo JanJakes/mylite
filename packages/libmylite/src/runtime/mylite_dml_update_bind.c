@@ -18,8 +18,6 @@ static size_t update_select_column_index(const struct mylite_select_table *table
 static char *
 copy_update_column_reference_name(const struct mylite_update_column_reference *reference);
 static int set_update_unknown_field_error(mylite_db *database, const char *column_name);
-static int set_update_unknown_column_error(mylite_db *database, const char *column_name,
-                                           const char *clause_context);
 
 int mylite_dml_copy_update_target_to_select_table(mylite_db *database,
                                                   const struct mylite_update_plan *plan,
@@ -201,22 +199,5 @@ copy_update_column_reference_name(const struct mylite_update_column_reference *r
 
 static int set_update_unknown_field_error(mylite_db *database, const char *column_name)
 {
-    return set_update_unknown_column_error(database, column_name, "field list");
-}
-
-static int set_update_unknown_column_error(mylite_db *database, const char *column_name,
-                                           const char *clause_context)
-{
-    char *message = sqlite3_mprintf("Unknown column '%q' in '%q'", column_name,
-                                    clause_context == NULL ? "field list" : clause_context);
-    int status = MYLITE_OK;
-
-    if (message == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    status = mylite_diagnostics_set_error_message(database, message);
-    sqlite3_free(message);
-    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+    return mylite_dml_set_update_unknown_column_error(database, column_name, "field list");
 }

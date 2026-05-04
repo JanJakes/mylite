@@ -1397,7 +1397,6 @@ static int evaluate_delete_order_key(mylite_stmt *stmt, const struct mylite_sele
                                      const struct mylite_update_row *row,
                                      const struct mylite_select_order_key *order_key,
                                      struct mylite_expression_value *out_value);
-static int promote_delete_expression_warnings(mylite_stmt *stmt, size_t warning_start);
 static int execute_scalar_select_statement(mylite_stmt *stmt);
 static int evaluate_scalar_select_result(mylite_stmt *stmt);
 static int evaluate_scalar_select_result_item(mylite_stmt *stmt, size_t index);
@@ -17466,7 +17465,7 @@ static int evaluate_delete_row_matches(mylite_stmt *stmt, const struct mylite_se
         return condition_status == MYLITE_OK ? set_where_predicate_eval_error(stmt)
                                              : condition_status;
     }
-    status = promote_delete_expression_warnings(stmt, warning_start);
+    status = mylite_dml_promote_expression_warnings(stmt->database, warning_start);
     if (status != MYLITE_OK) {
         return status;
     }
@@ -17528,21 +17527,7 @@ static int evaluate_delete_order_key(mylite_stmt *stmt, const struct mylite_sele
                    ? mylite_dml_set_delete_unsupported_clause_error(stmt->database)
                    : condition_status;
     }
-    return promote_delete_expression_warnings(stmt, warning_start);
-}
-
-static int promote_delete_expression_warnings(mylite_stmt *stmt, size_t warning_start)
-{
-    mylite_db *database = stmt->database;
-
-    if (warning_start >= database->warnings.count) {
-        return MYLITE_OK;
-    }
-
-    const struct mylite_expression_warning *warning = &database->warnings.items[warning_start];
-    int status = mylite_diagnostics_set_error_message(database, warning->message);
-
-    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+    return mylite_dml_promote_expression_warnings(stmt->database, warning_start);
 }
 
 static int execute_scalar_select_statement(mylite_stmt *stmt)

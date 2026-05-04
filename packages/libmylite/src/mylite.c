@@ -10,6 +10,7 @@
 #include "runtime/mylite_metadata.h"
 #include "runtime/mylite_runtime.h"
 #include "runtime/mylite_span.h"
+#include "runtime/mylite_transactions.h"
 #include "sql/mylite_lexer.h"
 #include "sqlite3.h"
 #include "types/mylite_column_type.h"
@@ -3672,39 +3673,6 @@ static const char *create_table_column_key(const struct mylite_create_table_plan
                                            const char *column_name);
 static const char *create_table_column_extra(const struct mylite_create_table_column *column);
 static const char *index_collation_for_order(enum mylite_sql_ast_key_part_order order);
-static int begin_explicit_transaction(mylite_db *database,
-                                      enum mylite_transaction_access_mode access_mode,
-                                      bool consistent_snapshot);
-static int commit_explicit_transaction(mylite_db *database);
-static int rollback_explicit_transaction(mylite_db *database);
-static int create_user_savepoint(mylite_db *database, const char *name,
-                                 const char *normalized_name);
-static int rollback_to_user_savepoint(mylite_db *database, size_t index);
-static int release_user_savepoint(mylite_db *database, size_t index);
-static size_t find_user_savepoint(const mylite_db *database, const char *normalized_name);
-static int append_user_savepoint(mylite_db *database, struct mylite_savepoint savepoint);
-static int reserve_user_savepoint_capacity(mylite_db *database, size_t required_capacity);
-static void remove_user_savepoint_at(mylite_db *database, size_t index);
-static void remove_user_savepoints_from(mylite_db *database, size_t first);
-static void savepoint_deinit(struct mylite_savepoint *savepoint);
-static char *make_sqlite_savepoint_name(mylite_db *database);
-static int exec_sqlite_savepoint_command(mylite_db *database, const char *command,
-                                         const char *sqlite_name);
-static void clear_user_savepoints(mylite_db *database);
-static void savepoint_state_deinit(struct mylite_savepoint_state *state);
-static int record_pending_auto_increment(mylite_db *database, const char *schema_name,
-                                         const char *table_name, uint64_t next_auto_increment);
-static int reapply_pending_auto_increments(mylite_db *database);
-static void clear_pending_auto_increments(mylite_db *database);
-static int begin_sqlite_transaction(mylite_db *database);
-static int commit_sqlite_transaction(mylite_db *database);
-static void rollback_sqlite_transaction(mylite_db *database);
-static int begin_statement_atomicity(mylite_db *database,
-                                     struct mylite_statement_atomicity *atomicity);
-static int commit_statement_atomicity(mylite_db *database,
-                                      struct mylite_statement_atomicity *atomicity);
-static void rollback_statement_atomicity(mylite_db *database,
-                                         const struct mylite_statement_atomicity *atomicity);
 static int apply_schema_option(const struct mylite_sql_ast_node *option,
                                struct mylite_schema_options *options);
 static int normalize_schema_options(mylite_db *database, struct mylite_schema_options *options);
@@ -3823,14 +3791,14 @@ void mylite_close(mylite_db *database)
     }
 
     if (database->transaction_active) {
-        (void)rollback_explicit_transaction(database);
+        (void)mylite_transaction_rollback_explicit(database);
     }
     sqlite3_close(database->sqlite);
     free(database->error_message);
     mylite_expression_warnings_deinit(&database->warnings);
     free(database->selected_schema);
-    savepoint_state_deinit(&database->savepoints);
-    clear_pending_auto_increments(database);
+    mylite_transaction_savepoint_state_deinit(&database->savepoints);
+    mylite_transaction_clear_pending_auto_increments(database);
     free(database);
 }
 
@@ -19422,15 +19390,15 @@ static int execute_start_transaction_statement(mylite_stmt *stmt)
         access_mode = stmt->transaction.access_mode;
     }
     if (stmt->database->transaction_active) {
-        status = commit_explicit_transaction(stmt->database);
+        status = mylite_transaction_commit_explicit(stmt->database);
         if (status != MYLITE_OK) {
             stmt->affected_rows = -1;
             return status;
         }
     }
 
-    status = begin_explicit_transaction(stmt->database, access_mode,
-                                        stmt->transaction.consistent_snapshot);
+    status = mylite_transaction_begin_explicit(stmt->database, access_mode,
+                                               stmt->transaction.consistent_snapshot);
     if (status != MYLITE_OK) {
         stmt->affected_rows = -1;
         return status;
@@ -19445,15 +19413,15 @@ static int execute_begin_transaction_statement(mylite_stmt *stmt)
     int status = MYLITE_OK;
 
     if (stmt->database->transaction_active) {
-        status = commit_explicit_transaction(stmt->database);
+        status = mylite_transaction_commit_explicit(stmt->database);
         if (status != MYLITE_OK) {
             stmt->affected_rows = -1;
             return status;
         }
     }
 
-    status =
-        begin_explicit_transaction(stmt->database, MYLITE_TRANSACTION_ACCESS_READ_WRITE, false);
+    status = mylite_transaction_begin_explicit(stmt->database, MYLITE_TRANSACTION_ACCESS_READ_WRITE,
+                                               false);
     if (status != MYLITE_OK) {
         stmt->affected_rows = -1;
         return status;
@@ -19470,7 +19438,7 @@ static int execute_commit_statement(mylite_stmt *stmt)
     int status = MYLITE_OK;
 
     if (stmt->database->transaction_active) {
-        status = commit_explicit_transaction(stmt->database);
+        status = mylite_transaction_commit_explicit(stmt->database);
         if (status != MYLITE_OK) {
             stmt->affected_rows = -1;
             return status;
@@ -19489,7 +19457,7 @@ static int execute_rollback_statement(mylite_stmt *stmt)
     int status = MYLITE_OK;
 
     if (stmt->database->transaction_active) {
-        status = rollback_explicit_transaction(stmt->database);
+        status = mylite_transaction_rollback_explicit(stmt->database);
         if (status != MYLITE_OK) {
             stmt->affected_rows = -1;
             return status;
@@ -19508,8 +19476,8 @@ static int finish_transaction_completion(mylite_stmt *stmt,
     int status = MYLITE_OK;
 
     if (stmt->transaction.completion_chain == MYLITE_TRANSACTION_COMPLETION_CHAIN_YES) {
-        status = begin_explicit_transaction(stmt->database, chain_access_mode,
-                                            chain_consistent_snapshot);
+        status = mylite_transaction_begin_explicit(stmt->database, chain_access_mode,
+                                                   chain_consistent_snapshot);
         if (status != MYLITE_OK) {
             return status;
         }
@@ -19530,15 +19498,16 @@ static int execute_savepoint_statement(mylite_stmt *stmt)
         return MYLITE_OK;
     }
 
-    status = create_user_savepoint(stmt->database, stmt->savepoint.name,
-                                   stmt->savepoint.normalized_name);
+    status = mylite_transaction_create_savepoint(stmt->database, stmt->savepoint.name,
+                                                 stmt->savepoint.normalized_name);
     stmt->affected_rows = status == MYLITE_OK ? 0 : -1;
     return status;
 }
 
 static int execute_rollback_to_savepoint_statement(mylite_stmt *stmt)
 {
-    size_t index = find_user_savepoint(stmt->database, stmt->savepoint.normalized_name);
+    size_t index =
+        mylite_transaction_find_savepoint(stmt->database, stmt->savepoint.normalized_name);
     int status = MYLITE_OK;
 
     if (index == SIZE_MAX) {
@@ -19546,14 +19515,15 @@ static int execute_rollback_to_savepoint_statement(mylite_stmt *stmt)
         return set_savepoint_does_not_exist_error(stmt->database, stmt->savepoint.name);
     }
 
-    status = rollback_to_user_savepoint(stmt->database, index);
+    status = mylite_transaction_rollback_to_savepoint(stmt->database, index);
     stmt->affected_rows = status == MYLITE_OK ? 0 : -1;
     return status;
 }
 
 static int execute_release_savepoint_statement(mylite_stmt *stmt)
 {
-    size_t index = find_user_savepoint(stmt->database, stmt->savepoint.normalized_name);
+    size_t index =
+        mylite_transaction_find_savepoint(stmt->database, stmt->savepoint.normalized_name);
     int status = MYLITE_OK;
 
     if (index == SIZE_MAX) {
@@ -19561,7 +19531,7 @@ static int execute_release_savepoint_statement(mylite_stmt *stmt)
         return set_savepoint_does_not_exist_error(stmt->database, stmt->savepoint.name);
     }
 
-    status = release_user_savepoint(stmt->database, index);
+    status = mylite_transaction_release_savepoint(stmt->database, index);
     stmt->affected_rows = status == MYLITE_OK ? 0 : -1;
     return status;
 }
@@ -19823,7 +19793,7 @@ static int validate_create_table_plan(mylite_stmt *stmt, const char *schema_name
 static int create_table_transaction(mylite_stmt *stmt, const char *schema_name,
                                     const struct mylite_schema_default *schema_default)
 {
-    int status = begin_sqlite_transaction(stmt->database);
+    int status = mylite_transaction_begin_storage(stmt->database);
 
     if (status != MYLITE_OK) {
         return status;
@@ -19840,13 +19810,13 @@ static int create_table_transaction(mylite_stmt *stmt, const char *schema_name,
         status = insert_index_catalog_rows(stmt, schema_name);
     }
     if (status == MYLITE_OK) {
-        status = commit_sqlite_transaction(stmt->database);
+        status = mylite_transaction_commit_storage(stmt->database);
         if (status == MYLITE_OK) {
             return MYLITE_OK;
         }
     }
 
-    rollback_sqlite_transaction(stmt->database);
+    mylite_transaction_rollback_storage(stmt->database);
     return status;
 }
 
@@ -20296,7 +20266,7 @@ static bool drop_table_target_is_duplicate(const struct mylite_drop_table_plan *
 
 static int drop_table_transaction(mylite_stmt *stmt)
 {
-    int status = begin_sqlite_transaction(stmt->database);
+    int status = mylite_transaction_begin_storage(stmt->database);
 
     if (status != MYLITE_OK) {
         return status;
@@ -20313,13 +20283,13 @@ static int drop_table_transaction(mylite_stmt *stmt)
     }
 
     if (status == MYLITE_OK) {
-        status = commit_sqlite_transaction(stmt->database);
+        status = mylite_transaction_commit_storage(stmt->database);
         if (status == MYLITE_OK) {
             return MYLITE_OK;
         }
     }
 
-    rollback_sqlite_transaction(stmt->database);
+    mylite_transaction_rollback_storage(stmt->database);
     return status;
 }
 
@@ -20594,21 +20564,21 @@ static bool rename_table_target_destination_matches(const struct mylite_rename_t
 static int rename_table_transaction(mylite_stmt *stmt)
 {
     struct mylite_statement_atomicity atomicity = {0};
-    int status = begin_statement_atomicity(stmt->database, &atomicity);
+    int status = mylite_transaction_begin_statement_atomicity(stmt->database, &atomicity);
 
     for (size_t index = 0U; status == MYLITE_OK && index < stmt->rename_table.target_count;
          ++index) {
         status = rename_table_target(stmt, &stmt->rename_table.targets[index]);
     }
     if (status == MYLITE_OK) {
-        status = commit_statement_atomicity(stmt->database, &atomicity);
+        status = mylite_transaction_commit_statement_atomicity(stmt->database, &atomicity);
         if (status == MYLITE_OK) {
             stmt->affected_rows = 0;
             return MYLITE_OK;
         }
     }
 
-    rollback_statement_atomicity(stmt->database, &atomicity);
+    mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
     return status;
 }
 
@@ -20810,7 +20780,7 @@ static int validate_truncate_table_target(mylite_stmt *stmt)
 static int truncate_table_transaction(mylite_stmt *stmt)
 {
     struct mylite_statement_atomicity atomicity = {0};
-    int status = begin_statement_atomicity(stmt->database, &atomicity);
+    int status = mylite_transaction_begin_statement_atomicity(stmt->database, &atomicity);
 
     if (status == MYLITE_OK) {
         status = delete_truncate_table_rows(stmt);
@@ -20819,14 +20789,14 @@ static int truncate_table_transaction(mylite_stmt *stmt)
         status = reset_truncate_table_auto_increment(stmt);
     }
     if (status == MYLITE_OK) {
-        status = commit_statement_atomicity(stmt->database, &atomicity);
+        status = mylite_transaction_commit_statement_atomicity(stmt->database, &atomicity);
         if (status == MYLITE_OK) {
             stmt->affected_rows = 0;
             return MYLITE_OK;
         }
     }
 
-    rollback_statement_atomicity(stmt->database, &atomicity);
+    mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
     return status;
 }
 
@@ -22700,7 +22670,7 @@ static int execute_alter_table_transaction(mylite_stmt *stmt,
         return MYLITE_NOMEM;
     }
 
-    status = begin_statement_atomicity(stmt->database, &atomicity);
+    status = mylite_transaction_begin_statement_atomicity(stmt->database, &atomicity);
     if (status == MYLITE_OK) {
         status = create_alter_table_shadow_table(stmt, model, shadow_name);
     }
@@ -22717,7 +22687,7 @@ static int execute_alter_table_transaction(mylite_stmt *stmt,
         status = append_alter_table_warnings(stmt, model);
     }
     if (status == MYLITE_OK) {
-        status = commit_statement_atomicity(stmt->database, &atomicity);
+        status = mylite_transaction_commit_statement_atomicity(stmt->database, &atomicity);
         if (status == MYLITE_OK) {
             if (model->report_copied_rows) {
                 stmt->affected_rows = copied_rows;
@@ -22729,7 +22699,7 @@ static int execute_alter_table_transaction(mylite_stmt *stmt,
         }
     }
 
-    rollback_statement_atomicity(stmt->database, &atomicity);
+    mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
     mylite_diagnostics_clear_warnings(stmt->database);
     free(shadow_name);
     return status;
@@ -23949,7 +23919,7 @@ static char *build_create_unique_index_duplicate_sql(mylite_db *database,
 
 static int create_index_transaction(mylite_stmt *stmt, const struct mylite_insert_table *table)
 {
-    int status = begin_sqlite_transaction(stmt->database);
+    int status = mylite_transaction_begin_storage(stmt->database);
 
     if (status != MYLITE_OK) {
         return status;
@@ -23957,13 +23927,13 @@ static int create_index_transaction(mylite_stmt *stmt, const struct mylite_inser
 
     status = insert_standalone_index_catalog_rows(stmt, table);
     if (status == MYLITE_OK) {
-        status = commit_sqlite_transaction(stmt->database);
+        status = mylite_transaction_commit_storage(stmt->database);
         if (status == MYLITE_OK) {
             return MYLITE_OK;
         }
     }
 
-    rollback_sqlite_transaction(stmt->database);
+    mylite_transaction_rollback_storage(stmt->database);
     return status;
 }
 
@@ -24066,7 +24036,7 @@ static int insert_standalone_index_catalog_part(mylite_stmt *stmt, sqlite3_stmt 
 
 static int drop_index_transaction(mylite_stmt *stmt)
 {
-    int status = begin_sqlite_transaction(stmt->database);
+    int status = mylite_transaction_begin_storage(stmt->database);
 
     if (status != MYLITE_OK) {
         return status;
@@ -24074,13 +24044,13 @@ static int drop_index_transaction(mylite_stmt *stmt)
 
     status = delete_index_catalog_rows(stmt);
     if (status == MYLITE_OK) {
-        status = commit_sqlite_transaction(stmt->database);
+        status = mylite_transaction_commit_storage(stmt->database);
         if (status == MYLITE_OK) {
             return MYLITE_OK;
         }
     }
 
-    rollback_sqlite_transaction(stmt->database);
+    mylite_transaction_rollback_storage(stmt->database);
     return status;
 }
 
@@ -25220,7 +25190,7 @@ static int execute_update_rows_transaction(mylite_stmt *stmt,
     char *update_sql = NULL;
     struct mylite_statement_atomicity atomicity = {0};
     uint64_t next_auto_increment = write_table->next_auto_increment;
-    int status = begin_statement_atomicity(stmt->database, &atomicity);
+    int status = mylite_transaction_begin_statement_atomicity(stmt->database, &atomicity);
     int rc = SQLITE_OK;
 
     if (status != MYLITE_OK) {
@@ -25230,7 +25200,7 @@ static int execute_update_rows_transaction(mylite_stmt *stmt,
     update_sql = build_update_physical_sql(stmt->database, table);
     if (update_sql == NULL) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        rollback_statement_atomicity(stmt->database, &atomicity);
+        mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
         return MYLITE_NOMEM;
     }
 
@@ -25238,7 +25208,7 @@ static int execute_update_rows_transaction(mylite_stmt *stmt,
                             &update, NULL);
     sqlite3_free(update_sql);
     if (rc != SQLITE_OK) {
-        rollback_statement_atomicity(stmt->database, &atomicity);
+        mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
         return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
@@ -25257,13 +25227,13 @@ static int execute_update_rows_transaction(mylite_stmt *stmt,
                                              next_auto_increment);
     }
     if (status == MYLITE_OK) {
-        status = commit_statement_atomicity(stmt->database, &atomicity);
+        status = mylite_transaction_commit_statement_atomicity(stmt->database, &atomicity);
         if (status == MYLITE_OK) {
             return MYLITE_OK;
         }
     }
 
-    rollback_statement_atomicity(stmt->database, &atomicity);
+    mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
     stmt->affected_rows = 0;
     return status;
 }
@@ -26572,14 +26542,14 @@ static int execute_delete_rows_transaction(mylite_stmt *stmt,
         return MYLITE_OK;
     }
 
-    status = begin_statement_atomicity(stmt->database, &atomicity);
+    status = mylite_transaction_begin_statement_atomicity(stmt->database, &atomicity);
     if (status != MYLITE_OK) {
         return status;
     }
 
     delete_sql = build_delete_physical_sql(stmt->database, table);
     if (delete_sql == NULL) {
-        rollback_statement_atomicity(stmt->database, &atomicity);
+        mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
@@ -26588,7 +26558,7 @@ static int execute_delete_rows_transaction(mylite_stmt *stmt,
                             &delete_stmt, NULL);
     sqlite3_free(delete_sql);
     if (rc != SQLITE_OK) {
-        rollback_statement_atomicity(stmt->database, &atomicity);
+        mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
         return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
@@ -26608,13 +26578,13 @@ static int execute_delete_rows_transaction(mylite_stmt *stmt,
     sqlite3_finalize(delete_stmt);
 
     if (status == MYLITE_OK) {
-        status = commit_statement_atomicity(stmt->database, &atomicity);
+        status = mylite_transaction_commit_statement_atomicity(stmt->database, &atomicity);
         if (status == MYLITE_OK) {
             return MYLITE_OK;
         }
     }
 
-    rollback_statement_atomicity(stmt->database, &atomicity);
+    mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
     stmt->affected_rows = 0;
     return status;
 }
@@ -32812,7 +32782,7 @@ static int execute_insert_values_transaction(mylite_stmt *stmt, const char *sche
         .insert_columns = column_indexes,
         .update_columns = update_column_indexes,
     };
-    int status = begin_statement_atomicity(stmt->database, &atomicity);
+    int status = mylite_transaction_begin_statement_atomicity(stmt->database, &atomicity);
     int rc = SQLITE_OK;
 
     if (status != MYLITE_OK) {
@@ -32825,20 +32795,20 @@ static int execute_insert_values_transaction(mylite_stmt *stmt, const char *sche
 
     status = initialize_insert_ignore_warning_state(stmt, table, &state);
     if (status != MYLITE_OK) {
-        rollback_statement_atomicity(stmt->database, &atomicity);
+        mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
         return status;
     }
     status = append_insert_values_deprecated_warnings(stmt);
     if (status != MYLITE_OK) {
         insert_execution_state_deinit(&state);
-        rollback_statement_atomicity(stmt->database, &atomicity);
+        mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
         return status;
     }
 
     insert_sql = build_insert_physical_sql(stmt->database, table);
     if (insert_sql == NULL) {
         insert_execution_state_deinit(&state);
-        rollback_statement_atomicity(stmt->database, &atomicity);
+        mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
@@ -32848,7 +32818,7 @@ static int execute_insert_values_transaction(mylite_stmt *stmt, const char *sche
     sqlite3_free(insert_sql);
     if (rc != SQLITE_OK) {
         insert_execution_state_deinit(&state);
-        rollback_statement_atomicity(stmt->database, &atomicity);
+        mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
         return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
@@ -32871,7 +32841,7 @@ static int execute_insert_values_transaction(mylite_stmt *stmt, const char *sche
                                               insert_auto_increment_next_value(&state));
     }
     if (status == MYLITE_OK) {
-        status = commit_statement_atomicity(stmt->database, &atomicity);
+        status = mylite_transaction_commit_statement_atomicity(stmt->database, &atomicity);
         if (status == MYLITE_OK) {
             insert_execution_state_deinit(&state);
             stmt->affected_rows = (int64_t)state.accepted_row_count;
@@ -32882,7 +32852,7 @@ static int execute_insert_values_transaction(mylite_stmt *stmt, const char *sche
         }
     }
 
-    rollback_statement_atomicity(stmt->database, &atomicity);
+    mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
     insert_execution_state_deinit(&state);
     return status;
 }
@@ -32895,7 +32865,7 @@ static int finish_failed_insert_values_transaction(
     uint64_t next_auto_increment = insert_auto_increment_next_value(state);
     int status = MYLITE_OK;
 
-    rollback_statement_atomicity(stmt->database, atomicity);
+    mylite_transaction_rollback_statement_atomicity(stmt->database, atomicity);
     if (table->has_auto_increment && next_auto_increment > table->next_auto_increment) {
         status = update_insert_auto_increment(stmt, schema_name, next_auto_increment);
         if (status != MYLITE_OK) {
@@ -34100,19 +34070,19 @@ static int execute_insert_set_transaction(mylite_stmt *stmt, const char *schema_
         return MYLITE_EXEC_ERROR;
     }
 
-    status = begin_statement_atomicity(stmt->database, &atomicity);
+    status = mylite_transaction_begin_statement_atomicity(stmt->database, &atomicity);
     if (status != MYLITE_OK) {
         return status;
     }
     status = initialize_insert_ignore_warning_state(stmt, table, &state);
     if (status != MYLITE_OK) {
-        rollback_statement_atomicity(stmt->database, &atomicity);
+        mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
         return status;
     }
     status = append_insert_values_deprecated_warnings(stmt);
     if (status != MYLITE_OK) {
         insert_execution_state_deinit(&state);
-        rollback_statement_atomicity(stmt->database, &atomicity);
+        mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
         return status;
     }
 
@@ -34164,7 +34134,7 @@ cleanup:
                                               insert_auto_increment_next_value(&state));
     }
     if (status == MYLITE_OK) {
-        status = commit_statement_atomicity(stmt->database, &atomicity);
+        status = mylite_transaction_commit_statement_atomicity(stmt->database, &atomicity);
         if (status == MYLITE_OK) {
             insert_execution_state_deinit(&state);
             stmt->affected_rows = (int64_t)state.accepted_row_count;
@@ -34175,7 +34145,7 @@ cleanup:
         }
     }
 
-    rollback_statement_atomicity(stmt->database, &atomicity);
+    mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
     insert_execution_state_deinit(&state);
     return status;
 }
@@ -34226,7 +34196,7 @@ static int execute_replace_values_transaction(mylite_stmt *stmt, const char *sch
     char *insert_sql = NULL;
     char *delete_sql = NULL;
     struct mylite_statement_atomicity atomicity = {0};
-    int status = begin_statement_atomicity(stmt->database, &atomicity);
+    int status = mylite_transaction_begin_statement_atomicity(stmt->database, &atomicity);
     int rc = SQLITE_OK;
 
     if (status != MYLITE_OK) {
@@ -34242,7 +34212,7 @@ static int execute_replace_values_transaction(mylite_stmt *stmt, const char *sch
     if (insert_sql == NULL || delete_sql == NULL) {
         sqlite3_free(insert_sql);
         sqlite3_free(delete_sql);
-        rollback_statement_atomicity(stmt->database, &atomicity);
+        mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
@@ -34259,7 +34229,7 @@ static int execute_replace_values_transaction(mylite_stmt *stmt, const char *sch
     delete_sql = NULL;
     if (rc != SQLITE_OK) {
         sqlite3_finalize(insert);
-        rollback_statement_atomicity(stmt->database, &atomicity);
+        mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
         return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
@@ -34379,7 +34349,7 @@ static int execute_replace_set_transaction(mylite_stmt *stmt, const char *schema
         return MYLITE_EXEC_ERROR;
     }
 
-    status = begin_statement_atomicity(stmt->database, &atomicity);
+    status = mylite_transaction_begin_statement_atomicity(stmt->database, &atomicity);
     if (status != MYLITE_OK) {
         return status;
     }
@@ -34489,7 +34459,7 @@ static int finish_successful_replace_transaction(mylite_stmt *stmt, const char *
                                               insert_auto_increment_next_value(state));
     }
     if (status == MYLITE_OK) {
-        status = commit_statement_atomicity(stmt->database, atomicity);
+        status = mylite_transaction_commit_statement_atomicity(stmt->database, atomicity);
         if (status == MYLITE_OK) {
             stmt->affected_rows =
                 (int64_t)state->accepted_row_count + (int64_t)state->duplicate_count;
@@ -34500,7 +34470,7 @@ static int finish_successful_replace_transaction(mylite_stmt *stmt, const char *
         }
     }
 
-    rollback_statement_atomicity(stmt->database, atomicity);
+    mylite_transaction_rollback_statement_atomicity(stmt->database, atomicity);
     return status;
 }
 
@@ -35642,8 +35612,8 @@ static int update_table_auto_increment(mylite_stmt *stmt, const char *schema_nam
     if (status != MYLITE_OK) {
         return status;
     }
-    return record_pending_auto_increment(stmt->database, schema_name, table_name,
-                                         next_auto_increment);
+    return mylite_transaction_record_pending_auto_increment(stmt->database, schema_name, table_name,
+                                                            next_auto_increment);
 }
 
 static bool insert_row_uses_all_defaults(const struct mylite_insert_values_plan *plan,
@@ -41579,440 +41549,6 @@ static const char *create_table_column_extra(const struct mylite_create_table_co
 static const char *index_collation_for_order(enum mylite_sql_ast_key_part_order order)
 {
     return order == MYLITE_SQL_AST_KEY_PART_ORDER_DESC ? "D" : "A";
-}
-
-static int begin_explicit_transaction(mylite_db *database,
-                                      enum mylite_transaction_access_mode access_mode,
-                                      bool consistent_snapshot)
-{
-    int rc = sqlite3_exec(database->sqlite, "BEGIN DEFERRED", NULL, NULL, NULL);
-
-    if (rc != SQLITE_OK) {
-        return mylite_diagnostics_set_sqlite_error(database);
-    }
-
-    database->transaction_active = true;
-    database->transaction_access_mode = access_mode;
-    database->transaction_consistent_snapshot = consistent_snapshot;
-    return MYLITE_OK;
-}
-
-static int commit_explicit_transaction(mylite_db *database)
-{
-    int status = commit_sqlite_transaction(database);
-
-    if (status != MYLITE_OK) {
-        return status;
-    }
-
-    database->transaction_active = false;
-    database->transaction_access_mode = MYLITE_TRANSACTION_ACCESS_READ_WRITE;
-    database->transaction_consistent_snapshot = false;
-    clear_user_savepoints(database);
-    clear_pending_auto_increments(database);
-    return MYLITE_OK;
-}
-
-static int rollback_explicit_transaction(mylite_db *database)
-{
-    int status = MYLITE_OK;
-    int rc = sqlite3_exec(database->sqlite, "ROLLBACK", NULL, NULL, NULL);
-
-    if (rc != SQLITE_OK) {
-        return mylite_diagnostics_set_sqlite_error(database);
-    }
-
-    database->transaction_active = false;
-    database->transaction_access_mode = MYLITE_TRANSACTION_ACCESS_READ_WRITE;
-    database->transaction_consistent_snapshot = false;
-    status = reapply_pending_auto_increments(database);
-    clear_user_savepoints(database);
-    clear_pending_auto_increments(database);
-    return status;
-}
-
-static int create_user_savepoint(mylite_db *database, const char *name, const char *normalized_name)
-{
-    struct mylite_savepoint savepoint = {0};
-    int status = MYLITE_OK;
-
-    savepoint.original_name = mylite_copy_span_text(name, strlen(name));
-    savepoint.normalized_name = mylite_copy_span_text(normalized_name, strlen(normalized_name));
-    savepoint.sqlite_name = make_sqlite_savepoint_name(database);
-    savepoint.level = database->savepoints.current_level;
-    if (savepoint.original_name == NULL || savepoint.normalized_name == NULL ||
-        savepoint.sqlite_name == NULL) {
-        savepoint_deinit(&savepoint);
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    status = reserve_user_savepoint_capacity(database, database->savepoints.count + 1U);
-    if (status == MYLITE_OK) {
-        status = exec_sqlite_savepoint_command(database, "SAVEPOINT", savepoint.sqlite_name);
-    }
-    if (status == MYLITE_OK) {
-        size_t existing = find_user_savepoint(database, normalized_name);
-
-        if (existing != SIZE_MAX) {
-            remove_user_savepoint_at(database, existing);
-        }
-        status = append_user_savepoint(database, savepoint);
-    }
-    if (status != MYLITE_OK) {
-        savepoint_deinit(&savepoint);
-    }
-    return status;
-}
-
-static int rollback_to_user_savepoint(mylite_db *database, size_t index)
-{
-    int status = exec_sqlite_savepoint_command(database, "ROLLBACK TO SAVEPOINT",
-                                               database->savepoints.items[index].sqlite_name);
-
-    if (status != MYLITE_OK) {
-        return status;
-    }
-
-    remove_user_savepoints_from(database, index + 1U);
-    return reapply_pending_auto_increments(database);
-}
-
-static int release_user_savepoint(mylite_db *database, size_t index)
-{
-    int status = exec_sqlite_savepoint_command(database, "RELEASE SAVEPOINT",
-                                               database->savepoints.items[index].sqlite_name);
-
-    if (status == MYLITE_OK) {
-        remove_user_savepoints_from(database, index);
-    }
-    return status;
-}
-
-static size_t find_user_savepoint(const mylite_db *database, const char *normalized_name)
-{
-    for (size_t index = database->savepoints.count; index > 0U; --index) {
-        const struct mylite_savepoint *savepoint = &database->savepoints.items[index - 1U];
-
-        if (savepoint->level == database->savepoints.current_level &&
-            strcmp(savepoint->normalized_name, normalized_name) == 0) {
-            return index - 1U;
-        }
-    }
-    return SIZE_MAX;
-}
-
-static int reserve_user_savepoint_capacity(mylite_db *database, size_t required_capacity)
-{
-    struct mylite_savepoint *items = NULL;
-    size_t capacity = database->savepoints.capacity == 0U ? 4U : database->savepoints.capacity;
-
-    if (required_capacity > SIZE_MAX / sizeof(*database->savepoints.items)) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    if (required_capacity > database->savepoints.capacity) {
-        while (capacity < required_capacity) {
-            if (capacity > SIZE_MAX / 2U) {
-                (void)mylite_diagnostics_set_error_message(database, "out of memory");
-                return MYLITE_NOMEM;
-            }
-            capacity *= 2U;
-        }
-        items = realloc(database->savepoints.items, capacity * sizeof(*items));
-        if (items == NULL) {
-            (void)mylite_diagnostics_set_error_message(database, "out of memory");
-            return MYLITE_NOMEM;
-        }
-        database->savepoints.items = items;
-        database->savepoints.capacity = capacity;
-    }
-    return MYLITE_OK;
-}
-
-static int append_user_savepoint(mylite_db *database, struct mylite_savepoint savepoint)
-{
-    if (database->savepoints.count >= database->savepoints.capacity) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    database->savepoints.items[database->savepoints.count++] = savepoint;
-    return MYLITE_OK;
-}
-
-static void remove_user_savepoint_at(mylite_db *database, size_t index)
-{
-    if (index >= database->savepoints.count) {
-        return;
-    }
-
-    savepoint_deinit(&database->savepoints.items[index]);
-    for (size_t next = index + 1U; next < database->savepoints.count; ++next) {
-        database->savepoints.items[next - 1U] = database->savepoints.items[next];
-    }
-    --database->savepoints.count;
-    database->savepoints.items[database->savepoints.count] = (struct mylite_savepoint){0};
-}
-
-static void remove_user_savepoints_from(mylite_db *database, size_t first)
-{
-    if (first > database->savepoints.count) {
-        return;
-    }
-    for (size_t index = first; index < database->savepoints.count; ++index) {
-        savepoint_deinit(&database->savepoints.items[index]);
-    }
-    database->savepoints.count = first;
-}
-
-static void savepoint_deinit(struct mylite_savepoint *savepoint)
-{
-    if (savepoint == NULL) {
-        return;
-    }
-
-    free(savepoint->original_name);
-    free(savepoint->normalized_name);
-    free(savepoint->sqlite_name);
-    *savepoint = (struct mylite_savepoint){0};
-}
-
-static char *make_sqlite_savepoint_name(mylite_db *database)
-{
-    uint64_t next_id = database->savepoints.next_sqlite_id + 1U;
-    int length = 0;
-    char *name = NULL;
-
-    if (next_id == 0U) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return NULL;
-    }
-    length = snprintf(NULL, 0, "mylite_user_savepoint_%llu", (unsigned long long)next_id);
-    if (length < 0) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return NULL;
-    }
-
-    name = malloc((size_t)length + 1U);
-    if (name == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return NULL;
-    }
-    (void)snprintf(name, (size_t)length + 1U, "mylite_user_savepoint_%llu",
-                   (unsigned long long)next_id);
-    database->savepoints.next_sqlite_id = next_id;
-    return name;
-}
-
-static int exec_sqlite_savepoint_command(mylite_db *database, const char *command,
-                                         const char *sqlite_name)
-{
-    char *sql = sqlite3_mprintf("%s \"%w\"", command, sqlite_name);
-    int rc = SQLITE_OK;
-
-    if (sql == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    rc = sqlite3_exec(database->sqlite, sql, NULL, NULL, NULL);
-    sqlite3_free(sql);
-    return rc == SQLITE_OK ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
-}
-
-static void clear_user_savepoints(mylite_db *database)
-{
-    remove_user_savepoints_from(database, 0U);
-}
-
-static void savepoint_state_deinit(struct mylite_savepoint_state *state)
-{
-    if (state == NULL) {
-        return;
-    }
-
-    for (size_t index = 0U; index < state->count; ++index) {
-        savepoint_deinit(&state->items[index]);
-    }
-    free(state->items);
-    *state = (struct mylite_savepoint_state){0};
-}
-
-static int record_pending_auto_increment(mylite_db *database, const char *schema_name,
-                                         const char *table_name, uint64_t next_auto_increment)
-{
-    struct mylite_pending_auto_increment *items = NULL;
-    char *schema_copy = NULL;
-    char *table_copy = NULL;
-
-    if (!database->transaction_active) {
-        return MYLITE_OK;
-    }
-    for (size_t index = 0U; index < database->pending_auto_increment_count; ++index) {
-        struct mylite_pending_auto_increment *item = &database->pending_auto_increments[index];
-
-        if (strcmp(item->schema_name, schema_name) == 0 &&
-            strcmp(item->table_name, table_name) == 0) {
-            if (next_auto_increment > item->next_auto_increment) {
-                item->next_auto_increment = next_auto_increment;
-            }
-            return MYLITE_OK;
-        }
-    }
-
-    if (database->pending_auto_increment_count >=
-        SIZE_MAX / sizeof(*database->pending_auto_increments)) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    schema_copy = mylite_copy_span_text(schema_name, strlen(schema_name));
-    table_copy = mylite_copy_span_text(table_name, strlen(table_name));
-    if (schema_copy == NULL || table_copy == NULL) {
-        free(schema_copy);
-        free(table_copy);
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    items = realloc(database->pending_auto_increments,
-                    (database->pending_auto_increment_count + 1U) * sizeof(*items));
-    if (items == NULL) {
-        free(schema_copy);
-        free(table_copy);
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    database->pending_auto_increments = items;
-    database->pending_auto_increments[database->pending_auto_increment_count] =
-        (struct mylite_pending_auto_increment){
-            .schema_name = schema_copy,
-            .table_name = table_copy,
-            .next_auto_increment = next_auto_increment,
-        };
-    ++database->pending_auto_increment_count;
-    return MYLITE_OK;
-}
-
-static int reapply_pending_auto_increments(mylite_db *database)
-{
-    for (size_t index = 0U; index < database->pending_auto_increment_count; ++index) {
-        const struct mylite_pending_auto_increment *item =
-            &database->pending_auto_increments[index];
-        int status = mylite_catalog_update_auto_increment(
-            database, item->schema_name, item->table_name, item->next_auto_increment);
-
-        if (status != MYLITE_OK) {
-            return status;
-        }
-    }
-    return MYLITE_OK;
-}
-
-static void clear_pending_auto_increments(mylite_db *database)
-{
-    for (size_t index = 0U; index < database->pending_auto_increment_count; ++index) {
-        free(database->pending_auto_increments[index].schema_name);
-        free(database->pending_auto_increments[index].table_name);
-    }
-    free(database->pending_auto_increments);
-    database->pending_auto_increments = NULL;
-    database->pending_auto_increment_count = 0U;
-}
-
-static int begin_sqlite_transaction(mylite_db *database)
-{
-    int rc = sqlite3_exec(database->sqlite, "BEGIN IMMEDIATE", NULL, NULL, NULL);
-
-    return rc == SQLITE_OK ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
-}
-
-static int commit_sqlite_transaction(mylite_db *database)
-{
-    int rc = sqlite3_exec(database->sqlite, "COMMIT", NULL, NULL, NULL);
-
-    return rc == SQLITE_OK ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
-}
-
-static void rollback_sqlite_transaction(mylite_db *database)
-{
-    (void)sqlite3_exec(database->sqlite, "ROLLBACK", NULL, NULL, NULL);
-}
-
-static int begin_statement_atomicity(mylite_db *database,
-                                     struct mylite_statement_atomicity *atomicity)
-{
-    int rc = SQLITE_OK;
-
-    if (atomicity == NULL) {
-        return MYLITE_MISUSE;
-    }
-
-    *atomicity = (struct mylite_statement_atomicity){0};
-    if (!database->transaction_active) {
-        int status = begin_sqlite_transaction(database);
-
-        if (status == MYLITE_OK) {
-            atomicity->kind = MYLITE_STATEMENT_ATOMICITY_TRANSACTION;
-        }
-        return status;
-    }
-
-    rc = sqlite3_exec(database->sqlite, "SAVEPOINT mylite_statement_atomicity", NULL, NULL, NULL);
-    if (rc != SQLITE_OK) {
-        return mylite_diagnostics_set_sqlite_error(database);
-    }
-    atomicity->kind = MYLITE_STATEMENT_ATOMICITY_SAVEPOINT;
-    return MYLITE_OK;
-}
-
-static int commit_statement_atomicity(mylite_db *database,
-                                      struct mylite_statement_atomicity *atomicity)
-{
-    int rc = SQLITE_OK;
-
-    if (atomicity == NULL) {
-        return MYLITE_MISUSE;
-    }
-
-    switch (atomicity->kind) {
-    case MYLITE_STATEMENT_ATOMICITY_TRANSACTION:
-        atomicity->kind = MYLITE_STATEMENT_ATOMICITY_NONE;
-        return commit_sqlite_transaction(database);
-    case MYLITE_STATEMENT_ATOMICITY_SAVEPOINT:
-        rc = sqlite3_exec(database->sqlite, "RELEASE SAVEPOINT mylite_statement_atomicity", NULL,
-                          NULL, NULL);
-        atomicity->kind = MYLITE_STATEMENT_ATOMICITY_NONE;
-        return rc == SQLITE_OK ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
-    case MYLITE_STATEMENT_ATOMICITY_NONE:
-        return MYLITE_OK;
-    }
-
-    return MYLITE_MISUSE;
-}
-
-static void rollback_statement_atomicity(mylite_db *database,
-                                         const struct mylite_statement_atomicity *atomicity)
-{
-    if (atomicity == NULL) {
-        return;
-    }
-
-    switch (atomicity->kind) {
-    case MYLITE_STATEMENT_ATOMICITY_TRANSACTION:
-        rollback_sqlite_transaction(database);
-        break;
-    case MYLITE_STATEMENT_ATOMICITY_SAVEPOINT:
-        (void)sqlite3_exec(database->sqlite, "ROLLBACK TO SAVEPOINT mylite_statement_atomicity",
-                           NULL, NULL, NULL);
-        (void)sqlite3_exec(database->sqlite, "RELEASE SAVEPOINT mylite_statement_atomicity", NULL,
-                           NULL, NULL);
-        break;
-    case MYLITE_STATEMENT_ATOMICITY_NONE:
-        break;
-    }
 }
 
 static int apply_schema_option(const struct mylite_sql_ast_node *option,

@@ -208,7 +208,7 @@ Rules for future moves:
 - [x] Add `mylite_metadata_types.h`; move result metadata structs.
 - [x] Add `mylite_select_types.h`; move SELECT plan, row, join, group,
   aggregate, union, and subquery scan structs.
-- [ ] Add `mylite_show_types.h`; move `SHOW` query/target/info structs.
+- [x] Add `mylite_show_types.h`; move `SHOW` query/target/info structs.
 - [ ] Add an include-discipline check or documented review rule to prevent new
   broad `mylite_runtime.h` dependencies.
 - [ ] Add a lightweight CI guard for runtime header line count or forbidden

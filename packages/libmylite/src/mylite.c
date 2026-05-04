@@ -18,6 +18,7 @@
 #include "runtime/mylite_schema_types.h"
 #include "runtime/mylite_select.h"
 #include "runtime/mylite_select_types.h"
+#include "runtime/mylite_show_types.h"
 #include "runtime/mylite_span.h"
 #include "runtime/mylite_statement.h"
 #include "runtime/mylite_table_ddl.h"

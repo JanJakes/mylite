@@ -65,6 +65,8 @@ int mylite_table_ddl_copy_table_name_parts(const struct mylite_sql_ast_node *tab
                                            char **out_schema_name, char **out_table_name);
 int mylite_table_ddl_add_rename_table_target(struct mylite_rename_table_plan *plan,
                                              struct mylite_rename_table_target target);
+int mylite_table_ddl_assign_generated_index_names(mylite_db *database,
+                                                  struct mylite_create_table_plan *plan);
 int mylite_table_ddl_add_alter_table_column(struct mylite_alter_table_model *model,
                                             struct mylite_alter_table_column column);
 int mylite_table_ddl_append_alter_table_index_part(struct mylite_alter_table_index *index,

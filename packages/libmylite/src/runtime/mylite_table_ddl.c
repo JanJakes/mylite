@@ -115,9 +115,6 @@ static bool validate_create_table_column_names(mylite_db *database,
 static bool validate_create_table_indexes(mylite_db *database,
                                           const struct mylite_create_table_plan *plan);
 static void apply_create_table_primary_key_nullability(struct mylite_create_table_plan *plan);
-static int assign_generated_index_names(mylite_db *database, struct mylite_create_table_plan *plan);
-static int assign_generated_index_name(mylite_db *database, struct mylite_create_table_plan *plan,
-                                       size_t index);
 static bool create_table_index_name_exists(const struct mylite_create_table_plan *plan,
                                            const char *name, size_t before_index);
 static bool is_supported_engine_name(const char *name);
@@ -305,7 +302,7 @@ static int validate_create_table_plan(mylite_db *database, const char *schema_na
     if (!validate_create_table_column_names(database, plan)) {
         return MYLITE_EXEC_ERROR;
     }
-    status = assign_generated_index_names(database, plan);
+    status = mylite_table_ddl_assign_generated_index_names(database, plan);
     if (status != MYLITE_OK) {
         return status;
     }
@@ -2770,31 +2767,6 @@ int mylite_table_ddl_add_rename_table_target(struct mylite_rename_table_plan *pl
     return MYLITE_OK;
 }
 
-char *mylite_table_ddl_generated_index_name_candidate(const char *base, unsigned int suffix)
-{
-    enum { suffix_buffer_size = 32 };
-    char suffix_buffer[suffix_buffer_size];
-    size_t candidate_length = strlen(base);
-    char *candidate = NULL;
-
-    suffix_buffer[0] = '\0';
-    if (suffix > 1U) {
-        int written = snprintf(suffix_buffer, sizeof(suffix_buffer), "_%u", suffix);
-
-        if (written < 0) {
-            return NULL;
-        }
-        candidate_length += (size_t)written;
-    }
-
-    candidate = malloc(candidate_length + 1U);
-    if (candidate == NULL) {
-        return NULL;
-    }
-    (void)snprintf(candidate, candidate_length + 1U, "%s%s", base, suffix_buffer);
-    return candidate;
-}
-
 static const struct mylite_create_table_column *
 find_create_table_column(const struct mylite_create_table_plan *plan, const char *name)
 {
@@ -3489,49 +3461,6 @@ static void apply_create_table_primary_key_nullability(struct mylite_create_tabl
                 }
             }
         }
-    }
-}
-
-static int assign_generated_index_names(mylite_db *database, struct mylite_create_table_plan *plan)
-{
-    for (size_t index = 0U; index < plan->index_count; ++index) {
-        int status = assign_generated_index_name(database, plan, index);
-        if (status != MYLITE_OK) {
-            return status;
-        }
-    }
-    return MYLITE_OK;
-}
-
-static int assign_generated_index_name(mylite_db *database, struct mylite_create_table_plan *plan,
-                                       size_t index)
-{
-    struct mylite_create_table_index *table_index = &plan->indexes[index];
-    const char *base = NULL;
-    unsigned int suffix = 1U;
-
-    if (table_index->name != NULL) {
-        return MYLITE_OK;
-    }
-    if (table_index->part_count == 0U || table_index->parts[0].column_name == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "Index has no key parts");
-        return MYLITE_EXEC_ERROR;
-    }
-
-    base = table_index->parts[0].column_name;
-    for (;;) {
-        char *candidate = mylite_table_ddl_generated_index_name_candidate(base, suffix);
-
-        if (candidate == NULL) {
-            (void)mylite_diagnostics_set_error_message(database, "out of memory");
-            return MYLITE_NOMEM;
-        }
-        if (!create_table_index_name_exists(plan, candidate, index)) {
-            table_index->name = candidate;
-            return MYLITE_OK;
-        }
-        free(candidate);
-        ++suffix;
     }
 }
 

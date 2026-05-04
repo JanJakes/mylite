@@ -1568,7 +1568,6 @@ static bool sqlite_table_name_exists(mylite_db *database, const char *name);
 static int set_alter_table_unsupported_option_error(mylite_db *database, const char *kind,
                                                     const char *value);
 static int set_alter_table_invalid_null_error(mylite_db *database);
-static int append_replace_delayed_warning(mylite_stmt *stmt);
 static int copy_scalar_select_statement(const struct mylite_sql_ast_node *statement,
                                         mylite_stmt *stmt);
 static int append_scalar_select_warnings_to_database(mylite_stmt *stmt);
@@ -11613,7 +11612,7 @@ int mylite_statement_execute_custom(mylite_stmt *stmt)
         return MYLITE_DONE;
     }
     if (stmt->kind == MYLITE_STMT_REPLACE_VALUES || stmt->kind == MYLITE_STMT_REPLACE_SET) {
-        status = append_replace_delayed_warning(stmt);
+        status = mylite_dml_append_replace_delayed_warning(stmt);
         if (status != MYLITE_OK) {
             stmt->affected_rows = -1;
             return status;
@@ -17347,17 +17346,6 @@ static int set_where_predicate_eval_error(mylite_stmt *stmt)
         }
     }
     return set_select_unsupported_where_error(database);
-}
-
-static int append_replace_delayed_warning(mylite_stmt *stmt)
-{
-    if (!stmt->insert_values.replace_delayed) {
-        return MYLITE_OK;
-    }
-    return mylite_diagnostics_append_warning(
-        stmt->database, MYLITE_MYSQL_ER_WARN_LEGACY_SYNTAX_CONVERTED,
-        "REPLACE DELAYED is no longer supported. The statement was "
-        "converted to REPLACE.");
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)

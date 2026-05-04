@@ -2,6 +2,7 @@
 
 #include "mylite_diagnostics.h"
 #include "mylite_dml.h"
+#include "mylite_error_codes.h"
 #include "mylite_runtime.h"
 #include "mylite_select.h"
 #include "mylite_select_catalog.h"
@@ -117,6 +118,17 @@ int mylite_dml_execute_insert_set_statement(mylite_stmt *stmt)
         }
     }
     return status;
+}
+
+int mylite_dml_append_replace_delayed_warning(mylite_stmt *stmt)
+{
+    if (!stmt->insert_values.replace_delayed) {
+        return MYLITE_OK;
+    }
+    return mylite_diagnostics_append_warning(
+        stmt->database, MYLITE_MYSQL_ER_WARN_LEGACY_SYNTAX_CONVERTED,
+        "REPLACE DELAYED is no longer supported. The statement was "
+        "converted to REPLACE.");
 }
 
 int mylite_dml_execute_replace_values_statement(mylite_stmt *stmt)

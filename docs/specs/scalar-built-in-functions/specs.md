@@ -36,6 +36,7 @@ In scope for the initial implementation:
   - `TO_BASE64`, `FROM_BASE64`
   - `BIN`, `OCT`
   - `CRC32`
+  - `FORMAT`
   - `IS_UUID`, `UUID_TO_BIN`, `BIN_TO_UUID`
 - numeric functions:
   - `ABS`
@@ -127,7 +128,7 @@ by common scalar expressions:
   `INSERT`, `QUOTE`,
   `REPEAT`, `SPACE`, `REVERSE`, `LPAD`, `RPAD`, `ELT`, `FIELD`,
   `FIND_IN_SET`, `MAKE_SET`, `HEX`, `UNHEX`, `TO_BASE64`, `FROM_BASE64`,
-  `BIN`, and `OCT`; see
+  `BIN`, `OCT`, and `FORMAT`; see
   `docs/specs/string-functions-substring-trim/specs.md` and
   `docs/specs/substring-index-function/specs.md` and
   `docs/specs/string-search-code-functions/specs.md` and
@@ -139,6 +140,7 @@ by common scalar expressions:
   `docs/specs/string-hex-unhex-functions/specs.md` and
   `docs/specs/base64-string-functions/specs.md` and
   `docs/specs/numeric-base-conversion-functions/specs.md` and
+  `docs/specs/format-function/specs.md` and
   `docs/specs/uuid-conversion-functions/specs.md`
 - numeric functions: `ABS`, `SIGN`, `FLOOR`, `CEIL`, `CEILING`, `MOD`,
   `ROUND`, `TRUNCATE`, `EXP`, `LN`, `LOG`, `LOG2`, `LOG10`, `POW`, `POWER`,
@@ -189,6 +191,9 @@ whitespace, invalid `FROM_BASE64()` `NULL` results without warnings,
 binary/octal/arbitrary-base conversion, invalid base ranges, base-conversion
 string parsing warnings,
 CRC-32 checksum values, `CRC32()` string/numeric/NULL/binary-byte conversion,
+`FORMAT()` scalar numeric formatting, rounded and padded fractional digits,
+western/Indian/no-grouping locale separators, unknown-locale warnings,
+`FORMAT()` warning-sensitive NULL short-circuiting,
 exact decimal leading-zero normalization, unsigned checksum metadata,
 IPv4 network-address conversion, short IPv4 forms, invalid IPv4 warnings,
 `INET_NTOA()` bounds and string-integer truncation warnings,
@@ -225,6 +230,8 @@ mismatches.
   https://dev.mysql.com/doc/refman/8.4/en/built-in-function-reference.html
 - MySQL 8.4 Reference Manual, String Functions and Operators:
   https://dev.mysql.com/doc/refman/8.4/en/string-functions.html
+- MySQL 8.4 Reference Manual, Locale Support:
+  https://dev.mysql.com/doc/refman/8.4/en/locale-support.html
 - MySQL 8.4 Reference Manual, Mathematical Functions:
   https://dev.mysql.com/doc/refman/8.4/en/mathematical-functions.html
 - MySQL 8.4 Reference Manual, Date and Time Functions:

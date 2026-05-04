@@ -22,10 +22,12 @@ enum {
     MYLITE_WARNING_INVALID_CHARACTER_STRING = 1300,
     MYLITE_WARNING_DIVISION_BY_ZERO = 1365,
     MYLITE_WARNING_INCORRECT_STRING_VALUE = 1411,
+    MYLITE_WARNING_UNKNOWN_LOCALE = 1649,
     MYLITE_WARNING_OUT_OF_RANGE = 1690,
     MYLITE_WARNING_INVALID_ARGUMENT_FOR_LOGARITHM = 3020,
     MYLITE_EXPRESSION_TEXT_BUFFER_SIZE = 64,
     MYLITE_EXPRESSION_DECIMAL_TEXT_BUFFER_SIZE = 128,
+    MYLITE_EXPRESSION_FORMAT_TEXT_BUFFER_SIZE = 512,
     MYLITE_EXPRESSION_DECIMAL_ROUND_SCALE_LIMIT = 30,
     MYLITE_EXPRESSION_DECIMAL_BASE = 10,
     MYLITE_EXPRESSION_UINT64_DIGITS = 19,
@@ -315,6 +317,37 @@ struct round_exact_argument_text {
     bool bound_unsigned;
 };
 
+enum format_grouping {
+    FORMAT_GROUPING_NONE = 0,
+    FORMAT_GROUPING_WESTERN,
+    FORMAT_GROUPING_INDIAN,
+};
+
+struct format_locale {
+    const char *name;
+    const char *decimal_separator;
+    const char *group_separator;
+    enum format_grouping grouping;
+};
+
+struct format_numeric_input {
+    char *exact_text;
+    size_t exact_text_length;
+    struct numeric_value number;
+    bool has_exact_text;
+};
+
+struct format_exact_round_input {
+    const char *text;
+    size_t text_length;
+    int scale;
+};
+
+struct format_approximate_round_input {
+    double value;
+    int scale;
+};
+
 enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_UNKNOWN = 0,
     MYLITE_SCALAR_FUNCTION_CONCAT = 1,
@@ -406,6 +439,7 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_GREATEST = 87,
     MYLITE_SCALAR_FUNCTION_LEAST = 88,
     MYLITE_SCALAR_FUNCTION_STRCMP = 89,
+    MYLITE_SCALAR_FUNCTION_FORMAT = 90,
 };
 
 struct angle_conversion_input {
@@ -972,6 +1006,43 @@ static int eval_round_function(const struct mylite_sql_ast_node *arguments,
                                const struct mylite_expression_eval_context *context,
                                struct mylite_expression_warnings *warnings,
                                struct mylite_expression_value *out_value);
+static int eval_format_function(const struct mylite_sql_ast_node *arguments,
+                                const struct mylite_expression_eval_context *context,
+                                struct mylite_expression_warnings *warnings,
+                                struct mylite_expression_value *out_value);
+static int format_locale_from_argument(const struct mylite_sql_ast_node *locale_argument,
+                                       const struct mylite_expression_eval_context *context,
+                                       struct mylite_expression_warnings *warnings,
+                                       const struct format_locale **out_locale);
+static bool format_locale_argument_is_literal(const struct mylite_sql_ast_node *locale_argument);
+static int format_input_from_value(const struct mylite_sql_ast_node *argument,
+                                   const struct mylite_expression_value *value,
+                                   struct mylite_expression_warnings *warnings,
+                                   struct format_numeric_input *out_input);
+static int format_scale_from_value(const struct mylite_expression_value *value,
+                                   struct mylite_expression_warnings *warnings, int *out_scale);
+static int format_rounded_text_from_input(const struct format_numeric_input *input, int scale,
+                                          char **out_text, size_t *out_length);
+static int format_round_exact_decimal_text(struct format_exact_round_input input, char **out_text,
+                                           size_t *out_length);
+static int format_round_approximate_text(struct format_approximate_round_input input,
+                                         char **out_text, size_t *out_length);
+static int format_apply_locale(const char *rounded_text, size_t rounded_length,
+                               const struct format_locale *locale,
+                               struct mylite_expression_value *out_value);
+static int format_append_grouped_integer(char **result, size_t *result_length, const char *integer,
+                                         size_t integer_length, const struct format_locale *locale);
+static int format_append_western_grouped_integer(char **result, size_t *result_length,
+                                                 const char *integer, size_t integer_length,
+                                                 const char *separator, size_t separator_length);
+static int format_append_indian_grouped_integer(char **result, size_t *result_length,
+                                                const char *integer, size_t integer_length,
+                                                const char *separator, size_t separator_length);
+static const struct format_locale *format_locale_by_name(const char *name, size_t name_length);
+static const struct format_locale *format_default_locale(void);
+static int append_format_unknown_locale_warning(struct mylite_expression_warnings *warnings,
+                                                const char *locale, size_t locale_length);
+static void format_numeric_input_deinit(struct format_numeric_input *input);
 static int eval_truncate_function(const struct mylite_sql_ast_node *arguments,
                                   const struct mylite_expression_eval_context *context,
                                   struct mylite_expression_warnings *warnings,
@@ -1562,6 +1633,8 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_ATAN:
     case MYLITE_SCALAR_FUNCTION_ATAN2:
         return arity == 1U || arity == 2U;
+    case MYLITE_SCALAR_FUNCTION_FORMAT:
+        return arity == 2U || arity == 3U;
     case MYLITE_SCALAR_FUNCTION_LEFT:
     case MYLITE_SCALAR_FUNCTION_RIGHT:
     case MYLITE_SCALAR_FUNCTION_TRUNCATE:
@@ -2419,6 +2492,8 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_numeric_unary_function(function_id, arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_ROUND:
         return eval_round_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_FORMAT:
+        return eval_format_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_TRUNCATE:
         return eval_truncate_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_PI:
@@ -5012,9 +5087,10 @@ static int append_unhex_warning(struct mylite_expression_warnings *warnings, con
     int preview = text_length > MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
                       ? MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
                       : (int)text_length;
-    int length =
-        snprintf(message, sizeof(message), "Incorrect string value: ''%.*s'' for function unhex",
-                 preview, text == NULL ? "" : text);
+    int length = snprintf(message, sizeof(message),
+                          "Incorrect string value: ''%.*s'' for "
+                          "function unhex",
+                          preview, text == NULL ? "" : text);
 
     if (length < 0) {
         return -1;
@@ -5067,7 +5143,8 @@ static int eval_to_base64_function(const struct mylite_sql_ast_node *arguments,
 static int to_base64_text_value(const char *text, size_t text_length,
                                 struct mylite_expression_value *out_value)
 {
-    static const char digits[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    static const char digits[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvw"
+                                 "xyz0123456789+/";
     const unsigned char *source = (const unsigned char *)text;
     size_t result_length = base64_encoded_length(text_length);
     char *result = NULL;
@@ -5424,6 +5501,7 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_FLOOR:
     case MYLITE_SCALAR_FUNCTION_CEIL:
     case MYLITE_SCALAR_FUNCTION_ROUND:
+    case MYLITE_SCALAR_FUNCTION_FORMAT:
     case MYLITE_SCALAR_FUNCTION_TRUNCATE:
     case MYLITE_SCALAR_FUNCTION_EXP:
     case MYLITE_SCALAR_FUNCTION_POWER:
@@ -5951,10 +6029,12 @@ static int append_inet_aton_warning(struct mylite_expression_warnings *warnings,
                       ? MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
                       : (int)text_length;
     int length = was_text ? snprintf(message, sizeof(message),
-                                     "Incorrect string value: ''%.*s'' for function inet_aton",
+                                     "Incorrect string value: ''%.*s'' "
+                                     "for function inet_aton",
                                      preview, text == NULL ? "" : text)
                           : snprintf(message, sizeof(message),
-                                     "Incorrect string value: '%.*s' for function inet_aton",
+                                     "Incorrect string value: '%.*s' "
+                                     "for function inet_aton",
                                      preview, text == NULL ? "" : text);
 
     if (length < 0) {
@@ -6110,9 +6190,10 @@ static int append_inet_ntoa_range_text_warning(struct mylite_expression_warnings
                                                const char *text)
 {
     char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
-    int length =
-        snprintf(message, sizeof(message), "Incorrect integer value: '%.*s' for function inet_ntoa",
-                 MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW, text == NULL ? "" : text);
+    int length = snprintf(message, sizeof(message),
+                          "Incorrect integer value: '%.*s' for "
+                          "function inet_ntoa",
+                          MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW, text == NULL ? "" : text);
 
     if (length < 0) {
         return -1;
@@ -7273,6 +7354,7 @@ static int trigonometric_function_result(struct trigonometric_input input,
     case MYLITE_SCALAR_FUNCTION_FLOOR:
     case MYLITE_SCALAR_FUNCTION_CEIL:
     case MYLITE_SCALAR_FUNCTION_ROUND:
+    case MYLITE_SCALAR_FUNCTION_FORMAT:
     case MYLITE_SCALAR_FUNCTION_TRUNCATE:
     case MYLITE_SCALAR_FUNCTION_EXP:
     case MYLITE_SCALAR_FUNCTION_LN:
@@ -7548,6 +7630,7 @@ static int inverse_trigonometric_function_result(struct inverse_trigonometric_in
     case MYLITE_SCALAR_FUNCTION_FLOOR:
     case MYLITE_SCALAR_FUNCTION_CEIL:
     case MYLITE_SCALAR_FUNCTION_ROUND:
+    case MYLITE_SCALAR_FUNCTION_FORMAT:
     case MYLITE_SCALAR_FUNCTION_TRUNCATE:
     case MYLITE_SCALAR_FUNCTION_EXP:
     case MYLITE_SCALAR_FUNCTION_LN:
@@ -7733,6 +7816,7 @@ static int angle_conversion_result(struct angle_conversion_input conversion, dou
     case MYLITE_SCALAR_FUNCTION_FLOOR:
     case MYLITE_SCALAR_FUNCTION_CEIL:
     case MYLITE_SCALAR_FUNCTION_ROUND:
+    case MYLITE_SCALAR_FUNCTION_FORMAT:
     case MYLITE_SCALAR_FUNCTION_TRUNCATE:
     case MYLITE_SCALAR_FUNCTION_EXP:
     case MYLITE_SCALAR_FUNCTION_LN:
@@ -7998,6 +8082,461 @@ static int eval_round_scale(const struct mylite_sql_ast_node *arguments,
     }
     mylite_expression_value_deinit(&value);
     return status;
+}
+
+static int eval_format_function(const struct mylite_sql_ast_node *arguments,
+                                const struct mylite_expression_eval_context *context,
+                                struct mylite_expression_warnings *warnings,
+                                struct mylite_expression_value *out_value)
+{
+    const struct mylite_sql_ast_node *value_argument = child_at(arguments, 0U);
+    const struct mylite_sql_ast_node *scale_argument = child_at(arguments, 1U);
+    const struct mylite_sql_ast_node *locale_argument = child_at(arguments, 2U);
+    struct mylite_expression_value scale_value = {0};
+    struct mylite_expression_value value = {0};
+    struct format_numeric_input input = {0};
+    const struct format_locale *locale = format_default_locale();
+    char *rounded_text = NULL;
+    size_t rounded_length = 0U;
+    bool locale_resolved = false;
+    int scale = 0;
+    int status = 0;
+
+    if (locale_argument != NULL && format_locale_argument_is_literal(locale_argument)) {
+        status = format_locale_from_argument(locale_argument, context, warnings, &locale);
+        locale_resolved = true;
+    }
+    if (status == 0) {
+        status = eval_node(scale_argument, context, warnings, &scale_value);
+    }
+    if (status != 0) {
+        return status;
+    }
+    if (is_null(&scale_value)) {
+        if (locale_argument != NULL && !locale_resolved) {
+            status = format_locale_from_argument(locale_argument, context, warnings, &locale);
+        }
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        mylite_expression_value_deinit(&scale_value);
+        return status;
+    }
+
+    if (status == 0) {
+        status = format_scale_from_value(&scale_value, warnings, &scale);
+    }
+    if (status == 0 && locale_argument != NULL && !locale_resolved) {
+        status = format_locale_from_argument(locale_argument, context, warnings, &locale);
+    }
+    if (status == 0) {
+        status = eval_node(value_argument, context, warnings, &value);
+    }
+    if (status == 0 && !is_null(&value)) {
+        status = format_input_from_value(value_argument, &value, warnings, &input);
+    }
+    if (status == 0 && is_null(&value)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+    } else if (status == 0) {
+        status = format_rounded_text_from_input(&input, scale, &rounded_text, &rounded_length);
+        if (status == 0) {
+            status = format_apply_locale(rounded_text, rounded_length, locale, out_value);
+        }
+    }
+
+    free(rounded_text);
+    format_numeric_input_deinit(&input);
+    mylite_expression_value_deinit(&value);
+    mylite_expression_value_deinit(&scale_value);
+    return status;
+}
+
+static int format_locale_from_argument(const struct mylite_sql_ast_node *locale_argument,
+                                       const struct mylite_expression_eval_context *context,
+                                       struct mylite_expression_warnings *warnings,
+                                       const struct format_locale **out_locale)
+{
+    struct mylite_expression_value value = {0};
+    char *text = NULL;
+    size_t text_length = 0U;
+    int status = 0;
+
+    if (out_locale == NULL) {
+        return -1;
+    }
+    *out_locale = format_default_locale();
+    if (locale_argument == NULL) {
+        return 0;
+    }
+
+    status = eval_node(locale_argument, context, warnings, &value);
+    if (status != 0) {
+        return status;
+    }
+    if (is_null(&value)) {
+        status = append_format_unknown_locale_warning(warnings, "NULL", 4U);
+        mylite_expression_value_deinit(&value);
+        return status;
+    }
+
+    status = value_to_string_with_length(&value, &text, &text_length);
+    if (status == 0) {
+        const struct format_locale *locale = format_locale_by_name(text, text_length);
+
+        if (locale != NULL) {
+            *out_locale = locale;
+        } else {
+            status = append_format_unknown_locale_warning(warnings, text, text_length);
+        }
+    }
+    free(text);
+    mylite_expression_value_deinit(&value);
+    return status;
+}
+
+static bool format_locale_argument_is_literal(const struct mylite_sql_ast_node *locale_argument)
+{
+    while (locale_argument != NULL &&
+           locale_argument->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
+        locale_argument = child_at(locale_argument, 0U);
+    }
+    return locale_argument != NULL && locale_argument->kind == MYLITE_SQL_AST_LITERAL;
+}
+
+static int format_input_from_value(const struct mylite_sql_ast_node *argument,
+                                   const struct mylite_expression_value *value,
+                                   struct mylite_expression_warnings *warnings,
+                                   struct format_numeric_input *out_input)
+{
+    struct round_exact_argument_text exact = {0};
+    int status = 0;
+
+    if (out_input == NULL || value == NULL || is_null(value)) {
+        return -1;
+    }
+    *out_input = (struct format_numeric_input){0};
+    status = round_exact_argument_text(argument, value, &exact);
+    if (status != 0) {
+        return status;
+    }
+    if (exact.text != NULL) {
+        out_input->exact_text = exact.text;
+        out_input->exact_text_length = exact.text_length;
+        out_input->has_exact_text = true;
+        return 0;
+    }
+    return value_to_numeric(value, warnings, &out_input->number);
+}
+
+static int format_scale_from_value(const struct mylite_expression_value *value,
+                                   struct mylite_expression_warnings *warnings, int *out_scale)
+{
+    int scale = 0;
+    int status = round_scale_from_value(value, warnings, &scale);
+
+    if (status != 0) {
+        return status;
+    }
+    if (scale < 0) {
+        scale = 0;
+    }
+    *out_scale = scale;
+    return 0;
+}
+
+static int format_rounded_text_from_input(const struct format_numeric_input *input, int scale,
+                                          char **out_text, size_t *out_length)
+{
+    if (input == NULL || out_text == NULL || out_length == NULL) {
+        return -1;
+    }
+    *out_text = NULL;
+    *out_length = 0U;
+    if (input->has_exact_text) {
+        return format_round_exact_decimal_text(
+            (struct format_exact_round_input){
+                .text = input->exact_text,
+                .text_length = input->exact_text_length,
+                .scale = scale,
+            },
+            out_text, out_length);
+    }
+    return format_round_approximate_text(
+        (struct format_approximate_round_input){
+            .value = input->number.real_value,
+            .scale = scale,
+        },
+        out_text, out_length);
+}
+
+static int format_round_exact_decimal_text(struct format_exact_round_input input, char **out_text,
+                                           size_t *out_length)
+{
+    char *copy = copy_span_text(input.text == NULL ? "" : input.text, input.text_length);
+    struct decimal_text_parts parts = {0};
+    size_t fraction_length = (size_t)input.scale;
+    size_t copied_fraction = 0U;
+    size_t digits_length = 0U;
+    char *digits = NULL;
+    struct mylite_expression_value value = {0};
+    int status = 0;
+
+    if (copy == NULL || out_text == NULL || out_length == NULL) {
+        free(copy);
+        return -1;
+    }
+    if (!parse_decimal_text_parts(copy, &parts)) {
+        free(copy);
+        return -1;
+    }
+    copied_fraction =
+        fraction_length < parts.fraction_length ? fraction_length : parts.fraction_length;
+    digits_length = parts.integer_length + fraction_length;
+    digits = malloc(digits_length + 1U);
+    if (digits == NULL) {
+        free(copy);
+        return -1;
+    }
+    memcpy(digits, parts.integer, parts.integer_length);
+    if (copied_fraction != 0U) {
+        memcpy(digits + parts.integer_length, parts.fraction, copied_fraction);
+    }
+    if (fraction_length > copied_fraction) {
+        memset(digits + parts.integer_length + copied_fraction, '0',
+               fraction_length - copied_fraction);
+    }
+    digits[digits_length] = '\0';
+
+    if (fraction_length < parts.fraction_length && parts.fraction[fraction_length] >= '5') {
+        status = increment_decimal_digits(&digits, &digits_length);
+    }
+    if (status == 0) {
+        status = round_append_signed_decimal_result(&parts, digits, digits_length, fraction_length,
+                                                    &value);
+    }
+    if (status == 0) {
+        *out_text = value.text_value;
+        *out_length = value.text_length;
+        value.text_value = NULL;
+        value.text_length = 0U;
+        value.kind = MYLITE_EXPRESSION_VALUE_NULL;
+    }
+
+    mylite_expression_value_deinit(&value);
+    free(digits);
+    free(copy);
+    return status;
+}
+
+static int format_round_approximate_text(struct format_approximate_round_input input,
+                                         char **out_text, size_t *out_length)
+{
+    char buffer[MYLITE_EXPRESSION_FORMAT_TEXT_BUFFER_SIZE];
+    long double factor = 1.0L;
+    long double scaled = 0.0L;
+    long double rounded = 0.0L;
+    long double formatted = 0.0L;
+    int length = 0;
+
+    if (out_text == NULL || out_length == NULL) {
+        return -1;
+    }
+    for (int index = 0; index < input.scale; ++index) {
+        factor *= (long double)MYLITE_EXPRESSION_DECIMAL_BASE;
+    }
+    scaled = (long double)input.value * factor;
+    rounded = round_half_even_long_double(scaled);
+    formatted = rounded / factor;
+    if (rounded == 0.0L && signbit((double)input.value)) {
+        formatted = -0.0L;
+    } else if (rounded == 0.0L) {
+        formatted = 0.0L;
+    }
+    length = snprintf(buffer, sizeof(buffer), "%.*Lf", input.scale, formatted);
+    if (length < 0 || (size_t)length >= sizeof(buffer)) {
+        return -1;
+    }
+    *out_text = copy_span_text(buffer, (size_t)length);
+    if (*out_text == NULL) {
+        return -1;
+    }
+    *out_length = (size_t)length;
+    return 0;
+}
+
+static int format_apply_locale(const char *rounded_text, size_t rounded_length,
+                               const struct format_locale *locale,
+                               struct mylite_expression_value *out_value)
+{
+    const char *text = rounded_text == NULL ? "" : rounded_text;
+    size_t text_length = rounded_text == NULL ? 0U : rounded_length;
+    const char *integer = text;
+    size_t integer_length = 0U;
+    const char *fraction = NULL;
+    size_t fraction_length = 0U;
+    char *result = copy_span_text("", 0U);
+    size_t result_length = 0U;
+    int status = 0;
+
+    if (result == NULL || locale == NULL) {
+        free(result);
+        return -1;
+    }
+    if (text_length != 0U && text[0] == '-') {
+        status = append_text(&result, &result_length, "-", 1U);
+        integer = text + 1U;
+        --text_length;
+    }
+    fraction = memchr(integer, '.', text_length);
+    if (fraction != NULL) {
+        integer_length = (size_t)(fraction - integer);
+        ++fraction;
+        fraction_length = text_length - integer_length - 1U;
+    } else {
+        integer_length = text_length;
+    }
+    if (status == 0) {
+        status =
+            format_append_grouped_integer(&result, &result_length, integer, integer_length, locale);
+    }
+    if (status == 0 && fraction_length != 0U) {
+        status = append_text(&result, &result_length, locale->decimal_separator,
+                             strlen(locale->decimal_separator));
+    }
+    if (status == 0 && fraction_length != 0U) {
+        status = append_text(&result, &result_length, fraction, fraction_length);
+    }
+    if (status == 0) {
+        out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
+        out_value->text_value = result;
+        out_value->text_length = result_length;
+        result = NULL;
+    }
+    free(result);
+    return status;
+}
+
+static int format_append_grouped_integer(char **result, size_t *result_length, const char *integer,
+                                         size_t integer_length, const struct format_locale *locale)
+{
+    const char *separator = locale->group_separator == NULL ? "" : locale->group_separator;
+    size_t separator_length = strlen(separator);
+
+    if (locale->grouping == FORMAT_GROUPING_NONE || separator_length == 0U) {
+        return append_text(result, result_length, integer, integer_length);
+    }
+    if (locale->grouping == FORMAT_GROUPING_INDIAN) {
+        return format_append_indian_grouped_integer(result, result_length, integer, integer_length,
+                                                    separator, separator_length);
+    }
+    return format_append_western_grouped_integer(result, result_length, integer, integer_length,
+                                                 separator, separator_length);
+}
+
+static int format_append_western_grouped_integer(char **result, size_t *result_length,
+                                                 const char *integer, size_t integer_length,
+                                                 const char *separator, size_t separator_length)
+{
+    size_t first_group = integer_length % 3U;
+    size_t offset = 0U;
+    int status = 0;
+
+    if (integer_length <= 3U) {
+        return append_text(result, result_length, integer, integer_length);
+    }
+    if (first_group == 0U) {
+        first_group = 3U;
+    }
+    status = append_text(result, result_length, integer, first_group);
+    offset = first_group;
+    while (status == 0 && offset < integer_length) {
+        status = append_text(result, result_length, separator, separator_length);
+        if (status == 0) {
+            status = append_text(result, result_length, integer + offset, 3U);
+            offset += 3U;
+        }
+    }
+    return status;
+}
+
+static int format_append_indian_grouped_integer(char **result, size_t *result_length,
+                                                const char *integer, size_t integer_length,
+                                                const char *separator, size_t separator_length)
+{
+    size_t prefix_length = 0U;
+    size_t offset = 0U;
+    int status = 0;
+
+    if (integer_length <= 3U) {
+        return append_text(result, result_length, integer, integer_length);
+    }
+    prefix_length = (integer_length - 3U) % 2U;
+    if (prefix_length == 0U) {
+        prefix_length = 2U;
+    }
+    status = append_text(result, result_length, integer, prefix_length);
+    offset = prefix_length;
+    while (status == 0 && integer_length - offset > 3U) {
+        status = append_text(result, result_length, separator, separator_length);
+        if (status == 0) {
+            status = append_text(result, result_length, integer + offset, 2U);
+            offset += 2U;
+        }
+    }
+    if (status == 0) {
+        status = append_text(result, result_length, separator, separator_length);
+    }
+    if (status == 0) {
+        status = append_text(result, result_length, integer + offset, integer_length - offset);
+    }
+    return status;
+}
+
+static const struct format_locale *format_locale_by_name(const char *name, size_t name_length)
+{
+    static const struct format_locale locales[] = {
+        {"en_US", ".", ",", FORMAT_GROUPING_WESTERN}, {"de_DE", ",", ".", FORMAT_GROUPING_WESTERN},
+        {"en_IN", ".", ",", FORMAT_GROUPING_INDIAN},  {"ru_RU", ",", " ", FORMAT_GROUPING_WESTERN},
+        {"fr_FR", ",", "", FORMAT_GROUPING_NONE},     {"nl_NL", ",", "", FORMAT_GROUPING_NONE},
+    };
+
+    for (size_t index = 0U; index < sizeof(locales) / sizeof(locales[0]); ++index) {
+        if (strlen(locales[index].name) == name_length &&
+            ascii_text_equal_ci((struct text_compare_input){.left = locales[index].name,
+                                                            .left_length = name_length,
+                                                            .right = name,
+                                                            .right_length = name_length})) {
+            return &locales[index];
+        }
+    }
+    return NULL;
+}
+
+static const struct format_locale *format_default_locale(void)
+{
+    static const struct format_locale locale = {"en_US", ".", ",", FORMAT_GROUPING_WESTERN};
+
+    return &locale;
+}
+
+static int append_format_unknown_locale_warning(struct mylite_expression_warnings *warnings,
+                                                const char *locale, size_t locale_length)
+{
+    char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
+    int length = snprintf(message, sizeof(message), "Unknown locale: '%.*s'", (int)locale_length,
+                          locale == NULL ? "" : locale);
+
+    if (length < 0) {
+        return -1;
+    }
+    return append_warning(warnings, MYLITE_WARNING_UNKNOWN_LOCALE, message);
+}
+
+static void format_numeric_input_deinit(struct format_numeric_input *input)
+{
+    if (input == NULL) {
+        return;
+    }
+    free(input->exact_text);
+    *input = (struct format_numeric_input){0};
 }
 
 static int round_scale_from_value(const struct mylite_expression_value *value,
@@ -8677,7 +9216,8 @@ static int append_round_out_of_range_error(struct mylite_expression_warnings *wa
 {
     return mylite_expression_warnings_append_condition(
         warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, MYLITE_WARNING_OUT_OF_RANGE,
-        unsigned_value ? "BIGINT UNSIGNED value is out of range in 'round()'"
+        unsigned_value ? "BIGINT UNSIGNED value is out of range in "
+                         "'round()'"
                        : "BIGINT value is out of range in 'round()'");
 }
 
@@ -10737,14 +11277,16 @@ static int append_char_truncation_warning(struct mylite_expression_warnings *war
 static int append_signed_complement_warning(struct mylite_expression_warnings *warnings)
 {
     return append_warning(warnings, MYLITE_WARNING_UNKNOWN,
-                          "Cast to signed converted positive out-of-range integer to its negative "
+                          "Cast to signed converted positive out-of-range "
+                          "integer to its negative "
                           "complement");
 }
 
 static int append_unsigned_complement_warning(struct mylite_expression_warnings *warnings)
 {
     return append_warning(warnings, MYLITE_WARNING_UNKNOWN,
-                          "Cast to unsigned converted negative integer to its positive "
+                          "Cast to unsigned converted negative integer to "
+                          "its positive "
                           "complement");
 }
 
@@ -10934,6 +11476,7 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"CEIL", MYLITE_SCALAR_FUNCTION_CEIL},
         {"CEILING", MYLITE_SCALAR_FUNCTION_CEIL},
         {"ROUND", MYLITE_SCALAR_FUNCTION_ROUND},
+        {"FORMAT", MYLITE_SCALAR_FUNCTION_FORMAT},
         {"TRUNCATE", MYLITE_SCALAR_FUNCTION_TRUNCATE},
         {"EXP", MYLITE_SCALAR_FUNCTION_EXP},
         {"LN", MYLITE_SCALAR_FUNCTION_LN},
@@ -11058,6 +11601,7 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_FLOOR:
     case MYLITE_SCALAR_FUNCTION_CEIL:
     case MYLITE_SCALAR_FUNCTION_ROUND:
+    case MYLITE_SCALAR_FUNCTION_FORMAT:
     case MYLITE_SCALAR_FUNCTION_TRUNCATE:
     case MYLITE_SCALAR_FUNCTION_EXP:
     case MYLITE_SCALAR_FUNCTION_POWER:

@@ -122,6 +122,7 @@ enum {
     mysql_warning_no_default = 1364,
     mysql_warning_division_by_zero = 1365,
     mysql_warning_incorrect_string_value = 1411,
+    mysql_warning_unknown_locale = 1649,
     mysql_warning_out_of_range = 1690,
     mysql_warning_duplicate_index = 1831,
     mysql_warning_legacy_syntax_converted = 3005,
@@ -253,6 +254,7 @@ static int test_select_integer_literal_with_semicolon(void);
 static int test_expression_operator_foundation(void);
 static int test_scalar_builtin_functions_execution(void);
 static int test_round_scalar_function_execution(mylite_db *database);
+static int test_format_scalar_function_execution(mylite_db *database);
 static int test_truncate_scalar_function_execution(mylite_db *database);
 static int test_power_scalar_function_execution(mylite_db *database);
 static int test_exp_scalar_function_execution(mylite_db *database);
@@ -4037,6 +4039,8 @@ static int test_scalar_builtin_functions_execution(void)
 
     failures += test_round_scalar_function_execution(database);
 
+    failures += test_format_scalar_function_execution(database);
+
     failures += test_truncate_scalar_function_execution(database);
 
     failures += test_power_scalar_function_execution(database);
@@ -5714,6 +5718,354 @@ static int test_round_scalar_function_execution(mylite_db *database)
     failures += expect_no_stmt_handle(&stmt, "unsupported round zero arity");
     failures += prepare_sql(database, "SELECT ROUND(1,2,3)", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported round three arity");
+
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_format_scalar_function_execution(mylite_db *database)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const char *const format_columns[] = {
+        "basic",       "padded",         "zero_d",         "de_de",
+        "en_in",       "negative",       "half_pos",       "half_one",
+        "half_neg",    "d_29",           "d_21",           "d_25",
+        "d_neg",       "d_high",         "null_x",         "null_d",
+        "null_locale", "unknown_locale", "empty_locale",   "ru_locale",
+        "fr_locale",   "nl_locale",      "text_decimal",   "text_trail",
+        "text_bad",    "scale_text",     "scale_trail",    "scale_bad",
+        "approx_half", "text_half",      "exact_neg_zero", "approx_neg_zero",
+    };
+    static const char *const format_values[] = {
+        "12,332.1235",
+        "12,332.1000",
+        "12,332",
+        "12.332,20",
+        "12,34,567.89",
+        "-1,234,567.89",
+        "3",
+        "1.3",
+        "-3",
+        "123.456",
+        "123.46",
+        "1,234.560",
+        "123",
+        "123.456000000000000000000000000000",
+        NULL,
+        NULL,
+        "1,234.56",
+        "1,234.56",
+        "1,234.56",
+        "123 456 789,12",
+        "123456789,12",
+        "123456789,12",
+        "1,234.57",
+        "1,234.00",
+        "0.00",
+        "1,234.57",
+        "1,234.57",
+        "1,235",
+        "2",
+        "2",
+        "0.00",
+        "-0.00",
+    };
+    static const char *const null_columns[] = {"v"};
+    static const char *const null_value[] = {NULL};
+    static const char *const mixed_warning_value[] = {"123.00"};
+    static const char *const zero_format_value[] = {"0.00"};
+    enum {
+        format_string_result_clear_flags =
+            MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+    };
+    static const struct expected_result_metadata format_latin1_metadata[] = {
+        {"fmt_int", NULL, NULL, NULL, NULL, NULL, 38U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         format_string_result_clear_flags, 1},
+        {"fmt_decimal", NULL, NULL, NULL, NULL, NULL, 44U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U,
+         0U, format_string_result_clear_flags, 1},
+        {"fmt_float", NULL, NULL, NULL, NULL, NULL, 61U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         format_string_result_clear_flags, 1},
+        {"fmt_text", NULL, NULL, NULL, NULL, NULL, 42U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         format_string_result_clear_flags, 1},
+        {"fmt_null", NULL, NULL, NULL, NULL, NULL, 32U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         format_string_result_clear_flags, 1},
+        {"fmt_de", NULL, NULL, NULL, NULL, NULL, 44U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         format_string_result_clear_flags, 1},
+    };
+    static const struct expected_result_metadata format_utf8_metadata[] = {
+        {"fmt_utf8", NULL, NULL, NULL, NULL, NULL, 168U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U, format_string_result_clear_flags, 1},
+    };
+    static const struct expected_result_metadata format_table_metadata[] = {
+        {"fmt_i", NULL, NULL, NULL, NULL, NULL, 46U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         format_string_result_clear_flags, 1},
+        {"fmt_d", NULL, NULL, NULL, NULL, NULL, 45U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         format_string_result_clear_flags, 1},
+        {"fmt_f", NULL, NULL, NULL, NULL, NULL, 61U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         format_string_result_clear_flags, 1},
+        {"fmt_s", NULL, NULL, NULL, NULL, NULL, 74U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         format_string_result_clear_flags, 1},
+    };
+    static const char *const id_fd_columns[] = {"id", "fd"};
+    static const char *const ordered_format_values[] = {
+        "3", NULL, "2", "-1,234.57", "1", "1,234.57",
+    };
+    static const char *const id_column[] = {"id"};
+    static const char *const id_2[] = {"2"};
+    static const char *const id_s_columns[] = {"id", "s"};
+    static const char *const updated_format_values[] = {
+        "1",
+        "1,234.6",
+        "2",
+        "-1,234.6",
+    };
+    static const char *const remaining_values[] = {"2", "3"};
+    int failures = 0;
+    mylite_stmt *stmt = NULL;
+
+    failures += expect_select_rows(database,
+                                   "SELECT FORMAT(12332.123456,4) AS basic, "
+                                   "FORMAT(12332.1,4) AS padded, "
+                                   "FORMAT(12332.2,0) AS zero_d, "
+                                   "FORMAT(12332.2,2,'de_DE') AS de_de, "
+                                   "FORMAT(1234567.89,2,'en_IN') AS en_in, "
+                                   "FORMAT(-1234567.89,2) AS negative, "
+                                   "FORMAT(2.5,0) AS half_pos, "
+                                   "FORMAT(1.25,1) AS half_one, "
+                                   "FORMAT(-2.5,0) AS half_neg, "
+                                   "FORMAT(123.456,2.9) AS d_29, "
+                                   "FORMAT(123.456,2.1) AS d_21, "
+                                   "FORMAT(1234.56,2.5) AS d_25, "
+                                   "FORMAT(123.456,-1) AS d_neg, "
+                                   "FORMAT(123.456,31) AS d_high, "
+                                   "FORMAT(NULL,2) AS null_x, "
+                                   "FORMAT(1234.56,NULL) AS null_d, "
+                                   "FORMAT(1234.56,2,NULL) AS null_locale, "
+                                   "FORMAT(1234.56,2,'bad_LOCALE') AS unknown_locale, "
+                                   "FORMAT(1234.56,2,'') AS empty_locale, "
+                                   "FORMAT(123456789.12,2,'ru_RU') AS ru_locale, "
+                                   "FORMAT(123456789.12,2,'fr_FR') AS fr_locale, "
+                                   "FORMAT(123456789.12,2,'nl_NL') AS nl_locale, "
+                                   "FORMAT('1234.567',2) AS text_decimal, "
+                                   "FORMAT('1234abc',2) AS text_trail, "
+                                   "FORMAT('abc',2) AS text_bad, "
+                                   "FORMAT(1234.567,'2') AS scale_text, "
+                                   "FORMAT(1234.567,'2abc') AS scale_trail, "
+                                   "FORMAT(1234.567,'abc') AS scale_bad, "
+                                   "FORMAT(25E-1,0) AS approx_half, "
+                                   "FORMAT('2.5',0) AS text_half, "
+                                   "FORMAT(-0.001,2) AS exact_neg_zero, "
+                                   "FORMAT(-0.001E0,2) AS approx_neg_zero",
+                                   format_columns,
+                                   (int)(sizeof(format_columns) / sizeof(format_columns[0])),
+                                   format_values, 1, "FORMAT scalar values");
+    failures += expect_int(mylite_warning_count(database), 7, "FORMAT scalar warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_unknown_locale,
+                           "FORMAT NULL locale warning");
+    failures += expect_int((int)mylite_warning_code(database, 1), mysql_warning_unknown_locale,
+                           "FORMAT unknown locale warning");
+    failures += expect_int((int)mylite_warning_code(database, 2), mysql_warning_unknown_locale,
+                           "FORMAT empty locale warning");
+    for (int index = 3; index < 7; ++index) {
+        failures += expect_int((int)mylite_warning_code(database, index),
+                               mysql_warning_truncated_wrong_value, "FORMAT conversion warning");
+    }
+
+    failures += expect_select_rows(database, "SELECT FORMAT('123abc','2abc') AS v", null_columns, 1,
+                                   mixed_warning_value, 1, "FORMAT mixed text warnings");
+    failures += expect_int(mylite_warning_count(database), 2, "FORMAT mixed warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "FORMAT mixed integer code");
+    failures += expect_contains(mylite_warning_message(database, 0), "INTEGER",
+                                "FORMAT mixed integer warning");
+    failures += expect_int((int)mylite_warning_code(database, 1),
+                           mysql_warning_truncated_wrong_value, "FORMAT mixed double code");
+    failures += expect_contains(mylite_warning_message(database, 1), "DOUBLE",
+                                "FORMAT mixed double warning");
+
+    failures += expect_select_rows(database, "SELECT FORMAT('123abc','2abc','bad_LOCALE') AS v",
+                                   null_columns, 1, mixed_warning_value, 1,
+                                   "FORMAT mixed text locale warnings");
+    failures += expect_int(mylite_warning_count(database), 3, "FORMAT mixed locale warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_unknown_locale,
+                           "FORMAT mixed locale code");
+    failures += expect_int((int)mylite_warning_code(database, 1),
+                           mysql_warning_truncated_wrong_value, "FORMAT mixed locale integer code");
+    failures += expect_contains(mylite_warning_message(database, 1), "INTEGER",
+                                "FORMAT mixed locale integer warning");
+    failures += expect_int((int)mylite_warning_code(database, 2),
+                           mysql_warning_truncated_wrong_value, "FORMAT mixed locale double code");
+    failures += expect_contains(mylite_warning_message(database, 2), "DOUBLE",
+                                "FORMAT mixed locale double warning");
+
+    failures += expect_select_rows(
+        database, "SELECT FORMAT('abc','2abc',CONCAT('bad','_LOCALE')) AS v", null_columns, 1,
+        zero_format_value, 1, "FORMAT expression locale warning order");
+    failures +=
+        expect_int(mylite_warning_count(database), 3, "FORMAT expression locale warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_truncated_wrong_value,
+                   "FORMAT expression locale integer code");
+    failures += expect_contains(mylite_warning_message(database, 0), "INTEGER",
+                                "FORMAT expression locale integer warning");
+    failures += expect_int((int)mylite_warning_code(database, 1), mysql_warning_unknown_locale,
+                           "FORMAT expression locale unknown code");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 2), mysql_warning_truncated_wrong_value,
+                   "FORMAT expression locale double code");
+    failures += expect_contains(mylite_warning_message(database, 2), "DOUBLE",
+                                "FORMAT expression locale double warning");
+
+    failures += expect_select_rows(database, "SELECT FORMAT(NULL,1/0) AS v", null_columns, 1,
+                                   null_value, 1, "FORMAT null x division scale");
+    failures += expect_int(mylite_warning_count(database), 1, "FORMAT null x division warning");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_division_by_zero,
+                           "FORMAT null x division warning code");
+
+    failures += expect_select_rows(database, "SELECT FORMAT(1/0,NULL) AS v", null_columns, 1,
+                                   null_value, 1, "FORMAT null d suppresses x");
+    failures += expect_int(mylite_warning_count(database), 0, "FORMAT null d warning count");
+
+    failures += expect_select_rows(database, "SELECT FORMAT(NULL,'2abc') AS v", null_columns, 1,
+                                   null_value, 1, "FORMAT null x converts d");
+    failures += expect_int(mylite_warning_count(database), 1, "FORMAT null x converts d warning");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "FORMAT null x d warning code");
+    failures += expect_contains(mylite_warning_message(database, 0), "INTEGER",
+                                "FORMAT null x d warning message");
+
+    failures +=
+        expect_select_rows(database, "SELECT FORMAT(NULL,'2abc','bad_LOCALE') AS v", null_columns,
+                           1, null_value, 1, "FORMAT null x literal locale warning order");
+    failures +=
+        expect_int(mylite_warning_count(database), 2, "FORMAT null x literal locale warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_unknown_locale,
+                           "FORMAT null x literal locale unknown code");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 1), mysql_warning_truncated_wrong_value,
+                   "FORMAT null x literal locale integer code");
+    failures += expect_contains(mylite_warning_message(database, 1), "INTEGER",
+                                "FORMAT null x literal locale integer warning");
+
+    failures += expect_select_rows(database, "SELECT FORMAT(NULL,'2abc',1/0) AS v", null_columns, 1,
+                                   null_value, 1, "FORMAT null x expression locale warning order");
+    failures += expect_int(mylite_warning_count(database), 3,
+                           "FORMAT null x expression locale warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_truncated_wrong_value,
+                   "FORMAT null x expression locale integer code");
+    failures += expect_int((int)mylite_warning_code(database, 1), mysql_warning_division_by_zero,
+                           "FORMAT null x expression locale division code");
+    failures += expect_int((int)mylite_warning_code(database, 2), mysql_warning_unknown_locale,
+                           "FORMAT null x expression locale unknown code");
+
+    failures += expect_select_rows(database, "SELECT FORMAT('abc',NULL) AS v", null_columns, 1,
+                                   null_value, 1, "FORMAT null d suppresses text x");
+    failures += expect_int(mylite_warning_count(database), 0, "FORMAT null d text warning count");
+
+    failures += expect_select_rows(database, "SELECT FORMAT(NULL,2,'bad_LOCALE') AS v",
+                                   null_columns, 1, null_value, 1, "FORMAT null x bad locale");
+    failures += expect_int(mylite_warning_count(database), 1, "FORMAT null x locale warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_unknown_locale,
+                           "FORMAT null x locale warning code");
+
+    failures += expect_select_rows(database, "SELECT FORMAT(NULL,NULL,NULL) AS v", null_columns, 1,
+                                   null_value, 1, "FORMAT null x null d null locale");
+    failures += expect_int(mylite_warning_count(database), 1, "FORMAT null locale warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_unknown_locale,
+                           "FORMAT null locale warning code");
+    failures += expect_contains(mylite_warning_message(database, 0), "NULL",
+                                "FORMAT null locale warning message");
+
+    failures +=
+        expect_select_rows(database, "SELECT FORMAT(1/0,NULL,'bad_LOCALE') AS v", null_columns, 1,
+                           null_value, 1, "FORMAT null d suppresses division but validates locale");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "FORMAT null d bad locale warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_unknown_locale,
+                           "FORMAT null d bad locale warning code");
+
+    failures += execute_sql(database, "SET NAMES latin1", MYLITE_DONE);
+    failures += prepare_sql(database,
+                            "SELECT FORMAT(1234,2) AS fmt_int, "
+                            "FORMAT(1234.567,2) AS fmt_decimal, "
+                            "FORMAT(1234.567E0,2) AS fmt_float, "
+                            "FORMAT('1234.567',2) AS fmt_text, "
+                            "FORMAT(NULL,2) AS fmt_null, "
+                            "FORMAT(1234.567,2,'de_DE') AS fmt_de",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, format_latin1_metadata,
+        (int)(sizeof(format_latin1_metadata) / sizeof(format_latin1_metadata[0])),
+        "FORMAT latin1 metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "FORMAT latin1 metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "FORMAT latin1 metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
+    failures += prepare_sql(database, "SELECT FORMAT(1234.56,2) AS fmt_utf8", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, format_utf8_metadata,
+        (int)(sizeof(format_utf8_metadata) / sizeof(format_utf8_metadata[0])),
+        "FORMAT utf8mb4 metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "FORMAT utf8mb4 metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "FORMAT utf8mb4 metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "SET NAMES latin1", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE format_sites ("
+                            "id INT PRIMARY KEY, i INT, d DECIMAL(8,3), f DOUBLE, "
+                            "nn DOUBLE, s VARCHAR(32) CHARACTER SET latin1)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO format_sites VALUES "
+                            "(1,1234,1234.567,1234.567,0.001,NULL),"
+                            "(2,-1234,-1234.567,-1234.567,10,NULL),"
+                            "(3,NULL,NULL,NULL,5,NULL)",
+                            MYLITE_DONE);
+    failures += prepare_sql(database,
+                            "SELECT FORMAT(i,2) AS fmt_i, FORMAT(d,2) AS fmt_d, "
+                            "FORMAT(f,2) AS fmt_f, FORMAT(s,2) AS fmt_s "
+                            "FROM format_sites LIMIT 0",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, format_table_metadata,
+        (int)(sizeof(format_table_metadata) / sizeof(format_table_metadata[0])),
+        "FORMAT table metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "FORMAT table metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        expect_select_rows(database,
+                           "SELECT id, FORMAT(d,2) AS fd FROM format_sites "
+                           "ORDER BY FORMAT(d,2), id",
+                           id_fd_columns, 2, ordered_format_values, 3, "FORMAT projection order");
+    failures += expect_select_rows(database,
+                                   "SELECT id FROM format_sites "
+                                   "WHERE FORMAT(d,0)='-1,235'",
+                                   id_column, 1, id_2, 1, "FORMAT where predicate");
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE format_sites SET s = FORMAT(d,1) WHERE d IS NOT NULL", 2,
+        "FORMAT update assignment");
+    failures += expect_select_rows(
+        database, "SELECT id, s FROM format_sites WHERE s IS NOT NULL ORDER BY id", id_s_columns, 2,
+        updated_format_values, 2, "FORMAT updated values");
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM format_sites WHERE FORMAT(nn,0)='0'", 1, "FORMAT delete predicate");
+    failures += expect_select_rows(database, "SELECT id FROM format_sites ORDER BY id", id_column,
+                                   1, remaining_values, 2, "FORMAT delete remaining rows");
+    failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
+
+    failures += prepare_sql(database, "SELECT FORMAT()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported FORMAT zero arity");
+    failures += prepare_sql(database, "SELECT FORMAT(1)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported FORMAT one arity");
+    failures += prepare_sql(database, "SELECT FORMAT(1,2,3,4)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported FORMAT four arity");
 
     // NOLINTEND(readability-magic-numbers)
     return failures;

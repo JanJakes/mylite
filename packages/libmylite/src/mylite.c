@@ -216,6 +216,7 @@ static const uint64_t mylite_mysql_time_display_length = 10U;
 static const uint64_t mylite_mysql_current_time_display_length = 8U;
 static const uint64_t mylite_mysql_current_time_fraction_display_base = 9U;
 static const uint64_t mylite_mysql_time_fraction_display_base = 11U;
+static const unsigned int mylite_mysql_temporal_max_fsp = 6U;
 static const uint64_t mylite_mysql_datetime_display_length = 19U;
 static const uint64_t mylite_mysql_datetime_fraction_display_base = 20U;
 static const long mylite_nanoseconds_per_microsecond = 1000L;
@@ -2140,6 +2141,7 @@ infer_current_temporal_function_descriptor(const struct mylite_sql_ast_node *exp
 static int infer_temporal_function_descriptor(mylite_db *database,
                                               const struct mylite_select_plan *plan,
                                               const struct mylite_sql_ast_node *expression,
+                                              const struct mylite_expression_value *value,
                                               struct mylite_field_descriptor *out_descriptor);
 static struct mylite_field_descriptor current_datetime_function_descriptor(unsigned int fsp);
 static struct mylite_field_descriptor current_date_function_descriptor(void);
@@ -2150,6 +2152,19 @@ infer_temporal_scalar_function_descriptor(const struct mylite_sql_ast_node *name
                                           struct mylite_field_descriptor *out_descriptor);
 static bool infer_temporal_part_function_descriptor(const struct mylite_sql_ast_node *expression,
                                                     struct mylite_field_descriptor *out_descriptor);
+static int infer_time_function_descriptor(mylite_db *database,
+                                          const struct mylite_select_plan *plan,
+                                          const struct mylite_sql_ast_node *expression,
+                                          const struct mylite_expression_value *value,
+                                          struct mylite_field_descriptor *out_descriptor);
+static unsigned int
+time_function_argument_decimals(const struct mylite_sql_ast_node *argument,
+                                const struct mylite_field_descriptor *descriptor,
+                                const struct mylite_expression_value *value);
+static bool time_function_argument_is_approximate(const struct mylite_sql_ast_node *argument,
+                                                  const struct mylite_field_descriptor *descriptor);
+static struct mylite_field_descriptor time_function_descriptor(unsigned int decimals);
+static unsigned int time_function_value_decimals(const struct mylite_expression_value *value);
 static int infer_date_interval_function_descriptor(mylite_db *database,
                                                    const struct mylite_select_plan *plan,
                                                    const struct mylite_sql_ast_node *expression,
@@ -2357,6 +2372,8 @@ static bool field_descriptor_has_decimal_result(const struct mylite_field_descri
 static bool field_descriptor_has_double_result(const struct mylite_field_descriptor *descriptor);
 static bool field_descriptor_preserves_temporal_fraction_digits(
     const struct mylite_field_descriptor *descriptor);
+static enum mylite_expression_temporal_type
+expression_temporal_type_from_descriptor(const struct mylite_field_descriptor *descriptor);
 static struct mylite_field_descriptor null_expression_descriptor(void);
 static struct mylite_field_descriptor
 cast_signed_descriptor(const struct mylite_field_descriptor *source);
@@ -2471,6 +2488,7 @@ static bool function_name_is_timestampdiff(const struct mylite_sql_ast_node *nam
 static bool function_name_is_to_days(const struct mylite_sql_ast_node *name);
 static bool function_name_is_to_seconds(const struct mylite_sql_ast_node *name);
 static bool function_name_is_from_days(const struct mylite_sql_ast_node *name);
+static bool function_name_is_time_extraction(const struct mylite_sql_ast_node *name);
 static bool function_name_is_year_part(const struct mylite_sql_ast_node *name);
 static bool function_name_is_month_part(const struct mylite_sql_ast_node *name);
 static bool function_name_is_day_part(const struct mylite_sql_ast_node *name);
@@ -10833,7 +10851,7 @@ static int infer_function_expression_descriptor(mylite_db *database,
                                                 out_descriptor)) {
         return MYLITE_OK;
     }
-    status = infer_temporal_function_descriptor(database, plan, expression, out_descriptor);
+    status = infer_temporal_function_descriptor(database, plan, expression, value, out_descriptor);
     if (status != MYLITE_UNSUPPORTED) {
         return status;
     }
@@ -10916,6 +10934,7 @@ static int infer_function_expression_descriptor(mylite_db *database,
 static int infer_temporal_function_descriptor(mylite_db *database,
                                               const struct mylite_select_plan *plan,
                                               const struct mylite_sql_ast_node *expression,
+                                              const struct mylite_expression_value *value,
                                               struct mylite_field_descriptor *out_descriptor)
 {
     if (infer_current_temporal_function_descriptor(expression, out_descriptor)) {
@@ -10923,6 +10942,11 @@ static int infer_temporal_function_descriptor(mylite_db *database,
     }
     if (infer_temporal_part_function_descriptor(expression, out_descriptor)) {
         return MYLITE_OK;
+    }
+    int status = infer_time_function_descriptor(database, plan, expression, value, out_descriptor);
+
+    if (status != MYLITE_UNSUPPORTED) {
+        return status;
     }
     return infer_date_interval_function_descriptor(database, plan, expression, out_descriptor);
 }
@@ -11981,6 +12005,129 @@ static bool infer_temporal_part_function_descriptor(const struct mylite_sql_ast_
         return true;
     }
     return false;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int infer_time_function_descriptor(mylite_db *database,
+                                          const struct mylite_select_plan *plan,
+                                          const struct mylite_sql_ast_node *expression,
+                                          const struct mylite_expression_value *value,
+                                          struct mylite_field_descriptor *out_descriptor)
+{
+    const struct mylite_sql_ast_node *name = child_at(expression, 0U);
+    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *argument = child_at(arguments, 0U);
+    struct mylite_field_descriptor argument_descriptor = field_descriptor_defaults();
+    struct mylite_expression_value evaluated_value = {0};
+    struct mylite_expression_warnings warnings = {0};
+    const struct mylite_expression_value *descriptor_value = value;
+    unsigned int decimals = 0U;
+    int status = MYLITE_OK;
+
+    if (!function_name_is_time_extraction(name)) {
+        return MYLITE_UNSUPPORTED;
+    }
+    if (descriptor_value == NULL && mylite_expression_is_cacheable_no_table(expression) &&
+        mylite_expression_eval(expression, &warnings, &evaluated_value) == 0) {
+        descriptor_value = &evaluated_value;
+    }
+    status = infer_expression_descriptor(database, plan, argument, NULL, &argument_descriptor);
+    if (status != MYLITE_OK) {
+        goto cleanup;
+    }
+    if (argument_descriptor.type == MYLITE_FIELD_TYPE_TIME ||
+        argument_descriptor.type == MYLITE_FIELD_TYPE_DATETIME ||
+        argument_descriptor.type == MYLITE_FIELD_TYPE_TIMESTAMP) {
+        decimals = argument_descriptor.decimals;
+    } else if (argument_descriptor.type == MYLITE_FIELD_TYPE_DATE ||
+               argument_descriptor.type == MYLITE_FIELD_TYPE_NULL) {
+        decimals = 0U;
+    } else {
+        decimals =
+            time_function_argument_decimals(argument, &argument_descriptor, descriptor_value);
+    }
+    *out_descriptor = time_function_descriptor(decimals);
+    status = MYLITE_OK;
+
+cleanup:
+    mylite_expression_value_deinit(&evaluated_value);
+    mylite_expression_warnings_deinit(&warnings);
+    return status;
+}
+
+static unsigned int
+time_function_argument_decimals(const struct mylite_sql_ast_node *argument,
+                                const struct mylite_field_descriptor *descriptor,
+                                const struct mylite_expression_value *value)
+{
+    if (time_function_argument_is_approximate(argument, descriptor)) {
+        return mylite_mysql_temporal_max_fsp;
+    }
+    if (descriptor != NULL && descriptor->type == MYLITE_FIELD_TYPE_NEWDECIMAL) {
+        return descriptor->decimals > mylite_mysql_temporal_max_fsp ? mylite_mysql_temporal_max_fsp
+                                                                    : descriptor->decimals;
+    }
+    if (field_descriptor_has_text_result(descriptor)) {
+        if (value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+            return time_function_value_decimals(value);
+        }
+        if (value == NULL || value->kind == MYLITE_EXPRESSION_VALUE_NULL) {
+            return mylite_mysql_temporal_max_fsp;
+        }
+    }
+    return 0U;
+}
+
+static bool time_function_argument_is_approximate(const struct mylite_sql_ast_node *argument,
+                                                  const struct mylite_field_descriptor *descriptor)
+{
+    argument = unwrap_parenthesized_expression(argument);
+    if (argument != NULL && argument->kind == MYLITE_SQL_AST_UNARY_EXPRESSION &&
+        (argument->operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ||
+         argument->operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE)) {
+        argument = unwrap_parenthesized_expression(child_at(argument, 0U));
+    }
+    if (argument != NULL && argument->kind == MYLITE_SQL_AST_LITERAL &&
+        argument->literal_kind == MYLITE_SQL_AST_LITERAL_FLOAT) {
+        return true;
+    }
+    if (descriptor == NULL) {
+        return false;
+    }
+    if (descriptor->type == MYLITE_FIELD_TYPE_FLOAT) {
+        return true;
+    }
+    return descriptor->type == MYLITE_FIELD_TYPE_DOUBLE;
+}
+
+static struct mylite_field_descriptor time_function_descriptor(unsigned int decimals)
+{
+    struct mylite_field_descriptor descriptor = {
+        .type = MYLITE_FIELD_TYPE_TIME,
+        .flags = MYLITE_FIELD_FLAG_BINARY,
+        .length = decimals == 0U ? mylite_mysql_time_display_length
+                                 : mylite_mysql_time_fraction_display_base + decimals,
+        .decimals = decimals,
+        .charset_id = mylite_mysql_binary_charset_id,
+        .nullable = true,
+    };
+
+    field_descriptor_set_nullable(&descriptor, true);
+    return descriptor;
+}
+
+static unsigned int time_function_value_decimals(const struct mylite_expression_value *value)
+{
+    const char *dot = value == NULL ? NULL : strchr(value->text_value, '.');
+    unsigned int decimals = 0U;
+
+    if (dot == NULL) {
+        return 0U;
+    }
+    for (++dot; *dot >= '0' && *dot <= '9' && decimals < mylite_mysql_temporal_max_fsp; ++dot) {
+        ++decimals;
+    }
+    return decimals;
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
@@ -13071,10 +13218,54 @@ static bool field_descriptor_preserves_temporal_fraction_digits(
     if (descriptor == NULL) {
         return false;
     }
-    if (descriptor->type == MYLITE_FIELD_TYPE_DATETIME) {
+    if (descriptor->type == MYLITE_FIELD_TYPE_TIME ||
+        descriptor->type == MYLITE_FIELD_TYPE_DATETIME) {
         return true;
     }
     return descriptor->type == MYLITE_FIELD_TYPE_TIMESTAMP;
+}
+
+static enum mylite_expression_temporal_type
+expression_temporal_type_from_descriptor(const struct mylite_field_descriptor *descriptor)
+{
+    if (descriptor == NULL) {
+        return MYLITE_EXPRESSION_TEMPORAL_NONE;
+    }
+    switch (descriptor->type) {
+    case MYLITE_FIELD_TYPE_DATE:
+        return MYLITE_EXPRESSION_TEMPORAL_DATE;
+    case MYLITE_FIELD_TYPE_TIME:
+        return MYLITE_EXPRESSION_TEMPORAL_TIME;
+    case MYLITE_FIELD_TYPE_DATETIME:
+        return MYLITE_EXPRESSION_TEMPORAL_DATETIME;
+    case MYLITE_FIELD_TYPE_TIMESTAMP:
+        return MYLITE_EXPRESSION_TEMPORAL_TIMESTAMP;
+    case MYLITE_FIELD_TYPE_DECIMAL:
+    case MYLITE_FIELD_TYPE_TINY:
+    case MYLITE_FIELD_TYPE_SHORT:
+    case MYLITE_FIELD_TYPE_LONG:
+    case MYLITE_FIELD_TYPE_FLOAT:
+    case MYLITE_FIELD_TYPE_DOUBLE:
+    case MYLITE_FIELD_TYPE_NULL:
+    case MYLITE_FIELD_TYPE_LONGLONG:
+    case MYLITE_FIELD_TYPE_INT24:
+    case MYLITE_FIELD_TYPE_YEAR:
+    case MYLITE_FIELD_TYPE_NEWDATE:
+    case MYLITE_FIELD_TYPE_VARCHAR:
+    case MYLITE_FIELD_TYPE_BIT:
+    case MYLITE_FIELD_TYPE_NEWDECIMAL:
+    case MYLITE_FIELD_TYPE_ENUM:
+    case MYLITE_FIELD_TYPE_SET:
+    case MYLITE_FIELD_TYPE_TINY_BLOB:
+    case MYLITE_FIELD_TYPE_MEDIUM_BLOB:
+    case MYLITE_FIELD_TYPE_LONG_BLOB:
+    case MYLITE_FIELD_TYPE_BLOB:
+    case MYLITE_FIELD_TYPE_VAR_STRING:
+    case MYLITE_FIELD_TYPE_STRING:
+    case MYLITE_FIELD_TYPE_GEOMETRY:
+    default:
+        return MYLITE_EXPRESSION_TEMPORAL_NONE;
+    }
 }
 
 static struct mylite_field_descriptor null_expression_descriptor(void)
@@ -13911,6 +14102,13 @@ static bool function_name_is_to_seconds(const struct mylite_sql_ast_node *name)
 static bool function_name_is_from_days(const struct mylite_sql_ast_node *name)
 {
     static const char *const names[] = {"FROM_DAYS"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_is_time_extraction(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"TIME"};
 
     return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }
@@ -26455,6 +26653,7 @@ static int copy_update_sqlite_column_value(sqlite3_stmt *scan, int column,
         out_value->text_value = copy_span_text((const char *)text, out_value->text_length);
         out_value->preserve_temporal_fraction_digits =
             field_descriptor_preserves_temporal_fraction_digits(descriptor);
+        out_value->temporal_type = expression_temporal_type_from_descriptor(descriptor);
         return out_value->text_value == NULL ? -1 : 0;
     }
     default:
@@ -28360,22 +28559,37 @@ static void capture_current_utc_timestamp(struct mylite_statement_timestamp *out
 static int set_current_temporal_datetime_value(mylite_stmt *stmt, unsigned int fsp,
                                                struct mylite_expression_value *out_value)
 {
-    return set_current_temporal_value(stmt, "%Y-%m-%d %H:%M:%S",
-                                      (size_t)mylite_mysql_datetime_display_length, fsp, out_value);
+    int status = set_current_temporal_value(
+        stmt, "%Y-%m-%d %H:%M:%S", (size_t)mylite_mysql_datetime_display_length, fsp, out_value);
+
+    if (status == MYLITE_OK) {
+        out_value->temporal_type = MYLITE_EXPRESSION_TEMPORAL_DATETIME;
+    }
+    return status;
 }
 
 static int set_current_temporal_date_value(mylite_stmt *stmt,
                                            struct mylite_expression_value *out_value)
 {
-    return set_current_temporal_value(stmt, "%Y-%m-%d", (size_t)mylite_mysql_date_display_length,
-                                      0U, out_value);
+    int status = set_current_temporal_value(
+        stmt, "%Y-%m-%d", (size_t)mylite_mysql_date_display_length, 0U, out_value);
+
+    if (status == MYLITE_OK) {
+        out_value->temporal_type = MYLITE_EXPRESSION_TEMPORAL_DATE;
+    }
+    return status;
 }
 
 static int set_current_temporal_time_value(mylite_stmt *stmt, unsigned int fsp,
                                            struct mylite_expression_value *out_value)
 {
-    return set_current_temporal_value(
+    int status = set_current_temporal_value(
         stmt, "%H:%M:%S", (size_t)mylite_mysql_current_time_display_length, fsp, out_value);
+
+    if (status == MYLITE_OK) {
+        out_value->temporal_type = MYLITE_EXPRESSION_TEMPORAL_TIME;
+    }
+    return status;
 }
 
 static int set_current_temporal_value(mylite_stmt *stmt, const char *format, size_t base_length,
@@ -33624,6 +33838,8 @@ static int copy_table_select_column_value(mylite_stmt *stmt, size_t column_index
         out_value->preserve_temporal_fraction_digits =
             field_descriptor_preserves_temporal_fraction_digits(
                 column == NULL ? NULL : &column->descriptor);
+        out_value->temporal_type =
+            expression_temporal_type_from_descriptor(column == NULL ? NULL : &column->descriptor);
     }
     return status;
 }

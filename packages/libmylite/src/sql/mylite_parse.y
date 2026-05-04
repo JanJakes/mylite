@@ -3622,6 +3622,9 @@ nonreserved_identifier_keyword(A) ::= STATUS(T). {
 nonreserved_identifier_keyword(A) ::= TABLES(T). {
     A = T;
 }
+nonreserved_identifier_keyword(A) ::= TIME(T). {
+    A = T;
+}
 nonreserved_identifier_keyword(A) ::= TRUNCATE(T). {
     A = T;
 }

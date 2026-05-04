@@ -262,6 +262,7 @@ static int test_timestampadd_function_execution(void);
 static int test_to_days_function_execution(void);
 static int test_to_seconds_function_execution(void);
 static int test_from_days_function_execution(void);
+static int test_time_function_execution(void);
 static int test_date_add_sub_functions_execution(void);
 static int test_round_scalar_function_execution(mylite_db *database);
 static int test_format_scalar_function_execution(mylite_db *database);
@@ -480,6 +481,7 @@ int main(void)
     failures += test_to_days_function_execution();
     failures += test_to_seconds_function_execution();
     failures += test_from_days_function_execution();
+    failures += test_time_function_execution();
     failures += test_date_add_sub_functions_execution();
     failures += test_inet_ipv4_functions_execution();
     failures += test_charset_collation_functions_execution();
@@ -7486,6 +7488,354 @@ static int test_from_days_function_execution(void)
     failures += expect_no_stmt_handle(&stmt, "FROM_DAYS missing argument rejected");
     failures += prepare_sql(database, "SELECT FROM_DAYS(739310,'x')", MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "FROM_DAYS extra argument rejected");
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_time_function_execution(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const struct expected_result_metadata metadata[] = {
+        {"time_value", NULL, NULL, NULL, NULL, NULL, 10U, MYLITE_FIELD_TYPE_TIME, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"time_fraction", NULL, NULL, NULL, NULL, NULL, 17U, MYLITE_FIELD_TYPE_TIME, 6U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"time_null", NULL, NULL, NULL, NULL, NULL, 10U, MYLITE_FIELD_TYPE_TIME, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"time_bad", NULL, NULL, NULL, NULL, NULL, 17U, MYLITE_FIELD_TYPE_TIME, 6U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"numeric_fraction", NULL, NULL, NULL, NULL, NULL, 14U, MYLITE_FIELD_TYPE_TIME, 3U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"negative_exact_fraction", NULL, NULL, NULL, NULL, NULL, 14U, MYLITE_FIELD_TYPE_TIME, 3U,
+         63U, MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"approx_fraction", NULL, NULL, NULL, NULL, NULL, 17U, MYLITE_FIELD_TYPE_TIME, 6U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"decimal_cast", NULL, NULL, NULL, NULL, NULL, 14U, MYLITE_FIELD_TYPE_TIME, 3U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+    };
+    static const struct expected_result_metadata table_metadata[] = {
+        {"d_time_meta", NULL, NULL, NULL, NULL, NULL, 10U, MYLITE_FIELD_TYPE_TIME, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"dt_time_meta", NULL, NULL, NULL, NULL, NULL, 17U, MYLITE_FIELD_TYPE_TIME, 6U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"ti_time_meta", NULL, NULL, NULL, NULL, NULL, 17U, MYLITE_FIELD_TYPE_TIME, 6U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"note_time_meta", NULL, NULL, NULL, NULL, NULL, 17U, MYLITE_FIELD_TYPE_TIME, 6U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"const_time_meta", NULL, NULL, NULL, NULL, NULL, 10U, MYLITE_FIELD_TYPE_TIME, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"const_fraction_meta", NULL, NULL, NULL, NULL, NULL, 14U, MYLITE_FIELD_TYPE_TIME, 3U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+    };
+    static const char *const projection_columns[] = {"id", "d_time", "dt_time", "ti_time"};
+    static const char *const projection_values[] = {
+        "1",
+        "00:00:00",
+        "12:34:56.123456",
+        "12:34:56.123456",
+    };
+    static const char *const updated_columns[] = {"id", "out_t", "note"};
+    static const char *const updated_values[] = {"1", "12:34:56.123456", "midday"};
+    static const char *const remaining_columns[] = {"id"};
+    static const char *const remaining_values[] = {"1", "3"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open TIME function database");
+
+    failures += prepare_sql(database,
+                            "SELECT TIME('12:34:56') AS time_value, "
+                            "TIME('12:34:56.123456') AS time_fraction, "
+                            "TIME(NULL) AS time_null, TIME('bad') AS time_bad, "
+                            "TIME(123456.789) AS numeric_fraction, "
+                            "TIME(-123456.789) AS negative_exact_fraction, "
+                            "TIME(123456.789E0) AS approx_fraction, "
+                            "TIME(CAST(123456.789 AS DECIMAL(9,3))) AS decimal_cast",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "TIME metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TIME metadata row");
+    failures += expect_string(mylite_column_text(stmt, 0), "12:34:56", "TIME metadata value");
+    failures +=
+        expect_string(mylite_column_text(stmt, 1), "12:34:56.123456", "TIME metadata fraction");
+    failures += expect_null_text(mylite_column_text(stmt, 2), "TIME metadata null");
+    failures += expect_null_text(mylite_column_text(stmt, 3), "TIME metadata invalid null");
+    failures += expect_string(mylite_column_text(stmt, 4), "12:34:56.789",
+                              "TIME metadata numeric fraction");
+    failures += expect_string(mylite_column_text(stmt, 5), "-12:34:56.789",
+                              "TIME metadata negative exact fraction");
+    failures += expect_string(mylite_column_text(stmt, 6), "12:34:56.789000",
+                              "TIME metadata approximate fraction");
+    failures +=
+        expect_string(mylite_column_text(stmt, 7), "12:34:56.789", "TIME metadata decimal cast");
+    failures += expect_int(mylite_warning_count(database), 1, "TIME metadata warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "TIME metadata warning code");
+    failures += expect_string(mylite_warning_message(database, 0),
+                              "Truncated incorrect time value: 'bad'", "TIME metadata warning");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TIME metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT TIME(NULL) AS null_value, "
+                            "TIME('12:34:56') AS time_text, "
+                            "TIME('12:34:56.123456') AS time_fraction, "
+                            "TIME('2024-02-29 12:34:56.123456') AS datetime_fraction, "
+                            "TIME('20240229123456') AS compact_string, "
+                            "TIME(20240229123456) AS compact_number, "
+                            "TIME('20240229123456.789') AS compact_string_fraction, "
+                            "TIME(20240229123456.789) AS compact_number_fraction, "
+                            "TIME(123456) AS numeric_time, TIME(1234) AS numeric_short, "
+                            "TIME(12) AS numeric_tiny, TIME(123456.789) AS numeric_fraction, "
+                            "TIME('1:2:3') AS colon_short, TIME('25:00:00') AS over_24, "
+                            "TIME('-12:34:56') AS negative_time",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TIME scalar row");
+    failures += expect_null_text(mylite_column_text(stmt, 0), "TIME null value");
+    failures += expect_string(mylite_column_text(stmt, 1), "12:34:56", "TIME text value");
+    failures +=
+        expect_string(mylite_column_text(stmt, 2), "12:34:56.123456", "TIME fraction value");
+    failures += expect_string(mylite_column_text(stmt, 3), "12:34:56.123456",
+                              "TIME datetime fraction value");
+    failures += expect_string(mylite_column_text(stmt, 4), "12:34:56", "TIME compact string");
+    failures += expect_string(mylite_column_text(stmt, 5), "12:34:56", "TIME compact number");
+    failures +=
+        expect_string(mylite_column_text(stmt, 6), "12:34:56.789", "TIME compact string fraction");
+    failures +=
+        expect_string(mylite_column_text(stmt, 7), "12:34:56.789", "TIME compact number fraction");
+    failures += expect_string(mylite_column_text(stmt, 8), "12:34:56", "TIME numeric time");
+    failures += expect_string(mylite_column_text(stmt, 9), "00:12:34", "TIME numeric short");
+    failures += expect_string(mylite_column_text(stmt, 10), "00:00:12", "TIME numeric tiny");
+    failures +=
+        expect_string(mylite_column_text(stmt, 11), "12:34:56.789", "TIME numeric fraction");
+    failures += expect_string(mylite_column_text(stmt, 12), "01:02:03", "TIME colon short");
+    failures += expect_string(mylite_column_text(stmt, 13), "25:00:00", "TIME over 24 hours");
+    failures += expect_string(mylite_column_text(stmt, 14), "-12:34:56", "TIME negative value");
+    failures += expect_int(mylite_warning_count(database), 0, "TIME scalar warning count");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TIME scalar done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT TIME(123456E0) AS approx_int, "
+                            "TIME(12E0) AS approx_tiny, "
+                            "TIME(20240229123456E0) AS approx_compact_dt, "
+                            "TIME(-123456E0) AS negative_approx_int",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TIME approximate row");
+    failures +=
+        expect_string(mylite_column_text(stmt, 0), "12:34:56.000000", "TIME approximate integer");
+    failures +=
+        expect_string(mylite_column_text(stmt, 1), "00:00:12.000000", "TIME approximate tiny");
+    failures += expect_string(mylite_column_text(stmt, 2), "12:34:56.000000",
+                              "TIME approximate compact datetime");
+    failures += expect_string(mylite_column_text(stmt, 3), "-12:34:56.000000",
+                              "TIME negative approximate integer");
+    failures += expect_int(mylite_warning_count(database), 0, "TIME approximate warning count");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TIME approximate done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT TIME('2024-02-29') AS date_text, TIME('bad') AS bad_text, "
+                            "TIME('') AS empty_text, TIME('20240229') AS date_digits, "
+                            "TIME('839:00:00') AS high_clip, "
+                            "TIME('-839:00:00') AS low_clip, TIME(1234567) AS bad_numeric, "
+                            "TIME('123456789') AS too_long_digits, "
+                            "TIME('12:34:') AS partial_time, "
+                            "TIME('202402291234') AS bad_compact_string, "
+                            "TIME(202402291234) AS bad_compact_number, "
+                            "TIME('2024-02-29 12:34:56x') AS bad_datetime_tail, "
+                            "TIME(1e20) AS bad_approximate",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TIME warning row");
+    failures += expect_string(mylite_column_text(stmt, 0), "00:20:24", "TIME date text coerced");
+    failures += expect_null_text(mylite_column_text(stmt, 1), "TIME bad text null");
+    failures += expect_null_text(mylite_column_text(stmt, 2), "TIME empty text null");
+    failures += expect_string(mylite_column_text(stmt, 3), "838:59:59", "TIME date digits clip");
+    failures += expect_string(mylite_column_text(stmt, 4), "838:59:59", "TIME high clip");
+    failures += expect_string(mylite_column_text(stmt, 5), "-838:59:59", "TIME low clip");
+    failures += expect_null_text(mylite_column_text(stmt, 6), "TIME bad numeric null");
+    failures += expect_null_text(mylite_column_text(stmt, 7), "TIME too-long digits null");
+    failures += expect_string(mylite_column_text(stmt, 8), "12:34:00", "TIME partial time");
+    failures += expect_null_text(mylite_column_text(stmt, 9), "TIME bad compact string null");
+    failures += expect_null_text(mylite_column_text(stmt, 10), "TIME bad compact number null");
+    failures += expect_string(mylite_column_text(stmt, 11), "12:34:56", "TIME datetime tail value");
+    failures += expect_null_text(mylite_column_text(stmt, 12), "TIME bad approximate null");
+    failures += expect_int(mylite_warning_count(database), 13, "TIME warning count");
+    for (int index = 0; index < 13; ++index) {
+        failures += expect_int((int)mylite_warning_code(database, index),
+                               mysql_warning_truncated_wrong_value, "TIME warning code");
+    }
+    failures +=
+        expect_string(mylite_warning_message(database, 0),
+                      "Truncated incorrect time value: '2024-02-29'", "TIME date text warning");
+    failures += expect_string(mylite_warning_message(database, 1),
+                              "Truncated incorrect time value: 'bad'", "TIME bad text warning");
+    failures += expect_string(mylite_warning_message(database, 2),
+                              "Truncated incorrect time value: ''", "TIME empty text warning");
+    failures +=
+        expect_string(mylite_warning_message(database, 3),
+                      "Truncated incorrect time value: '20240229'", "TIME date digits warning");
+    failures +=
+        expect_string(mylite_warning_message(database, 4),
+                      "Truncated incorrect time value: '839:00:00'", "TIME high clip warning");
+    failures +=
+        expect_string(mylite_warning_message(database, 5),
+                      "Truncated incorrect time value: '-839:00:00'", "TIME low clip warning");
+    failures +=
+        expect_string(mylite_warning_message(database, 6),
+                      "Truncated incorrect time value: '1234567'", "TIME bad numeric warning");
+    failures += expect_string(mylite_warning_message(database, 7),
+                              "Truncated incorrect time value: '123456789'",
+                              "TIME too-long digits warning");
+    failures += expect_string(mylite_warning_message(database, 8),
+                              "Truncated incorrect time value: '12:34:'", "TIME partial warning");
+    failures += expect_string(mylite_warning_message(database, 9),
+                              "Truncated incorrect time value: '202402291234'",
+                              "TIME bad compact string warning");
+    failures += expect_string(mylite_warning_message(database, 10),
+                              "Truncated incorrect time value: '202402291234'",
+                              "TIME bad compact number warning");
+    failures += expect_string(mylite_warning_message(database, 11),
+                              "Truncated incorrect time value: '2024-02-29 12:34:56x'",
+                              "TIME datetime tail warning");
+    failures +=
+        expect_string(mylite_warning_message(database, 12),
+                      "Truncated incorrect time value: '1e20'", "TIME bad approximate warning");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TIME warning done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT TIME('12:34:56.1234567') AS rounded_fraction, "
+                            "TIME('12:34:56.9999995') AS rounded_second, "
+                            "TIME('23:59:59.9999999') AS rounded_day_hour, "
+                            "TIME('20240229123456.9999995') AS compact_rounded_second, "
+                            "TIME('838:59:59.9999999') AS rounded_clip",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TIME rounding row");
+    failures +=
+        expect_string(mylite_column_text(stmt, 0), "12:34:56.123457", "TIME rounded fraction");
+    failures +=
+        expect_string(mylite_column_text(stmt, 1), "12:34:57.000000", "TIME rounded second");
+    failures +=
+        expect_string(mylite_column_text(stmt, 2), "24:00:00.000000", "TIME rounded day hour");
+    failures += expect_string(mylite_column_text(stmt, 3), "12:34:57.000000",
+                              "TIME compact rounded second");
+    failures += expect_string(mylite_column_text(stmt, 4), "838:59:59.000000", "TIME rounded clip");
+    failures += expect_int(mylite_warning_count(database), 1, "TIME rounding warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "TIME rounding warning code");
+    failures += expect_string(mylite_warning_message(database, 0),
+                              "Truncated incorrect time value: '838:59:59.9999999'",
+                              "TIME rounding clip warning");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TIME rounding done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE DATABASE time_functions", MYLITE_DONE);
+    failures += execute_sql(database, "USE time_functions", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE temporal_time_func ("
+                            "id INT PRIMARY KEY, d DATE, dt DATETIME(6), ti TIME(6), "
+                            "out_t TIME(6), note VARCHAR(32))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO temporal_time_func VALUES "
+                            "(1, '2024-02-29', '2024-02-29 12:34:56.123456', "
+                            "'12:34:56.123456', NULL, 'midday'), "
+                            "(2, '2024-03-01', '2024-03-01 00:00:01.500000', "
+                            "'00:00:01.500000', NULL, 'early'), "
+                            "(3, NULL, NULL, NULL, NULL, 'null')",
+                            MYLITE_DONE);
+    failures += prepare_sql(database,
+                            "SELECT TIME(d) AS d_time_meta, TIME(dt) AS dt_time_meta, "
+                            "TIME(ti) AS ti_time_meta, TIME(note) AS note_time_meta "
+                            ", TIME('12:34:56') AS const_time_meta, "
+                            "TIME('12:34:56.123') AS const_fraction_meta "
+                            "FROM temporal_time_func LIMIT 0",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, table_metadata,
+                                       (int)(sizeof(table_metadata) / sizeof(table_metadata[0])),
+                                       "TIME table metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TIME table metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database,
+                                   "SELECT id, TIME(d) AS d_time, TIME(dt) AS dt_time, "
+                                   "TIME(ti) AS ti_time FROM temporal_time_func "
+                                   "WHERE TIME(dt) >= '12:00:00' "
+                                   "ORDER BY TIME(dt) DESC, id",
+                                   projection_columns, 4, projection_values, 1,
+                                   "TIME temporal table projection");
+    failures += expect_int(mylite_warning_count(database), 0, "TIME temporal table warnings");
+    failures += execute_sql_expect_done_affected(database,
+                                                 "UPDATE temporal_time_func "
+                                                 "SET out_t = TIME(dt) "
+                                                 "WHERE TIME(d) = '00:00:00' AND id = 1",
+                                                 1, "TIME update");
+    failures +=
+        expect_select_rows(database, "SELECT id, out_t, note FROM temporal_time_func WHERE id = 1",
+                           updated_columns, 3, updated_values, 1, "TIME updated row");
+    failures += execute_sql_expect_done_affected(database,
+                                                 "DELETE FROM temporal_time_func "
+                                                 "WHERE TIME(dt) < '01:00:00'",
+                                                 1, "TIME delete");
+    failures += expect_select_rows(database, "SELECT id FROM temporal_time_func ORDER BY id",
+                                   remaining_columns, 1, remaining_values, 2, "TIME delete result");
+    failures += prepare_sql(database,
+                            "UPDATE temporal_time_func "
+                            "SET out_t = TIME('bad') WHERE id = 1",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "TIME invalid update promoted");
+    failures +=
+        expect_contains(mylite_error_message(database), "Truncated incorrect time value: 'bad'",
+                        "TIME invalid update error");
+    failures += expect_int(mylite_warning_count(database), 1, "TIME invalid update warnings");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_select_rows(database, "SELECT id, out_t, note FROM temporal_time_func WHERE id = 1",
+                           updated_columns, 3, updated_values, 1, "TIME invalid update unchanged");
+    failures += prepare_sql(database,
+                            "DELETE FROM temporal_time_func "
+                            "WHERE TIME('bad') IS NULL",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "TIME invalid delete promoted");
+    failures +=
+        expect_contains(mylite_error_message(database), "Truncated incorrect time value: 'bad'",
+                        "TIME invalid delete error");
+    failures += expect_int(mylite_warning_count(database), 1, "TIME invalid delete warnings");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM temporal_time_func ORDER BY id",
+                                   remaining_columns, 1, remaining_values, 2,
+                                   "TIME invalid delete unchanged");
+
+    failures += prepare_sql(database, "SELECT TIME()", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "TIME missing argument rejected");
+    failures += prepare_sql(database, "SELECT TIME('12:34:56','x')", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "TIME extra argument rejected");
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)

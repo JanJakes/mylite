@@ -21,6 +21,14 @@ enum mylite_expression_warning_level {
     MYLITE_EXPRESSION_WARNING_LEVEL_NOTE = 2,
 };
 
+enum mylite_expression_temporal_type {
+    MYLITE_EXPRESSION_TEMPORAL_NONE = 0,
+    MYLITE_EXPRESSION_TEMPORAL_DATE = 1,
+    MYLITE_EXPRESSION_TEMPORAL_TIME = 2,
+    MYLITE_EXPRESSION_TEMPORAL_DATETIME = 3,
+    MYLITE_EXPRESSION_TEMPORAL_TIMESTAMP = 4,
+};
+
 struct mylite_expression_warning {
     unsigned int code;
     char *message;
@@ -40,6 +48,7 @@ struct mylite_expression_value {
     bool compact_real_text;
     bool suppress_text_numeric_warnings;
     bool preserve_temporal_fraction_digits;
+    enum mylite_expression_temporal_type temporal_type;
     char *text_value;
     size_t text_length;
 };

@@ -71,6 +71,7 @@ In scope for the initial implementation:
   - `DATE_SUB`, `SUBDATE`
   - `TIMESTAMPADD`, `TIMESTAMPDIFF`
   - `TO_DAYS`, `TO_SECONDS`, `FROM_DAYS`
+  - `TIME`
   - `EXTRACT`
 - conditional and comparison functions:
   - `IF`
@@ -185,7 +186,7 @@ by common scalar expressions:
   `SECOND` units, `TIMESTAMPADD` for the simple `DAY`, `WEEK`, `MONTH`,
   `YEAR`, `HOUR`, `MINUTE`, and `SECOND` units, and `TIMESTAMPDIFF` for the
   simple `DAY`, `WEEK`, `MONTH`, `YEAR`, `HOUR`, `MINUTE`, and `SECOND` units,
-  plus `TO_DAYS`, `TO_SECONDS`, and `FROM_DAYS`;
+  plus `TO_DAYS`, `TO_SECONDS`, `FROM_DAYS`, and `TIME`;
   see
   `docs/specs/current-temporal-functions/specs.md` and
   `docs/specs/date-and-datediff-functions/specs.md` and
@@ -195,7 +196,8 @@ by common scalar expressions:
   `docs/specs/timestampdiff-function/specs.md` and
   `docs/specs/to-days-function/specs.md` and
   `docs/specs/to-seconds-function/specs.md` and
-  `docs/specs/from-days-function/specs.md`
+  `docs/specs/from-days-function/specs.md` and
+  `docs/specs/time-function/specs.md`
 - grammar-level cast expressions: `CAST(expr AS type)`, `CONVERT(expr, type)`,
   and `CONVERT(expr USING charset_name)` for the supported CAST target and
   charset-registry subsets; see `docs/specs/cast-expression/specs.md` and
@@ -243,13 +245,14 @@ arithmetic over supported simple units, month-end clipping, date-arithmetic
 warning propagation, TIMESTAMPDIFF calendar and elapsed-time differences over
 supported simple units, TO_DAYS day-number conversion, TO_SECONDS seconds-count
 conversion with time-of-day inclusion, FROM_DAYS day-number-to-date conversion,
+TIME extraction/coercion over typed temporal and untyped inputs,
 zero and incomplete date warnings, unsupported functions, unsupported arity,
 and selected result metadata.
 
 This checkpoint intentionally does not yet implement `INSERT ... VALUES` or
 `INSERT ... SET` function expressions, temporal functions outside the current,
 date extraction/difference, first date-arithmetic, and simple temporal part
-extraction slices, information
+extraction, day-number conversion, and time extraction slices, information
 functions outside the session-state and session-identity slices,
 aggregate/window functions, JSON,
 regular expressions, spatial, full-text, encryption, loadable functions,
@@ -647,6 +650,7 @@ Verified `mysql --column-type-info -vvv` examples:
 | `TO_DAYS(...) AS to_days_value` | `LONGLONG` | `8` | `0` | `binary` | `BINARY NUM` |
 | `TO_SECONDS(...) AS to_seconds_value` | `LONGLONG` | `21` | `0` | `binary` | `BINARY NUM` |
 | `FROM_DAYS(...) AS from_days_value` | `DATE` | `10` | `0` | `binary` | `BINARY` / `NOT_NULL BINARY` |
+| `TIME(...) AS time_value` | `TIME` | `10` or fractional length | argument or literal precision | `binary` | `BINARY` |
 | `DATABASE() AS database_value` | `VAR_STRING` | `256` | `31` | `utf8mb4_0900_ai_ci` | nullable |
 | `VERSION() AS version_value` | `VAR_STRING` | `20` | `31` | `utf8mb4_0900_ai_ci` | `NOT_NULL` |
 | `LAST_INSERT_ID() AS last_insert_id_value` | `LONGLONG` | `21` | `0` | `binary` | `NOT_NULL UNSIGNED BINARY NUM` |
@@ -1004,6 +1008,7 @@ SELECT
   TO_DAYS('2024-02-29'),
   TO_SECONDS('2024-02-29 23:59:59'),
   FROM_DAYS(739310),
+  TIME('2024-02-29 12:34:56.123456'),
   DATE_ADD('2024-02-29', INTERVAL 1 DAY),
   DATE_SUB('2024-03-01', INTERVAL 1 DAY),
   EXTRACT(YEAR_MONTH FROM '2024-02-29 12:34:56'),
@@ -1015,7 +1020,7 @@ Expected row:
 ```text
 2023-11-14 22:13:20.000000, 1, 2023-11-14, 22:13:20.000000,
 2023-11-14 22:13:20, 2024-02-29, 2024, 2, 0, 3, 123456,
-2, 2, 739310, 63876470399, 2024-02-29, 2024-03-01, 2024-02-29, 202402, 2024-03-01
+2, 2, 739310, 63876470399, 2024-02-29, 12:34:56.123456, 2024-03-01, 2024-02-29, 202402, 2024-03-01
 ```
 
 Incomplete date warning test:
@@ -1097,7 +1102,7 @@ and `LIMIT 0` queries for:
 - numeric functions: `ABS`, `ROUND`, `POW`, `SQRT`
 - conditional/comparison functions: `IF`, `IFNULL`, `COALESCE`, `GREATEST`,
   `LEAST`, `STRCMP`
-- temporal functions: `NOW(6)`, `CURDATE`, `DATEDIFF`, `DATE_ADD`
+- temporal functions: `NOW(6)`, `CURDATE`, `DATEDIFF`, `DATE_ADD`, `TIME`
 - information functions: `DATABASE`, `SCHEMA`, `VERSION`, `LAST_INSERT_ID`,
   `ROW_COUNT`, `CONNECTION_ID`
 

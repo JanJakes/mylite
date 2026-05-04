@@ -2,6 +2,7 @@
 
 #include "mylite_diagnostics.h"
 #include "mylite_runtime.h"
+#include "mylite_select.h"
 #include "sql/mylite_expression.h"
 
 int mylite_dml_promote_expression_warnings(mylite_db *database, size_t warning_start)
@@ -36,4 +37,24 @@ int mylite_dml_set_expression_condition_error(mylite_db *database, size_t warnin
         return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
     }
     return MYLITE_OK;
+}
+
+int mylite_dml_resolve_update_expression_identifier(void *user_data,
+                                                    const struct mylite_sql_ast_node *identifier,
+                                                    struct mylite_expression_value *out_value)
+{
+    struct mylite_update_expression_context *context = user_data;
+    size_t column_index = 0U;
+    int status = MYLITE_OK;
+
+    if (context == NULL || context->table == NULL || context->row == NULL) {
+        return -1;
+    }
+
+    status = mylite_select_resolve_column_reference(context->table, identifier, &column_index);
+    if (status != MYLITE_OK || column_index == context->table->column_count ||
+        column_index >= context->row->value_count) {
+        return -1;
+    }
+    return mylite_expression_value_copy(&context->row->values[column_index], out_value);
 }

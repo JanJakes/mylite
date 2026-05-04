@@ -40,6 +40,9 @@ int mylite_dml_initialize_insert_ignore_warning_state(mylite_db *database,
 void mylite_dml_insert_execution_state_deinit(struct mylite_insert_execution_state *state);
 int mylite_dml_promote_expression_warnings(mylite_db *database, size_t warning_start);
 int mylite_dml_set_expression_condition_error(mylite_db *database, size_t warning_start);
+int mylite_dml_resolve_update_expression_identifier(void *user_data,
+                                                    const struct mylite_sql_ast_node *identifier,
+                                                    struct mylite_expression_value *out_value);
 char *mylite_dml_build_insert_physical_sql(mylite_db *database,
                                            const struct mylite_insert_table *table);
 char *mylite_dml_build_replace_delete_sql(mylite_db *database,

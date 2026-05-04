@@ -1359,9 +1359,6 @@ static int advance_update_auto_increment(mylite_stmt *stmt, const struct mylite_
                                          const struct mylite_insert_table *write_table,
                                          const struct mylite_update_row *candidate,
                                          uint64_t *next_auto_increment);
-static int resolve_update_expression_identifier(void *user_data,
-                                                const struct mylite_sql_ast_node *identifier,
-                                                struct mylite_expression_value *out_value);
 static int bind_delete_subset(mylite_stmt *stmt, const struct mylite_select_table *table);
 static int reject_deferred_delete_clauses(mylite_stmt *stmt);
 static int bind_delete_where_clause(mylite_stmt *stmt, const struct mylite_select_table *table);
@@ -16444,7 +16441,7 @@ static int evaluate_update_row_matches(mylite_stmt *stmt, const struct mylite_se
     };
     struct mylite_expression_eval_context context = {
         .user_data = &user_context,
-        .resolve_identifier = resolve_update_expression_identifier,
+        .resolve_identifier = mylite_dml_resolve_update_expression_identifier,
         .eval_session_function = evaluate_update_session_function,
     };
     struct mylite_expression_value value = {0};
@@ -16517,7 +16514,7 @@ static int evaluate_update_order_key(mylite_stmt *stmt, const struct mylite_sele
     };
     struct mylite_expression_eval_context context = {
         .user_data = &user_context,
-        .resolve_identifier = resolve_update_expression_identifier,
+        .resolve_identifier = mylite_dml_resolve_update_expression_identifier,
         .eval_session_function = evaluate_update_session_function,
     };
     size_t warning_start = stmt->database->warnings.count;
@@ -16697,7 +16694,7 @@ static int evaluate_update_assignment_value(mylite_stmt *stmt,
     };
     struct mylite_expression_eval_context context = {
         .user_data = &user_context,
-        .resolve_identifier = resolve_update_expression_identifier,
+        .resolve_identifier = mylite_dml_resolve_update_expression_identifier,
         .eval_session_function = evaluate_update_session_function,
     };
     int status = MYLITE_OK;
@@ -16807,26 +16804,6 @@ static int advance_update_auto_increment(mylite_stmt *stmt, const struct mylite_
         *next_auto_increment = value + 1U;
     }
     return MYLITE_OK;
-}
-
-static int resolve_update_expression_identifier(void *user_data,
-                                                const struct mylite_sql_ast_node *identifier,
-                                                struct mylite_expression_value *out_value)
-{
-    struct mylite_update_expression_context *context = user_data;
-    size_t column_index = 0U;
-    int status = MYLITE_OK;
-
-    if (context == NULL || context->table == NULL || context->row == NULL) {
-        return -1;
-    }
-
-    status = mylite_select_resolve_column_reference(context->table, identifier, &column_index);
-    if (status != MYLITE_OK || column_index == context->table->column_count ||
-        column_index >= context->row->value_count) {
-        return -1;
-    }
-    return mylite_expression_value_copy(&context->row->values[column_index], out_value);
 }
 
 static int execute_delete_statement(mylite_stmt *stmt)
@@ -17253,7 +17230,7 @@ static int evaluate_delete_row_matches(mylite_stmt *stmt, const struct mylite_se
     };
     struct mylite_expression_eval_context context = {
         .user_data = &user_context,
-        .resolve_identifier = resolve_update_expression_identifier,
+        .resolve_identifier = mylite_dml_resolve_update_expression_identifier,
         .eval_session_function = evaluate_update_session_function,
     };
     struct mylite_expression_value value = {0};
@@ -17327,7 +17304,7 @@ static int evaluate_delete_order_key(mylite_stmt *stmt, const struct mylite_sele
     };
     struct mylite_expression_eval_context context = {
         .user_data = &user_context,
-        .resolve_identifier = resolve_update_expression_identifier,
+        .resolve_identifier = mylite_dml_resolve_update_expression_identifier,
         .eval_session_function = evaluate_update_session_function,
     };
     size_t warning_start = stmt->database->warnings.count;

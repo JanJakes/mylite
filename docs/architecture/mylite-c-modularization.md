@@ -420,6 +420,8 @@ only the core object model and transitional shared helpers listed here:
   into a focused DML companion module.
 - [x] Move shared DML expression warning promotion and condition-error
   selection into a focused DML companion module.
+- [x] Move UPDATE/DELETE row-expression identifier resolution into a focused
+  DML companion module.
 - [x] Move UPDATE-specific diagnostics into a focused DML companion module.
 - [ ] Move update row materialization logic into `mylite_dml`.
 - [ ] Move update row writeback into `mylite_dml`.

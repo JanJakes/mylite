@@ -385,26 +385,27 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_BIN_TO_UUID = 66,
     MYLITE_SCALAR_FUNCTION_SUBSTRING_INDEX = 67,
     MYLITE_SCALAR_FUNCTION_ROUND = 68,
-    MYLITE_SCALAR_FUNCTION_POWER = 69,
-    MYLITE_SCALAR_FUNCTION_SQRT = 70,
-    MYLITE_SCALAR_FUNCTION_EXP = 71,
-    MYLITE_SCALAR_FUNCTION_LN = 72,
-    MYLITE_SCALAR_FUNCTION_LOG = 73,
-    MYLITE_SCALAR_FUNCTION_LOG2 = 74,
-    MYLITE_SCALAR_FUNCTION_LOG10 = 75,
-    MYLITE_SCALAR_FUNCTION_SIN = 76,
-    MYLITE_SCALAR_FUNCTION_COS = 77,
-    MYLITE_SCALAR_FUNCTION_TAN = 78,
-    MYLITE_SCALAR_FUNCTION_COT = 79,
-    MYLITE_SCALAR_FUNCTION_DEGREES = 80,
-    MYLITE_SCALAR_FUNCTION_RADIANS = 81,
-    MYLITE_SCALAR_FUNCTION_ACOS = 82,
-    MYLITE_SCALAR_FUNCTION_ASIN = 83,
-    MYLITE_SCALAR_FUNCTION_ATAN = 84,
-    MYLITE_SCALAR_FUNCTION_ATAN2 = 85,
-    MYLITE_SCALAR_FUNCTION_GREATEST = 86,
-    MYLITE_SCALAR_FUNCTION_LEAST = 87,
-    MYLITE_SCALAR_FUNCTION_STRCMP = 88,
+    MYLITE_SCALAR_FUNCTION_TRUNCATE = 69,
+    MYLITE_SCALAR_FUNCTION_POWER = 70,
+    MYLITE_SCALAR_FUNCTION_SQRT = 71,
+    MYLITE_SCALAR_FUNCTION_EXP = 72,
+    MYLITE_SCALAR_FUNCTION_LN = 73,
+    MYLITE_SCALAR_FUNCTION_LOG = 74,
+    MYLITE_SCALAR_FUNCTION_LOG2 = 75,
+    MYLITE_SCALAR_FUNCTION_LOG10 = 76,
+    MYLITE_SCALAR_FUNCTION_SIN = 77,
+    MYLITE_SCALAR_FUNCTION_COS = 78,
+    MYLITE_SCALAR_FUNCTION_TAN = 79,
+    MYLITE_SCALAR_FUNCTION_COT = 80,
+    MYLITE_SCALAR_FUNCTION_DEGREES = 81,
+    MYLITE_SCALAR_FUNCTION_RADIANS = 82,
+    MYLITE_SCALAR_FUNCTION_ACOS = 83,
+    MYLITE_SCALAR_FUNCTION_ASIN = 84,
+    MYLITE_SCALAR_FUNCTION_ATAN = 85,
+    MYLITE_SCALAR_FUNCTION_ATAN2 = 86,
+    MYLITE_SCALAR_FUNCTION_GREATEST = 87,
+    MYLITE_SCALAR_FUNCTION_LEAST = 88,
+    MYLITE_SCALAR_FUNCTION_STRCMP = 89,
 };
 
 struct angle_conversion_input {
@@ -971,6 +972,10 @@ static int eval_round_function(const struct mylite_sql_ast_node *arguments,
                                const struct mylite_expression_eval_context *context,
                                struct mylite_expression_warnings *warnings,
                                struct mylite_expression_value *out_value);
+static int eval_truncate_function(const struct mylite_sql_ast_node *arguments,
+                                  const struct mylite_expression_eval_context *context,
+                                  struct mylite_expression_warnings *warnings,
+                                  struct mylite_expression_value *out_value);
 static int eval_round_scale(const struct mylite_sql_ast_node *arguments,
                             const struct mylite_expression_eval_context *context,
                             struct mylite_expression_warnings *warnings, int *out_scale);
@@ -1002,6 +1007,16 @@ static int round_approximate_value(const struct mylite_expression_value *value, 
 static long double round_half_even_long_double(long double value);
 static int set_round_approximate_text(long double value, struct mylite_expression_value *out_value,
                                       int scale);
+static int truncate_exact_decimal_text(const char *text, size_t text_length,
+                                       struct mylite_expression_value *out_value, int scale);
+static int truncate_exact_decimal_positive_scale(const struct decimal_text_parts *parts, int scale,
+                                                 struct mylite_expression_value *out_value);
+static int truncate_exact_decimal_negative_scale(const struct decimal_text_parts *parts, int scale,
+                                                 struct mylite_expression_value *out_value);
+static int truncate_approximate_numeric(const struct numeric_value *number, int scale,
+                                        struct mylite_expression_value *out_value);
+static int set_truncate_approximate_text(long double value,
+                                         struct mylite_expression_value *out_value, int scale);
 static bool round_argument_exact_literal_text(const struct mylite_sql_ast_node *argument,
                                               char **out_text, size_t *out_length,
                                               bool *out_integer_literal);
@@ -1549,6 +1564,7 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
         return arity == 1U || arity == 2U;
     case MYLITE_SCALAR_FUNCTION_LEFT:
     case MYLITE_SCALAR_FUNCTION_RIGHT:
+    case MYLITE_SCALAR_FUNCTION_TRUNCATE:
     case MYLITE_SCALAR_FUNCTION_MOD:
     case MYLITE_SCALAR_FUNCTION_POWER:
     case MYLITE_SCALAR_FUNCTION_IFNULL:
@@ -2403,6 +2419,8 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_numeric_unary_function(function_id, arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_ROUND:
         return eval_round_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_TRUNCATE:
+        return eval_truncate_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_PI:
         return set_text_value(mylite_pi_text, strlen(mylite_pi_text), out_value);
     case MYLITE_SCALAR_FUNCTION_IF:
@@ -5406,6 +5424,7 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_FLOOR:
     case MYLITE_SCALAR_FUNCTION_CEIL:
     case MYLITE_SCALAR_FUNCTION_ROUND:
+    case MYLITE_SCALAR_FUNCTION_TRUNCATE:
     case MYLITE_SCALAR_FUNCTION_EXP:
     case MYLITE_SCALAR_FUNCTION_POWER:
     case MYLITE_SCALAR_FUNCTION_SQRT:
@@ -6727,20 +6746,21 @@ static struct base_conversion_parse
 parse_base_conversion_digits(struct base_conversion_parse_input input)
 {
     const unsigned char *source = (const unsigned char *)(input.text == NULL ? "" : input.text);
+    size_t text_length = input.text == NULL ? 0U : input.text_length;
     size_t index = 0U;
     uint64_t magnitude = 0U;
     bool negative = false;
     struct base_conversion_parse parsed = {0};
 
-    while (index < input.text_length && isspace(source[index])) {
+    while (index < text_length && isspace(source[index])) {
         ++index;
     }
-    if (index < input.text_length && (source[index] == '+' || source[index] == '-')) {
+    if (index < text_length && (source[index] == '+' || source[index] == '-')) {
         negative = source[index] == '-';
         ++index;
     }
 
-    while (index < input.text_length) {
+    while (index < text_length) {
         int digit = base_digit_value(source[index]);
         uint64_t limit = UINT64_MAX;
 
@@ -7253,6 +7273,7 @@ static int trigonometric_function_result(struct trigonometric_input input,
     case MYLITE_SCALAR_FUNCTION_FLOOR:
     case MYLITE_SCALAR_FUNCTION_CEIL:
     case MYLITE_SCALAR_FUNCTION_ROUND:
+    case MYLITE_SCALAR_FUNCTION_TRUNCATE:
     case MYLITE_SCALAR_FUNCTION_EXP:
     case MYLITE_SCALAR_FUNCTION_LN:
     case MYLITE_SCALAR_FUNCTION_LOG:
@@ -7527,6 +7548,7 @@ static int inverse_trigonometric_function_result(struct inverse_trigonometric_in
     case MYLITE_SCALAR_FUNCTION_FLOOR:
     case MYLITE_SCALAR_FUNCTION_CEIL:
     case MYLITE_SCALAR_FUNCTION_ROUND:
+    case MYLITE_SCALAR_FUNCTION_TRUNCATE:
     case MYLITE_SCALAR_FUNCTION_EXP:
     case MYLITE_SCALAR_FUNCTION_LN:
     case MYLITE_SCALAR_FUNCTION_LOG:
@@ -7711,6 +7733,7 @@ static int angle_conversion_result(struct angle_conversion_input conversion, dou
     case MYLITE_SCALAR_FUNCTION_FLOOR:
     case MYLITE_SCALAR_FUNCTION_CEIL:
     case MYLITE_SCALAR_FUNCTION_ROUND:
+    case MYLITE_SCALAR_FUNCTION_TRUNCATE:
     case MYLITE_SCALAR_FUNCTION_EXP:
     case MYLITE_SCALAR_FUNCTION_LN:
     case MYLITE_SCALAR_FUNCTION_LOG:
@@ -8318,6 +8341,206 @@ static int set_round_approximate_text(long double value, struct mylite_expressio
         buffer[--length] = '\0';
     }
     if (strcmp(buffer, "-0") == 0 || buffer[0] == '\0') {
+        buffer[0] = '0';
+        buffer[1] = '\0';
+        length = 1;
+    }
+    return set_text_value(buffer, (size_t)length, out_value);
+}
+
+static int eval_truncate_function(const struct mylite_sql_ast_node *arguments,
+                                  const struct mylite_expression_eval_context *context,
+                                  struct mylite_expression_warnings *warnings,
+                                  struct mylite_expression_value *out_value)
+{
+    const struct mylite_sql_ast_node *value_argument = child_at(arguments, 0U);
+    const struct mylite_sql_ast_node *scale_argument = child_at(arguments, 1U);
+    struct mylite_expression_value value = {0};
+    struct mylite_expression_value scale_value = {0};
+    struct round_exact_argument_text exact = {0};
+    struct numeric_value number = {0};
+    bool value_is_null = false;
+    bool scale_is_null = false;
+    int scale = 0;
+    int status = eval_node(value_argument, context, warnings, &value);
+
+    if (status != 0) {
+        goto cleanup;
+    }
+    status = eval_node(scale_argument, context, warnings, &scale_value);
+    if (status != 0) {
+        goto cleanup;
+    }
+    value_is_null = is_null(&value);
+    scale_is_null = is_null(&scale_value);
+
+    if (!value_is_null) {
+        status = round_exact_argument_text(value_argument, &value, &exact);
+        if (status != 0) {
+            goto cleanup;
+        }
+        if (exact.text == NULL) {
+            status = value_to_numeric(&value, warnings, &number);
+            if (status != 0) {
+                goto cleanup;
+            }
+        }
+    }
+    if (!scale_is_null) {
+        status = round_scale_from_value(&scale_value, warnings, &scale);
+        if (status != 0) {
+            goto cleanup;
+        }
+    }
+
+    if (value_is_null || scale_is_null) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    if (exact.text != NULL) {
+        status = truncate_exact_decimal_text(exact.text, exact.text_length, out_value, scale);
+    } else {
+        status = truncate_approximate_numeric(&number, scale, out_value);
+    }
+
+cleanup:
+    free(exact.text);
+    mylite_expression_value_deinit(&scale_value);
+    mylite_expression_value_deinit(&value);
+    return status;
+}
+
+static int truncate_exact_decimal_text(const char *text, size_t text_length,
+                                       struct mylite_expression_value *out_value, int scale)
+{
+    char *copy = copy_span_text(text == NULL ? "" : text, text_length);
+    struct decimal_text_parts parts = {0};
+    int status = 0;
+
+    if (copy == NULL) {
+        return -1;
+    }
+    if (!parse_decimal_text_parts(copy, &parts)) {
+        free(copy);
+        return -1;
+    }
+    if (scale >= 0) {
+        status = truncate_exact_decimal_positive_scale(&parts, scale, out_value);
+    } else {
+        status = truncate_exact_decimal_negative_scale(&parts, scale, out_value);
+    }
+    free(copy);
+    return status;
+}
+
+static int truncate_exact_decimal_positive_scale(const struct decimal_text_parts *parts, int scale,
+                                                 struct mylite_expression_value *out_value)
+{
+    size_t requested_fraction = (size_t)scale;
+    size_t kept_fraction =
+        requested_fraction < parts->fraction_length ? requested_fraction : parts->fraction_length;
+    size_t digits_length = parts->integer_length + kept_fraction;
+    char *digits = malloc(digits_length + 1U);
+    int status = 0;
+
+    if (digits == NULL) {
+        return -1;
+    }
+    memcpy(digits, parts->integer, parts->integer_length);
+    if (kept_fraction != 0U) {
+        memcpy(digits + parts->integer_length, parts->fraction, kept_fraction);
+    }
+    digits[digits_length] = '\0';
+    status =
+        round_append_signed_decimal_result(parts, digits, digits_length, kept_fraction, out_value);
+    free(digits);
+    return status;
+}
+
+static int truncate_exact_decimal_negative_scale(const struct decimal_text_parts *parts, int scale,
+                                                 struct mylite_expression_value *out_value)
+{
+    size_t places = (size_t)(-scale);
+    size_t kept_integer = parts->integer_length > places ? parts->integer_length - places : 0U;
+    size_t digits_length = kept_integer;
+    char *digits = malloc(digits_length + 1U);
+    int status = 0;
+
+    if (digits == NULL) {
+        return -1;
+    }
+    if (kept_integer != 0U) {
+        memcpy(digits, parts->integer, kept_integer);
+    }
+    digits[digits_length] = '\0';
+    if (!(digits_length == 0U || (digits_length == 1U && digits[0] == '0'))) {
+        size_t old_length = digits_length;
+        char *grown = realloc(digits, digits_length + places + 1U);
+
+        if (grown == NULL) {
+            free(digits);
+            return -1;
+        }
+        digits = grown;
+        memset(digits + old_length, '0', places);
+        digits_length += places;
+        digits[digits_length] = '\0';
+    }
+    status = round_append_signed_decimal_result(parts, digits, digits_length, 0U, out_value);
+    free(digits);
+    return status;
+}
+
+static int truncate_approximate_numeric(const struct numeric_value *number, int scale,
+                                        struct mylite_expression_value *out_value)
+{
+    long double factor = 1.0L;
+    long double truncated = 0.0L;
+    int places = scale < 0 ? -scale : scale;
+
+    if (number == NULL) {
+        return -1;
+    }
+    for (int index = 0; index < places; ++index) {
+        factor *= (long double)MYLITE_EXPRESSION_DECIMAL_BASE;
+    }
+    if (scale >= 0) {
+        truncated = truncl((long double)number->real_value * factor) / factor;
+    } else {
+        truncated = truncl((long double)number->real_value / factor) * factor;
+    }
+    return set_truncate_approximate_text(truncated, out_value, scale);
+}
+
+static int set_truncate_approximate_text(long double value,
+                                         struct mylite_expression_value *out_value, int scale)
+{
+    char buffer[MYLITE_EXPRESSION_DECIMAL_TEXT_BUFFER_SIZE];
+    int decimals = scale > 0 ? scale : 0;
+    int length = 0;
+
+    if (decimals > MYLITE_EXPRESSION_DECIMAL_ROUND_SCALE_LIMIT) {
+        decimals = MYLITE_EXPRESSION_DECIMAL_ROUND_SCALE_LIMIT;
+    }
+    if (decimals == 0 && isfinite(value) && !(value == 0.0L && signbit(value)) &&
+        value > (long double)INT64_MIN && value < (long double)INT64_MAX) {
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = (int64_t)value,
+        };
+        return 0;
+    }
+    length = snprintf(buffer, sizeof(buffer), "%.*Lf", decimals, value);
+    if (length < 0 || (size_t)length >= sizeof(buffer)) {
+        return -1;
+    }
+    while (length > 0 && buffer[length - 1] == '0') {
+        buffer[--length] = '\0';
+    }
+    if (length > 0 && buffer[length - 1] == '.') {
+        buffer[--length] = '\0';
+    }
+    if (buffer[0] == '\0') {
         buffer[0] = '0';
         buffer[1] = '\0';
         length = 1;
@@ -10711,6 +10934,7 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"CEIL", MYLITE_SCALAR_FUNCTION_CEIL},
         {"CEILING", MYLITE_SCALAR_FUNCTION_CEIL},
         {"ROUND", MYLITE_SCALAR_FUNCTION_ROUND},
+        {"TRUNCATE", MYLITE_SCALAR_FUNCTION_TRUNCATE},
         {"EXP", MYLITE_SCALAR_FUNCTION_EXP},
         {"LN", MYLITE_SCALAR_FUNCTION_LN},
         {"LOG", MYLITE_SCALAR_FUNCTION_LOG},
@@ -10834,6 +11058,7 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_FLOOR:
     case MYLITE_SCALAR_FUNCTION_CEIL:
     case MYLITE_SCALAR_FUNCTION_ROUND:
+    case MYLITE_SCALAR_FUNCTION_TRUNCATE:
     case MYLITE_SCALAR_FUNCTION_EXP:
     case MYLITE_SCALAR_FUNCTION_POWER:
     case MYLITE_SCALAR_FUNCTION_SQRT:

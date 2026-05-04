@@ -2842,6 +2842,9 @@ static int test_truncate_table_syntax(void)
                             "truncate keyword identifier target");
     failures +=
         expect_span_text(child_at(statement, 0U), "truncate", "truncate keyword identifier table");
+    statement = child_at(result.root, 2U);
+    failures += expect_function_call(child_at(child_at(child_at(statement, 0U), 0U), 0U),
+                                     "TRUNCATE", 2U, "truncate scalar function keyword call");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("TRUNCATE TABLE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

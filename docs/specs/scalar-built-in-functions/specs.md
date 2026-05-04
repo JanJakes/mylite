@@ -141,12 +141,13 @@ by common scalar expressions:
   `docs/specs/numeric-base-conversion-functions/specs.md` and
   `docs/specs/uuid-conversion-functions/specs.md`
 - numeric functions: `ABS`, `SIGN`, `FLOOR`, `CEIL`, `CEILING`, `MOD`,
-  `ROUND`, `EXP`, `LN`, `LOG`, `LOG2`, `LOG10`, `POW`, `POWER`, `SQRT`,
-  `SIN`, `COS`, `TAN`, `COT`, `ACOS`, `ASIN`, `ATAN`, `ATAN2`,
+  `ROUND`, `TRUNCATE`, `EXP`, `LN`, `LOG`, `LOG2`, `LOG10`, `POW`, `POWER`,
+  `SQRT`, `SIN`, `COS`, `TAN`, `COT`, `ACOS`, `ASIN`, `ATAN`, `ATAN2`,
   `DEGREES`, `RADIANS`,
   `CONV`, `BIT_COUNT`, `BIT_LENGTH`, `CRC32`, `INET_ATON`, `INET_NTOA`, and
   `PI`; see
   `docs/specs/round-function/specs.md` and
+  `docs/specs/truncate-function/specs.md` and
   `docs/specs/exp-function/specs.md` and
   `docs/specs/logarithm-functions/specs.md` and
   `docs/specs/power-functions/specs.md` and
@@ -199,7 +200,11 @@ semantics and text conversion, `COT()` radian semantics and range errors,
 `ACOS()` / `ASIN()` inverse-trigonometric domain behavior,
 `ATAN()` / `ATAN2()` arctangent and quadrant behavior,
 `DEGREES()` / `RADIANS()` conversion semantics, `DEGREES()` overflow behavior,
-table projection, filters, ordering, update assignment expressions, delete
+`TRUNCATE()` truncation toward zero with positive/zero/negative scales,
+`TRUNCATE()` `NULL` results that still preserve argument conversion warnings,
+`TRUNCATE()` text conversion warnings with duplicate exact-DECIMAL native
+warning counts deferred to the dedicated `TRUNCATE()` spec, table projection,
+filters, ordering, update assignment expressions, delete
 predicates, `STRCMP()` NULL short-circuiting, numeric-to-string comparison,
 PAD SPACE / NO PAD trailing-space comparison, unsupported functions,
 unsupported arity, and selected result metadata.

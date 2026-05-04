@@ -253,6 +253,7 @@ static int test_select_integer_literal_with_semicolon(void);
 static int test_expression_operator_foundation(void);
 static int test_scalar_builtin_functions_execution(void);
 static int test_round_scalar_function_execution(mylite_db *database);
+static int test_truncate_scalar_function_execution(mylite_db *database);
 static int test_power_scalar_function_execution(mylite_db *database);
 static int test_exp_scalar_function_execution(mylite_db *database);
 static int test_logarithm_scalar_function_execution(mylite_db *database);
@@ -4036,6 +4037,8 @@ static int test_scalar_builtin_functions_execution(void)
 
     failures += test_round_scalar_function_execution(database);
 
+    failures += test_truncate_scalar_function_execution(database);
+
     failures += test_power_scalar_function_execution(database);
 
     failures += test_exp_scalar_function_execution(database);
@@ -5711,6 +5714,275 @@ static int test_round_scalar_function_execution(mylite_db *database)
     failures += expect_no_stmt_handle(&stmt, "unsupported round zero arity");
     failures += prepare_sql(database, "SELECT ROUND(1,2,3)", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported round three arity");
+
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_truncate_scalar_function_execution(mylite_db *database)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const struct expected_result_metadata truncate_metadata[] = {
+        {"const_decimal", NULL, NULL, NULL, NULL, NULL, 7U, MYLITE_FIELD_TYPE_NEWDECIMAL, 2U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"const_float", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"const_int", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"const_text", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"const_null", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    static const struct expected_result_metadata truncate_table_metadata[] = {
+        {"trunc_i", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"trunc_d", NULL, NULL, NULL, NULL, NULL, 9U, MYLITE_FIELD_TYPE_NEWDECIMAL, 2U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"trunc_nd", NULL, NULL, NULL, NULL, NULL, 9U, MYLITE_FIELD_TYPE_NEWDECIMAL, 2U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"trunc_f", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"trunc_s", NULL, NULL, NULL, NULL, NULL, 23U, MYLITE_FIELD_TYPE_DOUBLE, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    static const char *const truncate_columns[] = {
+        "doc_one",       "doc_two",      "zero_scale",        "negative_x", "negative_scale",
+        "product_scale", "pos_scale",    "scale_above_value", "neg_one",    "neg_high",
+        "neg_x_neg_d",   "tiny_pos",     "tiny_neg",          "neg_999_1",  "neg_999_2",
+        "neg_999_3",     "neg_999_4",    "scale_high",        "scale_low",  "null_x",
+        "null_d",        "text_decimal", "text_trail",        "text_bad",   "scale_text",
+        "scale_trail",   "scale_bad",
+    };
+    static const char *const truncate_values[] = {
+        "1.2", "1.9",  "1",    "-1.9",   "100",  "1028", "123.45", "123.456", "120",
+        "0",   "-120", "0.00", "0.00",   "-990", "-900", "0",      "0",       "123.456",
+        "0",   NULL,   NULL,   "123.45", "123",  "0",    "123.45", "123.45",  "123",
+    };
+    static const char *const single_column[] = {"v"};
+    static const char *const ordered_columns[] = {"id", "td"};
+    static const char *const ordered_values[] = {"3", NULL, "2", "-123.45", "1", "123.45"};
+    static const char *const i_column[] = {"i"};
+    static const char *const negative_i_value[] = {"-123"};
+    static const char *const id_i_columns[] = {"id", "i"};
+    static const char *const updated_values[] = {"1", "123", "2", "-123", "3", "0"};
+    static const char *const order_update_values[] = {"1", "0", "2", "9", "3", "0"};
+    static const char *const id_column[] = {"id"};
+    static const char *const remaining_values[] = {"2", "3"};
+    static const char *const order_remaining_values[] = {"1", "2"};
+    int failures = 0;
+    mylite_stmt *stmt = NULL;
+
+    failures += expect_select_rows(database,
+                                   "SELECT TRUNCATE(1.223,1) AS doc_one, "
+                                   "TRUNCATE(1.999,1) AS doc_two, "
+                                   "TRUNCATE(1.999,0) AS zero_scale, "
+                                   "TRUNCATE(-1.999,1) AS negative_x, "
+                                   "TRUNCATE(122,-2) AS negative_scale, "
+                                   "TRUNCATE(10.28*100,0) AS product_scale, "
+                                   "TRUNCATE(123.456,2) AS pos_scale, "
+                                   "TRUNCATE(123.456,5) AS scale_above_value, "
+                                   "TRUNCATE(123.456,-1) AS neg_one, "
+                                   "TRUNCATE(123.456,-5) AS neg_high, "
+                                   "TRUNCATE(-123.456,-1) AS neg_x_neg_d, "
+                                   "TRUNCATE(0.00123,2) AS tiny_pos, "
+                                   "TRUNCATE(-0.00123,2) AS tiny_neg, "
+                                   "TRUNCATE(-999,-1) AS neg_999_1, "
+                                   "TRUNCATE(-999,-2) AS neg_999_2, "
+                                   "TRUNCATE(-999,-3) AS neg_999_3, "
+                                   "TRUNCATE(-999,-4) AS neg_999_4, "
+                                   "TRUNCATE(123.456,31) AS scale_high, "
+                                   "TRUNCATE(123.456,-31) AS scale_low, "
+                                   "TRUNCATE(NULL,1) AS null_x, "
+                                   "TRUNCATE(1.23,NULL) AS null_d, "
+                                   "TRUNCATE('123.456',2) AS text_decimal, "
+                                   "TRUNCATE('123abc',2) AS text_trail, "
+                                   "TRUNCATE('abc',2) AS text_bad, "
+                                   "TRUNCATE(123.456,'2') AS scale_text, "
+                                   "TRUNCATE(123.456,'2abc') AS scale_trail, "
+                                   "TRUNCATE(123.456,'abc') AS scale_bad",
+                                   truncate_columns,
+                                   (int)(sizeof(truncate_columns) / sizeof(truncate_columns[0])),
+                                   truncate_values, 1, "TRUNCATE scalar values");
+    failures += expect_int(mylite_warning_count(database), 4, "TRUNCATE scalar warning count");
+    for (int index = 0; index < 4; ++index) {
+        failures += expect_int((int)mylite_warning_code(database, index),
+                               mysql_warning_truncated_wrong_value, "TRUNCATE scalar warning code");
+    }
+
+    failures += expect_select_rows(database, "SELECT TRUNCATE(123.456E0,'2abc') AS v",
+                                   single_column, 1, (const char *[]){"123.45"}, 1,
+                                   "TRUNCATE approximate scale warning value");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "TRUNCATE approximate scale warning count");
+    failures +=
+        expect_contains(mylite_warning_message(database, 0), "Truncated incorrect INTEGER value",
+                        "TRUNCATE approximate scale warning message");
+
+    failures +=
+        expect_select_rows(database, "SELECT TRUNCATE('123abc','2abc') AS v", single_column, 1,
+                           (const char *[]){"123"}, 1, "TRUNCATE mixed text warning value");
+    failures += expect_int(mylite_warning_count(database), 2, "TRUNCATE mixed text warning count");
+    failures +=
+        expect_contains(mylite_warning_message(database, 0), "Truncated incorrect DOUBLE value",
+                        "TRUNCATE mixed text value warning message");
+    failures +=
+        expect_contains(mylite_warning_message(database, 1), "Truncated incorrect INTEGER value",
+                        "TRUNCATE mixed text scale warning message");
+
+    failures +=
+        expect_select_rows(database, "SELECT TRUNCATE(NULL,1/0) AS v", single_column, 1,
+                           (const char *[]){NULL}, 1, "TRUNCATE null preserves division warning");
+    failures += expect_int(mylite_warning_count(database), 1, "TRUNCATE division warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_division_by_zero,
+                           "TRUNCATE division warning code");
+
+    failures += expect_select_rows(database, "SELECT TRUNCATE(1/0,NULL) AS v", single_column, 1,
+                                   (const char *[]){NULL}, 1,
+                                   "TRUNCATE null preserves left division warning");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "TRUNCATE left division warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_division_by_zero,
+                           "TRUNCATE left division warning code");
+
+    failures +=
+        expect_select_rows(database, "SELECT TRUNCATE(NULL,'2abc') AS v", single_column, 1,
+                           (const char *[]){NULL}, 1, "TRUNCATE null preserves scale warning");
+    failures += expect_int(mylite_warning_count(database), 1, "TRUNCATE scale warning count");
+    failures +=
+        expect_contains(mylite_warning_message(database, 0), "Truncated incorrect INTEGER value",
+                        "TRUNCATE scale warning message");
+
+    failures +=
+        expect_select_rows(database, "SELECT TRUNCATE('abc',NULL) AS v", single_column, 1,
+                           (const char *[]){NULL}, 1, "TRUNCATE null preserves value warning");
+    failures += expect_int(mylite_warning_count(database), 1, "TRUNCATE value warning count");
+    failures +=
+        expect_contains(mylite_warning_message(database, 0), "Truncated incorrect DOUBLE value",
+                        "TRUNCATE value warning message");
+
+    failures += expect_select_rows(database, "SELECT TRUNCATE('123abc',2) AS v", single_column, 1,
+                                   (const char *[]){"123"}, 1, "TRUNCATE text value warning value");
+    failures += expect_int(mylite_warning_count(database), 1, "TRUNCATE text warning count");
+    failures +=
+        expect_contains(mylite_warning_message(database, 0), "Truncated incorrect DOUBLE value",
+                        "TRUNCATE text warning message");
+
+    failures += prepare_sql(database,
+                            "SELECT TRUNCATE(123.456,2) AS const_decimal, "
+                            "TRUNCATE(123.456E0,2) AS const_float, "
+                            "TRUNCATE(123,2) AS const_int, "
+                            "TRUNCATE('123.456',2) AS const_text, "
+                            "TRUNCATE(NULL,2) AS const_null",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, truncate_metadata, (int)(sizeof(truncate_metadata) / sizeof(truncate_metadata[0])),
+        "TRUNCATE scalar metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TRUNCATE metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TRUNCATE metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database,
+                            "CREATE TABLE truncate_sites ("
+                            "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, "
+                            "i INT NOT NULL, "
+                            "d DECIMAL(8,3), "
+                            "nd DECIMAL(8,3) NOT NULL, "
+                            "f DOUBLE, "
+                            "s VARCHAR(16), "
+                            "nn DECIMAL(8,3) NOT NULL)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO truncate_sites (i,d,nd,f,s,nn) VALUES "
+                            "(123,123.456,123.456,123.456,'123.456',0.001),"
+                            "(-123,-123.456,-123.456,-123.456,'abc',1.001),"
+                            "(0,NULL,0.001,NULL,NULL,2.001)",
+                            MYLITE_DONE);
+    failures += prepare_sql(database,
+                            "SELECT TRUNCATE(i,2) AS trunc_i, "
+                            "TRUNCATE(d,2) AS trunc_d, "
+                            "TRUNCATE(nd,2) AS trunc_nd, "
+                            "TRUNCATE(f,2) AS trunc_f, "
+                            "TRUNCATE(s,2) AS trunc_s FROM truncate_sites LIMIT 0",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, truncate_table_metadata,
+        (int)(sizeof(truncate_table_metadata) / sizeof(truncate_table_metadata[0])),
+        "table TRUNCATE metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "table TRUNCATE metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        expect_select_rows(database,
+                           "SELECT id, TRUNCATE(d,2) AS td FROM truncate_sites "
+                           "ORDER BY TRUNCATE(d,2), id",
+                           ordered_columns, 2, ordered_values, 3, "TRUNCATE table ordering");
+    failures +=
+        expect_select_rows(database, "SELECT i FROM truncate_sites WHERE TRUNCATE(d,0) = -123",
+                           i_column, 1, negative_i_value, 1, "TRUNCATE WHERE predicate");
+    failures += prepare_sql(database, "UPDATE truncate_sites SET i = 0 WHERE TRUNCATE(s,2) = 0",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "update TRUNCATE warning promoted");
+    failures += expect_contains(mylite_error_message(database), "Truncated incorrect DOUBLE value",
+                                "update TRUNCATE warning error");
+    failures += expect_int(mylite_warning_count(database), 1, "update TRUNCATE warning count");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE truncate_sites SET i = TRUNCATE(d,0) WHERE d IS NOT NULL", 0,
+        "update TRUNCATE assignment");
+    failures += expect_select_rows(database, "SELECT id, i FROM truncate_sites ORDER BY id",
+                                   id_i_columns, 2, updated_values, 3, "updated TRUNCATE values");
+
+    failures += prepare_sql(database, "DELETE FROM truncate_sites WHERE TRUNCATE(s,2) = 0",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "delete TRUNCATE warning promoted");
+    failures += expect_contains(mylite_error_message(database), "Truncated incorrect DOUBLE value",
+                                "delete TRUNCATE warning error");
+    failures += expect_int(mylite_warning_count(database), 1, "delete TRUNCATE warning count");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM truncate_sites WHERE TRUNCATE(nn,0) = 0", 1,
+        "delete TRUNCATE predicate");
+    failures += expect_select_rows(database, "SELECT id FROM truncate_sites ORDER BY id", id_column,
+                                   1, remaining_values, 2, "delete TRUNCATE remaining rows");
+
+    failures += execute_sql(database,
+                            "CREATE TABLE truncate_order_sites ("
+                            "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, "
+                            "v DECIMAL(8,3) NOT NULL, "
+                            "marker INT NOT NULL)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO truncate_order_sites (v,marker) VALUES "
+                            "(2.900,0),(-1.900,0),(3.900,0)",
+                            MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE truncate_order_sites SET marker = 9 ORDER BY TRUNCATE(v,0), id LIMIT 1",
+        1, "update TRUNCATE order key");
+    failures += expect_select_rows(
+        database, "SELECT id, marker AS i FROM truncate_order_sites ORDER BY id", id_i_columns, 2,
+        order_update_values, 3, "updated TRUNCATE order key values");
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM truncate_order_sites ORDER BY TRUNCATE(v,0) DESC, id LIMIT 1", 1,
+        "delete TRUNCATE order key");
+    failures += expect_select_rows(database, "SELECT id FROM truncate_order_sites ORDER BY id",
+                                   id_column, 1, order_remaining_values, 2,
+                                   "delete TRUNCATE order key remaining rows");
+
+    failures += prepare_sql(database, "SELECT TRUNCATE()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported truncate zero arity");
+    failures += prepare_sql(database, "SELECT TRUNCATE(1)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported truncate one arity");
+    failures += prepare_sql(database, "SELECT TRUNCATE(1,2,3)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported truncate three arity");
 
     // NOLINTEND(readability-magic-numbers)
     return failures;

@@ -2689,8 +2689,6 @@ static int append_insert_null_warning_once(mylite_stmt *stmt,
                                            size_t column_index);
 static char *copy_insert_duplicate_entry_value(const struct mylite_insert_unique_index *index,
                                                const struct mylite_insert_bound_value *values);
-static int copy_truncate_table_statement(const struct mylite_sql_ast_node *statement,
-                                         mylite_stmt *stmt);
 static int copy_alter_table_statement(const struct mylite_sql_ast_node *statement,
                                       mylite_stmt *stmt);
 static int copy_alter_table_item(const struct mylite_sql_ast_node *item,
@@ -15239,7 +15237,7 @@ static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind k
         status = mylite_table_ddl_copy_rename_table_statement(statement, &stmt->rename_table);
         break;
     case MYLITE_STMT_TRUNCATE_TABLE:
-        status = copy_truncate_table_statement(statement, stmt);
+        status = mylite_table_ddl_copy_truncate_table_statement(statement, &stmt->truncate_table);
         break;
     case MYLITE_STMT_ALTER_TABLE:
         status = copy_alter_table_statement(statement, stmt);
@@ -30540,14 +30538,6 @@ static char *copy_insert_duplicate_entry_value(const struct mylite_insert_unique
         }
     }
     return sqlite3_str_finish(text);
-}
-
-static int copy_truncate_table_statement(const struct mylite_sql_ast_node *statement,
-                                         mylite_stmt *stmt)
-{
-    return mylite_table_ddl_copy_table_name_parts(mylite_ast_child_at(statement, 0U),
-                                                  &stmt->truncate_table.schema_name,
-                                                  &stmt->truncate_table.table_name);
 }
 
 static int copy_alter_table_statement(const struct mylite_sql_ast_node *statement,

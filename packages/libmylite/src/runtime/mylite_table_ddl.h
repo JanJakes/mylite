@@ -42,6 +42,8 @@ int mylite_table_ddl_copy_drop_table_statement(const struct mylite_sql_ast_node 
                                                struct mylite_drop_table_plan *plan);
 int mylite_table_ddl_copy_rename_table_statement(const struct mylite_sql_ast_node *statement,
                                                  struct mylite_rename_table_plan *plan);
+int mylite_table_ddl_copy_truncate_table_statement(const struct mylite_sql_ast_node *statement,
+                                                   struct mylite_truncate_table_plan *plan);
 int mylite_table_ddl_copy_table_name_parts(const struct mylite_sql_ast_node *table_name,
                                            char **out_schema_name, char **out_table_name);
 int mylite_table_ddl_add_rename_table_target(struct mylite_rename_table_plan *plan,

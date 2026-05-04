@@ -1766,16 +1766,6 @@ static int execute_replace_values_statement(mylite_stmt *stmt);
 static int execute_replace_set_statement(mylite_stmt *stmt);
 static int execute_update_statement(mylite_stmt *stmt);
 static int execute_delete_statement(mylite_stmt *stmt);
-static int execute_start_transaction_statement(mylite_stmt *stmt);
-static int execute_begin_transaction_statement(mylite_stmt *stmt);
-static int execute_commit_statement(mylite_stmt *stmt);
-static int execute_rollback_statement(mylite_stmt *stmt);
-static int finish_transaction_completion(mylite_stmt *stmt,
-                                         enum mylite_transaction_access_mode chain_access_mode,
-                                         bool chain_consistent_snapshot);
-static int execute_savepoint_statement(mylite_stmt *stmt);
-static int execute_rollback_to_savepoint_statement(mylite_stmt *stmt);
-static int execute_release_savepoint_statement(mylite_stmt *stmt);
 static int execute_union_query_statement(mylite_stmt *stmt);
 static int materialize_union_query_result(mylite_stmt *stmt);
 static int scan_union_operand(mylite_stmt *stmt, mylite_stmt *operand,
@@ -3351,9 +3341,6 @@ static int copy_replace_set_statement(const struct mylite_sql_ast_node *statemen
                                       mylite_stmt *stmt);
 static int copy_update_statement(const struct mylite_sql_ast_node *statement, mylite_stmt *stmt);
 static int copy_delete_statement(const struct mylite_sql_ast_node *statement, mylite_stmt *stmt);
-static int copy_transaction_statement(const struct mylite_sql_ast_node *statement,
-                                      mylite_stmt *stmt);
-static int copy_savepoint_statement(const struct mylite_sql_ast_node *statement, mylite_stmt *stmt);
 static int copy_scalar_select_statement(const struct mylite_sql_ast_node *statement,
                                         mylite_stmt *stmt);
 static int append_scalar_select_warnings_to_database(mylite_stmt *stmt);
@@ -3689,10 +3676,7 @@ static int append_unknown_table_note(mylite_db *database, const char *schema_nam
                                      const char *table_name);
 static bool write_statement_kind(enum mylite_stmt_kind kind);
 static int set_connection_released_error(mylite_db *database);
-static int set_read_only_transaction_error(mylite_db *database);
-static int set_savepoint_does_not_exist_error(mylite_db *database, const char *name);
 static bool is_valid_encryption_value(const char *value);
-static char *copy_normalized_savepoint_name(const char *name);
 static bool
 insert_column_uses_numeric_implicit_default(const struct mylite_insert_table_column *column);
 static bool column_default_is_current_timestamp(const char *default_text);
@@ -19195,12 +19179,12 @@ static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind k
     case MYLITE_STMT_BEGIN_TRANSACTION:
     case MYLITE_STMT_COMMIT:
     case MYLITE_STMT_ROLLBACK:
-        status = copy_transaction_statement(statement, stmt);
+        status = mylite_transaction_copy_statement(statement, stmt);
         break;
     case MYLITE_STMT_SAVEPOINT:
     case MYLITE_STMT_ROLLBACK_TO_SAVEPOINT:
     case MYLITE_STMT_RELEASE_SAVEPOINT:
-        status = copy_savepoint_statement(statement, stmt);
+        status = mylite_transaction_copy_savepoint_statement(statement, stmt);
         break;
     case MYLITE_STMT_SCALAR_SELECT:
         status = copy_scalar_select_statement(statement, stmt);
@@ -19266,7 +19250,7 @@ static int execute_custom_statement(mylite_stmt *stmt)
     if (write_statement_kind(stmt->kind) && stmt->database->transaction_active &&
         stmt->database->transaction_access_mode == MYLITE_TRANSACTION_ACCESS_READ_ONLY) {
         stmt->affected_rows = -1;
-        return set_read_only_transaction_error(stmt->database);
+        return mylite_transaction_set_read_only_error(stmt->database);
     }
     stmt->executed = true;
 
@@ -19329,25 +19313,13 @@ static int execute_custom_statement(mylite_stmt *stmt)
         status = execute_delete_statement(stmt);
         break;
     case MYLITE_STMT_START_TRANSACTION:
-        status = execute_start_transaction_statement(stmt);
-        break;
     case MYLITE_STMT_BEGIN_TRANSACTION:
-        status = execute_begin_transaction_statement(stmt);
-        break;
     case MYLITE_STMT_COMMIT:
-        status = execute_commit_statement(stmt);
-        break;
     case MYLITE_STMT_ROLLBACK:
-        status = execute_rollback_statement(stmt);
-        break;
     case MYLITE_STMT_SAVEPOINT:
-        status = execute_savepoint_statement(stmt);
-        break;
     case MYLITE_STMT_ROLLBACK_TO_SAVEPOINT:
-        status = execute_rollback_to_savepoint_statement(stmt);
-        break;
     case MYLITE_STMT_RELEASE_SAVEPOINT:
-        status = execute_release_savepoint_statement(stmt);
+        status = mylite_transaction_execute_statement(stmt);
         break;
     case MYLITE_STMT_SCALAR_SELECT:
         return execute_scalar_select_statement(stmt);
@@ -19361,161 +19333,6 @@ static int execute_custom_statement(mylite_stmt *stmt)
     }
 
     return status == MYLITE_OK ? MYLITE_DONE : status;
-}
-
-static int execute_start_transaction_statement(mylite_stmt *stmt)
-{
-    enum mylite_transaction_access_mode access_mode = MYLITE_TRANSACTION_ACCESS_READ_WRITE;
-    int status = MYLITE_OK;
-
-    if (stmt->transaction.has_access_mode) {
-        access_mode = stmt->transaction.access_mode;
-    }
-    if (stmt->database->transaction_active) {
-        status = mylite_transaction_commit_explicit(stmt->database);
-        if (status != MYLITE_OK) {
-            stmt->affected_rows = -1;
-            return status;
-        }
-    }
-
-    status = mylite_transaction_begin_explicit(stmt->database, access_mode,
-                                               stmt->transaction.consistent_snapshot);
-    if (status != MYLITE_OK) {
-        stmt->affected_rows = -1;
-        return status;
-    }
-
-    stmt->affected_rows = 0;
-    return MYLITE_OK;
-}
-
-static int execute_begin_transaction_statement(mylite_stmt *stmt)
-{
-    int status = MYLITE_OK;
-
-    if (stmt->database->transaction_active) {
-        status = mylite_transaction_commit_explicit(stmt->database);
-        if (status != MYLITE_OK) {
-            stmt->affected_rows = -1;
-            return status;
-        }
-    }
-
-    status = mylite_transaction_begin_explicit(stmt->database, MYLITE_TRANSACTION_ACCESS_READ_WRITE,
-                                               false);
-    if (status != MYLITE_OK) {
-        stmt->affected_rows = -1;
-        return status;
-    }
-
-    stmt->affected_rows = 0;
-    return MYLITE_OK;
-}
-
-static int execute_commit_statement(mylite_stmt *stmt)
-{
-    enum mylite_transaction_access_mode chain_access_mode = stmt->database->transaction_access_mode;
-    bool chain_consistent_snapshot = stmt->database->transaction_consistent_snapshot;
-    int status = MYLITE_OK;
-
-    if (stmt->database->transaction_active) {
-        status = mylite_transaction_commit_explicit(stmt->database);
-        if (status != MYLITE_OK) {
-            stmt->affected_rows = -1;
-            return status;
-        }
-    }
-
-    status = finish_transaction_completion(stmt, chain_access_mode, chain_consistent_snapshot);
-    stmt->affected_rows = status == MYLITE_OK ? 0 : -1;
-    return status;
-}
-
-static int execute_rollback_statement(mylite_stmt *stmt)
-{
-    enum mylite_transaction_access_mode chain_access_mode = stmt->database->transaction_access_mode;
-    bool chain_consistent_snapshot = stmt->database->transaction_consistent_snapshot;
-    int status = MYLITE_OK;
-
-    if (stmt->database->transaction_active) {
-        status = mylite_transaction_rollback_explicit(stmt->database);
-        if (status != MYLITE_OK) {
-            stmt->affected_rows = -1;
-            return status;
-        }
-    }
-
-    status = finish_transaction_completion(stmt, chain_access_mode, chain_consistent_snapshot);
-    stmt->affected_rows = status == MYLITE_OK ? 0 : -1;
-    return status;
-}
-
-static int finish_transaction_completion(mylite_stmt *stmt,
-                                         enum mylite_transaction_access_mode chain_access_mode,
-                                         bool chain_consistent_snapshot)
-{
-    int status = MYLITE_OK;
-
-    if (stmt->transaction.completion_chain == MYLITE_TRANSACTION_COMPLETION_CHAIN_YES) {
-        status = mylite_transaction_begin_explicit(stmt->database, chain_access_mode,
-                                                   chain_consistent_snapshot);
-        if (status != MYLITE_OK) {
-            return status;
-        }
-    }
-
-    if (stmt->transaction.completion_release == MYLITE_TRANSACTION_COMPLETION_RELEASE_YES) {
-        stmt->database->transaction_released = true;
-    }
-    return MYLITE_OK;
-}
-
-static int execute_savepoint_statement(mylite_stmt *stmt)
-{
-    int status = MYLITE_OK;
-
-    if (!stmt->database->transaction_active) {
-        stmt->affected_rows = 0;
-        return MYLITE_OK;
-    }
-
-    status = mylite_transaction_create_savepoint(stmt->database, stmt->savepoint.name,
-                                                 stmt->savepoint.normalized_name);
-    stmt->affected_rows = status == MYLITE_OK ? 0 : -1;
-    return status;
-}
-
-static int execute_rollback_to_savepoint_statement(mylite_stmt *stmt)
-{
-    size_t index =
-        mylite_transaction_find_savepoint(stmt->database, stmt->savepoint.normalized_name);
-    int status = MYLITE_OK;
-
-    if (index == SIZE_MAX) {
-        stmt->affected_rows = -1;
-        return set_savepoint_does_not_exist_error(stmt->database, stmt->savepoint.name);
-    }
-
-    status = mylite_transaction_rollback_to_savepoint(stmt->database, index);
-    stmt->affected_rows = status == MYLITE_OK ? 0 : -1;
-    return status;
-}
-
-static int execute_release_savepoint_statement(mylite_stmt *stmt)
-{
-    size_t index =
-        mylite_transaction_find_savepoint(stmt->database, stmt->savepoint.normalized_name);
-    int status = MYLITE_OK;
-
-    if (index == SIZE_MAX) {
-        stmt->affected_rows = -1;
-        return set_savepoint_does_not_exist_error(stmt->database, stmt->savepoint.name);
-    }
-
-    status = mylite_transaction_release_savepoint(stmt->database, index);
-    stmt->affected_rows = status == MYLITE_OK ? 0 : -1;
-    return status;
 }
 
 static int execute_create_schema_statement(mylite_stmt *stmt)
@@ -37269,82 +37086,6 @@ static int copy_delete_statement(const struct mylite_sql_ast_node *statement, my
     return copy_delete_target(target, &stmt->delete_plan.target);
 }
 
-static int copy_transaction_statement(const struct mylite_sql_ast_node *statement,
-                                      mylite_stmt *stmt)
-{
-    const struct mylite_sql_ast_node *characteristics = NULL;
-    const struct mylite_sql_ast_node *completion = NULL;
-
-    stmt->transaction.access_mode = MYLITE_TRANSACTION_ACCESS_READ_WRITE;
-    stmt->transaction.completion_chain = MYLITE_TRANSACTION_COMPLETION_CHAIN_DEFAULT;
-    stmt->transaction.completion_release = MYLITE_TRANSACTION_COMPLETION_RELEASE_DEFAULT;
-
-    if (statement->kind == MYLITE_SQL_AST_START_TRANSACTION_STATEMENT) {
-        characteristics = mylite_ast_child_at(statement, 0U);
-        for (const struct mylite_sql_ast_node *item =
-                 characteristics == NULL ? NULL : characteristics->first_child;
-             item != NULL; item = item->next_sibling) {
-            if (item->transaction_access_mode == MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_WRITE) {
-                stmt->transaction.has_access_mode = true;
-                stmt->transaction.access_mode = MYLITE_TRANSACTION_ACCESS_READ_WRITE;
-            } else if (item->transaction_access_mode ==
-                       MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_ONLY) {
-                stmt->transaction.has_access_mode = true;
-                stmt->transaction.access_mode = MYLITE_TRANSACTION_ACCESS_READ_ONLY;
-            }
-            if (item->transaction_consistent_snapshot) {
-                stmt->transaction.consistent_snapshot = true;
-            }
-        }
-        return MYLITE_OK;
-    }
-
-    if (statement->kind == MYLITE_SQL_AST_COMMIT_STATEMENT ||
-        statement->kind == MYLITE_SQL_AST_ROLLBACK_STATEMENT) {
-        completion = mylite_ast_child_at(statement, 0U);
-        if (completion != NULL) {
-            switch (completion->transaction_chain) {
-            case MYLITE_SQL_AST_TRANSACTION_CHAIN_YES:
-                stmt->transaction.completion_chain = MYLITE_TRANSACTION_COMPLETION_CHAIN_YES;
-                break;
-            case MYLITE_SQL_AST_TRANSACTION_CHAIN_NO:
-                stmt->transaction.completion_chain = MYLITE_TRANSACTION_COMPLETION_CHAIN_NO;
-                break;
-            case MYLITE_SQL_AST_TRANSACTION_CHAIN_DEFAULT:
-                break;
-            }
-            switch (completion->transaction_release) {
-            case MYLITE_SQL_AST_TRANSACTION_RELEASE_YES:
-                stmt->transaction.completion_release = MYLITE_TRANSACTION_COMPLETION_RELEASE_YES;
-                break;
-            case MYLITE_SQL_AST_TRANSACTION_RELEASE_NO:
-                stmt->transaction.completion_release = MYLITE_TRANSACTION_COMPLETION_RELEASE_NO;
-                break;
-            case MYLITE_SQL_AST_TRANSACTION_RELEASE_DEFAULT:
-                break;
-            }
-        }
-    }
-
-    return MYLITE_OK;
-}
-
-static int copy_savepoint_statement(const struct mylite_sql_ast_node *statement, mylite_stmt *stmt)
-{
-    const struct mylite_sql_ast_node *name = mylite_ast_child_at(statement, 0U);
-
-    if (name == NULL || name->kind != MYLITE_SQL_AST_IDENTIFIER) {
-        return MYLITE_UNSUPPORTED;
-    }
-
-    stmt->savepoint.name = mylite_copy_identifier_span(name);
-    if (stmt->savepoint.name == NULL) {
-        return MYLITE_NOMEM;
-    }
-    stmt->savepoint.normalized_name = copy_normalized_savepoint_name(stmt->savepoint.name);
-    return stmt->savepoint.normalized_name == NULL ? MYLITE_NOMEM : MYLITE_OK;
-}
-
 // NOLINTNEXTLINE(misc-no-recursion)
 static int copy_scalar_select_statement(const struct mylite_sql_ast_node *statement,
                                         mylite_stmt *stmt)
@@ -41746,34 +41487,6 @@ static int set_connection_released_error(mylite_db *database)
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
-static int set_read_only_transaction_error(mylite_db *database)
-{
-    int status = mylite_diagnostics_set_error_message(
-        database, "Cannot execute statement in a READ ONLY transaction");
-
-    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-}
-
-static int set_savepoint_does_not_exist_error(mylite_db *database, const char *name)
-{
-    char *message = sqlite3_mprintf("SAVEPOINT %q does not exist", name);
-    int status = MYLITE_OK;
-
-    if (message == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    status = mylite_diagnostics_set_error_message(database, message);
-    sqlite3_free(message);
-    if (status == MYLITE_NOMEM) {
-        return MYLITE_NOMEM;
-    }
-    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_SP_DOES_NOT_EXIST,
-                                             mylite_error_message(database));
-    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-}
-
 static bool is_valid_encryption_value(const char *value)
 {
     if (value == NULL || value[0] == '\0' || value[1] != '\0') {
@@ -41783,22 +41496,6 @@ static bool is_valid_encryption_value(const char *value)
         return true;
     }
     return false;
-}
-
-static char *copy_normalized_savepoint_name(const char *name)
-{
-    char *copy = mylite_copy_span_text(name, name == NULL ? 0U : strlen(name));
-
-    if (copy == NULL) {
-        return NULL;
-    }
-
-    for (size_t index = 0U; copy[index] != '\0'; ++index) {
-        if (copy[index] >= 'A' && copy[index] <= 'Z') {
-            copy[index] = (char)(copy[index] - 'A' + 'a');
-        }
-    }
-    return copy;
 }
 
 static bool

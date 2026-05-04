@@ -67,8 +67,8 @@ after every step.
   `src/runtime/mylite_catalog.{h,c}`.
 - [x] Extract reusable span, string, and AST-child helpers into
   `src/runtime/mylite_span.{h,c}`.
-- [x] Extract transaction state, savepoints, pending auto-increment tracking,
-  and statement atomicity into `src/runtime/mylite_transactions.{h,c}`.
+- [x] Extract transaction statements, state, savepoints, pending auto-increment
+  tracking, and statement atomicity into `src/runtime/mylite_transactions.{h,c}`.
 - [ ] Extract public statement lifecycle and result accessors into
   `src/runtime/mylite_statement.{h,c}` while keeping statement-family execution
   in `mylite.c`.

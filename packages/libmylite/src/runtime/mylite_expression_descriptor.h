@@ -22,6 +22,10 @@ bool mylite_expression_descriptor_has_double_result(
 void mylite_expression_descriptor_merge_union_operand(
     const mylite_db *database, struct mylite_field_descriptor *descriptor,
     const struct mylite_field_descriptor *operand);
+struct mylite_field_descriptor
+mylite_expression_descriptor_from_value(const struct mylite_expression_value *value);
+bool mylite_expression_descriptor_operator_forces_not_null(
+    enum mylite_sql_ast_operator operator_kind);
 struct mylite_field_descriptor mylite_expression_descriptor_null(void);
 struct mylite_field_descriptor mylite_expression_descriptor_boolean(bool nullable);
 struct mylite_field_descriptor mylite_expression_descriptor_unsigned_longlong(bool nullable);

@@ -589,9 +589,6 @@ static bool function_name_is_inverse_trigonometric(const struct mylite_sql_ast_n
 static bool function_name_is_angle_conversion(const struct mylite_sql_ast_node *name);
 static bool function_name_matches_any(const struct mylite_sql_ast_node *name,
                                       const char *const *candidates, size_t candidate_count);
-static struct mylite_field_descriptor
-expression_value_descriptor(const struct mylite_expression_value *value);
-static bool expression_operator_forces_not_null(enum mylite_sql_ast_operator operator_kind);
 static int copy_select_from_clause(mylite_db *database,
                                    const struct mylite_sql_ast_node *from_clause,
                                    struct mylite_select_plan *plan);
@@ -3559,7 +3556,7 @@ static int infer_expression_descriptor(mylite_db *database, const struct mylite_
         break;
     }
 
-    *out_descriptor = expression_value_descriptor(value);
+    *out_descriptor = mylite_expression_descriptor_from_value(value);
     return MYLITE_OK;
 }
 
@@ -3625,7 +3622,7 @@ static int infer_literal_descriptor(mylite_db *database,
     case MYLITE_SQL_AST_LITERAL_HEX:
     case MYLITE_SQL_AST_LITERAL_BIT:
     case MYLITE_SQL_AST_LITERAL_NONE:
-        descriptor = expression_value_descriptor(value);
+        descriptor = mylite_expression_descriptor_from_value(value);
         break;
     }
 
@@ -3717,7 +3714,7 @@ static int infer_unary_expression_descriptor(mylite_db *database,
         break;
     }
 
-    *out_descriptor = expression_value_descriptor(value);
+    *out_descriptor = mylite_expression_descriptor_from_value(value);
     return MYLITE_OK;
 }
 
@@ -3798,7 +3795,8 @@ static int infer_binary_expression_descriptor(mylite_db *database,
         bool descriptor_nullable = false;
 
         if (nullable) {
-            bool forces_not_null = expression_operator_forces_not_null(expression->operator_kind);
+            bool forces_not_null =
+                mylite_expression_descriptor_operator_forces_not_null(expression->operator_kind);
 
             if (!forces_not_null) {
                 descriptor_nullable = true;
@@ -3828,7 +3826,7 @@ static int infer_binary_expression_descriptor(mylite_db *database,
         break;
     }
 
-    *out_descriptor = expression_value_descriptor(value);
+    *out_descriptor = mylite_expression_descriptor_from_value(value);
     return MYLITE_OK;
 }
 
@@ -3901,7 +3899,7 @@ static int infer_ternary_expression_descriptor(mylite_db *database,
         break;
     }
 
-    *out_descriptor = expression_value_descriptor(value);
+    *out_descriptor = mylite_expression_descriptor_from_value(value);
     return MYLITE_OK;
 }
 
@@ -3981,7 +3979,7 @@ static int infer_function_expression_descriptor(mylite_db *database,
     if (name != NULL && mylite_span_equal_ci(name->span, "ABS")) {
         *out_descriptor = mylite_expression_descriptor_signed_longlong(result_nullable);
         if (value != NULL && value->kind != MYLITE_EXPRESSION_VALUE_NULL) {
-            *out_descriptor = expression_value_descriptor(value);
+            *out_descriptor = mylite_expression_descriptor_from_value(value);
             mylite_field_descriptor_set_nullable(out_descriptor, result_nullable);
         }
         return MYLITE_OK;
@@ -4008,7 +4006,7 @@ static int infer_function_expression_descriptor(mylite_db *database,
         return MYLITE_OK;
     }
 
-    *out_descriptor = expression_value_descriptor(value);
+    *out_descriptor = mylite_expression_descriptor_from_value(value);
     return MYLITE_OK;
 }
 
@@ -4310,7 +4308,7 @@ static int infer_round_function_descriptor(mylite_db *database,
         return MYLITE_OK;
     }
     if (value_descriptor.type == MYLITE_FIELD_TYPE_NULL) {
-        *out_descriptor = expression_value_descriptor(value);
+        *out_descriptor = mylite_expression_descriptor_from_value(value);
         if (out_descriptor->type == MYLITE_FIELD_TYPE_NULL) {
             *out_descriptor = (struct mylite_field_descriptor){
                 .type = MYLITE_FIELD_TYPE_DOUBLE,
@@ -4535,7 +4533,7 @@ static int infer_truncate_function_descriptor(mylite_db *database,
         return MYLITE_OK;
     }
     if (value_descriptor.type == MYLITE_FIELD_TYPE_NULL) {
-        *out_descriptor = expression_value_descriptor(value);
+        *out_descriptor = mylite_expression_descriptor_from_value(value);
         if (out_descriptor->type == MYLITE_FIELD_TYPE_NULL) {
             *out_descriptor = (struct mylite_field_descriptor){
                 .type = MYLITE_FIELD_TYPE_DOUBLE,
@@ -7291,96 +7289,6 @@ static bool function_name_matches_any(const struct mylite_sql_ast_node *name,
         if (mylite_span_equal_ci(name->span, candidates[index])) {
             return true;
         }
-    }
-    return false;
-}
-
-static struct mylite_field_descriptor
-expression_value_descriptor(const struct mylite_expression_value *value)
-{
-    if (value == NULL) {
-        return mylite_expression_descriptor_defaults();
-    }
-
-    switch (value->kind) {
-    case MYLITE_EXPRESSION_VALUE_NULL:
-        return (struct mylite_field_descriptor){
-            .type = MYLITE_FIELD_TYPE_NULL,
-            .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
-            .charset_id = mylite_mysql_binary_charset_id,
-            .nullable = true,
-        };
-    case MYLITE_EXPRESSION_VALUE_INT64:
-        return mylite_expression_descriptor_signed_longlong(false);
-    case MYLITE_EXPRESSION_VALUE_UINT64:
-        return mylite_expression_descriptor_unsigned_longlong(false);
-    case MYLITE_EXPRESSION_VALUE_REAL:
-        return (struct mylite_field_descriptor){
-            .type = MYLITE_FIELD_TYPE_DOUBLE,
-            .flags = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
-            .length = mylite_mysql_double_display_length,
-            .decimals = mylite_mysql_not_fixed_decimals,
-            .charset_id = mylite_mysql_binary_charset_id,
-            .nullable = false,
-        };
-    case MYLITE_EXPRESSION_VALUE_TEXT:
-        return (struct mylite_field_descriptor){
-            .type = MYLITE_FIELD_TYPE_VAR_STRING,
-            .flags = MYLITE_FIELD_FLAG_NOT_NULL,
-            .length = value->text_value == NULL ? 0U : value->text_length,
-            .decimals = mylite_mysql_not_fixed_decimals,
-            .charset_id = mylite_mysql_utf8mb4_0900_ai_ci_charset_id,
-            .nullable = false,
-        };
-    }
-    return mylite_expression_descriptor_defaults();
-}
-
-static bool expression_operator_forces_not_null(enum mylite_sql_ast_operator operator_kind)
-{
-    switch (operator_kind) {
-    case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
-    case MYLITE_SQL_AST_OPERATOR_IS_NULL:
-    case MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL:
-    case MYLITE_SQL_AST_OPERATOR_IS_TRUE:
-    case MYLITE_SQL_AST_OPERATOR_IS_NOT_TRUE:
-    case MYLITE_SQL_AST_OPERATOR_IS_FALSE:
-    case MYLITE_SQL_AST_OPERATOR_IS_NOT_FALSE:
-    case MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN:
-    case MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN:
-        return true;
-    case MYLITE_SQL_AST_OPERATOR_NONE:
-    case MYLITE_SQL_AST_OPERATOR_POSITIVE:
-    case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
-    case MYLITE_SQL_AST_OPERATOR_ADD:
-    case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
-    case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
-    case MYLITE_SQL_AST_OPERATOR_DIVIDE:
-    case MYLITE_SQL_AST_OPERATOR_EQUAL:
-    case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
-    case MYLITE_SQL_AST_OPERATOR_LESS:
-    case MYLITE_SQL_AST_OPERATOR_LESS_EQUAL:
-    case MYLITE_SQL_AST_OPERATOR_GREATER:
-    case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
-    case MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT:
-    case MYLITE_SQL_AST_OPERATOR_LOGICAL_AND:
-    case MYLITE_SQL_AST_OPERATOR_LOGICAL_XOR:
-    case MYLITE_SQL_AST_OPERATOR_LOGICAL_OR:
-    case MYLITE_SQL_AST_OPERATOR_BITWISE_NOT:
-    case MYLITE_SQL_AST_OPERATOR_BITWISE_AND:
-    case MYLITE_SQL_AST_OPERATOR_BITWISE_XOR:
-    case MYLITE_SQL_AST_OPERATOR_BITWISE_OR:
-    case MYLITE_SQL_AST_OPERATOR_SHIFT_LEFT:
-    case MYLITE_SQL_AST_OPERATOR_SHIFT_RIGHT:
-    case MYLITE_SQL_AST_OPERATOR_BETWEEN:
-    case MYLITE_SQL_AST_OPERATOR_NOT_BETWEEN:
-    case MYLITE_SQL_AST_OPERATOR_LIKE:
-    case MYLITE_SQL_AST_OPERATOR_NOT_LIKE:
-    case MYLITE_SQL_AST_OPERATOR_IN:
-    case MYLITE_SQL_AST_OPERATOR_NOT_IN:
-    case MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE:
-    case MYLITE_SQL_AST_OPERATOR_MODULO:
-        return false;
     }
     return false;
 }

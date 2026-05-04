@@ -442,7 +442,7 @@ only the core object model and transitional shared helpers listed here:
 - [x] Move update row materialization logic into `mylite_dml`.
 - [x] Move update row writeback into `mylite_dml`.
 - [x] Move delete target copy into `mylite_dml`.
-- [ ] Move remaining delete target validation into `mylite_dml`.
+- [x] Move remaining delete target validation into `mylite_dml`.
 - [x] Move delete row materialization/sorting/limit logic into `mylite_dml`.
 - [x] Move delete physical row execution into `mylite_dml`.
 - [x] Move DELETE-specific diagnostics into a focused DML companion module.

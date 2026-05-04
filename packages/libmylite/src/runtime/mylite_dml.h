@@ -240,6 +240,7 @@ int mylite_dml_set_delete_unknown_column_error(mylite_db *database, const char *
 int mylite_dml_set_delete_unsupported_clause_error(mylite_db *database);
 int mylite_dml_bind_delete_subset(mylite_db *database, const struct mylite_delete_plan *plan,
                                   const struct mylite_select_table *table);
+int mylite_dml_resolve_delete_target(mylite_db *database, struct mylite_select_table *table);
 int mylite_dml_bind_delete_order_by_clause(mylite_db *database,
                                            const struct mylite_delete_plan *plan,
                                            const struct mylite_select_table *table,

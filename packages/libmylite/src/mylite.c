@@ -15553,13 +15553,7 @@ static int execute_delete_statement(mylite_stmt *stmt)
     status =
         mylite_dml_copy_delete_target_to_select_table(stmt->database, &stmt->delete_plan, &table);
     if (status == MYLITE_OK) {
-        status = mylite_select_resolve_table_target(stmt->database, &table);
-        if (status == MYLITE_UNSUPPORTED && table.schema_name != NULL &&
-            mylite_select_schema_name_is_system(table.schema_name)) {
-            (void)mylite_diagnostics_set_error_message_parts(
-                stmt->database, "Access to system schema '", table.schema_name, "' is rejected.");
-            status = MYLITE_EXEC_ERROR;
-        }
+        status = mylite_dml_resolve_delete_target(stmt->database, &table);
     }
     if (status == MYLITE_OK) {
         status = load_select_columns(stmt->database, &table);

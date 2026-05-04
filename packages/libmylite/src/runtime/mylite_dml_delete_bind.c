@@ -40,6 +40,24 @@ int mylite_dml_bind_delete_subset(mylite_db *database, const struct mylite_delet
     return status;
 }
 
+int mylite_dml_resolve_delete_target(mylite_db *database, struct mylite_select_table *table)
+{
+    int status = MYLITE_OK;
+
+    if (database == NULL || table == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    status = mylite_select_resolve_table_target(database, table);
+    if (status == MYLITE_UNSUPPORTED && table->schema_name != NULL &&
+        mylite_select_schema_name_is_system(table->schema_name)) {
+        (void)mylite_diagnostics_set_error_message_parts(database, "Access to system schema '",
+                                                         table->schema_name, "' is rejected.");
+        return MYLITE_EXEC_ERROR;
+    }
+    return status;
+}
+
 int mylite_dml_bind_delete_order_by_clause(mylite_db *database,
                                            const struct mylite_delete_plan *plan,
                                            const struct mylite_select_table *table,

@@ -2016,12 +2016,6 @@ static int copy_table_select_column_value(mylite_stmt *stmt, size_t column_index
 static int map_table_select_expression_eval_status(mylite_stmt *stmt, int status);
 static int set_where_predicate_eval_error(mylite_stmt *stmt);
 static void table_select_group_deinit(struct mylite_table_select_group *group);
-static int validate_truncate_table_plan(mylite_stmt *stmt);
-static int resolve_truncate_table_name(mylite_stmt *stmt);
-static int validate_truncate_table_target(mylite_stmt *stmt);
-static int truncate_table_transaction(mylite_stmt *stmt);
-static int delete_truncate_table_rows(mylite_stmt *stmt);
-static int reset_truncate_table_auto_increment(mylite_stmt *stmt);
 static bool alter_table_has_table_rename_action(const mylite_stmt *stmt);
 static int execute_alter_table_rename_statement(mylite_stmt *stmt);
 static int add_alter_table_rename_target(mylite_stmt *stmt);
@@ -15442,150 +15436,15 @@ static int execute_rename_table_statement(mylite_stmt *stmt)
 
 static int execute_truncate_table_statement(mylite_stmt *stmt)
 {
-    int status = validate_truncate_table_plan(stmt);
+    int status = MYLITE_OK;
 
     stmt->affected_rows = 0;
-    if (status == MYLITE_OK) {
-        status = truncate_table_transaction(stmt);
-    }
+    status = mylite_table_ddl_execute_truncate_table_statement(
+        stmt->database, stmt->database->selected_schema, &stmt->truncate_table);
     if (status != MYLITE_OK) {
         stmt->affected_rows = -1;
     }
     return status;
-}
-
-static int validate_truncate_table_plan(mylite_stmt *stmt)
-{
-    int status = resolve_truncate_table_name(stmt);
-
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    return validate_truncate_table_target(stmt);
-}
-
-static int resolve_truncate_table_name(mylite_stmt *stmt)
-{
-    const char *selected_schema = stmt->database->selected_schema;
-
-    if (stmt->truncate_table.table_name == NULL) {
-        return MYLITE_UNSUPPORTED;
-    }
-    if (stmt->truncate_table.schema_name != NULL) {
-        return MYLITE_OK;
-    }
-    if (selected_schema == NULL || selected_schema[0] == '\0') {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "No database selected");
-        return MYLITE_EXEC_ERROR;
-    }
-
-    stmt->truncate_table.schema_name = mylite_copy_nonempty_cstring(selected_schema);
-    if (stmt->truncate_table.schema_name == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    return MYLITE_OK;
-}
-
-static int validate_truncate_table_target(mylite_stmt *stmt)
-{
-    struct mylite_schema_presence presence;
-    bool exists = false;
-    int status =
-        mylite_catalog_schema_exists(stmt->database, stmt->truncate_table.schema_name, &presence);
-
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    if (presence.is_system) {
-        (void)mylite_diagnostics_set_error_message_parts(
-            stmt->database, "Access to system schema '", stmt->truncate_table.schema_name,
-            "' is rejected.");
-        return MYLITE_EXEC_ERROR;
-    }
-    if (!presence.exists) {
-        return mylite_diagnostics_set_table_doesnt_exist_error(
-            stmt->database, stmt->truncate_table.schema_name, stmt->truncate_table.table_name);
-    }
-
-    status = mylite_catalog_table_exists(stmt->database, stmt->truncate_table.schema_name,
-                                         stmt->truncate_table.table_name, &exists);
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    if (!exists) {
-        return mylite_diagnostics_set_table_doesnt_exist_error(
-            stmt->database, stmt->truncate_table.schema_name, stmt->truncate_table.table_name);
-    }
-    return MYLITE_OK;
-}
-
-static int truncate_table_transaction(mylite_stmt *stmt)
-{
-    struct mylite_statement_atomicity atomicity = {0};
-    int status = mylite_transaction_begin_statement_atomicity(stmt->database, &atomicity);
-
-    if (status == MYLITE_OK) {
-        status = delete_truncate_table_rows(stmt);
-    }
-    if (status == MYLITE_OK) {
-        status = reset_truncate_table_auto_increment(stmt);
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_transaction_commit_statement_atomicity(stmt->database, &atomicity);
-        if (status == MYLITE_OK) {
-            stmt->affected_rows = 0;
-            return MYLITE_OK;
-        }
-    }
-
-    mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
-    return status;
-}
-
-static int delete_truncate_table_rows(mylite_stmt *stmt)
-{
-    char *physical_name = mylite_catalog_physical_table_name(stmt->truncate_table.schema_name,
-                                                             stmt->truncate_table.table_name);
-    char *sql = NULL;
-    int rc = SQLITE_OK;
-
-    if (physical_name == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    sql = sqlite3_mprintf("DELETE FROM \"%w\"", physical_name);
-    free(physical_name);
-    if (sql == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    rc = sqlite3_exec(stmt->database->sqlite, sql, NULL, NULL, NULL);
-    sqlite3_free(sql);
-    return rc == SQLITE_OK ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
-}
-
-static int reset_truncate_table_auto_increment(mylite_stmt *stmt)
-{
-    sqlite3_stmt *update = NULL;
-    static const char sql[] = "UPDATE __mylite_table_catalog SET auto_increment = NULL "
-                              "WHERE table_schema = ? AND table_name = ?";
-    int rc = sqlite3_prepare_v3(stmt->database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &update,
-                                NULL);
-
-    if (rc != SQLITE_OK) {
-        return mylite_diagnostics_set_sqlite_error(stmt->database);
-    }
-
-    sqlite3_bind_text(update, 1, stmt->truncate_table.schema_name, -1,
-                      sqlite_transient_destructor());
-    sqlite3_bind_text(update, 2, stmt->truncate_table.table_name, -1,
-                      sqlite_transient_destructor());
-    rc = sqlite3_step(update);
-    sqlite3_finalize(update);
-    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
 }
 
 static bool alter_table_has_table_rename_action(const mylite_stmt *stmt)

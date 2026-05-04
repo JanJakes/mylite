@@ -261,6 +261,7 @@ static int test_timestampdiff_function_execution(void);
 static int test_timestampadd_function_execution(void);
 static int test_to_days_function_execution(void);
 static int test_to_seconds_function_execution(void);
+static int test_from_days_function_execution(void);
 static int test_date_add_sub_functions_execution(void);
 static int test_round_scalar_function_execution(mylite_db *database);
 static int test_format_scalar_function_execution(mylite_db *database);
@@ -478,6 +479,7 @@ int main(void)
     failures += test_timestampadd_function_execution();
     failures += test_to_days_function_execution();
     failures += test_to_seconds_function_execution();
+    failures += test_from_days_function_execution();
     failures += test_date_add_sub_functions_execution();
     failures += test_inet_ipv4_functions_execution();
     failures += test_charset_collation_functions_execution();
@@ -7258,6 +7260,232 @@ static int test_to_seconds_function_execution(void)
     failures +=
         prepare_sql(database, "SELECT TO_SECONDS('2024-01-01','x')", MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "TO_SECONDS extra argument rejected");
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_from_days_function_execution(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const struct expected_result_metadata metadata[] = {
+        {"from_days_value", NULL, NULL, NULL, NULL, NULL, 10U, MYLITE_FIELD_TYPE_DATE, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NOT_NULL,
+         MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 0},
+        {"from_days_null", NULL, NULL, NULL, NULL, NULL, 10U, MYLITE_FIELD_TYPE_DATE, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+    };
+    static const char *const projection_columns[] = {"id", "d"};
+    static const char *const projection_values[] = {
+        "3",
+        "2024-03-01",
+        "2",
+        "2024-02-29",
+    };
+    static const char *const updated_columns[] = {"id", "d", "note"};
+    static const char *const updated_values[] = {"2", "2024-02-29", "leap"};
+    static const char *const remaining_columns[] = {"id"};
+    static const char *const remaining_values[] = {"2", "3", "4"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open FROM_DAYS function database");
+
+    failures += prepare_sql(database,
+                            "SELECT FROM_DAYS(739310) AS from_days_value, "
+                            "FROM_DAYS(NULL) AS from_days_null",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "FROM_DAYS metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "FROM_DAYS metadata row");
+    failures +=
+        expect_string(mylite_column_text(stmt, 0), "2024-02-29", "FROM_DAYS metadata value");
+    failures += expect_null_text(mylite_column_text(stmt, 1), "FROM_DAYS metadata null");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "FROM_DAYS metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT FROM_DAYS(0) AS zero_day, "
+                            "FROM_DAYS(1) AS first_day, "
+                            "FROM_DAYS(365) AS low_boundary, "
+                            "FROM_DAYS(366) AS year_one, "
+                            "FROM_DAYS(739310) AS leap_day, "
+                            "FROM_DAYS(3652424) AS max_date, "
+                            "FROM_DAYS(-1) AS negative_day, "
+                            "FROM_DAYS(TO_DAYS('2024-02-29')) AS roundtrip",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "FROM_DAYS scalar row");
+    failures += expect_string(mylite_column_text(stmt, 0), "0000-00-00", "FROM_DAYS zero day");
+    failures += expect_string(mylite_column_text(stmt, 1), "0000-00-00", "FROM_DAYS first day");
+    failures += expect_string(mylite_column_text(stmt, 2), "0000-00-00", "FROM_DAYS low boundary");
+    failures += expect_string(mylite_column_text(stmt, 3), "0001-01-01", "FROM_DAYS year one");
+    failures += expect_string(mylite_column_text(stmt, 4), "2024-02-29", "FROM_DAYS leap day");
+    failures += expect_string(mylite_column_text(stmt, 5), "9999-12-31", "FROM_DAYS max date");
+    failures += expect_string(mylite_column_text(stmt, 6), "0000-00-00", "FROM_DAYS negative day");
+    failures += expect_string(mylite_column_text(stmt, 7), "2024-02-29", "FROM_DAYS roundtrip");
+    failures += expect_int(mylite_warning_count(database), 0, "FROM_DAYS scalar warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "FROM_DAYS scalar done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT FROM_DAYS(739310.4) AS real_low, "
+                            "FROM_DAYS(739310.5) AS real_half, "
+                            "FROM_DAYS(739310.9) AS real_high, "
+                            "FROM_DAYS('739310') AS text_integer",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "FROM_DAYS numeric row");
+    failures += expect_string(mylite_column_text(stmt, 0), "2024-02-29", "FROM_DAYS numeric low");
+    failures += expect_string(mylite_column_text(stmt, 1), "2024-03-01", "FROM_DAYS numeric half");
+    failures += expect_string(mylite_column_text(stmt, 2), "2024-03-01", "FROM_DAYS numeric high");
+    failures += expect_string(mylite_column_text(stmt, 3), "2024-02-29", "FROM_DAYS text integer");
+    failures += expect_int(mylite_warning_count(database), 0, "FROM_DAYS numeric warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "FROM_DAYS numeric done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT FROM_DAYS('bad') AS bad_text, "
+                            "FROM_DAYS('739310x') AS trailing_text, "
+                            "FROM_DAYS('') AS empty_text, "
+                            "FROM_DAYS('739310.9') AS fractional_text",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "FROM_DAYS text warning row");
+    failures += expect_string(mylite_column_text(stmt, 0), "0000-00-00", "FROM_DAYS bad text zero");
+    failures += expect_string(mylite_column_text(stmt, 1), "2024-02-29", "FROM_DAYS trailing text");
+    failures +=
+        expect_string(mylite_column_text(stmt, 2), "0000-00-00", "FROM_DAYS empty text zero");
+    failures +=
+        expect_string(mylite_column_text(stmt, 3), "2024-02-29", "FROM_DAYS fractional text");
+    failures += expect_int(mylite_warning_count(database), 4, "FROM_DAYS text warning count");
+    for (int index = 0; index < 4; ++index) {
+        failures += expect_int((int)mylite_warning_code(database, index),
+                               mysql_warning_truncated_wrong_value, "FROM_DAYS text warning code");
+    }
+    failures +=
+        expect_string(mylite_warning_message(database, 0),
+                      "Truncated incorrect INTEGER value: 'bad'", "FROM_DAYS bad text warning");
+    failures += expect_string(mylite_warning_message(database, 1),
+                              "Truncated incorrect INTEGER value: '739310x'",
+                              "FROM_DAYS trailing text warning");
+    failures +=
+        expect_string(mylite_warning_message(database, 2), "Truncated incorrect INTEGER value: ''",
+                      "FROM_DAYS empty text warning");
+    failures += expect_string(mylite_warning_message(database, 3),
+                              "Truncated incorrect INTEGER value: '739310.9'",
+                              "FROM_DAYS fractional text warning");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "FROM_DAYS text warning done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "SELECT FROM_DAYS(3652425) AS overflow_day", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "FROM_DAYS overflow row");
+    failures += expect_null_text(mylite_column_text(stmt, 0), "FROM_DAYS overflow null");
+    failures += expect_int(mylite_warning_count(database), 1, "FROM_DAYS overflow warnings");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_datetime_function_overflow,
+                   "FROM_DAYS overflow warning code");
+    failures +=
+        expect_string(mylite_warning_message(database, 0),
+                      "Datetime function: from_days field overflow", "FROM_DAYS overflow warning");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "FROM_DAYS overflow done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE DATABASE from_days_functions", MYLITE_DONE);
+    failures += execute_sql(database, "USE from_days_functions", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE temporal_from_days ("
+                            "id INT PRIMARY KEY, n BIGINT, d DATE, note VARCHAR(32))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO temporal_from_days VALUES "
+                            "(1, 739309, NULL, 'before'), "
+                            "(2, 739310, NULL, 'leap'), "
+                            "(3, 739311, NULL, 'after'), "
+                            "(4, NULL, NULL, 'null')",
+                            MYLITE_DONE);
+    failures += expect_select_rows(database,
+                                   "SELECT id, FROM_DAYS(n) AS d "
+                                   "FROM temporal_from_days "
+                                   "WHERE FROM_DAYS(n) >= '2024-02-29' "
+                                   "ORDER BY FROM_DAYS(n) DESC, id",
+                                   projection_columns, 2, projection_values, 2,
+                                   "FROM_DAYS table projection");
+    failures += execute_sql_expect_done_affected(database,
+                                                 "UPDATE temporal_from_days "
+                                                 "SET d = FROM_DAYS(n) "
+                                                 "WHERE FROM_DAYS(n) = '2024-02-29'",
+                                                 1, "FROM_DAYS update");
+    failures +=
+        expect_select_rows(database, "SELECT id, d, note FROM temporal_from_days WHERE id = 2",
+                           updated_columns, 3, updated_values, 1, "FROM_DAYS updated row");
+    failures += execute_sql_expect_done_affected(database,
+                                                 "DELETE FROM temporal_from_days "
+                                                 "WHERE FROM_DAYS(n) < '2024-02-29'",
+                                                 1, "FROM_DAYS delete");
+    failures +=
+        expect_select_rows(database, "SELECT id FROM temporal_from_days ORDER BY id",
+                           remaining_columns, 1, remaining_values, 3, "FROM_DAYS delete result");
+    failures += prepare_sql(database,
+                            "UPDATE temporal_from_days "
+                            "SET d = FROM_DAYS('bad') WHERE id = 2",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "FROM_DAYS invalid update promoted");
+    failures +=
+        expect_contains(mylite_error_message(database), "Truncated incorrect INTEGER value: 'bad'",
+                        "FROM_DAYS invalid update error");
+    failures += expect_int(mylite_warning_count(database), 1, "FROM_DAYS invalid update warnings");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database, "SELECT id, d, note FROM temporal_from_days WHERE id = 2", updated_columns, 3,
+        updated_values, 1, "FROM_DAYS invalid update unchanged");
+    failures += prepare_sql(database,
+                            "UPDATE temporal_from_days "
+                            "SET d = FROM_DAYS(3652425) WHERE id = 2",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "FROM_DAYS overflow update promoted");
+    failures += expect_contains(mylite_error_message(database),
+                                "Datetime function: from_days field overflow",
+                                "FROM_DAYS overflow update error");
+    failures += expect_int(mylite_warning_count(database), 1, "FROM_DAYS overflow update warnings");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_datetime_function_overflow,
+                   "FROM_DAYS overflow update warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database, "SELECT id, d, note FROM temporal_from_days WHERE id = 2", updated_columns, 3,
+        updated_values, 1, "FROM_DAYS overflow update unchanged");
+    failures += prepare_sql(database,
+                            "DELETE FROM temporal_from_days "
+                            "WHERE FROM_DAYS('bad') IS NOT NULL",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "FROM_DAYS invalid delete promoted");
+    failures +=
+        expect_contains(mylite_error_message(database), "Truncated incorrect INTEGER value: 'bad'",
+                        "FROM_DAYS invalid delete error");
+    failures += expect_int(mylite_warning_count(database), 1, "FROM_DAYS invalid delete warnings");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM temporal_from_days ORDER BY id",
+                                   remaining_columns, 1, remaining_values, 3,
+                                   "FROM_DAYS invalid delete unchanged");
+
+    failures += prepare_sql(database, "SELECT FROM_DAYS()", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "FROM_DAYS missing argument rejected");
+    failures += prepare_sql(database, "SELECT FROM_DAYS(739310,'x')", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "FROM_DAYS extra argument rejected");
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)

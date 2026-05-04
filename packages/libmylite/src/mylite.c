@@ -2125,7 +2125,7 @@ static int infer_function_expression_descriptor(mylite_db *database,
                                                 struct mylite_field_descriptor *out_descriptor);
 static bool infer_common_scalar_function_descriptor(mylite_db *database,
                                                     const struct mylite_sql_ast_node *name,
-                                                    bool result_nullable,
+                                                    bool arguments_nullable, bool result_nullable,
                                                     struct mylite_field_descriptor *out_descriptor);
 static bool function_result_nullable(bool arguments_nullable,
                                      const struct mylite_expression_value *value);
@@ -2146,6 +2146,7 @@ static struct mylite_field_descriptor current_date_function_descriptor(void);
 static struct mylite_field_descriptor current_time_function_descriptor(unsigned int fsp);
 static bool
 infer_temporal_scalar_function_descriptor(const struct mylite_sql_ast_node *name,
+                                          bool arguments_nullable,
                                           struct mylite_field_descriptor *out_descriptor);
 static bool infer_temporal_part_function_descriptor(const struct mylite_sql_ast_node *expression,
                                                     struct mylite_field_descriptor *out_descriptor);
@@ -2469,6 +2470,7 @@ static bool function_name_is_datediff(const struct mylite_sql_ast_node *name);
 static bool function_name_is_timestampdiff(const struct mylite_sql_ast_node *name);
 static bool function_name_is_to_days(const struct mylite_sql_ast_node *name);
 static bool function_name_is_to_seconds(const struct mylite_sql_ast_node *name);
+static bool function_name_is_from_days(const struct mylite_sql_ast_node *name);
 static bool function_name_is_year_part(const struct mylite_sql_ast_node *name);
 static bool function_name_is_month_part(const struct mylite_sql_ast_node *name);
 static bool function_name_is_day_part(const struct mylite_sql_ast_node *name);
@@ -10827,7 +10829,8 @@ static int infer_function_expression_descriptor(mylite_db *database,
     }
     result_nullable = function_result_nullable(nullable, value);
 
-    if (infer_common_scalar_function_descriptor(database, name, result_nullable, out_descriptor)) {
+    if (infer_common_scalar_function_descriptor(database, name, nullable, result_nullable,
+                                                out_descriptor)) {
         return MYLITE_OK;
     }
     status = infer_temporal_function_descriptor(database, plan, expression, out_descriptor);
@@ -10926,7 +10929,7 @@ static int infer_temporal_function_descriptor(mylite_db *database,
 
 static bool infer_common_scalar_function_descriptor(mylite_db *database,
                                                     const struct mylite_sql_ast_node *name,
-                                                    bool result_nullable,
+                                                    bool arguments_nullable, bool result_nullable,
                                                     struct mylite_field_descriptor *out_descriptor)
 {
     if (infer_session_or_inet_function_descriptor(database, name, out_descriptor)) {
@@ -10959,7 +10962,7 @@ static bool infer_common_scalar_function_descriptor(mylite_db *database,
     if (infer_angle_conversion_function_descriptor(name, result_nullable, out_descriptor)) {
         return true;
     }
-    if (infer_temporal_scalar_function_descriptor(name, out_descriptor)) {
+    if (infer_temporal_scalar_function_descriptor(name, arguments_nullable, out_descriptor)) {
         return true;
     }
     return infer_base_conversion_function_descriptor(database, name, out_descriptor);
@@ -11882,6 +11885,7 @@ static struct mylite_field_descriptor current_time_function_descriptor(unsigned 
 
 static bool
 infer_temporal_scalar_function_descriptor(const struct mylite_sql_ast_node *name,
+                                          bool arguments_nullable,
                                           struct mylite_field_descriptor *out_descriptor)
 {
     if (function_name_is_date_extraction(name)) {
@@ -11915,6 +11919,19 @@ infer_temporal_scalar_function_descriptor(const struct mylite_sql_ast_node *name
     if (function_name_is_to_seconds(name)) {
         *out_descriptor = signed_longlong_expression_descriptor(true);
         out_descriptor->length = mylite_mysql_to_seconds_function_display_length;
+        return true;
+    }
+    if (function_name_is_from_days(name)) {
+        struct mylite_field_descriptor descriptor = {
+            .type = MYLITE_FIELD_TYPE_DATE,
+            .flags = MYLITE_FIELD_FLAG_BINARY,
+            .length = mylite_mysql_date_display_length,
+            .charset_id = mylite_mysql_binary_charset_id,
+            .nullable = arguments_nullable,
+        };
+
+        field_descriptor_set_nullable(&descriptor, arguments_nullable);
+        *out_descriptor = descriptor;
         return true;
     }
     if (function_name_is_year_part(name)) {
@@ -13887,6 +13904,13 @@ static bool function_name_is_to_days(const struct mylite_sql_ast_node *name)
 static bool function_name_is_to_seconds(const struct mylite_sql_ast_node *name)
 {
     static const char *const names[] = {"TO_SECONDS"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_is_from_days(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"FROM_DAYS"};
 
     return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }

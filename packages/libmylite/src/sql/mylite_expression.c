@@ -547,6 +547,7 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_TIMESTAMPADD = 112,
     MYLITE_SCALAR_FUNCTION_TO_DAYS = 113,
     MYLITE_SCALAR_FUNCTION_TO_SECONDS = 114,
+    MYLITE_SCALAR_FUNCTION_FROM_DAYS = 115,
 };
 
 struct angle_conversion_input {
@@ -658,6 +659,14 @@ static int eval_to_seconds_function(const struct mylite_sql_ast_node *arguments,
                                     const struct mylite_expression_eval_context *context,
                                     struct mylite_expression_warnings *warnings,
                                     struct mylite_expression_value *out_value);
+static int eval_from_days_function(const struct mylite_sql_ast_node *arguments,
+                                   const struct mylite_expression_eval_context *context,
+                                   struct mylite_expression_warnings *warnings,
+                                   struct mylite_expression_value *out_value);
+static int from_days_number_from_value(const struct mylite_expression_value *value,
+                                       struct mylite_expression_warnings *warnings,
+                                       int64_t *out_number);
+static int append_from_days_overflow_warning(struct mylite_expression_warnings *warnings);
 static int eval_timestampdiff_function(const struct mylite_sql_ast_node *node,
                                        const struct mylite_expression_eval_context *context,
                                        struct mylite_expression_warnings *warnings,
@@ -1858,6 +1867,7 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_SECOND:
     case MYLITE_SCALAR_FUNCTION_TO_DAYS:
     case MYLITE_SCALAR_FUNCTION_TO_SECONDS:
+    case MYLITE_SCALAR_FUNCTION_FROM_DAYS:
         return arity == 1U;
     case MYLITE_SCALAR_FUNCTION_LOG:
     case MYLITE_SCALAR_FUNCTION_ROUND:
@@ -2759,6 +2769,8 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_to_days_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_TO_SECONDS:
         return eval_to_seconds_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_FROM_DAYS:
+        return eval_from_days_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF:
         return eval_timestampdiff_function(node, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_YEAR:
@@ -2973,6 +2985,65 @@ static int eval_to_seconds_function(const struct mylite_sql_ast_node *arguments,
 cleanup:
     mylite_expression_value_deinit(&argument);
     return status;
+}
+
+static int eval_from_days_function(const struct mylite_sql_ast_node *arguments,
+                                   const struct mylite_expression_eval_context *context,
+                                   struct mylite_expression_warnings *warnings,
+                                   struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value argument = {0};
+    struct temporal_date_value date = {0};
+    int64_t day_number = 0;
+    int status = eval_node(child_at(arguments, 0U), context, warnings, &argument);
+
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&argument)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    status = from_days_number_from_value(&argument, warnings, &day_number);
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (day_number <= MYLITE_TEMPORAL_DAYS_PER_COMMON_YEAR) {
+        status = set_temporal_date_text_value(&(const struct temporal_date_value){0}, out_value);
+        goto cleanup;
+    }
+    if (day_number == INT64_MIN || !temporal_date_from_day_number(day_number - 1, &date)) {
+        status = append_from_days_overflow_warning(warnings);
+        if (status == 0) {
+            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        }
+        goto cleanup;
+    }
+    status = set_temporal_date_text_value(&date, out_value);
+
+cleanup:
+    mylite_expression_value_deinit(&argument);
+    return status;
+}
+
+static int from_days_number_from_value(const struct mylite_expression_value *value,
+                                       struct mylite_expression_warnings *warnings,
+                                       int64_t *out_number)
+{
+    if (value == NULL || out_number == NULL) {
+        return -1;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+        return cast_string_to_signed_integer(value->text_value == NULL ? "" : value->text_value,
+                                             warnings, out_number);
+    }
+    return cast_value_to_signed_integer(value, warnings, out_number);
+}
+
+static int append_from_days_overflow_warning(struct mylite_expression_warnings *warnings)
+{
+    return append_warning(warnings, MYLITE_WARNING_DATETIME_FUNCTION_OVERFLOW,
+                          "Datetime function: from_days field overflow");
 }
 
 static int eval_timestampdiff_function(const struct mylite_sql_ast_node *node,
@@ -3342,6 +3413,7 @@ static bool temporal_part_from_function(enum mylite_scalar_function_id function_
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPADD:
     case MYLITE_SCALAR_FUNCTION_TO_DAYS:
     case MYLITE_SCALAR_FUNCTION_TO_SECONDS:
+    case MYLITE_SCALAR_FUNCTION_FROM_DAYS:
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
     case MYLITE_SCALAR_FUNCTION_ADDDATE:
@@ -7342,6 +7414,7 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPADD:
     case MYLITE_SCALAR_FUNCTION_TO_DAYS:
     case MYLITE_SCALAR_FUNCTION_TO_SECONDS:
+    case MYLITE_SCALAR_FUNCTION_FROM_DAYS:
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
     case MYLITE_SCALAR_FUNCTION_ADDDATE:
@@ -9193,6 +9266,7 @@ static int trigonometric_function_result(struct trigonometric_input input,
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPADD:
     case MYLITE_SCALAR_FUNCTION_TO_DAYS:
     case MYLITE_SCALAR_FUNCTION_TO_SECONDS:
+    case MYLITE_SCALAR_FUNCTION_FROM_DAYS:
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
     case MYLITE_SCALAR_FUNCTION_ADDDATE:
@@ -9493,6 +9567,7 @@ static int inverse_trigonometric_function_result(struct inverse_trigonometric_in
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPADD:
     case MYLITE_SCALAR_FUNCTION_TO_DAYS:
     case MYLITE_SCALAR_FUNCTION_TO_SECONDS:
+    case MYLITE_SCALAR_FUNCTION_FROM_DAYS:
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
     case MYLITE_SCALAR_FUNCTION_ADDDATE:
@@ -9703,6 +9778,7 @@ static int angle_conversion_result(struct angle_conversion_input conversion, dou
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPADD:
     case MYLITE_SCALAR_FUNCTION_TO_DAYS:
     case MYLITE_SCALAR_FUNCTION_TO_SECONDS:
+    case MYLITE_SCALAR_FUNCTION_FROM_DAYS:
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
     case MYLITE_SCALAR_FUNCTION_ADDDATE:
@@ -13473,6 +13549,7 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"TIMESTAMPADD", MYLITE_SCALAR_FUNCTION_TIMESTAMPADD},
         {"TO_DAYS", MYLITE_SCALAR_FUNCTION_TO_DAYS},
         {"TO_SECONDS", MYLITE_SCALAR_FUNCTION_TO_SECONDS},
+        {"FROM_DAYS", MYLITE_SCALAR_FUNCTION_FROM_DAYS},
         {"DATE_ADD", MYLITE_SCALAR_FUNCTION_DATE_ADD},
         {"DATE_SUB", MYLITE_SCALAR_FUNCTION_DATE_SUB},
         {"ADDDATE", MYLITE_SCALAR_FUNCTION_ADDDATE},
@@ -13615,6 +13692,7 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_SUBDATE:
     case MYLITE_SCALAR_FUNCTION_TO_DAYS:
     case MYLITE_SCALAR_FUNCTION_TO_SECONDS:
+    case MYLITE_SCALAR_FUNCTION_FROM_DAYS:
     case MYLITE_SCALAR_FUNCTION_YEAR:
     case MYLITE_SCALAR_FUNCTION_MONTH:
     case MYLITE_SCALAR_FUNCTION_DAY:

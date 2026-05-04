@@ -1281,8 +1281,6 @@ static int bind_update_order_by_clause(mylite_stmt *stmt, const struct mylite_se
                                        struct mylite_update_order_plan *order_plan);
 static int bind_update_order_expression(mylite_stmt *stmt, const struct mylite_select_table *table,
                                         const struct mylite_sql_ast_node *expression);
-static int add_update_order_key(struct mylite_update_order_plan *plan,
-                                const struct mylite_select_order_key *order_key);
 static int materialize_update_rows(mylite_stmt *stmt, const struct mylite_select_table *table,
                                    const struct mylite_update_order_plan *order_plan,
                                    struct mylite_update_rowset *rowset);
@@ -16016,7 +16014,7 @@ static int bind_update_order_by_clause(mylite_stmt *stmt, const struct mylite_se
         }
         status = bind_update_order_expression(stmt, table, expression);
         if (status == MYLITE_OK) {
-            status = add_update_order_key(order_plan, &order_key);
+            status = mylite_dml_add_update_order_key(order_plan, &order_key);
             if (status == MYLITE_NOMEM) {
                 (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             }
@@ -16034,20 +16032,6 @@ static int bind_update_order_expression(mylite_stmt *stmt, const struct mylite_s
                                         const struct mylite_sql_ast_node *expression)
 {
     return bind_update_predicate_expression(stmt, table, expression, "order clause");
-}
-
-static int add_update_order_key(struct mylite_update_order_plan *plan,
-                                const struct mylite_select_order_key *order_key)
-{
-    struct mylite_select_order_key *keys =
-        realloc(plan->order_keys, (plan->order_key_count + 1U) * sizeof(*plan->order_keys));
-
-    if (keys == NULL) {
-        return MYLITE_NOMEM;
-    }
-    plan->order_keys = keys;
-    plan->order_keys[plan->order_key_count++] = *order_key;
-    return MYLITE_OK;
 }
 
 static int materialize_update_rows(mylite_stmt *stmt, const struct mylite_select_table *table,
@@ -16739,7 +16723,7 @@ static int bind_delete_order_by_clause(mylite_stmt *stmt, const struct mylite_se
         }
         status = bind_delete_order_expression(stmt, table, expression);
         if (status == MYLITE_OK) {
-            status = add_update_order_key(order_plan, &order_key);
+            status = mylite_dml_add_update_order_key(order_plan, &order_key);
             if (status == MYLITE_NOMEM) {
                 (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             }

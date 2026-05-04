@@ -407,6 +407,8 @@ only the core object model and transitional shared helpers listed here:
   `mylite_dml`.
 - [x] Move update/delete rowset sorting and LIMIT trimming into a focused DML
   companion module.
+- [x] Move shared UPDATE/DELETE order-key append helper into a focused DML
+  companion module.
 - [x] Move update/delete rowset scan and update write SQL builders into a
   focused DML companion module.
 - [x] Move update unique-check SQL and SQLite value binding into a focused DML

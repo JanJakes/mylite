@@ -74,6 +74,20 @@ int mylite_dml_append_update_row(mylite_db *database, struct mylite_update_rowse
     return MYLITE_OK;
 }
 
+int mylite_dml_add_update_order_key(struct mylite_update_order_plan *plan,
+                                    const struct mylite_select_order_key *order_key)
+{
+    struct mylite_select_order_key *keys =
+        realloc(plan->order_keys, (plan->order_key_count + 1U) * sizeof(*plan->order_keys));
+
+    if (keys == NULL) {
+        return MYLITE_NOMEM;
+    }
+    plan->order_keys = keys;
+    plan->order_keys[plan->order_key_count++] = *order_key;
+    return MYLITE_OK;
+}
+
 int mylite_dml_sort_update_rowset(struct mylite_update_rowset *rowset,
                                   const struct mylite_update_order_plan *order_plan)
 {

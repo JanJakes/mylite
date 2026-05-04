@@ -21,6 +21,11 @@ int mylite_table_ddl_execute_rename_table_statement(mylite_db *database,
 int mylite_table_ddl_execute_truncate_table_statement(mylite_db *database,
                                                       const char *selected_schema,
                                                       struct mylite_truncate_table_plan *plan);
+int mylite_table_ddl_execute_create_index_statement(mylite_db *database,
+                                                    const char *selected_schema,
+                                                    struct mylite_index_ddl_plan *plan);
+int mylite_table_ddl_execute_drop_index_statement(mylite_db *database, const char *selected_schema,
+                                                  struct mylite_index_ddl_plan *plan);
 int mylite_table_ddl_load_alter_table_model(mylite_db *database, const char *schema_name,
                                             const char *table_name,
                                             struct mylite_alter_table_model *model);

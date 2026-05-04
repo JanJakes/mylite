@@ -160,12 +160,6 @@ struct mylite_index_ddl_plan {
     enum mylite_sql_ast_index_class index_class;
 };
 
-struct mylite_index_catalog_lookup {
-    const char *schema_name;
-    const char *table_name;
-    const char *index_name;
-};
-
 struct mylite_alter_table_column {
     char *name;
     char *source_name;

@@ -60,6 +60,7 @@ add_library(mylite STATIC
   src/runtime/mylite_storage_engine.c
   src/runtime/mylite_table_ddl.c
   src/runtime/mylite_table_ddl_alter.c
+  src/runtime/mylite_table_ddl_index.c
   src/runtime/mylite_transactions.c
   src/sql/mylite_ast.c
   src/sql/mylite_expression.c

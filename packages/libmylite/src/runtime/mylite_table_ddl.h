@@ -1,0 +1,23 @@
+#ifndef MYLITE_RUNTIME_MYLITE_TABLE_DDL_H
+#define MYLITE_RUNTIME_MYLITE_TABLE_DDL_H
+
+#include "mylite_runtime.h"
+
+void mylite_table_ddl_create_table_plan_deinit(struct mylite_create_table_plan *plan);
+void mylite_table_ddl_drop_table_plan_deinit(struct mylite_drop_table_plan *plan);
+void mylite_table_ddl_rename_table_plan_deinit(struct mylite_rename_table_plan *plan);
+void mylite_table_ddl_truncate_table_plan_deinit(struct mylite_truncate_table_plan *plan);
+void mylite_table_ddl_alter_table_plan_deinit(struct mylite_alter_table_plan *plan);
+void mylite_table_ddl_alter_table_action_deinit(struct mylite_alter_table_action *action);
+void mylite_table_ddl_index_ddl_plan_deinit(struct mylite_index_ddl_plan *plan);
+void mylite_table_ddl_drop_table_target_deinit(struct mylite_drop_table_target *target);
+void mylite_table_ddl_rename_table_target_deinit(struct mylite_rename_table_target *target);
+void mylite_table_ddl_alter_table_model_deinit(struct mylite_alter_table_model *model);
+void mylite_table_ddl_alter_table_column_deinit(struct mylite_alter_table_column *column);
+void mylite_table_ddl_alter_table_index_deinit(struct mylite_alter_table_index *index);
+void mylite_table_ddl_alter_table_index_part_deinit(struct mylite_alter_table_index_part *part);
+void mylite_table_ddl_create_table_column_deinit(struct mylite_create_table_column *column);
+void mylite_table_ddl_create_table_index_deinit(struct mylite_create_table_index *index);
+void mylite_table_ddl_create_table_key_part_deinit(struct mylite_create_table_key_part *part);
+
+#endif

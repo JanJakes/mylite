@@ -86,6 +86,8 @@ after every step.
 - [ ] Split catalog lookup helpers into `src/runtime/mylite_catalog`.
 - [ ] Split `SHOW` and `information_schema` dynamic result builders.
 - [ ] Split schema lifecycle and table/index DDL plans and execution.
+- [x] Start `src/runtime/mylite_table_ddl.{h,c}` with table/index DDL plan
+  cleanup.
 - [ ] Split DML plans and execution.
 - [ ] Split SELECT, UNION, aggregate, and subquery planning/execution.
 - [ ] Move reusable field descriptor and metadata inference code into

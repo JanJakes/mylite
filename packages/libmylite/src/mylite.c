@@ -1290,8 +1290,6 @@ static bool select_reference_qualifiers_match(const struct mylite_select_table *
                                               size_t part_count);
 static size_t select_column_index(const struct mylite_select_table *table, const char *column_name);
 static bool parse_uint64_span(struct mylite_sql_source_span span, uint64_t *out_value);
-static int copy_select_identifier_parts(const struct mylite_sql_ast_node *identifier, char **parts,
-                                        size_t *part_count);
 static char *copy_select_alias(const struct mylite_sql_ast_node *alias);
 static char *copy_select_final_identifier_label(const struct mylite_sql_ast_node *identifier);
 static char *copy_select_reference_name(const struct mylite_sql_ast_node *identifier);
@@ -4218,7 +4216,7 @@ static int copy_show_columns_table_target(struct mylite_show_columns_source_node
 {
     char *parts[3] = {0};
     size_t part_count = 0U;
-    int status = copy_select_identifier_parts(source.table_name, parts, &part_count);
+    int status = mylite_copy_identifier_parts(source.table_name, parts, &part_count);
 
     if (status != MYLITE_OK) {
         goto cleanup;
@@ -4512,7 +4510,7 @@ static int copy_show_index_table_target(struct mylite_show_index_source_nodes so
 {
     char *parts[3] = {0};
     size_t part_count = 0U;
-    int status = copy_select_identifier_parts(source.table_name, parts, &part_count);
+    int status = mylite_copy_identifier_parts(source.table_name, parts, &part_count);
 
     if (status != MYLITE_OK) {
         goto cleanup;
@@ -6166,7 +6164,7 @@ static int resolve_union_order_reference(mylite_db *database, const struct mylit
 {
     char *parts[3] = {0};
     size_t part_count = 0U;
-    int status = copy_select_identifier_parts(expression, parts, &part_count);
+    int status = mylite_copy_identifier_parts(expression, parts, &part_count);
 
     *out_kind = MYLITE_SELECT_ORDER_KEY_EXPRESSION;
     *out_index = 0U;
@@ -13975,7 +13973,7 @@ static int validate_select_distinct_order_identifier_column_first(
     char *parts[3] = {0};
     size_t part_count = 0U;
     size_t column_index = select_plan_column_count(plan);
-    int status = copy_select_identifier_parts(identifier, parts, &part_count);
+    int status = mylite_copy_identifier_parts(identifier, parts, &part_count);
 
     *out_resolved = false;
     if (status != MYLITE_OK) {
@@ -15257,7 +15255,7 @@ static int resolve_select_column_reference(const struct mylite_select_table *tab
 {
     char *parts[3] = {0};
     size_t part_count = 0U;
-    int status = copy_select_identifier_parts(expression, parts, &part_count);
+    int status = mylite_copy_identifier_parts(expression, parts, &part_count);
 
     *out_index = table->column_count;
     if (status != MYLITE_OK) {
@@ -15344,7 +15342,7 @@ static int resolve_select_plan_column_reference_in_scope(
 {
     char *parts[3] = {0};
     size_t part_count = 0U;
-    int status = copy_select_identifier_parts(expression, parts, &part_count);
+    int status = mylite_copy_identifier_parts(expression, parts, &part_count);
 
     *out_index = select_plan_column_count(plan);
     if (status == MYLITE_OK) {
@@ -15610,7 +15608,7 @@ static int resolve_select_order_reference(mylite_db *database,
 {
     char *parts[3] = {0};
     size_t part_count = 0U;
-    int status = copy_select_identifier_parts(expression, parts, &part_count);
+    int status = mylite_copy_identifier_parts(expression, parts, &part_count);
 
     *out_kind = MYLITE_SELECT_ORDER_KEY_EXPRESSION;
     *out_index = 0U;
@@ -15658,7 +15656,7 @@ static int resolve_select_group_reference(mylite_db *database,
     char *parts[3] = {0};
     size_t part_count = 0U;
     bool resolved = false;
-    int status = copy_select_identifier_parts(expression, parts, &part_count);
+    int status = mylite_copy_identifier_parts(expression, parts, &part_count);
 
     *out_kind = MYLITE_SELECT_GROUP_KEY_EXPRESSION;
     *out_index = 0U;
@@ -15782,7 +15780,7 @@ static int resolve_select_having_reference_internal(mylite_db *database,
     char *parts[3] = {0};
     size_t part_count = 0U;
     bool resolved = false;
-    int status = copy_select_identifier_parts(expression, parts, &part_count);
+    int status = mylite_copy_identifier_parts(expression, parts, &part_count);
 
     *out_kind = MYLITE_SELECT_ORDER_KEY_EXPRESSION;
     *out_index = 0U;
@@ -15992,46 +15990,6 @@ static bool parse_uint64_span(struct mylite_sql_source_span span, uint64_t *out_
     return true;
 }
 
-static int copy_select_identifier_parts(const struct mylite_sql_ast_node *identifier, char **parts,
-                                        size_t *part_count)
-{
-    const struct mylite_sql_ast_node *segments[3] = {0};
-    const struct mylite_sql_ast_node *current = identifier;
-    size_t segment_count = 0U;
-
-    *part_count = 0U;
-    while (current != NULL && current->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
-        if (segment_count >= 3U) {
-            return MYLITE_UNSUPPORTED;
-        }
-        segments[segment_count++] = mylite_ast_child_at(current, 1U);
-        current = mylite_ast_child_at(current, 0U);
-    }
-    if (current == NULL || current->kind != MYLITE_SQL_AST_IDENTIFIER || segment_count >= 3U) {
-        return MYLITE_UNSUPPORTED;
-    }
-    segments[segment_count++] = current;
-
-    for (size_t index = 0U; index < segment_count; ++index) {
-        const struct mylite_sql_ast_node *segment = segments[segment_count - index - 1U];
-
-        if (segment == NULL || segment->kind != MYLITE_SQL_AST_IDENTIFIER) {
-            return MYLITE_UNSUPPORTED;
-        }
-        parts[index] = mylite_copy_identifier_span(segment);
-        if (parts[index] == NULL) {
-            for (size_t previous = 0U; previous < index; ++previous) {
-                free(parts[previous]);
-                parts[previous] = NULL;
-            }
-            *part_count = 0U;
-            return MYLITE_NOMEM;
-        }
-        *part_count += 1U;
-    }
-    return MYLITE_OK;
-}
-
 static char *copy_select_alias(const struct mylite_sql_ast_node *alias)
 {
     if (alias == NULL) {
@@ -16066,7 +16024,7 @@ static char *copy_select_reference_name(const struct mylite_sql_ast_node *identi
     size_t part_count = 0U;
     size_t length = 0U;
     char *name = NULL;
-    int status = copy_select_identifier_parts(identifier, parts, &part_count);
+    int status = mylite_copy_identifier_parts(identifier, parts, &part_count);
 
     if (status != MYLITE_OK) {
         for (size_t index = 0U; index < part_count; ++index) {
@@ -25978,7 +25936,7 @@ static int resolve_union_expression_identifier(void *user_data,
         return -1;
     }
 
-    status = copy_select_identifier_parts(identifier, parts, &part_count);
+    status = mylite_copy_identifier_parts(identifier, parts, &part_count);
     if (status != MYLITE_OK) {
         if (status == MYLITE_NOMEM) {
             (void)mylite_diagnostics_set_error_message(context->stmt->database, "out of memory");
@@ -34476,7 +34434,7 @@ static int resolve_scalar_select_order_reference(mylite_db *database,
 {
     char *parts[3] = {0};
     size_t part_count = 0U;
-    int status = copy_select_identifier_parts(expression, parts, &part_count);
+    int status = mylite_copy_identifier_parts(expression, parts, &part_count);
 
     if (status != MYLITE_OK) {
         if (status == MYLITE_NOMEM) {

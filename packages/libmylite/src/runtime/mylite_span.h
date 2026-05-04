@@ -11,6 +11,8 @@ bool mylite_ascii_case_equal(const char *left, const char *right);
 void mylite_uppercase_ascii_text(char *text);
 char *mylite_copy_schema_text_span(const struct mylite_sql_ast_node *node);
 char *mylite_copy_identifier_span(const struct mylite_sql_ast_node *node);
+int mylite_copy_identifier_parts(const struct mylite_sql_ast_node *identifier, char **parts,
+                                 size_t *part_count);
 char *mylite_copy_string_literal_span(const struct mylite_sql_ast_node *node);
 char *mylite_copy_unquoted_span_text(struct mylite_sql_source_span span);
 char *mylite_copy_nonempty_cstring(const char *text);

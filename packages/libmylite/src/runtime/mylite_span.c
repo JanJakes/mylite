@@ -1,5 +1,7 @@
 #include "mylite_span.h"
 
+#include <mylite/mylite.h>
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -103,6 +105,46 @@ char *mylite_copy_identifier_span(const struct mylite_sql_ast_node *node)
     }
     copy[output] = '\0';
     return copy;
+}
+
+int mylite_copy_identifier_parts(const struct mylite_sql_ast_node *identifier, char **parts,
+                                 size_t *part_count)
+{
+    const struct mylite_sql_ast_node *segments[3] = {0};
+    const struct mylite_sql_ast_node *current = identifier;
+    size_t segment_count = 0U;
+
+    *part_count = 0U;
+    while (current != NULL && current->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        if (segment_count >= 3U) {
+            return MYLITE_UNSUPPORTED;
+        }
+        segments[segment_count++] = mylite_ast_child_at(current, 1U);
+        current = mylite_ast_child_at(current, 0U);
+    }
+    if (current == NULL || current->kind != MYLITE_SQL_AST_IDENTIFIER || segment_count >= 3U) {
+        return MYLITE_UNSUPPORTED;
+    }
+    segments[segment_count++] = current;
+
+    for (size_t index = 0U; index < segment_count; ++index) {
+        const struct mylite_sql_ast_node *segment = segments[segment_count - index - 1U];
+
+        if (segment == NULL || segment->kind != MYLITE_SQL_AST_IDENTIFIER) {
+            return MYLITE_UNSUPPORTED;
+        }
+        parts[index] = mylite_copy_identifier_span(segment);
+        if (parts[index] == NULL) {
+            for (size_t previous = 0U; previous < index; ++previous) {
+                free(parts[previous]);
+                parts[previous] = NULL;
+            }
+            *part_count = 0U;
+            return MYLITE_NOMEM;
+        }
+        *part_count += 1U;
+    }
+    return MYLITE_OK;
 }
 
 char *mylite_copy_string_literal_span(const struct mylite_sql_ast_node *node)

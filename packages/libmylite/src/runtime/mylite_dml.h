@@ -225,6 +225,15 @@ int mylite_dml_copy_update_sqlite_row(mylite_db *database, const struct mylite_s
                                       sqlite3_stmt *scan, struct mylite_update_row *out_row);
 int mylite_dml_append_update_row(mylite_db *database, struct mylite_update_rowset *rowset,
                                  struct mylite_update_row *row);
+int mylite_dml_copy_update_candidate_values(mylite_db *database,
+                                            const struct mylite_update_row *row,
+                                            struct mylite_update_row *candidate);
+int mylite_dml_copy_insert_bound_value_to_expression(const struct mylite_insert_bound_value *value,
+                                                     struct mylite_expression_value *out_value);
+bool mylite_dml_update_expression_value_positive_uint64(const struct mylite_expression_value *value,
+                                                        uint64_t *out_value);
+bool mylite_dml_update_row_changed(const struct mylite_update_row *stored,
+                                   const struct mylite_update_row *candidate);
 int mylite_dml_sort_update_rowset(struct mylite_update_rowset *rowset,
                                   const struct mylite_update_order_plan *order_plan);
 void mylite_dml_apply_update_limit(const struct mylite_sql_ast_node *limit_clause,

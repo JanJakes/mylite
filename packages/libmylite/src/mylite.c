@@ -1347,8 +1347,6 @@ static int write_update_candidate(mylite_stmt *stmt, sqlite3_stmt *update,
                                   const struct mylite_insert_table *write_table,
                                   const struct mylite_update_row *candidate,
                                   uint64_t *next_auto_increment);
-static int copy_update_candidate_values(mylite_stmt *stmt, const struct mylite_update_row *row,
-                                        struct mylite_update_row *candidate);
 static int apply_update_assignments(mylite_stmt *stmt, const struct mylite_select_table *table,
                                     const struct mylite_insert_table *write_table,
                                     const struct mylite_update_bound_assignment *assignments,
@@ -1365,8 +1363,6 @@ static int set_dml_expression_condition_error(mylite_db *database, size_t warnin
 static int resolve_update_default_value(mylite_stmt *stmt,
                                         const struct mylite_insert_table_column *column,
                                         struct mylite_expression_value *out_value);
-static int copy_insert_bound_value_to_expression(const struct mylite_insert_bound_value *value,
-                                                 struct mylite_expression_value *out_value);
 static int validate_update_assignment_value(mylite_stmt *stmt,
                                             const struct mylite_insert_table_column *column,
                                             struct mylite_expression_value *value);
@@ -1383,12 +1379,6 @@ static int advance_update_auto_increment(mylite_stmt *stmt, const struct mylite_
                                          const struct mylite_insert_table *write_table,
                                          const struct mylite_update_row *candidate,
                                          uint64_t *next_auto_increment);
-static bool update_expression_value_positive_uint64(const struct mylite_expression_value *value,
-                                                    uint64_t *out_value);
-static bool update_row_changed(const struct mylite_update_row *stored,
-                               const struct mylite_update_row *candidate);
-static bool update_values_equal(const struct mylite_expression_value *left,
-                                const struct mylite_expression_value *right);
 static int resolve_update_expression_identifier(void *user_data,
                                                 const struct mylite_sql_ast_node *identifier,
                                                 struct mylite_expression_value *out_value);
@@ -16817,7 +16807,7 @@ static int execute_update_row(mylite_stmt *stmt, sqlite3_stmt *update,
                               uint64_t *next_auto_increment)
 {
     struct mylite_update_row candidate = {0};
-    int status = copy_update_candidate_values(stmt, stored, &candidate);
+    int status = mylite_dml_copy_update_candidate_values(stmt->database, stored, &candidate);
 
     if (status == MYLITE_OK) {
         status = apply_update_assignments(stmt, table, write_table, assignments, assignment_count,
@@ -16826,7 +16816,7 @@ static int execute_update_row(mylite_stmt *stmt, sqlite3_stmt *update,
     if (status == MYLITE_OK) {
         status = validate_update_unique_indexes(stmt, table, write_table, &candidate);
     }
-    if (status == MYLITE_OK && update_row_changed(stored, &candidate)) {
+    if (status == MYLITE_OK && mylite_dml_update_row_changed(stored, &candidate)) {
         status = write_update_candidate(stmt, update, table, write_table, &candidate,
                                         next_auto_increment);
     }
@@ -16863,27 +16853,6 @@ static int write_update_candidate(mylite_stmt *stmt, sqlite3_stmt *update,
 
     ++stmt->affected_rows;
     return advance_update_auto_increment(stmt, table, write_table, candidate, next_auto_increment);
-}
-
-static int copy_update_candidate_values(mylite_stmt *stmt, const struct mylite_update_row *row,
-                                        struct mylite_update_row *candidate)
-{
-    candidate->rowid = row->rowid;
-    candidate->values = calloc(row->value_count, sizeof(*candidate->values));
-    if (candidate->values == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    candidate->value_count = row->value_count;
-
-    for (size_t index = 0U; index < row->value_count; ++index) {
-        if (mylite_expression_value_copy(&row->values[index], &candidate->values[index]) != 0) {
-            mylite_dml_update_row_deinit(candidate);
-            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-            return MYLITE_NOMEM;
-        }
-    }
-    return MYLITE_OK;
 }
 
 static int apply_update_assignments(mylite_stmt *stmt, const struct mylite_select_table *table,
@@ -17008,44 +16977,13 @@ static int resolve_update_default_value(mylite_stmt *stmt,
         mylite_dml_resolve_insert_default_bound_value(stmt->database, column, 0U, NULL, &value);
 
     if (status == MYLITE_OK) {
-        status = copy_insert_bound_value_to_expression(&value, out_value);
+        status = mylite_dml_copy_insert_bound_value_to_expression(&value, out_value);
         if (status == MYLITE_NOMEM) {
             (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         }
     }
     mylite_dml_insert_bound_value_deinit(&value);
     return status;
-}
-
-static int copy_insert_bound_value_to_expression(const struct mylite_insert_bound_value *value,
-                                                 struct mylite_expression_value *out_value)
-{
-    switch (value->kind) {
-    case MYLITE_INSERT_BOUND_NULL:
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
-        return MYLITE_OK;
-    case MYLITE_INSERT_BOUND_INTEGER:
-        *out_value = (struct mylite_expression_value){
-            .kind = MYLITE_EXPRESSION_VALUE_INT64,
-            .int64_value = value->integer_value,
-        };
-        return MYLITE_OK;
-    case MYLITE_INSERT_BOUND_REAL:
-        *out_value = (struct mylite_expression_value){
-            .kind = MYLITE_EXPRESSION_VALUE_REAL,
-            .real_value = value->real_value,
-        };
-        return MYLITE_OK;
-    case MYLITE_INSERT_BOUND_TEXT:
-        out_value->text_length = value->text_value == NULL ? 0U : strlen(value->text_value);
-        out_value->text_value = mylite_copy_span_text(value->text_value, out_value->text_length);
-        if (out_value->text_value == NULL) {
-            return MYLITE_NOMEM;
-        }
-        out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
-        return MYLITE_OK;
-    }
-    return MYLITE_UNSUPPORTED;
 }
 
 static int validate_update_assignment_value(mylite_stmt *stmt,
@@ -17159,7 +17097,7 @@ static int advance_update_auto_increment(mylite_stmt *stmt, const struct mylite_
 
     (void)table;
     if (!write_table->has_auto_increment ||
-        !update_expression_value_positive_uint64(
+        !mylite_dml_update_expression_value_positive_uint64(
             &candidate->values[write_table->auto_increment_column_index], &value)) {
         return MYLITE_OK;
     }
@@ -17172,59 +17110,6 @@ static int advance_update_auto_increment(mylite_stmt *stmt, const struct mylite_
         *next_auto_increment = value + 1U;
     }
     return MYLITE_OK;
-}
-
-static bool update_expression_value_positive_uint64(const struct mylite_expression_value *value,
-                                                    uint64_t *out_value)
-{
-    if (value->kind == MYLITE_EXPRESSION_VALUE_INT64 && value->int64_value > 0) {
-        *out_value = (uint64_t)value->int64_value;
-        return true;
-    }
-    if (value->kind == MYLITE_EXPRESSION_VALUE_UINT64 && value->uint64_value > 0U) {
-        *out_value = value->uint64_value;
-        return true;
-    }
-    return false;
-}
-
-static bool update_row_changed(const struct mylite_update_row *stored,
-                               const struct mylite_update_row *candidate)
-{
-    if (stored->value_count != candidate->value_count) {
-        return true;
-    }
-    for (size_t index = 0U; index < stored->value_count; ++index) {
-        if (!update_values_equal(&stored->values[index], &candidate->values[index])) {
-            return true;
-        }
-    }
-    return false;
-}
-
-static bool update_values_equal(const struct mylite_expression_value *left,
-                                const struct mylite_expression_value *right)
-{
-    if (left->kind != right->kind) {
-        return false;
-    }
-    switch (left->kind) {
-    case MYLITE_EXPRESSION_VALUE_NULL:
-        return true;
-    case MYLITE_EXPRESSION_VALUE_INT64:
-        return left->int64_value == right->int64_value;
-    case MYLITE_EXPRESSION_VALUE_UINT64:
-        return left->uint64_value == right->uint64_value;
-    case MYLITE_EXPRESSION_VALUE_REAL:
-        return left->real_value == right->real_value;
-    case MYLITE_EXPRESSION_VALUE_TEXT:
-        if (left->text_value == NULL || right->text_value == NULL) {
-            return left->text_value == right->text_value;
-        }
-        return (left->text_length == right->text_length &&
-                memcmp(left->text_value, right->text_value, left->text_length) == 0) != 0;
-    }
-    return false;
 }
 
 static int resolve_update_expression_identifier(void *user_data,

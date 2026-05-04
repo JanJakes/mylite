@@ -413,6 +413,9 @@ only the core object model and transitional shared helpers listed here:
   companion module.
 - [x] Move update/delete rowset population helpers into a focused DML companion
   module.
+- [x] Move update candidate value copy, default conversion, row-change
+  comparison, and auto-increment value extraction into a focused DML companion
+  module.
 - [ ] Move update row materialization logic into `mylite_dml`.
 - [ ] Move update row writeback into `mylite_dml`.
 - [x] Move delete target copy into `mylite_dml`.

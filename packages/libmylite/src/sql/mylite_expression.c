@@ -39,6 +39,7 @@ enum {
     MYLITE_TEMPORAL_DAYS_PER_WEEK = 7,
     MYLITE_TEMPORAL_SECONDS_PER_MINUTE = 60,
     MYLITE_TEMPORAL_SECONDS_PER_HOUR = 3600,
+    MYLITE_TEMPORAL_SECONDS_PER_DAY = 86400,
     MYLITE_TEMPORAL_MICROSECOND_LIMIT = 1000000,
     MYLITE_TEMPORAL_MONTHS_PER_YEAR = 12,
     MYLITE_TEMPORAL_FEBRUARY = 2,
@@ -529,17 +530,18 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_LOCALTIMESTAMP = 97,
     MYLITE_SCALAR_FUNCTION_DATE = 98,
     MYLITE_SCALAR_FUNCTION_DATEDIFF = 99,
-    MYLITE_SCALAR_FUNCTION_DATE_ADD = 100,
-    MYLITE_SCALAR_FUNCTION_DATE_SUB = 101,
-    MYLITE_SCALAR_FUNCTION_ADDDATE = 102,
-    MYLITE_SCALAR_FUNCTION_SUBDATE = 103,
-    MYLITE_SCALAR_FUNCTION_YEAR = 104,
-    MYLITE_SCALAR_FUNCTION_MONTH = 105,
-    MYLITE_SCALAR_FUNCTION_DAY = 106,
-    MYLITE_SCALAR_FUNCTION_HOUR = 107,
-    MYLITE_SCALAR_FUNCTION_MINUTE = 108,
-    MYLITE_SCALAR_FUNCTION_SECOND = 109,
-    MYLITE_SCALAR_FUNCTION_EXTRACT = 110,
+    MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF = 100,
+    MYLITE_SCALAR_FUNCTION_DATE_ADD = 101,
+    MYLITE_SCALAR_FUNCTION_DATE_SUB = 102,
+    MYLITE_SCALAR_FUNCTION_ADDDATE = 103,
+    MYLITE_SCALAR_FUNCTION_SUBDATE = 104,
+    MYLITE_SCALAR_FUNCTION_YEAR = 105,
+    MYLITE_SCALAR_FUNCTION_MONTH = 106,
+    MYLITE_SCALAR_FUNCTION_DAY = 107,
+    MYLITE_SCALAR_FUNCTION_HOUR = 108,
+    MYLITE_SCALAR_FUNCTION_MINUTE = 109,
+    MYLITE_SCALAR_FUNCTION_SECOND = 110,
+    MYLITE_SCALAR_FUNCTION_EXTRACT = 111,
 };
 
 struct angle_conversion_input {
@@ -643,6 +645,21 @@ static int eval_datediff_function(const struct mylite_sql_ast_node *arguments,
                                   const struct mylite_expression_eval_context *context,
                                   struct mylite_expression_warnings *warnings,
                                   struct mylite_expression_value *out_value);
+static int eval_timestampdiff_function(const struct mylite_sql_ast_node *node,
+                                       const struct mylite_expression_eval_context *context,
+                                       struct mylite_expression_warnings *warnings,
+                                       struct mylite_expression_value *out_value);
+static bool timestampdiff_value(enum mylite_sql_ast_interval_unit unit,
+                                const struct temporal_date_value *start,
+                                const struct temporal_date_value *end, int64_t *out_value);
+static int64_t timestampdiff_months(const struct temporal_date_value *start,
+                                    const struct temporal_date_value *end);
+static int timestampdiff_compare_day_time(const struct temporal_date_value *left,
+                                          const struct temporal_date_value *right);
+static int64_t timestampdiff_seconds(const struct temporal_date_value *start,
+                                     const struct temporal_date_value *end);
+static int temporal_time_compare(const struct temporal_date_value *left,
+                                 const struct temporal_date_value *right);
 static int eval_temporal_part_function(enum mylite_scalar_function_id function_id,
                                        const struct mylite_sql_ast_node *node,
                                        const struct mylite_expression_eval_context *context,
@@ -1845,6 +1862,7 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_FIND_IN_SET:
     case MYLITE_SCALAR_FUNCTION_DATEDIFF:
         return arity == 2U;
+    case MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF:
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
     case MYLITE_SCALAR_FUNCTION_ADDDATE:
@@ -2721,6 +2739,8 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_date_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_DATEDIFF:
         return eval_datediff_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF:
+        return eval_timestampdiff_function(node, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_YEAR:
     case MYLITE_SCALAR_FUNCTION_MONTH:
     case MYLITE_SCALAR_FUNCTION_DAY:
@@ -2860,6 +2880,174 @@ cleanup:
     mylite_expression_value_deinit(&left);
     mylite_expression_value_deinit(&right);
     return status;
+}
+
+static int eval_timestampdiff_function(const struct mylite_sql_ast_node *node,
+                                       const struct mylite_expression_eval_context *context,
+                                       struct mylite_expression_warnings *warnings,
+                                       struct mylite_expression_value *out_value)
+{
+    const struct mylite_sql_ast_node *arguments = child_at(node, 1U);
+    struct mylite_expression_value start = {0};
+    struct mylite_expression_value end = {0};
+    struct temporal_date_value start_date = {0};
+    struct temporal_date_value end_date = {0};
+    int64_t diff = 0;
+    bool start_valid = false;
+    bool end_valid = false;
+    int status = eval_node(child_at(arguments, 0U), context, warnings, &start);
+
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&start)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    status = temporal_date_from_value(&start, true, warnings, &start_date, &start_valid);
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (!start_valid) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+
+    status = eval_node(child_at(arguments, 1U), context, warnings, &end);
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&end)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    status = temporal_date_from_value(&end, true, warnings, &end_date, &end_valid);
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (!end_valid) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    if (!timestampdiff_value(node->interval_unit, &start_date, &end_date, &diff)) {
+        status = -1;
+        goto cleanup;
+    }
+
+    *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
+                                                  .int64_value = diff};
+
+cleanup:
+    mylite_expression_value_deinit(&start);
+    mylite_expression_value_deinit(&end);
+    return status;
+}
+
+static bool timestampdiff_value(enum mylite_sql_ast_interval_unit unit,
+                                const struct temporal_date_value *start,
+                                const struct temporal_date_value *end, int64_t *out_value)
+{
+    int64_t diff = 0;
+
+    if (start == NULL || end == NULL || out_value == NULL) {
+        return false;
+    }
+
+    switch (unit) {
+    case MYLITE_SQL_AST_INTERVAL_UNIT_DAY:
+        *out_value = timestampdiff_seconds(start, end) / MYLITE_TEMPORAL_SECONDS_PER_DAY;
+        return true;
+    case MYLITE_SQL_AST_INTERVAL_UNIT_WEEK:
+        *out_value = timestampdiff_seconds(start, end) /
+                     ((int64_t)MYLITE_TEMPORAL_SECONDS_PER_DAY * MYLITE_TEMPORAL_DAYS_PER_WEEK);
+        return true;
+    case MYLITE_SQL_AST_INTERVAL_UNIT_MONTH:
+        *out_value = timestampdiff_months(start, end);
+        return true;
+    case MYLITE_SQL_AST_INTERVAL_UNIT_YEAR:
+        *out_value = timestampdiff_months(start, end) / MYLITE_TEMPORAL_MONTHS_PER_YEAR;
+        return true;
+    case MYLITE_SQL_AST_INTERVAL_UNIT_HOUR:
+        diff = timestampdiff_seconds(start, end);
+        *out_value = diff / MYLITE_TEMPORAL_SECONDS_PER_HOUR;
+        return true;
+    case MYLITE_SQL_AST_INTERVAL_UNIT_MINUTE:
+        diff = timestampdiff_seconds(start, end);
+        *out_value = diff / MYLITE_TEMPORAL_SECONDS_PER_MINUTE;
+        return true;
+    case MYLITE_SQL_AST_INTERVAL_UNIT_SECOND:
+        *out_value = timestampdiff_seconds(start, end);
+        return true;
+    case MYLITE_SQL_AST_INTERVAL_UNIT_NONE:
+        return false;
+    }
+    return false;
+}
+
+static int64_t timestampdiff_months(const struct temporal_date_value *start,
+                                    const struct temporal_date_value *end)
+{
+    int64_t months =
+        (((int64_t)end->year - (int64_t)start->year) * MYLITE_TEMPORAL_MONTHS_PER_YEAR) +
+        ((int64_t)end->month - (int64_t)start->month);
+    int boundary_compare = timestampdiff_compare_day_time(end, start);
+
+    if (months > 0 && boundary_compare < 0) {
+        --months;
+    } else if (months < 0 && boundary_compare > 0) {
+        ++months;
+    }
+    return months;
+}
+
+static int timestampdiff_compare_day_time(const struct temporal_date_value *left,
+                                          const struct temporal_date_value *right)
+{
+    if (left->day < right->day) {
+        return -1;
+    }
+    if (left->day > right->day) {
+        return 1;
+    }
+    return temporal_time_compare(left, right);
+}
+
+static int64_t timestampdiff_seconds(const struct temporal_date_value *start,
+                                     const struct temporal_date_value *end)
+{
+    int64_t day_diff = temporal_day_number(end) - temporal_day_number(start);
+    int64_t start_seconds = ((int64_t)start->hour * MYLITE_TEMPORAL_SECONDS_PER_HOUR) +
+                            ((int64_t)start->minute * MYLITE_TEMPORAL_SECONDS_PER_MINUTE) +
+                            (int64_t)start->second;
+    int64_t end_seconds = ((int64_t)end->hour * MYLITE_TEMPORAL_SECONDS_PER_HOUR) +
+                          ((int64_t)end->minute * MYLITE_TEMPORAL_SECONDS_PER_MINUTE) +
+                          (int64_t)end->second;
+    int64_t seconds = (day_diff * MYLITE_TEMPORAL_SECONDS_PER_DAY) + end_seconds - start_seconds;
+
+    if (seconds > 0 && end->microsecond < start->microsecond) {
+        --seconds;
+    } else if (seconds < 0 && end->microsecond > start->microsecond) {
+        ++seconds;
+    }
+    return seconds;
+}
+
+static int temporal_time_compare(const struct temporal_date_value *left,
+                                 const struct temporal_date_value *right)
+{
+    if (left->hour != right->hour) {
+        return left->hour < right->hour ? -1 : 1;
+    }
+    if (left->minute != right->minute) {
+        return left->minute < right->minute ? -1 : 1;
+    }
+    if (left->second != right->second) {
+        return left->second < right->second ? -1 : 1;
+    }
+    if (left->microsecond != right->microsecond) {
+        return left->microsecond < right->microsecond ? -1 : 1;
+    }
+    return 0;
 }
 
 static int eval_temporal_part_function(enum mylite_scalar_function_id function_id,
@@ -3057,6 +3245,7 @@ static bool temporal_part_from_function(enum mylite_scalar_function_id function_
     case MYLITE_SCALAR_FUNCTION_LOCALTIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE:
     case MYLITE_SCALAR_FUNCTION_DATEDIFF:
+    case MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF:
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
     case MYLITE_SCALAR_FUNCTION_ADDDATE:
@@ -7045,6 +7234,7 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_LOCALTIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE:
     case MYLITE_SCALAR_FUNCTION_DATEDIFF:
+    case MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF:
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
     case MYLITE_SCALAR_FUNCTION_ADDDATE:
@@ -8892,6 +9082,7 @@ static int trigonometric_function_result(struct trigonometric_input input,
     case MYLITE_SCALAR_FUNCTION_LOCALTIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE:
     case MYLITE_SCALAR_FUNCTION_DATEDIFF:
+    case MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF:
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
     case MYLITE_SCALAR_FUNCTION_ADDDATE:
@@ -9188,6 +9379,7 @@ static int inverse_trigonometric_function_result(struct inverse_trigonometric_in
     case MYLITE_SCALAR_FUNCTION_LOCALTIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE:
     case MYLITE_SCALAR_FUNCTION_DATEDIFF:
+    case MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF:
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
     case MYLITE_SCALAR_FUNCTION_ADDDATE:
@@ -9394,6 +9586,7 @@ static int angle_conversion_result(struct angle_conversion_input conversion, dou
     case MYLITE_SCALAR_FUNCTION_LOCALTIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE:
     case MYLITE_SCALAR_FUNCTION_DATEDIFF:
+    case MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF:
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
     case MYLITE_SCALAR_FUNCTION_ADDDATE:
@@ -13160,6 +13353,7 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"LOCALTIMESTAMP", MYLITE_SCALAR_FUNCTION_LOCALTIMESTAMP},
         {"DATE", MYLITE_SCALAR_FUNCTION_DATE},
         {"DATEDIFF", MYLITE_SCALAR_FUNCTION_DATEDIFF},
+        {"TIMESTAMPDIFF", MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF},
         {"DATE_ADD", MYLITE_SCALAR_FUNCTION_DATE_ADD},
         {"DATE_SUB", MYLITE_SCALAR_FUNCTION_DATE_SUB},
         {"ADDDATE", MYLITE_SCALAR_FUNCTION_ADDDATE},
@@ -13294,6 +13488,7 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_ISNULL:
     case MYLITE_SCALAR_FUNCTION_DATE:
     case MYLITE_SCALAR_FUNCTION_DATEDIFF:
+    case MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF:
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
     case MYLITE_SCALAR_FUNCTION_ADDDATE:

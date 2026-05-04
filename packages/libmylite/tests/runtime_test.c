@@ -256,6 +256,7 @@ static int test_expression_operator_foundation(void);
 static int test_scalar_builtin_functions_execution(void);
 static int test_current_temporal_functions_execution(void);
 static int test_date_and_datediff_functions_execution(void);
+static int test_timestampdiff_function_execution(void);
 static int test_date_add_sub_functions_execution(void);
 static int test_round_scalar_function_execution(mylite_db *database);
 static int test_format_scalar_function_execution(mylite_db *database);
@@ -469,6 +470,7 @@ int main(void)
     failures += test_scalar_builtin_functions_execution();
     failures += test_current_temporal_functions_execution();
     failures += test_date_and_datediff_functions_execution();
+    failures += test_timestampdiff_function_execution();
     failures += test_date_add_sub_functions_execution();
     failures += test_inet_ipv4_functions_execution();
     failures += test_charset_collation_functions_execution();
@@ -6271,6 +6273,261 @@ static int test_date_and_datediff_functions_execution(void)
     failures += expect_no_stmt_handle(&stmt, "EXTRACT combined unit deferred");
     failures += prepare_sql(database, "SELECT EXTRACT(YEAR)", MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "EXTRACT ordinary call syntax");
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_timestampdiff_function_execution(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const struct expected_result_metadata metadata[] = {
+        {"td_day", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"td_null", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+    };
+    static const char *const projection_columns[] = {"id", "days", "hours"};
+    static const char *const projection_values[] = {
+        "3", "29", "696", "2", "14", "336", "1", "2", "60",
+    };
+    static const char *const updated_columns[] = {"id", "delta", "note"};
+    static const char *const updated_values[] = {"1", "2", "leap"};
+    static const char *const remaining_columns[] = {"id"};
+    static const char *const delete_remaining_values[] = {"1", "2", "3", "5"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open TIMESTAMPDIFF database");
+
+    failures += prepare_sql(database,
+                            "SELECT TIMESTAMPDIFF(DAY,'2024-02-28','2024-03-01') AS td_day, "
+                            "TIMESTAMPDIFF(DAY,NULL,'2024-01-01') AS td_null",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "TIMESTAMPDIFF metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TIMESTAMPDIFF metadata row");
+    failures += expect_string(mylite_column_text(stmt, 0), "2", "TIMESTAMPDIFF metadata value");
+    failures += expect_null_text(mylite_column_text(stmt, 1), "TIMESTAMPDIFF metadata null");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TIMESTAMPDIFF metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT TIMESTAMPDIFF(DAY,'2024-02-28','2024-03-01') AS td_day, "
+                            "TIMESTAMPDIFF(WEEK,'2024-02-01','2024-02-15') AS td_week, "
+                            "TIMESTAMPDIFF(MONTH,'2024-01-31','2024-02-29') AS td_month, "
+                            "TIMESTAMPDIFF(YEAR,'2020-02-29','2024-02-28') AS td_year_before, "
+                            "TIMESTAMPDIFF(YEAR,'2020-02-29','2024-02-29') AS td_year_exact, "
+                            "TIMESTAMPDIFF(HOUR,'2024-02-28 00:00:00',"
+                            "'2024-02-29 12:00:00') AS td_hour, "
+                            "TIMESTAMPDIFF(MINUTE,'2024-02-28 00:00:30',"
+                            "'2024-02-28 00:02:29') AS td_minute, "
+                            "TIMESTAMPDIFF(SECOND,'2024-02-28 00:00:00',"
+                            "'2024-02-28 00:00:01.900000') AS td_second, "
+                            "TIMESTAMPDIFF(DAY,'2024-02-28 23:59:59',"
+                            "'2024-02-29 00:00:00') AS td_day_boundary, "
+                            "TIMESTAMPDIFF(DAY,'2024-03-01','2024-02-29') AS td_day_negative, "
+                            "TIMESTAMPDIFF(MONTH,'2024-02-29','2024-01-31') AS td_month_negative, "
+                            "TIMESTAMPDIFF(YEAR,'2001-03-01','2000-02-29') AS td_year_negative",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TIMESTAMPDIFF scalar row");
+    failures += expect_string(mylite_column_text(stmt, 0), "2", "TIMESTAMPDIFF DAY");
+    failures += expect_string(mylite_column_text(stmt, 1), "2", "TIMESTAMPDIFF WEEK");
+    failures += expect_string(mylite_column_text(stmt, 2), "0", "TIMESTAMPDIFF MONTH boundary");
+    failures += expect_string(mylite_column_text(stmt, 3), "3", "TIMESTAMPDIFF YEAR before");
+    failures += expect_string(mylite_column_text(stmt, 4), "4", "TIMESTAMPDIFF YEAR exact");
+    failures += expect_string(mylite_column_text(stmt, 5), "36", "TIMESTAMPDIFF HOUR");
+    failures += expect_string(mylite_column_text(stmt, 6), "1", "TIMESTAMPDIFF MINUTE");
+    failures += expect_string(mylite_column_text(stmt, 7), "1", "TIMESTAMPDIFF SECOND");
+    failures += expect_string(mylite_column_text(stmt, 8), "0", "TIMESTAMPDIFF DAY time boundary");
+    failures += expect_string(mylite_column_text(stmt, 9), "-1", "TIMESTAMPDIFF DAY negative");
+    failures += expect_string(mylite_column_text(stmt, 10), "0", "TIMESTAMPDIFF MONTH negative");
+    failures += expect_string(mylite_column_text(stmt, 11), "-1", "TIMESTAMPDIFF YEAR negative");
+    failures += expect_int(mylite_warning_count(database), 0, "TIMESTAMPDIFF scalar warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TIMESTAMPDIFF scalar done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT TIMESTAMPDIFF(SECOND,'2024-01-01 00:00:00.900000',"
+                            "'2024-01-01 00:00:01.000000') AS second_short_positive, "
+                            "TIMESTAMPDIFF(SECOND,'2024-01-01 00:00:01.000000',"
+                            "'2024-01-01 00:00:00.900000') AS second_short_negative, "
+                            "TIMESTAMPDIFF(MINUTE,'2024-01-01 00:00:00.900000',"
+                            "'2024-01-01 00:01:00.000000') AS minute_short, "
+                            "TIMESTAMPDIFF(HOUR,'2024-01-01 00:00:00.900000',"
+                            "'2024-01-01 01:00:00.000000') AS hour_short, "
+                            "TIMESTAMPDIFF(DAY,'2024-01-01 00:00:00.900000',"
+                            "'2024-01-02 00:00:00.000000') AS day_short, "
+                            "TIMESTAMPDIFF(SECOND,'2024-01-01 00:00:01.900000',"
+                            "'2024-01-01 00:00:00.000000') AS second_full_negative",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_ROW, "TIMESTAMPDIFF fractional boundary row");
+    failures += expect_string(mylite_column_text(stmt, 0), "0",
+                              "TIMESTAMPDIFF fractional second positive boundary");
+    failures += expect_string(mylite_column_text(stmt, 1), "0",
+                              "TIMESTAMPDIFF fractional second negative boundary");
+    failures +=
+        expect_string(mylite_column_text(stmt, 2), "0", "TIMESTAMPDIFF fractional minute boundary");
+    failures +=
+        expect_string(mylite_column_text(stmt, 3), "0", "TIMESTAMPDIFF fractional hour boundary");
+    failures +=
+        expect_string(mylite_column_text(stmt, 4), "0", "TIMESTAMPDIFF fractional day boundary");
+    failures += expect_string(mylite_column_text(stmt, 5), "-1",
+                              "TIMESTAMPDIFF fractional second full negative");
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_DONE, "TIMESTAMPDIFF fractional boundary done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT TIMESTAMPDIFF(DAY,NULL,'bad') AS null_bad, "
+                            "TIMESTAMPDIFF(DAY,'bad','worse') AS both_bad, "
+                            "TIMESTAMPDIFF(DAY,'2024-01-01','bad') AS bad_second, "
+                            "TIMESTAMPDIFF(DAY,'0000-00-00','2024-01-01') AS zero_date, "
+                            "TIMESTAMPDIFF(DAY,'bad',NULL) AS bad_null",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TIMESTAMPDIFF invalid row");
+    for (int index = 0; index < 5; ++index) {
+        failures += expect_null_text(mylite_column_text(stmt, index), "TIMESTAMPDIFF invalid null");
+    }
+    failures += expect_int(mylite_warning_count(database), 4, "TIMESTAMPDIFF invalid warnings");
+    for (int index = 0; index < 4; ++index) {
+        failures +=
+            expect_int((int)mylite_warning_code(database, index),
+                       mysql_warning_truncated_wrong_value, "TIMESTAMPDIFF invalid warning code");
+    }
+    failures +=
+        expect_string(mylite_warning_message(database, 0), "Incorrect datetime value: 'bad'",
+                      "TIMESTAMPDIFF first invalid warning");
+    failures +=
+        expect_string(mylite_warning_message(database, 1), "Incorrect datetime value: 'bad'",
+                      "TIMESTAMPDIFF second invalid warning");
+    failures +=
+        expect_string(mylite_warning_message(database, 2), "Incorrect datetime value: '0000-00-00'",
+                      "TIMESTAMPDIFF zero-date warning");
+    failures += expect_string(mylite_warning_message(database, 3),
+                              "Incorrect datetime value: 'bad'", "TIMESTAMPDIFF bad-null warning");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TIMESTAMPDIFF invalid done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT TIMESTAMPDIFF(DAY,20240229.9,20240301.9) AS real_day",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TIMESTAMPDIFF numeric row");
+    failures += expect_string(mylite_column_text(stmt, 0), "1", "TIMESTAMPDIFF numeric value");
+    failures += expect_int(mylite_warning_count(database), 2, "TIMESTAMPDIFF numeric warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TIMESTAMPDIFF numeric done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT TIMESTAMPDIFF(DAY, CURDATE(), DATE(NOW())) AS curday, "
+                            "TIMESTAMPDIFF(SECOND, NOW(6), "
+                            "DATE_ADD(NOW(6), INTERVAL 2 SECOND)) AS cursecond",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TIMESTAMPDIFF current row");
+    failures += expect_string(mylite_column_text(stmt, 0), "0", "TIMESTAMPDIFF current date");
+    failures += expect_string(mylite_column_text(stmt, 1), "2", "TIMESTAMPDIFF nested current");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TIMESTAMPDIFF current done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE DATABASE timestampdiff_functions", MYLITE_DONE);
+    failures += execute_sql(database, "USE timestampdiff_functions", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE temporal_timestampdiff ("
+                            "id INT PRIMARY KEY, "
+                            "started DATETIME(6), "
+                            "finished DATETIME(6), "
+                            "delta INT, "
+                            "note VARCHAR(32))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO temporal_timestampdiff VALUES "
+                            "(1, '2024-02-28 00:00:00', '2024-03-01 12:00:00', NULL, 'leap'), "
+                            "(2, '2024-02-01 00:00:00', '2024-02-15 00:00:00', NULL, 'weeks'), "
+                            "(3, '2024-01-31 00:00:00', '2024-02-29 00:00:00', NULL, 'month'), "
+                            "(4, '2024-03-01 00:00:00', '2024-02-29 00:00:00', NULL, 'negative'), "
+                            "(5, NULL, '2024-01-01 00:00:00', NULL, 'null')",
+                            MYLITE_DONE);
+    failures += expect_select_rows(database,
+                                   "SELECT id, TIMESTAMPDIFF(DAY, started, finished) AS days, "
+                                   "TIMESTAMPDIFF(HOUR, started, finished) AS hours "
+                                   "FROM temporal_timestampdiff "
+                                   "WHERE TIMESTAMPDIFF(DAY, started, finished) >= 0 "
+                                   "ORDER BY TIMESTAMPDIFF(HOUR, started, finished) DESC, id",
+                                   projection_columns, 3, projection_values, 3,
+                                   "TIMESTAMPDIFF table projection");
+    failures +=
+        execute_sql_expect_done_affected(database,
+                                         "UPDATE temporal_timestampdiff "
+                                         "SET delta = TIMESTAMPDIFF(DAY, started, finished) "
+                                         "WHERE TIMESTAMPDIFF(HOUR, started, finished) = 60",
+                                         1, "TIMESTAMPDIFF update");
+    failures += expect_select_rows(
+        database, "SELECT id, delta, note FROM temporal_timestampdiff WHERE id = 1",
+        updated_columns, 3, updated_values, 1, "TIMESTAMPDIFF updated row");
+    failures += execute_sql_expect_done_affected(database,
+                                                 "DELETE FROM temporal_timestampdiff "
+                                                 "WHERE TIMESTAMPDIFF(DAY, started, finished) < 0",
+                                                 1, "TIMESTAMPDIFF delete");
+    failures += expect_select_rows(database, "SELECT id FROM temporal_timestampdiff ORDER BY id",
+                                   remaining_columns, 1, delete_remaining_values, 4,
+                                   "TIMESTAMPDIFF delete result");
+    failures += prepare_sql(database,
+                            "UPDATE temporal_timestampdiff "
+                            "SET delta = TIMESTAMPDIFF(DAY,'bad',finished) WHERE id = 1",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR,
+                              "TIMESTAMPDIFF invalid update promoted");
+    failures += expect_contains(mylite_error_message(database), "Incorrect datetime value: 'bad'",
+                                "TIMESTAMPDIFF invalid update error");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "TIMESTAMPDIFF invalid update warnings");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database, "SELECT id, delta, note FROM temporal_timestampdiff WHERE id = 1",
+        updated_columns, 3, updated_values, 1, "TIMESTAMPDIFF invalid update unchanged");
+    failures += prepare_sql(database,
+                            "DELETE FROM temporal_timestampdiff "
+                            "WHERE TIMESTAMPDIFF(DAY,'bad',finished) IS NULL",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR,
+                              "TIMESTAMPDIFF invalid delete promoted");
+    failures += expect_contains(mylite_error_message(database), "Incorrect datetime value: 'bad'",
+                                "TIMESTAMPDIFF invalid delete error");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "TIMESTAMPDIFF invalid delete warnings");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM temporal_timestampdiff ORDER BY id",
+                                   remaining_columns, 1, delete_remaining_values, 4,
+                                   "TIMESTAMPDIFF invalid delete unchanged");
+
+    failures += prepare_sql(database, "SELECT TIMESTAMPDIFF(MICROSECOND,'2024-01-01','2024-01-02')",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "TIMESTAMPDIFF MICROSECOND deferred");
+    failures += prepare_sql(database, "SELECT TIMESTAMPDIFF(YEAR_MONTH,'2024-01-01','2024-02-01')",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "TIMESTAMPDIFF combined unit rejected");
+    failures += prepare_sql(database, "SELECT TIMESTAMPDIFF('DAY','2024-01-01','2024-01-02')",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "TIMESTAMPDIFF quoted unit rejected");
+    failures +=
+        prepare_sql(database, "SELECT TIMESTAMPDIFF(DAY,'2024-01-01')", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "TIMESTAMPDIFF missing argument rejected");
+    failures += prepare_sql(database, "SELECT TIMESTAMPDIFF(DAY,'2024-01-01','2024-01-02','x')",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "TIMESTAMPDIFF extra argument rejected");
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)

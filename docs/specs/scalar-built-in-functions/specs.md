@@ -179,13 +179,15 @@ by common scalar expressions:
 - temporal functions: `NOW`, `CURRENT_TIMESTAMP`, `LOCALTIME`,
   `LOCALTIMESTAMP`, `CURDATE`/`CURRENT_DATE`, `CURTIME`/`CURRENT_TIME`,
   `DATE`, `DATEDIFF`, `DATE_ADD`, `DATE_SUB`, `ADDDATE`, `SUBDATE`,
-  `YEAR`, `MONTH`, `DAY`, `DAYOFMONTH`, `HOUR`, `MINUTE`, `SECOND`, and
+  `YEAR`, `MONTH`, `DAY`, `DAYOFMONTH`, `HOUR`, `MINUTE`, `SECOND`,
   `EXTRACT` for the simple `YEAR`, `MONTH`, `DAY`, `HOUR`, `MINUTE`, and
-  `SECOND` units; see
+  `SECOND` units, and `TIMESTAMPDIFF` for the simple `DAY`, `WEEK`, `MONTH`,
+  `YEAR`, `HOUR`, `MINUTE`, and `SECOND` units; see
   `docs/specs/current-temporal-functions/specs.md` and
   `docs/specs/date-and-datediff-functions/specs.md` and
   `docs/specs/date-add-sub-functions/specs.md` and
-  `docs/specs/temporal-part-functions/specs.md`
+  `docs/specs/temporal-part-functions/specs.md` and
+  `docs/specs/timestampdiff-function/specs.md`
 - grammar-level cast expressions: `CAST(expr AS type)`, `CONVERT(expr, type)`,
   and `CONVERT(expr USING charset_name)` for the supported CAST target and
   charset-registry subsets; see `docs/specs/cast-expression/specs.md` and
@@ -230,7 +232,8 @@ filters, ordering, update assignment expressions, delete
 predicates, `STRCMP()` NULL short-circuiting, numeric-to-string comparison,
 PAD SPACE / NO PAD trailing-space comparison, DATE_ADD/DATE_SUB interval
 arithmetic over supported simple units, month-end clipping, date-arithmetic
-warning propagation, unsupported functions, unsupported arity, and selected
+warning propagation, TIMESTAMPDIFF calendar and elapsed-time differences over
+supported simple units, unsupported functions, unsupported arity, and selected
 result metadata.
 
 This checkpoint intentionally does not yet implement `INSERT ... VALUES` or
@@ -240,7 +243,7 @@ extraction slices, information
 functions outside the session-state and session-identity slices,
 aggregate/window functions, JSON,
 regular expressions, spatial, full-text, encryption, loadable functions,
-complete binary-string semantics for all scalar functions, exact
+complete binary-string semantics for all scalar functions,
 exact-versus-approximate numeric preservation for every expression path, or
 exact MySQL error-code reporting for unsupported functions and argument-count
 mismatches.
@@ -629,6 +632,7 @@ Verified `mysql --column-type-info -vvv` examples:
 | `DATE(...) AS date_value` | `DATE` | `10` | `0` | `binary` | `BINARY` |
 | `DATEDIFF(...) AS datediff_value` | `LONGLONG` | `9` | `0` | `binary` | `BINARY NUM` |
 | `DATE_ADD('2024-02-29', INTERVAL 1 DAY) AS date_add_value` | `STRING` | `116` | `31` | `utf8mb4_0900_ai_ci` | none |
+| `TIMESTAMPDIFF(DAY,...) AS timestampdiff_value` | `LONGLONG` | `21` | `0` | `binary` | `BINARY NUM` |
 | `DATABASE() AS database_value` | `VAR_STRING` | `256` | `31` | `utf8mb4_0900_ai_ci` | nullable |
 | `VERSION() AS version_value` | `VAR_STRING` | `20` | `31` | `utf8mb4_0900_ai_ci` | `NOT_NULL` |
 | `LAST_INSERT_ID() AS last_insert_id_value` | `LONGLONG` | `21` | `0` | `binary` | `NOT_NULL UNSIGNED BINARY NUM` |
@@ -680,7 +684,6 @@ opt_temporal_fsp_parens ::= LPAREN INTEGER RPAREN.
 scalar_function_call ::= POSITION LPAREN expression IN expression RPAREN.
 scalar_function_call ::= EXTRACT LPAREN interval_unit FROM expression RPAREN.
 scalar_function_call ::= TIMESTAMPADD LPAREN interval_unit COMMA expression COMMA expression RPAREN.
-scalar_function_call ::= TIMESTAMPDIFF LPAREN interval_unit COMMA expression COMMA expression RPAREN.
 scalar_function_call ::= date_arithmetic_name LPAREN expression COMMA INTERVAL expression interval_unit RPAREN.
 
 date_arithmetic_name ::= DATE_ADD.
@@ -731,6 +734,11 @@ interval_unit ::= DAY_MINUTE.
 interval_unit ::= DAY_HOUR.
 interval_unit ::= YEAR_MONTH.
 ```
+
+For `TIMESTAMPDIFF`, the generic function-call rule is parser-validated when
+the function name text matches `TIMESTAMPDIFF`: the first parsed argument must
+be a supported interval-unit identifier, and the two remaining arguments become
+the runtime datetime expressions with the unit stored as function-call metadata.
 
 The actual `mylite_parse.y` file may use precedence declarations and smaller
 productions, but the accepted language and AST shape must match this contract.

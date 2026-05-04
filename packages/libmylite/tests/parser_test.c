@@ -5709,7 +5709,58 @@ static int test_scalar_function_call_syntax(void)
                                               "DATE_ADD SECOND interval call");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SELECT TIMESTAMPDIFF(DAY,'2024-02-28','2024-03-01'), "
+                          "TIMESTAMPDIFF(WEEK,'2024-02-01','2024-02-15'), "
+                          "TIMESTAMPDIFF(MONTH,'2024-01-31','2024-02-29'), "
+                          "TIMESTAMPDIFF(YEAR,'2020-02-29','2024-02-29'), "
+                          "TIMESTAMPDIFF(HOUR,NOW(),DATE_ADD(NOW(), INTERVAL 1 HOUR)), "
+                          "TIMESTAMPDIFF(MINUTE,'2024-01-01','2024-01-01 00:01:00'), "
+                          "TIMESTAMPDIFF(SECOND,'2024-01-01','2024-01-01 00:00:01');",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_interval_function_call(child_at(child_at(select_list, 0U), 0U),
+                                              "TIMESTAMPDIFF", MYLITE_SQL_AST_INTERVAL_UNIT_DAY,
+                                              "TIMESTAMPDIFF DAY interval call");
+    failures += expect_interval_function_call(child_at(child_at(select_list, 1U), 0U),
+                                              "TIMESTAMPDIFF", MYLITE_SQL_AST_INTERVAL_UNIT_WEEK,
+                                              "TIMESTAMPDIFF WEEK interval call");
+    failures += expect_interval_function_call(child_at(child_at(select_list, 2U), 0U),
+                                              "TIMESTAMPDIFF", MYLITE_SQL_AST_INTERVAL_UNIT_MONTH,
+                                              "TIMESTAMPDIFF MONTH interval call");
+    failures += expect_interval_function_call(child_at(child_at(select_list, 3U), 0U),
+                                              "TIMESTAMPDIFF", MYLITE_SQL_AST_INTERVAL_UNIT_YEAR,
+                                              "TIMESTAMPDIFF YEAR interval call");
+    failures += expect_interval_function_call(child_at(child_at(select_list, 4U), 0U),
+                                              "TIMESTAMPDIFF", MYLITE_SQL_AST_INTERVAL_UNIT_HOUR,
+                                              "TIMESTAMPDIFF HOUR interval call");
+    failures += expect_interval_function_call(child_at(child_at(select_list, 5U), 0U),
+                                              "TIMESTAMPDIFF", MYLITE_SQL_AST_INTERVAL_UNIT_MINUTE,
+                                              "TIMESTAMPDIFF MINUTE interval call");
+    failures += expect_interval_function_call(child_at(child_at(select_list, 6U), 0U),
+                                              "TIMESTAMPDIFF", MYLITE_SQL_AST_INTERVAL_UNIT_SECOND,
+                                              "TIMESTAMPDIFF SECOND interval call");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT timestampdiff FROM temporal_part_names;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("SELECT DATE_ADD('2024-01-01', INTERVAL 1 BOGUS)",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT TIMESTAMPDIFF(YEAR_MONTH,'2024-01-01','2024-02-01')",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT TIMESTAMPDIFF(MICROSECOND,'2024-01-01','2024-01-02')",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT TIMESTAMPDIFF('DAY','2024-01-01','2024-01-02')",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("SELECT TIMESTAMPDIFF(DAY,'2024-01-01')", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT TIMESTAMPDIFF(DAY,'2024-01-01','2024-01-02','x')",
                           MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 

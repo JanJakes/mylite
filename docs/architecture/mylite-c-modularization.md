@@ -74,6 +74,8 @@ after every step.
   in `mylite.c`.
 - [x] Start `src/runtime/mylite_statement.{h,c}` with affected-row access and
   row-count bookkeeping.
+- [x] Move table-select row/current-result cleanup into
+  `src/runtime/mylite_statement`.
 - [x] Extract public result metadata accessors into
   `src/runtime/mylite_metadata.{h,c}`.
 - [ ] Split catalog lookup helpers into `src/runtime/mylite_catalog`.

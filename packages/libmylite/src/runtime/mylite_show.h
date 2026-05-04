@@ -34,6 +34,12 @@ int mylite_show_prepare_schemas_statement(mylite_db *database, mylite_stmt **out
 int mylite_show_prepare_status_statement(mylite_db *database,
                                          const struct mylite_sql_ast_node *statement,
                                          mylite_stmt **out_stmt);
+int mylite_show_prepare_tables_statement(mylite_db *database,
+                                         const struct mylite_sql_ast_node *statement,
+                                         mylite_stmt **out_stmt);
+int mylite_show_prepare_table_status_statement(mylite_db *database,
+                                               const struct mylite_sql_ast_node *statement,
+                                               mylite_stmt **out_stmt);
 int mylite_show_prepare_variables_statement(mylite_db *database,
                                             const struct mylite_sql_ast_node *statement,
                                             mylite_stmt **out_stmt);

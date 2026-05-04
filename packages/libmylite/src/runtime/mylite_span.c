@@ -57,6 +57,15 @@ bool mylite_ascii_case_equal(const char *left, const char *right)
     return false;
 }
 
+void mylite_uppercase_ascii_text(char *text)
+{
+    for (size_t index = 0U; text != NULL && text[index] != '\0'; ++index) {
+        if (text[index] >= 'a' && text[index] <= 'z') {
+            text[index] = (char)(text[index] - 'a' + 'A');
+        }
+    }
+}
+
 char *mylite_copy_schema_text_span(const struct mylite_sql_ast_node *node)
 {
     if (node != NULL && node->kind == MYLITE_SQL_AST_LITERAL) {

@@ -319,9 +319,9 @@ only the core object model and transitional shared helpers listed here:
 - [x] Move `SHOW COLLATION` prepare code into `mylite_show`.
 - [x] Move `information_schema.KEYWORDS` builder into `mylite_show`.
 - [x] Move `SHOW TABLES` builder into `mylite_show`.
-- [ ] Move `SHOW TABLES` prepare code into `mylite_show`.
+- [x] Move `SHOW TABLES` prepare code into `mylite_show`.
 - [x] Move `SHOW TABLE STATUS` builder into `mylite_show`.
-- [ ] Move `SHOW TABLE STATUS` prepare code into `mylite_show`.
+- [x] Move `SHOW TABLE STATUS` prepare code into `mylite_show`.
 - [x] Move `SHOW COLUMNS`/`DESCRIBE` builder into `mylite_show`.
 - [ ] Move `SHOW COLUMNS` and `DESCRIBE` prepare code into `mylite_show`.
 - [x] Move `SHOW INDEX` builder into `mylite_show`.

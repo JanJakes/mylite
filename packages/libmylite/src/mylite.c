@@ -41,7 +41,6 @@
 #include <time.h>
 
 static const unsigned int mylite_mysql_binary_charset_id = 63U;
-static const unsigned int mylite_mysql_latin1_swedish_ci_charset_id = 8U;
 static const unsigned int mylite_mysql_utf8mb4_bin_charset_id = 46U;
 static const unsigned int mylite_mysql_utf8mb4_0900_ai_ci_charset_id = 255U;
 static const char mylite_mysql_binary_charset_name[] = "binary";
@@ -401,8 +400,6 @@ static void append_show_status_row(sqlite3_str *sql, bool *first, const char *na
 static void append_show_status_integer_row(sqlite3_str *sql, bool *first, const char *name,
                                            uint64_t value);
 static int prepare_show_engines_statement(mylite_db *database, mylite_stmt **out_stmt);
-static int attach_show_engines_result_metadata(mylite_db *database, mylite_stmt *stmt);
-static struct mylite_field_descriptor show_engines_field_descriptor(uint64_t length, bool nullable);
 static int prepare_show_character_set_statement(mylite_db *database,
                                                 const struct mylite_sql_ast_node *statement,
                                                 mylite_stmt **out_stmt);
@@ -5035,7 +5032,7 @@ static int prepare_show_engines_statement(mylite_db *database, mylite_stmt **out
         status = prepare_sqlite_statement(database, sqlite_sql, &stmt);
     }
     if (status == MYLITE_OK) {
-        status = attach_show_engines_result_metadata(database, stmt);
+        status = mylite_show_attach_engines_result_metadata(database, stmt);
     }
 
     if (status == MYLITE_OK) {
@@ -5048,52 +5045,6 @@ static int prepare_show_engines_statement(mylite_db *database, mylite_stmt **out
     }
     sqlite3_free(sqlite_sql);
     return status;
-}
-
-static int attach_show_engines_result_metadata(mylite_db *database, mylite_stmt *stmt)
-{
-    static const struct mylite_show_engines_metadata_column columns[] = {
-        {"Engine", 64U, false},     {"Support", 8U, false}, {"Comment", 80U, false},
-        {"Transactions", 3U, true}, {"XA", 3U, true},       {"Savepoints", 3U, true},
-    };
-    struct mylite_result_metadata metadata = {0};
-
-    metadata.columns = calloc(sizeof(columns) / sizeof(columns[0]), sizeof(*metadata.columns));
-    if (metadata.columns == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    metadata.column_count = sizeof(columns) / sizeof(columns[0]);
-
-    for (size_t index = 0U; index < metadata.column_count; ++index) {
-        int status =
-            mylite_result_metadata_copy_text(database, &metadata.columns[index].name, columns[index].name);
-
-        if (status != MYLITE_OK) {
-            mylite_result_metadata_deinit(&metadata);
-            return status;
-        }
-        metadata.columns[index].descriptor =
-            show_engines_field_descriptor(columns[index].length, columns[index].nullable);
-    }
-
-    mylite_result_metadata_deinit(&stmt->result_metadata);
-    stmt->result_metadata = metadata;
-    return MYLITE_OK;
-}
-
-static struct mylite_field_descriptor show_engines_field_descriptor(uint64_t length, bool nullable)
-{
-    struct mylite_field_descriptor descriptor = {
-        .type = MYLITE_FIELD_TYPE_VAR_STRING,
-        .length = length,
-        .decimals = mylite_mysql_not_fixed_decimals,
-        .charset_id = mylite_mysql_latin1_swedish_ci_charset_id,
-        .nullable = nullable,
-    };
-
-    mylite_field_descriptor_set_nullable(&descriptor, nullable);
-    return descriptor;
 }
 
 static int prepare_show_character_set_statement(mylite_db *database,

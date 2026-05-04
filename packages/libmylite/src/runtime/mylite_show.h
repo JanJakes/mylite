@@ -3,8 +3,14 @@
 
 #include <mylite/mylite.h>
 
+struct mylite_show_character_set_query;
+
 int mylite_show_engines_sql(mylite_db *database, char **out_sql);
 int mylite_show_information_schema_engines_sql(mylite_db *database, char **out_sql);
+int mylite_show_character_set_sql(mylite_db *database,
+                                  const struct mylite_show_character_set_query *query,
+                                  char **out_sql);
+int mylite_show_information_schema_character_sets_sql(mylite_db *database, char **out_sql);
 const char *mylite_show_schemas_sql(void);
 const char *mylite_show_information_schema_schemata_sql(void);
 int mylite_show_attach_engines_result_metadata(mylite_db *database, mylite_stmt *stmt);

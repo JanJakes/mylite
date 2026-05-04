@@ -1,5 +1,6 @@
 #include "mylite_show.h"
 
+#include "mylite_charset.h"
 #include "mylite_diagnostics.h"
 #include "mylite_field_descriptor.h"
 #include "mylite_metadata.h"
@@ -14,6 +15,10 @@
 static int storage_engines_sql(mylite_db *database,
                                const struct mylite_storage_engine_columns *columns, char **out_sql);
 static struct mylite_field_descriptor show_engines_field_descriptor(uint64_t length, bool nullable);
+static void append_show_character_set_row(sqlite3_str *sql, bool *first,
+                                          const struct mylite_charset *character_set);
+static void append_information_schema_character_set_row(sqlite3_str *sql, bool *first,
+                                                        const struct mylite_charset *character_set);
 static void append_storage_engine_row(sqlite3_str *sql, bool *first,
                                       const struct mylite_storage_engine_columns *columns,
                                       const struct mylite_storage_engine_row *engine);
@@ -59,6 +64,54 @@ int mylite_show_information_schema_engines_sql(mylite_db *database, char **out_s
     };
 
     return storage_engines_sql(database, &columns, out_sql);
+}
+
+int mylite_show_character_set_sql(mylite_db *database,
+                                  const struct mylite_show_character_set_query *query,
+                                  char **out_sql)
+{
+    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
+    bool first = true;
+
+    *out_sql = NULL;
+    if (sql == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    sqlite3_str_appendall(sql, "SELECT Charset, Description, \"Default collation\", Maxlen FROM (");
+    for (size_t index = 0U; index < mylite_charset_count(); ++index) {
+        append_show_character_set_row(sql, &first, mylite_charset_at(index));
+    }
+    sqlite3_str_appendall(sql, ")");
+
+    if (query->like_pattern != NULL) {
+        sqlite3_str_appendf(sql, " WHERE Charset LIKE %Q ESCAPE '\\'", query->like_pattern);
+    }
+    sqlite3_str_appendall(sql, " ORDER BY Charset COLLATE NOCASE, Charset COLLATE BINARY");
+
+    *out_sql = sqlite3_str_finish(sql);
+    return *out_sql == NULL ? MYLITE_NOMEM : MYLITE_OK;
+}
+
+int mylite_show_information_schema_character_sets_sql(mylite_db *database, char **out_sql)
+{
+    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
+    bool first = true;
+
+    *out_sql = NULL;
+    if (sql == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    sqlite3_str_appendall(sql, "SELECT CHARACTER_SET_NAME, DEFAULT_COLLATE_NAME, DESCRIPTION, "
+                               "MAXLEN FROM (");
+    for (size_t index = 0U; index < mylite_charset_count(); ++index) {
+        append_information_schema_character_set_row(sql, &first, mylite_charset_at(index));
+    }
+    sqlite3_str_appendall(sql, ")");
+
+    *out_sql = sqlite3_str_finish(sql);
+    return *out_sql == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
 
 const char *mylite_show_schemas_sql(void)
@@ -140,6 +193,34 @@ static struct mylite_field_descriptor show_engines_field_descriptor(uint64_t len
 
     mylite_field_descriptor_set_nullable(&descriptor, nullable);
     return descriptor;
+}
+
+static void append_show_character_set_row(sqlite3_str *sql, bool *first,
+                                          const struct mylite_charset *character_set)
+{
+    if (!*first) {
+        sqlite3_str_appendall(sql, " UNION ALL ");
+    }
+    sqlite3_str_appendf(sql,
+                        "SELECT %Q AS \"Charset\", %Q AS \"Description\", "
+                        "%Q AS \"Default collation\", %d AS \"Maxlen\"",
+                        character_set->name, character_set->description,
+                        character_set->default_collation, character_set->max_length);
+    *first = false;
+}
+
+static void append_information_schema_character_set_row(sqlite3_str *sql, bool *first,
+                                                        const struct mylite_charset *character_set)
+{
+    if (!*first) {
+        sqlite3_str_appendall(sql, " UNION ALL ");
+    }
+    sqlite3_str_appendf(sql,
+                        "SELECT %Q AS \"CHARACTER_SET_NAME\", "
+                        "%Q AS \"DEFAULT_COLLATE_NAME\", %Q AS \"DESCRIPTION\", %d AS \"MAXLEN\"",
+                        character_set->name, character_set->default_collation,
+                        character_set->description, character_set->max_length);
+    *first = false;
 }
 
 static void append_storage_engine_row(sqlite3_str *sql, bool *first,

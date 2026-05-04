@@ -307,7 +307,9 @@ only the core object model and transitional shared helpers listed here:
 - [ ] Move `SHOW ENGINES` prepare/build code and metadata into `mylite_show`.
 - [x] Move `SHOW ENGINES` storage-engine SQL builders and result metadata into
   `mylite_show`.
-- [ ] Move `SHOW CHARACTER SET` prepare/build code into `mylite_show`.
+- [x] Move `SHOW CHARACTER SET` and `information_schema.CHARACTER_SETS`
+  builders into `mylite_show`.
+- [ ] Move `SHOW CHARACTER SET` prepare code into `mylite_show`.
 - [ ] Move `SHOW COLLATION` prepare/build code into `mylite_show`.
 - [ ] Move `SHOW TABLES` prepare/build code into `mylite_show`.
 - [ ] Move `SHOW TABLE STATUS` prepare/build code into `mylite_show`.

@@ -330,14 +330,6 @@ static int prepare_show_character_set_statement(mylite_db *database,
                                                 const struct mylite_sql_ast_node *statement,
                                                 mylite_stmt **out_stmt);
 static char *copy_show_character_set_like_pattern(const struct mylite_sql_ast_node *statement);
-static int show_character_set_sql(mylite_db *database,
-                                  const struct mylite_show_character_set_query *query,
-                                  char **out_sql);
-static void append_show_character_set_row(sqlite3_str *sql, bool *first,
-                                          const struct mylite_charset *character_set);
-static int information_schema_character_sets_sql(mylite_db *database, char **out_sql);
-static void append_information_schema_character_set_row(sqlite3_str *sql, bool *first,
-                                                        const struct mylite_charset *character_set);
 static int prepare_show_collation_statement(mylite_db *database,
                                             const struct mylite_sql_ast_node *statement,
                                             mylite_stmt **out_stmt);
@@ -4944,11 +4936,11 @@ static int prepare_show_character_set_statement(mylite_db *database,
         status = MYLITE_NOMEM;
     }
     if (status == MYLITE_OK) {
-        status = show_character_set_sql(database,
-                                        &(const struct mylite_show_character_set_query){
-                                            .like_pattern = like_pattern,
-                                        },
-                                        &sqlite_sql);
+        status = mylite_show_character_set_sql(database,
+                                               &(const struct mylite_show_character_set_query){
+                                                   .like_pattern = like_pattern,
+                                               },
+                                               &sqlite_sql);
     }
     if (status == MYLITE_OK) {
         status = prepare_sqlite_statement(database, sqlite_sql, out_stmt);
@@ -4971,82 +4963,6 @@ static char *copy_show_character_set_like_pattern(const struct mylite_sql_ast_no
         return NULL;
     }
     return copy_show_like_pattern_span(literal);
-}
-
-static int show_character_set_sql(mylite_db *database,
-                                  const struct mylite_show_character_set_query *query,
-                                  char **out_sql)
-{
-    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
-    bool first = true;
-
-    *out_sql = NULL;
-    if (sql == NULL) {
-        return MYLITE_NOMEM;
-    }
-
-    sqlite3_str_appendall(sql, "SELECT Charset, Description, \"Default collation\", Maxlen FROM (");
-    for (size_t index = 0U; index < mylite_charset_count(); ++index) {
-        append_show_character_set_row(sql, &first, mylite_charset_at(index));
-    }
-    sqlite3_str_appendall(sql, ")");
-
-    if (query->like_pattern != NULL) {
-        sqlite3_str_appendf(sql, " WHERE Charset LIKE %Q ESCAPE '\\'", query->like_pattern);
-    }
-    sqlite3_str_appendall(sql, " ORDER BY Charset COLLATE NOCASE, Charset COLLATE BINARY");
-
-    *out_sql = sqlite3_str_finish(sql);
-    return *out_sql == NULL ? MYLITE_NOMEM : MYLITE_OK;
-}
-
-static void append_show_character_set_row(sqlite3_str *sql, bool *first,
-                                          const struct mylite_charset *character_set)
-{
-    if (!*first) {
-        sqlite3_str_appendall(sql, " UNION ALL ");
-    }
-    sqlite3_str_appendf(sql,
-                        "SELECT %Q AS \"Charset\", %Q AS \"Description\", "
-                        "%Q AS \"Default collation\", %d AS \"Maxlen\"",
-                        character_set->name, character_set->description,
-                        character_set->default_collation, character_set->max_length);
-    *first = false;
-}
-
-static int information_schema_character_sets_sql(mylite_db *database, char **out_sql)
-{
-    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
-    bool first = true;
-
-    *out_sql = NULL;
-    if (sql == NULL) {
-        return MYLITE_NOMEM;
-    }
-
-    sqlite3_str_appendall(sql, "SELECT CHARACTER_SET_NAME, DEFAULT_COLLATE_NAME, DESCRIPTION, "
-                               "MAXLEN FROM (");
-    for (size_t index = 0U; index < mylite_charset_count(); ++index) {
-        append_information_schema_character_set_row(sql, &first, mylite_charset_at(index));
-    }
-    sqlite3_str_appendall(sql, ")");
-
-    *out_sql = sqlite3_str_finish(sql);
-    return *out_sql == NULL ? MYLITE_NOMEM : MYLITE_OK;
-}
-
-static void append_information_schema_character_set_row(sqlite3_str *sql, bool *first,
-                                                        const struct mylite_charset *character_set)
-{
-    if (!*first) {
-        sqlite3_str_appendall(sql, " UNION ALL ");
-    }
-    sqlite3_str_appendf(sql,
-                        "SELECT %Q AS \"CHARACTER_SET_NAME\", "
-                        "%Q AS \"DEFAULT_COLLATE_NAME\", %Q AS \"DESCRIPTION\", %d AS \"MAXLEN\"",
-                        character_set->name, character_set->default_collation,
-                        character_set->description, character_set->max_length);
-    *first = false;
 }
 
 static int prepare_show_collation_statement(mylite_db *database,
@@ -7021,7 +6937,7 @@ static int information_schema_dynamic_table_sql(mylite_db *database,
     *out_sql = NULL;
     switch (table) {
     case MYLITE_INFORMATION_SCHEMA_CHARACTER_SETS:
-        return information_schema_character_sets_sql(database, out_sql);
+        return mylite_show_information_schema_character_sets_sql(database, out_sql);
     case MYLITE_INFORMATION_SCHEMA_COLLATIONS:
         return information_schema_collations_sql(database, out_sql);
     case MYLITE_INFORMATION_SCHEMA_COLLATION_CHARACTER_SET_APPLICABILITY:

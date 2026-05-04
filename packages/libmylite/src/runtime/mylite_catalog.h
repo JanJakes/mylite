@@ -8,9 +8,17 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+enum mylite_catalog_table_row_delete_flags {
+    MYLITE_CATALOG_DELETE_TABLE_INDEXES = 1U << 0,
+    MYLITE_CATALOG_DELETE_TABLE_COLUMNS = 1U << 1,
+    MYLITE_CATALOG_DELETE_TABLE_ROW = 1U << 2,
+};
+
 int mylite_catalog_initialize(mylite_db *database);
 int mylite_catalog_update_auto_increment(mylite_db *database, const char *schema_name,
                                          const char *table_name, uint64_t next_auto_increment);
+int mylite_catalog_delete_table_rows(mylite_db *database, const char *schema_name,
+                                     const char *table_name, unsigned int flags);
 int mylite_catalog_selected_schema_default(mylite_db *database,
                                            struct mylite_schema_default *out_default);
 int mylite_catalog_schema_exists(mylite_db *database, const char *schema_name,

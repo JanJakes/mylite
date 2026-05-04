@@ -84,8 +84,15 @@ static const char index_catalog_sql[] =
     "expression TEXT,"
     "PRIMARY KEY(table_schema, table_name, index_name, seq_in_index))";
 
+struct mylite_catalog_table_key {
+    const char *schema_name;
+    const char *table_name;
+};
+
 static int seed_system_schema(mylite_db *database, const char *name, const char *character_set,
                               const char *collation);
+static int delete_table_catalog_row(mylite_db *database, const char *sql,
+                                    const struct mylite_catalog_table_key *key);
 static sqlite3_destructor_type sqlite_transient_destructor(void);
 static bool hex_encoded_text_length(size_t text_length, size_t *out_length);
 static char *append_hex_encoded_text(char *target, const char *source);
@@ -147,6 +154,54 @@ int mylite_catalog_update_auto_increment(mylite_db *database, const char *schema
     rc = sqlite3_step(update);
     sqlite3_finalize(update);
     return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
+}
+
+int mylite_catalog_delete_table_rows(mylite_db *database, const char *schema_name,
+                                     const char *table_name, unsigned int flags)
+{
+    static const char delete_indexes[] =
+        "DELETE FROM __mylite_index_catalog WHERE table_schema = ? AND table_name = ?";
+    static const char delete_columns[] =
+        "DELETE FROM __mylite_column_catalog WHERE table_schema = ? AND table_name = ?";
+    static const char delete_tables[] =
+        "DELETE FROM __mylite_table_catalog WHERE table_schema = ? AND table_name = ?";
+    const struct mylite_catalog_table_key key = {
+        .schema_name = schema_name,
+        .table_name = table_name,
+    };
+    int status = MYLITE_OK;
+
+    if ((flags & MYLITE_CATALOG_DELETE_TABLE_INDEXES) != 0U) {
+        status = delete_table_catalog_row(database, delete_indexes, &key);
+    }
+    if (status == MYLITE_OK && (flags & MYLITE_CATALOG_DELETE_TABLE_COLUMNS) != 0U) {
+        status = delete_table_catalog_row(database, delete_columns, &key);
+    }
+    if (status == MYLITE_OK && (flags & MYLITE_CATALOG_DELETE_TABLE_ROW) != 0U) {
+        status = delete_table_catalog_row(database, delete_tables, &key);
+    }
+    return status;
+}
+
+static int delete_table_catalog_row(mylite_db *database, const char *sql,
+                                    const struct mylite_catalog_table_key *key)
+{
+    sqlite3_stmt *delete_stmt = NULL;
+    int rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &delete_stmt,
+                                NULL);
+
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+
+    sqlite3_bind_text(delete_stmt, 1, key->schema_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(delete_stmt, 2, key->table_name, -1, sqlite_transient_destructor());
+    rc = sqlite3_step(delete_stmt);
+    sqlite3_finalize(delete_stmt);
+    if (rc != SQLITE_DONE) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+    return MYLITE_OK;
 }
 
 int mylite_catalog_selected_schema_default(mylite_db *database,

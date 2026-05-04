@@ -1267,7 +1267,6 @@ static struct mylite_sql_source_span remap_source_span(struct mylite_sql_source_
 static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind kind,
                                     const struct mylite_sql_ast_node *statement,
                                     mylite_stmt **out_stmt);
-static int execute_drop_table_statement(mylite_stmt *stmt);
 static int execute_rename_table_statement(mylite_stmt *stmt);
 static int execute_truncate_table_statement(mylite_stmt *stmt);
 static int execute_alter_table_statement(mylite_stmt *stmt);
@@ -2017,18 +2016,6 @@ static int copy_table_select_column_value(mylite_stmt *stmt, size_t column_index
 static int map_table_select_expression_eval_status(mylite_stmt *stmt, int status);
 static int set_where_predicate_eval_error(mylite_stmt *stmt);
 static void table_select_group_deinit(struct mylite_table_select_group *group);
-static int validate_drop_table_plan(mylite_stmt *stmt);
-static int validate_drop_table_temporary_target(mylite_stmt *stmt,
-                                                const struct mylite_drop_table_target *target);
-static int validate_drop_table_target(mylite_stmt *stmt, struct mylite_drop_table_target *target);
-static bool drop_table_target_is_duplicate(const struct mylite_drop_table_plan *plan,
-                                           size_t target_index);
-static int drop_table_transaction(mylite_stmt *stmt);
-static int drop_physical_table(mylite_stmt *stmt, const struct mylite_drop_table_target *target);
-static int delete_table_catalog_rows(mylite_stmt *stmt,
-                                     const struct mylite_drop_table_target *target);
-static int delete_table_catalog_row(mylite_db *database, const char *sql,
-                                    const struct mylite_drop_table_target *target);
 static int validate_rename_table_plan(mylite_stmt *stmt);
 static int resolve_rename_table_names(mylite_stmt *stmt);
 static int validate_rename_table_target_schemas(mylite_stmt *stmt,
@@ -3025,10 +3012,6 @@ static int copy_delete_target(const struct mylite_sql_ast_node *target,
 static int copy_delete_table_name(const struct mylite_sql_ast_node *table_name,
                                   struct mylite_delete_target *target);
 static const char *sqlite_affinity_for_catalog_data_type(const char *data_type);
-static int set_unknown_table_error(mylite_db *database, const char *schema_name,
-                                   const char *table_name);
-static int append_unknown_table_note(mylite_db *database, const char *schema_name,
-                                     const char *table_name);
 static bool write_statement_kind(enum mylite_stmt_kind kind);
 static bool
 insert_column_uses_numeric_implicit_default(const struct mylite_insert_table_column *column);
@@ -15420,7 +15403,8 @@ int mylite_statement_execute_custom(mylite_stmt *stmt)
             stmt->if_not_exists);
         break;
     case MYLITE_STMT_DROP_TABLE:
-        status = execute_drop_table_statement(stmt);
+        status = mylite_table_ddl_execute_drop_table_statement(
+            stmt->database, stmt->database->selected_schema, &stmt->drop_table, stmt->if_exists);
         break;
     case MYLITE_STMT_RENAME_TABLE:
         status = execute_rename_table_statement(stmt);
@@ -15476,249 +15460,6 @@ int mylite_statement_execute_custom(mylite_stmt *stmt)
     }
 
     return status == MYLITE_OK ? MYLITE_DONE : status;
-}
-
-static int execute_drop_table_statement(mylite_stmt *stmt)
-{
-    int status = validate_drop_table_plan(stmt);
-
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    if (stmt->drop_table.temporary) {
-        if (stmt->if_exists) {
-            return append_unknown_table_note(stmt->database,
-                                             stmt->drop_table.targets[0].schema_name,
-                                             stmt->drop_table.targets[0].table_name);
-        }
-        return set_unknown_table_error(stmt->database, stmt->drop_table.targets[0].schema_name,
-                                       stmt->drop_table.targets[0].table_name);
-    }
-
-    return drop_table_transaction(stmt);
-}
-
-static int validate_drop_table_plan(mylite_stmt *stmt)
-{
-    for (size_t index = 0U; index < stmt->drop_table.target_count; ++index) {
-        struct mylite_drop_table_target *target = &stmt->drop_table.targets[index];
-
-        if (target->schema_name == NULL) {
-            if (stmt->database->selected_schema == NULL) {
-                (void)mylite_diagnostics_set_error_message(stmt->database, "No database selected");
-                return MYLITE_EXEC_ERROR;
-            }
-            target->schema_name = mylite_copy_span_text(stmt->database->selected_schema,
-                                                        strlen(stmt->database->selected_schema));
-            if (target->schema_name == NULL) {
-                (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-                return MYLITE_NOMEM;
-            }
-        }
-
-        if (drop_table_target_is_duplicate(&stmt->drop_table, index)) {
-            (void)mylite_diagnostics_set_error_message_parts(
-                stmt->database, "Not unique table/alias: '", target->table_name, "'");
-            return MYLITE_EXEC_ERROR;
-        }
-    }
-
-    if (stmt->drop_table.temporary) {
-        for (size_t index = 0U; index < stmt->drop_table.target_count; ++index) {
-            int status =
-                validate_drop_table_temporary_target(stmt, &stmt->drop_table.targets[index]);
-
-            if (status != MYLITE_OK) {
-                return status;
-            }
-        }
-        return MYLITE_OK;
-    }
-
-    for (size_t index = 0U; index < stmt->drop_table.target_count; ++index) {
-        struct mylite_drop_table_target *target = &stmt->drop_table.targets[index];
-        int status = validate_drop_table_target(stmt, target);
-
-        if (status != MYLITE_OK) {
-            return status;
-        }
-    }
-    return MYLITE_OK;
-}
-
-static int validate_drop_table_temporary_target(mylite_stmt *stmt,
-                                                const struct mylite_drop_table_target *target)
-{
-    struct mylite_schema_presence presence;
-    int status = mylite_catalog_schema_exists(stmt->database, target->schema_name, &presence);
-
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    if (presence.is_system) {
-        (void)mylite_diagnostics_set_error_message_parts(
-            stmt->database, "Access to system schema '", target->schema_name, "' is rejected.");
-        return MYLITE_EXEC_ERROR;
-    }
-    return MYLITE_OK;
-}
-
-static int validate_drop_table_target(mylite_stmt *stmt, struct mylite_drop_table_target *target)
-{
-    struct mylite_schema_presence presence;
-    bool exists = false;
-    int status = mylite_catalog_schema_exists(stmt->database, target->schema_name, &presence);
-
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    if (presence.is_system) {
-        (void)mylite_diagnostics_set_error_message_parts(
-            stmt->database, "Access to system schema '", target->schema_name, "' is rejected.");
-        return MYLITE_EXEC_ERROR;
-    }
-    if (!presence.exists) {
-        if (stmt->if_exists) {
-            return append_unknown_table_note(stmt->database, target->schema_name,
-                                             target->table_name);
-        }
-        return set_unknown_table_error(stmt->database, target->schema_name, target->table_name);
-    }
-
-    status = mylite_catalog_table_exists(stmt->database, target->schema_name, target->table_name,
-                                         &exists);
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    if (!exists) {
-        if (stmt->if_exists) {
-            return append_unknown_table_note(stmt->database, target->schema_name,
-                                             target->table_name);
-        }
-        return set_unknown_table_error(stmt->database, target->schema_name, target->table_name);
-    }
-    target->exists = exists;
-    return MYLITE_OK;
-}
-
-static bool drop_table_target_is_duplicate(const struct mylite_drop_table_plan *plan,
-                                           size_t target_index)
-{
-    const struct mylite_drop_table_target *target = &plan->targets[target_index];
-
-    for (size_t index = 0U; index < target_index; ++index) {
-        if (strcmp(plan->targets[index].schema_name, target->schema_name) == 0 &&
-            strcmp(plan->targets[index].table_name, target->table_name) == 0) {
-            return true;
-        }
-    }
-    return false;
-}
-
-static int drop_table_transaction(mylite_stmt *stmt)
-{
-    int status = mylite_transaction_begin_storage(stmt->database);
-
-    if (status != MYLITE_OK) {
-        return status;
-    }
-
-    for (size_t index = 0U; index < stmt->drop_table.target_count && status == MYLITE_OK; ++index) {
-        if (!stmt->drop_table.targets[index].exists) {
-            continue;
-        }
-        status = drop_physical_table(stmt, &stmt->drop_table.targets[index]);
-        if (status == MYLITE_OK) {
-            status = delete_table_catalog_rows(stmt, &stmt->drop_table.targets[index]);
-        }
-    }
-
-    if (status == MYLITE_OK) {
-        status = mylite_transaction_commit_storage(stmt->database);
-        if (status == MYLITE_OK) {
-            return MYLITE_OK;
-        }
-    }
-
-    mylite_transaction_rollback_storage(stmt->database);
-    return status;
-}
-
-static int drop_physical_table(mylite_stmt *stmt, const struct mylite_drop_table_target *target)
-{
-    char *physical_name =
-        mylite_catalog_physical_table_name(target->schema_name, target->table_name);
-    char *drop_sql = NULL;
-    sqlite3_str *sql = NULL;
-    int rc = SQLITE_OK;
-
-    if (physical_name == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    sql = sqlite3_str_new(stmt->database->sqlite);
-    if (sql == NULL) {
-        free(physical_name);
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    sqlite3_str_appendf(sql, "DROP TABLE \"%w\"", physical_name);
-    free(physical_name);
-
-    drop_sql = sqlite3_str_finish(sql);
-    if (drop_sql == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    rc = sqlite3_exec(stmt->database->sqlite, drop_sql, NULL, NULL, NULL);
-    sqlite3_free(drop_sql);
-    if (rc != SQLITE_OK) {
-        return mylite_diagnostics_set_sqlite_error(stmt->database);
-    }
-    return MYLITE_OK;
-}
-
-static int delete_table_catalog_rows(mylite_stmt *stmt,
-                                     const struct mylite_drop_table_target *target)
-{
-    static const char delete_indexes[] =
-        "DELETE FROM __mylite_index_catalog WHERE table_schema = ? AND table_name = ?";
-    static const char delete_columns[] =
-        "DELETE FROM __mylite_column_catalog WHERE table_schema = ? AND table_name = ?";
-    static const char delete_tables[] =
-        "DELETE FROM __mylite_table_catalog WHERE table_schema = ? AND table_name = ?";
-    int status = delete_table_catalog_row(stmt->database, delete_indexes, target);
-
-    if (status == MYLITE_OK) {
-        status = delete_table_catalog_row(stmt->database, delete_columns, target);
-    }
-    if (status == MYLITE_OK) {
-        status = delete_table_catalog_row(stmt->database, delete_tables, target);
-    }
-    return status;
-}
-
-static int delete_table_catalog_row(mylite_db *database, const char *sql,
-                                    const struct mylite_drop_table_target *target)
-{
-    sqlite3_stmt *delete_stmt = NULL;
-    int rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &delete_stmt,
-                                NULL);
-
-    if (rc != SQLITE_OK) {
-        return mylite_diagnostics_set_sqlite_error(database);
-    }
-
-    sqlite3_bind_text(delete_stmt, 1, target->schema_name, -1, sqlite_transient_destructor());
-    sqlite3_bind_text(delete_stmt, 2, target->table_name, -1, sqlite_transient_destructor());
-    rc = sqlite3_step(delete_stmt);
-    sqlite3_finalize(delete_stmt);
-    if (rc != SQLITE_DONE) {
-        return mylite_diagnostics_set_sqlite_error(database);
-    }
-    return MYLITE_OK;
 }
 
 static int execute_rename_table_statement(mylite_stmt *stmt)
@@ -18238,20 +17979,9 @@ static int rewrite_alter_table_catalog(mylite_stmt *stmt, struct mylite_alter_ta
 
 static int delete_alter_table_catalog_rows(mylite_stmt *stmt)
 {
-    static const char delete_indexes[] =
-        "DELETE FROM __mylite_index_catalog WHERE table_schema = ? AND table_name = ?";
-    static const char delete_columns[] =
-        "DELETE FROM __mylite_column_catalog WHERE table_schema = ? AND table_name = ?";
-    const struct mylite_drop_table_target target = {
-        .schema_name = stmt->alter_table.schema_name,
-        .table_name = stmt->alter_table.table_name,
-    };
-    int status = delete_table_catalog_row(stmt->database, delete_indexes, &target);
-
-    if (status == MYLITE_OK) {
-        status = delete_table_catalog_row(stmt->database, delete_columns, &target);
-    }
-    return status;
+    return mylite_catalog_delete_table_rows(
+        stmt->database, stmt->alter_table.schema_name, stmt->alter_table.table_name,
+        MYLITE_CATALOG_DELETE_TABLE_INDEXES | MYLITE_CATALOG_DELETE_TABLE_COLUMNS);
 }
 
 static int insert_alter_table_column_catalog_rows(mylite_stmt *stmt,
@@ -34905,42 +34635,6 @@ static const char *sqlite_affinity_for_catalog_data_type(const char *data_type)
         return "BLOB";
     }
     return "TEXT";
-}
-
-static int set_unknown_table_error(mylite_db *database, const char *schema_name,
-                                   const char *table_name)
-{
-    char *message = sqlite3_mprintf("Unknown table '%q.%q'", schema_name, table_name);
-    int status = MYLITE_OK;
-
-    if (message == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    status = mylite_diagnostics_set_error_message(database, message);
-    if (status == MYLITE_OK) {
-        status =
-            mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_BAD_TABLE_ERROR, message);
-    }
-    sqlite3_free(message);
-    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-}
-
-static int append_unknown_table_note(mylite_db *database, const char *schema_name,
-                                     const char *table_name)
-{
-    char *message = sqlite3_mprintf("Unknown table '%q.%q'", schema_name, table_name);
-    int status = MYLITE_OK;
-
-    if (message == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    status = mylite_diagnostics_append_note(database, MYLITE_MYSQL_ER_BAD_TABLE_ERROR, message);
-    sqlite3_free(message);
-    return status;
 }
 
 static bool write_statement_kind(enum mylite_stmt_kind kind)

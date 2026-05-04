@@ -12,6 +12,9 @@ int mylite_table_ddl_execute_create_table_statement(mylite_db *database,
                                                     const char *selected_schema,
                                                     struct mylite_create_table_plan *plan,
                                                     bool if_not_exists);
+int mylite_table_ddl_execute_drop_table_statement(mylite_db *database, const char *selected_schema,
+                                                  struct mylite_drop_table_plan *plan,
+                                                  bool if_exists);
 int mylite_table_ddl_describe_create_table_column(
     const struct mylite_create_table_column *column,
     const struct mylite_schema_default *schema_default,

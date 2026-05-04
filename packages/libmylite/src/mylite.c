@@ -7,6 +7,7 @@
 #include "runtime/mylite_catalog.h"
 #include "runtime/mylite_connection.h"
 #include "runtime/mylite_diagnostics.h"
+#include "runtime/mylite_dml.h"
 #include "runtime/mylite_metadata.h"
 #include "runtime/mylite_runtime.h"
 #include "runtime/mylite_span.h"
@@ -3683,34 +3684,10 @@ static bool parse_insert_integer_text(const char *text, int64_t *out_value);
 static bool parse_insert_real_text(const char *text, double *out_value);
 static char *insert_current_timestamp_text(void);
 static void schema_options_deinit(struct mylite_schema_options *options);
-static void insert_values_plan_deinit(struct mylite_insert_values_plan *plan);
-static void insert_set_plan_deinit(struct mylite_insert_set_plan *plan);
-static void insert_set_assignment_deinit(struct mylite_insert_set_assignment *assignment);
-static void insert_duplicate_update_plan_deinit(struct mylite_insert_duplicate_update_plan *plan);
-static void insert_update_assignment_deinit(struct mylite_insert_update_assignment *assignment);
-static void insert_column_reference_deinit(struct mylite_insert_column_reference *reference);
-static void update_plan_deinit(struct mylite_update_plan *plan);
-static void update_target_deinit(struct mylite_update_target *target);
-static void update_assignment_deinit(struct mylite_update_assignment *assignment);
-static void update_column_reference_deinit(struct mylite_update_column_reference *reference);
-static void update_order_plan_deinit(struct mylite_update_order_plan *plan);
-static void update_rowset_deinit(struct mylite_update_rowset *rowset);
-static void update_row_deinit(struct mylite_update_row *row);
-static void delete_plan_deinit(struct mylite_delete_plan *plan);
-static void delete_target_deinit(struct mylite_delete_target *target);
-static void insert_row_deinit(struct mylite_insert_row *row);
-static void insert_value_deinit(struct mylite_insert_value *value);
-static void insert_value_child_deinit(struct mylite_insert_value *value);
-static void insert_table_deinit(struct mylite_insert_table *table);
-static void insert_table_column_deinit(struct mylite_insert_table_column *column);
-static void insert_unique_index_deinit(struct mylite_insert_unique_index *index);
 static void select_plan_deinit(struct mylite_select_plan *plan);
 static void select_table_deinit(struct mylite_select_table *table);
 static void select_column_deinit(struct mylite_select_column *column);
 static void select_output_column_deinit(struct mylite_select_output_column *column);
-static void insert_bound_values_deinit(struct mylite_insert_bound_value *values,
-                                       size_t value_count);
-static void insert_bound_value_deinit(struct mylite_insert_bound_value *value);
 static bool binary_expression_is_in_subquery(const struct mylite_sql_ast_node *expression);
 static bool statement_preserves_diagnostics(const struct mylite_sql_ast_node *statement);
 static int map_parse_status(mylite_db *database, enum mylite_sql_parse_status status);
@@ -3787,11 +3764,11 @@ void mylite_finalize(mylite_stmt *stmt)
     mylite_table_ddl_truncate_table_plan_deinit(&stmt->truncate_table);
     mylite_table_ddl_alter_table_plan_deinit(&stmt->alter_table);
     mylite_table_ddl_index_ddl_plan_deinit(&stmt->index_ddl);
-    insert_values_plan_deinit(&stmt->insert_values);
-    insert_set_plan_deinit(&stmt->insert_set);
-    insert_duplicate_update_plan_deinit(&stmt->insert_update);
-    update_plan_deinit(&stmt->update);
-    delete_plan_deinit(&stmt->delete_plan);
+    mylite_dml_insert_values_plan_deinit(&stmt->insert_values);
+    mylite_dml_insert_set_plan_deinit(&stmt->insert_set);
+    mylite_dml_insert_duplicate_update_plan_deinit(&stmt->insert_update);
+    mylite_dml_update_plan_deinit(&stmt->update);
+    mylite_dml_delete_plan_deinit(&stmt->delete_plan);
     mylite_transaction_savepoint_plan_deinit(&stmt->savepoint);
     mylite_statement_union_plan_deinit(&stmt->union_plan);
     select_plan_deinit(&stmt->select_plan);
@@ -21997,7 +21974,7 @@ validate_alter_table_primary_key_part_not_null(mylite_stmt *stmt,
         int status = resolve_alter_table_added_column_value(stmt, column, &value);
         bool is_null = value.kind == MYLITE_INSERT_BOUND_NULL;
 
-        insert_bound_value_deinit(&value);
+        mylite_dml_insert_bound_value_deinit(&value);
         if (status != MYLITE_OK) {
             return status;
         }
@@ -22381,7 +22358,7 @@ append_alter_table_added_column_value_literal(mylite_stmt *stmt, sqlite3_str *sq
         sqlite3_str_appendf(sql, "%Q", value.text_value);
         break;
     }
-    insert_bound_value_deinit(&value);
+    mylite_dml_insert_bound_value_deinit(&value);
     return MYLITE_OK;
 }
 
@@ -22556,7 +22533,7 @@ static int bind_alter_table_added_column_values(mylite_stmt *stmt, sqlite3_stmt 
             bind_insert_bound_value(insert, bind_index, &value) != SQLITE_OK) {
             status = mylite_diagnostics_set_sqlite_error(stmt->database);
         }
-        insert_bound_value_deinit(&value);
+        mylite_dml_insert_bound_value_deinit(&value);
         if (status != MYLITE_OK) {
             return status;
         }
@@ -23355,7 +23332,7 @@ static int execute_create_index_statement(mylite_stmt *stmt)
         status = create_index_transaction(stmt, &table);
     }
 
-    insert_table_deinit(&table);
+    mylite_dml_insert_table_deinit(&table);
     if (status != MYLITE_OK) {
         stmt->affected_rows = -1;
     }
@@ -23970,7 +23947,7 @@ static int execute_insert_values_statement(mylite_stmt *stmt)
 cleanup:
     free(update_column_indexes);
     free(column_indexes);
-    insert_table_deinit(&table);
+    mylite_dml_insert_table_deinit(&table);
     if (status != MYLITE_OK) {
         stmt->affected_rows = -1;
     }
@@ -24009,7 +23986,7 @@ static int execute_insert_set_statement(mylite_stmt *stmt)
 
     free(update_column_indexes);
     free(column_indexes);
-    insert_table_deinit(&table);
+    mylite_dml_insert_table_deinit(&table);
     if (status != MYLITE_OK) {
         stmt->affected_rows = -1;
     }
@@ -24037,7 +24014,7 @@ static int execute_replace_values_statement(mylite_stmt *stmt)
     }
 
     free(column_indexes);
-    insert_table_deinit(&table);
+    mylite_dml_insert_table_deinit(&table);
     if (status != MYLITE_OK) {
         stmt->affected_rows = -1;
     }
@@ -24065,7 +24042,7 @@ static int execute_replace_set_statement(mylite_stmt *stmt)
     }
 
     free(column_indexes);
-    insert_table_deinit(&table);
+    mylite_dml_insert_table_deinit(&table);
     if (status != MYLITE_OK) {
         stmt->affected_rows = -1;
     }
@@ -24117,9 +24094,9 @@ static int execute_update_statement(mylite_stmt *stmt)
     }
 
     free(assignments);
-    update_rowset_deinit(&rowset);
-    update_order_plan_deinit(&order_plan);
-    insert_table_deinit(&write_table);
+    mylite_dml_update_rowset_deinit(&rowset);
+    mylite_dml_update_order_plan_deinit(&order_plan);
+    mylite_dml_insert_table_deinit(&write_table);
     select_table_deinit(&table);
     if (status != MYLITE_OK) {
         stmt->affected_rows = -1;
@@ -24591,7 +24568,7 @@ static int materialize_update_rows(mylite_stmt *stmt, const struct mylite_select
         if (status == MYLITE_OK && matches) {
             status = append_update_row(stmt, rowset, &row);
         }
-        update_row_deinit(&row);
+        mylite_dml_update_row_deinit(&row);
         if (status != MYLITE_OK) {
             sqlite3_finalize(scan);
             return status;
@@ -24631,7 +24608,7 @@ static int copy_update_sqlite_row(mylite_stmt *stmt, const struct mylite_select_
     for (size_t index = 0U; index < table->column_count; ++index) {
         if (copy_update_sqlite_column_value(scan, (int)index + 1, &table->columns[index].descriptor,
                                             &out_row->values[index]) != 0) {
-            update_row_deinit(out_row);
+            mylite_dml_update_row_deinit(out_row);
             (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
@@ -24902,7 +24879,7 @@ static void apply_update_limit(const struct mylite_sql_ast_node *limit_clause,
         return;
     }
     for (size_t index = keep_count; index < rowset->row_count; ++index) {
-        update_row_deinit(&rowset->rows[index]);
+        mylite_dml_update_row_deinit(&rowset->rows[index]);
     }
     rowset->row_count = keep_count;
 }
@@ -24988,7 +24965,7 @@ static int execute_update_row(mylite_stmt *stmt, sqlite3_stmt *update,
                                         next_auto_increment);
     }
 
-    update_row_deinit(&candidate);
+    mylite_dml_update_row_deinit(&candidate);
     return status;
 }
 
@@ -25054,7 +25031,7 @@ static int copy_update_candidate_values(mylite_stmt *stmt, const struct mylite_u
 
     for (size_t index = 0U; index < row->value_count; ++index) {
         if (mylite_expression_value_copy(&row->values[index], &candidate->values[index]) != 0) {
-            update_row_deinit(candidate);
+            mylite_dml_update_row_deinit(candidate);
             (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
@@ -25221,7 +25198,7 @@ static int resolve_update_default_value(mylite_stmt *stmt,
             (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         }
     }
-    insert_bound_value_deinit(&value);
+    mylite_dml_insert_bound_value_deinit(&value);
     return status;
 }
 
@@ -25753,8 +25730,8 @@ static int execute_delete_statement(mylite_stmt *stmt)
         status = execute_delete_rows_transaction(stmt, &table, &rowset);
     }
 
-    update_rowset_deinit(&rowset);
-    update_order_plan_deinit(&order_plan);
+    mylite_dml_update_rowset_deinit(&rowset);
+    mylite_dml_update_order_plan_deinit(&order_plan);
     select_table_deinit(&table);
     if (status != MYLITE_OK) {
         stmt->affected_rows = -1;
@@ -26133,7 +26110,7 @@ static int materialize_delete_rows(mylite_stmt *stmt, const struct mylite_select
         if (status == MYLITE_OK && matches) {
             status = append_update_row(stmt, rowset, &row);
         }
-        update_row_deinit(&row);
+        mylite_dml_update_row_deinit(&row);
         if (status != MYLITE_OK) {
             sqlite3_finalize(scan);
             return status;
@@ -32071,7 +32048,7 @@ static int load_insert_column_from_catalog_row(mylite_stmt *stmt, sqlite3_stmt *
         mylite_copy_span_text(extra == NULL ? "" : extra, extra == NULL ? 0U : strlen(extra));
     if (column.name == NULL || (default_text != NULL && column.default_text == NULL) ||
         column.data_type == NULL || column.extra == NULL) {
-        insert_table_column_deinit(&column);
+        mylite_dml_insert_table_column_deinit(&column);
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
@@ -32085,7 +32062,7 @@ static int load_insert_column_from_catalog_row(mylite_stmt *stmt, sqlite3_stmt *
 
     status = add_insert_table_column(table, column);
     if (status != MYLITE_OK) {
-        insert_table_column_deinit(&column);
+        mylite_dml_insert_table_column_deinit(&column);
         if (status == MYLITE_NOMEM) {
             (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         }
@@ -32679,7 +32656,7 @@ static int execute_insert_row(mylite_stmt *stmt, sqlite3_stmt *insert,
         }
     }
 
-    insert_bound_values_deinit(values, table->column_count);
+    mylite_dml_insert_bound_values_deinit(values, table->column_count);
     return status;
 }
 
@@ -32755,8 +32732,8 @@ static int execute_insert_duplicate_update_branch(
         }
     }
 
-    insert_bound_values_deinit(stored_values, table->column_count);
-    insert_bound_values_deinit(updated_values, table->column_count);
+    mylite_dml_insert_bound_values_deinit(stored_values, table->column_count);
+    mylite_dml_insert_bound_values_deinit(updated_values, table->column_count);
     return status;
 }
 
@@ -32903,11 +32880,11 @@ apply_insert_update_assignments(mylite_stmt *stmt, const struct mylite_insert_ta
                                                     updated_values, candidate_values, &value);
 
         if (status != MYLITE_OK) {
-            insert_bound_value_deinit(&value);
+            mylite_dml_insert_bound_value_deinit(&value);
             return status;
         }
 
-        insert_bound_value_deinit(&updated_values[column_index]);
+        mylite_dml_insert_bound_value_deinit(&updated_values[column_index]);
         updated_values[column_index] = value;
     }
     return MYLITE_OK;
@@ -33079,16 +33056,16 @@ static int evaluate_insert_update_unary_expression(
         stmt, table, column_indexes, value->left, target_values, candidate_values, &operand);
 
     if (status != MYLITE_OK) {
-        insert_bound_value_deinit(&operand);
+        mylite_dml_insert_bound_value_deinit(&operand);
         return status;
     }
     if (operand.kind == MYLITE_INSERT_BOUND_NULL) {
         *out_value = (struct mylite_insert_bound_value){.kind = MYLITE_INSERT_BOUND_NULL};
-        insert_bound_value_deinit(&operand);
+        mylite_dml_insert_bound_value_deinit(&operand);
         return MYLITE_OK;
     }
     if (!insert_bound_value_is_numeric(&operand, &numeric_value, &is_integer)) {
-        insert_bound_value_deinit(&operand);
+        mylite_dml_insert_bound_value_deinit(&operand);
         return set_insert_unsupported_expression_error(stmt->database);
     }
 
@@ -33105,7 +33082,7 @@ static int evaluate_insert_update_unary_expression(
                                     ? -numeric_value
                                     : numeric_value;
     }
-    insert_bound_value_deinit(&operand);
+    mylite_dml_insert_bound_value_deinit(&operand);
     return MYLITE_OK;
 }
 
@@ -33130,20 +33107,20 @@ static int evaluate_insert_update_binary_expression(
                                                           target_values, candidate_values, &right);
     }
     if (status != MYLITE_OK) {
-        insert_bound_value_deinit(&left);
-        insert_bound_value_deinit(&right);
+        mylite_dml_insert_bound_value_deinit(&left);
+        mylite_dml_insert_bound_value_deinit(&right);
         return status;
     }
     if (left.kind == MYLITE_INSERT_BOUND_NULL || right.kind == MYLITE_INSERT_BOUND_NULL) {
         *out_value = (struct mylite_insert_bound_value){.kind = MYLITE_INSERT_BOUND_NULL};
-        insert_bound_value_deinit(&left);
-        insert_bound_value_deinit(&right);
+        mylite_dml_insert_bound_value_deinit(&left);
+        mylite_dml_insert_bound_value_deinit(&right);
         return MYLITE_OK;
     }
     if (!insert_bound_value_is_numeric(&left, &left_number, &left_is_integer) ||
         !insert_bound_value_is_numeric(&right, &right_number, &right_is_integer)) {
-        insert_bound_value_deinit(&left);
-        insert_bound_value_deinit(&right);
+        mylite_dml_insert_bound_value_deinit(&left);
+        mylite_dml_insert_bound_value_deinit(&right);
         return set_insert_unsupported_expression_error(stmt->database);
     }
 
@@ -33170,14 +33147,14 @@ static int evaluate_insert_update_binary_expression(
         case MYLITE_SQL_AST_OPERATOR_POSITIVE:
         case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
         default:
-            insert_bound_value_deinit(&left);
-            insert_bound_value_deinit(&right);
+            mylite_dml_insert_bound_value_deinit(&left);
+            mylite_dml_insert_bound_value_deinit(&right);
             return set_insert_unsupported_expression_error(stmt->database);
         }
     } else {
         if (value->operator_kind == MYLITE_SQL_AST_OPERATOR_DIVIDE && right_number == 0.0) {
-            insert_bound_value_deinit(&left);
-            insert_bound_value_deinit(&right);
+            mylite_dml_insert_bound_value_deinit(&left);
+            mylite_dml_insert_bound_value_deinit(&right);
             return set_insert_unsupported_expression_error(stmt->database);
         }
         out_value->kind = MYLITE_INSERT_BOUND_REAL;
@@ -33198,14 +33175,14 @@ static int evaluate_insert_update_binary_expression(
         case MYLITE_SQL_AST_OPERATOR_POSITIVE:
         case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
         default:
-            insert_bound_value_deinit(&left);
-            insert_bound_value_deinit(&right);
+            mylite_dml_insert_bound_value_deinit(&left);
+            mylite_dml_insert_bound_value_deinit(&right);
             return set_insert_unsupported_expression_error(stmt->database);
         }
     }
 
-    insert_bound_value_deinit(&left);
-    insert_bound_value_deinit(&right);
+    mylite_dml_insert_bound_value_deinit(&left);
+    mylite_dml_insert_bound_value_deinit(&right);
     return MYLITE_OK;
 }
 
@@ -33284,7 +33261,7 @@ static int validate_insert_update_assignment_result(mylite_stmt *stmt,
     }
     if (value->kind == MYLITE_INSERT_BOUND_TEXT &&
         parse_insert_integer_text(value->text_value, &integer_value) && integer_value >= 0) {
-        insert_bound_value_deinit(value);
+        mylite_dml_insert_bound_value_deinit(value);
         *value = (struct mylite_insert_bound_value){
             .kind = MYLITE_INSERT_BOUND_INTEGER,
             .integer_value = integer_value,
@@ -33830,7 +33807,7 @@ static int execute_insert_set_transaction(mylite_stmt *stmt, const char *schema_
 cleanup:
     sqlite3_free(insert_sql);
     sqlite3_finalize(insert);
-    insert_bound_values_deinit(values, table->column_count);
+    mylite_dml_insert_bound_values_deinit(values, table->column_count);
     free(row_state.generate_auto_increment);
     free(row_state.assigned_columns);
 
@@ -33987,7 +33964,7 @@ static int execute_replace_row(mylite_stmt *stmt, sqlite3_stmt *insert, sqlite3_
         status = execute_replace_candidate_row(stmt, insert, delete_stmt, table, state, values);
     }
 
-    insert_bound_values_deinit(values, table->column_count);
+    mylite_dml_insert_bound_values_deinit(values, table->column_count);
     return status;
 }
 
@@ -34102,7 +34079,7 @@ cleanup:
     sqlite3_free(delete_sql);
     sqlite3_finalize(delete_stmt);
     sqlite3_finalize(insert);
-    insert_bound_values_deinit(values, table->column_count);
+    mylite_dml_insert_bound_values_deinit(values, table->column_count);
     free(row_state.generate_auto_increment);
     free(row_state.assigned_columns);
 
@@ -34225,11 +34202,11 @@ static int apply_insert_set_assignments(mylite_stmt *stmt, const struct mylite_i
             &generate_auto, &value);
 
         if (status != MYLITE_OK) {
-            insert_bound_value_deinit(&value);
+            mylite_dml_insert_bound_value_deinit(&value);
             return status;
         }
 
-        insert_bound_value_deinit(&values[column_index]);
+        mylite_dml_insert_bound_value_deinit(&values[column_index]);
         values[column_index] = value;
         row_state->generate_auto_increment[column_index] = generate_auto;
         row_state->assigned_columns[column_index] = true;
@@ -34251,7 +34228,7 @@ static int finish_insert_set_row_values(mylite_stmt *stmt, const struct mylite_i
             return status;
         }
         if (table_column->auto_increment && row_state->generate_auto_increment[column]) {
-            insert_bound_value_deinit(&values[column]);
+            mylite_dml_insert_bound_value_deinit(&values[column]);
             status = allocate_insert_auto_increment(stmt, state, &values[column]);
 
             if (status != MYLITE_OK) {
@@ -34298,7 +34275,7 @@ static int finish_insert_set_required_null(mylite_stmt *stmt,
     if (status != MYLITE_OK) {
         return status;
     }
-    insert_bound_value_deinit(value);
+    mylite_dml_insert_bound_value_deinit(value);
     return resolve_insert_implicit_expression_default(stmt, column, value);
 }
 
@@ -34327,12 +34304,12 @@ static int evaluate_insert_set_assignment_value(
     if (column->auto_increment) {
         if (out_value->kind == MYLITE_INSERT_BOUND_NULL ||
             (out_value->kind == MYLITE_INSERT_BOUND_INTEGER && out_value->integer_value == 0)) {
-            insert_bound_value_deinit(out_value);
+            mylite_dml_insert_bound_value_deinit(out_value);
             *out_generate_auto_increment = true;
             return set_insert_set_candidate_auto_value(out_value);
         }
         if (out_value->kind != MYLITE_INSERT_BOUND_INTEGER || out_value->integer_value < 0) {
-            insert_bound_value_deinit(out_value);
+            mylite_dml_insert_bound_value_deinit(out_value);
             return set_insert_unsupported_expression_error(stmt->database);
         }
     } else if (!column->nullable && out_value->kind == MYLITE_INSERT_BOUND_NULL) {
@@ -34340,13 +34317,13 @@ static int evaluate_insert_set_assignment_value(
             int warning_status = append_insert_null_warning(stmt->database, column->name);
 
             if (warning_status != MYLITE_OK) {
-                insert_bound_value_deinit(out_value);
+                mylite_dml_insert_bound_value_deinit(out_value);
                 return warning_status;
             }
-            insert_bound_value_deinit(out_value);
+            mylite_dml_insert_bound_value_deinit(out_value);
             return resolve_insert_implicit_expression_default(stmt, column, out_value);
         }
-        insert_bound_value_deinit(out_value);
+        mylite_dml_insert_bound_value_deinit(out_value);
         return set_insert_null_error(stmt->database, column->name);
     }
     return MYLITE_OK;
@@ -34379,16 +34356,16 @@ static int evaluate_insert_set_unary_expression(mylite_stmt *stmt,
     int status = evaluate_insert_set_simple_expression(stmt, table, value->left, values, &operand);
 
     if (status != MYLITE_OK) {
-        insert_bound_value_deinit(&operand);
+        mylite_dml_insert_bound_value_deinit(&operand);
         return status;
     }
     if (operand.kind == MYLITE_INSERT_BOUND_NULL) {
         *out_value = (struct mylite_insert_bound_value){.kind = MYLITE_INSERT_BOUND_NULL};
-        insert_bound_value_deinit(&operand);
+        mylite_dml_insert_bound_value_deinit(&operand);
         return MYLITE_OK;
     }
     if (!insert_bound_value_is_numeric(&operand, &numeric_value, &is_integer)) {
-        insert_bound_value_deinit(&operand);
+        mylite_dml_insert_bound_value_deinit(&operand);
         return set_insert_unsupported_expression_error(stmt->database);
     }
 
@@ -34407,7 +34384,7 @@ static int evaluate_insert_set_unary_expression(mylite_stmt *stmt,
                                     ? -numeric_value
                                     : numeric_value;
     }
-    insert_bound_value_deinit(&operand);
+    mylite_dml_insert_bound_value_deinit(&operand);
     return MYLITE_OK;
 }
 
@@ -34429,20 +34406,20 @@ static int evaluate_insert_set_binary_expression(mylite_stmt *stmt,
         status = evaluate_insert_set_simple_expression(stmt, table, value->right, values, &right);
     }
     if (status != MYLITE_OK) {
-        insert_bound_value_deinit(&left);
-        insert_bound_value_deinit(&right);
+        mylite_dml_insert_bound_value_deinit(&left);
+        mylite_dml_insert_bound_value_deinit(&right);
         return status;
     }
     if (left.kind == MYLITE_INSERT_BOUND_NULL || right.kind == MYLITE_INSERT_BOUND_NULL) {
         *out_value = (struct mylite_insert_bound_value){.kind = MYLITE_INSERT_BOUND_NULL};
-        insert_bound_value_deinit(&left);
-        insert_bound_value_deinit(&right);
+        mylite_dml_insert_bound_value_deinit(&left);
+        mylite_dml_insert_bound_value_deinit(&right);
         return MYLITE_OK;
     }
     if (!insert_bound_value_is_numeric(&left, &left_number, &left_is_integer) ||
         !insert_bound_value_is_numeric(&right, &right_number, &right_is_integer)) {
-        insert_bound_value_deinit(&left);
-        insert_bound_value_deinit(&right);
+        mylite_dml_insert_bound_value_deinit(&left);
+        mylite_dml_insert_bound_value_deinit(&right);
         return set_insert_unsupported_expression_error(stmt->database);
     }
 
@@ -34469,14 +34446,14 @@ static int evaluate_insert_set_binary_expression(mylite_stmt *stmt,
         case MYLITE_SQL_AST_OPERATOR_POSITIVE:
         case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
         default:
-            insert_bound_value_deinit(&left);
-            insert_bound_value_deinit(&right);
+            mylite_dml_insert_bound_value_deinit(&left);
+            mylite_dml_insert_bound_value_deinit(&right);
             return set_insert_unsupported_expression_error(stmt->database);
         }
     } else {
         if (value->operator_kind == MYLITE_SQL_AST_OPERATOR_DIVIDE && right_number == 0.0) {
-            insert_bound_value_deinit(&left);
-            insert_bound_value_deinit(&right);
+            mylite_dml_insert_bound_value_deinit(&left);
+            mylite_dml_insert_bound_value_deinit(&right);
             return set_insert_unsupported_expression_error(stmt->database);
         }
         out_value->kind = MYLITE_INSERT_BOUND_REAL;
@@ -34497,14 +34474,14 @@ static int evaluate_insert_set_binary_expression(mylite_stmt *stmt,
         case MYLITE_SQL_AST_OPERATOR_POSITIVE:
         case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
         default:
-            insert_bound_value_deinit(&left);
-            insert_bound_value_deinit(&right);
+            mylite_dml_insert_bound_value_deinit(&left);
+            mylite_dml_insert_bound_value_deinit(&right);
             return set_insert_unsupported_expression_error(stmt->database);
         }
     }
 
-    insert_bound_value_deinit(&left);
-    insert_bound_value_deinit(&right);
+    mylite_dml_insert_bound_value_deinit(&left);
+    mylite_dml_insert_bound_value_deinit(&right);
     return MYLITE_OK;
 }
 
@@ -34631,7 +34608,7 @@ static int copy_insert_bound_values(mylite_stmt *stmt,
         int status = copy_insert_bound_value(&values[index], &copy[index]);
 
         if (status != MYLITE_OK) {
-            insert_bound_values_deinit(copy, value_count);
+            mylite_dml_insert_bound_values_deinit(copy, value_count);
             if (status == MYLITE_NOMEM) {
                 (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             }
@@ -39217,16 +39194,16 @@ static int copy_insert_row(const struct mylite_sql_ast_node *row,
 
         status = copy_insert_value(value, &insert_value);
         if (status != MYLITE_OK) {
-            insert_value_deinit(&insert_value);
-            insert_row_deinit(&insert_row);
+            mylite_dml_insert_value_deinit(&insert_value);
+            mylite_dml_insert_row_deinit(&insert_row);
             return status;
         }
 
         values =
             realloc(insert_row.values, (insert_row.value_count + 1U) * sizeof(*insert_row.values));
         if (values == NULL) {
-            insert_value_deinit(&insert_value);
-            insert_row_deinit(&insert_row);
+            mylite_dml_insert_value_deinit(&insert_value);
+            mylite_dml_insert_row_deinit(&insert_row);
             return MYLITE_NOMEM;
         }
         insert_row.values = values;
@@ -39235,7 +39212,7 @@ static int copy_insert_row(const struct mylite_sql_ast_node *row,
 
     status = add_insert_row(plan, insert_row);
     if (status != MYLITE_OK) {
-        insert_row_deinit(&insert_row);
+        mylite_dml_insert_row_deinit(&insert_row);
     }
     return status;
 }
@@ -39672,7 +39649,7 @@ static int copy_insert_set_assignment(const struct mylite_sql_ast_node *assignme
         status = add_insert_set_assignment(plan, insert_assignment);
     }
     if (status != MYLITE_OK) {
-        insert_set_assignment_deinit(&insert_assignment);
+        mylite_dml_insert_set_assignment_deinit(&insert_assignment);
     }
     return status;
 }
@@ -39800,7 +39777,7 @@ static int copy_insert_update_assignment(const struct mylite_sql_ast_node *assig
         status = add_insert_update_assignment(plan, insert_assignment);
     }
     if (status != MYLITE_OK) {
-        insert_update_assignment_deinit(&insert_assignment);
+        mylite_dml_insert_update_assignment_deinit(&insert_assignment);
     }
     return status;
 }
@@ -39954,7 +39931,7 @@ static int copy_update_assignment(const struct mylite_sql_ast_node *assignment,
         status = add_update_assignment(plan, update_assignment);
     }
     if (status != MYLITE_OK) {
-        update_assignment_deinit(&update_assignment);
+        mylite_dml_update_assignment_deinit(&update_assignment);
     }
     return status;
 }
@@ -41556,284 +41533,6 @@ static void schema_options_deinit(struct mylite_schema_options *options)
     *options = (struct mylite_schema_options){0};
 }
 
-static void insert_values_plan_deinit(struct mylite_insert_values_plan *plan)
-{
-    if (plan == NULL) {
-        return;
-    }
-
-    free(plan->schema_name);
-    free(plan->table_name);
-    for (size_t index = 0U; index < plan->column_count; ++index) {
-        free(plan->columns[index]);
-    }
-    free((void *)plan->columns);
-    free(plan->row_alias);
-    for (size_t index = 0U; index < plan->alias_column_count; ++index) {
-        free(plan->alias_columns[index]);
-    }
-    free((void *)plan->alias_columns);
-    for (size_t index = 0U; index < plan->row_count; ++index) {
-        insert_row_deinit(&plan->rows[index]);
-    }
-    free(plan->rows);
-    *plan = (struct mylite_insert_values_plan){0};
-}
-
-static void insert_set_plan_deinit(struct mylite_insert_set_plan *plan)
-{
-    if (plan == NULL) {
-        return;
-    }
-
-    for (size_t index = 0U; index < plan->assignment_count; ++index) {
-        insert_set_assignment_deinit(&plan->assignments[index]);
-    }
-    free(plan->assignments);
-    *plan = (struct mylite_insert_set_plan){0};
-}
-
-static void insert_set_assignment_deinit(struct mylite_insert_set_assignment *assignment)
-{
-    if (assignment == NULL) {
-        return;
-    }
-
-    insert_column_reference_deinit(&assignment->target);
-    insert_value_deinit(&assignment->value);
-    *assignment = (struct mylite_insert_set_assignment){0};
-}
-
-static void insert_duplicate_update_plan_deinit(struct mylite_insert_duplicate_update_plan *plan)
-{
-    if (plan == NULL) {
-        return;
-    }
-
-    for (size_t index = 0U; index < plan->assignment_count; ++index) {
-        insert_update_assignment_deinit(&plan->assignments[index]);
-    }
-    free(plan->assignments);
-    *plan = (struct mylite_insert_duplicate_update_plan){0};
-}
-
-static void insert_update_assignment_deinit(struct mylite_insert_update_assignment *assignment)
-{
-    if (assignment == NULL) {
-        return;
-    }
-
-    insert_column_reference_deinit(&assignment->target);
-    insert_value_deinit(&assignment->value);
-    *assignment = (struct mylite_insert_update_assignment){0};
-}
-
-static void insert_column_reference_deinit(struct mylite_insert_column_reference *reference)
-{
-    if (reference == NULL) {
-        return;
-    }
-
-    free(reference->schema_name);
-    free(reference->table_name);
-    free(reference->column_name);
-    *reference = (struct mylite_insert_column_reference){0};
-}
-
-static void update_plan_deinit(struct mylite_update_plan *plan)
-{
-    if (plan == NULL) {
-        return;
-    }
-
-    update_target_deinit(&plan->target);
-    for (size_t index = 0U; index < plan->assignment_count; ++index) {
-        update_assignment_deinit(&plan->assignments[index]);
-    }
-    free(plan->assignments);
-    *plan = (struct mylite_update_plan){0};
-}
-
-static void update_target_deinit(struct mylite_update_target *target)
-{
-    if (target == NULL) {
-        return;
-    }
-
-    free(target->schema_name);
-    free(target->table_name);
-    free(target->alias);
-    *target = (struct mylite_update_target){0};
-}
-
-static void update_assignment_deinit(struct mylite_update_assignment *assignment)
-{
-    if (assignment == NULL) {
-        return;
-    }
-
-    update_column_reference_deinit(&assignment->target);
-    *assignment = (struct mylite_update_assignment){0};
-}
-
-static void update_column_reference_deinit(struct mylite_update_column_reference *reference)
-{
-    if (reference == NULL) {
-        return;
-    }
-
-    free(reference->schema_name);
-    free(reference->table_name);
-    free(reference->column_name);
-    *reference = (struct mylite_update_column_reference){0};
-}
-
-static void update_order_plan_deinit(struct mylite_update_order_plan *plan)
-{
-    if (plan == NULL) {
-        return;
-    }
-
-    free(plan->order_keys);
-    *plan = (struct mylite_update_order_plan){0};
-}
-
-static void update_rowset_deinit(struct mylite_update_rowset *rowset)
-{
-    if (rowset == NULL) {
-        return;
-    }
-
-    for (size_t index = 0U; index < rowset->row_count; ++index) {
-        update_row_deinit(&rowset->rows[index]);
-    }
-    free(rowset->rows);
-    *rowset = (struct mylite_update_rowset){0};
-}
-
-static void update_row_deinit(struct mylite_update_row *row)
-{
-    if (row == NULL) {
-        return;
-    }
-
-    for (size_t index = 0U; index < row->value_count; ++index) {
-        mylite_expression_value_deinit(&row->values[index]);
-    }
-    for (size_t index = 0U; index < row->order_value_count; ++index) {
-        mylite_expression_value_deinit(&row->order_values[index]);
-    }
-    free(row->values);
-    free(row->order_values);
-    *row = (struct mylite_update_row){0};
-}
-
-static void delete_plan_deinit(struct mylite_delete_plan *plan)
-{
-    if (plan == NULL) {
-        return;
-    }
-
-    delete_target_deinit(&plan->target);
-    *plan = (struct mylite_delete_plan){0};
-}
-
-static void delete_target_deinit(struct mylite_delete_target *target)
-{
-    if (target == NULL) {
-        return;
-    }
-
-    free(target->schema_name);
-    free(target->table_name);
-    free(target->alias);
-    *target = (struct mylite_delete_target){0};
-}
-
-static void insert_row_deinit(struct mylite_insert_row *row)
-{
-    if (row == NULL) {
-        return;
-    }
-
-    for (size_t index = 0U; index < row->value_count; ++index) {
-        insert_value_deinit(&row->values[index]);
-    }
-    free(row->values);
-    *row = (struct mylite_insert_row){0};
-}
-
-static void insert_value_deinit(struct mylite_insert_value *value)
-{
-    if (value == NULL) {
-        return;
-    }
-
-    free(value->text);
-    insert_column_reference_deinit(&value->column_reference);
-    insert_value_child_deinit(value->left);
-    insert_value_child_deinit(value->right);
-    free(value->left);
-    free(value->right);
-    *value = (struct mylite_insert_value){0};
-}
-
-static void insert_value_child_deinit(struct mylite_insert_value *value)
-{
-    if (value == NULL) {
-        return;
-    }
-
-    free(value->text);
-    insert_column_reference_deinit(&value->column_reference);
-    free(value->left);
-    free(value->right);
-    *value = (struct mylite_insert_value){0};
-}
-
-static void insert_table_deinit(struct mylite_insert_table *table)
-{
-    if (table == NULL) {
-        return;
-    }
-
-    free(table->physical_name);
-    for (size_t index = 0U; index < table->column_count; ++index) {
-        insert_table_column_deinit(&table->columns[index]);
-    }
-    free(table->columns);
-    for (size_t index = 0U; index < table->unique_index_count; ++index) {
-        insert_unique_index_deinit(&table->unique_indexes[index]);
-    }
-    free(table->unique_indexes);
-    *table = (struct mylite_insert_table){0};
-}
-
-static void insert_table_column_deinit(struct mylite_insert_table_column *column)
-{
-    if (column == NULL) {
-        return;
-    }
-
-    free(column->name);
-    free(column->default_text);
-    free(column->data_type);
-    free(column->extra);
-    *column = (struct mylite_insert_table_column){0};
-}
-
-static void insert_unique_index_deinit(struct mylite_insert_unique_index *index)
-{
-    if (index == NULL) {
-        return;
-    }
-
-    free(index->name);
-    free(index->column_indexes);
-    free(index->prefix_lengths);
-    *index = (struct mylite_insert_unique_index){0};
-}
-
 static void table_select_group_deinit(struct mylite_table_select_group *group)
 {
     if (group == NULL) {
@@ -41926,28 +41625,6 @@ static void select_output_column_deinit(struct mylite_select_output_column *colu
 
     free(column->label);
     *column = (struct mylite_select_output_column){0};
-}
-
-static void insert_bound_values_deinit(struct mylite_insert_bound_value *values, size_t value_count)
-{
-    if (values == NULL) {
-        return;
-    }
-
-    for (size_t index = 0U; index < value_count; ++index) {
-        insert_bound_value_deinit(&values[index]);
-    }
-    free(values);
-}
-
-static void insert_bound_value_deinit(struct mylite_insert_bound_value *value)
-{
-    if (value == NULL) {
-        return;
-    }
-
-    free(value->text_value);
-    *value = (struct mylite_insert_bound_value){0};
 }
 
 static bool row_subquery_expression_is_supported(const struct mylite_sql_ast_node *expression)

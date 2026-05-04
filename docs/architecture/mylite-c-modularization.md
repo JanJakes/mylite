@@ -89,6 +89,7 @@ after every step.
 - [x] Start `src/runtime/mylite_table_ddl.{h,c}` with table/index DDL plan
   cleanup.
 - [ ] Split DML plans and execution.
+- [x] Start `src/runtime/mylite_dml.{h,c}` with DML plan and row cleanup.
 - [ ] Split SELECT, UNION, aggregate, and subquery planning/execution.
 - [ ] Move reusable field descriptor and metadata inference code into
   `src/runtime/mylite_metadata`.

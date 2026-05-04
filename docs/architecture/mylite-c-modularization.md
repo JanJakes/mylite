@@ -467,6 +467,7 @@ only the core object model and transitional shared helpers listed here:
   helpers according to final users.
 - [ ] Move reusable field descriptor and metadata inference code into
   `src/runtime/mylite_metadata`.
+- [x] Move shared expression charset validation helpers out of `mylite.c`.
 - [ ] Move catalog column descriptor source helpers into `mylite_metadata`.
 - [ ] Move field descriptor inference for literals into `mylite_metadata`.
 - [ ] Move field descriptor inference for identifiers into `mylite_metadata`.

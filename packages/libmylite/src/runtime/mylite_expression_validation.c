@@ -1,0 +1,77 @@
+#include "mylite_expression_validation.h"
+
+#include "mylite_charset.h"
+#include "mylite_diagnostics.h"
+#include "mylite_metadata_constants.h"
+#include "mylite_span.h"
+
+#include <stdlib.h>
+
+static bool expression_function_name_is_char(const struct mylite_sql_ast_node *name);
+
+int mylite_expression_validate_char_function_charset(mylite_db *database,
+                                                     const struct mylite_sql_ast_node *expression)
+{
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
+    const struct mylite_sql_ast_node *charset_node = mylite_ast_child_at(expression, 2U);
+    char *charset_name = NULL;
+    int status = MYLITE_OK;
+
+    if (!expression_function_name_is_char(name) || charset_node == NULL) {
+        return MYLITE_OK;
+    }
+    charset_name = mylite_copy_schema_text_span(charset_node);
+    if (charset_name == NULL) {
+        return MYLITE_NOMEM;
+    }
+    if (!mylite_expression_char_function_charset_name_is_supported(charset_name)) {
+        status = mylite_diagnostics_set_unknown_charset_error(database, charset_name);
+    }
+    free(charset_name);
+    return status;
+}
+
+int mylite_expression_validate_cast_target_charset(mylite_db *database,
+                                                   const struct mylite_sql_ast_node *expression)
+{
+    const struct mylite_sql_ast_node *target = mylite_ast_child_at(expression, 1U);
+    char *charset_name = NULL;
+    int status = MYLITE_OK;
+
+    if (target == NULL || target->kind != MYLITE_SQL_AST_COLUMN_TYPE ||
+        target->column_type != MYLITE_SQL_AST_COLUMN_TYPE_CHAR ||
+        !target->has_column_character_set) {
+        return MYLITE_OK;
+    }
+
+    charset_name = mylite_copy_unquoted_span_text(target->column_character_set);
+    if (charset_name == NULL) {
+        return MYLITE_NOMEM;
+    }
+    if (mylite_charset_lookup(charset_name) == NULL) {
+        status = mylite_diagnostics_set_unknown_charset_error(database, charset_name);
+    }
+    free(charset_name);
+    return status;
+}
+
+bool mylite_expression_char_function_charset_name_is_supported(const char *name)
+{
+    if (mylite_ascii_case_equal(name, mylite_mysql_binary_charset_name)) {
+        return true;
+    }
+    if (mylite_ascii_case_equal(name, "latin1") || mylite_ascii_case_equal(name, "utf8mb4") ||
+        mylite_ascii_case_equal(name, "utf8mb3") || mylite_ascii_case_equal(name, "utf8") ||
+        mylite_ascii_case_equal(name, "ascii")) {
+        return true;
+    }
+    return false;
+}
+
+static bool expression_function_name_is_char(const struct mylite_sql_ast_node *name)
+{
+    if (name == NULL) {
+        return false;
+    }
+    return mylite_span_equal_ci(name->span, "CHAR");
+}

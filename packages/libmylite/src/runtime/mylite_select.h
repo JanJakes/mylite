@@ -41,6 +41,9 @@ int mylite_select_set_ambiguous_column_error(mylite_db *database, const char *co
 bool mylite_select_column_index_is_using_column_in_range(const struct mylite_select_plan *plan,
                                                          size_t column_index,
                                                          struct mylite_select_table_range range);
+bool mylite_select_duplicate_mode_is_distinct(enum mylite_sql_ast_select_duplicate_mode mode);
+bool mylite_select_plan_requires_custom_runtime(const struct mylite_select_plan *plan,
+                                                const struct mylite_select_clause_nodes *clauses);
 int mylite_select_bind_limit_clause(const struct mylite_sql_ast_node *limit_clause,
                                     struct mylite_select_plan *plan);
 bool mylite_select_limit_row_is_kept(const struct mylite_select_limit *limit,

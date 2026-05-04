@@ -297,6 +297,39 @@ bool mylite_select_column_index_is_using_column_in_range(const struct mylite_sel
     return false;
 }
 
+bool mylite_select_duplicate_mode_is_distinct(enum mylite_sql_ast_select_duplicate_mode mode)
+{
+    return mode == MYLITE_SQL_AST_SELECT_DUPLICATES_DISTINCT;
+}
+
+bool mylite_select_plan_requires_custom_runtime(const struct mylite_select_plan *plan,
+                                                const struct mylite_select_clause_nodes *clauses)
+{
+    if (clauses != NULL &&
+        (clauses->where != NULL || clauses->group_by != NULL || clauses->having != NULL ||
+         clauses->order_by != NULL || clauses->limit != NULL)) {
+        return true;
+    }
+    if (plan == NULL) {
+        return false;
+    }
+    if (mylite_select_duplicate_mode_is_distinct(plan->duplicate_mode)) {
+        return true;
+    }
+    if (mylite_select_plan_table_count(plan) > 1U) {
+        return true;
+    }
+    if (plan->has_aggregate) {
+        return true;
+    }
+    for (size_t index = 0U; index < plan->output_count; ++index) {
+        if (plan->outputs[index].kind == MYLITE_SELECT_OUTPUT_EXPRESSION) {
+            return true;
+        }
+    }
+    return false;
+}
+
 size_t mylite_select_plan_table_count(const struct mylite_select_plan *plan)
 {
     if (plan == NULL) {

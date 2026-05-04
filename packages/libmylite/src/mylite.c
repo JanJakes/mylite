@@ -96,7 +96,6 @@ static int prepare_transaction_statement(mylite_db *database,
                                          mylite_stmt **out_stmt);
 static int validate_select_duplicate_mode(mylite_db *database,
                                           const struct mylite_sql_ast_node *statement);
-static bool select_duplicate_mode_is_distinct(enum mylite_sql_ast_select_duplicate_mode mode);
 static int prepare_table_select_statement(mylite_db *database,
                                           const struct mylite_sql_ast_node *statement,
                                           const char *sql, size_t sql_length,
@@ -104,12 +103,6 @@ static int prepare_table_select_statement(mylite_db *database,
 static int prepare_table_select_sqlite_statement(mylite_db *database,
                                                  const struct mylite_select_plan *plan,
                                                  mylite_stmt **out_stmt);
-static bool select_plan_requires_custom_runtime(const struct mylite_select_plan *plan,
-                                                const struct mylite_sql_ast_node *where_clause,
-                                                const struct mylite_sql_ast_node *group_by_clause,
-                                                const struct mylite_sql_ast_node *having_clause,
-                                                const struct mylite_sql_ast_node *order_by_clause,
-                                                const struct mylite_sql_ast_node *limit_clause);
 static int prepare_scalar_select_statement(mylite_db *database,
                                            const struct mylite_sql_ast_node *statement,
                                            mylite_stmt **out_stmt);
@@ -2432,11 +2425,6 @@ static int validate_select_duplicate_mode(mylite_db *database,
     return MYLITE_OK;
 }
 
-static bool select_duplicate_mode_is_distinct(enum mylite_sql_ast_select_duplicate_mode mode)
-{
-    return mode == MYLITE_SQL_AST_SELECT_DUPLICATES_DISTINCT;
-}
-
 // NOLINTNEXTLINE(misc-no-recursion)
 static int prepare_table_select_statement(mylite_db *database,
                                           const struct mylite_sql_ast_node *statement,
@@ -2484,8 +2472,7 @@ static int prepare_table_select_statement(mylite_db *database,
         status = set_select_unsupported_join_grouping_error(database);
     }
     if (status == MYLITE_OK) {
-        custom_runtime = select_plan_requires_custom_runtime(
-            &plan, where_clause, group_by_clause, having_clause, order_by_clause, limit_clause);
+        custom_runtime = mylite_select_plan_requires_custom_runtime(&plan, &clauses);
     }
     if (status == MYLITE_OK) {
         status = bind_table_select_clauses(database, &clauses, &plan);
@@ -2525,37 +2512,6 @@ static int prepare_table_select_sqlite_statement(mylite_db *database,
     }
     sqlite3_free(sqlite_sql);
     return status;
-}
-
-static bool select_plan_requires_custom_runtime(const struct mylite_select_plan *plan,
-                                                const struct mylite_sql_ast_node *where_clause,
-                                                const struct mylite_sql_ast_node *group_by_clause,
-                                                const struct mylite_sql_ast_node *having_clause,
-                                                const struct mylite_sql_ast_node *order_by_clause,
-                                                const struct mylite_sql_ast_node *limit_clause)
-{
-    if (where_clause != NULL || group_by_clause != NULL || having_clause != NULL ||
-        order_by_clause != NULL || limit_clause != NULL) {
-        return true;
-    }
-    if (plan == NULL) {
-        return false;
-    }
-    if (select_duplicate_mode_is_distinct(plan->duplicate_mode)) {
-        return true;
-    }
-    if (mylite_select_plan_table_count(plan) > 1U) {
-        return true;
-    }
-    if (plan->has_aggregate) {
-        return true;
-    }
-    for (size_t index = 0U; index < plan->output_count; ++index) {
-        if (plan->outputs[index].kind == MYLITE_SELECT_OUTPUT_EXPRESSION) {
-            return true;
-        }
-    }
-    return false;
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
@@ -8983,7 +8939,7 @@ static int bind_select_order_quantified_subquery_expression( // NOLINT(misc-no-r
 static int validate_select_expression_outputs(mylite_db *database,
                                               const struct mylite_select_plan *plan)
 {
-    if (!select_duplicate_mode_is_distinct(plan->duplicate_mode)) {
+    if (!mylite_select_duplicate_mode_is_distinct(plan->duplicate_mode)) {
         return MYLITE_OK;
     }
     for (size_t index = 0U; index < plan->order_key_count; ++index) {
@@ -13924,7 +13880,7 @@ static int materialize_ordered_table_select_result(mylite_stmt *stmt)
             continue;
         }
 
-        if (select_duplicate_mode_is_distinct(stmt->select_plan.duplicate_mode)) {
+        if (mylite_select_duplicate_mode_is_distinct(stmt->select_plan.duplicate_mode)) {
             bool duplicate = false;
 
             status = check_table_select_distinct_duplicate(stmt, &row, &duplicate);
@@ -13960,7 +13916,7 @@ static int materialize_ordered_table_select_result(mylite_stmt *stmt)
 static int materialize_unordered_table_select_result(mylite_stmt *stmt)
 {
     struct mylite_unordered_table_select_append_state append_state = {0};
-    bool distinct = select_duplicate_mode_is_distinct(stmt->select_plan.duplicate_mode);
+    bool distinct = mylite_select_duplicate_mode_is_distinct(stmt->select_plan.duplicate_mode);
     int status = MYLITE_OK;
     int rc = SQLITE_OK;
 
@@ -14071,7 +14027,7 @@ static int materialize_joined_table_select_result(mylite_stmt *stmt)
     struct mylite_table_select_row row = {0};
     bool aggregate_query = (stmt->select_plan.has_group_by || stmt->select_plan.has_aggregate ||
                             stmt->select_plan.has_having) != 0;
-    bool distinct = select_duplicate_mode_is_distinct(stmt->select_plan.duplicate_mode);
+    bool distinct = mylite_select_duplicate_mode_is_distinct(stmt->select_plan.duplicate_mode);
     int status = MYLITE_OK;
 
     if (select_plan_has_outer_join(&stmt->select_plan)) {
@@ -14158,7 +14114,7 @@ static int materialize_outer_joined_table_select_result(mylite_stmt *stmt)
     struct mylite_table_select_join_materialize_state state = {0};
     bool aggregate_query = (stmt->select_plan.has_group_by || stmt->select_plan.has_aggregate ||
                             stmt->select_plan.has_having) != 0;
-    bool distinct = select_duplicate_mode_is_distinct(stmt->select_plan.duplicate_mode);
+    bool distinct = mylite_select_duplicate_mode_is_distinct(stmt->select_plan.duplicate_mode);
     int status = MYLITE_OK;
 
     if (!aggregate_query && stmt->select_plan.order_key_count == 0U &&
@@ -15505,7 +15461,7 @@ static int process_joined_table_select_nonaggregate_row(
     mylite_stmt *stmt, struct mylite_table_select_join_materialize_state *state,
     const struct mylite_table_select_row *row)
 {
-    bool distinct = select_duplicate_mode_is_distinct(stmt->select_plan.duplicate_mode);
+    bool distinct = mylite_select_duplicate_mode_is_distinct(stmt->select_plan.duplicate_mode);
 
     if (stmt->select_plan.order_key_count != 0U || distinct) {
         struct mylite_table_select_row copy = {0};
@@ -15679,7 +15635,7 @@ static int append_finalized_table_select_group(mylite_stmt *stmt,
         status = evaluate_table_select_having(stmt, &row, &having_matches);
     }
     if (status == MYLITE_OK && having_matches &&
-        select_duplicate_mode_is_distinct(stmt->select_plan.duplicate_mode)) {
+        mylite_select_duplicate_mode_is_distinct(stmt->select_plan.duplicate_mode)) {
         status = check_table_select_distinct_duplicate(stmt, &row, &duplicate);
     }
     if (status == MYLITE_OK && duplicate) {

@@ -290,7 +290,6 @@ static int prepare_delete_statement(mylite_db *database,
 static int prepare_transaction_statement(mylite_db *database,
                                          const struct mylite_sql_ast_node *statement,
                                          mylite_stmt **out_stmt);
-static int prepare_show_schemas_statement(mylite_db *database, mylite_stmt **out_stmt);
 static int prepare_show_variables_statement(mylite_db *database,
                                             const struct mylite_sql_ast_node *statement,
                                             mylite_stmt **out_stmt);
@@ -299,7 +298,6 @@ static int prepare_show_status_statement(mylite_db *database,
                                          const struct mylite_sql_ast_node *statement,
                                          mylite_stmt **out_stmt);
 static char *copy_show_status_like_pattern(const struct mylite_sql_ast_node *statement);
-static int prepare_show_engines_statement(mylite_db *database, mylite_stmt **out_stmt);
 static int prepare_show_character_set_statement(mylite_db *database,
                                                 const struct mylite_sql_ast_node *statement,
                                                 mylite_stmt **out_stmt);
@@ -3612,13 +3610,13 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
         case MYLITE_SQL_AST_RELEASE_SAVEPOINT_STATEMENT:
             return prepare_transaction_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT:
-            return prepare_show_schemas_statement(database, out_stmt);
+            return mylite_show_prepare_schemas_statement(database, out_stmt);
         case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
             return prepare_show_variables_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:
             return prepare_show_status_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
-            return prepare_show_engines_statement(database, out_stmt);
+            return mylite_show_prepare_engines_statement(database, out_stmt);
         case MYLITE_SQL_AST_SHOW_CHARACTER_SET_STATEMENT:
             return prepare_show_character_set_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_SHOW_COLLATION_STATEMENT:
@@ -4387,11 +4385,6 @@ static int prepare_transaction_statement(mylite_db *database,
     return prepare_custom_statement(database, kind, statement, out_stmt);
 }
 
-static int prepare_show_schemas_statement(mylite_db *database, mylite_stmt **out_stmt)
-{
-    return mylite_statement_prepare_sqlite(database, mylite_show_schemas_sql(), out_stmt);
-}
-
 static int prepare_show_diagnostics_statement(mylite_db *database,
                                               const struct mylite_sql_ast_node *statement,
                                               mylite_stmt **out_stmt)
@@ -4561,32 +4554,6 @@ static char *copy_show_status_like_pattern(const struct mylite_sql_ast_node *sta
         return NULL;
     }
     return copy_show_like_pattern_span(literal);
-}
-
-static int prepare_show_engines_statement(mylite_db *database, mylite_stmt **out_stmt)
-{
-    char *sqlite_sql = NULL;
-    mylite_stmt *stmt = NULL;
-    int status = mylite_show_engines_sql(database, &sqlite_sql);
-
-    *out_stmt = NULL;
-    if (status == MYLITE_OK) {
-        status = mylite_statement_prepare_sqlite(database, sqlite_sql, &stmt);
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_show_attach_engines_result_metadata(database, stmt);
-    }
-
-    if (status == MYLITE_OK) {
-        *out_stmt = stmt;
-    } else {
-        mylite_finalize(stmt);
-        if (status == MYLITE_NOMEM) {
-            (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        }
-    }
-    sqlite3_free(sqlite_sql);
-    return status;
 }
 
 static int prepare_show_character_set_statement(mylite_db *database,

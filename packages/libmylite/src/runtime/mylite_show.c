@@ -7,6 +7,7 @@
 #include "mylite_metadata.h"
 #include "mylite_runtime.h"
 #include "mylite_show_types.h"
+#include "mylite_statement.h"
 #include "sql/mylite_lexer.h"
 #include "sqlite3.h"
 
@@ -69,6 +70,37 @@ static const struct mylite_storage_engine_row mylite_storage_engine_registry[] =
     {"CSV", "NO", "CSV-backed tables are not supported by MyLite", NULL, NULL, NULL},
     {"ARCHIVE", "NO", "Archive tables are not supported by MyLite", NULL, NULL, NULL},
 };
+
+int mylite_show_prepare_engines_statement(mylite_db *database, mylite_stmt **out_stmt)
+{
+    char *sqlite_sql = NULL;
+    mylite_stmt *stmt = NULL;
+    int status = mylite_show_engines_sql(database, &sqlite_sql);
+
+    *out_stmt = NULL;
+    if (status == MYLITE_OK) {
+        status = mylite_statement_prepare_sqlite(database, sqlite_sql, &stmt);
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_show_attach_engines_result_metadata(database, stmt);
+    }
+
+    if (status == MYLITE_OK) {
+        *out_stmt = stmt;
+    } else {
+        mylite_finalize(stmt);
+        if (status == MYLITE_NOMEM) {
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        }
+    }
+    sqlite3_free(sqlite_sql);
+    return status;
+}
+
+int mylite_show_prepare_schemas_statement(mylite_db *database, mylite_stmt **out_stmt)
+{
+    return mylite_statement_prepare_sqlite(database, mylite_show_schemas_sql(), out_stmt);
+}
 
 int mylite_show_engines_sql(mylite_db *database, char **out_sql)
 {

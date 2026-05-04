@@ -302,12 +302,12 @@ only the core object model and transitional shared helpers listed here:
 - [x] Split `SHOW` and `information_schema` dynamic result builders.
 - [x] Create `src/runtime/mylite_show.{h,c}` and wire it into CMake.
 - [x] Move `SHOW DATABASES`/`SHOW SCHEMAS` SQL builders into `mylite_show`.
-- [ ] Move `SHOW DATABASES` prepare code into `mylite_show`.
+- [x] Move `SHOW DATABASES` prepare code into `mylite_show`.
 - [x] Move `SHOW VARIABLES` builder into `mylite_show`.
 - [ ] Move `SHOW VARIABLES` prepare code into `mylite_show`.
 - [x] Move `SHOW STATUS` builder into `mylite_show`.
 - [ ] Move `SHOW STATUS` prepare code into `mylite_show`.
-- [ ] Move `SHOW ENGINES` prepare/build code and metadata into `mylite_show`.
+- [x] Move `SHOW ENGINES` prepare/build code and metadata into `mylite_show`.
 - [x] Move `SHOW ENGINES` storage-engine SQL builders and result metadata into
   `mylite_show`.
 - [x] Move `SHOW CHARACTER SET` and `information_schema.CHARACTER_SETS`

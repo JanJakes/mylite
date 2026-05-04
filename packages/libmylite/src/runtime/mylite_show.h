@@ -17,6 +17,8 @@ struct mylite_show_variables_query;
 
 int mylite_show_engines_sql(mylite_db *database, char **out_sql);
 int mylite_show_information_schema_engines_sql(mylite_db *database, char **out_sql);
+int mylite_show_prepare_engines_statement(mylite_db *database, mylite_stmt **out_stmt);
+int mylite_show_prepare_schemas_statement(mylite_db *database, mylite_stmt **out_stmt);
 int mylite_show_character_set_sql(mylite_db *database,
                                   const struct mylite_show_character_set_query *query,
                                   char **out_sql);

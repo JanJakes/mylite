@@ -2115,7 +2115,6 @@ static int set_alter_table_all_invisible_error(mylite_db *database);
 static int set_alter_table_invalid_null_error(mylite_db *database);
 static int append_using_hash_warning(mylite_db *database);
 static int append_duplicate_index_warning(mylite_db *database, const char *index_name);
-static int validate_insert_values_target(mylite_stmt *stmt, const char **out_schema_name);
 static int load_insert_table(mylite_stmt *stmt, const char *schema_name,
                              struct mylite_insert_table *out_table);
 static int load_write_table(mylite_stmt *stmt, const char *schema_name, const char *table_name,
@@ -16531,7 +16530,8 @@ static int execute_insert_values_statement(mylite_stmt *stmt)
     struct mylite_insert_table table = {0};
     size_t *column_indexes = NULL;
     size_t *update_column_indexes = NULL;
-    int status = validate_insert_values_target(stmt, &schema_name);
+    int status = mylite_dml_validate_insert_target(stmt->database, stmt->database->selected_schema,
+                                                   &stmt->insert_values, &schema_name);
 
     stmt->affected_rows = 0;
     if (status != MYLITE_OK) {
@@ -16577,7 +16577,8 @@ static int execute_insert_set_statement(mylite_stmt *stmt)
     struct mylite_insert_table table = {0};
     size_t *column_indexes = NULL;
     size_t *update_column_indexes = NULL;
-    int status = validate_insert_values_target(stmt, &schema_name);
+    int status = mylite_dml_validate_insert_target(stmt->database, stmt->database->selected_schema,
+                                                   &stmt->insert_values, &schema_name);
 
     stmt->affected_rows = 0;
     if (status != MYLITE_OK) {
@@ -16615,7 +16616,8 @@ static int execute_replace_values_statement(mylite_stmt *stmt)
     const char *schema_name = NULL;
     struct mylite_insert_table table = {0};
     size_t *column_indexes = NULL;
-    int status = validate_insert_values_target(stmt, &schema_name);
+    int status = mylite_dml_validate_insert_target(stmt->database, stmt->database->selected_schema,
+                                                   &stmt->insert_values, &schema_name);
 
     stmt->affected_rows = 0;
     if (status != MYLITE_OK) {
@@ -16643,7 +16645,8 @@ static int execute_replace_set_statement(mylite_stmt *stmt)
     const char *schema_name = NULL;
     struct mylite_insert_table table = {0};
     size_t *column_indexes = NULL;
-    int status = validate_insert_values_target(stmt, &schema_name);
+    int status = mylite_dml_validate_insert_target(stmt->database, stmt->database->selected_schema,
+                                                   &stmt->insert_values, &schema_name);
 
     stmt->affected_rows = 0;
     if (status != MYLITE_OK) {
@@ -24488,50 +24491,6 @@ static int set_where_predicate_eval_error(mylite_stmt *stmt)
         }
     }
     return set_select_unsupported_where_error(database);
-}
-
-static int validate_insert_values_target(mylite_stmt *stmt, const char **out_schema_name)
-{
-    const char *schema_name = stmt->insert_values.schema_name == NULL
-                                  ? stmt->database->selected_schema
-                                  : stmt->insert_values.schema_name;
-    struct mylite_schema_presence presence;
-    bool exists = false;
-    int status = MYLITE_OK;
-
-    *out_schema_name = NULL;
-    if (schema_name == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "No database selected");
-        return MYLITE_EXEC_ERROR;
-    }
-
-    status = mylite_catalog_schema_exists(stmt->database, schema_name, &presence);
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    if (!presence.exists) {
-        (void)mylite_diagnostics_set_error_message_parts(stmt->database, "Unknown database '",
-                                                         schema_name, "'");
-        return MYLITE_EXEC_ERROR;
-    }
-    if (presence.is_system) {
-        (void)mylite_diagnostics_set_error_message_parts(
-            stmt->database, "Access to system schema '", schema_name, "' is rejected.");
-        return MYLITE_EXEC_ERROR;
-    }
-
-    status = mylite_catalog_table_exists(stmt->database, schema_name,
-                                         stmt->insert_values.table_name, &exists);
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    if (!exists) {
-        return mylite_diagnostics_set_table_doesnt_exist_error(stmt->database, schema_name,
-                                                               stmt->insert_values.table_name);
-    }
-
-    *out_schema_name = schema_name;
-    return MYLITE_OK;
 }
 
 static int load_insert_table(mylite_stmt *stmt, const char *schema_name,

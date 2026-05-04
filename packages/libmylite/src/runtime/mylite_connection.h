@@ -5,6 +5,9 @@
 
 int mylite_connection_set_default_state(mylite_db *database);
 int mylite_connection_set_released_error(mylite_db *database);
+int mylite_connection_set_selected_schema(mylite_db *database, const char *schema_name);
+void mylite_connection_clear_selected_schema_if_matches(mylite_db *database,
+                                                        const char *schema_name);
 
 const char *mylite_connection_character_set_client(const mylite_db *database);
 const char *mylite_connection_character_set_connection(const mylite_db *database);

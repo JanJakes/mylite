@@ -5,11 +5,13 @@
 #include "mylite_diagnostics.h"
 #include "mylite_expression.h"
 #include "mylite_runtime.h"
+#include "mylite_span.h"
 #include "mylite_transactions.h"
 #include "mylite_vfs.h"
 #include "sqlite3.h"
 
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 static const uint64_t mylite_embedded_connection_id = 1U;
@@ -107,6 +109,29 @@ int mylite_connection_set_released_error(mylite_db *database)
         database, "Connection was released by transaction completion");
 
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+int mylite_connection_set_selected_schema(mylite_db *database, const char *schema_name)
+{
+    char *copy = mylite_copy_span_text(schema_name, strlen(schema_name));
+
+    if (copy == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    free(database->selected_schema);
+    database->selected_schema = copy;
+    return MYLITE_OK;
+}
+
+void mylite_connection_clear_selected_schema_if_matches(mylite_db *database,
+                                                        const char *schema_name)
+{
+    if (database->selected_schema != NULL && strcmp(database->selected_schema, schema_name) == 0) {
+        free(database->selected_schema);
+        database->selected_schema = NULL;
+    }
 }
 
 static int open_sqlite_database(const char *filename, int flags, const char *vfs_name,

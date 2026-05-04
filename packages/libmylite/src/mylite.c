@@ -3244,8 +3244,6 @@ static int set_table_doesnt_exist_error(mylite_db *database, const char *schema_
 static int set_names_connection_state(mylite_db *database,
                                       struct mylite_connection_charset_request request);
 static int set_character_set_connection_state(mylite_db *database, const char *character_set_name);
-static int set_selected_schema(mylite_db *database, const char *schema_name);
-static void clear_selected_schema_if_matches(mylite_db *database, const char *schema_name);
 static int information_schema_table_from_select(const struct mylite_sql_ast_node *statement,
                                                 enum mylite_information_schema_table *out_table);
 static bool select_list_is_unqualified_wildcard(const struct mylite_sql_ast_node *select_list);
@@ -19206,7 +19204,7 @@ static int execute_drop_schema_statement(mylite_stmt *stmt)
 
     status = mylite_catalog_delete_schema(stmt->database, stmt->schema_name);
     if (status == MYLITE_OK) {
-        clear_selected_schema_if_matches(stmt->database, stmt->schema_name);
+        mylite_connection_clear_selected_schema_if_matches(stmt->database, stmt->schema_name);
     }
     return status;
 }
@@ -19232,7 +19230,7 @@ static int execute_use_schema_statement(mylite_stmt *stmt)
         return MYLITE_EXEC_ERROR;
     }
 
-    return set_selected_schema(stmt->database, stmt->schema_name);
+    return mylite_connection_set_selected_schema(stmt->database, stmt->schema_name);
 }
 
 static int execute_set_names_statement(mylite_stmt *stmt)
@@ -35474,28 +35472,6 @@ static int set_character_set_connection_state(mylite_db *database, const char *c
     database->character_set_results = character_set->name;
     database->collation_connection = connection_collation->name;
     return MYLITE_OK;
-}
-
-static int set_selected_schema(mylite_db *database, const char *schema_name)
-{
-    char *copy = mylite_copy_span_text(schema_name, strlen(schema_name));
-
-    if (copy == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    free(database->selected_schema);
-    database->selected_schema = copy;
-    return MYLITE_OK;
-}
-
-static void clear_selected_schema_if_matches(mylite_db *database, const char *schema_name)
-{
-    if (database->selected_schema != NULL && strcmp(database->selected_schema, schema_name) == 0) {
-        free(database->selected_schema);
-        database->selected_schema = NULL;
-    }
 }
 
 static int information_schema_table_from_select(const struct mylite_sql_ast_node *statement,

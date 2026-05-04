@@ -412,7 +412,7 @@ only the core object model and transitional shared helpers listed here:
 - [x] Move delete target copy into `mylite_dml`.
 - [ ] Move remaining delete target validation into `mylite_dml`.
 - [ ] Move delete row materialization/sorting/limit logic into `mylite_dml`.
-- [ ] Move delete execution into `mylite_dml`.
+- [x] Move delete physical row execution into `mylite_dml`.
 - [ ] Move DML-specific diagnostics into `mylite_dml`.
 - [ ] Split SELECT, UNION, aggregate, and subquery planning/execution.
 - [x] Start `src/runtime/mylite_select.{h,c}` with SELECT plan cleanup.

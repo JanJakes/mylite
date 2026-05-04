@@ -225,6 +225,10 @@ int mylite_dml_sort_update_rowset(struct mylite_update_rowset *rowset,
                                   const struct mylite_update_order_plan *order_plan);
 void mylite_dml_apply_update_limit(const struct mylite_sql_ast_node *limit_clause,
                                    struct mylite_update_rowset *rowset);
+int mylite_dml_execute_delete_rows_transaction(mylite_db *database,
+                                               const struct mylite_select_table *table,
+                                               const struct mylite_update_rowset *rowset,
+                                               int64_t *out_affected_rows);
 void mylite_dml_insert_values_plan_deinit(struct mylite_insert_values_plan *plan);
 void mylite_dml_insert_set_plan_deinit(struct mylite_insert_set_plan *plan);
 void mylite_dml_insert_set_assignment_deinit(struct mylite_insert_set_assignment *assignment);

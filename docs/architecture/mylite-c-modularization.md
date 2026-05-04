@@ -343,7 +343,7 @@ only the core object model and transitional shared helpers listed here:
 - [ ] Split schema lifecycle and table/index DDL plans and execution.
 - [x] Start `src/runtime/mylite_schema.{h,c}` with schema option cleanup.
 - [x] Move schema option normalization into `mylite_schema`.
-- [ ] Move schema AST copy helpers into `mylite_schema`.
+- [x] Move schema AST copy helpers into `mylite_schema`.
 - [ ] Move `CREATE DATABASE` execution into `mylite_schema`.
 - [ ] Move `ALTER DATABASE` execution into `mylite_schema`.
 - [ ] Move `DROP DATABASE` execution into `mylite_schema`.

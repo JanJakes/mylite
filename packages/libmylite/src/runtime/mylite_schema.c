@@ -10,6 +10,9 @@
 static int normalize_schema_charset_and_collation(mylite_db *database,
                                                   struct mylite_schema_options *options);
 static int normalize_schema_option_text(mylite_db *database, char **target, const char *value);
+static int apply_schema_option(const struct mylite_sql_ast_node *option,
+                               struct mylite_schema_options *options);
+static bool is_valid_encryption_value(const char *value);
 
 void mylite_schema_options_deinit(struct mylite_schema_options *options)
 {
@@ -39,6 +42,40 @@ int mylite_schema_normalize_options(mylite_db *database, struct mylite_schema_op
 
     status = normalize_schema_charset_and_collation(database, options);
     return status;
+}
+
+int mylite_schema_copy_statement_name(const struct mylite_sql_ast_node *statement,
+                                      char **out_schema_name)
+{
+    const struct mylite_sql_ast_node *schema_name = NULL;
+
+    *out_schema_name = NULL;
+    schema_name = mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_IDENTIFIER);
+
+    if (schema_name == NULL) {
+        return MYLITE_OK;
+    }
+
+    *out_schema_name = mylite_copy_identifier_span(schema_name);
+    return *out_schema_name == NULL ? MYLITE_NOMEM : MYLITE_OK;
+}
+
+int mylite_schema_copy_options(const struct mylite_sql_ast_node *statement,
+                               struct mylite_schema_options *options)
+{
+    const struct mylite_sql_ast_node *option_list =
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_SCHEMA_OPTION_LIST);
+    int status = MYLITE_OK;
+
+    for (const struct mylite_sql_ast_node *option = option_list == NULL ? NULL
+                                                                        : option_list->first_child;
+         option != NULL; option = option->next_sibling) {
+        status = apply_schema_option(option, options);
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
 }
 
 static int normalize_schema_charset_and_collation(mylite_db *database,
@@ -94,4 +131,65 @@ static int normalize_schema_option_text(mylite_db *database, char **target, cons
     free(*target);
     *target = copy;
     return MYLITE_OK;
+}
+
+static int apply_schema_option(const struct mylite_sql_ast_node *option,
+                               struct mylite_schema_options *options)
+{
+    const struct mylite_sql_ast_node *value = mylite_ast_child_at(option, 0U);
+    char **target = NULL;
+    char *copy = NULL;
+
+    switch (option->schema_option) {
+    case MYLITE_SQL_AST_SCHEMA_OPTION_CHARACTER_SET:
+        target = &options->character_set;
+        copy = mylite_copy_schema_text_span(value);
+        break;
+    case MYLITE_SQL_AST_SCHEMA_OPTION_COLLATE:
+        target = &options->collation;
+        copy = mylite_copy_schema_text_span(value);
+        break;
+    case MYLITE_SQL_AST_SCHEMA_OPTION_ENCRYPTION:
+        target = &options->encryption;
+        copy = mylite_copy_string_literal_span(value);
+        break;
+    case MYLITE_SQL_AST_SCHEMA_OPTION_READ_ONLY:
+        options->has_read_only = true;
+        options->read_only = 0;
+        if (value != NULL && value->kind != MYLITE_SQL_AST_IDENTIFIER) {
+            if (value->span.length == 1U && value->span.text != NULL &&
+                value->span.text[0] == '1') {
+                options->read_only = 1;
+            } else if (value->span.length != 1U || value->span.text == NULL ||
+                       value->span.text[0] != '0') {
+                options->invalid_read_only = true;
+            }
+        }
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_SCHEMA_OPTION_NONE:
+        return MYLITE_OK;
+    }
+
+    if (copy == NULL) {
+        return MYLITE_NOMEM;
+    }
+    if (option->schema_option == MYLITE_SQL_AST_SCHEMA_OPTION_ENCRYPTION &&
+        !is_valid_encryption_value(copy)) {
+        options->invalid_encryption = true;
+    }
+
+    free(*target);
+    *target = copy;
+    return MYLITE_OK;
+}
+
+static bool is_valid_encryption_value(const char *value)
+{
+    if (value == NULL || value[0] == '\0' || value[1] != '\0') {
+        return false;
+    }
+    if (value[0] == 'Y' || value[0] == 'y' || value[0] == 'N' || value[0] == 'n') {
+        return true;
+    }
+    return false;
 }

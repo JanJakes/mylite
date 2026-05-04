@@ -2754,10 +2754,6 @@ static int append_insert_null_warning_once(mylite_stmt *stmt,
                                            size_t column_index);
 static char *copy_insert_duplicate_entry_value(const struct mylite_insert_unique_index *index,
                                                const struct mylite_insert_bound_value *values);
-static int copy_statement_schema_name(const struct mylite_sql_ast_node *statement,
-                                      enum mylite_stmt_kind kind, char **out_schema_name);
-static int copy_schema_options(const struct mylite_sql_ast_node *statement,
-                               enum mylite_stmt_kind kind, struct mylite_schema_options *options);
 static int copy_create_table_statement(const struct mylite_sql_ast_node *statement,
                                        mylite_stmt *stmt);
 static int copy_drop_table_statement(const struct mylite_sql_ast_node *statement,
@@ -3134,14 +3130,11 @@ static const char *create_table_column_key(const struct mylite_create_table_plan
                                            const char *column_name);
 static const char *create_table_column_extra(const struct mylite_create_table_column *column);
 static const char *index_collation_for_order(enum mylite_sql_ast_key_part_order order);
-static int apply_schema_option(const struct mylite_sql_ast_node *option,
-                               struct mylite_schema_options *options);
 static int set_unknown_table_error(mylite_db *database, const char *schema_name,
                                    const char *table_name);
 static int append_unknown_table_note(mylite_db *database, const char *schema_name,
                                      const char *table_name);
 static bool write_statement_kind(enum mylite_stmt_kind kind);
-static bool is_valid_encryption_value(const char *value);
 static bool
 insert_column_uses_numeric_implicit_default(const struct mylite_insert_table_column *column);
 static bool parse_insert_integer_text(const char *text, int64_t *out_value);
@@ -15382,9 +15375,9 @@ static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind k
     case MYLITE_STMT_ALTER_SCHEMA:
     case MYLITE_STMT_DROP_SCHEMA:
     case MYLITE_STMT_USE_SCHEMA:
-        status = copy_statement_schema_name(statement, kind, &stmt->schema_name);
+        status = mylite_schema_copy_statement_name(statement, &stmt->schema_name);
         if (status == MYLITE_OK) {
-            status = copy_schema_options(statement, kind, &stmt->options);
+            status = mylite_schema_copy_options(statement, &stmt->options);
         }
         break;
     case MYLITE_STMT_SET_NAMES:
@@ -31862,76 +31855,6 @@ static char *copy_insert_duplicate_entry_value(const struct mylite_insert_unique
     return sqlite3_str_finish(text);
 }
 
-static int copy_statement_schema_name(const struct mylite_sql_ast_node *statement,
-                                      enum mylite_stmt_kind kind, char **out_schema_name)
-{
-    const struct mylite_sql_ast_node *schema_name = NULL;
-
-    *out_schema_name = NULL;
-    (void)kind;
-    schema_name = mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_IDENTIFIER);
-
-    if (schema_name == NULL) {
-        return MYLITE_OK;
-    }
-
-    *out_schema_name = mylite_copy_identifier_span(schema_name);
-    return *out_schema_name == NULL ? MYLITE_NOMEM : MYLITE_OK;
-}
-
-static int copy_schema_options(const struct mylite_sql_ast_node *statement,
-                               enum mylite_stmt_kind kind, struct mylite_schema_options *options)
-{
-    const struct mylite_sql_ast_node *option_list = NULL;
-    const struct mylite_sql_ast_node *option = NULL;
-    int status = MYLITE_OK;
-
-    switch (kind) {
-    case MYLITE_STMT_CREATE_SCHEMA:
-    case MYLITE_STMT_ALTER_SCHEMA:
-        option_list = mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_SCHEMA_OPTION_LIST);
-        break;
-    case MYLITE_STMT_DROP_SCHEMA:
-    case MYLITE_STMT_USE_SCHEMA:
-    case MYLITE_STMT_SET_NAMES:
-    case MYLITE_STMT_SET_CHARACTER_SET:
-    case MYLITE_STMT_CREATE_TABLE:
-    case MYLITE_STMT_DROP_TABLE:
-    case MYLITE_STMT_RENAME_TABLE:
-    case MYLITE_STMT_TRUNCATE_TABLE:
-    case MYLITE_STMT_ALTER_TABLE:
-    case MYLITE_STMT_CREATE_INDEX:
-    case MYLITE_STMT_DROP_INDEX:
-    case MYLITE_STMT_INSERT_VALUES:
-    case MYLITE_STMT_INSERT_SET:
-    case MYLITE_STMT_REPLACE_VALUES:
-    case MYLITE_STMT_REPLACE_SET:
-    case MYLITE_STMT_UPDATE:
-    case MYLITE_STMT_DELETE:
-    case MYLITE_STMT_START_TRANSACTION:
-    case MYLITE_STMT_BEGIN_TRANSACTION:
-    case MYLITE_STMT_COMMIT:
-    case MYLITE_STMT_ROLLBACK:
-    case MYLITE_STMT_SAVEPOINT:
-    case MYLITE_STMT_ROLLBACK_TO_SAVEPOINT:
-    case MYLITE_STMT_RELEASE_SAVEPOINT:
-    case MYLITE_STMT_SCALAR_SELECT:
-    case MYLITE_STMT_TABLE_SELECT:
-    case MYLITE_STMT_UNION_QUERY:
-    case MYLITE_STMT_SQLITE:
-        return MYLITE_OK;
-    }
-
-    for (option = option_list == NULL ? NULL : option_list->first_child; option != NULL;
-         option = option->next_sibling) {
-        status = apply_schema_option(option, options);
-        if (status != MYLITE_OK) {
-            return status;
-        }
-    }
-    return MYLITE_OK;
-}
-
 static int copy_create_table_statement(const struct mylite_sql_ast_node *statement,
                                        mylite_stmt *stmt)
 {
@@ -36778,56 +36701,6 @@ static const char *index_collation_for_order(enum mylite_sql_ast_key_part_order 
     return order == MYLITE_SQL_AST_KEY_PART_ORDER_DESC ? "D" : "A";
 }
 
-static int apply_schema_option(const struct mylite_sql_ast_node *option,
-                               struct mylite_schema_options *options)
-{
-    const struct mylite_sql_ast_node *value = mylite_ast_child_at(option, 0U);
-    char **target = NULL;
-    char *copy = NULL;
-
-    switch (option->schema_option) {
-    case MYLITE_SQL_AST_SCHEMA_OPTION_CHARACTER_SET:
-        target = &options->character_set;
-        copy = mylite_copy_schema_text_span(value);
-        break;
-    case MYLITE_SQL_AST_SCHEMA_OPTION_COLLATE:
-        target = &options->collation;
-        copy = mylite_copy_schema_text_span(value);
-        break;
-    case MYLITE_SQL_AST_SCHEMA_OPTION_ENCRYPTION:
-        target = &options->encryption;
-        copy = mylite_copy_string_literal_span(value);
-        break;
-    case MYLITE_SQL_AST_SCHEMA_OPTION_READ_ONLY:
-        options->has_read_only = true;
-        options->read_only = 0;
-        if (value != NULL && value->kind != MYLITE_SQL_AST_IDENTIFIER) {
-            if (value->span.length == 1U && value->span.text != NULL &&
-                value->span.text[0] == '1') {
-                options->read_only = 1;
-            } else if (value->span.length != 1U || value->span.text == NULL ||
-                       value->span.text[0] != '0') {
-                options->invalid_read_only = true;
-            }
-        }
-        return MYLITE_OK;
-    case MYLITE_SQL_AST_SCHEMA_OPTION_NONE:
-        return MYLITE_OK;
-    }
-
-    if (copy == NULL) {
-        return MYLITE_NOMEM;
-    }
-    if (option->schema_option == MYLITE_SQL_AST_SCHEMA_OPTION_ENCRYPTION &&
-        !is_valid_encryption_value(copy)) {
-        options->invalid_encryption = true;
-    }
-
-    free(*target);
-    *target = copy;
-    return MYLITE_OK;
-}
-
 static int set_unknown_table_error(mylite_db *database, const char *schema_name,
                                    const char *table_name)
 {
@@ -36871,17 +36744,6 @@ static bool write_statement_kind(enum mylite_stmt_kind kind)
         kind == MYLITE_STMT_UPDATE || kind == MYLITE_STMT_DELETE ||
         kind == MYLITE_STMT_ALTER_TABLE || kind == MYLITE_STMT_RENAME_TABLE ||
         kind == MYLITE_STMT_TRUNCATE_TABLE) {
-        return true;
-    }
-    return false;
-}
-
-static bool is_valid_encryption_value(const char *value)
-{
-    if (value == NULL || value[0] == '\0' || value[1] != '\0') {
-        return false;
-    }
-    if (value[0] == 'Y' || value[0] == 'y' || value[0] == 'N' || value[0] == 'n') {
         return true;
     }
     return false;

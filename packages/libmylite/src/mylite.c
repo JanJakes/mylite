@@ -18,6 +18,7 @@
 #include "runtime/mylite_span.h"
 #include "runtime/mylite_statement.h"
 #include "runtime/mylite_table_ddl.h"
+#include "runtime/mylite_transaction_types.h"
 #include "runtime/mylite_transactions.h"
 #include "sql/mylite_lexer.h"
 #include "sqlite3.h"

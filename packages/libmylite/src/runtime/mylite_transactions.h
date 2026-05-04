@@ -1,7 +1,15 @@
 #ifndef MYLITE_RUNTIME_MYLITE_TRANSACTIONS_H
 #define MYLITE_RUNTIME_MYLITE_TRANSACTIONS_H
 
-#include "mylite_runtime.h"
+#include <mylite/mylite.h>
+
+#include "mylite_transaction_types.h"
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+struct mylite_sql_ast_node;
 
 int mylite_transaction_begin_explicit(mylite_db *database,
                                       enum mylite_transaction_access_mode access_mode,

@@ -13,6 +13,32 @@ static int append_database_condition(mylite_db *database,
 static unsigned int current_error_condition_code(mylite_db *database, unsigned int fallback_code);
 static char *copy_message_text(const char *text, size_t length);
 
+const char *mylite_status_name(int status)
+{
+    switch (status) {
+    case MYLITE_OK:
+        return "ok";
+    case MYLITE_MISUSE:
+        return "misuse";
+    case MYLITE_NOMEM:
+        return "nomem";
+    case MYLITE_PARSE_ERROR:
+        return "parse_error";
+    case MYLITE_UNSUPPORTED:
+        return "unsupported";
+    case MYLITE_SQLITE_ERROR:
+        return "sqlite_error";
+    case MYLITE_EXEC_ERROR:
+        return "exec_error";
+    case MYLITE_ROW:
+        return "row";
+    case MYLITE_DONE:
+        return "done";
+    default:
+        return "unknown";
+    }
+}
+
 const char *mylite_error_message(const mylite_db *database)
 {
     if (database == NULL || database->error_message == NULL) {

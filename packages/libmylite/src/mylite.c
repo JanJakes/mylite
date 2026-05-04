@@ -3742,32 +3742,6 @@ static int map_parse_status(mylite_db *database, enum mylite_sql_parse_status st
 static int map_translate_status(mylite_db *database, enum mylite_sqlite_translate_status status);
 static sqlite3_destructor_type sqlite_transient_destructor(void);
 
-const char *mylite_status_name(int status)
-{
-    switch (status) {
-    case MYLITE_OK:
-        return "ok";
-    case MYLITE_MISUSE:
-        return "misuse";
-    case MYLITE_NOMEM:
-        return "nomem";
-    case MYLITE_PARSE_ERROR:
-        return "parse_error";
-    case MYLITE_UNSUPPORTED:
-        return "unsupported";
-    case MYLITE_SQLITE_ERROR:
-        return "sqlite_error";
-    case MYLITE_EXEC_ERROR:
-        return "exec_error";
-    case MYLITE_ROW:
-        return "row";
-    case MYLITE_DONE:
-        return "done";
-    default:
-        return "unknown";
-    }
-}
-
 int mylite_prepare(mylite_db *database, const char *sql, size_t length, mylite_stmt **out_stmt)
 {
     struct mylite_sql_parse_result parse_result;

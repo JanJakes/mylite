@@ -5,6 +5,7 @@
 
 #include "mylite_expression.h"
 #include "mylite_field_descriptor.h"
+#include "mylite_select_aggregate_types.h"
 #include "sql/mylite_ast.h"
 
 #include <stdbool.h>
@@ -291,29 +292,6 @@ struct mylite_table_select_join_materialize_state {
     size_t group_count;
     uint64_t matched_row;
     bool stop;
-};
-
-struct mylite_select_aggregate_state {
-    struct mylite_expression_value value;
-    struct mylite_count_distinct_tuple *distinct_tuples;
-    uint64_t count;
-    uint64_t non_null_count;
-    double sum;
-    size_t distinct_tuple_count;
-    bool integral_sum;
-    bool unsigned_sum;
-    bool has_value;
-};
-
-struct mylite_count_distinct_tuple {
-    struct mylite_expression_value *values;
-    size_t value_count;
-};
-
-struct mylite_aggregate_numeric_value {
-    double value;
-    bool integral;
-    bool unsigned_value;
 };
 
 struct mylite_table_select_group {

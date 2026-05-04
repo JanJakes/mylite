@@ -254,7 +254,7 @@ Rules for future moves:
 - [x] Split catalog lookup helpers into `src/runtime/mylite_catalog`.
 - [x] Move physical table naming into `src/runtime/mylite_catalog`.
 - [x] Move selected schema mutation helpers into `src/runtime/mylite_connection`.
-- [ ] Move connection charset state mutation helpers into
+- [x] Move connection charset state mutation helpers into
   `src/runtime/mylite_connection`.
 - [ ] Move `SET NAMES` execution into `src/runtime/mylite_connection`.
 - [ ] Move `SET CHARACTER SET` execution into `src/runtime/mylite_connection`.

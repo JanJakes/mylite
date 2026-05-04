@@ -3241,9 +3241,6 @@ static char *copy_insert_duplicate_entry_value(const struct mylite_insert_unique
                                                const struct mylite_insert_bound_value *values);
 static int set_table_doesnt_exist_error(mylite_db *database, const char *schema_name,
                                         const char *table_name);
-static int set_names_connection_state(mylite_db *database,
-                                      struct mylite_connection_charset_request request);
-static int set_character_set_connection_state(mylite_db *database, const char *character_set_name);
 static int information_schema_table_from_select(const struct mylite_sql_ast_node *statement,
                                                 enum mylite_information_schema_table *out_table);
 static bool select_list_is_unqualified_wildcard(const struct mylite_sql_ast_node *select_list);
@@ -19238,19 +19235,17 @@ static int execute_set_names_statement(mylite_stmt *stmt)
     if (stmt->use_default_connection_charset) {
         return mylite_connection_set_default_state(stmt->database);
     }
-    return set_names_connection_state(stmt->database,
-                                      (struct mylite_connection_charset_request){
-                                          .character_set_name = stmt->character_set_name,
-                                          .collation_name = stmt->collation_name,
-                                      });
+    return mylite_connection_set_names_state(stmt->database, stmt->character_set_name,
+                                             stmt->collation_name);
 }
 
 static int execute_set_character_set_statement(mylite_stmt *stmt)
 {
     if (stmt->use_default_connection_charset) {
-        return set_character_set_connection_state(stmt->database, mylite_charset_default_name());
+        return mylite_connection_set_character_set_state(stmt->database,
+                                                         mylite_charset_default_name());
     }
-    return set_character_set_connection_state(stmt->database, stmt->character_set_name);
+    return mylite_connection_set_character_set_state(stmt->database, stmt->character_set_name);
 }
 
 static int execute_create_table_statement(mylite_stmt *stmt)
@@ -35414,64 +35409,6 @@ static int set_table_doesnt_exist_error(mylite_db *database, const char *schema_
     }
     sqlite3_free(message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-}
-
-static int set_names_connection_state(mylite_db *database,
-                                      struct mylite_connection_charset_request request)
-{
-    const struct mylite_charset *character_set = mylite_charset_lookup(request.character_set_name);
-    const struct mylite_collation *collation = NULL;
-
-    if (character_set == NULL) {
-        return mylite_diagnostics_set_unknown_charset_error(database, request.character_set_name);
-    }
-
-    if (request.collation_name == NULL) {
-        collation = mylite_collation_lookup(character_set->default_collation);
-    } else {
-        collation = mylite_collation_lookup(request.collation_name);
-        if (collation == NULL) {
-            return mylite_diagnostics_set_unknown_collation_error(database, request.collation_name);
-        }
-        if (!mylite_charset_collation_match(character_set, collation)) {
-            return mylite_diagnostics_set_collation_charset_error(database, collation->name,
-                                                                  character_set->name);
-        }
-    }
-
-    database->character_set_client = character_set->name;
-    database->character_set_connection = character_set->name;
-    database->character_set_results = character_set->name;
-    database->collation_connection = collation->name;
-    return MYLITE_OK;
-}
-
-static int set_character_set_connection_state(mylite_db *database, const char *character_set_name)
-{
-    struct mylite_schema_default schema_default;
-    const struct mylite_charset *character_set = mylite_charset_lookup(character_set_name);
-    const struct mylite_collation *connection_collation = NULL;
-    int status = MYLITE_OK;
-
-    if (character_set == NULL) {
-        return mylite_diagnostics_set_unknown_charset_error(database, character_set_name);
-    }
-
-    status = mylite_catalog_selected_schema_default(database, &schema_default);
-    if (status != MYLITE_OK) {
-        return status;
-    }
-
-    connection_collation = mylite_collation_lookup(schema_default.collation);
-    if (connection_collation == NULL) {
-        return mylite_diagnostics_set_unknown_collation_error(database, schema_default.collation);
-    }
-
-    database->character_set_client = character_set->name;
-    database->character_set_connection = connection_collation->character_set;
-    database->character_set_results = character_set->name;
-    database->collation_connection = connection_collation->name;
-    return MYLITE_OK;
 }
 
 static int information_schema_table_from_select(const struct mylite_sql_ast_node *statement,

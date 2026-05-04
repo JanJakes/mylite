@@ -134,6 +134,64 @@ void mylite_connection_clear_selected_schema_if_matches(mylite_db *database,
     }
 }
 
+int mylite_connection_set_names_state(mylite_db *database, const char *character_set_name,
+                                      const char *collation_name)
+{
+    const struct mylite_charset *character_set = mylite_charset_lookup(character_set_name);
+    const struct mylite_collation *collation = NULL;
+
+    if (character_set == NULL) {
+        return mylite_diagnostics_set_unknown_charset_error(database, character_set_name);
+    }
+
+    if (collation_name == NULL) {
+        collation = mylite_collation_lookup(character_set->default_collation);
+    } else {
+        collation = mylite_collation_lookup(collation_name);
+        if (collation == NULL) {
+            return mylite_diagnostics_set_unknown_collation_error(database, collation_name);
+        }
+        if (!mylite_charset_collation_match(character_set, collation)) {
+            return mylite_diagnostics_set_collation_charset_error(database, collation->name,
+                                                                  character_set->name);
+        }
+    }
+
+    database->character_set_client = character_set->name;
+    database->character_set_connection = character_set->name;
+    database->character_set_results = character_set->name;
+    database->collation_connection = collation->name;
+    return MYLITE_OK;
+}
+
+int mylite_connection_set_character_set_state(mylite_db *database, const char *character_set_name)
+{
+    struct mylite_schema_default schema_default;
+    const struct mylite_charset *character_set = mylite_charset_lookup(character_set_name);
+    const struct mylite_collation *connection_collation = NULL;
+    int status = MYLITE_OK;
+
+    if (character_set == NULL) {
+        return mylite_diagnostics_set_unknown_charset_error(database, character_set_name);
+    }
+
+    status = mylite_catalog_selected_schema_default(database, &schema_default);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    connection_collation = mylite_collation_lookup(schema_default.collation);
+    if (connection_collation == NULL) {
+        return mylite_diagnostics_set_unknown_collation_error(database, schema_default.collation);
+    }
+
+    database->character_set_client = character_set->name;
+    database->character_set_connection = connection_collation->character_set;
+    database->character_set_results = character_set->name;
+    database->collation_connection = connection_collation->name;
+    return MYLITE_OK;
+}
+
 static int open_sqlite_database(const char *filename, int flags, const char *vfs_name,
                                 mylite_db **out_db)
 {

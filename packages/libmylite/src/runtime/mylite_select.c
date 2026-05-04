@@ -297,6 +297,49 @@ bool mylite_select_column_index_is_using_column_in_range(const struct mylite_sel
     return false;
 }
 
+bool mylite_select_plan_has_column_span(const struct mylite_select_plan *plan,
+                                        struct mylite_sql_source_span name)
+{
+    for (size_t index = 0U; index < mylite_select_plan_column_count(plan); ++index) {
+        const struct mylite_select_column *column =
+            mylite_select_plan_column_const(plan, index, NULL);
+
+        if (column != NULL && column->name != NULL && mylite_span_equal_ci(name, column->name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool mylite_select_plan_has_visible_table_span(const struct mylite_select_plan *plan,
+                                               struct mylite_sql_source_span name)
+{
+    for (size_t index = 0U; index < mylite_select_plan_table_count(plan); ++index) {
+        const struct mylite_select_table *table = mylite_select_plan_table_const(plan, index);
+        const char *visible_name = table == NULL || table->alias == NULL ? NULL : table->alias;
+
+        if (table != NULL && visible_name == NULL) {
+            visible_name = table->table_name;
+        }
+        if (visible_name != NULL && mylite_span_equal_ci(name, visible_name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool mylite_select_plan_has_outer_join(const struct mylite_select_plan *plan)
+{
+    for (size_t index = 0U; plan != NULL && index < plan->join_step_count; ++index) {
+        enum mylite_sql_ast_join_type join_type = plan->join_steps[index].join_type;
+
+        if (join_type == MYLITE_SQL_AST_JOIN_LEFT || join_type == MYLITE_SQL_AST_JOIN_RIGHT) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool mylite_select_duplicate_mode_is_distinct(enum mylite_sql_ast_select_duplicate_mode mode)
 {
     return mode == MYLITE_SQL_AST_SELECT_DUPLICATES_DISTINCT;

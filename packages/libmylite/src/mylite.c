@@ -673,10 +673,6 @@ static bool in_subquery_references_outer_plan(const struct mylite_sql_ast_node *
 static bool
 in_subquery_has_unqualified_outer_column_reference(const struct mylite_sql_ast_node *node,
                                                    const struct mylite_select_plan *outer_plan);
-static bool select_plan_has_column_span(const struct mylite_select_plan *plan,
-                                        struct mylite_sql_source_span name);
-static bool select_plan_has_visible_table_span(const struct mylite_select_plan *plan,
-                                               struct mylite_sql_source_span name);
 static bool select_statement_has_visible_table_span(const struct mylite_sql_ast_node *node,
                                                     struct mylite_sql_source_span name);
 static const struct mylite_sql_ast_node *
@@ -1159,7 +1155,6 @@ static int
 append_unordered_table_select_limited_row(mylite_stmt *stmt, struct mylite_table_select_row *row,
                                           struct mylite_unordered_table_select_append_state *state);
 static int materialize_joined_table_select_result(mylite_stmt *stmt);
-static bool select_plan_has_outer_join(const struct mylite_select_plan *plan);
 static int materialize_outer_joined_table_select_result(mylite_stmt *stmt);
 static int load_table_select_join_rowsets(mylite_stmt *stmt,
                                           struct mylite_table_select_table_rowset *rowsets);
@@ -7806,7 +7801,7 @@ static bool in_subquery_references_outer_plan(const struct mylite_sql_ast_node *
     }
     if (node->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
         first = qualified_identifier_first_part(node);
-        if (first != NULL && select_plan_has_visible_table_span(outer_plan, first->span) &&
+        if (first != NULL && mylite_select_plan_has_visible_table_span(outer_plan, first->span) &&
             !select_statement_has_visible_table_span(select_statement, first->span)) {
             return true;
         }
@@ -7834,7 +7829,7 @@ static bool in_subquery_has_unqualified_outer_column_reference( // NOLINT(misc-n
                                                                   outer_plan);
     }
     if (node->kind == MYLITE_SQL_AST_IDENTIFIER &&
-        select_plan_has_column_span(outer_plan, node->span)) {
+        mylite_select_plan_has_column_span(outer_plan, node->span)) {
         return true;
     }
     if (node->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
@@ -7843,37 +7838,6 @@ static bool in_subquery_has_unqualified_outer_column_reference( // NOLINT(misc-n
     for (const struct mylite_sql_ast_node *child = node->first_child; child != NULL;
          child = child->next_sibling) {
         if (in_subquery_has_unqualified_outer_column_reference(child, outer_plan)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-static bool select_plan_has_column_span(const struct mylite_select_plan *plan,
-                                        struct mylite_sql_source_span name)
-{
-    for (size_t index = 0U; index < mylite_select_plan_column_count(plan); ++index) {
-        const struct mylite_select_column *column =
-            mylite_select_plan_column_const(plan, index, NULL);
-
-        if (column != NULL && column->name != NULL && mylite_span_equal_ci(name, column->name)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-static bool select_plan_has_visible_table_span(const struct mylite_select_plan *plan,
-                                               struct mylite_sql_source_span name)
-{
-    for (size_t index = 0U; index < mylite_select_plan_table_count(plan); ++index) {
-        const struct mylite_select_table *table = mylite_select_plan_table_const(plan, index);
-        const char *visible_name = table == NULL || table->alias == NULL ? NULL : table->alias;
-
-        if (table != NULL && visible_name == NULL) {
-            visible_name = table->table_name;
-        }
-        if (visible_name != NULL && mylite_span_equal_ci(name, visible_name)) {
             return true;
         }
     }
@@ -13331,7 +13295,7 @@ static int materialize_joined_table_select_result(mylite_stmt *stmt)
     bool distinct = mylite_select_duplicate_mode_is_distinct(stmt->select_plan.duplicate_mode);
     int status = MYLITE_OK;
 
-    if (select_plan_has_outer_join(&stmt->select_plan)) {
+    if (mylite_select_plan_has_outer_join(&stmt->select_plan)) {
         return materialize_outer_joined_table_select_result(stmt);
     }
 
@@ -13395,18 +13359,6 @@ static int materialize_joined_table_select_result(mylite_stmt *stmt)
     table_select_join_condition_cache_deinit(&state.condition_cache);
     table_select_table_rowsets_deinit(state.rowsets, table_count);
     return status;
-}
-
-static bool select_plan_has_outer_join(const struct mylite_select_plan *plan)
-{
-    for (size_t index = 0U; index < plan->join_step_count; ++index) {
-        enum mylite_sql_ast_join_type join_type = plan->join_steps[index].join_type;
-
-        if (join_type == MYLITE_SQL_AST_JOIN_LEFT || join_type == MYLITE_SQL_AST_JOIN_RIGHT) {
-            return true;
-        }
-    }
-    return false;
 }
 
 static int materialize_outer_joined_table_select_result(mylite_stmt *stmt)

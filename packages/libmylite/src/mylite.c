@@ -2240,20 +2240,9 @@ static int execute_insert_set_row(mylite_stmt *stmt, const char *schema_name,
 static int execute_replace_values_transaction(mylite_stmt *stmt, const char *schema_name,
                                               const struct mylite_insert_table *table,
                                               const size_t *column_indexes);
-static int execute_replace_row(mylite_stmt *stmt, sqlite3_stmt *insert, sqlite3_stmt *delete_stmt,
-                               const struct mylite_insert_table *table,
-                               const struct mylite_insert_row_column_indexes *column_indexes,
-                               struct mylite_insert_execution_state *state, size_t row_index);
 static int execute_replace_set_transaction(mylite_stmt *stmt, const char *schema_name,
                                            const struct mylite_insert_table *table,
                                            const size_t *column_indexes, size_t column_index_count);
-static int execute_replace_set_row(mylite_stmt *stmt, const char *schema_name, sqlite3_stmt *insert,
-                                   sqlite3_stmt *delete_stmt,
-                                   const struct mylite_insert_table *table,
-                                   const size_t *column_indexes, size_t column_index_count,
-                                   struct mylite_insert_execution_state *state,
-                                   struct mylite_insert_bound_value *values,
-                                   struct mylite_insert_set_row_state *row_state);
 static int append_replace_delayed_warning(mylite_stmt *stmt);
 static int finish_successful_replace_transaction(mylite_stmt *stmt, const char *schema_name,
                                                  const struct mylite_insert_table *table,
@@ -25380,8 +25369,9 @@ static int execute_replace_values_transaction(mylite_stmt *stmt, const char *sch
     }
 
     for (size_t row_index = 0U; row_index < stmt->insert_values.row_count; ++row_index) {
-        status = execute_replace_row(stmt, insert, delete_stmt, table, &row_column_indexes, &state,
-                                     row_index);
+        status = mylite_dml_execute_replace_row(stmt->database, &stmt->insert_values, insert,
+                                                delete_stmt, table, &row_column_indexes, &state,
+                                                row_index);
         if (status != MYLITE_OK) {
             break;
         }
@@ -25394,38 +25384,6 @@ static int execute_replace_values_transaction(mylite_stmt *stmt, const char *sch
                                                        status);
     }
     return finish_successful_replace_transaction(stmt, schema_name, table, &state, &atomicity);
-}
-
-static int execute_replace_row(mylite_stmt *stmt, sqlite3_stmt *insert, sqlite3_stmt *delete_stmt,
-                               const struct mylite_insert_table *table,
-                               const struct mylite_insert_row_column_indexes *column_indexes,
-                               struct mylite_insert_execution_state *state, size_t row_index)
-{
-    struct mylite_insert_bound_value *values = NULL;
-    int status = MYLITE_OK;
-
-    if (table->column_count == 0U) {
-        (void)mylite_diagnostics_set_error_message(stmt->database,
-                                                   "REPLACE target table has no columns");
-        return MYLITE_EXEC_ERROR;
-    }
-
-    values = calloc(table->column_count, sizeof(*values));
-    if (values == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    status = mylite_dml_resolve_insert_row_values(
-        stmt->database, &stmt->insert_values, table, column_indexes->insert_columns,
-        stmt->insert_values.row_count, state, row_index, values);
-    if (status == MYLITE_OK) {
-        status = mylite_dml_write_replace_candidate_row(stmt->database, insert, delete_stmt, table,
-                                                        state, values);
-    }
-
-    mylite_dml_insert_bound_values_deinit(values, table->column_count);
-    return status;
 }
 
 static int execute_replace_set_transaction(mylite_stmt *stmt, const char *schema_name,
@@ -25485,8 +25443,9 @@ static int execute_replace_set_transaction(mylite_stmt *stmt, const char *schema
         goto cleanup;
     }
 
-    status = execute_replace_set_row(stmt, schema_name, insert, delete_stmt, table, column_indexes,
-                                     column_index_count, &state, values, &row_state);
+    status = mylite_dml_execute_replace_set_row(
+        stmt->database, schema_name, &stmt->insert_values, &stmt->insert_set, insert, delete_stmt,
+        table, column_indexes, column_index_count, &state, values, &row_state);
 
 cleanup:
     sqlite3_free(insert_sql);
@@ -25502,24 +25461,6 @@ cleanup:
                                                        status);
     }
     return finish_successful_replace_transaction(stmt, schema_name, table, &state, &atomicity);
-}
-
-static int execute_replace_set_row(mylite_stmt *stmt, const char *schema_name, sqlite3_stmt *insert,
-                                   sqlite3_stmt *delete_stmt,
-                                   const struct mylite_insert_table *table,
-                                   const size_t *column_indexes, size_t column_index_count,
-                                   struct mylite_insert_execution_state *state,
-                                   struct mylite_insert_bound_value *values,
-                                   struct mylite_insert_set_row_state *row_state)
-{
-    int status = mylite_dml_resolve_insert_set_row_values(
-        stmt->database, schema_name, &stmt->insert_values, &stmt->insert_set, table, column_indexes,
-        column_index_count, 1U, state, values, row_state);
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    return mylite_dml_write_replace_candidate_row(stmt->database, insert, delete_stmt, table, state,
-                                                  values);
 }
 
 static int append_replace_delayed_warning(mylite_stmt *stmt)

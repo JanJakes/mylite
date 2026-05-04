@@ -1004,27 +1004,12 @@ static size_t count_select_plan_column_parts_matches(const struct mylite_select_
                                                      char **parts, size_t part_count,
                                                      size_t first_table, size_t table_count,
                                                      size_t *match_index);
-static int resolve_select_plan_column_in_table(const struct mylite_select_plan *plan,
-                                               const struct mylite_select_table *table,
-                                               const char *column_name, size_t *out_index);
-static size_t count_select_plan_column_parts_using_matches(const struct mylite_select_plan *plan,
-                                                           const char *column_name,
-                                                           struct mylite_select_table_range range,
-                                                           size_t *match_index);
 static bool select_plan_table_qualifier_matches(const struct mylite_select_table *table,
                                                 char **parts, size_t part_count);
 static int set_select_unknown_column_parts_error(mylite_db *database, char **parts,
                                                  size_t part_count, const char *clause_context);
-static int set_select_ambiguous_column_error(mylite_db *database, const char *column_name,
-                                             const char *clause_context);
 static int set_select_unknown_column_in_clause_error(mylite_db *database, const char *reference,
                                                      const char *clause_context);
-static bool
-select_using_column_range_is_in_range(const struct mylite_select_join_using_column *column,
-                                      struct mylite_select_table_range range);
-static bool select_column_index_is_using_column_in_range(const struct mylite_select_plan *plan,
-                                                         size_t column_index,
-                                                         struct mylite_select_table_range range);
 static int resolve_select_order_reference(mylite_db *database,
                                           const struct mylite_select_plan *plan,
                                           const struct mylite_sql_ast_node *expression,
@@ -7843,15 +7828,15 @@ static int resolve_select_using_request_column(mylite_db *database,
                                                size_t *out_column)
 {
     size_t match_count =
-        count_select_plan_column_parts_using_matches(plan, name, range, out_column);
+        mylite_select_count_column_parts_using_matches(plan, name, range, out_column);
 
     for (size_t index = 0U; index < range.table_count; ++index) {
         const struct mylite_select_table *table =
             mylite_select_plan_table_const(plan, range.first_table + index);
         size_t column_index = mylite_select_plan_column_count(plan);
 
-        if (resolve_select_plan_column_in_table(plan, table, name, &column_index) != MYLITE_OK ||
-            select_column_index_is_using_column_in_range(plan, column_index, range)) {
+        if (mylite_select_resolve_column_in_table(plan, table, name, &column_index) != MYLITE_OK ||
+            mylite_select_column_index_is_using_column_in_range(plan, column_index, range)) {
             continue;
         }
         *out_column = column_index;
@@ -7861,7 +7846,7 @@ static int resolve_select_using_request_column(mylite_db *database,
         return MYLITE_OK;
     }
     if (match_count > 1U) {
-        return set_select_ambiguous_column_error(database, name, "from clause");
+        return mylite_select_set_ambiguous_column_error(database, name, "from clause");
     }
     return set_select_unknown_from_column_error(database, name);
 }
@@ -11174,7 +11159,8 @@ static int resolve_select_plan_column_parts_in_scope(mylite_db *database,
         return MYLITE_OK;
     }
     if (match_count > 1U) {
-        return set_select_ambiguous_column_error(database, parts[part_count - 1U], clause_context);
+        return mylite_select_set_ambiguous_column_error(database, parts[part_count - 1U],
+                                                        clause_context);
     }
 
     return set_select_unknown_column_parts_error(database, parts, part_count, clause_context);
@@ -11200,7 +11186,7 @@ static size_t count_select_plan_column_parts_matches(const struct mylite_select_
     }
     if (part_count == 1U) {
         match_count =
-            count_select_plan_column_parts_using_matches(plan, parts[0], range, match_index);
+            mylite_select_count_column_parts_using_matches(plan, parts[0], range, match_index);
     }
 
     for (size_t table_index = first_table; table_index < last_table; ++table_index) {
@@ -11208,33 +11194,15 @@ static size_t count_select_plan_column_parts_matches(const struct mylite_select_
         size_t column_index = mylite_select_plan_column_count(plan);
 
         if (!select_plan_table_qualifier_matches(table, parts, part_count) ||
-            resolve_select_plan_column_in_table(plan, table, parts[part_count - 1U],
-                                                &column_index) != MYLITE_OK) {
+            mylite_select_resolve_column_in_table(plan, table, parts[part_count - 1U],
+                                                  &column_index) != MYLITE_OK) {
             continue;
         }
         if (part_count == 1U &&
-            select_column_index_is_using_column_in_range(plan, column_index, range)) {
+            mylite_select_column_index_is_using_column_in_range(plan, column_index, range)) {
             continue;
         }
         *match_index = column_index;
-        ++match_count;
-    }
-    return match_count;
-}
-
-static size_t count_select_plan_column_parts_using_matches(const struct mylite_select_plan *plan,
-                                                           const char *column_name,
-                                                           struct mylite_select_table_range range,
-                                                           size_t *match_index)
-{
-    size_t match_count = 0U;
-
-    for (size_t index = 0U; index < plan->using_column_count; ++index) {
-        if (!mylite_ascii_case_equal(plan->using_columns[index].name, column_name) ||
-            !select_using_column_range_is_in_range(&plan->using_columns[index], range)) {
-            continue;
-        }
-        *match_index = plan->using_columns[index].coalesced_column_index;
         ++match_count;
     }
     return match_count;
@@ -11290,42 +11258,6 @@ static int set_select_unknown_column_parts_error(mylite_db *database, char **par
     return status;
 }
 
-static int resolve_select_plan_column_in_table(const struct mylite_select_plan *plan,
-                                               const struct mylite_select_table *table,
-                                               const char *column_name, size_t *out_index)
-{
-    (void)plan;
-    if (table == NULL) {
-        return MYLITE_UNSUPPORTED;
-    }
-    for (size_t index = 0U; index < table->column_count; ++index) {
-        if (mylite_ascii_case_equal(table->columns[index].name, column_name)) {
-            *out_index = table->first_column_index + index;
-            return MYLITE_OK;
-        }
-    }
-    return MYLITE_UNSUPPORTED;
-}
-
-static int set_select_ambiguous_column_error(mylite_db *database, const char *column_name,
-                                             const char *clause_context)
-{
-    char *message = sqlite3_mprintf("Column '%q' in %s is ambiguous", column_name,
-                                    clause_context == NULL ? "field list" : clause_context);
-    int status = MYLITE_OK;
-
-    if (message == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    status = mylite_diagnostics_set_error_message(database, message);
-    if (status == MYLITE_OK) {
-        status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_NON_UNIQ_ERROR, message);
-    }
-    sqlite3_free(message);
-    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-}
-
 static int set_select_unknown_column_in_clause_error(mylite_db *database, const char *reference,
                                                      const char *clause_context)
 {
@@ -11351,38 +11283,6 @@ static int set_select_unknown_column_in_clause_error(mylite_db *database, const 
     }
     sqlite3_free(message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-}
-
-static bool
-select_using_column_range_is_in_range(const struct mylite_select_join_using_column *column,
-                                      struct mylite_select_table_range range)
-{
-    size_t range_end = range.first_table + range.table_count;
-    size_t column_end = column->first_table + column->table_count;
-
-    if (column->first_table < range.first_table) {
-        return false;
-    }
-    if (column_end > range_end) {
-        return false;
-    }
-    return true;
-}
-
-static bool select_column_index_is_using_column_in_range(const struct mylite_select_plan *plan,
-                                                         size_t column_index,
-                                                         struct mylite_select_table_range range)
-{
-    for (size_t index = 0U; index < plan->using_column_count; ++index) {
-        const struct mylite_select_join_using_column *column = &plan->using_columns[index];
-
-        if (select_using_column_range_is_in_range(column, range) &&
-            (column->left_column_index == column_index ||
-             column->right_column_index == column_index)) {
-            return true;
-        }
-    }
-    return false;
 }
 
 static int resolve_select_order_reference(mylite_db *database,

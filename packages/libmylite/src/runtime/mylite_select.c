@@ -2,7 +2,9 @@
 
 #include "mylite_catalog.h"
 #include "mylite_diagnostics.h"
+#include "mylite_error_codes.h"
 #include "mylite_span.h"
+#include "sqlite3.h"
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -10,6 +12,9 @@
 
 static int compare_select_text_values(const char *left, size_t left_length, const char *right,
                                       size_t right_length);
+static bool
+select_using_column_range_is_in_range(const struct mylite_select_join_using_column *column,
+                                      struct mylite_select_table_range range);
 static size_t expression_value_text_length(const struct mylite_expression_value *value);
 static size_t nullable_text_length(const char *text);
 
@@ -213,6 +218,83 @@ mylite_select_plan_column_const(const struct mylite_select_plan *plan, size_t co
         }
     }
     return NULL;
+}
+
+size_t mylite_select_count_column_parts_using_matches(const struct mylite_select_plan *plan,
+                                                      const char *column_name,
+                                                      struct mylite_select_table_range range,
+                                                      size_t *match_index)
+{
+    size_t match_count = 0U;
+
+    if (plan == NULL || column_name == NULL || match_index == NULL) {
+        return 0U;
+    }
+
+    for (size_t index = 0U; index < plan->using_column_count; ++index) {
+        if (!mylite_ascii_case_equal(plan->using_columns[index].name, column_name) ||
+            !select_using_column_range_is_in_range(&plan->using_columns[index], range)) {
+            continue;
+        }
+        *match_index = plan->using_columns[index].coalesced_column_index;
+        ++match_count;
+    }
+    return match_count;
+}
+
+int mylite_select_resolve_column_in_table(const struct mylite_select_plan *plan,
+                                          const struct mylite_select_table *table,
+                                          const char *column_name, size_t *out_index)
+{
+    (void)plan;
+    if (table == NULL || column_name == NULL || out_index == NULL) {
+        return MYLITE_UNSUPPORTED;
+    }
+    for (size_t index = 0U; index < table->column_count; ++index) {
+        if (mylite_ascii_case_equal(table->columns[index].name, column_name)) {
+            *out_index = table->first_column_index + index;
+            return MYLITE_OK;
+        }
+    }
+    return MYLITE_UNSUPPORTED;
+}
+
+int mylite_select_set_ambiguous_column_error(mylite_db *database, const char *column_name,
+                                             const char *clause_context)
+{
+    char *message = sqlite3_mprintf("Column '%q' in %s is ambiguous", column_name,
+                                    clause_context == NULL ? "field list" : clause_context);
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    status = mylite_diagnostics_set_error_message(database, message);
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_NON_UNIQ_ERROR, message);
+    }
+    sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+bool mylite_select_column_index_is_using_column_in_range(const struct mylite_select_plan *plan,
+                                                         size_t column_index,
+                                                         struct mylite_select_table_range range)
+{
+    if (plan == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < plan->using_column_count; ++index) {
+        const struct mylite_select_join_using_column *column = &plan->using_columns[index];
+
+        if (select_using_column_range_is_in_range(column, range) &&
+            (column->left_column_index == column_index ||
+             column->right_column_index == column_index)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 size_t mylite_select_plan_table_count(const struct mylite_select_plan *plan)
@@ -557,6 +639,22 @@ int mylite_select_compare_binary_text_values(const char *left, size_t left_lengt
         return (left_length > right_length) - (left_length < right_length);
     }
     return (comparison > 0) - (comparison < 0);
+}
+
+static bool
+select_using_column_range_is_in_range(const struct mylite_select_join_using_column *column,
+                                      struct mylite_select_table_range range)
+{
+    size_t range_end = range.first_table + range.table_count;
+    size_t column_end = column->first_table + column->table_count;
+
+    if (column->first_table < range.first_table) {
+        return false;
+    }
+    if (column_end > range_end) {
+        return false;
+    }
+    return true;
 }
 
 static int compare_select_text_values(const char *left, size_t left_length, const char *right,

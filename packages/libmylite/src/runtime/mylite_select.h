@@ -29,6 +29,18 @@ size_t mylite_select_plan_column_count(const struct mylite_select_plan *plan);
 const struct mylite_select_column *
 mylite_select_plan_column_const(const struct mylite_select_plan *plan, size_t column_index,
                                 const struct mylite_select_table **out_table);
+size_t mylite_select_count_column_parts_using_matches(const struct mylite_select_plan *plan,
+                                                      const char *column_name,
+                                                      struct mylite_select_table_range range,
+                                                      size_t *match_index);
+int mylite_select_resolve_column_in_table(const struct mylite_select_plan *plan,
+                                          const struct mylite_select_table *table,
+                                          const char *column_name, size_t *out_index);
+int mylite_select_set_ambiguous_column_error(mylite_db *database, const char *column_name,
+                                             const char *clause_context);
+bool mylite_select_column_index_is_using_column_in_range(const struct mylite_select_plan *plan,
+                                                         size_t column_index,
+                                                         struct mylite_select_table_range range);
 int mylite_select_bind_limit_clause(const struct mylite_sql_ast_node *limit_clause,
                                     struct mylite_select_plan *plan);
 bool mylite_select_limit_row_is_kept(const struct mylite_select_limit *limit,

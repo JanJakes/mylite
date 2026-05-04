@@ -297,7 +297,7 @@ only the core object model and transitional shared helpers listed here:
   `src/runtime/mylite_connection`.
 - [x] Move `SET NAMES` execution into `src/runtime/mylite_connection`.
 - [x] Move `SET CHARACTER SET` execution into `src/runtime/mylite_connection`.
-- [ ] Move connection charset AST copy/prepare helpers into the connection
+- [x] Move connection charset AST copy/prepare helpers into the connection
   module or a small connection-statement module.
 - [x] Split `SHOW` and `information_schema` dynamic result builders.
 - [x] Create `src/runtime/mylite_show.{h,c}` and wire it into CMake.

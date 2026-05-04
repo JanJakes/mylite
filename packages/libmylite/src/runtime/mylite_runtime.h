@@ -3,6 +3,7 @@
 
 #include <mylite/mylite.h>
 
+#include "mylite_connection_statement_types.h"
 #include "mylite_dml_types.h"
 #include "mylite_expression.h"
 #include "mylite_field_descriptor.h"
@@ -129,6 +130,7 @@ struct mylite_stmt {
     bool has_statement_timestamp;
     struct mylite_statement_timestamp statement_timestamp;
     struct mylite_schema_options options;
+    struct mylite_connection_charset_plan connection_charset;
     struct mylite_create_table_plan create_table;
     struct mylite_drop_table_plan drop_table;
     struct mylite_rename_table_plan rename_table;
@@ -160,11 +162,8 @@ struct mylite_stmt {
     size_t select_constant_value_count;
     bool select_constant_predicate_evaluated;
     bool select_constant_predicate_matches;
-    char *character_set_name;
-    char *collation_name;
     int64_t affected_rows;
     uint64_t matched_rows;
-    bool use_default_connection_charset;
 };
 
 #endif

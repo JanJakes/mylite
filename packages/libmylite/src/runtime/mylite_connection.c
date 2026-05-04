@@ -192,27 +192,6 @@ int mylite_connection_set_character_set_state(mylite_db *database, const char *c
     return MYLITE_OK;
 }
 
-int mylite_connection_execute_set_names_statement(mylite_stmt *stmt)
-{
-    if (stmt->use_default_connection_charset) {
-        return mylite_connection_set_default_state(stmt->database);
-    }
-    return mylite_connection_set_names_state(stmt->database,
-                                             (struct mylite_connection_names_state){
-                                                 .character_set_name = stmt->character_set_name,
-                                                 .collation_name = stmt->collation_name,
-                                             });
-}
-
-int mylite_connection_execute_set_character_set_statement(mylite_stmt *stmt)
-{
-    if (stmt->use_default_connection_charset) {
-        return mylite_connection_set_character_set_state(stmt->database,
-                                                         mylite_charset_default_name());
-    }
-    return mylite_connection_set_character_set_state(stmt->database, stmt->character_set_name);
-}
-
 static int open_sqlite_database(const char *filename, int flags, const char *vfs_name,
                                 mylite_db **out_db)
 {

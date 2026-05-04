@@ -6,6 +6,7 @@
 #include "mylite_sqlite_translator.h"
 #include "runtime/mylite_catalog.h"
 #include "runtime/mylite_connection.h"
+#include "runtime/mylite_connection_statement.h"
 #include "runtime/mylite_diagnostics.h"
 #include "runtime/mylite_dml.h"
 #include "runtime/mylite_dml_types.h"
@@ -55,9 +56,6 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
 static int prepare_schema_lifecycle_statement(mylite_db *database,
                                               const struct mylite_sql_ast_node *statement,
                                               mylite_stmt **out_stmt);
-static int prepare_connection_charset_statement(mylite_db *database,
-                                                const struct mylite_sql_ast_node *statement,
-                                                mylite_stmt **out_stmt);
 static int prepare_create_table_statement(mylite_db *database,
                                           const struct mylite_sql_ast_node *statement,
                                           mylite_stmt **out_stmt);
@@ -2760,8 +2758,6 @@ static int copy_statement_schema_name(const struct mylite_sql_ast_node *statemen
                                       enum mylite_stmt_kind kind, char **out_schema_name);
 static int copy_schema_options(const struct mylite_sql_ast_node *statement,
                                enum mylite_stmt_kind kind, struct mylite_schema_options *options);
-static int copy_connection_charset_statement(const struct mylite_sql_ast_node *statement,
-                                             mylite_stmt *stmt);
 static int copy_create_table_statement(const struct mylite_sql_ast_node *statement,
                                        mylite_stmt *stmt);
 static int copy_drop_table_statement(const struct mylite_sql_ast_node *statement,
@@ -3230,7 +3226,7 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
             return prepare_schema_lifecycle_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_SET_NAMES_STATEMENT:
         case MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT:
-            return prepare_connection_charset_statement(database, statement, out_stmt);
+            return mylite_connection_prepare_charset_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
             return prepare_create_table_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
@@ -3531,159 +3527,6 @@ static int prepare_schema_lifecycle_statement(mylite_db *database,
     case MYLITE_SQL_AST_IF_NOT_EXISTS:
     case MYLITE_SQL_AST_SCHEMA_OPTION_LIST:
     case MYLITE_SQL_AST_SCHEMA_OPTION:
-    case MYLITE_SQL_AST_COLUMN_DEFINITION_LIST:
-    case MYLITE_SQL_AST_COLUMN_DEFINITION:
-    case MYLITE_SQL_AST_COLUMN_TYPE:
-    case MYLITE_SQL_AST_COLUMN_TYPE_ATTRIBUTE_LIST:
-    case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST:
-    case MYLITE_SQL_AST_COLUMN_ATTRIBUTE:
-    case MYLITE_SQL_AST_PRIMARY_KEY_CONSTRAINT:
-    case MYLITE_SQL_AST_KEY_PART_LIST:
-    case MYLITE_SQL_AST_KEY_PART:
-    case MYLITE_SQL_AST_INDEX_TYPE:
-    case MYLITE_SQL_AST_INDEX_OPTION_LIST:
-    case MYLITE_SQL_AST_INDEX_OPTION:
-    case MYLITE_SQL_AST_SECONDARY_INDEX:
-    case MYLITE_SQL_AST_UNIQUE_INDEX:
-    case MYLITE_SQL_AST_TABLE_OPTION_LIST:
-    case MYLITE_SQL_AST_TABLE_OPTION:
-    case MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST:
-    case MYLITE_SQL_AST_DDL_TABLE_OPTION:
-    case MYLITE_SQL_AST_TABLE_NAME_LIST:
-    case MYLITE_SQL_AST_INSERT_COLUMN_LIST:
-    case MYLITE_SQL_AST_INSERT_ROW:
-    case MYLITE_SQL_AST_INSERT_ROW_LIST:
-    case MYLITE_SQL_AST_INSERT_VALUE_LIST:
-    case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT_LIST:
-    case MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT:
-    case MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT:
-    case MYLITE_SQL_AST_REPLACE_SET_STATEMENT:
-    case MYLITE_SQL_AST_UPDATE_TARGET:
-    case MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST:
-    case MYLITE_SQL_AST_UPDATE_ASSIGNMENT:
-    case MYLITE_SQL_AST_UPDATE_LIMIT_CLAUSE:
-    case MYLITE_SQL_AST_DELETE_STATEMENT:
-    case MYLITE_SQL_AST_DELETE_TARGET:
-    case MYLITE_SQL_AST_DELETE_LIMIT_CLAUSE:
-    case MYLITE_SQL_AST_START_TRANSACTION_STATEMENT:
-    case MYLITE_SQL_AST_BEGIN_TRANSACTION_STATEMENT:
-    case MYLITE_SQL_AST_TRANSACTION_CHARACTERISTIC_LIST:
-    case MYLITE_SQL_AST_TRANSACTION_CHARACTERISTIC:
-    case MYLITE_SQL_AST_COMMIT_STATEMENT:
-    case MYLITE_SQL_AST_ROLLBACK_STATEMENT:
-    case MYLITE_SQL_AST_TRANSACTION_COMPLETION:
-    case MYLITE_SQL_AST_SAVEPOINT_STATEMENT:
-    case MYLITE_SQL_AST_ROLLBACK_TO_SAVEPOINT_STATEMENT:
-    case MYLITE_SQL_AST_RELEASE_SAVEPOINT_STATEMENT:
-        return MYLITE_UNSUPPORTED;
-    }
-
-    return prepare_custom_statement(database, kind, statement, out_stmt);
-}
-
-static int prepare_connection_charset_statement(mylite_db *database,
-                                                const struct mylite_sql_ast_node *statement,
-                                                mylite_stmt **out_stmt)
-{
-    enum mylite_stmt_kind kind = MYLITE_STMT_SQLITE;
-
-    switch (statement->kind) {
-    case MYLITE_SQL_AST_SET_NAMES_STATEMENT:
-        kind = MYLITE_STMT_SET_NAMES;
-        break;
-    case MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT:
-        kind = MYLITE_STMT_SET_CHARACTER_SET;
-        break;
-    case MYLITE_SQL_AST_SCRIPT:
-    case MYLITE_SQL_AST_SELECT_STATEMENT:
-    case MYLITE_SQL_AST_USE_STATEMENT:
-    case MYLITE_SQL_AST_SELECT_LIST:
-    case MYLITE_SQL_AST_SELECT_ITEM:
-    case MYLITE_SQL_AST_FROM_DUAL:
-    case MYLITE_SQL_AST_FROM_TABLE:
-    case MYLITE_SQL_AST_FROM_TABLE_REFERENCES:
-    case MYLITE_SQL_AST_TABLE_REFERENCE_LIST:
-    case MYLITE_SQL_AST_JOIN_EXPRESSION:
-    case MYLITE_SQL_AST_JOIN_CONDITION:
-    case MYLITE_SQL_AST_USING_COLUMN_LIST:
-    case MYLITE_SQL_AST_USING_COLUMN:
-    case MYLITE_SQL_AST_TERNARY_EXPRESSION:
-    case MYLITE_SQL_AST_EXPRESSION_LIST:
-    case MYLITE_SQL_AST_FUNCTION_CALL:
-    case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
-    case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
-    case MYLITE_SQL_AST_CASE_EXPRESSION:
-    case MYLITE_SQL_AST_CASE_WHEN_LIST:
-    case MYLITE_SQL_AST_CASE_WHEN:
-    case MYLITE_SQL_AST_CAST_EXPRESSION:
-    case MYLITE_SQL_AST_GROUP_BY_CLAUSE:
-    case MYLITE_SQL_AST_GROUP_ITEM_LIST:
-    case MYLITE_SQL_AST_GROUP_ITEM:
-    case MYLITE_SQL_AST_HAVING_CLAUSE:
-    case MYLITE_SQL_AST_AGGREGATE_CALL:
-    case MYLITE_SQL_AST_WHERE_CLAUSE:
-    case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
-    case MYLITE_SQL_AST_ORDER_ITEM_LIST:
-    case MYLITE_SQL_AST_ORDER_ITEM:
-    case MYLITE_SQL_AST_LIMIT_CLAUSE:
-    case MYLITE_SQL_AST_LIMIT_BOUND:
-    case MYLITE_SQL_AST_IDENTIFIER:
-    case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
-    case MYLITE_SQL_AST_WILDCARD:
-    case MYLITE_SQL_AST_LITERAL:
-    case MYLITE_SQL_AST_UNARY_EXPRESSION:
-    case MYLITE_SQL_AST_BINARY_EXPRESSION:
-    case MYLITE_SQL_AST_SUBQUERY_EXPRESSION:
-    case MYLITE_SQL_AST_EXISTS_EXPRESSION:
-    case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
-    case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
-    case MYLITE_SQL_AST_QUERY_EXPRESSION:
-    case MYLITE_SQL_AST_UNION_EXPRESSION:
-    case MYLITE_SQL_AST_QUERY_PRIMARY:
-    case MYLITE_SQL_AST_INSERT_DUPLICATE_UPDATE_CLAUSE:
-    case MYLITE_SQL_AST_INSERT_UPDATE_ASSIGNMENT_LIST:
-    case MYLITE_SQL_AST_INSERT_UPDATE_ASSIGNMENT:
-    case MYLITE_SQL_AST_INSERT_ROW_ALIAS:
-    case MYLITE_SQL_AST_INSERT_ALIAS_COLUMN_LIST:
-    case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
-    case MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT:
-    case MYLITE_SQL_AST_ALTER_SCHEMA_STATEMENT:
-    case MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT:
-    case MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT:
-    case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
-    case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
-    case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
-    case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
-    case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
-    case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:
-    case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
-    case MYLITE_SQL_AST_SHOW_CHARACTER_SET_STATEMENT:
-    case MYLITE_SQL_AST_SHOW_COLLATION_STATEMENT:
-    case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
-    case MYLITE_SQL_AST_SHOW_TABLE_STATUS_STATEMENT:
-    case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
-    case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
-    case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:
-    case MYLITE_SQL_AST_SHOW_CREATE_SCHEMA_STATEMENT:
-    case MYLITE_SQL_AST_SHOW_DIAGNOSTICS_STATEMENT:
-    case MYLITE_SQL_AST_SHOW_DIAGNOSTICS_COUNT_STATEMENT:
-    case MYLITE_SQL_AST_DESCRIBE_TABLE_STATEMENT:
-    case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
-    case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
-    case MYLITE_SQL_AST_ALTER_TABLE_STATEMENT:
-    case MYLITE_SQL_AST_ALTER_TABLE_ITEM_LIST:
-    case MYLITE_SQL_AST_ALTER_TABLE_ACTION:
-    case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION:
-    case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
-    case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
-    case MYLITE_SQL_AST_INSERT_VALUES_STATEMENT:
-    case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
-    case MYLITE_SQL_AST_UPDATE_STATEMENT:
-    case MYLITE_SQL_AST_IF_EXISTS:
-    case MYLITE_SQL_AST_IF_NOT_EXISTS:
-    case MYLITE_SQL_AST_SCHEMA_OPTION_LIST:
-    case MYLITE_SQL_AST_SCHEMA_OPTION:
-    case MYLITE_SQL_AST_DEFAULT:
     case MYLITE_SQL_AST_COLUMN_DEFINITION_LIST:
     case MYLITE_SQL_AST_COLUMN_DEFINITION:
     case MYLITE_SQL_AST_COLUMN_TYPE:
@@ -15550,7 +15393,7 @@ static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind k
         break;
     case MYLITE_STMT_SET_NAMES:
     case MYLITE_STMT_SET_CHARACTER_SET:
-        status = copy_connection_charset_statement(statement, stmt);
+        status = MYLITE_UNSUPPORTED;
         break;
     case MYLITE_STMT_CREATE_TABLE:
         status = copy_create_table_statement(statement, stmt);
@@ -32088,31 +31931,6 @@ static int copy_schema_options(const struct mylite_sql_ast_node *statement,
         status = apply_schema_option(option, options);
         if (status != MYLITE_OK) {
             return status;
-        }
-    }
-    return MYLITE_OK;
-}
-
-static int copy_connection_charset_statement(const struct mylite_sql_ast_node *statement,
-                                             mylite_stmt *stmt)
-{
-    const struct mylite_sql_ast_node *character_set = mylite_ast_child_at(statement, 0U);
-    const struct mylite_sql_ast_node *collation = mylite_ast_child_at(statement, 1U);
-
-    if (character_set != NULL && character_set->kind == MYLITE_SQL_AST_DEFAULT) {
-        stmt->use_default_connection_charset = true;
-        return MYLITE_OK;
-    }
-
-    stmt->character_set_name = mylite_copy_schema_text_span(character_set);
-    if (stmt->character_set_name == NULL) {
-        return MYLITE_NOMEM;
-    }
-
-    if (collation != NULL) {
-        stmt->collation_name = mylite_copy_schema_text_span(collation);
-        if (stmt->collation_name == NULL) {
-            return MYLITE_NOMEM;
         }
     }
     return MYLITE_OK;

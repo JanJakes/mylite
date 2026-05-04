@@ -17,8 +17,26 @@ struct mylite_show_variables_query;
 
 int mylite_show_engines_sql(mylite_db *database, char **out_sql);
 int mylite_show_information_schema_engines_sql(mylite_db *database, char **out_sql);
+int mylite_show_prepare_character_set_statement(mylite_db *database,
+                                                const struct mylite_sql_ast_node *statement,
+                                                mylite_stmt **out_stmt);
+int mylite_show_prepare_collation_statement(mylite_db *database,
+                                            const struct mylite_sql_ast_node *statement,
+                                            mylite_stmt **out_stmt);
+int mylite_show_prepare_diagnostics_statement(mylite_db *database,
+                                              const struct mylite_sql_ast_node *statement,
+                                              mylite_stmt **out_stmt);
+int mylite_show_prepare_diagnostics_count_statement(mylite_db *database,
+                                                    const struct mylite_sql_ast_node *statement,
+                                                    mylite_stmt **out_stmt);
 int mylite_show_prepare_engines_statement(mylite_db *database, mylite_stmt **out_stmt);
 int mylite_show_prepare_schemas_statement(mylite_db *database, mylite_stmt **out_stmt);
+int mylite_show_prepare_status_statement(mylite_db *database,
+                                         const struct mylite_sql_ast_node *statement,
+                                         mylite_stmt **out_stmt);
+int mylite_show_prepare_variables_statement(mylite_db *database,
+                                            const struct mylite_sql_ast_node *statement,
+                                            mylite_stmt **out_stmt);
 int mylite_show_character_set_sql(mylite_db *database,
                                   const struct mylite_show_character_set_query *query,
                                   char **out_sql);
@@ -42,6 +60,7 @@ char *mylite_show_table_status_sql(mylite_db *database,
                                    const struct mylite_show_table_status_query *query);
 int mylite_show_variables_sql(mylite_db *database, const struct mylite_show_variables_query *query,
                               char **out_sql);
+char *mylite_show_copy_like_pattern_span(const struct mylite_sql_ast_node *node);
 const char *mylite_show_schemas_sql(void);
 int mylite_show_attach_engines_result_metadata(mylite_db *database, mylite_stmt *stmt);
 

@@ -304,19 +304,19 @@ only the core object model and transitional shared helpers listed here:
 - [x] Move `SHOW DATABASES`/`SHOW SCHEMAS` SQL builders into `mylite_show`.
 - [x] Move `SHOW DATABASES` prepare code into `mylite_show`.
 - [x] Move `SHOW VARIABLES` builder into `mylite_show`.
-- [ ] Move `SHOW VARIABLES` prepare code into `mylite_show`.
+- [x] Move `SHOW VARIABLES` prepare code into `mylite_show`.
 - [x] Move `SHOW STATUS` builder into `mylite_show`.
-- [ ] Move `SHOW STATUS` prepare code into `mylite_show`.
+- [x] Move `SHOW STATUS` prepare code into `mylite_show`.
 - [x] Move `SHOW ENGINES` prepare/build code and metadata into `mylite_show`.
 - [x] Move `SHOW ENGINES` storage-engine SQL builders and result metadata into
   `mylite_show`.
 - [x] Move `SHOW CHARACTER SET` and `information_schema.CHARACTER_SETS`
   builders into `mylite_show`.
-- [ ] Move `SHOW CHARACTER SET` prepare code into `mylite_show`.
+- [x] Move `SHOW CHARACTER SET` prepare code into `mylite_show`.
 - [x] Move `SHOW COLLATION`, `information_schema.COLLATIONS`, and
   `information_schema.COLLATION_CHARACTER_SET_APPLICABILITY` builders into
   `mylite_show`.
-- [ ] Move `SHOW COLLATION` prepare code into `mylite_show`.
+- [x] Move `SHOW COLLATION` prepare code into `mylite_show`.
 - [x] Move `information_schema.KEYWORDS` builder into `mylite_show`.
 - [x] Move `SHOW TABLES` builder into `mylite_show`.
 - [ ] Move `SHOW TABLES` prepare code into `mylite_show`.

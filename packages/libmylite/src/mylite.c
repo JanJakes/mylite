@@ -100,22 +100,6 @@ static int prepare_delete_statement(mylite_db *database,
 static int prepare_transaction_statement(mylite_db *database,
                                          const struct mylite_sql_ast_node *statement,
                                          mylite_stmt **out_stmt);
-static int prepare_show_variables_statement(mylite_db *database,
-                                            const struct mylite_sql_ast_node *statement,
-                                            mylite_stmt **out_stmt);
-static char *copy_show_variables_like_pattern(const struct mylite_sql_ast_node *statement);
-static int prepare_show_status_statement(mylite_db *database,
-                                         const struct mylite_sql_ast_node *statement,
-                                         mylite_stmt **out_stmt);
-static char *copy_show_status_like_pattern(const struct mylite_sql_ast_node *statement);
-static int prepare_show_character_set_statement(mylite_db *database,
-                                                const struct mylite_sql_ast_node *statement,
-                                                mylite_stmt **out_stmt);
-static char *copy_show_character_set_like_pattern(const struct mylite_sql_ast_node *statement);
-static int prepare_show_collation_statement(mylite_db *database,
-                                            const struct mylite_sql_ast_node *statement,
-                                            mylite_stmt **out_stmt);
-static char *copy_show_collation_like_pattern(const struct mylite_sql_ast_node *statement);
 static int prepare_show_tables_statement(mylite_db *database,
                                          const struct mylite_sql_ast_node *statement,
                                          mylite_stmt **out_stmt);
@@ -175,14 +159,6 @@ static int prepare_show_create_table_statement(mylite_db *database,
 static int prepare_show_create_schema_statement(mylite_db *database,
                                                 const struct mylite_sql_ast_node *statement,
                                                 mylite_stmt **out_stmt);
-static int prepare_show_diagnostics_statement(mylite_db *database,
-                                              const struct mylite_sql_ast_node *statement,
-                                              mylite_stmt **out_stmt);
-static int prepare_show_diagnostics_count_statement(mylite_db *database,
-                                                    const struct mylite_sql_ast_node *statement,
-                                                    mylite_stmt **out_stmt);
-static bool show_diagnostics_query_from_statement(const struct mylite_sql_ast_node *statement,
-                                                  struct mylite_show_diagnostics_query *out_query);
 static int copy_show_create_table_target(mylite_db *database,
                                          const struct mylite_sql_ast_node *statement,
                                          struct mylite_show_create_table_target *out_target);
@@ -2887,8 +2863,6 @@ static char *copy_insert_duplicate_entry_value(const struct mylite_insert_unique
                                                const struct mylite_insert_bound_value *values);
 static int set_table_doesnt_exist_error(mylite_db *database, const char *schema_name,
                                         const char *table_name);
-static char *copy_show_like_pattern_span(const struct mylite_sql_ast_node *node);
-static bool decode_show_string_escape(char escaped, char *out_character);
 static void append_show_tables_glob_literal(sqlite3_str *glob, char character);
 static int copy_statement_schema_name(const struct mylite_sql_ast_node *statement,
                                       enum mylite_stmt_kind kind, char **out_schema_name);
@@ -3403,15 +3377,15 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
         case MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT:
             return mylite_show_prepare_schemas_statement(database, out_stmt);
         case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
-            return prepare_show_variables_statement(database, statement, out_stmt);
+            return mylite_show_prepare_variables_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:
-            return prepare_show_status_statement(database, statement, out_stmt);
+            return mylite_show_prepare_status_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
             return mylite_show_prepare_engines_statement(database, out_stmt);
         case MYLITE_SQL_AST_SHOW_CHARACTER_SET_STATEMENT:
-            return prepare_show_character_set_statement(database, statement, out_stmt);
+            return mylite_show_prepare_character_set_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_SHOW_COLLATION_STATEMENT:
-            return prepare_show_collation_statement(database, statement, out_stmt);
+            return mylite_show_prepare_collation_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
             return prepare_show_tables_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_SHOW_TABLE_STATUS_STATEMENT:
@@ -3425,9 +3399,9 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
         case MYLITE_SQL_AST_SHOW_CREATE_SCHEMA_STATEMENT:
             return prepare_show_create_schema_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_SHOW_DIAGNOSTICS_STATEMENT:
-            return prepare_show_diagnostics_statement(database, statement, out_stmt);
+            return mylite_show_prepare_diagnostics_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_SHOW_DIAGNOSTICS_COUNT_STATEMENT:
-            return prepare_show_diagnostics_count_statement(database, statement, out_stmt);
+            return mylite_show_prepare_diagnostics_count_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_DESCRIBE_TABLE_STATEMENT:
             return prepare_describe_table_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_QUERY_EXPRESSION:
@@ -4177,275 +4151,6 @@ static int prepare_transaction_statement(mylite_db *database,
     return prepare_custom_statement(database, kind, statement, out_stmt);
 }
 
-static int prepare_show_diagnostics_statement(mylite_db *database,
-                                              const struct mylite_sql_ast_node *statement,
-                                              mylite_stmt **out_stmt)
-{
-    struct mylite_show_diagnostics_query query = {0};
-    char *sqlite_sql = NULL;
-    int status = MYLITE_OK;
-
-    if (!show_diagnostics_query_from_statement(statement, &query)) {
-        return MYLITE_UNSUPPORTED;
-    }
-
-    sqlite_sql = mylite_show_diagnostics_sql(database, &query);
-    if (sqlite_sql == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
-    if (status == MYLITE_OK) {
-        (*out_stmt)->preserve_prepare_warnings = true;
-    }
-    sqlite3_free(sqlite_sql);
-    return status;
-}
-
-static int prepare_show_diagnostics_count_statement(mylite_db *database,
-                                                    const struct mylite_sql_ast_node *statement,
-                                                    mylite_stmt **out_stmt)
-{
-    char *sqlite_sql =
-        mylite_show_diagnostics_count_sql(database, statement->show_diagnostics_kind);
-    int status = MYLITE_OK;
-
-    if (sqlite_sql == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
-    if (status == MYLITE_OK) {
-        (*out_stmt)->preserve_prepare_warnings = true;
-    }
-    sqlite3_free(sqlite_sql);
-    return status;
-}
-
-static bool show_diagnostics_query_from_statement(const struct mylite_sql_ast_node *statement,
-                                                  struct mylite_show_diagnostics_query *out_query)
-{
-    const struct mylite_sql_ast_node *limit = mylite_ast_child_at(statement, 0U);
-
-    *out_query = (struct mylite_show_diagnostics_query){
-        .kind = statement->show_diagnostics_kind,
-        .offset = 0U,
-        .row_count = UINT64_MAX,
-        .has_limit = false,
-    };
-
-    if (limit == NULL) {
-        return true;
-    }
-    if (limit->kind != MYLITE_SQL_AST_LIMIT_CLAUSE ||
-        mylite_sql_ast_node_child_count(limit) != 2U) {
-        return false;
-    }
-    out_query->offset = mylite_ast_child_at(limit, 0U)->limit_bound_value;
-    out_query->row_count = mylite_ast_child_at(limit, 1U)->limit_bound_value;
-    out_query->has_limit = true;
-    return true;
-}
-
-static int prepare_show_variables_statement(mylite_db *database,
-                                            const struct mylite_sql_ast_node *statement,
-                                            mylite_stmt **out_stmt)
-{
-    char *like_pattern = NULL;
-    char *sqlite_sql = NULL;
-    int status = MYLITE_OK;
-
-    if (mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
-        (void)mylite_diagnostics_set_error_message(database,
-                                                   "SHOW VARIABLES WHERE is not supported");
-        return MYLITE_UNSUPPORTED;
-    }
-
-    like_pattern = copy_show_variables_like_pattern(statement);
-    if (mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_LITERAL) != NULL &&
-        like_pattern == NULL) {
-        status = MYLITE_NOMEM;
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_show_variables_sql(database,
-                                           &(const struct mylite_show_variables_query){
-                                               .scope = statement->show_variables_scope,
-                                               .like_pattern = like_pattern,
-                                           },
-                                           &sqlite_sql);
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
-    }
-
-    if (status == MYLITE_NOMEM) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-    }
-    free(like_pattern);
-    sqlite3_free(sqlite_sql);
-    return status;
-}
-
-static char *copy_show_variables_like_pattern(const struct mylite_sql_ast_node *statement)
-{
-    const struct mylite_sql_ast_node *literal =
-        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_LITERAL);
-
-    if (literal == NULL) {
-        return NULL;
-    }
-    return copy_show_like_pattern_span(literal);
-}
-
-static int prepare_show_status_statement(mylite_db *database,
-                                         const struct mylite_sql_ast_node *statement,
-                                         mylite_stmt **out_stmt)
-{
-    char *like_pattern = NULL;
-    char *sqlite_sql = NULL;
-    int status = MYLITE_OK;
-
-    if (mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "SHOW STATUS WHERE is not supported");
-        return MYLITE_UNSUPPORTED;
-    }
-
-    like_pattern = copy_show_status_like_pattern(statement);
-    if (mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_LITERAL) != NULL &&
-        like_pattern == NULL) {
-        status = MYLITE_NOMEM;
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_show_status_sql(database,
-                                        &(const struct mylite_show_status_query){
-                                            .scope = statement->show_status_scope,
-                                            .like_pattern = like_pattern,
-                                        },
-                                        &sqlite_sql);
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
-    }
-
-    if (status == MYLITE_NOMEM) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-    }
-    free(like_pattern);
-    sqlite3_free(sqlite_sql);
-    return status;
-}
-
-static char *copy_show_status_like_pattern(const struct mylite_sql_ast_node *statement)
-{
-    const struct mylite_sql_ast_node *literal =
-        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_LITERAL);
-
-    if (literal == NULL) {
-        return NULL;
-    }
-    return copy_show_like_pattern_span(literal);
-}
-
-static int prepare_show_character_set_statement(mylite_db *database,
-                                                const struct mylite_sql_ast_node *statement,
-                                                mylite_stmt **out_stmt)
-{
-    char *like_pattern = NULL;
-    char *sqlite_sql = NULL;
-    int status = MYLITE_OK;
-
-    if (mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
-        (void)mylite_diagnostics_set_error_message(database,
-                                                   "SHOW CHARACTER SET WHERE is not supported");
-        return MYLITE_UNSUPPORTED;
-    }
-
-    like_pattern = copy_show_character_set_like_pattern(statement);
-    if (mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_LITERAL) != NULL &&
-        like_pattern == NULL) {
-        status = MYLITE_NOMEM;
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_show_character_set_sql(database,
-                                               &(const struct mylite_show_character_set_query){
-                                                   .like_pattern = like_pattern,
-                                               },
-                                               &sqlite_sql);
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
-    }
-
-    if (status == MYLITE_NOMEM) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-    }
-    free(like_pattern);
-    sqlite3_free(sqlite_sql);
-    return status;
-}
-
-static char *copy_show_character_set_like_pattern(const struct mylite_sql_ast_node *statement)
-{
-    const struct mylite_sql_ast_node *literal =
-        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_LITERAL);
-
-    if (literal == NULL) {
-        return NULL;
-    }
-    return copy_show_like_pattern_span(literal);
-}
-
-static int prepare_show_collation_statement(mylite_db *database,
-                                            const struct mylite_sql_ast_node *statement,
-                                            mylite_stmt **out_stmt)
-{
-    char *like_pattern = NULL;
-    char *sqlite_sql = NULL;
-    int status = MYLITE_OK;
-
-    if (mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
-        (void)mylite_diagnostics_set_error_message(database,
-                                                   "SHOW COLLATION WHERE is not supported");
-        return MYLITE_UNSUPPORTED;
-    }
-
-    like_pattern = copy_show_collation_like_pattern(statement);
-    if (mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_LITERAL) != NULL &&
-        like_pattern == NULL) {
-        status = MYLITE_NOMEM;
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_show_collation_sql(database,
-                                           &(const struct mylite_show_collation_query){
-                                               .like_pattern = like_pattern,
-                                           },
-                                           &sqlite_sql);
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
-    }
-
-    if (status == MYLITE_NOMEM) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-    }
-    free(like_pattern);
-    sqlite3_free(sqlite_sql);
-    return status;
-}
-
-static char *copy_show_collation_like_pattern(const struct mylite_sql_ast_node *statement)
-{
-    const struct mylite_sql_ast_node *literal =
-        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_LITERAL);
-
-    if (literal == NULL) {
-        return NULL;
-    }
-    return copy_show_like_pattern_span(literal);
-}
-
 static int prepare_show_tables_statement(mylite_db *database,
                                          const struct mylite_sql_ast_node *statement,
                                          mylite_stmt **out_stmt)
@@ -4590,7 +4295,7 @@ static char *copy_show_tables_like_pattern(const struct mylite_sql_ast_node *sta
     if (literal == NULL) {
         return NULL;
     }
-    return copy_show_like_pattern_span(literal);
+    return mylite_show_copy_like_pattern_span(literal);
 }
 
 static char *copy_show_tables_display_pattern(const char *like_pattern, bool uppercase_pattern)
@@ -4947,7 +4652,7 @@ static char *copy_show_columns_like_pattern(const struct mylite_sql_ast_node *st
     if (literal == NULL) {
         return NULL;
     }
-    return copy_show_like_pattern_span(literal);
+    return mylite_show_copy_like_pattern_span(literal);
 }
 
 static void show_columns_target_deinit(struct mylite_show_columns_target *target)
@@ -5040,7 +4745,7 @@ static char *copy_describe_column_pattern(const struct mylite_sql_ast_node *stat
         return NULL;
     }
     if (filter->kind == MYLITE_SQL_AST_LITERAL) {
-        return copy_show_like_pattern_span(filter);
+        return mylite_show_copy_like_pattern_span(filter);
     }
     return mylite_copy_identifier_span(filter);
 }
@@ -5927,84 +5632,6 @@ static void show_create_schema_info_deinit(struct mylite_show_create_schema_info
     free(info->collation);
     free(info->encryption);
     *info = (struct mylite_show_create_schema_info){0};
-}
-
-static char *copy_show_like_pattern_span(const struct mylite_sql_ast_node *node)
-{
-    const char *text = node == NULL ? NULL : node->span.text;
-    size_t length = node == NULL ? 0U : node->span.length;
-    size_t start = 0U;
-    size_t end = length;
-    char *copy = NULL;
-    size_t output = 0U;
-
-    if (text == NULL) {
-        return NULL;
-    }
-    if (length >= 2U && (text[0] == '\'' || text[0] == '"')) {
-        start = 1U;
-        end = length - 1U;
-    } else if (length >= 3U && (text[0] == 'N' || text[0] == 'n') &&
-               (text[1] == '\'' || text[1] == '"')) {
-        start = 2U;
-        end = length - 1U;
-    }
-
-    copy = malloc(end >= start ? end - start + 1U : 1U);
-    if (copy == NULL) {
-        return NULL;
-    }
-
-    for (size_t index = start; index < end; ++index) {
-        if (text[index] == '\\' && index + 1U < end) {
-            char escaped = '\0';
-
-            if (decode_show_string_escape(text[index + 1U], &escaped)) {
-                copy[output++] = escaped;
-                ++index;
-            } else {
-                copy[output++] = text[index];
-            }
-        } else if ((text[index] == '\'' || text[index] == '"') && index + 1U < end &&
-                   text[index + 1U] == text[index]) {
-            copy[output++] = text[index++];
-        } else {
-            copy[output++] = text[index];
-        }
-    }
-    copy[output] = '\0';
-    return copy;
-}
-
-static bool decode_show_string_escape(char escaped, char *out_character)
-{
-    switch (escaped) {
-    case '\'':
-    case '"':
-    case '\\':
-        *out_character = escaped;
-        return true;
-    case 'b':
-        *out_character = '\b';
-        return true;
-    case 'n':
-        *out_character = '\n';
-        return true;
-    case 'r':
-        *out_character = '\r';
-        return true;
-    case 't':
-        *out_character = '\t';
-        return true;
-    case '0':
-        *out_character = '\0';
-        return true;
-    case 'Z':
-        *out_character = '\x1a';
-        return true;
-    default:
-        return false;
-    }
 }
 
 static void append_show_tables_glob_literal(sqlite3_str *glob, char character)

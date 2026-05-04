@@ -2118,16 +2118,6 @@ static int append_duplicate_index_warning(mylite_db *database, const char *index
 static int validate_insert_column_list(mylite_stmt *stmt, const struct mylite_insert_table *table,
                                        size_t **out_column_indexes);
 static int validate_insert_row_alias(mylite_stmt *stmt, size_t source_column_count);
-static int
-validate_insert_update_assignments(mylite_stmt *stmt, const struct mylite_insert_table *table,
-                                   const char *schema_name, const size_t *source_column_indexes,
-                                   size_t source_column_count, size_t **out_column_indexes);
-static int validate_insert_update_assignment_value(mylite_stmt *stmt,
-                                                   const struct mylite_insert_table *table,
-                                                   const char *schema_name,
-                                                   const size_t *source_column_indexes,
-                                                   size_t source_column_count,
-                                                   const struct mylite_insert_value *value);
 static int execute_insert_values_transaction(mylite_stmt *stmt, const char *schema_name,
                                              const struct mylite_insert_table *table,
                                              const size_t *column_indexes,
@@ -16275,8 +16265,9 @@ static int execute_insert_values_statement(mylite_stmt *stmt)
         if (status != MYLITE_OK) {
             goto cleanup;
         }
-        status = validate_insert_update_assignments(stmt, &table, schema_name, column_indexes,
-                                                    source_column_count, &update_column_indexes);
+        status = mylite_dml_validate_insert_update_assignments(
+            stmt->database, &stmt->insert_values, &stmt->insert_update, &table, schema_name,
+            column_indexes, source_column_count, &update_column_indexes);
     }
     if (status == MYLITE_OK) {
         status = execute_insert_values_transaction(stmt, schema_name, &table, column_indexes,
@@ -16318,8 +16309,9 @@ static int execute_insert_set_statement(mylite_stmt *stmt)
         status = validate_insert_row_alias(stmt, column_index_count);
     }
     if (status == MYLITE_OK) {
-        status = validate_insert_update_assignments(stmt, &table, schema_name, column_indexes,
-                                                    column_index_count, &update_column_indexes);
+        status = mylite_dml_validate_insert_update_assignments(
+            stmt->database, &stmt->insert_values, &stmt->insert_update, &table, schema_name,
+            column_indexes, column_index_count, &update_column_indexes);
     }
     if (status == MYLITE_OK) {
         status = execute_insert_set_transaction(stmt, schema_name, &table, column_indexes,
@@ -24264,114 +24256,6 @@ static int validate_insert_row_alias(mylite_stmt *stmt, size_t source_column_cou
         }
     }
     return MYLITE_OK;
-}
-
-static int
-validate_insert_update_assignments(mylite_stmt *stmt, const struct mylite_insert_table *table,
-                                   const char *schema_name, const size_t *source_column_indexes,
-                                   size_t source_column_count, size_t **out_column_indexes)
-{
-    size_t assignment_count = stmt->insert_update.assignment_count;
-    size_t *column_indexes = NULL;
-
-    *out_column_indexes = NULL;
-    if (!stmt->insert_update.has_clause) {
-        return MYLITE_OK;
-    }
-    if (assignment_count == 0U) {
-        return MYLITE_UNSUPPORTED;
-    }
-
-    column_indexes = calloc(assignment_count, sizeof(*column_indexes));
-    if (column_indexes == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    for (size_t index = 0U; index < assignment_count; ++index) {
-        const struct mylite_insert_update_assignment *assignment =
-            &stmt->insert_update.assignments[index];
-        size_t column_index = insert_table_column_reference_index(
-            table, schema_name, stmt->insert_values.table_name, &assignment->target);
-        int status = MYLITE_OK;
-
-        if (column_index == table->column_count) {
-            status = set_insert_update_unknown_column_error(stmt->database,
-                                                            assignment->target.column_name);
-            free(column_indexes);
-            return status;
-        }
-        column_indexes[index] = column_index;
-
-        status =
-            validate_insert_update_assignment_value(stmt, table, schema_name, source_column_indexes,
-                                                    source_column_count, &assignment->value);
-        if (status != MYLITE_OK) {
-            free(column_indexes);
-            return status;
-        }
-    }
-
-    *out_column_indexes = column_indexes;
-    return MYLITE_OK;
-}
-
-// NOLINTNEXTLINE(misc-no-recursion)
-static int validate_insert_update_assignment_value(mylite_stmt *stmt,
-                                                   const struct mylite_insert_table *table,
-                                                   const char *schema_name,
-                                                   const size_t *source_column_indexes,
-                                                   size_t source_column_count,
-                                                   const struct mylite_insert_value *value)
-{
-    if (value == NULL) {
-        return set_insert_unsupported_expression_error(stmt->database);
-    }
-
-    switch (value->kind) {
-    case MYLITE_INSERT_VALUE_DEFAULT:
-    case MYLITE_INSERT_VALUE_NULL:
-    case MYLITE_INSERT_VALUE_INTEGER:
-    case MYLITE_INSERT_VALUE_REAL:
-    case MYLITE_INSERT_VALUE_TEXT:
-    case MYLITE_INSERT_VALUE_CURRENT_TIMESTAMP:
-        return MYLITE_OK;
-    case MYLITE_INSERT_VALUE_COLUMN_REFERENCE: {
-        bool candidate = false;
-        size_t column_index = table->column_count;
-
-        (void)candidate;
-        return resolve_insert_update_column_reference(
-            stmt, table, schema_name, source_column_indexes, source_column_count,
-            &value->column_reference, &candidate, &column_index);
-    }
-    case MYLITE_INSERT_VALUE_VALUES_FUNCTION: {
-        size_t column_index = insert_table_column_index(table, value->column_reference.column_name);
-
-        if (column_index == table->column_count) {
-            return set_insert_update_unknown_column_error(stmt->database,
-                                                          value->column_reference.column_name);
-        }
-        return MYLITE_OK;
-    }
-    case MYLITE_INSERT_VALUE_UNARY_EXPRESSION:
-        return validate_insert_update_assignment_value(
-            stmt, table, schema_name, source_column_indexes, source_column_count, value->left);
-    case MYLITE_INSERT_VALUE_BINARY_EXPRESSION: {
-        int status = validate_insert_update_assignment_value(
-            stmt, table, schema_name, source_column_indexes, source_column_count, value->left);
-
-        if (status != MYLITE_OK) {
-            return status;
-        }
-        return validate_insert_update_assignment_value(
-            stmt, table, schema_name, source_column_indexes, source_column_count, value->right);
-    }
-    case MYLITE_INSERT_VALUE_UNSUPPORTED:
-        return set_insert_unsupported_expression_error(stmt->database);
-    }
-
-    return set_insert_unsupported_expression_error(stmt->database);
 }
 
 static int execute_insert_values_transaction(mylite_stmt *stmt, const char *schema_name,

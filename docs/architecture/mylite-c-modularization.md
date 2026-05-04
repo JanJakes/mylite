@@ -384,6 +384,7 @@ only the core object model and transitional shared helpers listed here:
 - [x] Move `ON DUPLICATE KEY UPDATE` row writeback helpers into `mylite_dml`.
 - [x] Move `ON DUPLICATE KEY UPDATE` `VALUES()` deprecation warnings into
   `mylite_dml`.
+- [x] Move `ON DUPLICATE KEY UPDATE` assignment validation into `mylite_dml`.
 - [x] Move insert auto-increment persistence behind a stmt-free transaction
   helper while keeping rollback hooks in transactions.
 - [ ] Move `INSERT ... ON DUPLICATE KEY UPDATE` execution into `mylite_dml`.

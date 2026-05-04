@@ -415,6 +415,8 @@ only the core object model and transitional shared helpers listed here:
   module without depending on `mylite_stmt`.
 - [x] Move UPDATE/DELETE row materialization into a focused DML companion module
   behind narrow session-function and WHERE-diagnostic callbacks.
+- [x] Move UPDATE row write transaction and assignment evaluation into a
+  focused DML execution module behind the same session-function callback.
 - [x] Move update/delete rowset scan and update write SQL builders into a
   focused DML companion module.
 - [x] Move update unique-check SQL and SQLite value binding into a focused DML

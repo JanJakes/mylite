@@ -39,11 +39,6 @@ static int evaluate_delete_order_key(mylite_db *database, const struct mylite_se
                                      const struct mylite_select_order_key *order_key,
                                      const struct mylite_dml_expression_callbacks *callbacks,
                                      struct mylite_expression_value *out_value);
-static int
-evaluate_dml_session_function(void *user_data, const struct mylite_sql_ast_node *function_call,
-                              const struct mylite_expression_eval_context *expression_context,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *out_value);
 static int set_where_predicate_eval_error(const struct mylite_dml_expression_callbacks *callbacks);
 
 int mylite_dml_materialize_update_rows(mylite_db *database, const struct mylite_update_plan *plan,
@@ -112,7 +107,7 @@ static int evaluate_update_row_matches(mylite_db *database, const struct mylite_
     struct mylite_expression_eval_context context = {
         .user_data = &user_context,
         .resolve_identifier = mylite_dml_resolve_update_expression_identifier,
-        .eval_session_function = evaluate_dml_session_function,
+        .eval_session_function = mylite_dml_evaluate_session_function,
     };
     struct mylite_expression_value value = {0};
     size_t warning_start = database->warnings.count;
@@ -187,7 +182,7 @@ static int evaluate_update_order_key(mylite_db *database, const struct mylite_se
     struct mylite_expression_eval_context context = {
         .user_data = &user_context,
         .resolve_identifier = mylite_dml_resolve_update_expression_identifier,
-        .eval_session_function = evaluate_dml_session_function,
+        .eval_session_function = mylite_dml_evaluate_session_function,
     };
     size_t warning_start = database->warnings.count;
     int status = mylite_expression_eval_with_context(order_key->expression, &context,
@@ -269,7 +264,7 @@ static int evaluate_delete_row_matches(mylite_db *database, const struct mylite_
     struct mylite_expression_eval_context context = {
         .user_data = &user_context,
         .resolve_identifier = mylite_dml_resolve_update_expression_identifier,
-        .eval_session_function = evaluate_dml_session_function,
+        .eval_session_function = mylite_dml_evaluate_session_function,
     };
     struct mylite_expression_value value = {0};
     size_t warning_start = database->warnings.count;
@@ -344,7 +339,7 @@ static int evaluate_delete_order_key(mylite_db *database, const struct mylite_se
     struct mylite_expression_eval_context context = {
         .user_data = &user_context,
         .resolve_identifier = mylite_dml_resolve_update_expression_identifier,
-        .eval_session_function = evaluate_dml_session_function,
+        .eval_session_function = mylite_dml_evaluate_session_function,
     };
     size_t warning_start = database->warnings.count;
     int status = mylite_expression_eval_with_context(order_key->expression, &context,
@@ -358,24 +353,6 @@ static int evaluate_delete_order_key(mylite_db *database, const struct mylite_se
                    : condition_status;
     }
     return mylite_dml_promote_expression_warnings(database, warning_start);
-}
-
-static int
-evaluate_dml_session_function(void *user_data, const struct mylite_sql_ast_node *function_call,
-                              const struct mylite_expression_eval_context *expression_context,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *out_value)
-{
-    struct mylite_update_expression_context *context = user_data;
-    const struct mylite_dml_expression_callbacks *callbacks =
-        context == NULL ? NULL : context->callbacks;
-
-    if (callbacks == NULL || callbacks->eval_session_function == NULL) {
-        return -1;
-    }
-    return callbacks->eval_session_function(callbacks->user_data,
-                                            context == NULL ? NULL : context->table, function_call,
-                                            expression_context, warnings, out_value);
 }
 
 static int set_where_predicate_eval_error(const struct mylite_dml_expression_callbacks *callbacks)

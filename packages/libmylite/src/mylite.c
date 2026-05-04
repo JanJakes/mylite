@@ -1259,33 +1259,6 @@ static int resolve_union_expression_identifier(void *user_data,
                                                struct mylite_expression_value *out_value);
 static int append_and_clear_union_database_warnings(mylite_db *database,
                                                     struct mylite_expression_warnings *warnings);
-static int execute_update_rows_transaction(mylite_stmt *stmt,
-                                           const struct mylite_select_table *table,
-                                           const struct mylite_insert_table *write_table,
-                                           const struct mylite_update_bound_assignment *assignments,
-                                           size_t assignment_count,
-                                           const struct mylite_update_rowset *rowset);
-static int execute_update_row(mylite_stmt *stmt, sqlite3_stmt *update,
-                              const struct mylite_select_table *table,
-                              const struct mylite_insert_table *write_table,
-                              const struct mylite_update_bound_assignment *assignments,
-                              size_t assignment_count, const struct mylite_update_row *stored,
-                              uint64_t *next_auto_increment);
-static int write_update_candidate(mylite_stmt *stmt, sqlite3_stmt *update,
-                                  const struct mylite_insert_table *write_table,
-                                  const struct mylite_update_row *candidate,
-                                  uint64_t *next_auto_increment);
-static int apply_update_assignments(mylite_stmt *stmt, const struct mylite_select_table *table,
-                                    const struct mylite_insert_table *write_table,
-                                    const struct mylite_update_bound_assignment *assignments,
-                                    size_t assignment_count, struct mylite_update_row *candidate);
-static int evaluate_update_assignment_value(mylite_stmt *stmt,
-                                            const struct mylite_select_table *table,
-                                            const struct mylite_insert_table *write_table,
-                                            const struct mylite_update_row *candidate,
-                                            size_t target_column,
-                                            const struct mylite_sql_ast_node *expression,
-                                            struct mylite_expression_value *out_value);
 static int execute_scalar_select_statement(mylite_stmt *stmt);
 static int evaluate_scalar_select_result(mylite_stmt *stmt);
 static int evaluate_scalar_select_result_item(mylite_stmt *stmt, size_t index);
@@ -1298,11 +1271,6 @@ evaluate_union_session_function(void *user_data, const struct mylite_sql_ast_nod
                                 const struct mylite_expression_eval_context *expression_context,
                                 struct mylite_expression_warnings *warnings,
                                 struct mylite_expression_value *out_value);
-static int
-evaluate_update_session_function(void *user_data, const struct mylite_sql_ast_node *function_call,
-                                 const struct mylite_expression_eval_context *expression_context,
-                                 struct mylite_expression_warnings *warnings,
-                                 struct mylite_expression_value *out_value);
 static int evaluate_dml_materialize_session_function(
     void *user_data, const struct mylite_select_table *table,
     const struct mylite_sql_ast_node *function_call,
@@ -15573,6 +15541,7 @@ static int execute_update_statement(mylite_stmt *stmt)
         .set_where_predicate_eval_error = set_dml_materialize_where_predicate_eval_error,
     };
     size_t assignment_count = stmt->update.assignment_count;
+    int64_t affected_rows = 0;
     int status = MYLITE_OK;
 
     stmt->affected_rows = 0;
@@ -15609,8 +15578,12 @@ static int execute_update_statement(mylite_stmt *stmt)
     if (status == MYLITE_OK) {
         mylite_dml_apply_update_limit(stmt->update.limit_clause, &rowset);
         stmt->matched_rows = rowset.row_count;
-        status = execute_update_rows_transaction(stmt, &table, &write_table, assignments,
-                                                 assignment_count, &rowset);
+        status = mylite_dml_execute_update_rows_transaction(
+            stmt->database, &table, &write_table, assignments, assignment_count,
+            &expression_callbacks, &rowset, &affected_rows);
+        if (status == MYLITE_OK) {
+            stmt->affected_rows = affected_rows;
+        }
     }
 
     free(assignments);
@@ -15620,200 +15593,6 @@ static int execute_update_statement(mylite_stmt *stmt)
     mylite_select_table_deinit(&table);
     if (status != MYLITE_OK) {
         stmt->affected_rows = -1;
-    }
-    return status;
-}
-
-static int execute_update_rows_transaction(mylite_stmt *stmt,
-                                           const struct mylite_select_table *table,
-                                           const struct mylite_insert_table *write_table,
-                                           const struct mylite_update_bound_assignment *assignments,
-                                           size_t assignment_count,
-                                           const struct mylite_update_rowset *rowset)
-{
-    sqlite3_stmt *update = NULL;
-    char *update_sql = NULL;
-    struct mylite_statement_atomicity atomicity = {0};
-    uint64_t next_auto_increment = write_table->next_auto_increment;
-    int status = mylite_transaction_begin_statement_atomicity(stmt->database, &atomicity);
-    int rc = SQLITE_OK;
-
-    if (status != MYLITE_OK) {
-        return status;
-    }
-
-    update_sql = mylite_dml_build_update_physical_sql(stmt->database, table);
-    if (update_sql == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
-        return MYLITE_NOMEM;
-    }
-
-    rc = sqlite3_prepare_v3(stmt->database->sqlite, update_sql, -1, SQLITE_PREPARE_PERSISTENT,
-                            &update, NULL);
-    sqlite3_free(update_sql);
-    if (rc != SQLITE_OK) {
-        mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
-        return mylite_diagnostics_set_sqlite_error(stmt->database);
-    }
-
-    for (size_t index = 0U; index < rowset->row_count; ++index) {
-        status = execute_update_row(stmt, update, table, write_table, assignments, assignment_count,
-                                    &rowset->rows[index], &next_auto_increment);
-        if (status != MYLITE_OK) {
-            break;
-        }
-    }
-    sqlite3_finalize(update);
-
-    if (status == MYLITE_OK && write_table->has_auto_increment &&
-        next_auto_increment > write_table->next_auto_increment) {
-        status = mylite_transaction_update_table_auto_increment(
-            stmt->database, table->schema_name, table->table_name, next_auto_increment);
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_transaction_commit_statement_atomicity(stmt->database, &atomicity);
-        if (status == MYLITE_OK) {
-            return MYLITE_OK;
-        }
-    }
-
-    mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
-    stmt->affected_rows = 0;
-    return status;
-}
-
-static int execute_update_row(mylite_stmt *stmt, sqlite3_stmt *update,
-                              const struct mylite_select_table *table,
-                              const struct mylite_insert_table *write_table,
-                              const struct mylite_update_bound_assignment *assignments,
-                              size_t assignment_count, const struct mylite_update_row *stored,
-                              uint64_t *next_auto_increment)
-{
-    struct mylite_update_row candidate = {0};
-    int status = mylite_dml_copy_update_candidate_values(stmt->database, stored, &candidate);
-
-    if (status == MYLITE_OK) {
-        status = apply_update_assignments(stmt, table, write_table, assignments, assignment_count,
-                                          &candidate);
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_dml_validate_update_unique_indexes(stmt->database, table, write_table,
-                                                           &candidate);
-    }
-    if (status == MYLITE_OK && mylite_dml_update_row_changed(stored, &candidate)) {
-        status = write_update_candidate(stmt, update, write_table, &candidate, next_auto_increment);
-    }
-
-    mylite_dml_update_row_deinit(&candidate);
-    return status;
-}
-
-static int write_update_candidate(mylite_stmt *stmt, sqlite3_stmt *update,
-                                  const struct mylite_insert_table *write_table,
-                                  const struct mylite_update_row *candidate,
-                                  uint64_t *next_auto_increment)
-{
-    int rc = SQLITE_OK;
-    int status = MYLITE_OK;
-
-    sqlite3_reset(update);
-    sqlite3_clear_bindings(update);
-    status = mylite_dml_bind_update_row_values(stmt->database, update, candidate);
-    if (status != MYLITE_OK) {
-        return status;
-    }
-
-    rc = sqlite3_bind_int64(update, (int)candidate->value_count + 1, candidate->rowid);
-    if (rc != SQLITE_OK) {
-        return mylite_diagnostics_set_sqlite_error(stmt->database);
-    }
-
-    rc = sqlite3_step(update);
-    if (rc != SQLITE_DONE) {
-        return mylite_diagnostics_set_sqlite_error(stmt->database);
-    }
-
-    ++stmt->affected_rows;
-    return mylite_dml_advance_update_auto_increment(stmt->database, write_table, candidate,
-                                                    next_auto_increment);
-}
-
-static int apply_update_assignments(mylite_stmt *stmt, const struct mylite_select_table *table,
-                                    const struct mylite_insert_table *write_table,
-                                    const struct mylite_update_bound_assignment *assignments,
-                                    size_t assignment_count, struct mylite_update_row *candidate)
-{
-    for (size_t index = 0U; index < assignment_count; ++index) {
-        size_t column_index = assignments[index].column_index;
-        struct mylite_expression_value value = {0};
-        int status = MYLITE_OK;
-
-        if (write_table->columns == NULL || candidate->values == NULL ||
-            column_index >= write_table->column_count || column_index >= candidate->value_count) {
-            return mylite_dml_set_update_unsupported_assignment_error(stmt->database);
-        }
-
-        status = evaluate_update_assignment_value(stmt, table, write_table, candidate, column_index,
-                                                  assignments[index].value, &value);
-
-        if (status != MYLITE_OK) {
-            mylite_expression_value_deinit(&value);
-            return status;
-        }
-
-        value.suppress_text_numeric_warnings = false;
-        mylite_expression_value_deinit(&candidate->values[column_index]);
-        candidate->values[column_index] = value;
-    }
-    return MYLITE_OK;
-}
-
-static int evaluate_update_assignment_value(mylite_stmt *stmt,
-                                            const struct mylite_select_table *table,
-                                            const struct mylite_insert_table *write_table,
-                                            const struct mylite_update_row *candidate,
-                                            size_t target_column,
-                                            const struct mylite_sql_ast_node *expression,
-                                            struct mylite_expression_value *out_value)
-{
-    const struct mylite_insert_table_column *column = &write_table->columns[target_column];
-    struct mylite_update_expression_context user_context = {
-        .stmt = stmt,
-        .table = table,
-        .row = candidate,
-    };
-    struct mylite_expression_eval_context context = {
-        .user_data = &user_context,
-        .resolve_identifier = mylite_dml_resolve_update_expression_identifier,
-        .eval_session_function = evaluate_update_session_function,
-    };
-    int status = MYLITE_OK;
-
-    if (expression != NULL && expression->kind == MYLITE_SQL_AST_DEFAULT) {
-        status = mylite_dml_resolve_update_default_value(stmt->database, column, out_value);
-    } else {
-        size_t warning_start = stmt->database->warnings.count;
-        int eval_status = mylite_expression_eval_with_context(expression, &context,
-                                                              &stmt->database->warnings, out_value);
-
-        if (eval_status == 0) {
-            status = MYLITE_OK;
-        } else if (eval_status == MYLITE_NOMEM) {
-            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-            status = MYLITE_NOMEM;
-        } else {
-            status = mylite_dml_set_expression_condition_error(stmt->database, warning_start);
-            if (status == MYLITE_OK) {
-                status = mylite_dml_set_update_unsupported_assignment_error(stmt->database);
-            }
-        }
-        if (status == MYLITE_OK) {
-            status = mylite_dml_promote_expression_warnings(stmt->database, warning_start);
-        }
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_dml_validate_update_assignment_value(stmt->database, column, out_value);
     }
     return status;
 }
@@ -15964,19 +15743,6 @@ evaluate_union_session_function(void *user_data, const struct mylite_sql_ast_nod
     return evaluate_statement_session_function(context == NULL ? NULL : context->stmt,
                                                function_call, expression_context, warnings, NULL,
                                                out_value);
-}
-
-static int
-evaluate_update_session_function(void *user_data, const struct mylite_sql_ast_node *function_call,
-                                 const struct mylite_expression_eval_context *expression_context,
-                                 struct mylite_expression_warnings *warnings,
-                                 struct mylite_expression_value *out_value)
-{
-    struct mylite_update_expression_context *context = user_data;
-
-    return evaluate_statement_session_function(context == NULL ? NULL : context->stmt,
-                                               function_call, expression_context, warnings,
-                                               context == NULL ? NULL : context->table, out_value);
 }
 
 static int evaluate_dml_materialize_session_function(

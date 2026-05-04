@@ -58,3 +58,20 @@ int mylite_dml_resolve_update_expression_identifier(void *user_data,
     }
     return mylite_expression_value_copy(&context->row->values[column_index], out_value);
 }
+
+int mylite_dml_evaluate_session_function(
+    void *user_data, const struct mylite_sql_ast_node *function_call,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value)
+{
+    struct mylite_update_expression_context *context = user_data;
+    const struct mylite_dml_expression_callbacks *callbacks =
+        context == NULL ? NULL : context->callbacks;
+
+    if (callbacks == NULL || callbacks->eval_session_function == NULL) {
+        return -1;
+    }
+    return callbacks->eval_session_function(callbacks->user_data,
+                                            context == NULL ? NULL : context->table, function_call,
+                                            expression_context, warnings, out_value);
+}

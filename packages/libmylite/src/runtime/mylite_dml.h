@@ -49,6 +49,10 @@ int mylite_dml_set_expression_condition_error(mylite_db *database, size_t warnin
 int mylite_dml_resolve_update_expression_identifier(void *user_data,
                                                     const struct mylite_sql_ast_node *identifier,
                                                     struct mylite_expression_value *out_value);
+int mylite_dml_evaluate_session_function(
+    void *user_data, const struct mylite_sql_ast_node *function_call,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value);
 char *mylite_dml_build_insert_physical_sql(mylite_db *database,
                                            const struct mylite_insert_table *table);
 char *mylite_dml_build_replace_delete_sql(mylite_db *database,
@@ -302,6 +306,12 @@ int mylite_dml_execute_delete_rows_transaction(mylite_db *database,
                                                const struct mylite_select_table *table,
                                                const struct mylite_update_rowset *rowset,
                                                int64_t *out_affected_rows);
+int mylite_dml_execute_update_rows_transaction(
+    mylite_db *database, const struct mylite_select_table *table,
+    const struct mylite_insert_table *write_table,
+    const struct mylite_update_bound_assignment *assignments, size_t assignment_count,
+    const struct mylite_dml_expression_callbacks *callbacks,
+    const struct mylite_update_rowset *rowset, int64_t *out_affected_rows);
 char *mylite_dml_build_update_scan_sql(mylite_db *database,
                                        const struct mylite_select_table *table);
 char *mylite_dml_build_update_physical_sql(mylite_db *database,

@@ -1,7 +1,7 @@
 #ifndef MYLITE_RUNTIME_MYLITE_SELECT_H
 #define MYLITE_RUNTIME_MYLITE_SELECT_H
 
-#include "mylite_runtime.h"
+#include "mylite_select_types.h"
 
 void mylite_select_plan_deinit(struct mylite_select_plan *plan);
 void mylite_select_table_deinit(struct mylite_select_table *table);

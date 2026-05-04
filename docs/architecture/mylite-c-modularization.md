@@ -206,7 +206,7 @@ Rules for future moves:
 - [x] Add `mylite_dml_types.h`; move insert/update/delete plan and execution
   structs.
 - [x] Add `mylite_metadata_types.h`; move result metadata structs.
-- [ ] Add `mylite_select_types.h`; move SELECT plan, row, join, group,
+- [x] Add `mylite_select_types.h`; move SELECT plan, row, join, group,
   aggregate, union, and subquery scan structs.
 - [ ] Add `mylite_show_types.h`; move `SHOW` query/target/info structs.
 - [ ] Add an include-discipline check or documented review rule to prevent new

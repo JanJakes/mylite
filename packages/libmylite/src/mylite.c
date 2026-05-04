@@ -32,6 +32,7 @@
 #include "runtime/mylite_statement_prepare.h"
 #include "runtime/mylite_table_ddl.h"
 #include "runtime/mylite_table_ddl_alter.h"
+#include "runtime/mylite_table_ddl_statement.h"
 #include "runtime/mylite_table_ddl_types.h"
 #include "runtime/mylite_temporal_functions.h"
 #include "runtime/mylite_transaction_types.h"
@@ -1183,11 +1184,7 @@ static int clone_table_select_expression_node(mylite_stmt *stmt,
 static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind kind,
                                     const struct mylite_sql_ast_node *statement,
                                     mylite_stmt **out_stmt);
-static int execute_rename_table_statement(mylite_stmt *stmt);
-static int execute_truncate_table_statement(mylite_stmt *stmt);
 static int execute_alter_table_statement(mylite_stmt *stmt);
-static int execute_create_index_statement(mylite_stmt *stmt);
-static int execute_drop_index_statement(mylite_stmt *stmt);
 static int execute_update_statement(mylite_stmt *stmt);
 static int execute_delete_statement(mylite_stmt *stmt);
 static int execute_union_query_statement(mylite_stmt *stmt);
@@ -13261,19 +13258,19 @@ int mylite_statement_execute_custom(mylite_stmt *stmt)
             stmt->database, stmt->database->selected_schema, &stmt->drop_table, stmt->if_exists);
         break;
     case MYLITE_STMT_RENAME_TABLE:
-        status = execute_rename_table_statement(stmt);
+        status = mylite_table_ddl_execute_rename_table_prepared_statement(stmt);
         break;
     case MYLITE_STMT_TRUNCATE_TABLE:
-        status = execute_truncate_table_statement(stmt);
+        status = mylite_table_ddl_execute_truncate_table_prepared_statement(stmt);
         break;
     case MYLITE_STMT_ALTER_TABLE:
         status = execute_alter_table_statement(stmt);
         break;
     case MYLITE_STMT_CREATE_INDEX:
-        status = execute_create_index_statement(stmt);
+        status = mylite_table_ddl_execute_create_index_prepared_statement(stmt);
         break;
     case MYLITE_STMT_DROP_INDEX:
-        status = execute_drop_index_statement(stmt);
+        status = mylite_table_ddl_execute_drop_index_prepared_statement(stmt);
         break;
     case MYLITE_STMT_INSERT_VALUES:
         status = mylite_dml_execute_insert_values_statement(stmt);
@@ -13316,32 +13313,6 @@ int mylite_statement_execute_custom(mylite_stmt *stmt)
     return status == MYLITE_OK ? MYLITE_DONE : status;
 }
 
-static int execute_rename_table_statement(mylite_stmt *stmt)
-{
-    int status = MYLITE_OK;
-
-    stmt->affected_rows = 0;
-    status = mylite_table_ddl_execute_rename_table_statement(
-        stmt->database, stmt->database->selected_schema, &stmt->rename_table);
-    if (status != MYLITE_OK) {
-        stmt->affected_rows = -1;
-    }
-    return status;
-}
-
-static int execute_truncate_table_statement(mylite_stmt *stmt)
-{
-    int status = MYLITE_OK;
-
-    stmt->affected_rows = 0;
-    status = mylite_table_ddl_execute_truncate_table_statement(
-        stmt->database, stmt->database->selected_schema, &stmt->truncate_table);
-    if (status != MYLITE_OK) {
-        stmt->affected_rows = -1;
-    }
-    return status;
-}
-
 static bool alter_table_has_table_rename_action(const mylite_stmt *stmt)
 {
     for (size_t index = 0U; index < stmt->alter_table.action_count; ++index) {
@@ -13380,7 +13351,7 @@ static int execute_alter_table_rename_statement(mylite_stmt *stmt)
         stmt->affected_rows = -1;
         return status;
     }
-    return execute_rename_table_statement(stmt);
+    return mylite_table_ddl_execute_rename_table_prepared_statement(stmt);
 }
 
 static int add_alter_table_rename_target(mylite_stmt *stmt)
@@ -14625,32 +14596,6 @@ static int set_alter_table_invalid_null_error(mylite_db *database)
     status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_INVALID_USE_OF_NULL,
                                              mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-}
-
-static int execute_create_index_statement(mylite_stmt *stmt)
-{
-    int status = MYLITE_OK;
-
-    stmt->affected_rows = 0;
-    status = mylite_table_ddl_execute_create_index_statement(
-        stmt->database, stmt->database->selected_schema, &stmt->index_ddl);
-    if (status != MYLITE_OK) {
-        stmt->affected_rows = -1;
-    }
-    return status;
-}
-
-static int execute_drop_index_statement(mylite_stmt *stmt)
-{
-    int status = MYLITE_OK;
-
-    stmt->affected_rows = 0;
-    status = mylite_table_ddl_execute_drop_index_statement(
-        stmt->database, stmt->database->selected_schema, &stmt->index_ddl);
-    if (status != MYLITE_OK) {
-        stmt->affected_rows = -1;
-    }
-    return status;
 }
 
 static int append_using_hash_warning(mylite_db *database)

@@ -366,6 +366,8 @@ only the core object model and transitional shared helpers listed here:
 - [x] Move `CREATE INDEX` and `DROP INDEX` validation/execution into
   `mylite_table_ddl`.
 - [x] Move generated index-name logic into `mylite_table_ddl`.
+- [x] Move table DDL prepared-statement wrappers for rename, truncate, and
+  standalone index statements into a focused table DDL statement module.
 - [ ] Split DML plans and execution.
 - [x] Start `src/runtime/mylite_dml.{h,c}` with DML plan and row cleanup.
 - [x] Move insert/replacement AST copy helpers into `mylite_dml`.

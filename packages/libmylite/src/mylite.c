@@ -1593,8 +1593,6 @@ static int clone_sql_ast_subtree(struct mylite_sql_ast *ast, const struct mylite
 static struct mylite_sql_source_span remap_source_span(struct mylite_sql_source_span span,
                                                        const char *source_sql, const char *sql_copy,
                                                        size_t sql_length);
-static int prepare_sqlite_statement(mylite_db *database, const char *sqlite_sql,
-                                    mylite_stmt **out_stmt);
 static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind kind,
                                     const struct mylite_sql_ast_node *statement,
                                     mylite_stmt **out_stmt);
@@ -3766,7 +3764,7 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
         return map_translate_status(database, translate_status);
     }
 
-    status = prepare_sqlite_statement(database, translate_result.sql, out_stmt);
+    status = mylite_statement_prepare_sqlite(database, translate_result.sql, out_stmt);
     mylite_sqlite_translate_result_deinit(&translate_result);
     return status;
 }
@@ -4391,7 +4389,7 @@ static int prepare_transaction_statement(mylite_db *database,
 
 static int prepare_show_schemas_statement(mylite_db *database, mylite_stmt **out_stmt)
 {
-    return prepare_sqlite_statement(database, mylite_show_schemas_sql(), out_stmt);
+    return mylite_statement_prepare_sqlite(database, mylite_show_schemas_sql(), out_stmt);
 }
 
 static int prepare_show_diagnostics_statement(mylite_db *database,
@@ -4412,7 +4410,7 @@ static int prepare_show_diagnostics_statement(mylite_db *database,
         return MYLITE_NOMEM;
     }
 
-    status = prepare_sqlite_statement(database, sqlite_sql, out_stmt);
+    status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
     if (status == MYLITE_OK) {
         (*out_stmt)->preserve_prepare_warnings = true;
     }
@@ -4433,7 +4431,7 @@ static int prepare_show_diagnostics_count_statement(mylite_db *database,
         return MYLITE_NOMEM;
     }
 
-    status = prepare_sqlite_statement(database, sqlite_sql, out_stmt);
+    status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
     if (status == MYLITE_OK) {
         (*out_stmt)->preserve_prepare_warnings = true;
     }
@@ -4494,7 +4492,7 @@ static int prepare_show_variables_statement(mylite_db *database,
                                            &sqlite_sql);
     }
     if (status == MYLITE_OK) {
-        status = prepare_sqlite_statement(database, sqlite_sql, out_stmt);
+        status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
     }
 
     if (status == MYLITE_NOMEM) {
@@ -4543,7 +4541,7 @@ static int prepare_show_status_statement(mylite_db *database,
                                         &sqlite_sql);
     }
     if (status == MYLITE_OK) {
-        status = prepare_sqlite_statement(database, sqlite_sql, out_stmt);
+        status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
     }
 
     if (status == MYLITE_NOMEM) {
@@ -4573,7 +4571,7 @@ static int prepare_show_engines_statement(mylite_db *database, mylite_stmt **out
 
     *out_stmt = NULL;
     if (status == MYLITE_OK) {
-        status = prepare_sqlite_statement(database, sqlite_sql, &stmt);
+        status = mylite_statement_prepare_sqlite(database, sqlite_sql, &stmt);
     }
     if (status == MYLITE_OK) {
         status = mylite_show_attach_engines_result_metadata(database, stmt);
@@ -4618,7 +4616,7 @@ static int prepare_show_character_set_statement(mylite_db *database,
                                                &sqlite_sql);
     }
     if (status == MYLITE_OK) {
-        status = prepare_sqlite_statement(database, sqlite_sql, out_stmt);
+        status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
     }
 
     if (status == MYLITE_NOMEM) {
@@ -4667,7 +4665,7 @@ static int prepare_show_collation_statement(mylite_db *database,
                                            &sqlite_sql);
     }
     if (status == MYLITE_OK) {
-        status = prepare_sqlite_statement(database, sqlite_sql, out_stmt);
+        status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
     }
 
     if (status == MYLITE_NOMEM) {
@@ -4747,7 +4745,7 @@ static int prepare_show_tables_statement(mylite_db *database,
         }
     }
     if (status == MYLITE_OK) {
-        status = prepare_sqlite_statement(database, sqlite_sql, out_stmt);
+        status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
     }
 
     if (status == MYLITE_NOMEM) {
@@ -4941,7 +4939,7 @@ static int prepare_show_table_status_statement(mylite_db *database,
         }
     }
     if (status == MYLITE_OK) {
-        status = prepare_sqlite_statement(database, sqlite_sql, out_stmt);
+        status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
     }
 
     if (status == MYLITE_NOMEM) {
@@ -4992,7 +4990,7 @@ static int prepare_show_columns_statement(mylite_db *database,
         }
     }
     if (status == MYLITE_OK) {
-        status = prepare_sqlite_statement(database, sqlite_sql, out_stmt);
+        status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
     }
 
     if (status == MYLITE_NOMEM) {
@@ -5237,7 +5235,7 @@ static int prepare_describe_table_statement(mylite_db *database,
         }
     }
     if (status == MYLITE_OK) {
-        status = prepare_sqlite_statement(database, sqlite_sql, out_stmt);
+        status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
     }
 
     if (status == MYLITE_NOMEM) {
@@ -5315,7 +5313,7 @@ static int prepare_show_index_statement(mylite_db *database,
         }
     }
     if (status == MYLITE_OK) {
-        status = prepare_sqlite_statement(database, sqlite_sql, out_stmt);
+        status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
     }
 
     if (status == MYLITE_NOMEM) {
@@ -5500,7 +5498,7 @@ static int prepare_show_create_table_statement(mylite_db *database,
         status = show_create_table_sql(database, &target, &sqlite_sql);
     }
     if (status == MYLITE_OK) {
-        status = prepare_sqlite_statement(database, sqlite_sql, out_stmt);
+        status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
     }
 
     if (status == MYLITE_NOMEM) {
@@ -6020,7 +6018,7 @@ static int prepare_show_create_schema_statement(mylite_db *database,
     int status = show_create_schema_sql(database, statement, &sqlite_sql);
 
     if (status == MYLITE_OK) {
-        status = prepare_sqlite_statement(database, sqlite_sql, out_stmt);
+        status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
     }
 
     if (status == MYLITE_NOMEM) {
@@ -6294,7 +6292,7 @@ static int prepare_information_schema_select_statement(mylite_db *database,
     status = information_schema_dynamic_table_sql(database, table, &sqlite_sql);
     if (status != MYLITE_UNSUPPORTED) {
         if (status == MYLITE_OK) {
-            status = prepare_sqlite_statement(database, sqlite_sql, out_stmt);
+            status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
         }
         sqlite3_free(sqlite_sql);
         if (status == MYLITE_NOMEM) {
@@ -6307,7 +6305,7 @@ static int prepare_information_schema_select_statement(mylite_db *database,
     if (sql == NULL) {
         return MYLITE_UNSUPPORTED;
     }
-    return prepare_sqlite_statement(database, sql, out_stmt);
+    return mylite_statement_prepare_sqlite(database, sql, out_stmt);
 }
 
 static int information_schema_dynamic_table_sql(mylite_db *database,
@@ -6448,7 +6446,7 @@ static int prepare_table_select_sqlite_statement(mylite_db *database,
         return MYLITE_NOMEM;
     }
 
-    status = prepare_sqlite_statement(database, sqlite_sql, out_stmt);
+    status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
     if (status == MYLITE_OK) {
         status = attach_select_result_metadata(*out_stmt, plan);
         if (status != MYLITE_OK) {
@@ -17854,35 +17852,6 @@ static struct mylite_sql_source_span remap_source_span(struct mylite_sql_source_
 
     span.text = sql_copy + (text - base);
     return span;
-}
-
-static int prepare_sqlite_statement(mylite_db *database, const char *sqlite_sql,
-                                    mylite_stmt **out_stmt)
-{
-    sqlite3_stmt *sqlite_stmt = NULL;
-    mylite_stmt *stmt = NULL;
-    int rc = sqlite3_prepare_v3(database->sqlite, sqlite_sql, -1, SQLITE_PREPARE_PERSISTENT,
-                                &sqlite_stmt, NULL);
-
-    if (rc != SQLITE_OK) {
-        return mylite_diagnostics_set_sqlite_error(database);
-    }
-
-    stmt = malloc(sizeof(*stmt));
-    if (stmt == NULL) {
-        sqlite3_finalize(sqlite_stmt);
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    *stmt = (mylite_stmt){
-        .database = database,
-        .kind = MYLITE_STMT_SQLITE,
-        .sqlite_stmt = sqlite_stmt,
-        .affected_rows = -1,
-    };
-    *out_stmt = stmt;
-    return MYLITE_OK;
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)

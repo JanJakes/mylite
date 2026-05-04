@@ -284,6 +284,7 @@ only the core object model and transitional shared helpers listed here:
   `src/runtime/mylite_statement`.
 - [x] Move public statement stepping into `src/runtime/mylite_statement`,
   keeping statement-family execution dispatch in `mylite.c`.
+- [x] Move SQLite statement preparation into `src/runtime/mylite_statement`.
 - [x] Extract public result metadata accessors into
   `src/runtime/mylite_metadata.{h,c}`.
 - [x] Move result metadata cleanup into `src/runtime/mylite_metadata`.

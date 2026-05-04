@@ -70,6 +70,35 @@ int mylite_step(mylite_stmt *stmt)
     return rc;
 }
 
+int mylite_statement_prepare_sqlite(mylite_db *database, const char *sqlite_sql,
+                                    mylite_stmt **out_stmt)
+{
+    sqlite3_stmt *sqlite_stmt = NULL;
+    mylite_stmt *stmt = NULL;
+    int rc = sqlite3_prepare_v3(database->sqlite, sqlite_sql, -1, SQLITE_PREPARE_PERSISTENT,
+                                &sqlite_stmt, NULL);
+
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+
+    stmt = malloc(sizeof(*stmt));
+    if (stmt == NULL) {
+        sqlite3_finalize(sqlite_stmt);
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    *stmt = (mylite_stmt){
+        .database = database,
+        .kind = MYLITE_STMT_SQLITE,
+        .sqlite_stmt = sqlite_stmt,
+        .affected_rows = -1,
+    };
+    *out_stmt = stmt;
+    return MYLITE_OK;
+}
+
 // NOLINTNEXTLINE(misc-no-recursion)
 void mylite_finalize(mylite_stmt *stmt)
 {

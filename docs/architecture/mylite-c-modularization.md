@@ -418,6 +418,8 @@ only the core object model and transitional shared helpers listed here:
   module.
 - [x] Move update unique-index conflict validation and duplicate diagnostics
   into a focused DML companion module.
+- [x] Move shared DML expression warning promotion and condition-error
+  selection into a focused DML companion module.
 - [ ] Move update row materialization logic into `mylite_dml`.
 - [ ] Move update row writeback into `mylite_dml`.
 - [x] Move delete target copy into `mylite_dml`.

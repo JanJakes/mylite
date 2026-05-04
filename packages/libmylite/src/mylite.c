@@ -1358,8 +1358,6 @@ static int evaluate_update_assignment_value(mylite_stmt *stmt,
                                             size_t target_column,
                                             const struct mylite_sql_ast_node *expression,
                                             struct mylite_expression_value *out_value);
-static int promote_update_expression_warnings(mylite_stmt *stmt, size_t warning_start);
-static int set_dml_expression_condition_error(mylite_db *database, size_t warning_start);
 static int resolve_update_default_value(mylite_stmt *stmt,
                                         const struct mylite_insert_table_column *column,
                                         struct mylite_expression_value *out_value);
@@ -16658,12 +16656,13 @@ static int evaluate_update_row_matches(mylite_stmt *stmt, const struct mylite_se
     }
     mylite_expression_value_deinit(&value);
     if (status != 0) {
-        int condition_status = set_dml_expression_condition_error(stmt->database, warning_start);
+        int condition_status =
+            mylite_dml_set_expression_condition_error(stmt->database, warning_start);
 
         return condition_status == MYLITE_OK ? set_where_predicate_eval_error(stmt)
                                              : condition_status;
     }
-    status = promote_update_expression_warnings(stmt, warning_start);
+    status = mylite_dml_promote_expression_warnings(stmt->database, warning_start);
     if (status != MYLITE_OK) {
         return status;
     }
@@ -16718,12 +16717,13 @@ static int evaluate_update_order_key(mylite_stmt *stmt, const struct mylite_sele
                                                      &stmt->database->warnings, out_value);
 
     if (status != 0) {
-        int condition_status = set_dml_expression_condition_error(stmt->database, warning_start);
+        int condition_status =
+            mylite_dml_set_expression_condition_error(stmt->database, warning_start);
 
         return condition_status == MYLITE_OK ? set_update_unsupported_clause_error(stmt->database)
                                              : condition_status;
     }
-    return promote_update_expression_warnings(stmt, warning_start);
+    return mylite_dml_promote_expression_warnings(stmt->database, warning_start);
 }
 
 static int execute_update_rows_transaction(mylite_stmt *stmt,
@@ -16906,53 +16906,19 @@ static int evaluate_update_assignment_value(mylite_stmt *stmt,
             (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             status = MYLITE_NOMEM;
         } else {
-            status = set_dml_expression_condition_error(stmt->database, warning_start);
+            status = mylite_dml_set_expression_condition_error(stmt->database, warning_start);
             if (status == MYLITE_OK) {
                 status = set_update_unsupported_assignment_error(stmt->database);
             }
         }
         if (status == MYLITE_OK) {
-            status = promote_update_expression_warnings(stmt, warning_start);
+            status = mylite_dml_promote_expression_warnings(stmt->database, warning_start);
         }
     }
     if (status == MYLITE_OK) {
         status = validate_update_assignment_value(stmt, column, out_value);
     }
     return status;
-}
-
-static int promote_update_expression_warnings(mylite_stmt *stmt, size_t warning_start)
-{
-    mylite_db *database = stmt->database;
-
-    if (warning_start >= database->warnings.count) {
-        return MYLITE_OK;
-    }
-
-    const struct mylite_expression_warning *warning = &database->warnings.items[warning_start];
-    int status = mylite_diagnostics_set_error_message(database, warning->message);
-
-    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-}
-
-static int set_dml_expression_condition_error(mylite_db *database, size_t warning_start)
-{
-    if (database == NULL || warning_start >= database->warnings.count) {
-        return MYLITE_OK;
-    }
-
-    for (size_t index = warning_start; index < database->warnings.count; ++index) {
-        const struct mylite_expression_warning *condition = &database->warnings.items[index];
-
-        if (condition->level == MYLITE_EXPRESSION_WARNING_LEVEL_NOTE) {
-            continue;
-        }
-
-        int status = mylite_diagnostics_set_error_message(database, condition->message);
-
-        return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-    }
-    return MYLITE_OK;
 }
 
 static int resolve_update_default_value(mylite_stmt *stmt,
@@ -17540,7 +17506,8 @@ static int evaluate_delete_row_matches(mylite_stmt *stmt, const struct mylite_se
     }
     mylite_expression_value_deinit(&value);
     if (status != 0) {
-        int condition_status = set_dml_expression_condition_error(stmt->database, warning_start);
+        int condition_status =
+            mylite_dml_set_expression_condition_error(stmt->database, warning_start);
 
         return condition_status == MYLITE_OK ? set_where_predicate_eval_error(stmt)
                                              : condition_status;
@@ -17600,7 +17567,8 @@ static int evaluate_delete_order_key(mylite_stmt *stmt, const struct mylite_sele
                                                      &stmt->database->warnings, out_value);
 
     if (status != 0) {
-        int condition_status = set_dml_expression_condition_error(stmt->database, warning_start);
+        int condition_status =
+            mylite_dml_set_expression_condition_error(stmt->database, warning_start);
 
         return condition_status == MYLITE_OK ? set_delete_unsupported_clause_error(stmt->database)
                                              : condition_status;

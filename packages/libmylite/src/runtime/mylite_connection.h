@@ -11,6 +11,8 @@ void mylite_connection_clear_selected_schema_if_matches(mylite_db *database,
 int mylite_connection_set_names_state(mylite_db *database, const char *character_set_name,
                                       const char *collation_name);
 int mylite_connection_set_character_set_state(mylite_db *database, const char *character_set_name);
+int mylite_connection_execute_set_names_statement(mylite_stmt *stmt);
+int mylite_connection_execute_set_character_set_statement(mylite_stmt *stmt);
 
 const char *mylite_connection_character_set_client(const mylite_db *database);
 const char *mylite_connection_character_set_connection(const mylite_db *database);

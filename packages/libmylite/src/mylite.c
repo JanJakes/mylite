@@ -1754,8 +1754,6 @@ static int execute_create_schema_statement(mylite_stmt *stmt);
 static int execute_alter_schema_statement(mylite_stmt *stmt);
 static int execute_drop_schema_statement(mylite_stmt *stmt);
 static int execute_use_schema_statement(mylite_stmt *stmt);
-static int execute_set_names_statement(mylite_stmt *stmt);
-static int execute_set_character_set_statement(mylite_stmt *stmt);
 static int execute_create_table_statement(mylite_stmt *stmt);
 static int execute_drop_table_statement(mylite_stmt *stmt);
 static int execute_rename_table_statement(mylite_stmt *stmt);
@@ -19045,10 +19043,10 @@ static int execute_custom_statement(mylite_stmt *stmt)
         status = execute_use_schema_statement(stmt);
         break;
     case MYLITE_STMT_SET_NAMES:
-        status = execute_set_names_statement(stmt);
+        status = mylite_connection_execute_set_names_statement(stmt);
         break;
     case MYLITE_STMT_SET_CHARACTER_SET:
-        status = execute_set_character_set_statement(stmt);
+        status = mylite_connection_execute_set_character_set_statement(stmt);
         break;
     case MYLITE_STMT_CREATE_TABLE:
         status = execute_create_table_statement(stmt);
@@ -19228,24 +19226,6 @@ static int execute_use_schema_statement(mylite_stmt *stmt)
     }
 
     return mylite_connection_set_selected_schema(stmt->database, stmt->schema_name);
-}
-
-static int execute_set_names_statement(mylite_stmt *stmt)
-{
-    if (stmt->use_default_connection_charset) {
-        return mylite_connection_set_default_state(stmt->database);
-    }
-    return mylite_connection_set_names_state(stmt->database, stmt->character_set_name,
-                                             stmt->collation_name);
-}
-
-static int execute_set_character_set_statement(mylite_stmt *stmt)
-{
-    if (stmt->use_default_connection_charset) {
-        return mylite_connection_set_character_set_state(stmt->database,
-                                                         mylite_charset_default_name());
-    }
-    return mylite_connection_set_character_set_state(stmt->database, stmt->character_set_name);
 }
 
 static int execute_create_table_statement(mylite_stmt *stmt)

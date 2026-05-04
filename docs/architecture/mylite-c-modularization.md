@@ -256,8 +256,8 @@ Rules for future moves:
 - [x] Move selected schema mutation helpers into `src/runtime/mylite_connection`.
 - [x] Move connection charset state mutation helpers into
   `src/runtime/mylite_connection`.
-- [ ] Move `SET NAMES` execution into `src/runtime/mylite_connection`.
-- [ ] Move `SET CHARACTER SET` execution into `src/runtime/mylite_connection`.
+- [x] Move `SET NAMES` execution into `src/runtime/mylite_connection`.
+- [x] Move `SET CHARACTER SET` execution into `src/runtime/mylite_connection`.
 - [ ] Move connection charset AST copy/prepare helpers into the connection
   module or a small connection-statement module.
 - [ ] Split `SHOW` and `information_schema` dynamic result builders.

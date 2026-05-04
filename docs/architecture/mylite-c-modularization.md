@@ -398,6 +398,8 @@ only the core object model and transitional shared helpers listed here:
 - [x] Move `INSERT ... ON DUPLICATE KEY UPDATE` execution into `mylite_dml`.
 - [x] Move INSERT/REPLACE transaction orchestration into `mylite_dml`
   without coupling DML execution to `mylite_stmt`.
+- [x] Split INSERT/REPLACE transaction orchestration into a focused DML
+  companion module.
 - [ ] Move `INSERT IGNORE` warning/error downgrade logic into `mylite_dml`.
 - [x] Move `REPLACE` delete-then-insert behavior into `mylite_dml`.
 - [ ] Move update target binding and validation into `mylite_dml`.

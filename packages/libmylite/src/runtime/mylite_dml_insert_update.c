@@ -15,6 +15,14 @@ apply_insert_update_assignments(mylite_db *database, const char *selected_schema
                                 const struct mylite_insert_row_column_indexes *column_indexes,
                                 const struct mylite_insert_bound_value *candidate_values,
                                 struct mylite_insert_bound_value *updated_values);
+static int
+execute_insert_update_bound_row(mylite_db *database, const char *selected_schema,
+                                const struct mylite_insert_values_plan *values_plan,
+                                const struct mylite_insert_duplicate_update_plan *update_plan,
+                                sqlite3_stmt *insert, const struct mylite_insert_table *table,
+                                const struct mylite_insert_row_column_indexes *column_indexes,
+                                struct mylite_insert_execution_state *state,
+                                const struct mylite_insert_bound_value *values);
 static int evaluate_insert_update_assignment_value(
     mylite_db *database, const char *selected_schema,
     const struct mylite_insert_values_plan *values_plan, const struct mylite_insert_table *table,
@@ -134,13 +142,83 @@ apply_insert_update_assignments(mylite_db *database, const char *selected_schema
     return MYLITE_OK;
 }
 
-int mylite_dml_execute_insert_update_row(
+int mylite_dml_execute_insert_update_values_row(
     mylite_db *database, const char *selected_schema,
     const struct mylite_insert_values_plan *values_plan,
     const struct mylite_insert_duplicate_update_plan *update_plan, sqlite3_stmt *insert,
     const struct mylite_insert_table *table,
     const struct mylite_insert_row_column_indexes *column_indexes,
-    struct mylite_insert_execution_state *state, const struct mylite_insert_bound_value *values)
+    struct mylite_insert_execution_state *state, size_t row_index)
+{
+    struct mylite_insert_bound_value *values = NULL;
+    int status = MYLITE_OK;
+
+    if (database == NULL || values_plan == NULL || update_plan == NULL || insert == NULL ||
+        table == NULL || column_indexes == NULL || state == NULL ||
+        (values_plan->schema_name == NULL && selected_schema == NULL)) {
+        return MYLITE_MISUSE;
+    }
+    if (table->column_count == 0U) {
+        (void)mylite_diagnostics_set_error_message(database, "INSERT target table has no columns");
+        return MYLITE_EXEC_ERROR;
+    }
+
+    values = calloc(table->column_count, sizeof(*values));
+    if (values == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    status = mylite_dml_resolve_insert_row_values(database, values_plan, table,
+                                                  column_indexes->insert_columns,
+                                                  values_plan->row_count, state, row_index, values);
+    if (status == MYLITE_OK) {
+        status =
+            execute_insert_update_bound_row(database, selected_schema, values_plan, update_plan,
+                                            insert, table, column_indexes, state, values);
+    }
+
+    mylite_dml_insert_bound_values_deinit(values, table->column_count);
+    return status;
+}
+
+int mylite_dml_execute_insert_update_set_row(
+    mylite_db *database, const char *selected_schema, const char *schema_name,
+    const struct mylite_insert_values_plan *values_plan,
+    const struct mylite_insert_set_plan *set_plan,
+    const struct mylite_insert_duplicate_update_plan *update_plan, sqlite3_stmt *insert,
+    const struct mylite_insert_table *table, const size_t *column_indexes,
+    size_t column_index_count, const struct mylite_insert_row_column_indexes *row_column_indexes,
+    struct mylite_insert_execution_state *state, struct mylite_insert_bound_value *values,
+    struct mylite_insert_set_row_state *row_state)
+{
+    int status = MYLITE_OK;
+
+    if (database == NULL || schema_name == NULL || values_plan == NULL || set_plan == NULL ||
+        update_plan == NULL || insert == NULL || table == NULL || row_column_indexes == NULL ||
+        state == NULL || values == NULL || row_state == NULL ||
+        (values_plan->schema_name == NULL && selected_schema == NULL)) {
+        return MYLITE_MISUSE;
+    }
+
+    status = mylite_dml_resolve_insert_set_row_values(database, schema_name, values_plan, set_plan,
+                                                      table, column_indexes, column_index_count, 1U,
+                                                      state, values, row_state);
+    if (status == MYLITE_OK) {
+        return execute_insert_update_bound_row(database, selected_schema, values_plan, update_plan,
+                                               insert, table, row_column_indexes, state, values);
+    }
+    return status;
+}
+
+static int
+execute_insert_update_bound_row(mylite_db *database, const char *selected_schema,
+                                const struct mylite_insert_values_plan *values_plan,
+                                const struct mylite_insert_duplicate_update_plan *update_plan,
+                                sqlite3_stmt *insert, const struct mylite_insert_table *table,
+                                const struct mylite_insert_row_column_indexes *column_indexes,
+                                struct mylite_insert_execution_state *state,
+                                const struct mylite_insert_bound_value *values)
 {
     struct mylite_insert_unique_conflict conflict = {0};
     struct mylite_insert_bound_value *stored_values = NULL;

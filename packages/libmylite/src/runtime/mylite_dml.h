@@ -73,13 +73,22 @@ int mylite_dml_write_insert_update_candidate(mylite_db *database,
 bool mylite_dml_insert_update_row_changed(const struct mylite_insert_bound_value *stored,
                                           const struct mylite_insert_bound_value *candidate,
                                           size_t value_count);
-int mylite_dml_execute_insert_update_row(
+int mylite_dml_execute_insert_update_values_row(
     mylite_db *database, const char *selected_schema,
     const struct mylite_insert_values_plan *values_plan,
     const struct mylite_insert_duplicate_update_plan *update_plan, sqlite3_stmt *insert,
     const struct mylite_insert_table *table,
     const struct mylite_insert_row_column_indexes *column_indexes,
-    struct mylite_insert_execution_state *state, const struct mylite_insert_bound_value *values);
+    struct mylite_insert_execution_state *state, size_t row_index);
+int mylite_dml_execute_insert_update_set_row(
+    mylite_db *database, const char *selected_schema, const char *schema_name,
+    const struct mylite_insert_values_plan *values_plan,
+    const struct mylite_insert_set_plan *set_plan,
+    const struct mylite_insert_duplicate_update_plan *update_plan, sqlite3_stmt *insert,
+    const struct mylite_insert_table *table, const size_t *column_indexes,
+    size_t column_index_count, const struct mylite_insert_row_column_indexes *row_column_indexes,
+    struct mylite_insert_execution_state *state, struct mylite_insert_bound_value *values,
+    struct mylite_insert_set_row_state *row_state);
 int mylite_dml_validate_insert_update_assignments(
     mylite_db *database, const struct mylite_insert_values_plan *values_plan,
     const struct mylite_insert_duplicate_update_plan *update_plan,

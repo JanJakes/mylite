@@ -37,6 +37,23 @@ int mylite_dml_copy_update_candidate_values(mylite_db *database,
     return MYLITE_OK;
 }
 
+int mylite_dml_resolve_update_default_value(mylite_db *database,
+                                            const struct mylite_insert_table_column *column,
+                                            struct mylite_expression_value *out_value)
+{
+    struct mylite_insert_bound_value value = {0};
+    int status = mylite_dml_resolve_insert_default_bound_value(database, column, 0U, NULL, &value);
+
+    if (status == MYLITE_OK) {
+        status = mylite_dml_copy_insert_bound_value_to_expression(&value, out_value);
+        if (status == MYLITE_NOMEM) {
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        }
+    }
+    mylite_dml_insert_bound_value_deinit(&value);
+    return status;
+}
+
 int mylite_dml_copy_insert_bound_value_to_expression(const struct mylite_insert_bound_value *value,
                                                      struct mylite_expression_value *out_value)
 {
@@ -70,6 +87,66 @@ int mylite_dml_copy_insert_bound_value_to_expression(const struct mylite_insert_
         return MYLITE_OK;
     }
     return MYLITE_UNSUPPORTED;
+}
+
+int mylite_dml_validate_update_assignment_value(mylite_db *database,
+                                                const struct mylite_insert_table_column *column,
+                                                struct mylite_expression_value *value)
+{
+    int64_t integer_value = 0;
+
+    if (value->kind == MYLITE_EXPRESSION_VALUE_NULL) {
+        if (column->nullable) {
+            return MYLITE_OK;
+        }
+        return mylite_dml_set_not_null_column_error(database, column->name);
+    }
+    if (!column->auto_increment) {
+        return MYLITE_OK;
+    }
+
+    if (value->kind == MYLITE_EXPRESSION_VALUE_INT64) {
+        return MYLITE_OK;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_UINT64 &&
+        value->uint64_value <= (uint64_t)INT64_MAX) {
+        value->kind = MYLITE_EXPRESSION_VALUE_INT64;
+        value->int64_value = (int64_t)value->uint64_value;
+        return MYLITE_OK;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT &&
+        mylite_dml_parse_insert_integer_text(value->text_value, &integer_value)) {
+        mylite_expression_value_deinit(value);
+        *value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = integer_value,
+        };
+        return MYLITE_OK;
+    }
+    return mylite_dml_set_update_unsupported_assignment_error(database);
+}
+
+int mylite_dml_advance_update_auto_increment(mylite_db *database,
+                                             const struct mylite_insert_table *write_table,
+                                             const struct mylite_update_row *candidate,
+                                             uint64_t *next_auto_increment)
+{
+    uint64_t value = 0U;
+
+    if (!write_table->has_auto_increment ||
+        !mylite_dml_update_expression_value_positive_uint64(
+            &candidate->values[write_table->auto_increment_column_index], &value)) {
+        return MYLITE_OK;
+    }
+    if (value == UINT64_MAX) {
+        (void)mylite_diagnostics_set_error_message(database,
+                                                   "AUTO_INCREMENT value is out of range");
+        return MYLITE_EXEC_ERROR;
+    }
+    if (value >= *next_auto_increment) {
+        *next_auto_increment = value + 1U;
+    }
+    return MYLITE_OK;
 }
 
 bool mylite_dml_update_expression_value_positive_uint64(const struct mylite_expression_value *value,

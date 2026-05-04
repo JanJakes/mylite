@@ -240,8 +240,18 @@ int mylite_dml_append_update_row(mylite_db *database, struct mylite_update_rowse
 int mylite_dml_copy_update_candidate_values(mylite_db *database,
                                             const struct mylite_update_row *row,
                                             struct mylite_update_row *candidate);
+int mylite_dml_resolve_update_default_value(mylite_db *database,
+                                            const struct mylite_insert_table_column *column,
+                                            struct mylite_expression_value *out_value);
 int mylite_dml_copy_insert_bound_value_to_expression(const struct mylite_insert_bound_value *value,
                                                      struct mylite_expression_value *out_value);
+int mylite_dml_validate_update_assignment_value(mylite_db *database,
+                                                const struct mylite_insert_table_column *column,
+                                                struct mylite_expression_value *value);
+int mylite_dml_advance_update_auto_increment(mylite_db *database,
+                                             const struct mylite_insert_table *write_table,
+                                             const struct mylite_update_row *candidate,
+                                             uint64_t *next_auto_increment);
 bool mylite_dml_update_expression_value_positive_uint64(const struct mylite_expression_value *value,
                                                         uint64_t *out_value);
 bool mylite_dml_update_row_changed(const struct mylite_update_row *stored,

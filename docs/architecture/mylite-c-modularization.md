@@ -416,6 +416,8 @@ only the core object model and transitional shared helpers listed here:
 - [x] Move update candidate value copy, default conversion, row-change
   comparison, and auto-increment value extraction into a focused DML companion
   module.
+- [x] Move update default resolution, assignment value normalization, and
+  auto-increment advancement into a focused DML companion module.
 - [x] Move update unique-index conflict validation and duplicate diagnostics
   into a focused DML companion module.
 - [x] Move shared DML expression warning promotion and condition-error

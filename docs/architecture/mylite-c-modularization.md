@@ -61,6 +61,8 @@ after every step.
 - [x] Extract public connection state accessors into
   `src/runtime/mylite_connection.{h,c}`.
 - [ ] Extract public connection lifecycle into `src/runtime/mylite_connection`.
+- [x] Extract reusable span, string, and AST-child helpers into
+  `src/runtime/mylite_span.{h,c}`.
 - [ ] Extract public statement lifecycle and result accessors into
   `src/runtime/mylite_statement.{h,c}` while keeping statement-family execution
   in `mylite.c`.

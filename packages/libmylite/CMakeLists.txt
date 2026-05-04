@@ -41,6 +41,7 @@ add_library(mylite STATIC
   src/charset/mylite_charset.c
   src/runtime/mylite_connection.c
   src/runtime/mylite_diagnostics.c
+  src/runtime/mylite_span.c
   src/sql/mylite_ast.c
   src/sql/mylite_expression.c
   src/sql/mylite_lexer.c

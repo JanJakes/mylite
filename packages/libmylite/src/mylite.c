@@ -7,6 +7,7 @@
 #include "mylite_vfs.h"
 #include "runtime/mylite_diagnostics.h"
 #include "runtime/mylite_runtime.h"
+#include "runtime/mylite_span.h"
 #include "sql/mylite_lexer.h"
 #include "sqlite3.h"
 #include "types/mylite_column_type.h"
@@ -3805,17 +3806,7 @@ static int set_connection_released_error(mylite_db *database);
 static int set_read_only_transaction_error(mylite_db *database);
 static int set_savepoint_does_not_exist_error(mylite_db *database, const char *name);
 static bool is_valid_encryption_value(const char *value);
-static bool ascii_span_equal_ci(struct mylite_sql_source_span span, const char *text);
-static bool ascii_case_equal(const char *left, const char *right);
-static char *copy_identifier_span(const struct mylite_sql_ast_node *node);
 static char *copy_normalized_savepoint_name(const char *name);
-static char *copy_string_literal_span(const struct mylite_sql_ast_node *node);
-static char *copy_schema_text_span(const struct mylite_sql_ast_node *node);
-static char *copy_unquoted_span_text(struct mylite_sql_source_span span);
-static char *copy_nonempty_cstring(const char *text);
-static char *copy_span_text(const char *text, size_t length);
-static bool span_contains_newline(const char *text, size_t length);
-static bool text_contains_word(const char *text, const char *word);
 static const struct mylite_result_column_metadata *result_metadata_column(const mylite_stmt *stmt,
                                                                           int column);
 static bool
@@ -3877,12 +3868,7 @@ static void insert_bound_value_deinit(struct mylite_insert_bound_value *value);
 static void create_table_column_deinit(struct mylite_create_table_column *column);
 static void create_table_index_deinit(struct mylite_create_table_index *index);
 static void create_table_key_part_deinit(struct mylite_create_table_key_part *part);
-static const struct mylite_sql_ast_node *child_at(const struct mylite_sql_ast_node *node,
-                                                  size_t index);
-static const struct mylite_sql_ast_node *find_child_kind(const struct mylite_sql_ast_node *node,
-                                                         enum mylite_sql_ast_node_kind kind);
 static bool binary_expression_is_in_subquery(const struct mylite_sql_ast_node *expression);
-static const struct mylite_sql_ast_node *single_statement(const struct mylite_sql_ast_node *root);
 static bool statement_preserves_diagnostics(const struct mylite_sql_ast_node *statement);
 static int map_parse_status(mylite_db *database, enum mylite_sql_parse_status status);
 static int map_translate_status(mylite_db *database, enum mylite_sqlite_translate_status status);
@@ -3998,7 +3984,7 @@ int mylite_prepare(mylite_db *database, const char *sql, size_t length, mylite_s
         return status;
     }
 
-    statement = single_statement(parse_result.root);
+    statement = mylite_ast_single_statement(parse_result.root);
     if (!statement_preserves_diagnostics(statement)) {
         mylite_diagnostics_clear_warnings(database);
     }
@@ -4405,7 +4391,7 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
 {
     struct mylite_sqlite_translate_result translate_result;
     enum mylite_sqlite_translate_status translate_status = MYLITE_SQLITE_TRANSLATE_OK;
-    const struct mylite_sql_ast_node *statement = single_statement(root);
+    const struct mylite_sql_ast_node *statement = mylite_ast_single_statement(root);
     int status = MYLITE_OK;
 
     if (statement != NULL) {
@@ -5282,7 +5268,7 @@ static int prepare_show_diagnostics_count_statement(mylite_db *database,
 static bool show_diagnostics_query_from_statement(const struct mylite_sql_ast_node *statement,
                                                   struct mylite_show_diagnostics_query *out_query)
 {
-    const struct mylite_sql_ast_node *limit = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *limit = mylite_ast_child_at(statement, 0U);
 
     *out_query = (struct mylite_show_diagnostics_query){
         .kind = statement->show_diagnostics_kind,
@@ -5298,8 +5284,8 @@ static bool show_diagnostics_query_from_statement(const struct mylite_sql_ast_no
         mylite_sql_ast_node_child_count(limit) != 2U) {
         return false;
     }
-    out_query->offset = child_at(limit, 0U)->limit_bound_value;
-    out_query->row_count = child_at(limit, 1U)->limit_bound_value;
+    out_query->offset = mylite_ast_child_at(limit, 0U)->limit_bound_value;
+    out_query->row_count = mylite_ast_child_at(limit, 1U)->limit_bound_value;
     out_query->has_limit = true;
     return true;
 }
@@ -5398,14 +5384,15 @@ static int prepare_show_variables_statement(mylite_db *database,
     char *sqlite_sql = NULL;
     int status = MYLITE_OK;
 
-    if (find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
+    if (mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
         (void)mylite_diagnostics_set_error_message(database,
                                                    "SHOW VARIABLES WHERE is not supported");
         return MYLITE_UNSUPPORTED;
     }
 
     like_pattern = copy_show_variables_like_pattern(statement);
-    if (find_child_kind(statement, MYLITE_SQL_AST_LITERAL) != NULL && like_pattern == NULL) {
+    if (mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_LITERAL) != NULL &&
+        like_pattern == NULL) {
         status = MYLITE_NOMEM;
     }
     if (status == MYLITE_OK) {
@@ -5430,7 +5417,8 @@ static int prepare_show_variables_statement(mylite_db *database,
 
 static char *copy_show_variables_like_pattern(const struct mylite_sql_ast_node *statement)
 {
-    const struct mylite_sql_ast_node *literal = find_child_kind(statement, MYLITE_SQL_AST_LITERAL);
+    const struct mylite_sql_ast_node *literal =
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_LITERAL);
 
     if (literal == NULL) {
         return NULL;
@@ -5539,13 +5527,14 @@ static int prepare_show_status_statement(mylite_db *database,
     char *sqlite_sql = NULL;
     int status = MYLITE_OK;
 
-    if (find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
+    if (mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
         (void)mylite_diagnostics_set_error_message(database, "SHOW STATUS WHERE is not supported");
         return MYLITE_UNSUPPORTED;
     }
 
     like_pattern = copy_show_status_like_pattern(statement);
-    if (find_child_kind(statement, MYLITE_SQL_AST_LITERAL) != NULL && like_pattern == NULL) {
+    if (mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_LITERAL) != NULL &&
+        like_pattern == NULL) {
         status = MYLITE_NOMEM;
     }
     if (status == MYLITE_OK) {
@@ -5570,7 +5559,8 @@ static int prepare_show_status_statement(mylite_db *database,
 
 static char *copy_show_status_like_pattern(const struct mylite_sql_ast_node *statement)
 {
-    const struct mylite_sql_ast_node *literal = find_child_kind(statement, MYLITE_SQL_AST_LITERAL);
+    const struct mylite_sql_ast_node *literal =
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_LITERAL);
 
     if (literal == NULL) {
         return NULL;
@@ -5824,14 +5814,15 @@ static int prepare_show_character_set_statement(mylite_db *database,
     char *sqlite_sql = NULL;
     int status = MYLITE_OK;
 
-    if (find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
+    if (mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
         (void)mylite_diagnostics_set_error_message(database,
                                                    "SHOW CHARACTER SET WHERE is not supported");
         return MYLITE_UNSUPPORTED;
     }
 
     like_pattern = copy_show_character_set_like_pattern(statement);
-    if (find_child_kind(statement, MYLITE_SQL_AST_LITERAL) != NULL && like_pattern == NULL) {
+    if (mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_LITERAL) != NULL &&
+        like_pattern == NULL) {
         status = MYLITE_NOMEM;
     }
     if (status == MYLITE_OK) {
@@ -5855,7 +5846,8 @@ static int prepare_show_character_set_statement(mylite_db *database,
 
 static char *copy_show_character_set_like_pattern(const struct mylite_sql_ast_node *statement)
 {
-    const struct mylite_sql_ast_node *literal = find_child_kind(statement, MYLITE_SQL_AST_LITERAL);
+    const struct mylite_sql_ast_node *literal =
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_LITERAL);
 
     if (literal == NULL) {
         return NULL;
@@ -5947,14 +5939,15 @@ static int prepare_show_collation_statement(mylite_db *database,
     char *sqlite_sql = NULL;
     int status = MYLITE_OK;
 
-    if (find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
+    if (mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
         (void)mylite_diagnostics_set_error_message(database,
                                                    "SHOW COLLATION WHERE is not supported");
         return MYLITE_UNSUPPORTED;
     }
 
     like_pattern = copy_show_collation_like_pattern(statement);
-    if (find_child_kind(statement, MYLITE_SQL_AST_LITERAL) != NULL && like_pattern == NULL) {
+    if (mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_LITERAL) != NULL &&
+        like_pattern == NULL) {
         status = MYLITE_NOMEM;
     }
     if (status == MYLITE_OK) {
@@ -5978,7 +5971,8 @@ static int prepare_show_collation_statement(mylite_db *database,
 
 static char *copy_show_collation_like_pattern(const struct mylite_sql_ast_node *statement)
 {
-    const struct mylite_sql_ast_node *literal = find_child_kind(statement, MYLITE_SQL_AST_LITERAL);
+    const struct mylite_sql_ast_node *literal =
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_LITERAL);
 
     if (literal == NULL) {
         return NULL;
@@ -6155,19 +6149,21 @@ static int prepare_show_tables_statement(mylite_db *database,
     if (status == MYLITE_OK) {
         status = validate_show_tables_schema(database, schema_name);
     }
-    if (status == MYLITE_OK && find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
+    if (status == MYLITE_OK &&
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
         (void)mylite_diagnostics_set_error_message(database, "SHOW TABLES WHERE is not supported");
         status = MYLITE_UNSUPPORTED;
     }
     if (status == MYLITE_OK) {
         like_pattern = copy_show_tables_like_pattern(statement);
-        if (find_child_kind(statement, MYLITE_SQL_AST_LITERAL) != NULL && like_pattern == NULL) {
+        if (mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_LITERAL) != NULL &&
+            like_pattern == NULL) {
             status = MYLITE_NOMEM;
         }
     }
     if (status == MYLITE_OK && like_pattern != NULL) {
         display_pattern = copy_show_tables_display_pattern(
-            like_pattern, ascii_case_equal(schema_name, "information_schema"));
+            like_pattern, mylite_ascii_case_equal(schema_name, "information_schema"));
         if (display_pattern == NULL) {
             status = MYLITE_NOMEM;
         }
@@ -6216,11 +6212,11 @@ static int copy_show_tables_schema_name(mylite_db *database,
                                         char **out_schema_name)
 {
     const struct mylite_sql_ast_node *schema_name =
-        find_child_kind(statement, MYLITE_SQL_AST_IDENTIFIER);
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_IDENTIFIER);
 
     *out_schema_name = NULL;
     if (schema_name != NULL) {
-        *out_schema_name = copy_identifier_span(schema_name);
+        *out_schema_name = mylite_copy_identifier_span(schema_name);
         if (*out_schema_name == NULL) {
             return MYLITE_NOMEM;
         }
@@ -6231,7 +6227,7 @@ static int copy_show_tables_schema_name(mylite_db *database,
         return MYLITE_EXEC_ERROR;
     }
 
-    *out_schema_name = copy_nonempty_cstring(database->selected_schema);
+    *out_schema_name = mylite_copy_nonempty_cstring(database->selected_schema);
     if (*out_schema_name == NULL) {
         return MYLITE_NOMEM;
     }
@@ -6243,12 +6239,12 @@ static int normalize_show_tables_schema_name(char **schema_name)
     char *normalized = NULL;
 
     if (schema_name == NULL || *schema_name == NULL ||
-        !ascii_case_equal(*schema_name, "information_schema") ||
+        !mylite_ascii_case_equal(*schema_name, "information_schema") ||
         strcmp(*schema_name, "information_schema") == 0) {
         return MYLITE_OK;
     }
 
-    normalized = copy_nonempty_cstring("information_schema");
+    normalized = mylite_copy_nonempty_cstring("information_schema");
     if (normalized == NULL) {
         return MYLITE_NOMEM;
     }
@@ -6276,7 +6272,8 @@ static int validate_show_tables_schema(mylite_db *database, const char *schema_n
 
 static char *copy_show_tables_like_pattern(const struct mylite_sql_ast_node *statement)
 {
-    const struct mylite_sql_ast_node *literal = find_child_kind(statement, MYLITE_SQL_AST_LITERAL);
+    const struct mylite_sql_ast_node *literal =
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_LITERAL);
 
     if (literal == NULL) {
         return NULL;
@@ -6286,7 +6283,7 @@ static char *copy_show_tables_like_pattern(const struct mylite_sql_ast_node *sta
 
 static char *copy_show_tables_display_pattern(const char *like_pattern, bool uppercase_pattern)
 {
-    char *display_pattern = copy_span_text(like_pattern, strlen(like_pattern));
+    char *display_pattern = mylite_copy_span_text(like_pattern, strlen(like_pattern));
 
     if (display_pattern == NULL) {
         return NULL;
@@ -6394,20 +6391,22 @@ static int prepare_show_table_status_statement(mylite_db *database,
     if (status == MYLITE_OK) {
         status = validate_show_tables_schema(database, schema_name);
     }
-    if (status == MYLITE_OK && find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
+    if (status == MYLITE_OK &&
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
         (void)mylite_diagnostics_set_error_message(database,
                                                    "SHOW TABLE STATUS WHERE is not supported");
         status = MYLITE_UNSUPPORTED;
     }
     if (status == MYLITE_OK) {
         like_pattern = copy_show_tables_like_pattern(statement);
-        if (find_child_kind(statement, MYLITE_SQL_AST_LITERAL) != NULL && like_pattern == NULL) {
+        if (mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_LITERAL) != NULL &&
+            like_pattern == NULL) {
             status = MYLITE_NOMEM;
         }
     }
     if (status == MYLITE_OK && like_pattern != NULL) {
         display_pattern = copy_show_tables_display_pattern(
-            like_pattern, ascii_case_equal(schema_name, "information_schema"));
+            like_pattern, mylite_ascii_case_equal(schema_name, "information_schema"));
         if (display_pattern == NULL) {
             status = MYLITE_NOMEM;
         }
@@ -6505,13 +6504,15 @@ static int prepare_show_columns_statement(mylite_db *database,
         status = validate_show_columns_target(
             database, &target, "SHOW COLUMNS for information_schema tables is not supported");
     }
-    if (status == MYLITE_OK && find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
+    if (status == MYLITE_OK &&
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
         (void)mylite_diagnostics_set_error_message(database, "SHOW COLUMNS WHERE is not supported");
         status = MYLITE_UNSUPPORTED;
     }
     if (status == MYLITE_OK) {
         like_pattern = copy_show_columns_like_pattern(statement);
-        if (find_child_kind(statement, MYLITE_SQL_AST_LITERAL) != NULL && like_pattern == NULL) {
+        if (mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_LITERAL) != NULL &&
+            like_pattern == NULL) {
             status = MYLITE_NOMEM;
         }
     }
@@ -6543,8 +6544,8 @@ static int copy_show_columns_target(mylite_db *database,
                                     const struct mylite_sql_ast_node *statement,
                                     struct mylite_show_columns_target *out_target)
 {
-    const struct mylite_sql_ast_node *table_name = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *possible_schema = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *table_name = mylite_ast_child_at(statement, 0U);
+    const struct mylite_sql_ast_node *possible_schema = mylite_ast_child_at(statement, 1U);
     const struct mylite_sql_ast_node *explicit_schema =
         possible_schema != NULL && possible_schema->kind == MYLITE_SQL_AST_IDENTIFIER
             ? possible_schema
@@ -6588,7 +6589,7 @@ static int copy_show_columns_table_target(struct mylite_show_columns_source_node
     }
 
     if (source.explicit_schema != NULL) {
-        out_target->schema_name = copy_identifier_span(source.explicit_schema);
+        out_target->schema_name = mylite_copy_identifier_span(source.explicit_schema);
         if (out_target->schema_name == NULL) {
             status = MYLITE_NOMEM;
             goto cleanup;
@@ -6627,7 +6628,7 @@ static int copy_show_columns_selected_schema(mylite_db *database,
         return MYLITE_EXEC_ERROR;
     }
 
-    target->schema_name = copy_nonempty_cstring(database->selected_schema);
+    target->schema_name = mylite_copy_nonempty_cstring(database->selected_schema);
     if (target->schema_name == NULL) {
         return MYLITE_NOMEM;
     }
@@ -6639,12 +6640,12 @@ static int normalize_show_columns_schema_name(char **schema_name)
     char *normalized = NULL;
 
     if (schema_name == NULL || *schema_name == NULL ||
-        !ascii_case_equal(*schema_name, "information_schema") ||
+        !mylite_ascii_case_equal(*schema_name, "information_schema") ||
         strcmp(*schema_name, "information_schema") == 0) {
         return MYLITE_OK;
     }
 
-    normalized = copy_nonempty_cstring("information_schema");
+    normalized = mylite_copy_nonempty_cstring("information_schema");
     if (normalized == NULL) {
         return MYLITE_NOMEM;
     }
@@ -6670,7 +6671,7 @@ static int validate_show_columns_target(mylite_db *database,
                                                          target->schema_name, "'");
         return MYLITE_EXEC_ERROR;
     }
-    if (ascii_case_equal(target->schema_name, "information_schema")) {
+    if (mylite_ascii_case_equal(target->schema_name, "information_schema")) {
         if (information_schema_table_from_name(target->table_name) ==
             MYLITE_INFORMATION_SCHEMA_NONE) {
             return set_unknown_information_schema_table_error(database, target->table_name);
@@ -6692,7 +6693,7 @@ static int validate_show_columns_target(mylite_db *database,
 
 static int set_unknown_information_schema_table_error(mylite_db *database, const char *table_name)
 {
-    char *display_name = copy_nonempty_cstring(table_name);
+    char *display_name = mylite_copy_nonempty_cstring(table_name);
     char *message = NULL;
     int status = MYLITE_OK;
 
@@ -6719,7 +6720,8 @@ static int set_unknown_information_schema_table_error(mylite_db *database, const
 
 static char *copy_show_columns_like_pattern(const struct mylite_sql_ast_node *statement)
 {
-    const struct mylite_sql_ast_node *literal = find_child_kind(statement, MYLITE_SQL_AST_LITERAL);
+    const struct mylite_sql_ast_node *literal =
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_LITERAL);
 
     if (literal == NULL) {
         return NULL;
@@ -6781,7 +6783,7 @@ static int prepare_describe_table_statement(mylite_db *database,
     }
     if (status == MYLITE_OK) {
         column_pattern = copy_describe_column_pattern(statement);
-        if (child_at(statement, 1U) != NULL && column_pattern == NULL) {
+        if (mylite_ast_child_at(statement, 1U) != NULL && column_pattern == NULL) {
             status = MYLITE_NOMEM;
         }
     }
@@ -6818,7 +6820,7 @@ static int copy_describe_table_target(mylite_db *database,
     *out_target = (struct mylite_show_columns_target){0};
     status = copy_show_columns_table_target(
         (struct mylite_show_columns_source_nodes){
-            .table_name = child_at(statement, 0U),
+            .table_name = mylite_ast_child_at(statement, 0U),
             .explicit_schema = NULL,
         },
         out_target);
@@ -6838,7 +6840,7 @@ static int copy_describe_table_target(mylite_db *database,
 
 static char *copy_describe_column_pattern(const struct mylite_sql_ast_node *statement)
 {
-    const struct mylite_sql_ast_node *filter = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *filter = mylite_ast_child_at(statement, 1U);
 
     if (filter == NULL) {
         return NULL;
@@ -6846,7 +6848,7 @@ static char *copy_describe_column_pattern(const struct mylite_sql_ast_node *stat
     if (filter->kind == MYLITE_SQL_AST_LITERAL) {
         return copy_show_like_pattern_span(filter);
     }
-    return copy_identifier_span(filter);
+    return mylite_copy_identifier_span(filter);
 }
 
 static int prepare_show_index_statement(mylite_db *database,
@@ -6860,7 +6862,8 @@ static int prepare_show_index_statement(mylite_db *database,
     if (status == MYLITE_OK) {
         status = validate_show_index_target(database, &target);
     }
-    if (status == MYLITE_OK && find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
+    if (status == MYLITE_OK &&
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
         (void)mylite_diagnostics_set_error_message(database, "SHOW INDEX WHERE is not supported");
         status = MYLITE_UNSUPPORTED;
     }
@@ -6888,8 +6891,8 @@ static int prepare_show_index_statement(mylite_db *database,
 static int copy_show_index_target(mylite_db *database, const struct mylite_sql_ast_node *statement,
                                   struct mylite_show_index_target *out_target)
 {
-    const struct mylite_sql_ast_node *table_name = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *possible_schema = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *table_name = mylite_ast_child_at(statement, 0U);
+    const struct mylite_sql_ast_node *possible_schema = mylite_ast_child_at(statement, 1U);
     const struct mylite_sql_ast_node *explicit_schema =
         possible_schema != NULL && possible_schema->kind == MYLITE_SQL_AST_IDENTIFIER
             ? possible_schema
@@ -6933,7 +6936,7 @@ static int copy_show_index_table_target(struct mylite_show_index_source_nodes so
     }
 
     if (source.explicit_schema != NULL) {
-        out_target->schema_name = copy_identifier_span(source.explicit_schema);
+        out_target->schema_name = mylite_copy_identifier_span(source.explicit_schema);
         if (out_target->schema_name == NULL) {
             status = MYLITE_NOMEM;
             goto cleanup;
@@ -6972,7 +6975,7 @@ static int copy_show_index_selected_schema(mylite_db *database,
         return MYLITE_EXEC_ERROR;
     }
 
-    target->schema_name = copy_nonempty_cstring(database->selected_schema);
+    target->schema_name = mylite_copy_nonempty_cstring(database->selected_schema);
     if (target->schema_name == NULL) {
         return MYLITE_NOMEM;
     }
@@ -6984,12 +6987,12 @@ static int normalize_show_index_schema_name(char **schema_name)
     char *normalized = NULL;
 
     if (schema_name == NULL || *schema_name == NULL ||
-        !ascii_case_equal(*schema_name, "information_schema") ||
+        !mylite_ascii_case_equal(*schema_name, "information_schema") ||
         strcmp(*schema_name, "information_schema") == 0) {
         return MYLITE_OK;
     }
 
-    normalized = copy_nonempty_cstring("information_schema");
+    normalized = mylite_copy_nonempty_cstring("information_schema");
     if (normalized == NULL) {
         return MYLITE_NOMEM;
     }
@@ -7014,7 +7017,7 @@ static int validate_show_index_target(mylite_db *database,
                                                          target->schema_name, "'");
         return MYLITE_EXEC_ERROR;
     }
-    if (ascii_case_equal(target->schema_name, "information_schema")) {
+    if (mylite_ascii_case_equal(target->schema_name, "information_schema")) {
         if (information_schema_table_from_name(target->table_name) ==
             MYLITE_INFORMATION_SCHEMA_NONE) {
             return set_unknown_information_schema_table_error(database, target->table_name);
@@ -7102,7 +7105,7 @@ static int copy_show_create_table_target(mylite_db *database,
     *out_target = (struct mylite_show_create_table_target){0};
     status = copy_show_columns_table_target(
         (struct mylite_show_columns_source_nodes){
-            .table_name = child_at(statement, 0U),
+            .table_name = mylite_ast_child_at(statement, 0U),
             .explicit_schema = NULL,
         },
         &target);
@@ -7212,12 +7215,13 @@ static int read_show_create_table_info(mylite_db *database,
         const unsigned char *collation = sqlite3_column_text(select, 2);
         const unsigned char *comment = sqlite3_column_text(select, 3);
 
-        out_info->engine = copy_nonempty_cstring(engine == NULL ? "InnoDB" : (const char *)engine);
-        out_info->table_collation = copy_nonempty_cstring(
+        out_info->engine =
+            mylite_copy_nonempty_cstring(engine == NULL ? "InnoDB" : (const char *)engine);
+        out_info->table_collation = mylite_copy_nonempty_cstring(
             collation == NULL ? mylite_charset_default_collation_name() : (const char *)collation);
         out_info->table_comment =
-            copy_span_text(comment == NULL ? "" : (const char *)comment,
-                           comment == NULL ? 0U : strlen((const char *)comment));
+            mylite_copy_span_text(comment == NULL ? "" : (const char *)comment,
+                                  comment == NULL ? 0U : strlen((const char *)comment));
         out_info->has_auto_increment = sqlite3_column_type(select, 1) != SQLITE_NULL;
         out_info->auto_increment = sqlite3_column_int64(select, 1);
         sqlite3_finalize(select);
@@ -7291,7 +7295,7 @@ static int append_show_create_table_column(sqlite3_str *create_sql, sqlite3_stmt
     const char *character_set = (const char *)sqlite3_column_text(select, character_set_column);
     const char *column_collation = (const char *)sqlite3_column_text(select, collation_column);
     const char *data_type = (const char *)sqlite3_column_text(select, data_type_column);
-    bool nullable = ascii_case_equal(is_nullable, "YES");
+    bool nullable = mylite_ascii_case_equal(is_nullable, "YES");
 
     append_show_create_identifier(create_sql, column_name);
     sqlite3_str_appendf(create_sql, " %s", column_type == NULL ? "" : column_type);
@@ -7315,14 +7319,14 @@ static int append_show_create_table_column(sqlite3_str *create_sql, sqlite3_stmt
     } else if (nullable && show_create_column_needs_implicit_default_null(data_type)) {
         sqlite3_str_appendall(create_sql, " DEFAULT NULL");
     }
-    if (text_contains_word(extra, "auto_increment")) {
+    if (mylite_text_contains_word(extra, "auto_increment")) {
         sqlite3_str_appendall(create_sql, " AUTO_INCREMENT");
     }
-    if (text_contains_word(extra, "on") && text_contains_word(extra, "update") &&
-        text_contains_word(extra, "CURRENT_TIMESTAMP")) {
+    if (mylite_text_contains_word(extra, "on") && mylite_text_contains_word(extra, "update") &&
+        mylite_text_contains_word(extra, "CURRENT_TIMESTAMP")) {
         sqlite3_str_appendall(create_sql, " ON UPDATE CURRENT_TIMESTAMP");
     }
-    if (text_contains_word(extra, "INVISIBLE")) {
+    if (mylite_text_contains_word(extra, "INVISIBLE")) {
         sqlite3_str_appendall(create_sql, " /*!80023 INVISIBLE */");
     }
     if (comment != NULL && comment[0] != '\0') {
@@ -7387,7 +7391,7 @@ static int append_show_create_table_index(sqlite3_str *create_sql, sqlite3_stmt 
     const char *index_name = (const char *)sqlite3_column_text(select, index_name_column);
     int non_unique = sqlite3_column_int(select, non_unique_column);
 
-    if (ascii_case_equal(index_name, "PRIMARY")) {
+    if (mylite_ascii_case_equal(index_name, "PRIMARY")) {
         sqlite3_str_appendall(create_sql, "PRIMARY KEY (");
     } else {
         if (non_unique == 0) {
@@ -7445,7 +7449,7 @@ static int append_show_create_table_key_parts(mylite_db *database, sqlite3_str *
         if (sqlite3_column_type(parts, sub_part_column) != SQLITE_NULL) {
             sqlite3_str_appendf(create_sql, "(%lld)", sqlite3_column_int64(parts, sub_part_column));
         }
-        if (ascii_case_equal(collation, "D")) {
+        if (mylite_ascii_case_equal(collation, "D")) {
             sqlite3_str_appendall(create_sql, " DESC");
         }
     }
@@ -7459,7 +7463,8 @@ static int append_show_create_table_key_parts(mylite_db *database, sqlite3_str *
         sqlite3_str_appendall(create_sql, " COMMENT ");
         append_show_create_string_literal(create_sql, index_comment);
     }
-    if (!ascii_case_equal(index_name, "PRIMARY") && ascii_case_equal(is_visible, "NO")) {
+    if (!mylite_ascii_case_equal(index_name, "PRIMARY") &&
+        mylite_ascii_case_equal(is_visible, "NO")) {
         sqlite3_str_appendall(create_sql, " /*!80000 INVISIBLE */");
     }
     return sqlite3_str_errcode(create_sql) == SQLITE_OK ? MYLITE_OK : MYLITE_NOMEM;
@@ -7521,28 +7526,28 @@ static void append_show_create_string_literal(sqlite3_str *create_sql, const cha
 
 static bool show_create_column_needs_implicit_default_null(const char *data_type)
 {
-    if (ascii_case_equal(data_type, "tinytext")) {
+    if (mylite_ascii_case_equal(data_type, "tinytext")) {
         return false;
     }
-    if (ascii_case_equal(data_type, "text")) {
+    if (mylite_ascii_case_equal(data_type, "text")) {
         return false;
     }
-    if (ascii_case_equal(data_type, "mediumtext")) {
+    if (mylite_ascii_case_equal(data_type, "mediumtext")) {
         return false;
     }
-    if (ascii_case_equal(data_type, "longtext")) {
+    if (mylite_ascii_case_equal(data_type, "longtext")) {
         return false;
     }
-    if (ascii_case_equal(data_type, "tinyblob")) {
+    if (mylite_ascii_case_equal(data_type, "tinyblob")) {
         return false;
     }
-    if (ascii_case_equal(data_type, "blob")) {
+    if (mylite_ascii_case_equal(data_type, "blob")) {
         return false;
     }
-    if (ascii_case_equal(data_type, "mediumblob")) {
+    if (mylite_ascii_case_equal(data_type, "mediumblob")) {
         return false;
     }
-    if (ascii_case_equal(data_type, "longblob")) {
+    if (mylite_ascii_case_equal(data_type, "longblob")) {
         return false;
     }
     return true;
@@ -7555,14 +7560,15 @@ append_show_create_column_collation(sqlite3_str *create_sql,
     if (collation.column_collation == NULL || collation.column_collation[0] == '\0') {
         return;
     }
-    if (!ascii_case_equal(collation.column_collation, collation.table_collation)) {
+    if (!mylite_ascii_case_equal(collation.column_collation, collation.table_collation)) {
         sqlite3_str_appendf(create_sql, " CHARACTER SET %s COLLATE %s",
                             collation.character_set_name == NULL ? mylite_charset_default_name()
                                                                  : collation.character_set_name,
                             collation.column_collation);
         return;
     }
-    if (!ascii_case_equal(collation.table_collation, mylite_charset_default_collation_name())) {
+    if (!mylite_ascii_case_equal(collation.table_collation,
+                                 mylite_charset_default_collation_name())) {
         sqlite3_str_appendf(create_sql, " COLLATE %s", collation.column_collation);
     }
 }
@@ -7613,7 +7619,7 @@ static int show_create_schema_sql(mylite_db *database, const struct mylite_sql_a
 {
     struct mylite_show_create_schema_info info = {0};
     sqlite3_str *create_sql = NULL;
-    char *schema_name = copy_identifier_span(child_at(statement, 0U));
+    char *schema_name = mylite_copy_identifier_span(mylite_ast_child_at(statement, 0U));
     char *create_text = NULL;
     int status = MYLITE_OK;
 
@@ -7678,14 +7684,15 @@ static int read_show_create_schema_info(mylite_db *database, const char *schema_
         const char *collation = (const char *)sqlite3_column_text(select, 2);
         const char *encryption = (const char *)sqlite3_column_text(select, 3);
 
-        out_info->name = copy_span_text(name == NULL ? "" : name, name == NULL ? 0U : strlen(name));
+        out_info->name =
+            mylite_copy_span_text(name == NULL ? "" : name, name == NULL ? 0U : strlen(name));
         out_info->character_set =
-            copy_span_text(character_set == NULL ? "" : character_set,
-                           character_set == NULL ? 0U : strlen(character_set));
-        out_info->collation = copy_span_text(collation == NULL ? "" : collation,
-                                             collation == NULL ? 0U : strlen(collation));
-        out_info->encryption = copy_span_text(encryption == NULL ? "N" : encryption,
-                                              encryption == NULL ? 1U : strlen(encryption));
+            mylite_copy_span_text(character_set == NULL ? "" : character_set,
+                                  character_set == NULL ? 0U : strlen(character_set));
+        out_info->collation = mylite_copy_span_text(collation == NULL ? "" : collation,
+                                                    collation == NULL ? 0U : strlen(collation));
+        out_info->encryption = mylite_copy_span_text(encryption == NULL ? "N" : encryption,
+                                                     encryption == NULL ? 1U : strlen(encryption));
         sqlite3_finalize(select);
         if (out_info->name == NULL || out_info->character_set == NULL ||
             out_info->collation == NULL || out_info->encryption == NULL) {
@@ -7732,10 +7739,10 @@ static bool show_create_schema_should_append_collation(const char *character_set
     if (charset == NULL) {
         return true;
     }
-    if (!ascii_case_equal(collation, charset->default_collation)) {
+    if (!mylite_ascii_case_equal(collation, charset->default_collation)) {
         return true;
     }
-    return ascii_case_equal(character_set, "utf8mb4");
+    return mylite_ascii_case_equal(character_set, "utf8mb4");
 }
 
 static void show_create_schema_info_deinit(struct mylite_show_create_schema_info *info)
@@ -7940,18 +7947,18 @@ static int prepare_table_select_statement(mylite_db *database,
                                           const char *sql, size_t sql_length,
                                           mylite_stmt **out_stmt)
 {
-    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *select_list = mylite_ast_child_at(statement, 0U);
+    const struct mylite_sql_ast_node *from_clause = mylite_ast_child_at(statement, 1U);
     const struct mylite_sql_ast_node *where_clause =
-        find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE);
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE);
     const struct mylite_sql_ast_node *group_by_clause =
-        find_child_kind(statement, MYLITE_SQL_AST_GROUP_BY_CLAUSE);
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_GROUP_BY_CLAUSE);
     const struct mylite_sql_ast_node *having_clause =
-        find_child_kind(statement, MYLITE_SQL_AST_HAVING_CLAUSE);
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_HAVING_CLAUSE);
     const struct mylite_sql_ast_node *order_by_clause =
-        find_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
     const struct mylite_sql_ast_node *limit_clause =
-        find_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE);
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE);
     const struct mylite_select_clause_nodes clauses = {
         .where = where_clause,
         .group_by = group_by_clause,
@@ -8072,12 +8079,12 @@ static int prepare_scalar_select_statement(mylite_db *database,
                                            const struct mylite_sql_ast_node *statement,
                                            mylite_stmt **out_stmt)
 {
-    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *select_list = mylite_ast_child_at(statement, 0U);
+    const struct mylite_sql_ast_node *from_clause = mylite_ast_child_at(statement, 1U);
 
     if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST ||
-        find_child_kind(statement, MYLITE_SQL_AST_FROM_TABLE) != NULL ||
-        find_child_kind(statement, MYLITE_SQL_AST_FROM_TABLE_REFERENCES) != NULL ||
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_FROM_TABLE) != NULL ||
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_FROM_TABLE_REFERENCES) != NULL ||
         (from_clause != NULL && from_clause->kind != MYLITE_SQL_AST_FROM_DUAL &&
          from_clause->kind != MYLITE_SQL_AST_ORDER_BY_CLAUSE &&
          from_clause->kind != MYLITE_SQL_AST_LIMIT_CLAUSE)) {
@@ -8085,7 +8092,7 @@ static int prepare_scalar_select_statement(mylite_db *database,
     }
     for (const struct mylite_sql_ast_node *item = select_list->first_child; item != NULL;
          item = item->next_sibling) {
-        if (item->kind != MYLITE_SQL_AST_SELECT_ITEM || child_at(item, 0U) == NULL) {
+        if (item->kind != MYLITE_SQL_AST_SELECT_ITEM || mylite_ast_child_at(item, 0U) == NULL) {
             return MYLITE_UNSUPPORTED;
         }
     }
@@ -8126,7 +8133,7 @@ static int prepare_union_query_expression_statement(mylite_db *database,
                                                     const char *sql, size_t sql_length,
                                                     mylite_stmt **out_stmt)
 {
-    const struct mylite_sql_ast_node *body = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *body = mylite_ast_child_at(statement, 0U);
     mylite_stmt *stmt = NULL;
     int status = MYLITE_OK;
 
@@ -8201,9 +8208,9 @@ static int bind_union_query_clauses(mylite_db *database,
                                     size_t sql_length, mylite_stmt *stmt)
 {
     const struct mylite_sql_ast_node *order_by_clause =
-        find_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
     const struct mylite_sql_ast_node *limit_clause =
-        find_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE);
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE);
     int status = MYLITE_OK;
 
     if (limit_clause != NULL) {
@@ -8213,7 +8220,7 @@ static int bind_union_query_clauses(mylite_db *database,
         status = bind_union_global_order_by_clause(database, order_by_clause, &stmt->select_plan);
     }
     if (status == MYLITE_OK && stmt->select_plan.order_key_count != 0U) {
-        stmt->select_sql_text = copy_span_text(sql, sql_length);
+        stmt->select_sql_text = mylite_copy_span_text(sql, sql_length);
         if (stmt->select_sql_text == NULL) {
             (void)mylite_diagnostics_set_error_message(database, "out of memory");
             return MYLITE_NOMEM;
@@ -8235,8 +8242,8 @@ static int collect_union_query_operands(mylite_db *database, const struct mylite
         return MYLITE_UNSUPPORTED;
     }
     if (unwrapped->kind == MYLITE_SQL_AST_UNION_EXPRESSION) {
-        const struct mylite_sql_ast_node *left = child_at(unwrapped, 0U);
-        const struct mylite_sql_ast_node *right = child_at(unwrapped, 1U);
+        const struct mylite_sql_ast_node *left = mylite_ast_child_at(unwrapped, 0U);
+        const struct mylite_sql_ast_node *right = mylite_ast_child_at(unwrapped, 1U);
         mylite_stmt *right_operand = NULL;
         int status = collect_union_query_operands(database, left, plan);
 
@@ -8325,7 +8332,7 @@ unwrap_union_query_primary(const struct mylite_sql_ast_node *node)
     const struct mylite_sql_ast_node *current = node;
 
     while (current != NULL && current->kind == MYLITE_SQL_AST_QUERY_PRIMARY) {
-        current = child_at(current, 0U);
+        current = mylite_ast_child_at(current, 0U);
     }
     return current;
 }
@@ -8401,7 +8408,7 @@ static int add_union_output_column(mylite_db *database, struct mylite_select_pla
         .column_index = plan->output_count,
     };
 
-    output.label = label == NULL ? NULL : copy_span_text(label, strlen(label));
+    output.label = label == NULL ? NULL : mylite_copy_span_text(label, strlen(label));
     if (label != NULL && output.label == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
@@ -8566,7 +8573,7 @@ static int bind_union_global_order_by_clause(mylite_db *database,
                                              const struct mylite_sql_ast_node *order_by_clause,
                                              struct mylite_select_plan *plan)
 {
-    const struct mylite_sql_ast_node *items = child_at(order_by_clause, 0U);
+    const struct mylite_sql_ast_node *items = mylite_ast_child_at(order_by_clause, 0U);
 
     if (order_by_clause == NULL || order_by_clause->kind != MYLITE_SQL_AST_ORDER_BY_CLAUSE ||
         items == NULL || items->kind != MYLITE_SQL_AST_ORDER_ITEM_LIST) {
@@ -8588,7 +8595,7 @@ static int bind_union_global_order_item(mylite_db *database,
                                         const struct mylite_sql_ast_node *order_item,
                                         struct mylite_select_plan *plan)
 {
-    const struct mylite_sql_ast_node *expression = child_at(order_item, 0U);
+    const struct mylite_sql_ast_node *expression = mylite_ast_child_at(order_item, 0U);
     struct mylite_select_order_key order_key = {
         .kind = MYLITE_SELECT_ORDER_KEY_EXPRESSION,
         .direction = MYLITE_SQL_AST_KEY_PART_ORDER_ASC,
@@ -8608,7 +8615,7 @@ static int bind_union_global_order_item(mylite_db *database,
 
         if (!parse_uint64_span(expression->span, &ordinal) || ordinal == 0U ||
             ordinal > plan->output_count) {
-            char *reference = copy_span_text(expression->span.text, expression->span.length);
+            char *reference = mylite_copy_span_text(expression->span.text, expression->span.length);
             int status = MYLITE_OK;
 
             if (reference == NULL) {
@@ -8728,7 +8735,7 @@ static int bind_union_global_order_function_call(mylite_db *database,
                                                  const struct mylite_sql_ast_node *expression,
                                                  struct mylite_select_plan *plan)
 {
-    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
 
     if (!mylite_expression_is_supported_function_call(expression)) {
         return set_select_unsupported_order_error(database);
@@ -8909,7 +8916,7 @@ static int infer_expression_descriptor(mylite_db *database, const struct mylite_
         return MYLITE_MISUSE;
     }
     while (node != NULL && node->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
-        node = child_at(node, 0U);
+        node = mylite_ast_child_at(node, 0U);
     }
     if (node == NULL) {
         *out_descriptor = field_descriptor_defaults();
@@ -9176,8 +9183,8 @@ static int infer_unary_expression_descriptor(mylite_db *database,
         *out_descriptor = boolean_expression_descriptor(false);
         return MYLITE_OK;
     case MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT:
-        status =
-            infer_expression_descriptor(database, plan, child_at(expression, 0U), NULL, &operand);
+        status = infer_expression_descriptor(database, plan, mylite_ast_child_at(expression, 0U),
+                                             NULL, &operand);
         if (status != MYLITE_OK) {
             return status;
         }
@@ -9185,8 +9192,8 @@ static int infer_unary_expression_descriptor(mylite_db *database,
             boolean_expression_descriptor(expression_descriptor_is_nullable(&operand));
         return MYLITE_OK;
     case MYLITE_SQL_AST_OPERATOR_BITWISE_NOT:
-        status =
-            infer_expression_descriptor(database, plan, child_at(expression, 0U), NULL, &operand);
+        status = infer_expression_descriptor(database, plan, mylite_ast_child_at(expression, 0U),
+                                             NULL, &operand);
         if (status != MYLITE_OK) {
             return status;
         }
@@ -9195,8 +9202,8 @@ static int infer_unary_expression_descriptor(mylite_db *database,
         return MYLITE_OK;
     case MYLITE_SQL_AST_OPERATOR_POSITIVE:
     case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
-        status =
-            infer_expression_descriptor(database, plan, child_at(expression, 0U), value, &operand);
+        status = infer_expression_descriptor(database, plan, mylite_ast_child_at(expression, 0U),
+                                             value, &operand);
         if (status != MYLITE_OK) {
             return status;
         }
@@ -9258,11 +9265,12 @@ static int infer_binary_expression_descriptor(mylite_db *database,
     struct mylite_field_descriptor left = field_descriptor_defaults();
     struct mylite_field_descriptor right = field_descriptor_defaults();
     bool nullable = true;
-    int status = infer_expression_descriptor(database, plan, child_at(expression, 0U), NULL, &left);
+    int status = infer_expression_descriptor(database, plan, mylite_ast_child_at(expression, 0U),
+                                             NULL, &left);
 
     if (status == MYLITE_OK) {
-        status =
-            infer_expression_descriptor(database, plan, child_at(expression, 1U), NULL, &right);
+        status = infer_expression_descriptor(database, plan, mylite_ast_child_at(expression, 1U),
+                                             NULL, &right);
     }
     if (status != MYLITE_OK) {
         return status;
@@ -9429,8 +9437,8 @@ static int infer_function_expression_descriptor(mylite_db *database,
                                                 const struct mylite_expression_value *value,
                                                 struct mylite_field_descriptor *out_descriptor)
 {
-    const struct mylite_sql_ast_node *name = child_at(expression, 0U);
-    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
     bool nullable = false;
     bool result_nullable = false;
     bool matched_string_encoding = false;
@@ -9490,12 +9498,12 @@ static int infer_function_expression_descriptor(mylite_db *database,
     if (infer_list_index_function_descriptor(name, result_nullable, out_descriptor)) {
         return MYLITE_OK;
     }
-    if (name != NULL && ascii_span_equal_ci(name->span, "ISNULL")) {
+    if (name != NULL && mylite_span_equal_ci(name->span, "ISNULL")) {
         *out_descriptor = signed_longlong_expression_descriptor(false);
         out_descriptor->length = 1U;
         return MYLITE_OK;
     }
-    if (name != NULL && ascii_span_equal_ci(name->span, "ABS")) {
+    if (name != NULL && mylite_span_equal_ci(name->span, "ABS")) {
         *out_descriptor = signed_longlong_expression_descriptor(result_nullable);
         if (value != NULL && value->kind != MYLITE_EXPRESSION_VALUE_NULL) {
             *out_descriptor = expression_value_descriptor(value);
@@ -9508,11 +9516,11 @@ static int infer_function_expression_descriptor(mylite_db *database,
         out_descriptor->length = mylite_mysql_integer_function_display_length;
         return MYLITE_OK;
     }
-    if (name != NULL && ascii_span_equal_ci(name->span, "MOD")) {
+    if (name != NULL && mylite_span_equal_ci(name->span, "MOD")) {
         *out_descriptor = signed_longlong_expression_descriptor(true);
         return MYLITE_OK;
     }
-    if (name != NULL && ascii_span_equal_ci(name->span, "PI")) {
+    if (name != NULL && mylite_span_equal_ci(name->span, "PI")) {
         (void)value;
         *out_descriptor = (struct mylite_field_descriptor){
             .type = MYLITE_FIELD_TYPE_DOUBLE,
@@ -9766,15 +9774,15 @@ static int infer_round_function_descriptor(mylite_db *database,
                                            bool result_nullable,
                                            struct mylite_field_descriptor *out_descriptor)
 {
-    const struct mylite_sql_ast_node *name = child_at(expression, 0U);
-    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
-    const struct mylite_sql_ast_node *value_argument = child_at(arguments, 0U);
-    const struct mylite_sql_ast_node *scale_argument = child_at(arguments, 1U);
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
+    const struct mylite_sql_ast_node *value_argument = mylite_ast_child_at(arguments, 0U);
+    const struct mylite_sql_ast_node *scale_argument = mylite_ast_child_at(arguments, 1U);
     struct mylite_field_descriptor value_descriptor = field_descriptor_defaults();
     int scale = 0;
     int status = MYLITE_OK;
 
-    if (name == NULL || !ascii_span_equal_ci(name->span, "ROUND")) {
+    if (name == NULL || !mylite_span_equal_ci(name->span, "ROUND")) {
         return MYLITE_UNSUPPORTED;
     }
     status = infer_expression_descriptor(database, plan, value_argument, NULL, &value_descriptor);
@@ -9859,9 +9867,9 @@ static int infer_format_function_descriptor(mylite_db *database,
                                             const struct mylite_sql_ast_node *expression,
                                             struct mylite_field_descriptor *out_descriptor)
 {
-    const struct mylite_sql_ast_node *name = child_at(expression, 0U);
-    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
-    const struct mylite_sql_ast_node *value_argument = child_at(arguments, 0U);
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
+    const struct mylite_sql_ast_node *value_argument = mylite_ast_child_at(arguments, 0U);
     struct mylite_field_descriptor value_descriptor = field_descriptor_defaults();
     uint64_t max_bytes_per_character = connection_character_max_length(database);
     uint64_t character_length = 0U;
@@ -9947,7 +9955,7 @@ static uint64_t format_literal_result_character_length(const struct mylite_sql_a
     if (argument != NULL && argument->kind == MYLITE_SQL_AST_UNARY_EXPRESSION &&
         (argument->operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ||
          argument->operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE)) {
-        uint64_t length = format_literal_result_character_length(child_at(argument, 0U));
+        uint64_t length = format_literal_result_character_length(mylite_ast_child_at(argument, 0U));
 
         return length == 0U ? 0U : length + 1U;
     }
@@ -9998,15 +10006,15 @@ static int infer_truncate_function_descriptor(mylite_db *database,
                                               bool result_nullable,
                                               struct mylite_field_descriptor *out_descriptor)
 {
-    const struct mylite_sql_ast_node *name = child_at(expression, 0U);
-    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
-    const struct mylite_sql_ast_node *value_argument = child_at(arguments, 0U);
-    const struct mylite_sql_ast_node *scale_argument = child_at(arguments, 1U);
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
+    const struct mylite_sql_ast_node *value_argument = mylite_ast_child_at(arguments, 0U);
+    const struct mylite_sql_ast_node *scale_argument = mylite_ast_child_at(arguments, 1U);
     struct mylite_field_descriptor value_descriptor = field_descriptor_defaults();
     int scale = 0;
     int status = MYLITE_OK;
 
-    if (name == NULL || !ascii_span_equal_ci(name->span, "TRUNCATE")) {
+    if (name == NULL || !mylite_span_equal_ci(name->span, "TRUNCATE")) {
         return MYLITE_UNSUPPORTED;
     }
     status = infer_expression_descriptor(database, plan, value_argument, NULL, &value_descriptor);
@@ -10084,7 +10092,7 @@ round_function_argument_is_approximate_literal(const struct mylite_sql_ast_node 
     if (argument != NULL && argument->kind == MYLITE_SQL_AST_UNARY_EXPRESSION &&
         (argument->operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ||
          argument->operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE)) {
-        argument = unwrap_parenthesized_expression(child_at(argument, 0U));
+        argument = unwrap_parenthesized_expression(mylite_ast_child_at(argument, 0U));
     }
     if (argument == NULL || argument->kind != MYLITE_SQL_AST_LITERAL) {
         return false;
@@ -10109,15 +10117,15 @@ static bool round_function_constant_scale(const struct mylite_sql_ast_node *argu
         return true;
     }
     while (argument != NULL && argument->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
-        argument = child_at(argument, 0U);
+        argument = mylite_ast_child_at(argument, 0U);
     }
     if (argument != NULL && argument->kind == MYLITE_SQL_AST_UNARY_EXPRESSION &&
         (argument->operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ||
          argument->operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE)) {
         negative = argument->operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE;
-        argument = child_at(argument, 0U);
+        argument = mylite_ast_child_at(argument, 0U);
         while (argument != NULL && argument->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
-            argument = child_at(argument, 0U);
+            argument = mylite_ast_child_at(argument, 0U);
         }
     }
     if (argument == NULL || argument->kind != MYLITE_SQL_AST_LITERAL ||
@@ -10358,7 +10366,8 @@ static bool infer_session_function_descriptor(mylite_db *database,
         };
         return true;
     }
-    if (ascii_span_equal_ci(name->span, "DATABASE") || ascii_span_equal_ci(name->span, "SCHEMA")) {
+    if (mylite_span_equal_ci(name->span, "DATABASE") ||
+        mylite_span_equal_ci(name->span, "SCHEMA")) {
         *out_descriptor = (struct mylite_field_descriptor){
             .type = MYLITE_FIELD_TYPE_VAR_STRING,
             .flags = 0U,
@@ -10369,7 +10378,7 @@ static bool infer_session_function_descriptor(mylite_db *database,
         };
         return true;
     }
-    if (ascii_span_equal_ci(name->span, "VERSION")) {
+    if (mylite_span_equal_ci(name->span, "VERSION")) {
         *out_descriptor = (struct mylite_field_descriptor){
             .type = MYLITE_FIELD_TYPE_VAR_STRING,
             .flags = MYLITE_FIELD_FLAG_NOT_NULL,
@@ -10380,10 +10389,10 @@ static bool infer_session_function_descriptor(mylite_db *database,
         };
         return true;
     }
-    if (ascii_span_equal_ci(name->span, "USER") ||
-        ascii_span_equal_ci(name->span, "SESSION_USER") ||
-        ascii_span_equal_ci(name->span, "SYSTEM_USER") ||
-        ascii_span_equal_ci(name->span, "CURRENT_USER")) {
+    if (mylite_span_equal_ci(name->span, "USER") ||
+        mylite_span_equal_ci(name->span, "SESSION_USER") ||
+        mylite_span_equal_ci(name->span, "SYSTEM_USER") ||
+        mylite_span_equal_ci(name->span, "CURRENT_USER")) {
         uint64_t max_bytes_per_character = connection_character_max_length(database);
         uint64_t length =
             max_bytes_per_character > UINT64_MAX / mylite_mysql_identity_function_display_chars
@@ -10400,7 +10409,7 @@ static bool infer_session_function_descriptor(mylite_db *database,
         };
         return true;
     }
-    if (ascii_span_equal_ci(name->span, "LAST_INSERT_ID")) {
+    if (mylite_span_equal_ci(name->span, "LAST_INSERT_ID")) {
         *out_descriptor = (struct mylite_field_descriptor){
             .type = MYLITE_FIELD_TYPE_LONGLONG,
             .flags = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED |
@@ -10411,7 +10420,7 @@ static bool infer_session_function_descriptor(mylite_db *database,
         };
         return true;
     }
-    if (ascii_span_equal_ci(name->span, "CONNECTION_ID")) {
+    if (mylite_span_equal_ci(name->span, "CONNECTION_ID")) {
         *out_descriptor = (struct mylite_field_descriptor){
             .type = MYLITE_FIELD_TYPE_LONGLONG,
             .flags = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED |
@@ -10422,7 +10431,7 @@ static bool infer_session_function_descriptor(mylite_db *database,
         };
         return true;
     }
-    if (ascii_span_equal_ci(name->span, "ROW_COUNT")) {
+    if (mylite_span_equal_ci(name->span, "ROW_COUNT")) {
         *out_descriptor = (struct mylite_field_descriptor){
             .type = MYLITE_FIELD_TYPE_LONGLONG,
             .flags = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
@@ -10439,7 +10448,7 @@ static bool
 infer_current_temporal_function_descriptor(const struct mylite_sql_ast_node *expression,
                                            struct mylite_field_descriptor *out_descriptor)
 {
-    const struct mylite_sql_ast_node *name = child_at(expression, 0U);
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
     unsigned int fsp = 0U;
 
     if (!current_temporal_function_fsp(expression, &fsp)) {
@@ -10587,7 +10596,7 @@ infer_temporal_scalar_function_descriptor(const struct mylite_sql_ast_node *name
 static bool infer_temporal_part_function_descriptor(const struct mylite_sql_ast_node *expression,
                                                     struct mylite_field_descriptor *out_descriptor)
 {
-    const struct mylite_sql_ast_node *name = child_at(expression, 0U);
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
 
     if (function_name_is_extract(name)) {
         if (!expression->interval_spec ||
@@ -10613,9 +10622,9 @@ static int infer_time_function_descriptor(mylite_db *database,
                                           const struct mylite_expression_value *value,
                                           struct mylite_field_descriptor *out_descriptor)
 {
-    const struct mylite_sql_ast_node *name = child_at(expression, 0U);
-    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
-    const struct mylite_sql_ast_node *argument = child_at(arguments, 0U);
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
+    const struct mylite_sql_ast_node *argument = mylite_ast_child_at(arguments, 0U);
     struct mylite_field_descriptor argument_descriptor = field_descriptor_defaults();
     struct mylite_expression_value evaluated_value = {0};
     struct mylite_expression_warnings warnings = {0};
@@ -10684,7 +10693,7 @@ static bool time_function_argument_is_approximate(const struct mylite_sql_ast_no
     if (argument != NULL && argument->kind == MYLITE_SQL_AST_UNARY_EXPRESSION &&
         (argument->operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ||
          argument->operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE)) {
-        argument = unwrap_parenthesized_expression(child_at(argument, 0U));
+        argument = unwrap_parenthesized_expression(mylite_ast_child_at(argument, 0U));
     }
     if (argument != NULL && argument->kind == MYLITE_SQL_AST_LITERAL &&
         argument->literal_kind == MYLITE_SQL_AST_LITERAL_FLOAT) {
@@ -10735,9 +10744,9 @@ static int infer_date_interval_function_descriptor(mylite_db *database,
                                                    const struct mylite_sql_ast_node *expression,
                                                    struct mylite_field_descriptor *out_descriptor)
 {
-    const struct mylite_sql_ast_node *name = child_at(expression, 0U);
-    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
-    const struct mylite_sql_ast_node *temporal = child_at(arguments, 0U);
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
+    const struct mylite_sql_ast_node *temporal = mylite_ast_child_at(arguments, 0U);
     struct mylite_field_descriptor temporal_descriptor = field_descriptor_defaults();
     int status = MYLITE_OK;
 
@@ -10844,7 +10853,8 @@ static int infer_make_set_function_descriptor(mylite_db *database,
     if (status != MYLITE_OK) {
         return status;
     }
-    status = infer_function_arguments_nullable(database, plan, child_at(expression, 1U), &nullable);
+    status = infer_function_arguments_nullable(database, plan, mylite_ast_child_at(expression, 1U),
+                                               &nullable);
     if (status != MYLITE_OK) {
         return status;
     }
@@ -10899,9 +10909,9 @@ static int infer_char_function_descriptor(mylite_db *database,
                                           const struct mylite_sql_ast_node *expression,
                                           struct mylite_field_descriptor *out_descriptor)
 {
-    const struct mylite_sql_ast_node *name = child_at(expression, 0U);
-    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
-    const struct mylite_sql_ast_node *charset_node = child_at(expression, 2U);
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
+    const struct mylite_sql_ast_node *charset_node = mylite_ast_child_at(expression, 2U);
     char *charset_name = NULL;
     bool binary_result = false;
     size_t arity = 0U;
@@ -10913,14 +10923,15 @@ static int infer_char_function_descriptor(mylite_db *database,
         return MYLITE_UNSUPPORTED;
     }
 
-    charset_name = charset_node == NULL ? copy_span_text(mylite_mysql_binary_charset_name,
-                                                         strlen(mylite_mysql_binary_charset_name))
-                                        : copy_schema_text_span(charset_node);
+    charset_name = charset_node == NULL
+                       ? mylite_copy_span_text(mylite_mysql_binary_charset_name,
+                                               strlen(mylite_mysql_binary_charset_name))
+                       : mylite_copy_schema_text_span(charset_node);
     if (charset_name == NULL) {
         return MYLITE_NOMEM;
     }
 
-    if (ascii_case_equal(charset_name, "binary")) {
+    if (mylite_ascii_case_equal(charset_name, "binary")) {
         binary_result = true;
     } else if (!char_function_charset_name_is_supported(charset_name)) {
         int status = set_unknown_charset_error(database, charset_name);
@@ -10965,15 +10976,15 @@ static int infer_char_function_descriptor(mylite_db *database,
 static int validate_char_function_charset(mylite_db *database,
                                           const struct mylite_sql_ast_node *expression)
 {
-    const struct mylite_sql_ast_node *name = child_at(expression, 0U);
-    const struct mylite_sql_ast_node *charset_node = child_at(expression, 2U);
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
+    const struct mylite_sql_ast_node *charset_node = mylite_ast_child_at(expression, 2U);
     char *charset_name = NULL;
     int status = MYLITE_OK;
 
     if (!function_name_is_char(name) || charset_node == NULL) {
         return MYLITE_OK;
     }
-    charset_name = copy_schema_text_span(charset_node);
+    charset_name = mylite_copy_schema_text_span(charset_node);
     if (charset_name == NULL) {
         return MYLITE_NOMEM;
     }
@@ -10987,7 +10998,7 @@ static int validate_char_function_charset(mylite_db *database,
 static int validate_cast_expression_target_charset(mylite_db *database,
                                                    const struct mylite_sql_ast_node *expression)
 {
-    const struct mylite_sql_ast_node *target = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *target = mylite_ast_child_at(expression, 1U);
     char *charset_name = NULL;
     int status = MYLITE_OK;
 
@@ -10997,7 +11008,7 @@ static int validate_cast_expression_target_charset(mylite_db *database,
         return MYLITE_OK;
     }
 
-    charset_name = copy_unquoted_span_text(target->column_character_set);
+    charset_name = mylite_copy_unquoted_span_text(target->column_character_set);
     if (charset_name == NULL) {
         return MYLITE_NOMEM;
     }
@@ -11010,12 +11021,12 @@ static int validate_cast_expression_target_charset(mylite_db *database,
 
 static bool char_function_charset_name_is_supported(const char *name)
 {
-    if (ascii_case_equal(name, mylite_mysql_binary_charset_name)) {
+    if (mylite_ascii_case_equal(name, mylite_mysql_binary_charset_name)) {
         return true;
     }
-    if (ascii_case_equal(name, "latin1") || ascii_case_equal(name, "utf8mb4") ||
-        ascii_case_equal(name, "utf8mb3") || ascii_case_equal(name, "utf8") ||
-        ascii_case_equal(name, "ascii")) {
+    if (mylite_ascii_case_equal(name, "latin1") || mylite_ascii_case_equal(name, "utf8mb4") ||
+        mylite_ascii_case_equal(name, "utf8mb3") || mylite_ascii_case_equal(name, "utf8") ||
+        mylite_ascii_case_equal(name, "ascii")) {
         return true;
     }
     return false;
@@ -11028,7 +11039,7 @@ static int infer_string_encoding_function_descriptor(mylite_db *database,
                                                      struct mylite_field_descriptor *out_descriptor,
                                                      bool *out_matched)
 {
-    const struct mylite_sql_ast_node *name = child_at(expression, 0U);
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
 
     *out_matched = true;
     if (function_name_is_hex(name)) {
@@ -11052,8 +11063,8 @@ static int infer_hex_function_descriptor(mylite_db *database, const struct mylit
                                          const struct mylite_sql_ast_node *expression,
                                          struct mylite_field_descriptor *out_descriptor)
 {
-    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
-    const struct mylite_sql_ast_node *source = child_at(arguments, 0U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
+    const struct mylite_sql_ast_node *source = mylite_ast_child_at(arguments, 0U);
     struct mylite_field_descriptor source_descriptor = field_descriptor_defaults();
     uint64_t max_bytes_per_character = connection_character_max_length(database);
     uint64_t length = 0U;
@@ -11093,8 +11104,8 @@ static int infer_unhex_function_descriptor(mylite_db *database,
                                            const struct mylite_sql_ast_node *expression,
                                            struct mylite_field_descriptor *out_descriptor)
 {
-    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
-    const struct mylite_sql_ast_node *source = child_at(arguments, 0U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
+    const struct mylite_sql_ast_node *source = mylite_ast_child_at(arguments, 0U);
     struct mylite_field_descriptor source_descriptor = field_descriptor_defaults();
     uint64_t length = 0U;
     int status = infer_expression_descriptor(database, plan, source, NULL, &source_descriptor);
@@ -11128,8 +11139,8 @@ static int infer_to_base64_function_descriptor(mylite_db *database,
                                                const struct mylite_sql_ast_node *expression,
                                                struct mylite_field_descriptor *out_descriptor)
 {
-    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
-    const struct mylite_sql_ast_node *source = child_at(arguments, 0U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
+    const struct mylite_sql_ast_node *source = mylite_ast_child_at(arguments, 0U);
     struct mylite_field_descriptor source_descriptor = field_descriptor_defaults();
     uint64_t max_bytes_per_character = connection_character_max_length(database);
     uint64_t encoded_chars = 0U;
@@ -11164,8 +11175,8 @@ static int infer_from_base64_function_descriptor(mylite_db *database,
                                                  const struct mylite_sql_ast_node *expression,
                                                  struct mylite_field_descriptor *out_descriptor)
 {
-    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
-    const struct mylite_sql_ast_node *source = child_at(arguments, 0U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
+    const struct mylite_sql_ast_node *source = mylite_ast_child_at(arguments, 0U);
     struct mylite_field_descriptor source_descriptor = field_descriptor_defaults();
     uint64_t length = 0U;
     int status = infer_expression_descriptor(database, plan, source, NULL, &source_descriptor);
@@ -11226,8 +11237,8 @@ static uint64_t quote_function_result_length(mylite_db *database,
                                              const struct mylite_select_plan *plan,
                                              const struct mylite_sql_ast_node *expression)
 {
-    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
-    const struct mylite_sql_ast_node *source = child_at(arguments, 0U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
+    const struct mylite_sql_ast_node *source = mylite_ast_child_at(arguments, 0U);
     uint64_t max_bytes_per_character = connection_character_max_length(database);
     uint64_t quote_length = 0U;
     bool source_is_null = false;
@@ -11313,11 +11324,11 @@ static uint64_t insert_function_result_length(mylite_db *database,
                                               const struct mylite_select_plan *plan,
                                               const struct mylite_sql_ast_node *expression)
 {
-    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
     uint64_t source_length =
-        expression_text_display_length(database, plan, child_at(arguments, 0U));
+        expression_text_display_length(database, plan, mylite_ast_child_at(arguments, 0U));
     uint64_t replacement_length =
-        expression_text_display_length(database, plan, child_at(arguments, 3U));
+        expression_text_display_length(database, plan, mylite_ast_child_at(arguments, 3U));
 
     if (source_length > UINT64_MAX - replacement_length) {
         return mylite_mysql_long_text_length;
@@ -11330,7 +11341,7 @@ static uint64_t make_set_function_result_length(mylite_db *database,
                                                 const struct mylite_select_plan *plan,
                                                 const struct mylite_sql_ast_node *expression)
 {
-    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
     uint64_t separator_length = connection_character_max_length(database);
     uint64_t result = 0U;
     size_t member_count = 0U;
@@ -11363,7 +11374,7 @@ static int make_set_function_members_are_all_null(mylite_db *database,
                                                   const struct mylite_sql_ast_node *expression,
                                                   bool *out_all_null)
 {
-    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
     bool saw_member = false;
 
     for (const struct mylite_sql_ast_node *argument = arguments == NULL ||
@@ -11389,7 +11400,7 @@ static int make_set_function_members_are_all_null(mylite_db *database,
 
 static uint64_t make_set_all_null_result_length(const struct mylite_sql_ast_node *expression)
 {
-    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
     size_t member_count = 0U;
 
     for (const struct mylite_sql_ast_node *argument = arguments == NULL ||
@@ -11410,7 +11421,7 @@ static uint64_t elt_function_result_length(mylite_db *database,
                                            const struct mylite_select_plan *plan,
                                            const struct mylite_sql_ast_node *expression)
 {
-    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
     uint64_t result = 0U;
 
     for (const struct mylite_sql_ast_node *argument = arguments == NULL ||
@@ -11486,7 +11497,7 @@ static int infer_slice_string_function_descriptor( // NOLINT(misc-no-recursion)
     const struct mylite_sql_ast_node *expression, const struct mylite_expression_value *value,
     bool nullable, struct mylite_field_descriptor *out_descriptor, bool *out_matched)
 {
-    const struct mylite_sql_ast_node *name = child_at(expression, 0U);
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
 
     *out_matched = function_name_has_slice_string_result(name);
     if (!*out_matched) {
@@ -11514,9 +11525,9 @@ static uint64_t slice_string_function_result_length( // NOLINT(misc-no-recursion
     mylite_db *database, const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *expression, const struct mylite_expression_value *value)
 {
-    const struct mylite_sql_ast_node *name = child_at(expression, 0U);
-    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
-    const struct mylite_sql_ast_node *source = child_at(arguments, 0U);
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
+    const struct mylite_sql_ast_node *source = mylite_ast_child_at(arguments, 0U);
     struct mylite_field_descriptor source_descriptor = field_descriptor_defaults();
 
     if (function_name_is_elt(name)) {
@@ -11548,7 +11559,7 @@ static int infer_aggregate_expression_descriptor(mylite_db *database,
                                                  const struct mylite_sql_ast_node *expression,
                                                  struct mylite_field_descriptor *out_descriptor)
 {
-    const struct mylite_sql_ast_node *argument = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *argument = mylite_ast_child_at(expression, 1U);
     struct mylite_field_descriptor argument_descriptor = field_descriptor_defaults();
     struct mylite_field_descriptor descriptor = field_descriptor_defaults();
 
@@ -11644,8 +11655,8 @@ static int infer_case_expression_descriptor(mylite_db *database,
         when_list_index = 1U;
         else_expression_index = 2U;
     }
-    when_list = child_at(expression, when_list_index);
-    else_expression = child_at(expression, else_expression_index);
+    when_list = mylite_ast_child_at(expression, when_list_index);
+    else_expression = mylite_ast_child_at(expression, else_expression_index);
 
     aggregate.descriptor = field_descriptor_defaults();
     if (when_list == NULL || when_list->kind != MYLITE_SQL_AST_CASE_WHEN_LIST) {
@@ -11655,7 +11666,8 @@ static int infer_case_expression_descriptor(mylite_db *database,
 
     for (const struct mylite_sql_ast_node *arm = when_list->first_child; arm != NULL;
          arm = arm->next_sibling) {
-        int status = infer_case_result_descriptor(database, plan, child_at(arm, 1U), &aggregate);
+        int status =
+            infer_case_result_descriptor(database, plan, mylite_ast_child_at(arm, 1U), &aggregate);
 
         if (status != MYLITE_OK) {
             return status;
@@ -11884,8 +11896,8 @@ static int infer_cast_expression_descriptor(mylite_db *database,
                                             const struct mylite_expression_value *value,
                                             struct mylite_field_descriptor *out_descriptor)
 {
-    const struct mylite_sql_ast_node *source = child_at(expression, 0U);
-    const struct mylite_sql_ast_node *target = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *source = mylite_ast_child_at(expression, 0U);
+    const struct mylite_sql_ast_node *target = mylite_ast_child_at(expression, 1U);
     struct mylite_field_descriptor source_descriptor = field_descriptor_defaults();
     int status = infer_expression_descriptor(database, plan, source, NULL, &source_descriptor);
 
@@ -11952,9 +11964,9 @@ static int infer_scalar_subquery_expression_descriptor( // NOLINT(misc-no-recurs
     mylite_db *database, const struct mylite_sql_ast_node *expression,
     struct mylite_field_descriptor *out_descriptor)
 {
-    const struct mylite_sql_ast_node *select_statement = child_at(expression, 0U);
-    const struct mylite_sql_ast_node *select_list = child_at(select_statement, 0U);
-    const struct mylite_sql_ast_node *from_clause = child_at(select_statement, 1U);
+    const struct mylite_sql_ast_node *select_statement = mylite_ast_child_at(expression, 0U);
+    const struct mylite_sql_ast_node *select_list = mylite_ast_child_at(select_statement, 0U);
+    const struct mylite_sql_ast_node *from_clause = mylite_ast_child_at(select_statement, 1U);
     const struct mylite_sql_ast_node *select_item = NULL;
     const struct mylite_sql_ast_node *select_expression = NULL;
     mylite_stmt *subquery_stmt = NULL;
@@ -11965,7 +11977,7 @@ static int infer_scalar_subquery_expression_descriptor( // NOLINT(misc-no-recurs
     }
 
     select_item = select_list == NULL ? NULL : select_list->first_child;
-    select_expression = child_at(select_item, 0U);
+    select_expression = mylite_ast_child_at(select_item, 0U);
     if (from_clause == NULL || from_clause->kind == MYLITE_SQL_AST_FROM_DUAL) {
         return infer_expression_descriptor(database, NULL, select_expression, NULL, out_descriptor);
     }
@@ -11996,7 +12008,7 @@ static int infer_in_subquery_expression_descriptor( // NOLINT(misc-no-recursion)
     const struct mylite_sql_ast_node *expression, struct mylite_field_descriptor *out_descriptor)
 {
     struct mylite_field_descriptor left = field_descriptor_defaults();
-    const struct mylite_sql_ast_node *left_expression = child_at(expression, 0U);
+    const struct mylite_sql_ast_node *left_expression = mylite_ast_child_at(expression, 0U);
     int status = MYLITE_OK;
 
     if (!binary_expression_is_in_subquery(expression)) {
@@ -12050,7 +12062,7 @@ static int infer_quantified_subquery_expression_descriptor( // NOLINT(misc-no-re
     const struct mylite_sql_ast_node *expression, struct mylite_field_descriptor *out_descriptor)
 {
     struct mylite_field_descriptor left = field_descriptor_defaults();
-    const struct mylite_sql_ast_node *left_expression = child_at(expression, 0U);
+    const struct mylite_sql_ast_node *left_expression = mylite_ast_child_at(expression, 0U);
     const struct mylite_sql_ast_node *unwrapped_left =
         unwrap_parenthesized_expression(left_expression);
     int status = MYLITE_OK;
@@ -12209,7 +12221,7 @@ static unsigned int cast_target_charset_id(mylite_db *database,
         return field_descriptor_connection_charset_id(database);
     }
 
-    name = copy_unquoted_span_text(target->column_character_set);
+    name = mylite_copy_unquoted_span_text(target->column_character_set);
     if (name == NULL) {
         return field_descriptor_connection_charset_id(database);
     }
@@ -12236,7 +12248,7 @@ static int cast_target_charset_max_length(mylite_db *database,
         return charset == NULL ? 1 : charset->max_length;
     }
 
-    name = copy_unquoted_span_text(target->column_character_set);
+    name = mylite_copy_unquoted_span_text(target->column_character_set);
     if (name == NULL) {
         return 1;
     }
@@ -12277,8 +12289,8 @@ static int infer_greatest_least_function_descriptor(mylite_db *database,
                                                     bool result_nullable,
                                                     struct mylite_field_descriptor *out_descriptor)
 {
-    const struct mylite_sql_ast_node *name = child_at(expression, 0U);
-    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
     bool string_domain = false;
     int status = MYLITE_OK;
 
@@ -12982,7 +12994,7 @@ static bool function_name_matches_any(const struct mylite_sql_ast_node *name,
         return false;
     }
     for (size_t index = 0U; index < candidate_count; ++index) {
-        if (ascii_span_equal_ci(name->span, candidates[index])) {
+        if (mylite_span_equal_ci(name->span, candidates[index])) {
             return true;
         }
     }
@@ -13211,7 +13223,7 @@ static bool catalog_column_descriptor_source_is_nullable(const char *is_nullable
     if (is_nullable == NULL) {
         return true;
     }
-    if (ascii_case_equal(is_nullable, "YES")) {
+    if (mylite_ascii_case_equal(is_nullable, "YES")) {
         return true;
     }
     return false;
@@ -13252,23 +13264,23 @@ static int apply_catalog_integer_column_descriptor(
 {
     const char *data_type = source->data_type;
 
-    if (ascii_case_equal(data_type, "tinyint")) {
+    if (mylite_ascii_case_equal(data_type, "tinyint")) {
         descriptor->type = MYLITE_FIELD_TYPE_TINY;
         descriptor->length = catalog_integer_type_length(source);
         descriptor->flags |= MYLITE_FIELD_FLAG_NUM;
-    } else if (ascii_case_equal(data_type, "smallint")) {
+    } else if (mylite_ascii_case_equal(data_type, "smallint")) {
         descriptor->type = MYLITE_FIELD_TYPE_SHORT;
         descriptor->length = catalog_integer_type_length(source);
         descriptor->flags |= MYLITE_FIELD_FLAG_NUM;
-    } else if (ascii_case_equal(data_type, "mediumint")) {
+    } else if (mylite_ascii_case_equal(data_type, "mediumint")) {
         descriptor->type = MYLITE_FIELD_TYPE_INT24;
         descriptor->length = catalog_integer_type_length(source);
         descriptor->flags |= MYLITE_FIELD_FLAG_NUM;
-    } else if (ascii_case_equal(data_type, "int")) {
+    } else if (mylite_ascii_case_equal(data_type, "int")) {
         descriptor->type = MYLITE_FIELD_TYPE_LONG;
         descriptor->length = catalog_integer_type_length(source);
         descriptor->flags |= MYLITE_FIELD_FLAG_NUM;
-    } else if (ascii_case_equal(data_type, "bigint")) {
+    } else if (mylite_ascii_case_equal(data_type, "bigint")) {
         descriptor->type = MYLITE_FIELD_TYPE_LONGLONG;
         descriptor->length = catalog_integer_type_length(source);
         descriptor->flags |= MYLITE_FIELD_FLAG_NUM;
@@ -13284,7 +13296,7 @@ static int apply_catalog_character_column_descriptor(
 {
     const char *data_type = source->data_type;
 
-    if (ascii_case_equal(data_type, "char")) {
+    if (mylite_ascii_case_equal(data_type, "char")) {
         descriptor->type = MYLITE_FIELD_TYPE_STRING;
         descriptor->length =
             catalog_int64_or_zero(source->select, source->character_octet_length_index);
@@ -13292,7 +13304,7 @@ static int apply_catalog_character_column_descriptor(
                                           &descriptor->charset_id) != MYLITE_OK) {
             return MYLITE_EXEC_ERROR;
         }
-    } else if (ascii_case_equal(data_type, "varchar")) {
+    } else if (mylite_ascii_case_equal(data_type, "varchar")) {
         descriptor->type = MYLITE_FIELD_TYPE_VAR_STRING;
         descriptor->length =
             catalog_int64_or_zero(source->select, source->character_octet_length_index);
@@ -13300,9 +13312,10 @@ static int apply_catalog_character_column_descriptor(
                                           &descriptor->charset_id) != MYLITE_OK) {
             return MYLITE_EXEC_ERROR;
         }
-    } else if (ascii_case_equal(data_type, "tinytext") || ascii_case_equal(data_type, "text") ||
-               ascii_case_equal(data_type, "mediumtext") ||
-               ascii_case_equal(data_type, "longtext")) {
+    } else if (mylite_ascii_case_equal(data_type, "tinytext") ||
+               mylite_ascii_case_equal(data_type, "text") ||
+               mylite_ascii_case_equal(data_type, "mediumtext") ||
+               mylite_ascii_case_equal(data_type, "longtext")) {
         descriptor->type = MYLITE_FIELD_TYPE_BLOB;
         descriptor->flags |= MYLITE_FIELD_FLAG_BLOB;
         descriptor->length = catalog_text_type_length(data_type);
@@ -13322,19 +13335,20 @@ apply_catalog_binary_column_descriptor(const struct mylite_catalog_column_descri
 {
     const char *data_type = source->data_type;
 
-    if (ascii_case_equal(data_type, "binary")) {
+    if (mylite_ascii_case_equal(data_type, "binary")) {
         descriptor->type = MYLITE_FIELD_TYPE_STRING;
         descriptor->length =
             catalog_int64_or_zero(source->select, source->character_octet_length_index);
         descriptor->flags |= MYLITE_FIELD_FLAG_BINARY;
-    } else if (ascii_case_equal(data_type, "varbinary")) {
+    } else if (mylite_ascii_case_equal(data_type, "varbinary")) {
         descriptor->type = MYLITE_FIELD_TYPE_VAR_STRING;
         descriptor->length =
             catalog_int64_or_zero(source->select, source->character_octet_length_index);
         descriptor->flags |= MYLITE_FIELD_FLAG_BINARY;
-    } else if (ascii_case_equal(data_type, "tinyblob") || ascii_case_equal(data_type, "blob") ||
-               ascii_case_equal(data_type, "mediumblob") ||
-               ascii_case_equal(data_type, "longblob")) {
+    } else if (mylite_ascii_case_equal(data_type, "tinyblob") ||
+               mylite_ascii_case_equal(data_type, "blob") ||
+               mylite_ascii_case_equal(data_type, "mediumblob") ||
+               mylite_ascii_case_equal(data_type, "longblob")) {
         descriptor->type = MYLITE_FIELD_TYPE_BLOB;
         descriptor->flags |= MYLITE_FIELD_FLAG_BLOB | MYLITE_FIELD_FLAG_BINARY;
         descriptor->length = catalog_text_type_length(data_type);
@@ -13350,7 +13364,7 @@ static int apply_catalog_numeric_column_descriptor(
 {
     const char *data_type = source->data_type;
 
-    if (ascii_case_equal(data_type, "decimal")) {
+    if (mylite_ascii_case_equal(data_type, "decimal")) {
         uint64_t precision = catalog_int64_or_zero(source->select, source->numeric_precision_index);
         uint64_t scale = catalog_int64_or_zero(source->select, source->numeric_scale_index);
         uint64_t scale_separator_length = 0U;
@@ -13367,7 +13381,7 @@ static int apply_catalog_numeric_column_descriptor(
         descriptor->length = precision + scale_separator_length + sign_length;
         descriptor->decimals = (unsigned int)scale;
         descriptor->flags |= MYLITE_FIELD_FLAG_NUM;
-    } else if (ascii_case_equal(data_type, "float")) {
+    } else if (mylite_ascii_case_equal(data_type, "float")) {
         descriptor->type = MYLITE_FIELD_TYPE_FLOAT;
         descriptor->length = catalog_int64_or_zero(source->select, source->numeric_precision_index);
         descriptor->decimals = mylite_mysql_not_fixed_decimals;
@@ -13376,7 +13390,7 @@ static int apply_catalog_numeric_column_descriptor(
                 (unsigned int)catalog_int64_or_zero(source->select, source->numeric_scale_index);
         }
         descriptor->flags |= MYLITE_FIELD_FLAG_NUM;
-    } else if (ascii_case_equal(data_type, "double")) {
+    } else if (mylite_ascii_case_equal(data_type, "double")) {
         descriptor->type = MYLITE_FIELD_TYPE_DOUBLE;
         descriptor->length = catalog_int64_or_zero(source->select, source->numeric_precision_index);
         descriptor->decimals = mylite_mysql_not_fixed_decimals;
@@ -13397,11 +13411,11 @@ static int apply_catalog_temporal_column_descriptor(
 {
     const char *data_type = source->data_type;
 
-    if (ascii_case_equal(data_type, "date")) {
+    if (mylite_ascii_case_equal(data_type, "date")) {
         descriptor->type = MYLITE_FIELD_TYPE_DATE;
         descriptor->length = mylite_mysql_date_display_length;
         descriptor->flags |= MYLITE_FIELD_FLAG_BINARY;
-    } else if (ascii_case_equal(data_type, "time")) {
+    } else if (mylite_ascii_case_equal(data_type, "time")) {
         unsigned int precision =
             (unsigned int)catalog_int64_or_zero(source->select, source->datetime_precision_index);
 
@@ -13412,7 +13426,7 @@ static int apply_catalog_temporal_column_descriptor(
         }
         descriptor->decimals = precision;
         descriptor->flags |= MYLITE_FIELD_FLAG_BINARY;
-    } else if (ascii_case_equal(data_type, "datetime")) {
+    } else if (mylite_ascii_case_equal(data_type, "datetime")) {
         unsigned int precision =
             (unsigned int)catalog_int64_or_zero(source->select, source->datetime_precision_index);
 
@@ -13423,7 +13437,7 @@ static int apply_catalog_temporal_column_descriptor(
         }
         descriptor->decimals = precision;
         descriptor->flags |= MYLITE_FIELD_FLAG_BINARY;
-    } else if (ascii_case_equal(data_type, "timestamp")) {
+    } else if (mylite_ascii_case_equal(data_type, "timestamp")) {
         unsigned int precision =
             (unsigned int)catalog_int64_or_zero(source->select, source->datetime_precision_index);
 
@@ -13434,7 +13448,7 @@ static int apply_catalog_temporal_column_descriptor(
         }
         descriptor->decimals = precision;
         descriptor->flags |= MYLITE_FIELD_FLAG_BINARY;
-    } else if (ascii_case_equal(data_type, "year")) {
+    } else if (mylite_ascii_case_equal(data_type, "year")) {
         descriptor->type = MYLITE_FIELD_TYPE_YEAR;
         descriptor->length = mylite_mysql_year_display_length;
         descriptor->flags |=
@@ -13461,11 +13475,11 @@ static void apply_catalog_column_flags(const struct mylite_catalog_column_descri
     if (source->is_zerofill) {
         descriptor->flags |= MYLITE_FIELD_FLAG_ZEROFILL | MYLITE_FIELD_FLAG_UNSIGNED;
     }
-    if (ascii_case_equal(source->column_key, "PRI")) {
+    if (mylite_ascii_case_equal(source->column_key, "PRI")) {
         descriptor->flags |= MYLITE_FIELD_FLAG_PRI_KEY | MYLITE_FIELD_FLAG_PART_KEY;
-    } else if (ascii_case_equal(source->column_key, "UNI")) {
+    } else if (mylite_ascii_case_equal(source->column_key, "UNI")) {
         descriptor->flags |= MYLITE_FIELD_FLAG_UNIQUE_KEY | MYLITE_FIELD_FLAG_PART_KEY;
-    } else if (ascii_case_equal(source->column_key, "MUL")) {
+    } else if (mylite_ascii_case_equal(source->column_key, "MUL")) {
         descriptor->flags |= MYLITE_FIELD_FLAG_MULTIPLE_KEY | MYLITE_FIELD_FLAG_PART_KEY;
     }
     if (source->auto_increment) {
@@ -13568,13 +13582,16 @@ static uint64_t catalog_int64_or_zero(sqlite3_stmt *stmt, int column)
 
 static uint64_t catalog_text_type_length(const char *data_type)
 {
-    if (ascii_case_equal(data_type, "tinytext") || ascii_case_equal(data_type, "tinyblob")) {
+    if (mylite_ascii_case_equal(data_type, "tinytext") ||
+        mylite_ascii_case_equal(data_type, "tinyblob")) {
         return mylite_mysql_tiny_text_length;
     }
-    if (ascii_case_equal(data_type, "mediumtext") || ascii_case_equal(data_type, "mediumblob")) {
+    if (mylite_ascii_case_equal(data_type, "mediumtext") ||
+        mylite_ascii_case_equal(data_type, "mediumblob")) {
         return mylite_mysql_medium_text_length;
     }
-    if (ascii_case_equal(data_type, "longtext") || ascii_case_equal(data_type, "longblob")) {
+    if (mylite_ascii_case_equal(data_type, "longtext") ||
+        mylite_ascii_case_equal(data_type, "longblob")) {
         return mylite_mysql_long_text_length;
     }
     return mylite_mysql_text_length;
@@ -13633,31 +13650,31 @@ catalog_integer_type_default_length(const struct mylite_catalog_column_descripto
 {
     const char *data_type = source->data_type;
 
-    if (ascii_case_equal(data_type, "tinyint")) {
+    if (mylite_ascii_case_equal(data_type, "tinyint")) {
         if (source->is_unsigned) {
             return mylite_mysql_tinyint_unsigned_display_length;
         }
         return mylite_mysql_tinyint_signed_display_length;
     }
-    if (ascii_case_equal(data_type, "smallint")) {
+    if (mylite_ascii_case_equal(data_type, "smallint")) {
         if (source->is_unsigned) {
             return mylite_mysql_smallint_unsigned_display_length;
         }
         return mylite_mysql_smallint_signed_display_length;
     }
-    if (ascii_case_equal(data_type, "mediumint")) {
+    if (mylite_ascii_case_equal(data_type, "mediumint")) {
         if (source->is_unsigned) {
             return mylite_mysql_mediumint_unsigned_display_length;
         }
         return mylite_mysql_mediumint_signed_display_length;
     }
-    if (ascii_case_equal(data_type, "int")) {
+    if (mylite_ascii_case_equal(data_type, "int")) {
         if (source->is_unsigned) {
             return mylite_mysql_int_unsigned_display_length;
         }
         return mylite_mysql_int_signed_display_length;
     }
-    if (ascii_case_equal(data_type, "bigint")) {
+    if (mylite_ascii_case_equal(data_type, "bigint")) {
         return mylite_mysql_unsigned_longlong_display_length;
     }
     return 0U;
@@ -13768,7 +13785,7 @@ static int copy_result_metadata_text(mylite_db *database, char **out_text, const
         return MYLITE_OK;
     }
 
-    *out_text = copy_span_text(text, strlen(text));
+    *out_text = mylite_copy_span_text(text, strlen(text));
     if (*out_text == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
@@ -13780,7 +13797,7 @@ static int copy_select_from_clause(mylite_db *database,
                                    const struct mylite_sql_ast_node *from_clause,
                                    struct mylite_select_plan *plan)
 {
-    const struct mylite_sql_ast_node *references = child_at(from_clause, 0U);
+    const struct mylite_sql_ast_node *references = mylite_ast_child_at(from_clause, 0U);
 
     if (from_clause == NULL) {
         return MYLITE_UNSUPPORTED;
@@ -13807,23 +13824,24 @@ static int copy_select_from_clause(mylite_db *database,
 static int copy_select_table_reference(const struct mylite_sql_ast_node *from_clause,
                                        struct mylite_select_table *table)
 {
-    const struct mylite_sql_ast_node *table_name = child_at(from_clause, 0U);
-    const struct mylite_sql_ast_node *alias = child_at(from_clause, 1U);
+    const struct mylite_sql_ast_node *table_name = mylite_ast_child_at(from_clause, 0U);
+    const struct mylite_sql_ast_node *alias = mylite_ast_child_at(from_clause, 1U);
 
     if (table_name == NULL) {
         return MYLITE_UNSUPPORTED;
     }
     if (table_name->kind == MYLITE_SQL_AST_IDENTIFIER) {
-        table->table_name = copy_identifier_span(table_name);
+        table->table_name = mylite_copy_identifier_span(table_name);
         if (table->table_name == NULL) {
             return MYLITE_NOMEM;
         }
     } else if (table_name->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER &&
-               child_at(table_name, 0U) != NULL && child_at(table_name, 1U) != NULL &&
-               child_at(table_name, 0U)->kind == MYLITE_SQL_AST_IDENTIFIER &&
-               child_at(table_name, 1U)->kind == MYLITE_SQL_AST_IDENTIFIER) {
-        table->schema_name = copy_identifier_span(child_at(table_name, 0U));
-        table->table_name = copy_identifier_span(child_at(table_name, 1U));
+               mylite_ast_child_at(table_name, 0U) != NULL &&
+               mylite_ast_child_at(table_name, 1U) != NULL &&
+               mylite_ast_child_at(table_name, 0U)->kind == MYLITE_SQL_AST_IDENTIFIER &&
+               mylite_ast_child_at(table_name, 1U)->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        table->schema_name = mylite_copy_identifier_span(mylite_ast_child_at(table_name, 0U));
+        table->table_name = mylite_copy_identifier_span(mylite_ast_child_at(table_name, 1U));
         if (table->schema_name == NULL || table->table_name == NULL) {
             return MYLITE_NOMEM;
         }
@@ -13835,7 +13853,7 @@ static int copy_select_table_reference(const struct mylite_sql_ast_node *from_cl
         if (alias->kind != MYLITE_SQL_AST_IDENTIFIER) {
             return MYLITE_UNSUPPORTED;
         }
-        table->alias = copy_identifier_span(alias);
+        table->alias = mylite_copy_identifier_span(alias);
         if (table->alias == NULL) {
             return MYLITE_NOMEM;
         }
@@ -13931,14 +13949,14 @@ static int copy_select_join_expression(mylite_db *database, const struct mylite_
     int status = MYLITE_OK;
 
     while (leftmost != NULL && leftmost->kind == MYLITE_SQL_AST_JOIN_EXPRESSION) {
-        status =
-            add_select_join_stack_entry(database, &entries, &entry_count, child_at(leftmost, 1U),
-                                        child_at(leftmost, 2U), leftmost->join_type);
+        status = add_select_join_stack_entry(
+            database, &entries, &entry_count, mylite_ast_child_at(leftmost, 1U),
+            mylite_ast_child_at(leftmost, 2U), leftmost->join_type);
         if (status != MYLITE_OK) {
             free(entries);
             return status;
         }
-        leftmost = child_at(leftmost, 0U);
+        leftmost = mylite_ast_child_at(leftmost, 0U);
     }
 
     status = copy_select_base_table_reference_node(database, leftmost, plan, out_range);
@@ -14014,7 +14032,7 @@ static int apply_select_join_condition(mylite_db *database,
         return MYLITE_OK;
     }
     if (condition->join_condition_type == MYLITE_SQL_AST_JOIN_CONDITION_ON) {
-        return add_select_join_predicate(database, plan, child_at(condition, 0U),
+        return add_select_join_predicate(database, plan, mylite_ast_child_at(condition, 0U),
                                          left_range.first_table,
                                          left_range.table_count + right_range.table_count);
     }
@@ -14126,7 +14144,7 @@ static int add_select_using_request(mylite_db *database, struct mylite_select_pl
                                     size_t right_first_table, size_t right_table_count,
                                     enum mylite_sql_ast_join_type join_type)
 {
-    const struct mylite_sql_ast_node *columns = child_at(condition, 0U);
+    const struct mylite_sql_ast_node *columns = mylite_ast_child_at(condition, 0U);
     struct mylite_select_join_using_request request = {
         .left_first_table = left_first_table,
         .left_table_count = left_table_count,
@@ -14141,7 +14159,8 @@ static int add_select_using_request(mylite_db *database, struct mylite_select_pl
     }
     for (const struct mylite_sql_ast_node *item = columns->first_child; item != NULL;
          item = item->next_sibling) {
-        int status = add_select_using_request_name(database, &request, child_at(item, 0U));
+        int status =
+            add_select_using_request_name(database, &request, mylite_ast_child_at(item, 0U));
 
         if (status != MYLITE_OK) {
             for (size_t index = 0U; index < request.name_count; ++index) {
@@ -14171,7 +14190,7 @@ static int add_select_using_request_name(mylite_db *database,
                                          struct mylite_select_join_using_request *request,
                                          const struct mylite_sql_ast_node *column)
 {
-    char *name = copy_identifier_span(column);
+    char *name = mylite_copy_identifier_span(column);
     char **names = NULL;
 
     if (name == NULL) {
@@ -14221,7 +14240,7 @@ static int resolve_select_table_target(mylite_db *database, struct mylite_select
             (void)mylite_diagnostics_set_error_message(database, "No database selected");
             return MYLITE_EXEC_ERROR;
         }
-        table->schema_name = copy_nonempty_cstring(database->selected_schema);
+        table->schema_name = mylite_copy_nonempty_cstring(database->selected_schema);
         if (table->schema_name == NULL) {
             (void)mylite_diagnostics_set_error_message(database, "out of memory");
             return MYLITE_NOMEM;
@@ -14291,16 +14310,16 @@ static int validate_select_table_aliases(mylite_db *database, const struct mylit
 
 static bool select_schema_name_is_system(const char *schema_name)
 {
-    if (ascii_case_equal(schema_name, "information_schema")) {
+    if (mylite_ascii_case_equal(schema_name, "information_schema")) {
         return true;
     }
-    if (ascii_case_equal(schema_name, "mysql")) {
+    if (mylite_ascii_case_equal(schema_name, "mysql")) {
         return true;
     }
-    if (ascii_case_equal(schema_name, "performance_schema")) {
+    if (mylite_ascii_case_equal(schema_name, "performance_schema")) {
         return true;
     }
-    if (ascii_case_equal(schema_name, "sys")) {
+    if (mylite_ascii_case_equal(schema_name, "sys")) {
         return true;
     }
     return false;
@@ -14374,7 +14393,7 @@ static int load_select_column_from_catalog_row(mylite_db *database,
     };
     struct mylite_select_column *columns = NULL;
 
-    column.name = copy_span_text(name, name == NULL ? 0U : strlen(name));
+    column.name = mylite_copy_span_text(name, name == NULL ? 0U : strlen(name));
     if (column.name == NULL) {
         return MYLITE_NOMEM;
     }
@@ -14501,7 +14520,7 @@ static int add_select_using_column(mylite_db *database, struct mylite_select_pla
                                    size_t first_table, size_t table_count)
 {
     struct mylite_select_join_using_column *columns = NULL;
-    char *name_copy = copy_span_text(name, strlen(name));
+    char *name_copy = mylite_copy_span_text(name, strlen(name));
 
     if (name_copy == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
@@ -14530,7 +14549,7 @@ static bool select_using_column_name_seen(const struct mylite_select_join_using_
                                           const char *name)
 {
     for (size_t index = 0U; index < request->name_count; ++index) {
-        if (ascii_case_equal(request->names[index], name)) {
+        if (mylite_ascii_case_equal(request->names[index], name)) {
             return true;
         }
     }
@@ -14660,7 +14679,7 @@ static int bind_select_where_clause(mylite_db *database,
                                     const struct mylite_sql_ast_node *where_clause,
                                     const struct mylite_select_plan *plan)
 {
-    const struct mylite_sql_ast_node *predicate = child_at(where_clause, 0U);
+    const struct mylite_sql_ast_node *predicate = mylite_ast_child_at(where_clause, 0U);
 
     if (where_clause == NULL || where_clause->kind != MYLITE_SQL_AST_WHERE_CLAUSE ||
         predicate == NULL) {
@@ -14792,7 +14811,8 @@ static int bind_select_predicate_expression_in_clause(mylite_db *database,
         if (status != MYLITE_OK) {
             return status;
         }
-        return bind_select_predicate_expression_in_clause(database, child_at(expression, 0U), plan,
+        return bind_select_predicate_expression_in_clause(database,
+                                                          mylite_ast_child_at(expression, 0U), plan,
                                                           clause_context, first_table, table_count);
     }
     case MYLITE_SQL_AST_FUNCTION_CALL:
@@ -14922,7 +14942,7 @@ static int bind_select_predicate_in_subquery_expression(
     const struct mylite_select_plan *plan, const char *clause_context, size_t first_table,
     size_t table_count)
 {
-    const struct mylite_sql_ast_node *left = child_at(expression, 0U);
+    const struct mylite_sql_ast_node *left = mylite_ast_child_at(expression, 0U);
     int status = MYLITE_OK;
 
     if (left == NULL || left->kind == MYLITE_SQL_AST_ROW_CONSTRUCTOR) {
@@ -14943,7 +14963,7 @@ static int bind_select_predicate_row_subquery_expression(
     size_t table_count)
 {
     const struct mylite_sql_ast_node *left =
-        unwrap_parenthesized_expression(child_at(expression, 0U));
+        unwrap_parenthesized_expression(mylite_ast_child_at(expression, 0U));
     int status = MYLITE_OK;
 
     if (left == NULL || left->kind != MYLITE_SQL_AST_ROW_CONSTRUCTOR) {
@@ -14963,7 +14983,7 @@ static int bind_select_predicate_quantified_subquery_expression(
     const struct mylite_select_plan *plan, const char *clause_context, size_t first_table,
     size_t table_count)
 {
-    const struct mylite_sql_ast_node *left = child_at(expression, 0U);
+    const struct mylite_sql_ast_node *left = mylite_ast_child_at(expression, 0U);
     const struct mylite_sql_ast_node *unwrapped_left = unwrap_parenthesized_expression(left);
     int status = MYLITE_OK;
 
@@ -14994,8 +15014,8 @@ static int bind_select_subquery_expression(mylite_db *database,
                                            const struct mylite_sql_ast_node *expression,
                                            bool scalar_context)
 {
-    const struct mylite_sql_ast_node *select_statement = child_at(expression, 0U);
-    const struct mylite_sql_ast_node *from_clause = child_at(select_statement, 1U);
+    const struct mylite_sql_ast_node *select_statement = mylite_ast_child_at(expression, 0U);
+    const struct mylite_sql_ast_node *from_clause = mylite_ast_child_at(select_statement, 1U);
     mylite_stmt *subquery_stmt = NULL;
     int status = MYLITE_OK;
 
@@ -15053,8 +15073,8 @@ static int validate_in_subquery_expression(mylite_db *database,
                                            const struct mylite_sql_ast_node *expression,
                                            const struct mylite_select_plan *outer_plan)
 {
-    const struct mylite_sql_ast_node *select_statement = child_at(expression, 1U);
-    const struct mylite_sql_ast_node *from_clause = child_at(select_statement, 1U);
+    const struct mylite_sql_ast_node *select_statement = mylite_ast_child_at(expression, 1U);
+    const struct mylite_sql_ast_node *from_clause = mylite_ast_child_at(select_statement, 1U);
     mylite_stmt *subquery_stmt = NULL;
     int status = MYLITE_OK;
 
@@ -15094,9 +15114,9 @@ static int validate_row_subquery_expression(mylite_db *database,
                                             const struct mylite_select_plan *outer_plan)
 {
     const struct mylite_sql_ast_node *left =
-        unwrap_parenthesized_expression(child_at(expression, 0U));
+        unwrap_parenthesized_expression(mylite_ast_child_at(expression, 0U));
     const struct mylite_sql_ast_node *select_statement = row_subquery_select_statement(expression);
-    const struct mylite_sql_ast_node *from_clause = child_at(select_statement, 1U);
+    const struct mylite_sql_ast_node *from_clause = mylite_ast_child_at(select_statement, 1U);
     mylite_stmt *subquery_stmt = NULL;
     size_t expected_width = row_constructor_width(left);
     int status = MYLITE_OK;
@@ -15108,7 +15128,7 @@ static int validate_row_subquery_expression(mylite_db *database,
         return set_select_unsupported_where_error(database);
     }
     if (row_subquery_expression_is_membership(expression) &&
-        find_child_kind(select_statement, MYLITE_SQL_AST_LIMIT_CLAUSE) != NULL) {
+        mylite_ast_find_child_kind(select_statement, MYLITE_SQL_AST_LIMIT_CLAUSE) != NULL) {
         return set_in_subquery_limit_error(database);
     }
 
@@ -15140,8 +15160,8 @@ static int validate_quantified_subquery_expression(mylite_db *database,
                                                    const struct mylite_sql_ast_node *expression,
                                                    const struct mylite_select_plan *outer_plan)
 {
-    const struct mylite_sql_ast_node *select_statement = child_at(expression, 1U);
-    const struct mylite_sql_ast_node *from_clause = child_at(select_statement, 1U);
+    const struct mylite_sql_ast_node *select_statement = mylite_ast_child_at(expression, 1U);
+    const struct mylite_sql_ast_node *from_clause = mylite_ast_child_at(select_statement, 1U);
     mylite_stmt *subquery_stmt = NULL;
     int status = MYLITE_OK;
 
@@ -15277,7 +15297,8 @@ static bool in_subquery_has_unqualified_outer_column_reference( // NOLINT(misc-n
         return false;
     }
     if (node->kind == MYLITE_SQL_AST_SELECT_ITEM) {
-        return in_subquery_has_unqualified_outer_column_reference(child_at(node, 0U), outer_plan);
+        return in_subquery_has_unqualified_outer_column_reference(mylite_ast_child_at(node, 0U),
+                                                                  outer_plan);
     }
     if (node->kind == MYLITE_SQL_AST_IDENTIFIER &&
         select_plan_has_column_span(outer_plan, node->span)) {
@@ -15301,7 +15322,7 @@ static bool select_plan_has_column_span(const struct mylite_select_plan *plan,
     for (size_t index = 0U; index < select_plan_column_count(plan); ++index) {
         const struct mylite_select_column *column = select_plan_column_const(plan, index, NULL);
 
-        if (column != NULL && column->name != NULL && ascii_span_equal_ci(name, column->name)) {
+        if (column != NULL && column->name != NULL && mylite_span_equal_ci(name, column->name)) {
             return true;
         }
     }
@@ -15318,7 +15339,7 @@ static bool select_plan_has_visible_table_span(const struct mylite_select_plan *
         if (table != NULL && visible_name == NULL) {
             visible_name = table->table_name;
         }
-        if (visible_name != NULL && ascii_span_equal_ci(name, visible_name)) {
+        if (visible_name != NULL && mylite_span_equal_ci(name, visible_name)) {
             return true;
         }
     }
@@ -15333,8 +15354,8 @@ static bool select_statement_has_visible_table_span(const struct mylite_sql_ast_
         return false;
     }
     if (node->kind == MYLITE_SQL_AST_FROM_TABLE) {
-        const struct mylite_sql_ast_node *table_name = child_at(node, 0U);
-        const struct mylite_sql_ast_node *alias = child_at(node, 1U);
+        const struct mylite_sql_ast_node *table_name = mylite_ast_child_at(node, 0U);
+        const struct mylite_sql_ast_node *alias = mylite_ast_child_at(node, 1U);
         const struct mylite_sql_ast_node *visible_name =
             alias == NULL ? qualified_identifier_last_part(table_name) : alias;
 
@@ -15358,7 +15379,7 @@ qualified_identifier_first_part(const struct mylite_sql_ast_node *identifier)
     const struct mylite_sql_ast_node *current = identifier;
 
     while (current != NULL && current->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
-        current = child_at(current, 0U);
+        current = mylite_ast_child_at(current, 0U);
     }
     return current != NULL && current->kind == MYLITE_SQL_AST_IDENTIFIER ? current : NULL;
 }
@@ -15369,7 +15390,7 @@ qualified_identifier_last_part(const struct mylite_sql_ast_node *identifier)
     const struct mylite_sql_ast_node *current = identifier;
 
     while (current != NULL && current->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
-        current = child_at(current, 1U);
+        current = mylite_ast_child_at(current, 1U);
     }
     return current != NULL && current->kind == MYLITE_SQL_AST_IDENTIFIER ? current : NULL;
 }
@@ -15381,7 +15402,7 @@ static int bind_select_function_arguments(mylite_db *database,
                                           const char *clause_context, size_t first_table,
                                           size_t table_count)
 {
-    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
 
     if (!mylite_expression_is_supported_function_call(expression)) {
         return set_select_unsupported_where_error(database);
@@ -15463,8 +15484,8 @@ static int bind_select_aggregate_aware_expression(mylite_db *database,
         if (status != MYLITE_OK) {
             return status;
         }
-        return bind_select_aggregate_aware_expression(database, child_at(expression, 0U), plan,
-                                                      clause_context);
+        return bind_select_aggregate_aware_expression(database, mylite_ast_child_at(expression, 0U),
+                                                      plan, clause_context);
     }
     case MYLITE_SQL_AST_FUNCTION_CALL:
         return bind_select_aggregate_aware_function(database, expression, plan, clause_context);
@@ -15608,7 +15629,7 @@ static int bind_select_aggregate_aware_binary_expression(
 {
     if (binary_expression_is_row_subquery(expression)) {
         const struct mylite_sql_ast_node *left =
-            unwrap_parenthesized_expression(child_at(expression, 0U));
+            unwrap_parenthesized_expression(mylite_ast_child_at(expression, 0U));
         int status = MYLITE_OK;
 
         if (left == NULL || left->kind != MYLITE_SQL_AST_ROW_CONSTRUCTOR) {
@@ -15621,7 +15642,7 @@ static int bind_select_aggregate_aware_binary_expression(
         return bind_select_row_subquery_expression(database, expression, plan);
     }
     if (binary_expression_is_in_subquery(expression)) {
-        const struct mylite_sql_ast_node *left = child_at(expression, 0U);
+        const struct mylite_sql_ast_node *left = mylite_ast_child_at(expression, 0U);
         int status = MYLITE_OK;
 
         if (left == NULL || left->kind == MYLITE_SQL_AST_ROW_CONSTRUCTOR) {
@@ -15641,7 +15662,7 @@ static int bind_select_aggregate_aware_quantified_subquery_expression(
     mylite_db *database, const struct mylite_sql_ast_node *expression,
     struct mylite_select_plan *plan, const char *clause_context)
 {
-    const struct mylite_sql_ast_node *left = child_at(expression, 0U);
+    const struct mylite_sql_ast_node *left = mylite_ast_child_at(expression, 0U);
     const struct mylite_sql_ast_node *unwrapped_left = unwrap_parenthesized_expression(left);
     int status = MYLITE_OK;
 
@@ -15685,7 +15706,7 @@ static int bind_select_aggregate_aware_function( // NOLINT(misc-no-recursion)
     mylite_db *database, const struct mylite_sql_ast_node *expression,
     struct mylite_select_plan *plan, const char *clause_context)
 {
-    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
 
     if (!mylite_expression_is_supported_function_call(expression)) {
         return set_select_unsupported_projection_error(database);
@@ -15716,7 +15737,7 @@ static int bind_select_aggregate_call(mylite_db *database,
 {
     struct mylite_select_aggregate_binding binding = {
         .call = expression,
-        .argument = child_at(expression, 1U),
+        .argument = mylite_ast_child_at(expression, 1U),
         .kind = expression->aggregate_kind,
         .argument_kind = expression->aggregate_argument,
     };
@@ -15814,7 +15835,7 @@ static int bind_select_group_by_clause(mylite_db *database,
                                        const struct mylite_sql_ast_node *group_by_clause,
                                        struct mylite_select_plan *plan)
 {
-    const struct mylite_sql_ast_node *items = child_at(group_by_clause, 0U);
+    const struct mylite_sql_ast_node *items = mylite_ast_child_at(group_by_clause, 0U);
 
     if (group_by_clause == NULL || group_by_clause->kind != MYLITE_SQL_AST_GROUP_BY_CLAUSE ||
         items == NULL || items->kind != MYLITE_SQL_AST_GROUP_ITEM_LIST) {
@@ -15837,7 +15858,7 @@ static int bind_select_group_by_clause(mylite_db *database,
 static int bind_select_group_item(mylite_db *database, const struct mylite_sql_ast_node *group_item,
                                   struct mylite_select_plan *plan)
 {
-    const struct mylite_sql_ast_node *expression = child_at(group_item, 0U);
+    const struct mylite_sql_ast_node *expression = mylite_ast_child_at(group_item, 0U);
     struct mylite_select_group_key group_key = {
         .kind = MYLITE_SELECT_GROUP_KEY_EXPRESSION,
         .direction = MYLITE_SQL_AST_KEY_PART_ORDER_ASC,
@@ -15857,7 +15878,7 @@ static int bind_select_group_item(mylite_db *database, const struct mylite_sql_a
 
         if (!parse_uint64_span(expression->span, &ordinal) || ordinal == 0U ||
             ordinal > plan->output_count) {
-            char *reference = copy_span_text(expression->span.text, expression->span.length);
+            char *reference = mylite_copy_span_text(expression->span.text, expression->span.length);
             int status = MYLITE_OK;
 
             if (reference == NULL) {
@@ -15924,7 +15945,7 @@ static int bind_select_having_clause(mylite_db *database,
                                      const struct mylite_sql_ast_node *having_clause,
                                      struct mylite_select_plan *plan)
 {
-    const struct mylite_sql_ast_node *expression = child_at(having_clause, 0U);
+    const struct mylite_sql_ast_node *expression = mylite_ast_child_at(having_clause, 0U);
 
     if (having_clause == NULL || having_clause->kind != MYLITE_SQL_AST_HAVING_CLAUSE ||
         expression == NULL) {
@@ -15959,8 +15980,8 @@ static bool select_literal_is_supported(const struct mylite_sql_ast_node *expres
 static int bind_select_limit_clause(const struct mylite_sql_ast_node *limit_clause,
                                     struct mylite_select_plan *plan)
 {
-    const struct mylite_sql_ast_node *offset = child_at(limit_clause, 0U);
-    const struct mylite_sql_ast_node *row_count = child_at(limit_clause, 1U);
+    const struct mylite_sql_ast_node *offset = mylite_ast_child_at(limit_clause, 0U);
+    const struct mylite_sql_ast_node *row_count = mylite_ast_child_at(limit_clause, 1U);
 
     if (limit_clause == NULL || limit_clause->kind != MYLITE_SQL_AST_LIMIT_CLAUSE ||
         offset == NULL || offset->kind != MYLITE_SQL_AST_LIMIT_BOUND ||
@@ -15982,7 +16003,7 @@ static int bind_select_order_by_clause(mylite_db *database,
                                        const struct mylite_sql_ast_node *order_by_clause,
                                        struct mylite_select_plan *plan)
 {
-    const struct mylite_sql_ast_node *items = child_at(order_by_clause, 0U);
+    const struct mylite_sql_ast_node *items = mylite_ast_child_at(order_by_clause, 0U);
 
     if (order_by_clause == NULL || order_by_clause->kind != MYLITE_SQL_AST_ORDER_BY_CLAUSE ||
         items == NULL || items->kind != MYLITE_SQL_AST_ORDER_ITEM_LIST) {
@@ -16007,7 +16028,7 @@ static int bind_select_order_by_clause(mylite_db *database,
 static int bind_select_order_item(mylite_db *database, const struct mylite_sql_ast_node *order_item,
                                   struct mylite_select_plan *plan)
 {
-    const struct mylite_sql_ast_node *expression = child_at(order_item, 0U);
+    const struct mylite_sql_ast_node *expression = mylite_ast_child_at(order_item, 0U);
     struct mylite_select_order_key order_key = {
         .kind = MYLITE_SELECT_ORDER_KEY_EXPRESSION,
         .direction = MYLITE_SQL_AST_KEY_PART_ORDER_ASC,
@@ -16027,7 +16048,7 @@ static int bind_select_order_item(mylite_db *database, const struct mylite_sql_a
 
         if (!parse_uint64_span(expression->span, &ordinal) || ordinal == 0U ||
             ordinal > plan->output_count) {
-            char *reference = copy_span_text(expression->span.text, expression->span.length);
+            char *reference = mylite_copy_span_text(expression->span.text, expression->span.length);
             int status = MYLITE_OK;
 
             if (reference == NULL) {
@@ -16162,10 +16183,10 @@ static int bind_select_order_expression(mylite_db *database,
         if (status != MYLITE_OK) {
             return status;
         }
-        return bind_select_order_expression(database, child_at(expression, 0U), plan);
+        return bind_select_order_expression(database, mylite_ast_child_at(expression, 0U), plan);
     }
     case MYLITE_SQL_AST_FUNCTION_CALL: {
-        const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+        const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
 
         if (!mylite_expression_is_supported_function_call(expression)) {
             return set_select_unsupported_order_error(database);
@@ -16286,7 +16307,7 @@ static int bind_select_order_binary_expression(mylite_db *database,
 {
     if (binary_expression_is_row_subquery(expression)) {
         const struct mylite_sql_ast_node *left =
-            unwrap_parenthesized_expression(child_at(expression, 0U));
+            unwrap_parenthesized_expression(mylite_ast_child_at(expression, 0U));
         int status = MYLITE_OK;
 
         if (left == NULL || left->kind != MYLITE_SQL_AST_ROW_CONSTRUCTOR) {
@@ -16317,7 +16338,7 @@ static int bind_select_order_in_subquery_expression(mylite_db *database,
                                                     const struct mylite_sql_ast_node *expression,
                                                     struct mylite_select_plan *plan)
 {
-    const struct mylite_sql_ast_node *left = child_at(expression, 0U);
+    const struct mylite_sql_ast_node *left = mylite_ast_child_at(expression, 0U);
     int status = MYLITE_OK;
 
     if (left == NULL || left->kind == MYLITE_SQL_AST_ROW_CONSTRUCTOR) {
@@ -16334,7 +16355,7 @@ static int bind_select_order_quantified_subquery_expression( // NOLINT(misc-no-r
     mylite_db *database, const struct mylite_sql_ast_node *expression,
     struct mylite_select_plan *plan)
 {
-    const struct mylite_sql_ast_node *left = child_at(expression, 0U);
+    const struct mylite_sql_ast_node *left = mylite_ast_child_at(expression, 0U);
     const struct mylite_sql_ast_node *unwrapped_left = unwrap_parenthesized_expression(left);
     int status = MYLITE_OK;
 
@@ -16435,18 +16456,18 @@ static int validate_select_distinct_order_expression_node(
     case MYLITE_SQL_AST_CASE_WHEN:
         return push_select_distinct_order_expression_children(database, stack, expression, false);
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
-        return push_select_distinct_order_expression_child(database, stack,
-                                                           child_at(expression, 0U), alias_first);
+        return push_select_distinct_order_expression_child(
+            database, stack, mylite_ast_child_at(expression, 0U), alias_first);
     case MYLITE_SQL_AST_CAST_EXPRESSION:
-        return push_select_distinct_order_expression_child(database, stack,
-                                                           child_at(expression, 0U), false);
+        return push_select_distinct_order_expression_child(
+            database, stack, mylite_ast_child_at(expression, 0U), false);
     case MYLITE_SQL_AST_FUNCTION_CALL:
-        return push_select_distinct_order_expression_children(database, stack,
-                                                              child_at(expression, 1U), false);
+        return push_select_distinct_order_expression_children(
+            database, stack, mylite_ast_child_at(expression, 1U), false);
     case MYLITE_SQL_AST_AGGREGATE_CALL:
         if (expression->aggregate_argument == MYLITE_SQL_AST_AGGREGATE_ARGUMENT_EXPRESSION) {
-            return push_select_distinct_order_expression_child(database, stack,
-                                                               child_at(expression, 1U), false);
+            return push_select_distinct_order_expression_child(
+                database, stack, mylite_ast_child_at(expression, 1U), false);
         }
         return MYLITE_OK;
     default:
@@ -16651,7 +16672,7 @@ static const struct mylite_sql_ast_node *
 unwrap_parenthesized_expression(const struct mylite_sql_ast_node *expression)
 {
     while (expression != NULL && expression->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
-        expression = child_at(expression, 0U);
+        expression = mylite_ast_child_at(expression, 0U);
     }
     return expression;
 }
@@ -16740,8 +16761,9 @@ static int validate_select_grouping_clause_expression(
         return MYLITE_OK;
     }
 
-    expression_text =
-        expression == NULL ? NULL : copy_span_text(expression->span.text, expression->span.length);
+    expression_text = expression == NULL
+                          ? NULL
+                          : mylite_copy_span_text(expression->span.text, expression->span.length);
     if (expression != NULL && expression_text == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
@@ -16774,7 +16796,7 @@ static bool select_expression_contains_aggregate(const struct mylite_sql_ast_nod
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_QUANTIFIED_COMPARISON) {
-        return select_expression_contains_aggregate(child_at(expression, 0U));
+        return select_expression_contains_aggregate(mylite_ast_child_at(expression, 0U));
     }
     for (const struct mylite_sql_ast_node *child = expression->first_child; child != NULL;
          child = child->next_sibling) {
@@ -16825,10 +16847,10 @@ static bool select_expression_is_group_invariant( // NOLINT(misc-no-recursion)
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
         return select_identifier_is_group_invariant(plan, expression, reference_policy);
     case MYLITE_SQL_AST_CAST_EXPRESSION:
-        return select_expression_is_group_invariant(plan, child_at(expression, 0U),
+        return select_expression_is_group_invariant(plan, mylite_ast_child_at(expression, 0U),
                                                     reference_policy);
     case MYLITE_SQL_AST_FUNCTION_CALL: {
-        const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+        const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
 
         return select_expression_children_are_group_invariant(
             plan, arguments == NULL ? NULL : arguments->first_child, reference_policy);
@@ -16845,7 +16867,7 @@ static bool select_expression_is_group_invariant( // NOLINT(misc-no-recursion)
                                                               reference_policy);
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
         if (binary_expression_is_in_subquery(expression)) {
-            return select_expression_is_group_invariant(plan, child_at(expression, 0U),
+            return select_expression_is_group_invariant(plan, mylite_ast_child_at(expression, 0U),
                                                         reference_policy);
         }
         return select_expression_children_are_group_invariant(plan, expression->first_child,
@@ -16854,7 +16876,7 @@ static bool select_expression_is_group_invariant( // NOLINT(misc-no-recursion)
     case MYLITE_SQL_AST_EXISTS_EXPRESSION:
         return true;
     case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
-        return select_expression_is_group_invariant(plan, child_at(expression, 0U),
+        return select_expression_is_group_invariant(plan, mylite_ast_child_at(expression, 0U),
                                                     reference_policy);
     case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
     case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
@@ -17179,8 +17201,8 @@ static int append_select_item_outputs(mylite_db *database,
                                       bool allow_expression_outputs,
                                       struct mylite_select_plan *plan)
 {
-    const struct mylite_sql_ast_node *expression = child_at(select_item, 0U);
-    const struct mylite_sql_ast_node *alias = child_at(select_item, 1U);
+    const struct mylite_sql_ast_node *expression = mylite_ast_child_at(select_item, 0U);
+    const struct mylite_sql_ast_node *alias = mylite_ast_child_at(select_item, 1U);
 
     if (select_item == NULL || select_item->kind != MYLITE_SQL_AST_SELECT_ITEM ||
         expression == NULL) {
@@ -17561,7 +17583,7 @@ static int append_select_plan_column_output(mylite_db *database, struct mylite_s
         return MYLITE_UNSUPPORTED;
     }
 
-    label = copy_span_text(column->name, strlen(column->name));
+    label = mylite_copy_span_text(column->name, strlen(column->name));
     if (label == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
@@ -17638,7 +17660,7 @@ static int append_select_expression_output(mylite_db *database,
         return status;
     }
 
-    label = alias == NULL ? copy_span_text(expression->span.text, expression->span.length)
+    label = alias == NULL ? mylite_copy_span_text(expression->span.text, expression->span.length)
                           : copy_select_alias(alias);
     if (label == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
@@ -17742,7 +17764,7 @@ static int collect_select_aggregate_bindings(mylite_db *database,
     if (expression->kind == MYLITE_SQL_AST_AGGREGATE_CALL) {
         struct mylite_select_aggregate_binding binding = {
             .call = expression,
-            .argument = child_at(expression, 1U),
+            .argument = mylite_ast_child_at(expression, 1U),
             .kind = expression->aggregate_kind,
             .argument_kind = expression->aggregate_argument,
         };
@@ -17765,7 +17787,8 @@ static int collect_select_aggregate_bindings(mylite_db *database,
         return MYLITE_OK;
     }
     if (expression->kind == MYLITE_SQL_AST_QUANTIFIED_COMPARISON) {
-        return collect_select_aggregate_bindings(database, child_at(expression, 0U), plan);
+        return collect_select_aggregate_bindings(database, mylite_ast_child_at(expression, 0U),
+                                                 plan);
     }
 
     for (const struct mylite_sql_ast_node *child = expression->first_child; child != NULL;
@@ -17898,8 +17921,8 @@ static int resolve_select_plan_wildcard(mylite_db *database, const struct mylite
                                         const struct mylite_sql_ast_node *wildcard,
                                         size_t *out_table_index, bool *out_all)
 {
-    const struct mylite_sql_ast_node *first = child_at(wildcard, 0U);
-    const struct mylite_sql_ast_node *second = child_at(wildcard, 1U);
+    const struct mylite_sql_ast_node *first = mylite_ast_child_at(wildcard, 0U);
+    const struct mylite_sql_ast_node *second = mylite_ast_child_at(wildcard, 1U);
     char *first_name = NULL;
     char *second_name = NULL;
     size_t table_count = select_plan_table_count(plan);
@@ -17911,13 +17934,13 @@ static int resolve_select_plan_wildcard(mylite_db *database, const struct mylite
         return MYLITE_OK;
     }
 
-    first_name = copy_identifier_span(first);
+    first_name = mylite_copy_identifier_span(first);
     if (first_name == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     if (second != NULL) {
-        second_name = copy_identifier_span(second);
+        second_name = mylite_copy_identifier_span(second);
         if (second_name == NULL) {
             free(first_name);
             (void)mylite_diagnostics_set_error_message(database, "out of memory");
@@ -18066,7 +18089,7 @@ static size_t count_select_plan_column_parts_using_matches(const struct mylite_s
     size_t match_count = 0U;
 
     for (size_t index = 0U; index < plan->using_column_count; ++index) {
-        if (!ascii_case_equal(plan->using_columns[index].name, column_name) ||
+        if (!mylite_ascii_case_equal(plan->using_columns[index].name, column_name) ||
             !select_using_column_range_is_in_range(&plan->using_columns[index], range)) {
             continue;
         }
@@ -18135,7 +18158,7 @@ static int resolve_select_plan_column_in_table(const struct mylite_select_plan *
         return MYLITE_UNSUPPORTED;
     }
     for (size_t index = 0U; index < table->column_count; ++index) {
-        if (ascii_case_equal(table->columns[index].name, column_name)) {
+        if (mylite_ascii_case_equal(table->columns[index].name, column_name)) {
             *out_index = table->first_column_index + index;
             return MYLITE_OK;
         }
@@ -18524,7 +18547,7 @@ static size_t select_output_label_count(const struct mylite_select_plan *plan, c
     *out_index = plan->output_count;
     for (size_t index = 0U; index < plan->output_count; ++index) {
         if (plan->outputs[index].label != NULL &&
-            ascii_case_equal(plan->outputs[index].label, label)) {
+            mylite_ascii_case_equal(plan->outputs[index].label, label)) {
             if (count == 0U) {
                 *out_index = index;
             }
@@ -18542,7 +18565,7 @@ static size_t select_output_label_span_count(const struct mylite_select_plan *pl
     *out_index = plan->output_count;
     for (size_t index = 0U; index < plan->output_count; ++index) {
         if (plan->outputs[index].label != NULL &&
-            ascii_span_equal_ci(label, plan->outputs[index].label)) {
+            mylite_span_equal_ci(label, plan->outputs[index].label)) {
             if (count == 0U) {
                 *out_index = index;
             }
@@ -18578,7 +18601,7 @@ static bool select_reference_qualifiers_match(const struct mylite_select_table *
 static size_t select_column_index(const struct mylite_select_table *table, const char *column_name)
 {
     for (size_t index = 0U; index < table->column_count; ++index) {
-        if (ascii_case_equal(table->columns[index].name, column_name)) {
+        if (mylite_ascii_case_equal(table->columns[index].name, column_name)) {
             return index;
         }
     }
@@ -18623,8 +18646,8 @@ static int copy_select_identifier_parts(const struct mylite_sql_ast_node *identi
         if (segment_count >= 3U) {
             return MYLITE_UNSUPPORTED;
         }
-        segments[segment_count++] = child_at(current, 1U);
-        current = child_at(current, 0U);
+        segments[segment_count++] = mylite_ast_child_at(current, 1U);
+        current = mylite_ast_child_at(current, 0U);
     }
     if (current == NULL || current->kind != MYLITE_SQL_AST_IDENTIFIER || segment_count >= 3U) {
         return MYLITE_UNSUPPORTED;
@@ -18637,7 +18660,7 @@ static int copy_select_identifier_parts(const struct mylite_sql_ast_node *identi
         if (segment == NULL || segment->kind != MYLITE_SQL_AST_IDENTIFIER) {
             return MYLITE_UNSUPPORTED;
         }
-        parts[index] = copy_identifier_span(segment);
+        parts[index] = mylite_copy_identifier_span(segment);
         if (parts[index] == NULL) {
             for (size_t previous = 0U; previous < index; ++previous) {
                 free(parts[previous]);
@@ -18658,10 +18681,10 @@ static char *copy_select_alias(const struct mylite_sql_ast_node *alias)
     }
     if (alias->kind == MYLITE_SQL_AST_LITERAL &&
         alias->literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
-        return copy_string_literal_span(alias);
+        return mylite_copy_string_literal_span(alias);
     }
     if (alias->kind == MYLITE_SQL_AST_IDENTIFIER) {
-        return copy_identifier_span(alias);
+        return mylite_copy_identifier_span(alias);
     }
     return NULL;
 }
@@ -18671,12 +18694,12 @@ static char *copy_select_final_identifier_label(const struct mylite_sql_ast_node
     const struct mylite_sql_ast_node *current = identifier;
 
     while (current != NULL && current->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
-        current = child_at(current, 1U);
+        current = mylite_ast_child_at(current, 1U);
     }
     if (current == NULL || current->kind != MYLITE_SQL_AST_IDENTIFIER) {
         return NULL;
     }
-    return copy_identifier_span(current);
+    return mylite_copy_identifier_span(current);
 }
 
 static char *copy_select_reference_name(const struct mylite_sql_ast_node *identifier)
@@ -18694,10 +18717,10 @@ static char *copy_select_reference_name(const struct mylite_sql_ast_node *identi
         if (status == MYLITE_NOMEM) {
             return NULL;
         }
-        return copy_span_text(identifier->span.text, identifier->span.length);
+        return mylite_copy_span_text(identifier->span.text, identifier->span.length);
     }
     if (part_count == 0U) {
-        return copy_span_text(identifier->span.text, identifier->span.length);
+        return mylite_copy_span_text(identifier->span.text, identifier->span.length);
     }
 
     for (size_t index = 0U; index < part_count; ++index) {
@@ -18731,17 +18754,17 @@ static char *copy_select_reference_name(const struct mylite_sql_ast_node *identi
 
 static char *copy_select_wildcard_qualifier_name(const struct mylite_sql_ast_node *wildcard)
 {
-    const struct mylite_sql_ast_node *first = child_at(wildcard, 0U);
-    const struct mylite_sql_ast_node *second = child_at(wildcard, 1U);
+    const struct mylite_sql_ast_node *first = mylite_ast_child_at(wildcard, 0U);
+    const struct mylite_sql_ast_node *second = mylite_ast_child_at(wildcard, 1U);
     char *first_name = NULL;
     char *second_name = NULL;
     char *name = NULL;
 
     if (first == NULL) {
-        return copy_span_text("*", 1U);
+        return mylite_copy_span_text("*", 1U);
     }
 
-    first_name = copy_identifier_span(first);
+    first_name = mylite_copy_identifier_span(first);
     if (first_name == NULL) {
         return NULL;
     }
@@ -18749,7 +18772,7 @@ static char *copy_select_wildcard_qualifier_name(const struct mylite_sql_ast_nod
         return first_name;
     }
 
-    second_name = copy_identifier_span(second);
+    second_name = mylite_copy_identifier_span(second);
     if (second_name == NULL) {
         free(first_name);
         return NULL;
@@ -19089,14 +19112,14 @@ static int clone_table_select_expressions(mylite_stmt *stmt,
 {
     int status = MYLITE_OK;
 
-    stmt->select_sql_text = copy_span_text(sql, sql_length);
+    stmt->select_sql_text = mylite_copy_span_text(sql, sql_length);
     if (stmt->select_sql_text == NULL) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
     if (where_clause != NULL) {
-        const struct mylite_sql_ast_node *predicate = child_at(where_clause, 0U);
+        const struct mylite_sql_ast_node *predicate = mylite_ast_child_at(where_clause, 0U);
         struct mylite_sql_ast_node *clone = NULL;
 
         status = clone_table_select_expression_node(stmt, predicate, sql, sql_length, &clone);
@@ -19288,11 +19311,11 @@ static int clone_table_select_expression_node(mylite_stmt *stmt,
 static int clone_update_plan_nodes(mylite_stmt *stmt, const struct mylite_sql_ast_node *statement,
                                    const char *sql, size_t sql_length)
 {
-    const struct mylite_sql_ast_node *assignments = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *assignments = mylite_ast_child_at(statement, 1U);
     size_t assignment_index = 0U;
     int status = MYLITE_OK;
 
-    stmt->update_sql_text = copy_span_text(sql, sql_length);
+    stmt->update_sql_text = mylite_copy_span_text(sql, sql_length);
     if (stmt->update_sql_text == NULL) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
@@ -19306,7 +19329,8 @@ static int clone_update_plan_nodes(mylite_stmt *stmt, const struct mylite_sql_as
         if (assignment_index >= stmt->update.assignment_count) {
             return MYLITE_UNSUPPORTED;
         }
-        status = clone_update_ast_node(stmt, child_at(assignment, 1U), sql, sql_length, &clone);
+        status = clone_update_ast_node(stmt, mylite_ast_child_at(assignment, 1U), sql, sql_length,
+                                       &clone);
         if (status != MYLITE_OK) {
             return status;
         }
@@ -19316,19 +19340,21 @@ static int clone_update_plan_nodes(mylite_stmt *stmt, const struct mylite_sql_as
         return MYLITE_UNSUPPORTED;
     }
 
-    status = clone_update_ast_node(stmt, find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE),
-                                   sql, sql_length, &stmt->update.where_clause);
+    status = clone_update_ast_node(
+        stmt, mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE), sql, sql_length,
+        &stmt->update.where_clause);
     if (status != MYLITE_OK) {
         return status;
     }
-    status = clone_update_ast_node(stmt, find_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE),
-                                   sql, sql_length, &stmt->update.order_by_clause);
+    status = clone_update_ast_node(
+        stmt, mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE), sql,
+        sql_length, &stmt->update.order_by_clause);
     if (status != MYLITE_OK) {
         return status;
     }
-    return clone_update_ast_node(stmt,
-                                 find_child_kind(statement, MYLITE_SQL_AST_UPDATE_LIMIT_CLAUSE),
-                                 sql, sql_length, &stmt->update.limit_clause);
+    return clone_update_ast_node(
+        stmt, mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_UPDATE_LIMIT_CLAUSE), sql,
+        sql_length, &stmt->update.limit_clause);
 }
 
 static int clone_update_ast_node(mylite_stmt *stmt, const struct mylite_sql_ast_node *node,
@@ -19351,25 +19377,27 @@ static int clone_delete_plan_nodes(mylite_stmt *stmt, const struct mylite_sql_as
 {
     int status = MYLITE_OK;
 
-    stmt->delete_sql_text = copy_span_text(sql, sql_length);
+    stmt->delete_sql_text = mylite_copy_span_text(sql, sql_length);
     if (stmt->delete_sql_text == NULL) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
-    status = clone_delete_ast_node(stmt, find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE),
-                                   sql, sql_length, &stmt->delete_plan.where_clause);
+    status = clone_delete_ast_node(
+        stmt, mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE), sql, sql_length,
+        &stmt->delete_plan.where_clause);
     if (status != MYLITE_OK) {
         return status;
     }
-    status = clone_delete_ast_node(stmt, find_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE),
-                                   sql, sql_length, &stmt->delete_plan.order_by_clause);
+    status = clone_delete_ast_node(
+        stmt, mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE), sql,
+        sql_length, &stmt->delete_plan.order_by_clause);
     if (status != MYLITE_OK) {
         return status;
     }
-    return clone_delete_ast_node(stmt,
-                                 find_child_kind(statement, MYLITE_SQL_AST_DELETE_LIMIT_CLAUSE),
-                                 sql, sql_length, &stmt->delete_plan.limit_clause);
+    return clone_delete_ast_node(
+        stmt, mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_DELETE_LIMIT_CLAUSE), sql,
+        sql_length, &stmt->delete_plan.limit_clause);
 }
 
 static int clone_delete_ast_node(mylite_stmt *stmt, const struct mylite_sql_ast_node *node,
@@ -19583,19 +19611,19 @@ static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind k
     }
 
     if (kind == MYLITE_STMT_CREATE_SCHEMA &&
-        find_child_kind(statement, MYLITE_SQL_AST_IF_NOT_EXISTS) != NULL) {
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_IF_NOT_EXISTS) != NULL) {
         stmt->if_not_exists = true;
     }
     if (kind == MYLITE_STMT_CREATE_TABLE &&
-        find_child_kind(statement, MYLITE_SQL_AST_IF_NOT_EXISTS) != NULL) {
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_IF_NOT_EXISTS) != NULL) {
         stmt->if_not_exists = true;
     }
     if (kind == MYLITE_STMT_DROP_SCHEMA &&
-        find_child_kind(statement, MYLITE_SQL_AST_IF_EXISTS) != NULL) {
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_IF_EXISTS) != NULL) {
         stmt->if_exists = true;
     }
     if (kind == MYLITE_STMT_DROP_TABLE &&
-        find_child_kind(statement, MYLITE_SQL_AST_IF_EXISTS) != NULL) {
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_IF_EXISTS) != NULL) {
         stmt->if_exists = true;
     }
 
@@ -19978,7 +20006,7 @@ static int execute_use_schema_statement(mylite_stmt *stmt)
     struct mylite_schema_presence presence;
     int status = MYLITE_OK;
 
-    if (span_contains_newline(stmt->schema_name, strlen(stmt->schema_name))) {
+    if (mylite_span_contains_newline(stmt->schema_name, strlen(stmt->schema_name))) {
         (void)mylite_diagnostics_set_error_message(stmt->database,
                                                    "USE database names must be single-line");
         return MYLITE_EXEC_ERROR;
@@ -20501,8 +20529,8 @@ static int validate_drop_table_plan(mylite_stmt *stmt)
                 (void)mylite_diagnostics_set_error_message(stmt->database, "No database selected");
                 return MYLITE_EXEC_ERROR;
             }
-            target->schema_name = copy_span_text(stmt->database->selected_schema,
-                                                 strlen(stmt->database->selected_schema));
+            target->schema_name = mylite_copy_span_text(stmt->database->selected_schema,
+                                                        strlen(stmt->database->selected_schema));
             if (target->schema_name == NULL) {
                 (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
                 return MYLITE_NOMEM;
@@ -20767,14 +20795,14 @@ static int resolve_rename_table_names(mylite_stmt *stmt)
             return MYLITE_EXEC_ERROR;
         }
         if (target->source_schema_name == NULL) {
-            target->source_schema_name = copy_nonempty_cstring(selected_schema);
+            target->source_schema_name = mylite_copy_nonempty_cstring(selected_schema);
             if (target->source_schema_name == NULL) {
                 (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
                 return MYLITE_NOMEM;
             }
         }
         if (target->target_schema_name == NULL) {
-            target->target_schema_name = copy_nonempty_cstring(selected_schema);
+            target->target_schema_name = mylite_copy_nonempty_cstring(selected_schema);
             if (target->target_schema_name == NULL) {
                 (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
                 return MYLITE_NOMEM;
@@ -21080,7 +21108,7 @@ static int resolve_truncate_table_name(mylite_stmt *stmt)
         return MYLITE_EXEC_ERROR;
     }
 
-    stmt->truncate_table.schema_name = copy_nonempty_cstring(selected_schema);
+    stmt->truncate_table.schema_name = mylite_copy_nonempty_cstring(selected_schema);
     if (stmt->truncate_table.schema_name == NULL) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
@@ -21236,13 +21264,13 @@ static int add_alter_table_rename_target(mylite_stmt *stmt)
     int status = MYLITE_OK;
 
     if (stmt->alter_table.schema_name != NULL) {
-        target.source_schema_name = copy_nonempty_cstring(stmt->alter_table.schema_name);
+        target.source_schema_name = mylite_copy_nonempty_cstring(stmt->alter_table.schema_name);
     }
-    target.source_table_name = copy_nonempty_cstring(stmt->alter_table.table_name);
+    target.source_table_name = mylite_copy_nonempty_cstring(stmt->alter_table.table_name);
     if (action->new_schema_name != NULL) {
-        target.target_schema_name = copy_nonempty_cstring(action->new_schema_name);
+        target.target_schema_name = mylite_copy_nonempty_cstring(action->new_schema_name);
     }
-    target.target_table_name = copy_nonempty_cstring(action->new_name);
+    target.target_table_name = mylite_copy_nonempty_cstring(action->new_name);
     if ((stmt->alter_table.schema_name != NULL && target.source_schema_name == NULL) ||
         target.source_table_name == NULL ||
         (action->new_schema_name != NULL && target.target_schema_name == NULL) ||
@@ -21346,7 +21374,7 @@ static int resolve_alter_table_schema(mylite_stmt *stmt)
         return MYLITE_EXEC_ERROR;
     }
 
-    stmt->alter_table.schema_name = copy_nonempty_cstring(stmt->database->selected_schema);
+    stmt->alter_table.schema_name = mylite_copy_nonempty_cstring(stmt->database->selected_schema);
     if (stmt->alter_table.schema_name == NULL) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
@@ -21398,8 +21426,8 @@ static int load_alter_table_model(mylite_stmt *stmt, const char *schema_name,
     int status = MYLITE_OK;
 
     *model = (struct mylite_alter_table_model){0};
-    model->schema_name = copy_nonempty_cstring(schema_name);
-    model->table_name = copy_nonempty_cstring(stmt->alter_table.table_name);
+    model->schema_name = mylite_copy_nonempty_cstring(schema_name);
+    model->table_name = mylite_copy_nonempty_cstring(stmt->alter_table.table_name);
     model->physical_name = physical_table_name(schema_name, stmt->alter_table.table_name);
     if (model->schema_name == NULL || model->table_name == NULL || model->physical_name == NULL) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
@@ -21505,7 +21533,7 @@ static int load_alter_table_column_text_catalog_fields(sqlite3_stmt *select,
         copy_sqlite_text_column(select, MYLITE_ALTER_TABLE_COLUMN_CATALOG_NAME, &column->name);
 
     if (status == MYLITE_OK) {
-        column->source_name = copy_nonempty_cstring(column->name);
+        column->source_name = mylite_copy_nonempty_cstring(column->name);
         if (column->source_name == NULL) {
             status = MYLITE_NOMEM;
         }
@@ -21596,10 +21624,10 @@ static void load_alter_table_column_numeric_catalog_fields(sqlite3_stmt *select,
 
 static void load_alter_table_column_flags(struct mylite_alter_table_column *column)
 {
-    column->nullable = ascii_case_equal(column->is_nullable, "YES");
-    column->auto_increment = text_contains_word(column->extra, "auto_increment");
+    column->nullable = mylite_ascii_case_equal(column->is_nullable, "YES");
+    column->auto_increment = mylite_text_contains_word(column->extra, "auto_increment");
     column->visible = true;
-    if (text_contains_word(column->extra, "INVISIBLE")) {
+    if (mylite_text_contains_word(column->extra, "INVISIBLE")) {
         column->visible = false;
     }
 }
@@ -21860,7 +21888,7 @@ static int apply_alter_table_drop_column(mylite_stmt *stmt,
         struct mylite_alter_table_index *table_index = &model->indexes[index];
 
         for (size_t part = 0U; part < table_index->part_count;) {
-            if (ascii_case_equal(table_index->parts[part].column_name, action->old_name)) {
+            if (mylite_ascii_case_equal(table_index->parts[part].column_name, action->old_name)) {
                 alter_table_index_part_deinit(&table_index->parts[part]);
                 for (size_t next = part + 1U; next < table_index->part_count; ++next) {
                     table_index->parts[next - 1U] = table_index->parts[next];
@@ -21903,12 +21931,12 @@ static int apply_alter_table_rename_column(mylite_stmt *stmt,
     if (model->columns == NULL) {
         return MYLITE_MISUSE;
     }
-    if (!ascii_case_equal(action->old_name, action->new_name) &&
+    if (!mylite_ascii_case_equal(action->old_name, action->new_name) &&
         find_alter_table_column(model, action->new_name) != NULL) {
         return set_alter_table_duplicate_column_error(stmt->database, action->new_name);
     }
 
-    new_name = copy_nonempty_cstring(action->new_name);
+    new_name = mylite_copy_nonempty_cstring(action->new_name);
     if (new_name == NULL) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
@@ -21918,8 +21946,9 @@ static int apply_alter_table_rename_column(mylite_stmt *stmt,
 
     for (size_t index = 0U; index < model->index_count; ++index) {
         for (size_t part = 0U; part < model->indexes[index].part_count; ++part) {
-            if (ascii_case_equal(model->indexes[index].parts[part].column_name, action->old_name)) {
-                char *part_name = copy_nonempty_cstring(action->new_name);
+            if (mylite_ascii_case_equal(model->indexes[index].parts[part].column_name,
+                                        action->old_name)) {
+                char *part_name = mylite_copy_nonempty_cstring(action->new_name);
 
                 if (part_name == NULL) {
                     (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
@@ -21949,7 +21978,7 @@ static int apply_alter_table_change_column(mylite_stmt *stmt,
     if (model->columns == NULL) {
         return MYLITE_MISUSE;
     }
-    if (!ascii_case_equal(action->old_name, new_name) &&
+    if (!mylite_ascii_case_equal(action->old_name, new_name) &&
         find_alter_table_column(model, new_name) != NULL) {
         return set_alter_table_duplicate_column_error(stmt->database, new_name);
     }
@@ -21967,8 +21996,9 @@ static int apply_alter_table_change_column(mylite_stmt *stmt,
 
     for (size_t index = 0U; index < model->index_count; ++index) {
         for (size_t part = 0U; part < model->indexes[index].part_count; ++part) {
-            if (ascii_case_equal(model->indexes[index].parts[part].column_name, action->old_name)) {
-                char *part_name = copy_nonempty_cstring(new_name);
+            if (mylite_ascii_case_equal(model->indexes[index].parts[part].column_name,
+                                        action->old_name)) {
+                char *part_name = mylite_copy_nonempty_cstring(new_name);
 
                 if (part_name == NULL) {
                     (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
@@ -22020,11 +22050,11 @@ static int apply_alter_table_add_index(mylite_stmt *stmt,
     int status = MYLITE_OK;
 
     if (is_primary) {
-        index_name = copy_nonempty_cstring("PRIMARY");
+        index_name = mylite_copy_nonempty_cstring("PRIMARY");
     } else if (action->index.name == NULL) {
         status = assign_alter_table_generated_index_name(stmt, model, &action->index, &index_name);
     } else {
-        index_name = copy_nonempty_cstring(action->index.name);
+        index_name = mylite_copy_nonempty_cstring(action->index.name);
     }
     if (status != MYLITE_OK) {
         return status;
@@ -22090,7 +22120,7 @@ static int apply_alter_table_drop_index(mylite_stmt *stmt,
 {
     size_t index = alter_table_index_index(model, action->old_name);
 
-    if (index == model->index_count || ascii_case_equal(action->old_name, "PRIMARY")) {
+    if (index == model->index_count || mylite_ascii_case_equal(action->old_name, "PRIMARY")) {
         return set_alter_table_cant_drop_column_error(stmt->database, action->old_name);
     }
     return remove_alter_table_index(model, index);
@@ -22106,16 +22136,16 @@ static int apply_alter_table_rename_index(mylite_stmt *stmt,
     if (index == model->index_count) {
         return set_alter_table_cant_drop_column_error(stmt->database, action->old_name);
     }
-    if (ascii_case_equal(action->old_name, "PRIMARY") ||
-        ascii_case_equal(action->new_name, "PRIMARY")) {
+    if (mylite_ascii_case_equal(action->old_name, "PRIMARY") ||
+        mylite_ascii_case_equal(action->new_name, "PRIMARY")) {
         return set_alter_table_primary_invisible_error(stmt->database);
     }
-    if (!ascii_case_equal(action->old_name, action->new_name) &&
+    if (!mylite_ascii_case_equal(action->old_name, action->new_name) &&
         alter_table_index_name_exists(model, action->new_name)) {
         return set_alter_table_duplicate_key_name_error(stmt->database, action->new_name);
     }
 
-    new_name = copy_nonempty_cstring(action->new_name);
+    new_name = mylite_copy_nonempty_cstring(action->new_name);
     if (new_name == NULL) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
@@ -22150,7 +22180,7 @@ static int apply_alter_table_alter_index_visibility(mylite_stmt *stmt,
                 is_implicit_primary = false;
             }
         }
-        if (ascii_case_equal(model->indexes[index].name, "PRIMARY") || is_implicit_primary) {
+        if (mylite_ascii_case_equal(model->indexes[index].name, "PRIMARY") || is_implicit_primary) {
             return set_alter_table_primary_invisible_error(stmt->database);
         }
     }
@@ -22161,7 +22191,7 @@ static int apply_alter_table_alter_index_visibility(mylite_stmt *stmt,
         visibility_text = "YES";
     }
 
-    visibility = copy_span_text(visibility_text, strlen(visibility_text));
+    visibility = mylite_copy_span_text(visibility_text, strlen(visibility_text));
     if (visibility == NULL) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
@@ -22193,7 +22223,7 @@ static int apply_alter_table_column_position(mylite_stmt *stmt,
         return MYLITE_MISUSE;
     }
     if (action->position == MYLITE_ALTER_TABLE_COLUMN_POSITION_AFTER) {
-        if (ascii_case_equal(model->columns[column_index].name, action->after_column)) {
+        if (mylite_ascii_case_equal(model->columns[column_index].name, action->after_column)) {
             return MYLITE_OK;
         }
         target_index = alter_table_column_index(model, action->after_column);
@@ -22232,7 +22262,7 @@ static int replace_alter_table_column_from_definition(
     mylite_stmt *stmt, const struct mylite_create_table_column *definition, const char *source_name,
     bool added, struct mylite_alter_table_column *target)
 {
-    char *source_copy = source_name == NULL ? NULL : copy_nonempty_cstring(source_name);
+    char *source_copy = source_name == NULL ? NULL : mylite_copy_nonempty_cstring(source_name);
     struct mylite_alter_table_column replacement = {0};
     int status = MYLITE_OK;
 
@@ -22269,24 +22299,24 @@ static int init_alter_table_column_from_definition(
         nullable_text = "YES";
     }
 
-    out_column->name = copy_nonempty_cstring(definition->name);
+    out_column->name = mylite_copy_nonempty_cstring(definition->name);
     if (source_name != NULL) {
-        out_column->source_name = copy_nonempty_cstring(source_name);
+        out_column->source_name = mylite_copy_nonempty_cstring(source_name);
     }
     if (definition->default_text != NULL) {
         out_column->column_default =
-            copy_span_text(definition->default_text, strlen(definition->default_text));
+            mylite_copy_span_text(definition->default_text, strlen(definition->default_text));
     }
-    out_column->is_nullable = copy_span_text(nullable_text, strlen(nullable_text));
-    out_column->data_type = copy_nonempty_cstring(descriptor.data_type);
-    out_column->column_type = copy_nonempty_cstring(descriptor.column_type);
-    out_column->column_key = copy_span_text("", 0U);
+    out_column->is_nullable = mylite_copy_span_text(nullable_text, strlen(nullable_text));
+    out_column->data_type = mylite_copy_nonempty_cstring(descriptor.data_type);
+    out_column->column_type = mylite_copy_nonempty_cstring(descriptor.column_type);
+    out_column->column_key = mylite_copy_span_text("", 0U);
     out_column->extra =
-        copy_span_text(extra == NULL ? "" : extra, extra == NULL ? 0U : strlen(extra));
+        mylite_copy_span_text(extra == NULL ? "" : extra, extra == NULL ? 0U : strlen(extra));
     out_column->column_comment =
-        copy_span_text(definition->comment == NULL ? "" : definition->comment,
-                       definition->comment == NULL ? 0U : strlen(definition->comment));
-    out_column->generation_expression = copy_span_text("", 0U);
+        mylite_copy_span_text(definition->comment == NULL ? "" : definition->comment,
+                              definition->comment == NULL ? 0U : strlen(definition->comment));
+    out_column->generation_expression = mylite_copy_span_text("", 0U);
     if (out_column->name == NULL || (source_name != NULL && out_column->source_name == NULL) ||
         (definition->default_text != NULL && out_column->column_default == NULL) ||
         out_column->is_nullable == NULL || out_column->data_type == NULL ||
@@ -22317,7 +22347,8 @@ static int init_alter_table_column_from_definition(
         out_column->has_datetime_precision = true;
     }
     if (descriptor.character_set_name != NULL) {
-        out_column->character_set_name = copy_nonempty_cstring(descriptor.character_set_name);
+        out_column->character_set_name =
+            mylite_copy_nonempty_cstring(descriptor.character_set_name);
         if (out_column->character_set_name == NULL) {
             alter_table_column_deinit(out_column);
             (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
@@ -22325,7 +22356,7 @@ static int init_alter_table_column_from_definition(
         }
     }
     if (descriptor.collation_name != NULL) {
-        out_column->collation_name = copy_nonempty_cstring(descriptor.collation_name);
+        out_column->collation_name = mylite_copy_nonempty_cstring(descriptor.collation_name);
         if (out_column->collation_name == NULL) {
             alter_table_column_deinit(out_column);
             (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
@@ -22433,11 +22464,11 @@ static int init_alter_table_index_from_create_index(mylite_stmt *stmt,
     }
 
     *out_index = (struct mylite_alter_table_index){0};
-    out_index->index_schema = copy_nonempty_cstring(model->schema_name);
-    out_index->index_type = copy_span_text(index_type, strlen(index_type));
-    out_index->comment = copy_span_text(comment, strlen(comment));
-    out_index->index_comment = copy_span_text(index_comment, strlen(index_comment));
-    out_index->is_visible = copy_span_text(is_visible, strlen(is_visible));
+    out_index->index_schema = mylite_copy_nonempty_cstring(model->schema_name);
+    out_index->index_type = mylite_copy_span_text(index_type, strlen(index_type));
+    out_index->comment = mylite_copy_span_text(comment, strlen(comment));
+    out_index->index_comment = mylite_copy_span_text(index_comment, strlen(index_comment));
+    out_index->is_visible = mylite_copy_span_text(is_visible, strlen(is_visible));
     out_index->non_unique = 1;
     if (source->is_unique || is_primary) {
         out_index->non_unique = 0;
@@ -22484,9 +22515,9 @@ init_alter_table_index_part_from_key_part(mylite_stmt *stmt,
     }
 
     *out_part = (struct mylite_alter_table_index_part){0};
-    out_part->column_name = copy_nonempty_cstring(source->column_name);
-    out_part->collation = copy_span_text(collation, strlen(collation));
-    out_part->nullable = copy_span_text(nullable, strlen(nullable));
+    out_part->column_name = mylite_copy_nonempty_cstring(source->column_name);
+    out_part->collation = mylite_copy_span_text(collation, strlen(collation));
+    out_part->nullable = mylite_copy_span_text(nullable, strlen(nullable));
     if (out_part->column_name == NULL || out_part->collation == NULL ||
         out_part->nullable == NULL) {
         alter_table_index_part_deinit(out_part);
@@ -22550,7 +22581,7 @@ static int validate_alter_table_added_index(mylite_stmt *stmt,
     if (is_primary && alter_table_index_name_exists(model, "PRIMARY")) {
         return set_alter_table_multiple_primary_key_error(stmt->database);
     }
-    if (!is_primary && ascii_case_equal(index_name, "PRIMARY")) {
+    if (!is_primary && mylite_ascii_case_equal(index_name, "PRIMARY")) {
         return set_alter_table_duplicate_key_name_error(stmt->database, index_name);
     }
     if (alter_table_index_name_exists(model, index_name)) {
@@ -22565,8 +22596,8 @@ static int validate_alter_table_added_index(mylite_stmt *stmt,
                                                             index->parts[part].column_name);
         }
         for (size_t previous = 0U; previous < part; ++previous) {
-            if (ascii_case_equal(index->parts[previous].column_name,
-                                 index->parts[part].column_name)) {
+            if (mylite_ascii_case_equal(index->parts[previous].column_name,
+                                        index->parts[part].column_name)) {
                 return set_alter_table_duplicate_column_error(stmt->database,
                                                               index->parts[part].column_name);
             }
@@ -22671,7 +22702,7 @@ static int set_alter_table_column_nullable(mylite_stmt *stmt,
         nullable_text = "YES";
     }
 
-    copy = copy_span_text(nullable_text, strlen(nullable_text));
+    copy = mylite_copy_span_text(nullable_text, strlen(nullable_text));
     if (copy == NULL) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
@@ -22714,7 +22745,7 @@ static int validate_alter_table_columns(mylite_stmt *stmt, struct mylite_alter_t
 
     for (size_t column = 0U; column < model->column_count; ++column) {
         for (size_t next = column + 1U; next < model->column_count; ++next) {
-            if (ascii_case_equal(model->columns[column].name, model->columns[next].name)) {
+            if (mylite_ascii_case_equal(model->columns[column].name, model->columns[next].name)) {
                 return set_alter_table_duplicate_column_error(stmt->database,
                                                               model->columns[next].name);
             }
@@ -22806,8 +22837,8 @@ alter_table_auto_increment_column_is_indexed(const struct mylite_alter_table_mod
 {
     for (size_t index = 0U; index < model->index_count; ++index) {
         for (size_t part = 0U; part < model->indexes[index].part_count; ++part) {
-            if (ascii_case_equal(model->indexes[index].parts[part].column_name,
-                                 auto_column->name)) {
+            if (mylite_ascii_case_equal(model->indexes[index].parts[part].column_name,
+                                        auto_column->name)) {
                 return true;
             }
         }
@@ -23188,7 +23219,7 @@ static int resolve_alter_table_added_column_value(mylite_stmt *stmt,
         .extra = column->extra,
         .nullable = column->nullable,
         .auto_increment = column->auto_increment,
-        .generated_default = text_contains_word(column->extra, "DEFAULT_GENERATED"),
+        .generated_default = mylite_text_contains_word(column->extra, "DEFAULT_GENERATED"),
     };
 
     if (column->column_default != NULL) {
@@ -23601,7 +23632,7 @@ static bool alter_table_index_parts_match(const struct mylite_alter_table_index_
     const char *left_collation = left->collation == NULL ? "" : left->collation;
     const char *right_collation = right->collation == NULL ? "" : right->collation;
 
-    if (!ascii_case_equal(left->column_name, right->column_name)) {
+    if (!mylite_ascii_case_equal(left->column_name, right->column_name)) {
         return false;
     }
     if (strcmp(left_collation, right_collation) != 0) {
@@ -23624,11 +23655,12 @@ static const char *alter_table_column_key(const struct mylite_alter_table_model 
 
     for (size_t index = 0U; index < model->index_count; ++index) {
         for (size_t part = 0U; part < model->indexes[index].part_count; ++part) {
-            if (!ascii_case_equal(model->indexes[index].parts[part].column_name, column_name)) {
+            if (!mylite_ascii_case_equal(model->indexes[index].parts[part].column_name,
+                                         column_name)) {
                 continue;
             }
             indexed = true;
-            if (ascii_case_equal(model->indexes[index].name, "PRIMARY")) {
+            if (mylite_ascii_case_equal(model->indexes[index].name, "PRIMARY")) {
                 return "PRI";
             }
             if (model->indexes[index].non_unique == 0 && part == 0U) {
@@ -23649,7 +23681,7 @@ static int refresh_alter_table_column_keys(struct mylite_alter_table_model *mode
 {
     for (size_t column = 0U; column < model->column_count; ++column) {
         const char *key = alter_table_column_key(model, model->columns[column].name);
-        char *copy = copy_span_text(key, strlen(key));
+        char *copy = mylite_copy_span_text(key, strlen(key));
 
         if (copy == NULL) {
             return MYLITE_NOMEM;
@@ -23674,7 +23706,7 @@ static int refresh_alter_table_index_nullability(struct mylite_alter_table_model
                 nullable = "YES";
             }
 
-            copy = copy_span_text(nullable, strlen(nullable));
+            copy = mylite_copy_span_text(nullable, strlen(nullable));
             if (copy == NULL) {
                 return MYLITE_NOMEM;
             }
@@ -23697,7 +23729,7 @@ static size_t alter_table_column_index(const struct mylite_alter_table_model *mo
                                        const char *name)
 {
     for (size_t index = 0U; index < model->column_count; ++index) {
-        if (ascii_case_equal(model->columns[index].name, name)) {
+        if (mylite_ascii_case_equal(model->columns[index].name, name)) {
             return index;
         }
     }
@@ -23708,7 +23740,7 @@ static size_t alter_table_index_index(const struct mylite_alter_table_model *mod
                                       const char *name)
 {
     for (size_t index = 0U; index < model->index_count; ++index) {
-        if (ascii_case_equal(model->indexes[index].name, name)) {
+        if (mylite_ascii_case_equal(model->indexes[index].name, name)) {
             return index;
         }
     }
@@ -23742,7 +23774,7 @@ static bool alter_table_option_is_default(const struct mylite_sql_ast_node *opti
             .length = strlen("DEFAULT"),
         };
 
-        if (ascii_span_equal_ci(candidate, "DEFAULT")) {
+        if (mylite_span_equal_ci(candidate, "DEFAULT")) {
             return true;
         }
     }
@@ -23926,8 +23958,8 @@ static int copy_sqlite_text_column(sqlite3_stmt *stmt, int column, char **out_te
     const unsigned char *text = sqlite3_column_text(stmt, column);
     int byte_count = sqlite3_column_bytes(stmt, column);
 
-    *out_text = copy_span_text(text == NULL ? "" : (const char *)text,
-                               text == NULL || byte_count < 0 ? 0U : (size_t)byte_count);
+    *out_text = mylite_copy_span_text(text == NULL ? "" : (const char *)text,
+                                      text == NULL || byte_count < 0 ? 0U : (size_t)byte_count);
     return *out_text == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
 
@@ -24060,8 +24092,8 @@ static int resolve_index_ddl_schema(mylite_stmt *stmt)
         return MYLITE_EXEC_ERROR;
     }
 
-    stmt->index_ddl.schema_name =
-        copy_span_text(stmt->database->selected_schema, strlen(stmt->database->selected_schema));
+    stmt->index_ddl.schema_name = mylite_copy_span_text(stmt->database->selected_schema,
+                                                        strlen(stmt->database->selected_schema));
     if (stmt->index_ddl.schema_name == NULL) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
@@ -24136,8 +24168,9 @@ static int catalog_index_name(mylite_db *database, const struct mylite_index_cat
     while ((rc = sqlite3_step(select)) == SQLITE_ROW) {
         const char *candidate = (const char *)sqlite3_column_text(select, 0);
 
-        if (ascii_case_equal(candidate, lookup->index_name)) {
-            *out_name = copy_span_text(candidate, candidate == NULL ? 0U : strlen(candidate));
+        if (mylite_ascii_case_equal(candidate, lookup->index_name)) {
+            *out_name =
+                mylite_copy_span_text(candidate, candidate == NULL ? 0U : strlen(candidate));
             sqlite3_finalize(select);
             if (*out_name == NULL) {
                 (void)mylite_diagnostics_set_error_message(database, "out of memory");
@@ -24521,10 +24554,10 @@ static int catalog_index_matches_create_index(mylite_db *database, const char *s
         int non_unique = sqlite3_column_int(select, 0);
 
         if (part >= create_index->part_count || non_unique != expected_non_unique ||
-            !ascii_case_equal(column_name, create_index->parts[part].column_name) ||
+            !mylite_ascii_case_equal(column_name, create_index->parts[part].column_name) ||
             strcmp(collation == NULL ? "" : collation,
                    index_collation_for_order(create_index->parts[part].order)) != 0 ||
-            !ascii_case_equal(index_type, "BTREE") ||
+            !mylite_ascii_case_equal(index_type, "BTREE") ||
             has_sub_part != create_index->parts[part].has_prefix_length ||
             (has_sub_part && (uint64_t)sub_part != create_index->parts[part].prefix_length)) {
             sqlite3_finalize(select);
@@ -24742,19 +24775,19 @@ static int copy_update_target_to_select_table(mylite_stmt *stmt, struct mylite_s
     const struct mylite_update_target *target = &stmt->update.target;
 
     if (target->schema_name != NULL) {
-        table->schema_name = copy_nonempty_cstring(target->schema_name);
+        table->schema_name = mylite_copy_nonempty_cstring(target->schema_name);
         if (table->schema_name == NULL) {
             (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
     }
-    table->table_name = copy_nonempty_cstring(target->table_name);
+    table->table_name = mylite_copy_nonempty_cstring(target->table_name);
     if (table->table_name == NULL) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     if (target->alias != NULL) {
-        table->alias = copy_nonempty_cstring(target->alias);
+        table->alias = mylite_copy_nonempty_cstring(target->alias);
         if (table->alias == NULL) {
             (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
@@ -24807,9 +24840,10 @@ static int reject_deferred_update_clauses(mylite_stmt *stmt)
     if (limit == NULL) {
         return MYLITE_OK;
     }
-    if (limit->kind != MYLITE_SQL_AST_UPDATE_LIMIT_CLAUSE || child_at(limit, 0U) == NULL ||
-        child_at(limit, 0U)->kind != MYLITE_SQL_AST_LIMIT_BOUND ||
-        !child_at(limit, 0U)->has_limit_bound_value) {
+    if (limit->kind != MYLITE_SQL_AST_UPDATE_LIMIT_CLAUSE ||
+        mylite_ast_child_at(limit, 0U) == NULL ||
+        mylite_ast_child_at(limit, 0U)->kind != MYLITE_SQL_AST_LIMIT_BOUND ||
+        !mylite_ast_child_at(limit, 0U)->has_limit_bound_value) {
         return set_update_unsupported_clause_error(stmt->database);
     }
     return MYLITE_OK;
@@ -24870,7 +24904,8 @@ static int bind_update_assignment_expression(mylite_stmt *stmt,
 
 static int bind_update_where_clause(mylite_stmt *stmt, const struct mylite_select_table *table)
 {
-    const struct mylite_sql_ast_node *predicate = child_at(stmt->update.where_clause, 0U);
+    const struct mylite_sql_ast_node *predicate =
+        mylite_ast_child_at(stmt->update.where_clause, 0U);
 
     if (stmt->update.where_clause == NULL) {
         return MYLITE_OK;
@@ -24978,7 +25013,7 @@ static int bind_update_predicate_expression(mylite_stmt *stmt,
         if (status != MYLITE_OK) {
             return status;
         }
-        return bind_update_predicate_expression(stmt, table, child_at(expression, 0U),
+        return bind_update_predicate_expression(stmt, table, mylite_ast_child_at(expression, 0U),
                                                 clause_context);
     }
     case MYLITE_SQL_AST_FUNCTION_CALL:
@@ -25078,7 +25113,7 @@ static int bind_update_function_call(mylite_stmt *stmt, const struct mylite_sele
                                      const struct mylite_sql_ast_node *expression,
                                      const char *clause_context)
 {
-    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
     int status = MYLITE_OK;
 
     if (!mylite_expression_is_supported_function_call(expression)) {
@@ -25103,7 +25138,7 @@ static int bind_update_function_call(mylite_stmt *stmt, const struct mylite_sele
 static int bind_update_order_by_clause(mylite_stmt *stmt, const struct mylite_select_table *table,
                                        struct mylite_update_order_plan *order_plan)
 {
-    const struct mylite_sql_ast_node *items = child_at(stmt->update.order_by_clause, 0U);
+    const struct mylite_sql_ast_node *items = mylite_ast_child_at(stmt->update.order_by_clause, 0U);
 
     if (stmt->update.order_by_clause == NULL) {
         return MYLITE_OK;
@@ -25115,7 +25150,7 @@ static int bind_update_order_by_clause(mylite_stmt *stmt, const struct mylite_se
 
     for (const struct mylite_sql_ast_node *item = items->first_child; item != NULL;
          item = item->next_sibling) {
-        const struct mylite_sql_ast_node *expression = child_at(item, 0U);
+        const struct mylite_sql_ast_node *expression = mylite_ast_child_at(item, 0U);
         struct mylite_select_order_key order_key = {
             .kind = MYLITE_SELECT_ORDER_KEY_EXPRESSION,
             .direction = MYLITE_SQL_AST_KEY_PART_ORDER_ASC,
@@ -25276,7 +25311,7 @@ static int copy_update_sqlite_column_value(sqlite3_stmt *scan, int column,
 
         out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
         out_value->text_length = bytes < 0 ? 0U : (size_t)bytes;
-        out_value->text_value = copy_span_text((const char *)text, out_value->text_length);
+        out_value->text_value = mylite_copy_span_text((const char *)text, out_value->text_length);
         out_value->preserve_temporal_fraction_digits =
             field_descriptor_preserves_temporal_fraction_digits(descriptor);
         out_value->temporal_type = expression_temporal_type_from_descriptor(descriptor);
@@ -25311,8 +25346,8 @@ static int evaluate_update_row_matches(mylite_stmt *stmt, const struct mylite_se
         return MYLITE_OK;
     }
 
-    status = mylite_expression_eval_with_context(child_at(stmt->update.where_clause, 0U), &context,
-                                                 &stmt->database->warnings, &value);
+    status = mylite_expression_eval_with_context(mylite_ast_child_at(stmt->update.where_clause, 0U),
+                                                 &context, &stmt->database->warnings, &value);
     if (status == 0) {
         status = mylite_expression_value_truth(&value, &stmt->database->warnings, &truth);
     }
@@ -25492,7 +25527,7 @@ static int compare_update_rows(const struct mylite_update_row *left,
 static void apply_update_limit(const struct mylite_sql_ast_node *limit_clause,
                                struct mylite_update_rowset *rowset)
 {
-    const struct mylite_sql_ast_node *bound = child_at(limit_clause, 0U);
+    const struct mylite_sql_ast_node *bound = mylite_ast_child_at(limit_clause, 0U);
     size_t keep_count = 0U;
 
     if (limit_clause == NULL) {
@@ -25854,7 +25889,7 @@ static int copy_insert_bound_value_to_expression(const struct mylite_insert_boun
         return MYLITE_OK;
     case MYLITE_INSERT_BOUND_TEXT:
         out_value->text_length = value->text_value == NULL ? 0U : strlen(value->text_value);
-        out_value->text_value = copy_span_text(value->text_value, out_value->text_length);
+        out_value->text_value = mylite_copy_span_text(value->text_value, out_value->text_length);
         if (out_value->text_value == NULL) {
             return MYLITE_NOMEM;
         }
@@ -26375,19 +26410,19 @@ static int copy_delete_target_to_select_table(mylite_stmt *stmt, struct mylite_s
     const struct mylite_delete_target *target = &stmt->delete_plan.target;
 
     if (target->schema_name != NULL) {
-        table->schema_name = copy_nonempty_cstring(target->schema_name);
+        table->schema_name = mylite_copy_nonempty_cstring(target->schema_name);
         if (table->schema_name == NULL) {
             (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
     }
-    table->table_name = copy_nonempty_cstring(target->table_name);
+    table->table_name = mylite_copy_nonempty_cstring(target->table_name);
     if (table->table_name == NULL) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     if (target->alias != NULL) {
-        table->alias = copy_nonempty_cstring(target->alias);
+        table->alias = mylite_copy_nonempty_cstring(target->alias);
         if (table->alias == NULL) {
             (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
@@ -26413,9 +26448,10 @@ static int reject_deferred_delete_clauses(mylite_stmt *stmt)
     if (limit == NULL) {
         return MYLITE_OK;
     }
-    if (limit->kind != MYLITE_SQL_AST_DELETE_LIMIT_CLAUSE || child_at(limit, 0U) == NULL ||
-        child_at(limit, 0U)->kind != MYLITE_SQL_AST_LIMIT_BOUND ||
-        !child_at(limit, 0U)->has_limit_bound_value) {
+    if (limit->kind != MYLITE_SQL_AST_DELETE_LIMIT_CLAUSE ||
+        mylite_ast_child_at(limit, 0U) == NULL ||
+        mylite_ast_child_at(limit, 0U)->kind != MYLITE_SQL_AST_LIMIT_BOUND ||
+        !mylite_ast_child_at(limit, 0U)->has_limit_bound_value) {
         return set_delete_unsupported_clause_error(stmt->database);
     }
     return MYLITE_OK;
@@ -26423,7 +26459,8 @@ static int reject_deferred_delete_clauses(mylite_stmt *stmt)
 
 static int bind_delete_where_clause(mylite_stmt *stmt, const struct mylite_select_table *table)
 {
-    const struct mylite_sql_ast_node *predicate = child_at(stmt->delete_plan.where_clause, 0U);
+    const struct mylite_sql_ast_node *predicate =
+        mylite_ast_child_at(stmt->delete_plan.where_clause, 0U);
 
     if (stmt->delete_plan.where_clause == NULL) {
         return MYLITE_OK;
@@ -26531,7 +26568,7 @@ static int bind_delete_predicate_expression(mylite_stmt *stmt,
         if (status != MYLITE_OK) {
             return status;
         }
-        return bind_delete_predicate_expression(stmt, table, child_at(expression, 0U),
+        return bind_delete_predicate_expression(stmt, table, mylite_ast_child_at(expression, 0U),
                                                 clause_context);
     }
     case MYLITE_SQL_AST_FUNCTION_CALL:
@@ -26631,7 +26668,7 @@ static int bind_delete_function_call(mylite_stmt *stmt, const struct mylite_sele
                                      const struct mylite_sql_ast_node *expression,
                                      const char *clause_context)
 {
-    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
     int status = MYLITE_OK;
 
     if (!mylite_expression_is_supported_function_call(expression)) {
@@ -26656,7 +26693,8 @@ static int bind_delete_function_call(mylite_stmt *stmt, const struct mylite_sele
 static int bind_delete_order_by_clause(mylite_stmt *stmt, const struct mylite_select_table *table,
                                        struct mylite_update_order_plan *order_plan)
 {
-    const struct mylite_sql_ast_node *items = child_at(stmt->delete_plan.order_by_clause, 0U);
+    const struct mylite_sql_ast_node *items =
+        mylite_ast_child_at(stmt->delete_plan.order_by_clause, 0U);
 
     if (stmt->delete_plan.order_by_clause == NULL) {
         return MYLITE_OK;
@@ -26668,7 +26706,7 @@ static int bind_delete_order_by_clause(mylite_stmt *stmt, const struct mylite_se
 
     for (const struct mylite_sql_ast_node *item = items->first_child; item != NULL;
          item = item->next_sibling) {
-        const struct mylite_sql_ast_node *expression = child_at(item, 0U);
+        const struct mylite_sql_ast_node *expression = mylite_ast_child_at(item, 0U);
         struct mylite_select_order_key order_key = {
             .kind = MYLITE_SELECT_ORDER_KEY_EXPRESSION,
             .direction = MYLITE_SQL_AST_KEY_PART_ORDER_ASC,
@@ -26771,8 +26809,9 @@ static int evaluate_delete_row_matches(mylite_stmt *stmt, const struct mylite_se
         return MYLITE_OK;
     }
 
-    status = mylite_expression_eval_with_context(child_at(stmt->delete_plan.where_clause, 0U),
-                                                 &context, &stmt->database->warnings, &value);
+    status =
+        mylite_expression_eval_with_context(mylite_ast_child_at(stmt->delete_plan.where_clause, 0U),
+                                            &context, &stmt->database->warnings, &value);
     if (status == 0) {
         status = mylite_expression_value_truth(&value, &stmt->database->warnings, &truth);
     }
@@ -27071,14 +27110,15 @@ static int evaluate_statement_session_function(
         return evaluate_current_temporal_function(stmt, function_call, out_value);
     }
 
-    name = child_at(function_call, 0U);
+    name = mylite_ast_child_at(function_call, 0U);
     if (name == NULL || name->kind != MYLITE_SQL_AST_IDENTIFIER) {
         return -1;
     }
     if (function_name_is_current_temporal(name)) {
         return evaluate_current_temporal_function(stmt, function_call, out_value);
     }
-    if (ascii_span_equal_ci(name->span, "DATABASE") || ascii_span_equal_ci(name->span, "SCHEMA")) {
+    if (mylite_span_equal_ci(name->span, "DATABASE") ||
+        mylite_span_equal_ci(name->span, "SCHEMA")) {
         if (database->selected_schema == NULL) {
             *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
             return 0;
@@ -27086,7 +27126,7 @@ static int evaluate_statement_session_function(
         size_t schema_length = strlen(database->selected_schema);
 
         out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
-        out_value->text_value = copy_span_text(database->selected_schema, schema_length);
+        out_value->text_value = mylite_copy_span_text(database->selected_schema, schema_length);
         out_value->text_length = schema_length;
         if (out_value->text_value == NULL) {
             (void)mylite_diagnostics_set_error_message(database, "out of memory");
@@ -27094,12 +27134,12 @@ static int evaluate_statement_session_function(
         }
         return 0;
     }
-    if (ascii_span_equal_ci(name->span, "VERSION")) {
+    if (mylite_span_equal_ci(name->span, "VERSION")) {
         const char *version = mylite_version();
         size_t version_length = strlen(version);
 
         out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
-        out_value->text_value = copy_span_text(version, version_length);
+        out_value->text_value = mylite_copy_span_text(version, version_length);
         out_value->text_length = version_length;
         if (out_value->text_value == NULL) {
             (void)mylite_diagnostics_set_error_message(database, "out of memory");
@@ -27107,24 +27147,24 @@ static int evaluate_statement_session_function(
         }
         return 0;
     }
-    if (ascii_span_equal_ci(name->span, "LAST_INSERT_ID")) {
+    if (mylite_span_equal_ci(name->span, "LAST_INSERT_ID")) {
         return evaluate_last_insert_id_function(stmt, function_call, expression_context, warnings,
                                                 out_value);
     }
-    if (ascii_span_equal_ci(name->span, "ROW_COUNT")) {
+    if (mylite_span_equal_ci(name->span, "ROW_COUNT")) {
         *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
                                                       .int64_value = database->previous_row_count};
         return 0;
     }
-    if (ascii_span_equal_ci(name->span, "CONNECTION_ID")) {
+    if (mylite_span_equal_ci(name->span, "CONNECTION_ID")) {
         *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_UINT64,
                                                       .uint64_value = database->connection_id};
         return 0;
     }
-    if (ascii_span_equal_ci(name->span, "USER") ||
-        ascii_span_equal_ci(name->span, "SESSION_USER") ||
-        ascii_span_equal_ci(name->span, "SYSTEM_USER") ||
-        ascii_span_equal_ci(name->span, "CURRENT_USER")) {
+    if (mylite_span_equal_ci(name->span, "USER") ||
+        mylite_span_equal_ci(name->span, "SESSION_USER") ||
+        mylite_span_equal_ci(name->span, "SYSTEM_USER") ||
+        mylite_span_equal_ci(name->span, "CURRENT_USER")) {
         return set_session_text_function_value(database, mylite_embedded_identity, out_value);
     }
     if (function_name_is_strcmp(name)) {
@@ -27142,7 +27182,7 @@ static int evaluate_current_temporal_function(mylite_stmt *stmt,
                                               const struct mylite_sql_ast_node *function_call,
                                               struct mylite_expression_value *out_value)
 {
-    const struct mylite_sql_ast_node *name = child_at(function_call, 0U);
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(function_call, 0U);
     unsigned int fsp = 0U;
 
     if (!current_temporal_function_fsp(function_call, &fsp)) {
@@ -27309,14 +27349,14 @@ static bool current_temporal_function_fsp(const struct mylite_sql_ast_node *func
         return false;
     }
 
-    arguments = child_at(function_call, 1U);
+    arguments = mylite_ast_child_at(function_call, 1U);
     arity = arguments == NULL ? 0U : mylite_sql_ast_node_child_count(arguments);
     if (arity == 0U) {
         *out_fsp = 0U;
         return true;
     }
     if (arity == 1U) {
-        return temporal_fsp_from_literal(child_at(arguments, 0U), out_fsp);
+        return temporal_fsp_from_literal(mylite_ast_child_at(arguments, 0U), out_fsp);
     }
     return false;
 }
@@ -27353,9 +27393,9 @@ static int evaluate_strcmp_function(mylite_stmt *stmt,
                                     const struct mylite_select_table *table,
                                     struct mylite_expression_value *out_value)
 {
-    const struct mylite_sql_ast_node *arguments = child_at(function_call, 1U);
-    const struct mylite_sql_ast_node *left_argument = child_at(arguments, 0U);
-    const struct mylite_sql_ast_node *right_argument = child_at(arguments, 1U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(function_call, 1U);
+    const struct mylite_sql_ast_node *left_argument = mylite_ast_child_at(arguments, 0U);
+    const struct mylite_sql_ast_node *right_argument = mylite_ast_child_at(arguments, 1U);
     struct mylite_charset_collation_info collation_info =
         binary_collation_info(mylite_mysql_coercibility_ignorable);
     struct mylite_expression_value left = {0};
@@ -27404,7 +27444,7 @@ static int infer_strcmp_collation_info(mylite_stmt *stmt,
                                        const struct mylite_select_table *table,
                                        struct mylite_charset_collation_info *out_info)
 {
-    const struct mylite_sql_ast_node *arguments = child_at(function_call, 1U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(function_call, 1U);
     struct mylite_expression_collation_context context = {
         .plan = stmt == NULL ? NULL : &stmt->select_plan,
         .table = table,
@@ -27490,7 +27530,8 @@ static int strcmp_value_to_text(mylite_db *database, const struct mylite_express
         break;
     case MYLITE_EXPRESSION_VALUE_TEXT:
         *out_length = value->text_value == NULL ? 0U : value->text_length;
-        *out_text = copy_span_text(value->text_value == NULL ? "" : value->text_value, *out_length);
+        *out_text =
+            mylite_copy_span_text(value->text_value == NULL ? "" : value->text_value, *out_length);
         if (*out_text != NULL) {
             return MYLITE_OK;
         }
@@ -27505,7 +27546,7 @@ static int strcmp_value_to_text(mylite_db *database, const struct mylite_express
         return MYLITE_NOMEM;
     }
     *out_length = (size_t)length;
-    *out_text = copy_span_text(buffer, *out_length);
+    *out_text = mylite_copy_span_text(buffer, *out_length);
     if (*out_text == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
@@ -27524,7 +27565,7 @@ strcmp_decimal_literal_argument(const struct mylite_sql_ast_node *argument, bool
         (argument->operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ||
          argument->operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE)) {
         negative = argument->operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE;
-        argument = unwrap_parenthesized_expression(child_at(argument, 0U));
+        argument = unwrap_parenthesized_expression(mylite_ast_child_at(argument, 0U));
     }
     if (out_negative != NULL) {
         *out_negative = negative;
@@ -27695,7 +27736,7 @@ static bool strcmp_collation_ignores_trailing_spaces(const char *collation_name)
     if (collation == NULL) {
         return false;
     }
-    return ascii_case_equal(collation->pad_attribute, "PAD SPACE");
+    return mylite_ascii_case_equal(collation->pad_attribute, "PAD SPACE");
 }
 
 static bool strcmp_collation_is_case_sensitive(const struct mylite_charset_collation_info *info)
@@ -27705,16 +27746,17 @@ static bool strcmp_collation_is_case_sensitive(const struct mylite_charset_colla
                                      : info->collation;
     size_t collation_length = strlen(collation_name);
 
-    if (info != NULL && ascii_case_equal(info->character_set, mylite_mysql_binary_charset_name)) {
+    if (info != NULL &&
+        mylite_ascii_case_equal(info->character_set, mylite_mysql_binary_charset_name)) {
         return true;
     }
-    if (ascii_case_equal(collation_name, mylite_mysql_binary_charset_name)) {
+    if (mylite_ascii_case_equal(collation_name, mylite_mysql_binary_charset_name)) {
         return true;
     }
     if (collation_length < 4U) {
         return false;
     }
-    return ascii_case_equal(collation_name + collation_length - 4U, "_bin");
+    return mylite_ascii_case_equal(collation_name + collation_length - 4U, "_bin");
 }
 
 static int evaluate_charset_collation_function(
@@ -27723,9 +27765,9 @@ static int evaluate_charset_collation_function(
     struct mylite_expression_warnings *warnings, const struct mylite_select_table *table,
     struct mylite_expression_value *out_value)
 {
-    const struct mylite_sql_ast_node *name = child_at(function_call, 0U);
-    const struct mylite_sql_ast_node *arguments = child_at(function_call, 1U);
-    const struct mylite_sql_ast_node *argument = child_at(arguments, 0U);
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(function_call, 0U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(function_call, 1U);
+    const struct mylite_sql_ast_node *argument = mylite_ast_child_at(arguments, 0U);
     struct mylite_expression_collation_context collation_context = {
         .plan = stmt == NULL ? NULL : &stmt->select_plan,
         .table = table,
@@ -27779,7 +27821,7 @@ static int set_session_text_function_value(mylite_db *database, const char *text
     size_t length = text == NULL ? 0U : strlen(text);
 
     out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
-    out_value->text_value = copy_span_text(text == NULL ? "" : text, length);
+    out_value->text_value = mylite_copy_span_text(text == NULL ? "" : text, length);
     out_value->text_length = length;
     if (out_value->text_value == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
@@ -28003,8 +28045,8 @@ static int infer_function_collation_info(mylite_db *database,
                                          const struct mylite_sql_ast_node *expression,
                                          struct mylite_charset_collation_info *out_info)
 {
-    const struct mylite_sql_ast_node *name = child_at(expression, 0U);
-    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
 
     if (function_name_is_char(name)) {
         return infer_char_function_collation_info(database, expression, out_info);
@@ -28029,26 +28071,26 @@ static int infer_function_collation_info(mylite_db *database,
         *out_info = binary_collation_info(mylite_mysql_coercibility_numeric);
         return MYLITE_OK;
     }
-    if (name != NULL &&
-        (ascii_span_equal_ci(name->span, "DATABASE") || ascii_span_equal_ci(name->span, "SCHEMA") ||
-         ascii_span_equal_ci(name->span, "VERSION"))) {
+    if (name != NULL && (mylite_span_equal_ci(name->span, "DATABASE") ||
+                         mylite_span_equal_ci(name->span, "SCHEMA") ||
+                         mylite_span_equal_ci(name->span, "VERSION"))) {
         *out_info = utf8mb3_general_collation_info(mylite_mysql_coercibility_system_constant);
         return MYLITE_OK;
     }
-    if (name != NULL && (ascii_span_equal_ci(name->span, "USER") ||
-                         ascii_span_equal_ci(name->span, "SESSION_USER") ||
-                         ascii_span_equal_ci(name->span, "SYSTEM_USER") ||
-                         ascii_span_equal_ci(name->span, "CURRENT_USER"))) {
+    if (name != NULL && (mylite_span_equal_ci(name->span, "USER") ||
+                         mylite_span_equal_ci(name->span, "SESSION_USER") ||
+                         mylite_span_equal_ci(name->span, "SYSTEM_USER") ||
+                         mylite_span_equal_ci(name->span, "CURRENT_USER"))) {
         *out_info = utf8mb3_general_collation_info(mylite_mysql_coercibility_system_constant);
         return MYLITE_OK;
     }
-    if (name != NULL && ascii_span_equal_ci(name->span, "IF")) {
+    if (name != NULL && mylite_span_equal_ci(name->span, "IF")) {
         return infer_function_arguments_collation_info(database, context, arguments, 1U, false,
                                                        out_info);
     }
     if (name != NULL &&
-        (ascii_span_equal_ci(name->span, "IFNULL") || ascii_span_equal_ci(name->span, "NULLIF") ||
-         ascii_span_equal_ci(name->span, "COALESCE"))) {
+        (mylite_span_equal_ci(name->span, "IFNULL") || mylite_span_equal_ci(name->span, "NULLIF") ||
+         mylite_span_equal_ci(name->span, "COALESCE"))) {
         return infer_function_arguments_collation_info(database, context, arguments, 0U, false,
                                                        out_info);
     }
@@ -28071,8 +28113,8 @@ static int infer_char_function_collation_info(mylite_db *database,
                                               const struct mylite_sql_ast_node *expression,
                                               struct mylite_charset_collation_info *out_info)
 {
-    const struct mylite_sql_ast_node *charset_node = child_at(expression, 2U);
-    char *charset_name = copy_schema_text_span(charset_node);
+    const struct mylite_sql_ast_node *charset_node = mylite_ast_child_at(expression, 2U);
+    char *charset_name = mylite_copy_schema_text_span(charset_node);
 
     if (charset_node == NULL) {
         *out_info = binary_collation_info(mylite_mysql_coercibility_coercible);
@@ -28099,18 +28141,18 @@ static int infer_quote_function_collation_info(
 {
     struct mylite_charset_collation_info source =
         binary_collation_info(mylite_mysql_coercibility_ignorable);
-    int status =
-        infer_expression_collation_info(database, context, child_at(arguments, 0U), &source);
+    int status = infer_expression_collation_info(database, context,
+                                                 mylite_ast_child_at(arguments, 0U), &source);
 
     if (status != MYLITE_OK) {
         return status;
     }
     if (source.coercibility == mylite_mysql_coercibility_numeric &&
-        ascii_case_equal(source.character_set, mylite_mysql_binary_charset_name)) {
+        mylite_ascii_case_equal(source.character_set, mylite_mysql_binary_charset_name)) {
         *out_info = latin1_swedish_collation_info(source.coercibility);
         return MYLITE_OK;
     }
-    if (ascii_case_equal(source.character_set, mylite_mysql_binary_charset_name)) {
+    if (mylite_ascii_case_equal(source.character_set, mylite_mysql_binary_charset_name)) {
         *out_info = connection_collation_info(database, source.coercibility);
         return MYLITE_OK;
     }
@@ -28136,16 +28178,16 @@ function_name_has_binary_numeric_collation_result(const struct mylite_sql_ast_no
     if (name == NULL) {
         return false;
     }
-    if (ascii_span_equal_ci(name->span, "PI") || ascii_span_equal_ci(name->span, "MOD") ||
+    if (mylite_span_equal_ci(name->span, "PI") || mylite_span_equal_ci(name->span, "MOD") ||
         function_name_is_exp(name) || function_name_is_logarithm(name) ||
         function_name_is_power(name) || function_name_is_sqrt(name) ||
         function_name_is_trigonometric(name) || function_name_is_inverse_trigonometric(name) ||
-        function_name_is_angle_conversion(name) || ascii_span_equal_ci(name->span, "ISNULL") ||
-        ascii_span_equal_ci(name->span, "LAST_INSERT_ID") ||
-        ascii_span_equal_ci(name->span, "CONNECTION_ID")) {
+        function_name_is_angle_conversion(name) || mylite_span_equal_ci(name->span, "ISNULL") ||
+        mylite_span_equal_ci(name->span, "LAST_INSERT_ID") ||
+        mylite_span_equal_ci(name->span, "CONNECTION_ID")) {
         return true;
     }
-    return ascii_span_equal_ci(name->span, "ROW_COUNT");
+    return mylite_span_equal_ci(name->span, "ROW_COUNT");
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
@@ -28174,7 +28216,7 @@ static int infer_function_arguments_collation_info(
             return status;
         }
         if (numeric_as_connection && current.coercibility == mylite_mysql_coercibility_numeric &&
-            ascii_case_equal(current.character_set, mylite_mysql_binary_charset_name)) {
+            mylite_ascii_case_equal(current.character_set, mylite_mysql_binary_charset_name)) {
             current = connection_collation_info(database, mylite_mysql_coercibility_coercible);
         }
         if (current.coercibility == mylite_mysql_coercibility_ignorable) {
@@ -28182,7 +28224,7 @@ static int infer_function_arguments_collation_info(
         }
         if (!saw_candidate || current.coercibility < best.coercibility ||
             (current.coercibility == best.coercibility &&
-             ascii_case_equal(current.character_set, mylite_mysql_binary_charset_name))) {
+             mylite_ascii_case_equal(current.character_set, mylite_mysql_binary_charset_name))) {
             best = current;
             saw_candidate = true;
         }
@@ -28199,7 +28241,7 @@ static int infer_cast_collation_info(mylite_db *database,
                                      const struct mylite_sql_ast_node *expression,
                                      struct mylite_charset_collation_info *out_info)
 {
-    const struct mylite_sql_ast_node *target = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *target = mylite_ast_child_at(expression, 1U);
 
     if (target == NULL || target->kind != MYLITE_SQL_AST_COLUMN_TYPE) {
         return MYLITE_UNSUPPORTED;
@@ -28215,7 +28257,7 @@ static int infer_cast_collation_info(mylite_db *database,
             *out_info = connection_collation_info(database, mylite_mysql_coercibility_implicit);
             return MYLITE_OK;
         }
-        charset_name = copy_unquoted_span_text(target->column_character_set);
+        charset_name = mylite_copy_unquoted_span_text(target->column_character_set);
         if (charset_name == NULL) {
             return MYLITE_NOMEM;
         }
@@ -28319,13 +28361,13 @@ static struct mylite_charset_collation_info char_function_collation_info(const c
     const struct mylite_collation *collation =
         charset == NULL ? NULL : mylite_collation_lookup(charset->default_collation);
 
-    if (ascii_case_equal(charset_name, mylite_mysql_binary_charset_name)) {
+    if (mylite_ascii_case_equal(charset_name, mylite_mysql_binary_charset_name)) {
         return binary_collation_info(mylite_mysql_coercibility_coercible);
     }
-    if (ascii_case_equal(charset_name, "utf8")) {
+    if (mylite_ascii_case_equal(charset_name, "utf8")) {
         return utf8mb3_general_collation_info(mylite_mysql_coercibility_coercible);
     }
-    if (ascii_case_equal(charset_name, mylite_mysql_ascii_charset_name)) {
+    if (mylite_ascii_case_equal(charset_name, mylite_mysql_ascii_charset_name)) {
         return (struct mylite_charset_collation_info){
             .character_set = mylite_mysql_ascii_charset_name,
             .collation = mylite_mysql_ascii_general_ci_collation_name,
@@ -28379,8 +28421,8 @@ evaluate_last_insert_id_function(mylite_stmt *stmt, const struct mylite_sql_ast_
                                  struct mylite_expression_warnings *warnings,
                                  struct mylite_expression_value *out_value)
 {
-    const struct mylite_sql_ast_node *arguments = child_at(function_call, 1U);
-    const struct mylite_sql_ast_node *argument = child_at(arguments, 0U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(function_call, 1U);
+    const struct mylite_sql_ast_node *argument = mylite_ast_child_at(arguments, 0U);
     struct mylite_expression_value value = {0};
     int status = 0;
 
@@ -30932,7 +30974,7 @@ static int copy_sqlite_column_value(sqlite3_stmt *sqlite_stmt, size_t column_ind
         out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
         out_value->preserve_temporal_fraction_digits = false;
         out_value->text_length = bytes < 0 ? 0U : (size_t)bytes;
-        out_value->text_value = copy_span_text((const char *)text, out_value->text_length);
+        out_value->text_value = mylite_copy_span_text((const char *)text, out_value->text_length);
         return out_value->text_value == NULL ? -1 : 0;
     }
     default:
@@ -31565,8 +31607,8 @@ static int aggregate_value_to_double(struct mylite_expression_warnings *warnings
         return MYLITE_OK;
     }
 
-    copy = copy_span_text(value->text_value == NULL ? "" : value->text_value,
-                          value->text_value == NULL ? 0U : value->text_length);
+    copy = mylite_copy_span_text(value->text_value == NULL ? "" : value->text_value,
+                                 value->text_value == NULL ? 0U : value->text_length);
     if (copy == NULL) {
         return MYLITE_NOMEM;
     }
@@ -31602,7 +31644,7 @@ static int aggregate_format_double(double value, struct mylite_expression_value 
         return MYLITE_NOMEM;
     }
     out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
-    out_value->text_value = copy_span_text(buffer, (size_t)length);
+    out_value->text_value = mylite_copy_span_text(buffer, (size_t)length);
     out_value->text_length = (size_t)length;
     return out_value->text_value == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
@@ -32676,16 +32718,17 @@ static int load_insert_column_from_catalog_row(mylite_stmt *stmt, sqlite3_stmt *
     struct mylite_insert_table_column column = {0};
     int status = MYLITE_OK;
 
-    if (is_nullable != NULL && ascii_case_equal(is_nullable, "YES")) {
+    if (is_nullable != NULL && mylite_ascii_case_equal(is_nullable, "YES")) {
         column.nullable = true;
     }
-    column.name = copy_span_text(name, name == NULL ? 0U : strlen(name));
+    column.name = mylite_copy_span_text(name, name == NULL ? 0U : strlen(name));
     if (default_text != NULL) {
-        column.default_text = copy_span_text(default_text, strlen(default_text));
+        column.default_text = mylite_copy_span_text(default_text, strlen(default_text));
     }
-    column.data_type = copy_span_text(data_type == NULL ? "" : data_type,
-                                      data_type == NULL ? 0U : strlen(data_type));
-    column.extra = copy_span_text(extra == NULL ? "" : extra, extra == NULL ? 0U : strlen(extra));
+    column.data_type = mylite_copy_span_text(data_type == NULL ? "" : data_type,
+                                             data_type == NULL ? 0U : strlen(data_type));
+    column.extra =
+        mylite_copy_span_text(extra == NULL ? "" : extra, extra == NULL ? 0U : strlen(extra));
     if (column.name == NULL || (default_text != NULL && column.default_text == NULL) ||
         column.data_type == NULL || column.extra == NULL) {
         insert_table_column_deinit(&column);
@@ -32693,8 +32736,8 @@ static int load_insert_column_from_catalog_row(mylite_stmt *stmt, sqlite3_stmt *
         return MYLITE_NOMEM;
     }
 
-    column.auto_increment = text_contains_word(column.extra, "auto_increment");
-    column.generated_default = text_contains_word(column.extra, "DEFAULT_GENERATED");
+    column.auto_increment = mylite_text_contains_word(column.extra, "auto_increment");
+    column.generated_default = mylite_text_contains_word(column.extra, "DEFAULT_GENERATED");
     if (column.auto_increment) {
         table->has_auto_increment = true;
         table->auto_increment_column_index = table->column_count;
@@ -32780,7 +32823,7 @@ static int add_insert_unique_index_part(struct mylite_db *database,
     }
 
     for (size_t current = 0U; current < table->unique_index_count; ++current) {
-        if (ascii_case_equal(table->unique_indexes[current].name, part->index_name)) {
+        if (mylite_ascii_case_equal(table->unique_indexes[current].name, part->index_name)) {
             int status =
                 append_insert_unique_index_part(&table->unique_indexes[current], &insert_part);
 
@@ -32800,10 +32843,10 @@ static int add_insert_unique_index_part(struct mylite_db *database,
     table->unique_indexes = index;
     index = &table->unique_indexes[table->unique_index_count++];
     *index = (struct mylite_insert_unique_index){
-        .is_primary = ascii_case_equal(part->index_name, "PRIMARY"),
+        .is_primary = mylite_ascii_case_equal(part->index_name, "PRIMARY"),
     };
-    index->name =
-        copy_span_text(part->index_name, part->index_name == NULL ? 0U : strlen(part->index_name));
+    index->name = mylite_copy_span_text(part->index_name,
+                                        part->index_name == NULL ? 0U : strlen(part->index_name));
     if (index->name == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
@@ -32963,7 +33006,7 @@ static int validate_insert_row_alias(mylite_stmt *stmt, size_t source_column_cou
     if (plan->row_alias == NULL) {
         return MYLITE_OK;
     }
-    if (ascii_case_equal(plan->row_alias, plan->table_name)) {
+    if (mylite_ascii_case_equal(plan->row_alias, plan->table_name)) {
         int status = mylite_diagnostics_set_error_message_parts(
             stmt->database, "Not unique table/alias: '", plan->row_alias, "'");
 
@@ -32974,7 +33017,8 @@ static int validate_insert_row_alias(mylite_stmt *stmt, size_t source_column_cou
     }
     for (size_t index = 0U; index < plan->alias_column_count; ++index) {
         for (size_t previous = 0U; previous < index; ++previous) {
-            if (ascii_case_equal(plan->alias_columns[previous], plan->alias_columns[index])) {
+            if (mylite_ascii_case_equal(plan->alias_columns[previous],
+                                        plan->alias_columns[index])) {
                 int status = mylite_diagnostics_set_error_message_parts(
                     stmt->database, "Duplicate column name '", plan->alias_columns[index], "'");
 
@@ -33494,7 +33538,8 @@ static int copy_insert_sqlite_column_value(sqlite3_stmt *scan, int column,
         int bytes = sqlite3_column_bytes(scan, column);
 
         out_value->kind = MYLITE_INSERT_BOUND_TEXT;
-        out_value->text_value = copy_span_text((const char *)text, bytes < 0 ? 0U : (size_t)bytes);
+        out_value->text_value =
+            mylite_copy_span_text((const char *)text, bytes < 0 ? 0U : (size_t)bytes);
         return out_value->text_value == NULL ? -1 : 0;
     }
     default:
@@ -33646,7 +33691,7 @@ static int evaluate_insert_update_simple_expression(
         return MYLITE_OK;
     case MYLITE_INSERT_VALUE_TEXT:
         out_value->text_value =
-            copy_span_text(value->text, value->text == NULL ? 0U : strlen(value->text));
+            mylite_copy_span_text(value->text, value->text == NULL ? 0U : strlen(value->text));
         if (out_value->text_value == NULL) {
             (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
@@ -34100,7 +34145,7 @@ static size_t insert_alias_column_index(const struct mylite_insert_values_plan *
                                         size_t source_column_count, const char *column_name)
 {
     for (size_t index = 0U; index < plan->alias_column_count; ++index) {
-        if (ascii_case_equal(plan->alias_columns[index], column_name)) {
+        if (mylite_ascii_case_equal(plan->alias_columns[index], column_name)) {
             if (index >= source_column_count) {
                 return table->column_count;
             }
@@ -34122,7 +34167,7 @@ static bool insert_row_alias_matches(const struct mylite_insert_values_plan *pla
     if (plan->row_alias == NULL || table_name == NULL) {
         return false;
     }
-    return ascii_case_equal(plan->row_alias, table_name);
+    return mylite_ascii_case_equal(plan->row_alias, table_name);
 }
 
 static int set_insert_update_unknown_column_error(mylite_db *database, const char *column_name)
@@ -35157,7 +35202,7 @@ static int evaluate_insert_set_simple_expression(mylite_stmt *stmt,
         return MYLITE_OK;
     case MYLITE_INSERT_VALUE_TEXT:
         out_value->text_value =
-            copy_span_text(value->text, value->text == NULL ? 0U : strlen(value->text));
+            mylite_copy_span_text(value->text, value->text == NULL ? 0U : strlen(value->text));
         if (out_value->text_value == NULL) {
             (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
@@ -35221,7 +35266,7 @@ static int copy_insert_bound_value(const struct mylite_insert_bound_value *value
     *out_value = *value;
     out_value->text_value = NULL;
     if (value->kind == MYLITE_INSERT_BOUND_TEXT && value->text_value != NULL) {
-        out_value->text_value = copy_span_text(value->text_value, strlen(value->text_value));
+        out_value->text_value = mylite_copy_span_text(value->text_value, strlen(value->text_value));
         if (out_value->text_value == NULL) {
             return MYLITE_NOMEM;
         }
@@ -35302,17 +35347,17 @@ resolve_insert_implicit_expression_default(mylite_stmt *stmt,
         return MYLITE_OK;
     }
     if (column != NULL && column->data_type != NULL) {
-        if (ascii_case_equal(column->data_type, "date")) {
+        if (mylite_ascii_case_equal(column->data_type, "date")) {
             text_default = "0000-00-00";
-        } else if (ascii_case_equal(column->data_type, "time")) {
+        } else if (mylite_ascii_case_equal(column->data_type, "time")) {
             text_default = "00:00:00";
-        } else if (ascii_case_equal(column->data_type, "datetime") ||
-                   ascii_case_equal(column->data_type, "timestamp")) {
+        } else if (mylite_ascii_case_equal(column->data_type, "datetime") ||
+                   mylite_ascii_case_equal(column->data_type, "timestamp")) {
             text_default = "0000-00-00 00:00:00";
         }
     }
 
-    out_value->text_value = copy_span_text(text_default, strlen(text_default));
+    out_value->text_value = mylite_copy_span_text(text_default, strlen(text_default));
     if (out_value->text_value == NULL) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
@@ -35524,7 +35569,7 @@ static bool insert_column_uses_text_storage(const struct mylite_insert_table_col
         return false;
     }
     for (size_t index = 0U; index < sizeof(text_types) / sizeof(text_types[0]); ++index) {
-        if (ascii_case_equal(column->data_type, text_types[index])) {
+        if (mylite_ascii_case_equal(column->data_type, text_types[index])) {
             return true;
         }
     }
@@ -35534,7 +35579,7 @@ static bool insert_column_uses_text_storage(const struct mylite_insert_table_col
 static int set_insert_bound_text_value(mylite_stmt *stmt, const char *text,
                                        struct mylite_insert_bound_value *out_value)
 {
-    out_value->text_value = copy_span_text(text, strlen(text));
+    out_value->text_value = mylite_copy_span_text(text, strlen(text));
     if (out_value->text_value == NULL) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
@@ -35606,7 +35651,7 @@ static size_t insert_table_column_index(const struct mylite_insert_table *table,
                                         const char *column_name)
 {
     for (size_t index = 0U; index < table->column_count; ++index) {
-        if (ascii_case_equal(table->columns[index].name, column_name)) {
+        if (mylite_ascii_case_equal(table->columns[index].name, column_name)) {
             return index;
         }
     }
@@ -35628,10 +35673,12 @@ static bool
 insert_column_reference_qualifiers_match(const struct mylite_insert_column_reference *reference,
                                          const char *schema_name, const char *table_name)
 {
-    if (reference->schema_name != NULL && !ascii_case_equal(reference->schema_name, schema_name)) {
+    if (reference->schema_name != NULL &&
+        !mylite_ascii_case_equal(reference->schema_name, schema_name)) {
         return false;
     }
-    if (reference->table_name != NULL && !ascii_case_equal(reference->table_name, table_name)) {
+    if (reference->table_name != NULL &&
+        !mylite_ascii_case_equal(reference->table_name, table_name)) {
         return false;
     }
     return true;
@@ -36563,7 +36610,7 @@ static int delete_schema(mylite_db *database, const char *schema_name)
 
 static int set_selected_schema(mylite_db *database, const char *schema_name)
 {
-    char *copy = copy_span_text(schema_name, strlen(schema_name));
+    char *copy = mylite_copy_span_text(schema_name, strlen(schema_name));
 
     if (copy == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
@@ -36586,8 +36633,8 @@ static void clear_selected_schema_if_matches(mylite_db *database, const char *sc
 static int information_schema_table_from_select(const struct mylite_sql_ast_node *statement,
                                                 enum mylite_information_schema_table *out_table)
 {
-    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *select_list = mylite_ast_child_at(statement, 0U);
+    const struct mylite_sql_ast_node *from_clause = mylite_ast_child_at(statement, 1U);
     enum mylite_information_schema_table table = MYLITE_INFORMATION_SCHEMA_NONE;
     int status = information_schema_table_from_from_clause(from_clause, &table);
 
@@ -36601,7 +36648,7 @@ static int information_schema_table_from_select(const struct mylite_sql_ast_node
     if (statement->select_duplicate_mode_explicit) {
         return MYLITE_UNSUPPORTED;
     }
-    if (child_at(statement, 2U) != NULL) {
+    if (mylite_ast_child_at(statement, 2U) != NULL) {
         return MYLITE_UNSUPPORTED;
     }
     if (!select_list_is_unqualified_wildcard(select_list)) {
@@ -36614,13 +36661,14 @@ static int information_schema_table_from_select(const struct mylite_sql_ast_node
 
 static bool select_list_is_unqualified_wildcard(const struct mylite_sql_ast_node *select_list)
 {
-    const struct mylite_sql_ast_node *select_item = child_at(select_list, 0U);
-    const struct mylite_sql_ast_node *expression = child_at(select_item, 0U);
+    const struct mylite_sql_ast_node *select_item = mylite_ast_child_at(select_list, 0U);
+    const struct mylite_sql_ast_node *expression = mylite_ast_child_at(select_item, 0U);
 
     if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST ||
         select_item == NULL || select_item->next_sibling != NULL ||
         select_item->kind != MYLITE_SQL_AST_SELECT_ITEM || expression == NULL ||
-        expression->kind != MYLITE_SQL_AST_WILDCARD || child_at(expression, 0U) != NULL) {
+        expression->kind != MYLITE_SQL_AST_WILDCARD ||
+        mylite_ast_child_at(expression, 0U) != NULL) {
         return false;
     }
     return true;
@@ -36630,7 +36678,7 @@ static int
 information_schema_table_from_from_clause(const struct mylite_sql_ast_node *from_clause,
                                           enum mylite_information_schema_table *out_table)
 {
-    const struct mylite_sql_ast_node *identifier = child_at(from_clause, 0U);
+    const struct mylite_sql_ast_node *identifier = mylite_ast_child_at(from_clause, 0U);
     bool references_table = false;
     int status = MYLITE_OK;
 
@@ -36653,7 +36701,7 @@ information_schema_table_from_from_clause(const struct mylite_sql_ast_node *from
     if (status != MYLITE_OK || *out_table == MYLITE_INFORMATION_SCHEMA_NONE) {
         return status;
     }
-    if (child_at(from_clause, 1U) != NULL) {
+    if (mylite_ast_child_at(from_clause, 1U) != NULL) {
         return MYLITE_UNSUPPORTED;
     }
     return MYLITE_OK;
@@ -36694,8 +36742,8 @@ static int
 information_schema_table_from_qualified_name(const struct mylite_sql_ast_node *identifier,
                                              enum mylite_information_schema_table *out_table)
 {
-    const struct mylite_sql_ast_node *schema = child_at(identifier, 0U);
-    const struct mylite_sql_ast_node *table = child_at(identifier, 1U);
+    const struct mylite_sql_ast_node *schema = mylite_ast_child_at(identifier, 0U);
+    const struct mylite_sql_ast_node *table = mylite_ast_child_at(identifier, 1U);
     char *schema_name = NULL;
     char *table_name = NULL;
 
@@ -36706,15 +36754,15 @@ information_schema_table_from_qualified_name(const struct mylite_sql_ast_node *i
         return MYLITE_OK;
     }
 
-    schema_name = copy_identifier_span(schema);
-    table_name = copy_identifier_span(table);
+    schema_name = mylite_copy_identifier_span(schema);
+    table_name = mylite_copy_identifier_span(table);
     if (schema_name == NULL || table_name == NULL) {
         free(schema_name);
         free(table_name);
         return MYLITE_NOMEM;
     }
 
-    if (ascii_case_equal(schema_name, "information_schema")) {
+    if (mylite_ascii_case_equal(schema_name, "information_schema")) {
         *out_table = information_schema_table_from_name(table_name);
         if (*out_table == MYLITE_INFORMATION_SCHEMA_NONE) {
             free(schema_name);
@@ -36730,43 +36778,43 @@ information_schema_table_from_qualified_name(const struct mylite_sql_ast_node *i
 
 static enum mylite_information_schema_table information_schema_table_from_name(const char *name)
 {
-    if (ascii_case_equal(name, "schemata")) {
+    if (mylite_ascii_case_equal(name, "schemata")) {
         return MYLITE_INFORMATION_SCHEMA_SCHEMATA;
     }
-    if (ascii_case_equal(name, "tables")) {
+    if (mylite_ascii_case_equal(name, "tables")) {
         return MYLITE_INFORMATION_SCHEMA_TABLES;
     }
-    if (ascii_case_equal(name, "columns")) {
+    if (mylite_ascii_case_equal(name, "columns")) {
         return MYLITE_INFORMATION_SCHEMA_COLUMNS;
     }
-    if (ascii_case_equal(name, "statistics")) {
+    if (mylite_ascii_case_equal(name, "statistics")) {
         return MYLITE_INFORMATION_SCHEMA_STATISTICS;
     }
-    if (ascii_case_equal(name, "engines")) {
+    if (mylite_ascii_case_equal(name, "engines")) {
         return MYLITE_INFORMATION_SCHEMA_ENGINES;
     }
-    if (ascii_case_equal(name, "character_sets")) {
+    if (mylite_ascii_case_equal(name, "character_sets")) {
         return MYLITE_INFORMATION_SCHEMA_CHARACTER_SETS;
     }
-    if (ascii_case_equal(name, "collations")) {
+    if (mylite_ascii_case_equal(name, "collations")) {
         return MYLITE_INFORMATION_SCHEMA_COLLATIONS;
     }
-    if (ascii_case_equal(name, "collation_character_set_applicability")) {
+    if (mylite_ascii_case_equal(name, "collation_character_set_applicability")) {
         return MYLITE_INFORMATION_SCHEMA_COLLATION_CHARACTER_SET_APPLICABILITY;
     }
-    if (ascii_case_equal(name, "keywords")) {
+    if (mylite_ascii_case_equal(name, "keywords")) {
         return MYLITE_INFORMATION_SCHEMA_KEYWORDS;
     }
-    if (ascii_case_equal(name, "table_constraints")) {
+    if (mylite_ascii_case_equal(name, "table_constraints")) {
         return MYLITE_INFORMATION_SCHEMA_TABLE_CONSTRAINTS;
     }
-    if (ascii_case_equal(name, "key_column_usage")) {
+    if (mylite_ascii_case_equal(name, "key_column_usage")) {
         return MYLITE_INFORMATION_SCHEMA_KEY_COLUMN_USAGE;
     }
-    if (ascii_case_equal(name, "check_constraints")) {
+    if (mylite_ascii_case_equal(name, "check_constraints")) {
         return MYLITE_INFORMATION_SCHEMA_CHECK_CONSTRAINTS;
     }
-    if (ascii_case_equal(name, "referential_constraints")) {
+    if (mylite_ascii_case_equal(name, "referential_constraints")) {
         return MYLITE_INFORMATION_SCHEMA_REFERENTIAL_CONSTRAINTS;
     }
     return MYLITE_INFORMATION_SCHEMA_NONE;
@@ -36810,13 +36858,13 @@ static int copy_statement_schema_name(const struct mylite_sql_ast_node *statemen
 
     *out_schema_name = NULL;
     (void)kind;
-    schema_name = find_child_kind(statement, MYLITE_SQL_AST_IDENTIFIER);
+    schema_name = mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_IDENTIFIER);
 
     if (schema_name == NULL) {
         return MYLITE_OK;
     }
 
-    *out_schema_name = copy_identifier_span(schema_name);
+    *out_schema_name = mylite_copy_identifier_span(schema_name);
     return *out_schema_name == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
 
@@ -36830,7 +36878,7 @@ static int copy_schema_options(const struct mylite_sql_ast_node *statement,
     switch (kind) {
     case MYLITE_STMT_CREATE_SCHEMA:
     case MYLITE_STMT_ALTER_SCHEMA:
-        option_list = find_child_kind(statement, MYLITE_SQL_AST_SCHEMA_OPTION_LIST);
+        option_list = mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_SCHEMA_OPTION_LIST);
         break;
     case MYLITE_STMT_DROP_SCHEMA:
     case MYLITE_STMT_USE_SCHEMA:
@@ -36876,21 +36924,21 @@ static int copy_schema_options(const struct mylite_sql_ast_node *statement,
 static int copy_connection_charset_statement(const struct mylite_sql_ast_node *statement,
                                              mylite_stmt *stmt)
 {
-    const struct mylite_sql_ast_node *character_set = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *collation = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *character_set = mylite_ast_child_at(statement, 0U);
+    const struct mylite_sql_ast_node *collation = mylite_ast_child_at(statement, 1U);
 
     if (character_set != NULL && character_set->kind == MYLITE_SQL_AST_DEFAULT) {
         stmt->use_default_connection_charset = true;
         return MYLITE_OK;
     }
 
-    stmt->character_set_name = copy_schema_text_span(character_set);
+    stmt->character_set_name = mylite_copy_schema_text_span(character_set);
     if (stmt->character_set_name == NULL) {
         return MYLITE_NOMEM;
     }
 
     if (collation != NULL) {
-        stmt->collation_name = copy_schema_text_span(collation);
+        stmt->collation_name = mylite_copy_schema_text_span(collation);
         if (stmt->collation_name == NULL) {
             return MYLITE_NOMEM;
         }
@@ -36901,8 +36949,8 @@ static int copy_connection_charset_statement(const struct mylite_sql_ast_node *s
 static int copy_create_table_statement(const struct mylite_sql_ast_node *statement,
                                        mylite_stmt *stmt)
 {
-    const struct mylite_sql_ast_node *table_name = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *elements = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *table_name = mylite_ast_child_at(statement, 0U);
+    const struct mylite_sql_ast_node *elements = mylite_ast_child_at(statement, 1U);
     int status = copy_create_table_name(table_name, &stmt->create_table);
 
     if (status != MYLITE_OK) {
@@ -36917,7 +36965,7 @@ static int copy_create_table_statement(const struct mylite_sql_ast_node *stateme
 
 static int copy_drop_table_statement(const struct mylite_sql_ast_node *statement, mylite_stmt *stmt)
 {
-    const struct mylite_sql_ast_node *table_names = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *table_names = mylite_ast_child_at(statement, 0U);
 
     stmt->drop_table.temporary = statement->drop_table_temporary;
     stmt->drop_table.restrict_mode = statement->drop_table_restrict;
@@ -36943,7 +36991,7 @@ static int copy_drop_table_statement(const struct mylite_sql_ast_node *statement
 static int copy_rename_table_statement(const struct mylite_sql_ast_node *statement,
                                        mylite_stmt *stmt)
 {
-    const struct mylite_sql_ast_node *pairs = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *pairs = mylite_ast_child_at(statement, 0U);
 
     for (const struct mylite_sql_ast_node *pair = pairs == NULL ? NULL : pairs->first_child;
          pair != NULL; pair = pair->next_sibling) {
@@ -36970,13 +37018,13 @@ static int copy_rename_table_pair(const struct mylite_sql_ast_node *pair,
         return MYLITE_UNSUPPORTED;
     }
 
-    status = copy_rename_table_name(child_at(pair, 0U), &target->source_schema_name,
+    status = copy_rename_table_name(mylite_ast_child_at(pair, 0U), &target->source_schema_name,
                                     &target->source_table_name);
 
     if (status != MYLITE_OK) {
         return status;
     }
-    return copy_rename_table_name(child_at(pair, 1U), &target->target_schema_name,
+    return copy_rename_table_name(mylite_ast_child_at(pair, 1U), &target->target_schema_name,
                                   &target->target_table_name);
 }
 
@@ -36989,15 +37037,16 @@ static int copy_rename_table_name(const struct mylite_sql_ast_node *table_name,
         return MYLITE_NOMEM;
     }
     if (table_name->kind == MYLITE_SQL_AST_IDENTIFIER) {
-        *out_table_name = copy_identifier_span(table_name);
+        *out_table_name = mylite_copy_identifier_span(table_name);
         return *out_table_name == NULL ? MYLITE_NOMEM : MYLITE_OK;
     }
     if (table_name->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER &&
-        child_at(table_name, 0U) != NULL && child_at(table_name, 1U) != NULL &&
-        child_at(table_name, 0U)->kind == MYLITE_SQL_AST_IDENTIFIER &&
-        child_at(table_name, 1U)->kind == MYLITE_SQL_AST_IDENTIFIER) {
-        *out_schema_name = copy_identifier_span(child_at(table_name, 0U));
-        *out_table_name = copy_identifier_span(child_at(table_name, 1U));
+        mylite_ast_child_at(table_name, 0U) != NULL &&
+        mylite_ast_child_at(table_name, 1U) != NULL &&
+        mylite_ast_child_at(table_name, 0U)->kind == MYLITE_SQL_AST_IDENTIFIER &&
+        mylite_ast_child_at(table_name, 1U)->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        *out_schema_name = mylite_copy_identifier_span(mylite_ast_child_at(table_name, 0U));
+        *out_table_name = mylite_copy_identifier_span(mylite_ast_child_at(table_name, 1U));
         if (*out_schema_name == NULL || *out_table_name == NULL) {
             return MYLITE_NOMEM;
         }
@@ -37024,31 +37073,35 @@ static int add_rename_table_target(struct mylite_rename_table_plan *plan,
 static int copy_truncate_table_statement(const struct mylite_sql_ast_node *statement,
                                          mylite_stmt *stmt)
 {
-    return copy_rename_table_name(child_at(statement, 0U), &stmt->truncate_table.schema_name,
+    return copy_rename_table_name(mylite_ast_child_at(statement, 0U),
+                                  &stmt->truncate_table.schema_name,
                                   &stmt->truncate_table.table_name);
 }
 
 static int copy_alter_table_statement(const struct mylite_sql_ast_node *statement,
                                       mylite_stmt *stmt)
 {
-    const struct mylite_sql_ast_node *table_name = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *items = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *table_name = mylite_ast_child_at(statement, 0U);
+    const struct mylite_sql_ast_node *items = mylite_ast_child_at(statement, 1U);
     int status = MYLITE_OK;
 
     if (table_name == NULL) {
         return MYLITE_NOMEM;
     }
     if (table_name->kind == MYLITE_SQL_AST_IDENTIFIER) {
-        stmt->alter_table.table_name = copy_identifier_span(table_name);
+        stmt->alter_table.table_name = mylite_copy_identifier_span(table_name);
         if (stmt->alter_table.table_name == NULL) {
             return MYLITE_NOMEM;
         }
     } else if (table_name->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER &&
-               child_at(table_name, 0U) != NULL && child_at(table_name, 1U) != NULL &&
-               child_at(table_name, 0U)->kind == MYLITE_SQL_AST_IDENTIFIER &&
-               child_at(table_name, 1U)->kind == MYLITE_SQL_AST_IDENTIFIER) {
-        stmt->alter_table.schema_name = copy_identifier_span(child_at(table_name, 0U));
-        stmt->alter_table.table_name = copy_identifier_span(child_at(table_name, 1U));
+               mylite_ast_child_at(table_name, 0U) != NULL &&
+               mylite_ast_child_at(table_name, 1U) != NULL &&
+               mylite_ast_child_at(table_name, 0U)->kind == MYLITE_SQL_AST_IDENTIFIER &&
+               mylite_ast_child_at(table_name, 1U)->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        stmt->alter_table.schema_name =
+            mylite_copy_identifier_span(mylite_ast_child_at(table_name, 0U));
+        stmt->alter_table.table_name =
+            mylite_copy_identifier_span(mylite_ast_child_at(table_name, 1U));
         if (stmt->alter_table.schema_name == NULL || stmt->alter_table.table_name == NULL) {
             return MYLITE_NOMEM;
         }
@@ -37097,7 +37150,7 @@ static int copy_alter_table_item(const struct mylite_sql_ast_node *item,
             return MYLITE_UNSUPPORTED;
         }
         if (*target == NULL) {
-            *target = copy_span_text(item->span.text, item->span.length);
+            *target = mylite_copy_span_text(item->span.text, item->span.length);
             if (*target == NULL) {
                 return MYLITE_NOMEM;
             }
@@ -37201,11 +37254,12 @@ static int copy_alter_table_add_column_action(const struct mylite_sql_ast_node *
     int status = MYLITE_OK;
 
     action->kind = MYLITE_ALTER_TABLE_ACTION_ADD_COLUMN;
-    status = copy_alter_table_column_definition(child_at(action_node, 0U), &action->column);
+    status =
+        copy_alter_table_column_definition(mylite_ast_child_at(action_node, 0U), &action->column);
     if (status != MYLITE_OK) {
         return status;
     }
-    return copy_alter_table_column_position(child_at(action_node, 1U), action);
+    return copy_alter_table_column_position(mylite_ast_child_at(action_node, 1U), action);
 }
 
 static int copy_alter_table_named_action(const struct mylite_sql_ast_node *action_node,
@@ -37213,7 +37267,7 @@ static int copy_alter_table_named_action(const struct mylite_sql_ast_node *actio
                                          struct mylite_alter_table_action *action)
 {
     action->kind = kind;
-    action->old_name = copy_identifier_span(child_at(action_node, 0U));
+    action->old_name = mylite_copy_identifier_span(mylite_ast_child_at(action_node, 0U));
     if (action->old_name == NULL) {
         return MYLITE_NOMEM;
     }
@@ -37225,8 +37279,8 @@ static int copy_alter_table_rename_action(const struct mylite_sql_ast_node *acti
                                           struct mylite_alter_table_action *action)
 {
     action->kind = kind;
-    action->old_name = copy_identifier_span(child_at(action_node, 0U));
-    action->new_name = copy_identifier_span(child_at(action_node, 1U));
+    action->old_name = mylite_copy_identifier_span(mylite_ast_child_at(action_node, 0U));
+    action->new_name = mylite_copy_identifier_span(mylite_ast_child_at(action_node, 1U));
     if (action->old_name == NULL || action->new_name == NULL) {
         return MYLITE_NOMEM;
     }
@@ -37237,7 +37291,7 @@ static int copy_alter_table_rename_table_action(const struct mylite_sql_ast_node
                                                 struct mylite_alter_table_action *action)
 {
     action->kind = MYLITE_ALTER_TABLE_ACTION_RENAME_TABLE;
-    return copy_rename_table_name(child_at(action_node, 0U), &action->new_schema_name,
+    return copy_rename_table_name(mylite_ast_child_at(action_node, 0U), &action->new_schema_name,
                                   &action->new_name);
 }
 
@@ -37247,15 +37301,16 @@ static int copy_alter_table_change_column_action(const struct mylite_sql_ast_nod
     int status = MYLITE_OK;
 
     action->kind = MYLITE_ALTER_TABLE_ACTION_CHANGE_COLUMN;
-    action->old_name = copy_identifier_span(child_at(action_node, 0U));
+    action->old_name = mylite_copy_identifier_span(mylite_ast_child_at(action_node, 0U));
     if (action->old_name == NULL) {
         return MYLITE_NOMEM;
     }
-    status = copy_alter_table_column_definition(child_at(action_node, 1U), &action->column);
+    status =
+        copy_alter_table_column_definition(mylite_ast_child_at(action_node, 1U), &action->column);
     if (status != MYLITE_OK) {
         return status;
     }
-    return copy_alter_table_column_position(child_at(action_node, 2U), action);
+    return copy_alter_table_column_position(mylite_ast_child_at(action_node, 2U), action);
 }
 
 static int copy_alter_table_modify_column_action(const struct mylite_sql_ast_node *action_node,
@@ -37264,11 +37319,12 @@ static int copy_alter_table_modify_column_action(const struct mylite_sql_ast_nod
     int status = MYLITE_OK;
 
     action->kind = MYLITE_ALTER_TABLE_ACTION_MODIFY_COLUMN;
-    status = copy_alter_table_column_definition(child_at(action_node, 0U), &action->column);
+    status =
+        copy_alter_table_column_definition(mylite_ast_child_at(action_node, 0U), &action->column);
     if (status != MYLITE_OK) {
         return status;
     }
-    return copy_alter_table_column_position(child_at(action_node, 1U), action);
+    return copy_alter_table_column_position(mylite_ast_child_at(action_node, 1U), action);
 }
 
 static int
@@ -37276,7 +37332,7 @@ copy_alter_table_alter_index_visibility_action(const struct mylite_sql_ast_node 
                                                struct mylite_alter_table_action *action)
 {
     action->kind = MYLITE_ALTER_TABLE_ACTION_ALTER_INDEX_VISIBILITY;
-    action->old_name = copy_identifier_span(child_at(action_node, 0U));
+    action->old_name = mylite_copy_identifier_span(mylite_ast_child_at(action_node, 0U));
     if (action->old_name == NULL) {
         return MYLITE_NOMEM;
     }
@@ -37291,7 +37347,7 @@ static int copy_alter_table_index_action(const struct mylite_sql_ast_node *actio
                                          struct mylite_alter_table_action *action)
 {
     struct mylite_create_table_plan plan = {0};
-    int status = copy_create_table_index(child_at(action_node, 0U), &plan);
+    int status = copy_create_table_index(mylite_ast_child_at(action_node, 0U), &plan);
 
     if (status != MYLITE_OK) {
         create_table_plan_deinit(&plan);
@@ -37356,7 +37412,7 @@ static int copy_alter_table_column_position(const struct mylite_sql_ast_node *po
         return MYLITE_OK;
     case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION_AFTER:
         action->position = MYLITE_ALTER_TABLE_COLUMN_POSITION_AFTER;
-        action->after_column = copy_identifier_span(child_at(position_node, 0U));
+        action->after_column = mylite_copy_identifier_span(mylite_ast_child_at(position_node, 0U));
         return action->after_column == NULL ? MYLITE_NOMEM : MYLITE_OK;
     }
     return MYLITE_UNSUPPORTED;
@@ -37412,7 +37468,7 @@ static int copy_create_index_statement(const struct mylite_sql_ast_node *stateme
         return status;
     }
 
-    stmt->index_ddl.index.name = copy_identifier_span(index_name);
+    stmt->index_ddl.index.name = mylite_copy_identifier_span(index_name);
     if (stmt->index_ddl.index.name == NULL) {
         return MYLITE_NOMEM;
     }
@@ -37428,15 +37484,15 @@ static int copy_create_index_statement(const struct mylite_sql_ast_node *stateme
 
 static int copy_drop_index_statement(const struct mylite_sql_ast_node *statement, mylite_stmt *stmt)
 {
-    const struct mylite_sql_ast_node *index_name = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *table_name = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *index_name = mylite_ast_child_at(statement, 0U);
+    const struct mylite_sql_ast_node *table_name = mylite_ast_child_at(statement, 1U);
     int status = copy_index_ddl_table_name(table_name, &stmt->index_ddl);
 
     if (status != MYLITE_OK) {
         return status;
     }
 
-    stmt->index_ddl.index_name = copy_identifier_span(index_name);
+    stmt->index_ddl.index_name = mylite_copy_identifier_span(index_name);
     return stmt->index_ddl.index_name == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
 
@@ -37447,15 +37503,16 @@ static int copy_create_table_name(const struct mylite_sql_ast_node *table_name,
         return MYLITE_NOMEM;
     }
     if (table_name->kind == MYLITE_SQL_AST_IDENTIFIER) {
-        plan->table_name = copy_identifier_span(table_name);
+        plan->table_name = mylite_copy_identifier_span(table_name);
         return plan->table_name == NULL ? MYLITE_NOMEM : MYLITE_OK;
     }
     if (table_name->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER &&
-        child_at(table_name, 0U) != NULL && child_at(table_name, 1U) != NULL &&
-        child_at(table_name, 0U)->kind == MYLITE_SQL_AST_IDENTIFIER &&
-        child_at(table_name, 1U)->kind == MYLITE_SQL_AST_IDENTIFIER) {
-        plan->schema_name = copy_identifier_span(child_at(table_name, 0U));
-        plan->table_name = copy_identifier_span(child_at(table_name, 1U));
+        mylite_ast_child_at(table_name, 0U) != NULL &&
+        mylite_ast_child_at(table_name, 1U) != NULL &&
+        mylite_ast_child_at(table_name, 0U)->kind == MYLITE_SQL_AST_IDENTIFIER &&
+        mylite_ast_child_at(table_name, 1U)->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        plan->schema_name = mylite_copy_identifier_span(mylite_ast_child_at(table_name, 0U));
+        plan->table_name = mylite_copy_identifier_span(mylite_ast_child_at(table_name, 1U));
         if (plan->schema_name == NULL || plan->table_name == NULL) {
             return MYLITE_NOMEM;
         }
@@ -37489,18 +37546,19 @@ static int copy_drop_table_target(const struct mylite_sql_ast_node *table_name,
         return MYLITE_NOMEM;
     }
     if (table_name->kind == MYLITE_SQL_AST_IDENTIFIER) {
-        target->table_name = copy_identifier_span(table_name);
+        target->table_name = mylite_copy_identifier_span(table_name);
         return target->table_name == NULL ? MYLITE_NOMEM : MYLITE_OK;
     }
     if (table_name->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER &&
-        child_at(table_name, 0U) != NULL && child_at(table_name, 1U) != NULL &&
-        child_at(table_name, 0U)->kind == MYLITE_SQL_AST_IDENTIFIER &&
-        child_at(table_name, 1U)->kind == MYLITE_SQL_AST_IDENTIFIER) {
-        target->schema_name = copy_identifier_span(child_at(table_name, 0U));
+        mylite_ast_child_at(table_name, 0U) != NULL &&
+        mylite_ast_child_at(table_name, 1U) != NULL &&
+        mylite_ast_child_at(table_name, 0U)->kind == MYLITE_SQL_AST_IDENTIFIER &&
+        mylite_ast_child_at(table_name, 1U)->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        target->schema_name = mylite_copy_identifier_span(mylite_ast_child_at(table_name, 0U));
         if (target->schema_name == NULL) {
             return MYLITE_NOMEM;
         }
-        target->table_name = copy_identifier_span(child_at(table_name, 1U));
+        target->table_name = mylite_copy_identifier_span(mylite_ast_child_at(table_name, 1U));
         if (target->table_name == NULL) {
             return MYLITE_NOMEM;
         }
@@ -37512,8 +37570,8 @@ static int copy_drop_table_target(const struct mylite_sql_ast_node *table_name,
 static int copy_insert_values_statement(const struct mylite_sql_ast_node *statement,
                                         mylite_stmt *stmt)
 {
-    const struct mylite_sql_ast_node *table_name = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *second_child = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *table_name = mylite_ast_child_at(statement, 0U);
+    const struct mylite_sql_ast_node *second_child = mylite_ast_child_at(statement, 1U);
     const struct mylite_sql_ast_node *columns = NULL;
     const struct mylite_sql_ast_node *rows = NULL;
     const struct mylite_sql_ast_node *row_alias = NULL;
@@ -37523,12 +37581,13 @@ static int copy_insert_values_statement(const struct mylite_sql_ast_node *statem
     stmt->insert_values.ignore = statement->insert_ignore;
     if (second_child != NULL && second_child->kind == MYLITE_SQL_AST_INSERT_COLUMN_LIST) {
         columns = second_child;
-        rows = child_at(statement, 2U);
+        rows = mylite_ast_child_at(statement, 2U);
     } else {
         rows = second_child;
     }
-    row_alias = find_child_kind(statement, MYLITE_SQL_AST_INSERT_ROW_ALIAS);
-    duplicate_update = find_child_kind(statement, MYLITE_SQL_AST_INSERT_DUPLICATE_UPDATE_CLAUSE);
+    row_alias = mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_INSERT_ROW_ALIAS);
+    duplicate_update =
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_INSERT_DUPLICATE_UPDATE_CLAUSE);
 
     if (status == MYLITE_OK) {
         status = copy_insert_column_list(columns, &stmt->insert_values);
@@ -37547,12 +37606,12 @@ static int copy_insert_values_statement(const struct mylite_sql_ast_node *statem
 
 static int copy_insert_set_statement(const struct mylite_sql_ast_node *statement, mylite_stmt *stmt)
 {
-    const struct mylite_sql_ast_node *table_name = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *assignments = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *table_name = mylite_ast_child_at(statement, 0U);
+    const struct mylite_sql_ast_node *assignments = mylite_ast_child_at(statement, 1U);
     const struct mylite_sql_ast_node *row_alias =
-        find_child_kind(statement, MYLITE_SQL_AST_INSERT_ROW_ALIAS);
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_INSERT_ROW_ALIAS);
     const struct mylite_sql_ast_node *duplicate_update =
-        find_child_kind(statement, MYLITE_SQL_AST_INSERT_DUPLICATE_UPDATE_CLAUSE);
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_INSERT_DUPLICATE_UPDATE_CLAUSE);
     int status = copy_insert_table_name(table_name, &stmt->insert_values);
 
     stmt->insert_values.ignore = statement->insert_ignore;
@@ -37571,8 +37630,8 @@ static int copy_insert_set_statement(const struct mylite_sql_ast_node *statement
 static int copy_replace_values_statement(const struct mylite_sql_ast_node *statement,
                                          mylite_stmt *stmt)
 {
-    const struct mylite_sql_ast_node *table_name = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *second_child = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *table_name = mylite_ast_child_at(statement, 0U);
+    const struct mylite_sql_ast_node *second_child = mylite_ast_child_at(statement, 1U);
     const struct mylite_sql_ast_node *columns = NULL;
     const struct mylite_sql_ast_node *rows = NULL;
     int status = copy_insert_table_name(table_name, &stmt->insert_values);
@@ -37581,7 +37640,7 @@ static int copy_replace_values_statement(const struct mylite_sql_ast_node *state
     stmt->insert_values.replace_delayed = statement->replace_delayed;
     if (second_child != NULL && second_child->kind == MYLITE_SQL_AST_INSERT_COLUMN_LIST) {
         columns = second_child;
-        rows = child_at(statement, 2U);
+        rows = mylite_ast_child_at(statement, 2U);
     } else {
         rows = second_child;
     }
@@ -37598,8 +37657,8 @@ static int copy_replace_values_statement(const struct mylite_sql_ast_node *state
 static int copy_replace_set_statement(const struct mylite_sql_ast_node *statement,
                                       mylite_stmt *stmt)
 {
-    const struct mylite_sql_ast_node *table_name = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *assignments = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *table_name = mylite_ast_child_at(statement, 0U);
+    const struct mylite_sql_ast_node *assignments = mylite_ast_child_at(statement, 1U);
     int status = copy_insert_table_name(table_name, &stmt->insert_values);
 
     stmt->insert_values.replace_low_priority = statement->replace_low_priority;
@@ -37612,8 +37671,8 @@ static int copy_replace_set_statement(const struct mylite_sql_ast_node *statemen
 
 static int copy_update_statement(const struct mylite_sql_ast_node *statement, mylite_stmt *stmt)
 {
-    const struct mylite_sql_ast_node *target = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *assignments = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *target = mylite_ast_child_at(statement, 0U);
+    const struct mylite_sql_ast_node *assignments = mylite_ast_child_at(statement, 1U);
     int status = copy_update_target(target, &stmt->update.target);
 
     if (status == MYLITE_OK) {
@@ -37624,7 +37683,7 @@ static int copy_update_statement(const struct mylite_sql_ast_node *statement, my
 
 static int copy_delete_statement(const struct mylite_sql_ast_node *statement, mylite_stmt *stmt)
 {
-    const struct mylite_sql_ast_node *target = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *target = mylite_ast_child_at(statement, 0U);
 
     return copy_delete_target(target, &stmt->delete_plan.target);
 }
@@ -37640,7 +37699,7 @@ static int copy_transaction_statement(const struct mylite_sql_ast_node *statemen
     stmt->transaction.completion_release = MYLITE_TRANSACTION_COMPLETION_RELEASE_DEFAULT;
 
     if (statement->kind == MYLITE_SQL_AST_START_TRANSACTION_STATEMENT) {
-        characteristics = child_at(statement, 0U);
+        characteristics = mylite_ast_child_at(statement, 0U);
         for (const struct mylite_sql_ast_node *item =
                  characteristics == NULL ? NULL : characteristics->first_child;
              item != NULL; item = item->next_sibling) {
@@ -37661,7 +37720,7 @@ static int copy_transaction_statement(const struct mylite_sql_ast_node *statemen
 
     if (statement->kind == MYLITE_SQL_AST_COMMIT_STATEMENT ||
         statement->kind == MYLITE_SQL_AST_ROLLBACK_STATEMENT) {
-        completion = child_at(statement, 0U);
+        completion = mylite_ast_child_at(statement, 0U);
         if (completion != NULL) {
             switch (completion->transaction_chain) {
             case MYLITE_SQL_AST_TRANSACTION_CHAIN_YES:
@@ -37691,13 +37750,13 @@ static int copy_transaction_statement(const struct mylite_sql_ast_node *statemen
 
 static int copy_savepoint_statement(const struct mylite_sql_ast_node *statement, mylite_stmt *stmt)
 {
-    const struct mylite_sql_ast_node *name = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(statement, 0U);
 
     if (name == NULL || name->kind != MYLITE_SQL_AST_IDENTIFIER) {
         return MYLITE_UNSUPPORTED;
     }
 
-    stmt->savepoint.name = copy_identifier_span(name);
+    stmt->savepoint.name = mylite_copy_identifier_span(name);
     if (stmt->savepoint.name == NULL) {
         return MYLITE_NOMEM;
     }
@@ -37709,11 +37768,11 @@ static int copy_savepoint_statement(const struct mylite_sql_ast_node *statement,
 static int copy_scalar_select_statement(const struct mylite_sql_ast_node *statement,
                                         mylite_stmt *stmt)
 {
-    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *select_list = mylite_ast_child_at(statement, 0U);
     const struct mylite_sql_ast_node *order_by_clause =
-        find_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
     const struct mylite_sql_ast_node *limit_clause =
-        find_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE);
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE);
     size_t column_count = 0U;
 
     for (const struct mylite_sql_ast_node *item = select_list == NULL ? NULL
@@ -37725,7 +37784,8 @@ static int copy_scalar_select_statement(const struct mylite_sql_ast_node *statem
         return MYLITE_UNSUPPORTED;
     }
 
-    stmt->scalar_select_sql_text = copy_span_text(statement->span.text, statement->span.length);
+    stmt->scalar_select_sql_text =
+        mylite_copy_span_text(statement->span.text, statement->span.length);
     stmt->scalar_result.values = calloc(column_count, sizeof(*stmt->scalar_result.values));
     stmt->scalar_result.texts = (char **)calloc(column_count, sizeof(*stmt->scalar_result.texts));
     stmt->scalar_result.expressions = (const struct mylite_sql_ast_node **)calloc(
@@ -37786,8 +37846,8 @@ static int bind_scalar_select_limit_clause(mylite_stmt *stmt,
 static int copy_scalar_select_item(mylite_stmt *stmt, const struct mylite_sql_ast_node *item,
                                    size_t index, const char *source_sql, size_t source_sql_length)
 {
-    const struct mylite_sql_ast_node *expression = child_at(item, 0U);
-    const struct mylite_sql_ast_node *alias = child_at(item, 1U);
+    const struct mylite_sql_ast_node *expression = mylite_ast_child_at(item, 0U);
+    const struct mylite_sql_ast_node *alias = mylite_ast_child_at(item, 1U);
     const struct mylite_expression_value *descriptor_value = NULL;
     bool defer_expression = false;
     int status = MYLITE_OK;
@@ -37827,7 +37887,7 @@ static int copy_scalar_select_item(mylite_stmt *stmt, const struct mylite_sql_as
         stmt->result_metadata.columns[index].name = copy_select_alias(alias);
     } else {
         stmt->result_metadata.columns[index].name =
-            copy_span_text(expression->span.text, expression->span.length);
+            mylite_copy_span_text(expression->span.text, expression->span.length);
     }
     if (stmt->result_metadata.columns[index].name == NULL) {
         return MYLITE_NOMEM;
@@ -37858,7 +37918,7 @@ static int validate_scalar_select_order_by_clause(mylite_db *database,
                                                   const struct mylite_sql_ast_node *order_by_clause,
                                                   const struct mylite_result_metadata *metadata)
 {
-    const struct mylite_sql_ast_node *items = child_at(order_by_clause, 0U);
+    const struct mylite_sql_ast_node *items = mylite_ast_child_at(order_by_clause, 0U);
 
     if (order_by_clause == NULL || order_by_clause->kind != MYLITE_SQL_AST_ORDER_BY_CLAUSE ||
         items == NULL || items->kind != MYLITE_SQL_AST_ORDER_ITEM_LIST) {
@@ -37880,7 +37940,7 @@ static int validate_scalar_select_order_item(mylite_db *database,
                                              const struct mylite_sql_ast_node *order_item,
                                              const struct mylite_result_metadata *metadata)
 {
-    const struct mylite_sql_ast_node *expression = child_at(order_item, 0U);
+    const struct mylite_sql_ast_node *expression = mylite_ast_child_at(order_item, 0U);
 
     if (order_item == NULL || order_item->kind != MYLITE_SQL_AST_ORDER_ITEM || expression == NULL) {
         return set_select_unsupported_order_error(database);
@@ -37891,7 +37951,7 @@ static int validate_scalar_select_order_item(mylite_db *database,
 
         if (!parse_uint64_span(expression->span, &ordinal) || ordinal == 0U ||
             ordinal > metadata->column_count) {
-            char *reference = copy_span_text(expression->span.text, expression->span.length);
+            char *reference = mylite_copy_span_text(expression->span.text, expression->span.length);
             int status = MYLITE_OK;
 
             if (reference == NULL) {
@@ -37973,7 +38033,7 @@ static int validate_scalar_select_order_function_call(mylite_db *database,
                                                       const struct mylite_sql_ast_node *expression,
                                                       const struct mylite_result_metadata *metadata)
 {
-    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
 
     if (!mylite_expression_is_supported_function_call(expression)) {
         return set_select_unsupported_order_error(database);
@@ -38048,7 +38108,7 @@ static size_t scalar_result_label_count(const struct mylite_result_metadata *met
     *out_index = metadata == NULL ? 0U : metadata->column_count;
     for (size_t index = 0U; metadata != NULL && index < metadata->column_count; ++index) {
         if (metadata->columns[index].name != NULL &&
-            ascii_case_equal(metadata->columns[index].name, label)) {
+            mylite_ascii_case_equal(metadata->columns[index].name, label)) {
             if (count == 0U) {
                 *out_index = index;
             }
@@ -38142,13 +38202,13 @@ static int evaluate_scalar_aggregate_expression(mylite_stmt *stmt,
         if (expression->aggregate_kind == MYLITE_SQL_AST_AGGREGATE_COUNT &&
             expression->aggregate_argument ==
                 MYLITE_SQL_AST_AGGREGATE_ARGUMENT_DISTINCT_EXPRESSION_LIST) {
-            return evaluate_scalar_count_distinct_expression(stmt, child_at(expression, 1U),
-                                                             &context, out_value);
+            return evaluate_scalar_count_distinct_expression(
+                stmt, mylite_ast_child_at(expression, 1U), &context, out_value);
         }
         return MYLITE_UNSUPPORTED;
     }
 
-    status = mylite_expression_eval_with_context(child_at(expression, 1U), &context,
+    status = mylite_expression_eval_with_context(mylite_ast_child_at(expression, 1U), &context,
                                                  &stmt->scalar_result.warnings, &argument);
     if (status != 0) {
         if (status == MYLITE_NOMEM) {
@@ -38439,7 +38499,7 @@ static int prepare_in_subquery_statement(mylite_stmt *stmt,
                                          mylite_stmt **out_subquery_stmt,
                                          size_t *out_order_key_count, bool *out_restore_order_keys)
 {
-    const struct mylite_sql_ast_node *select_statement = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *select_statement = mylite_ast_child_at(expression, 1U);
     mylite_stmt *subquery_stmt = NULL;
     int status = MYLITE_OK;
 
@@ -38599,7 +38659,7 @@ static int evaluate_row_subquery_expression_inner(
     struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value)
 {
     const struct mylite_sql_ast_node *left_expression =
-        unwrap_parenthesized_expression(child_at(expression, 0U));
+        unwrap_parenthesized_expression(mylite_ast_child_at(expression, 0U));
     struct mylite_row_expression_values left = {0};
     mylite_stmt *subquery_stmt = NULL;
     size_t order_key_count = 0U;
@@ -38742,7 +38802,7 @@ static int prepare_row_subquery_statement(mylite_stmt *stmt,
         return MYLITE_UNSUPPORTED;
     }
     if (row_subquery_expression_is_membership(expression) &&
-        find_child_kind(select_statement, MYLITE_SQL_AST_LIMIT_CLAUSE) != NULL) {
+        mylite_ast_find_child_kind(select_statement, MYLITE_SQL_AST_LIMIT_CLAUSE) != NULL) {
         return set_in_subquery_limit_error(stmt->database);
     }
 
@@ -38954,7 +39014,7 @@ static int prepare_quantified_subquery_statement(mylite_stmt *stmt,
                                                  size_t *out_order_key_count,
                                                  bool *out_restore_order_keys)
 {
-    const struct mylite_sql_ast_node *select_statement = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *select_statement = mylite_ast_child_at(expression, 1U);
     mylite_stmt *subquery_stmt = NULL;
     int status = MYLITE_OK;
 
@@ -39503,7 +39563,7 @@ static int evaluate_scalar_subquery_expression(mylite_stmt *stmt,
                                                const struct mylite_sql_ast_node *subquery,
                                                struct mylite_expression_value *out_value)
 {
-    const struct mylite_sql_ast_node *select_statement = child_at(subquery, 0U);
+    const struct mylite_sql_ast_node *select_statement = mylite_ast_child_at(subquery, 0U);
     mylite_stmt *subquery_stmt = NULL;
     int status = validate_scalar_subquery_select_list(stmt->database, select_statement);
 
@@ -39551,8 +39611,8 @@ static int evaluate_exists_subquery_expression(mylite_stmt *stmt,
                                                const struct mylite_sql_ast_node *subquery,
                                                struct mylite_expression_value *out_value)
 {
-    const struct mylite_sql_ast_node *select_statement = child_at(subquery, 0U);
-    const struct mylite_sql_ast_node *from_clause = child_at(select_statement, 1U);
+    const struct mylite_sql_ast_node *select_statement = mylite_ast_child_at(subquery, 0U);
+    const struct mylite_sql_ast_node *from_clause = mylite_ast_child_at(select_statement, 1U);
     mylite_stmt *subquery_stmt = NULL;
     bool has_row = false;
     bool negated = subquery->operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT;
@@ -39665,7 +39725,7 @@ static int copy_subquery_statement_column_value(mylite_stmt *stmt,
 static int validate_scalar_subquery_select_list(mylite_db *database,
                                                 const struct mylite_sql_ast_node *statement)
 {
-    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *select_list = mylite_ast_child_at(statement, 0U);
     size_t column_count = 0U;
 
     if (statement == NULL || statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT ||
@@ -39685,13 +39745,13 @@ static int validate_scalar_subquery_select_list(mylite_db *database,
 static int validate_in_subquery_select(mylite_db *database,
                                        const struct mylite_sql_ast_node *statement)
 {
-    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *select_list = mylite_ast_child_at(statement, 0U);
 
     if (statement == NULL || statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT ||
         select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
         return MYLITE_UNSUPPORTED;
     }
-    if (find_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE) != NULL) {
+    if (mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE) != NULL) {
         return set_in_subquery_limit_error(database);
     }
     return validate_scalar_subquery_select_list(database, statement);
@@ -39712,7 +39772,7 @@ static int validate_row_subquery_select_columns(mylite_db *database,
                                                 const struct mylite_sql_ast_node *statement,
                                                 size_t expected_width)
 {
-    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *select_list = mylite_ast_child_at(statement, 0U);
     size_t column_count = 0U;
     bool has_wildcard = false;
 
@@ -39722,7 +39782,7 @@ static int validate_row_subquery_select_columns(mylite_db *database,
     }
     for (const struct mylite_sql_ast_node *item = select_list->first_child; item != NULL;
          item = item->next_sibling) {
-        const struct mylite_sql_ast_node *expression = child_at(item, 0U);
+        const struct mylite_sql_ast_node *expression = mylite_ast_child_at(item, 0U);
 
         if (expression != NULL && expression->kind == MYLITE_SQL_AST_WILDCARD) {
             has_wildcard = true;
@@ -39803,9 +39863,9 @@ static int set_in_subquery_limit_error(mylite_db *database)
 static int set_row_quantified_non_alias_error(mylite_db *database,
                                               const struct mylite_sql_ast_node *expression)
 {
-    const struct mylite_sql_ast_node *select_statement = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *select_statement = mylite_ast_child_at(expression, 1U);
 
-    if (find_child_kind(select_statement, MYLITE_SQL_AST_LIMIT_CLAUSE) != NULL) {
+    if (mylite_ast_find_child_kind(select_statement, MYLITE_SQL_AST_LIMIT_CLAUSE) != NULL) {
         return set_in_subquery_limit_error(database);
     }
     return set_subquery_operand_columns_error(database);
@@ -39830,15 +39890,16 @@ static int copy_insert_table_name(const struct mylite_sql_ast_node *table_name,
         return MYLITE_NOMEM;
     }
     if (table_name->kind == MYLITE_SQL_AST_IDENTIFIER) {
-        plan->table_name = copy_identifier_span(table_name);
+        plan->table_name = mylite_copy_identifier_span(table_name);
         return plan->table_name == NULL ? MYLITE_NOMEM : MYLITE_OK;
     }
     if (table_name->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER &&
-        child_at(table_name, 0U) != NULL && child_at(table_name, 1U) != NULL &&
-        child_at(table_name, 0U)->kind == MYLITE_SQL_AST_IDENTIFIER &&
-        child_at(table_name, 1U)->kind == MYLITE_SQL_AST_IDENTIFIER) {
-        plan->schema_name = copy_identifier_span(child_at(table_name, 0U));
-        plan->table_name = copy_identifier_span(child_at(table_name, 1U));
+        mylite_ast_child_at(table_name, 0U) != NULL &&
+        mylite_ast_child_at(table_name, 1U) != NULL &&
+        mylite_ast_child_at(table_name, 0U)->kind == MYLITE_SQL_AST_IDENTIFIER &&
+        mylite_ast_child_at(table_name, 1U)->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        plan->schema_name = mylite_copy_identifier_span(mylite_ast_child_at(table_name, 0U));
+        plan->table_name = mylite_copy_identifier_span(mylite_ast_child_at(table_name, 1U));
         if (plan->schema_name == NULL || plan->table_name == NULL) {
             return MYLITE_NOMEM;
         }
@@ -39858,7 +39919,7 @@ static int copy_insert_column_list(const struct mylite_sql_ast_node *columns,
     plan->has_column_list = true;
     for (const struct mylite_sql_ast_node *column = columns->first_child; column != NULL;
          column = column->next_sibling) {
-        char *column_name = copy_identifier_span(column);
+        char *column_name = mylite_copy_identifier_span(column);
         int status = MYLITE_OK;
 
         if (column_name == NULL) {
@@ -39963,7 +40024,7 @@ static int copy_insert_value(const struct mylite_sql_ast_node *value_node,
                              struct mylite_insert_value *out_value)
 {
     while (value_node != NULL && value_node->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
-        value_node = child_at(value_node, 0U);
+        value_node = mylite_ast_child_at(value_node, 0U);
     }
     if (value_node == NULL) {
         return MYLITE_UNSUPPORTED;
@@ -39982,7 +40043,7 @@ static int copy_insert_simple_value(const struct mylite_sql_ast_node *value_node
                                     struct mylite_insert_value *out_value)
 {
     while (value_node != NULL && value_node->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
-        value_node = child_at(value_node, 0U);
+        value_node = mylite_ast_child_at(value_node, 0U);
     }
     if (value_node == NULL) {
         return MYLITE_UNSUPPORTED;
@@ -40143,12 +40204,12 @@ static int copy_insert_simple_value(const struct mylite_sql_ast_node *value_node
 static int copy_insert_values_function(const struct mylite_sql_ast_node *value_node,
                                        struct mylite_insert_value *out_value)
 {
-    const struct mylite_sql_ast_node *name = child_at(value_node, 0U);
-    const struct mylite_sql_ast_node *arguments = child_at(value_node, 1U);
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(value_node, 0U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(value_node, 1U);
     const struct mylite_sql_ast_node *argument = NULL;
 
     if (name == NULL || name->kind != MYLITE_SQL_AST_IDENTIFIER ||
-        !ascii_span_equal_ci(name->span, "VALUES") || arguments == NULL ||
+        !mylite_span_equal_ci(name->span, "VALUES") || arguments == NULL ||
         arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST ||
         arguments->first_child == NULL || arguments->first_child->next_sibling != NULL) {
         *out_value = (struct mylite_insert_value){.kind = MYLITE_INSERT_VALUE_UNSUPPORTED};
@@ -40211,8 +40272,8 @@ static int copy_insert_column_reference_parts(const struct mylite_sql_ast_node *
         if (segment_count >= 3U) {
             return MYLITE_UNSUPPORTED;
         }
-        segments[segment_count++] = child_at(current, 1U);
-        current = child_at(current, 0U);
+        segments[segment_count++] = mylite_ast_child_at(current, 1U);
+        current = mylite_ast_child_at(current, 0U);
     }
     if (current == NULL || current->kind != MYLITE_SQL_AST_IDENTIFIER || segment_count >= 3U) {
         return MYLITE_UNSUPPORTED;
@@ -40225,7 +40286,7 @@ static int copy_insert_column_reference_parts(const struct mylite_sql_ast_node *
         if (segment == NULL || segment->kind != MYLITE_SQL_AST_IDENTIFIER) {
             return MYLITE_UNSUPPORTED;
         }
-        parts[index] = copy_identifier_span(segment);
+        parts[index] = mylite_copy_identifier_span(segment);
         if (parts[index] == NULL) {
             for (size_t previous = 0U; previous < index; ++previous) {
                 free(parts[previous]);
@@ -40245,24 +40306,24 @@ static int copy_insert_literal_value(const struct mylite_sql_ast_node *literal,
     switch (literal->literal_kind) {
     case MYLITE_SQL_AST_LITERAL_INTEGER:
         out_value->kind = MYLITE_INSERT_VALUE_INTEGER;
-        out_value->text = copy_span_text(literal->span.text, literal->span.length);
+        out_value->text = mylite_copy_span_text(literal->span.text, literal->span.length);
         return out_value->text == NULL ? MYLITE_NOMEM : MYLITE_OK;
     case MYLITE_SQL_AST_LITERAL_DECIMAL:
     case MYLITE_SQL_AST_LITERAL_FLOAT:
         out_value->kind = MYLITE_INSERT_VALUE_REAL;
-        out_value->text = copy_span_text(literal->span.text, literal->span.length);
+        out_value->text = mylite_copy_span_text(literal->span.text, literal->span.length);
         return out_value->text == NULL ? MYLITE_NOMEM : MYLITE_OK;
     case MYLITE_SQL_AST_LITERAL_STRING:
         out_value->kind = MYLITE_INSERT_VALUE_TEXT;
-        out_value->text = copy_string_literal_span(literal);
+        out_value->text = mylite_copy_string_literal_span(literal);
         return out_value->text == NULL ? MYLITE_NOMEM : MYLITE_OK;
     case MYLITE_SQL_AST_LITERAL_TRUE:
         out_value->kind = MYLITE_INSERT_VALUE_INTEGER;
-        out_value->text = copy_span_text("1", 1U);
+        out_value->text = mylite_copy_span_text("1", 1U);
         return out_value->text == NULL ? MYLITE_NOMEM : MYLITE_OK;
     case MYLITE_SQL_AST_LITERAL_FALSE:
         out_value->kind = MYLITE_INSERT_VALUE_INTEGER;
-        out_value->text = copy_span_text("0", 1U);
+        out_value->text = mylite_copy_span_text("0", 1U);
         return out_value->text == NULL ? MYLITE_NOMEM : MYLITE_OK;
     case MYLITE_SQL_AST_LITERAL_NULL:
         out_value->kind = MYLITE_INSERT_VALUE_NULL;
@@ -40281,7 +40342,7 @@ static int copy_insert_literal_value(const struct mylite_sql_ast_node *literal,
 static int copy_insert_unary_value(const struct mylite_sql_ast_node *expression,
                                    struct mylite_insert_value *out_value)
 {
-    const struct mylite_sql_ast_node *operand = child_at(expression, 0U);
+    const struct mylite_sql_ast_node *operand = mylite_ast_child_at(expression, 0U);
     const char *sign = expression->operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE ? "-" : "+";
     size_t sign_length = strlen(sign);
 
@@ -40327,12 +40388,12 @@ static int copy_insert_binary_value(const struct mylite_sql_ast_node *expression
     out_value->kind = MYLITE_INSERT_VALUE_BINARY_EXPRESSION;
     out_value->operator_kind = expression->operator_kind;
 
-    int status = copy_insert_simple_value(child_at(expression, 0U), out_value->left);
+    int status = copy_insert_simple_value(mylite_ast_child_at(expression, 0U), out_value->left);
 
     if (status != MYLITE_OK) {
         return status;
     }
-    status = copy_insert_simple_value(child_at(expression, 1U), out_value->right);
+    status = copy_insert_simple_value(mylite_ast_child_at(expression, 1U), out_value->right);
     if (status == MYLITE_OK) {
         out_value->values_function_count =
             out_value->left->values_function_count + out_value->right->values_function_count;
@@ -40368,9 +40429,10 @@ static int copy_insert_set_assignment(const struct mylite_sql_ast_node *assignme
         return MYLITE_UNSUPPORTED;
     }
 
-    status = copy_insert_column_reference(child_at(assignment, 0U), &insert_assignment.target);
+    status = copy_insert_column_reference(mylite_ast_child_at(assignment, 0U),
+                                          &insert_assignment.target);
     if (status == MYLITE_OK) {
-        status = copy_insert_value(child_at(assignment, 1U), &insert_assignment.value);
+        status = copy_insert_value(mylite_ast_child_at(assignment, 1U), &insert_assignment.value);
     }
     if (status == MYLITE_OK) {
         status = add_insert_set_assignment(plan, insert_assignment);
@@ -40399,8 +40461,8 @@ static int add_insert_set_assignment(struct mylite_insert_set_plan *plan,
 static int copy_insert_row_alias(const struct mylite_sql_ast_node *row_alias,
                                  struct mylite_insert_values_plan *plan)
 {
-    const struct mylite_sql_ast_node *alias = child_at(row_alias, 0U);
-    const struct mylite_sql_ast_node *columns = child_at(row_alias, 1U);
+    const struct mylite_sql_ast_node *alias = mylite_ast_child_at(row_alias, 0U);
+    const struct mylite_sql_ast_node *columns = mylite_ast_child_at(row_alias, 1U);
 
     if (row_alias == NULL) {
         return MYLITE_OK;
@@ -40410,7 +40472,7 @@ static int copy_insert_row_alias(const struct mylite_sql_ast_node *row_alias,
         return MYLITE_UNSUPPORTED;
     }
 
-    plan->row_alias = copy_identifier_span(alias);
+    plan->row_alias = mylite_copy_identifier_span(alias);
     if (plan->row_alias == NULL) {
         return MYLITE_NOMEM;
     }
@@ -40423,7 +40485,7 @@ static int copy_insert_row_alias(const struct mylite_sql_ast_node *row_alias,
     }
     for (const struct mylite_sql_ast_node *column = columns->first_child; column != NULL;
          column = column->next_sibling) {
-        char *column_name = copy_identifier_span(column);
+        char *column_name = mylite_copy_identifier_span(column);
         int status = MYLITE_OK;
 
         if (column_name == NULL) {
@@ -40464,7 +40526,7 @@ static int copy_insert_duplicate_update_clause(const struct mylite_sql_ast_node 
     }
 
     plan->has_clause = true;
-    return copy_insert_update_assignments(child_at(clause, 0U), plan);
+    return copy_insert_update_assignments(mylite_ast_child_at(clause, 0U), plan);
 }
 
 static int copy_insert_update_assignments(const struct mylite_sql_ast_node *assignments,
@@ -40495,9 +40557,10 @@ static int copy_insert_update_assignment(const struct mylite_sql_ast_node *assig
         return MYLITE_UNSUPPORTED;
     }
 
-    status = copy_insert_column_reference(child_at(assignment, 0U), &insert_assignment.target);
+    status = copy_insert_column_reference(mylite_ast_child_at(assignment, 0U),
+                                          &insert_assignment.target);
     if (status == MYLITE_OK) {
-        status = copy_insert_value(child_at(assignment, 1U), &insert_assignment.value);
+        status = copy_insert_value(mylite_ast_child_at(assignment, 1U), &insert_assignment.value);
     }
     if (status == MYLITE_OK) {
         status = add_insert_update_assignment(plan, insert_assignment);
@@ -40526,8 +40589,8 @@ static int add_insert_update_assignment(struct mylite_insert_duplicate_update_pl
 static int copy_update_target(const struct mylite_sql_ast_node *target,
                               struct mylite_update_target *out_target)
 {
-    const struct mylite_sql_ast_node *table_name = child_at(target, 0U);
-    const struct mylite_sql_ast_node *alias = child_at(target, 1U);
+    const struct mylite_sql_ast_node *table_name = mylite_ast_child_at(target, 0U);
+    const struct mylite_sql_ast_node *alias = mylite_ast_child_at(target, 1U);
     int status = MYLITE_OK;
 
     if (target == NULL || target->kind != MYLITE_SQL_AST_UPDATE_TARGET) {
@@ -40539,7 +40602,7 @@ static int copy_update_target(const struct mylite_sql_ast_node *target,
         return status;
     }
     if (alias != NULL) {
-        out_target->alias = copy_identifier_span(alias);
+        out_target->alias = mylite_copy_identifier_span(alias);
         if (out_target->alias == NULL) {
             return MYLITE_NOMEM;
         }
@@ -40554,15 +40617,16 @@ static int copy_update_table_name(const struct mylite_sql_ast_node *table_name,
         return MYLITE_NOMEM;
     }
     if (table_name->kind == MYLITE_SQL_AST_IDENTIFIER) {
-        target->table_name = copy_identifier_span(table_name);
+        target->table_name = mylite_copy_identifier_span(table_name);
         return target->table_name == NULL ? MYLITE_NOMEM : MYLITE_OK;
     }
     if (table_name->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER &&
-        child_at(table_name, 0U) != NULL && child_at(table_name, 1U) != NULL &&
-        child_at(table_name, 0U)->kind == MYLITE_SQL_AST_IDENTIFIER &&
-        child_at(table_name, 1U)->kind == MYLITE_SQL_AST_IDENTIFIER) {
-        target->schema_name = copy_identifier_span(child_at(table_name, 0U));
-        target->table_name = copy_identifier_span(child_at(table_name, 1U));
+        mylite_ast_child_at(table_name, 0U) != NULL &&
+        mylite_ast_child_at(table_name, 1U) != NULL &&
+        mylite_ast_child_at(table_name, 0U)->kind == MYLITE_SQL_AST_IDENTIFIER &&
+        mylite_ast_child_at(table_name, 1U)->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        target->schema_name = mylite_copy_identifier_span(mylite_ast_child_at(table_name, 0U));
+        target->table_name = mylite_copy_identifier_span(mylite_ast_child_at(table_name, 1U));
         if (target->schema_name == NULL || target->table_name == NULL) {
             return MYLITE_NOMEM;
         }
@@ -40582,14 +40646,14 @@ static int copy_delete_target(const struct mylite_sql_ast_node *target,
         return MYLITE_UNSUPPORTED;
     }
 
-    table_name = child_at(target, 0U);
-    alias = child_at(target, 1U);
+    table_name = mylite_ast_child_at(target, 0U);
+    alias = mylite_ast_child_at(target, 1U);
     status = copy_delete_table_name(table_name, out_target);
     if (status != MYLITE_OK) {
         return status;
     }
     if (alias != NULL) {
-        out_target->alias = copy_identifier_span(alias);
+        out_target->alias = mylite_copy_identifier_span(alias);
         if (out_target->alias == NULL) {
             return MYLITE_NOMEM;
         }
@@ -40604,15 +40668,16 @@ static int copy_delete_table_name(const struct mylite_sql_ast_node *table_name,
         return MYLITE_NOMEM;
     }
     if (table_name->kind == MYLITE_SQL_AST_IDENTIFIER) {
-        target->table_name = copy_identifier_span(table_name);
+        target->table_name = mylite_copy_identifier_span(table_name);
         return target->table_name == NULL ? MYLITE_NOMEM : MYLITE_OK;
     }
     if (table_name->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER &&
-        child_at(table_name, 0U) != NULL && child_at(table_name, 1U) != NULL &&
-        child_at(table_name, 0U)->kind == MYLITE_SQL_AST_IDENTIFIER &&
-        child_at(table_name, 1U)->kind == MYLITE_SQL_AST_IDENTIFIER) {
-        target->schema_name = copy_identifier_span(child_at(table_name, 0U));
-        target->table_name = copy_identifier_span(child_at(table_name, 1U));
+        mylite_ast_child_at(table_name, 0U) != NULL &&
+        mylite_ast_child_at(table_name, 1U) != NULL &&
+        mylite_ast_child_at(table_name, 0U)->kind == MYLITE_SQL_AST_IDENTIFIER &&
+        mylite_ast_child_at(table_name, 1U)->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        target->schema_name = mylite_copy_identifier_span(mylite_ast_child_at(table_name, 0U));
+        target->table_name = mylite_copy_identifier_span(mylite_ast_child_at(table_name, 1U));
         if (target->schema_name == NULL || target->table_name == NULL) {
             return MYLITE_NOMEM;
         }
@@ -40649,7 +40714,8 @@ static int copy_update_assignment(const struct mylite_sql_ast_node *assignment,
         return MYLITE_UNSUPPORTED;
     }
 
-    status = copy_update_column_reference(child_at(assignment, 0U), &update_assignment.target);
+    status = copy_update_column_reference(mylite_ast_child_at(assignment, 0U),
+                                          &update_assignment.target);
     if (status == MYLITE_OK) {
         status = add_update_assignment(plan, update_assignment);
     }
@@ -40719,8 +40785,8 @@ static int copy_update_column_reference_parts(const struct mylite_sql_ast_node *
         if (segment_count >= 3U) {
             return MYLITE_UNSUPPORTED;
         }
-        segments[segment_count++] = child_at(current, 1U);
-        current = child_at(current, 0U);
+        segments[segment_count++] = mylite_ast_child_at(current, 1U);
+        current = mylite_ast_child_at(current, 0U);
     }
     if (current == NULL || current->kind != MYLITE_SQL_AST_IDENTIFIER || segment_count >= 3U) {
         return MYLITE_UNSUPPORTED;
@@ -40733,7 +40799,7 @@ static int copy_update_column_reference_parts(const struct mylite_sql_ast_node *
         if (segment == NULL || segment->kind != MYLITE_SQL_AST_IDENTIFIER) {
             return MYLITE_UNSUPPORTED;
         }
-        parts[index] = copy_identifier_span(segment);
+        parts[index] = mylite_copy_identifier_span(segment);
         if (parts[index] == NULL) {
             for (size_t previous = 0U; previous < index; ++previous) {
                 free(parts[previous]);
@@ -40805,13 +40871,13 @@ static int copy_create_table_column(const struct mylite_sql_ast_node *column_nod
     };
     int status = MYLITE_OK;
 
-    column.name = copy_identifier_span(child_at(column_node, 0U));
+    column.name = mylite_copy_identifier_span(mylite_ast_child_at(column_node, 0U));
     if (column.name == NULL) {
         return MYLITE_NOMEM;
     }
-    status = copy_create_table_column_type(child_at(column_node, 1U), &column.type);
+    status = copy_create_table_column_type(mylite_ast_child_at(column_node, 1U), &column.type);
     if (status == MYLITE_OK) {
-        status = copy_create_table_column_attributes(child_at(column_node, 2U), &column);
+        status = copy_create_table_column_attributes(mylite_ast_child_at(column_node, 2U), &column);
     }
     if (status != MYLITE_OK) {
         create_table_column_deinit(&column);
@@ -40857,8 +40923,8 @@ static int copy_create_table_column_type(const struct mylite_sql_ast_node *type_
             },
     };
     if (type_node->has_column_character_set) {
-        type->character_set = copy_span_text(type_node->column_character_set.text,
-                                             type_node->column_character_set.length);
+        type->character_set = mylite_copy_span_text(type_node->column_character_set.text,
+                                                    type_node->column_character_set.length);
         if (type->character_set == NULL) {
             return MYLITE_NOMEM;
         }
@@ -40867,8 +40933,8 @@ static int copy_create_table_column_type(const struct mylite_sql_ast_node *type_
         type->attributes.character_set_length = strlen(type->character_set);
     }
     if (type_node->has_column_collation) {
-        type->collation =
-            copy_span_text(type_node->column_collation.text, type_node->column_collation.length);
+        type->collation = mylite_copy_span_text(type_node->column_collation.text,
+                                                type_node->column_collation.length);
         if (type->collation == NULL) {
             return MYLITE_NOMEM;
         }
@@ -40896,16 +40962,17 @@ static int copy_create_table_column_attributes(const struct mylite_sql_ast_node 
             column->nullable = false;
             break;
         case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_DEFAULT:
-            copy = copy_expression_text(child_at(attribute, 0U));
-            if (copy == NULL && child_at(attribute, 0U) != NULL &&
-                child_at(attribute, 0U)->literal_kind != MYLITE_SQL_AST_LITERAL_NULL) {
+            copy = copy_expression_text(mylite_ast_child_at(attribute, 0U));
+            if (copy == NULL && mylite_ast_child_at(attribute, 0U) != NULL &&
+                mylite_ast_child_at(attribute, 0U)->literal_kind != MYLITE_SQL_AST_LITERAL_NULL) {
                 return MYLITE_NOMEM;
             }
             free(column->default_text);
             column->default_text = copy;
-            if (child_at(attribute, 0U) != NULL &&
-                (child_at(attribute, 0U)->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP ||
-                 child_at(attribute, 0U)->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION)) {
+            if (mylite_ast_child_at(attribute, 0U) != NULL &&
+                (mylite_ast_child_at(attribute, 0U)->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP ||
+                 mylite_ast_child_at(attribute, 0U)->kind ==
+                     MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION)) {
                 column->has_generated_default = true;
             }
             break;
@@ -40913,7 +40980,7 @@ static int copy_create_table_column_attributes(const struct mylite_sql_ast_node 
             column->has_on_update_current_timestamp = true;
             break;
         case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_COMMENT:
-            copy = copy_string_literal_span(child_at(attribute, 0U));
+            copy = mylite_copy_string_literal_span(mylite_ast_child_at(attribute, 0U));
             if (copy == NULL) {
                 return MYLITE_NOMEM;
             }
@@ -40954,9 +41021,9 @@ static int copy_create_table_index(const struct mylite_sql_ast_node *index_node,
     };
     const struct mylite_sql_ast_node *child = NULL;
     const struct mylite_sql_ast_node *key_parts =
-        find_child_kind(index_node, MYLITE_SQL_AST_KEY_PART_LIST);
+        mylite_ast_find_child_kind(index_node, MYLITE_SQL_AST_KEY_PART_LIST);
     const struct mylite_sql_ast_node *options =
-        find_child_kind(index_node, MYLITE_SQL_AST_INDEX_OPTION_LIST);
+        mylite_ast_find_child_kind(index_node, MYLITE_SQL_AST_INDEX_OPTION_LIST);
     int status = MYLITE_OK;
 
     index.is_primary = index_node->kind == MYLITE_SQL_AST_PRIMARY_KEY_CONSTRAINT;
@@ -40970,7 +41037,7 @@ static int copy_create_table_index(const struct mylite_sql_ast_node *index_node,
          child = child->next_sibling) {
         if (child->kind == MYLITE_SQL_AST_IDENTIFIER) {
             free(index.name);
-            index.name = copy_identifier_span(child);
+            index.name = mylite_copy_identifier_span(child);
             index.explicit_name = true;
             if (index.name == NULL) {
                 create_table_index_deinit(&index);
@@ -40982,7 +41049,7 @@ static int copy_create_table_index(const struct mylite_sql_ast_node *index_node,
     }
     if (index.is_primary) {
         free(index.name);
-        index.name = copy_span_text("PRIMARY", strlen("PRIMARY"));
+        index.name = mylite_copy_span_text("PRIMARY", strlen("PRIMARY"));
         index.explicit_name = true;
         if (index.name == NULL) {
             create_table_index_deinit(&index);
@@ -41018,9 +41085,9 @@ static int copy_create_table_key_parts(const struct mylite_sql_ast_node *key_par
         struct mylite_create_table_key_part part = {
             .order = part_node->key_part_order,
         };
-        const struct mylite_sql_ast_node *prefix = child_at(part_node, 1U);
+        const struct mylite_sql_ast_node *prefix = mylite_ast_child_at(part_node, 1U);
 
-        part.column_name = copy_identifier_span(child_at(part_node, 0U));
+        part.column_name = mylite_copy_identifier_span(mylite_ast_child_at(part_node, 0U));
         if (part.column_name == NULL) {
             return MYLITE_NOMEM;
         }
@@ -41054,7 +41121,7 @@ static int copy_create_table_index_options(const struct mylite_sql_ast_node *opt
             index->algorithm = option->index_algorithm;
             break;
         case MYLITE_SQL_AST_INDEX_OPTION_COMMENT:
-            copy = copy_string_literal_span(child_at(option, 0U));
+            copy = mylite_copy_string_literal_span(mylite_ast_child_at(option, 0U));
             if (copy == NULL) {
                 return MYLITE_NOMEM;
             }
@@ -41084,7 +41151,7 @@ static int copy_create_table_options(const struct mylite_sql_ast_node *statement
                                      struct mylite_create_table_options *options)
 {
     const struct mylite_sql_ast_node *option_list =
-        find_child_kind(statement, MYLITE_SQL_AST_TABLE_OPTION_LIST);
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_TABLE_OPTION_LIST);
     const struct mylite_sql_ast_node *option = NULL;
 
     for (option = option_list == NULL ? NULL : option_list->first_child; option != NULL;
@@ -41093,7 +41160,7 @@ static int copy_create_table_options(const struct mylite_sql_ast_node *statement
 
         switch (option->table_option) {
         case MYLITE_SQL_AST_TABLE_OPTION_ENGINE:
-            copy = copy_identifier_span(child_at(option, 0U));
+            copy = mylite_copy_identifier_span(mylite_ast_child_at(option, 0U));
             if (copy == NULL) {
                 return MYLITE_NOMEM;
             }
@@ -41101,13 +41168,13 @@ static int copy_create_table_options(const struct mylite_sql_ast_node *statement
             options->engine = copy;
             break;
         case MYLITE_SQL_AST_TABLE_OPTION_CHARACTER_SET:
-            if (child_at(option, 0U) != NULL &&
-                child_at(option, 0U)->kind == MYLITE_SQL_AST_DEFAULT) {
+            if (mylite_ast_child_at(option, 0U) != NULL &&
+                mylite_ast_child_at(option, 0U)->kind == MYLITE_SQL_AST_DEFAULT) {
                 free(options->character_set);
                 options->character_set = NULL;
                 break;
             }
-            copy = copy_schema_text_span(child_at(option, 0U));
+            copy = mylite_copy_schema_text_span(mylite_ast_child_at(option, 0U));
             if (copy == NULL) {
                 return MYLITE_NOMEM;
             }
@@ -41115,13 +41182,13 @@ static int copy_create_table_options(const struct mylite_sql_ast_node *statement
             options->character_set = copy;
             break;
         case MYLITE_SQL_AST_TABLE_OPTION_COLLATE:
-            if (child_at(option, 0U) != NULL &&
-                child_at(option, 0U)->kind == MYLITE_SQL_AST_DEFAULT) {
+            if (mylite_ast_child_at(option, 0U) != NULL &&
+                mylite_ast_child_at(option, 0U)->kind == MYLITE_SQL_AST_DEFAULT) {
                 free(options->collation);
                 options->collation = NULL;
                 break;
             }
-            copy = copy_schema_text_span(child_at(option, 0U));
+            copy = mylite_copy_schema_text_span(mylite_ast_child_at(option, 0U));
             if (copy == NULL) {
                 return MYLITE_NOMEM;
             }
@@ -41129,7 +41196,7 @@ static int copy_create_table_options(const struct mylite_sql_ast_node *statement
             options->collation = copy;
             break;
         case MYLITE_SQL_AST_TABLE_OPTION_COMMENT:
-            copy = copy_string_literal_span(child_at(option, 0U));
+            copy = mylite_copy_string_literal_span(mylite_ast_child_at(option, 0U));
             if (copy == NULL) {
                 return MYLITE_NOMEM;
             }
@@ -41138,7 +41205,7 @@ static int copy_create_table_options(const struct mylite_sql_ast_node *statement
             break;
         case MYLITE_SQL_AST_TABLE_OPTION_AUTO_INCREMENT:
             options->has_auto_increment = true;
-            options->auto_increment = child_at(option, 0U)->column_length;
+            options->auto_increment = mylite_ast_child_at(option, 0U)->column_length;
             break;
         case MYLITE_SQL_AST_TABLE_OPTION_NONE:
             break;
@@ -41189,14 +41256,14 @@ static int add_single_column_index(struct mylite_create_table_plan *plan, const 
     };
 
     if (is_primary) {
-        index.name = copy_span_text("PRIMARY", strlen("PRIMARY"));
+        index.name = mylite_copy_span_text("PRIMARY", strlen("PRIMARY"));
     }
     index.parts = calloc(1U, sizeof(*index.parts));
     if ((is_primary && index.name == NULL) || index.parts == NULL) {
         create_table_index_deinit(&index);
         return MYLITE_NOMEM;
     }
-    index.parts[0].column_name = copy_span_text(column_name, strlen(column_name));
+    index.parts[0].column_name = mylite_copy_span_text(column_name, strlen(column_name));
     if (index.parts[0].column_name == NULL) {
         create_table_index_deinit(&index);
         return MYLITE_NOMEM;
@@ -41282,7 +41349,7 @@ static bool create_table_index_name_exists(const struct mylite_create_table_plan
 {
     for (size_t index = 0U; index < before_index; ++index) {
         if (plan->indexes[index].name != NULL &&
-            ascii_case_equal(plan->indexes[index].name, name)) {
+            mylite_ascii_case_equal(plan->indexes[index].name, name)) {
             return true;
         }
     }
@@ -41482,21 +41549,27 @@ static const char *sqlite_affinity_for_catalog_data_type(const char *data_type)
     if (data_type == NULL) {
         return "TEXT";
     }
-    if (ascii_case_equal(data_type, "tinyint") || ascii_case_equal(data_type, "smallint") ||
-        ascii_case_equal(data_type, "mediumint") || ascii_case_equal(data_type, "int") ||
-        ascii_case_equal(data_type, "bigint") || ascii_case_equal(data_type, "bool") ||
-        ascii_case_equal(data_type, "boolean")) {
+    if (mylite_ascii_case_equal(data_type, "tinyint") ||
+        mylite_ascii_case_equal(data_type, "smallint") ||
+        mylite_ascii_case_equal(data_type, "mediumint") ||
+        mylite_ascii_case_equal(data_type, "int") || mylite_ascii_case_equal(data_type, "bigint") ||
+        mylite_ascii_case_equal(data_type, "bool") ||
+        mylite_ascii_case_equal(data_type, "boolean")) {
         return "INTEGER";
     }
-    if (ascii_case_equal(data_type, "float") || ascii_case_equal(data_type, "double")) {
+    if (mylite_ascii_case_equal(data_type, "float") ||
+        mylite_ascii_case_equal(data_type, "double")) {
         return "REAL";
     }
-    if (ascii_case_equal(data_type, "decimal")) {
+    if (mylite_ascii_case_equal(data_type, "decimal")) {
         return "NUMERIC";
     }
-    if (ascii_case_equal(data_type, "binary") || ascii_case_equal(data_type, "varbinary") ||
-        ascii_case_equal(data_type, "tinyblob") || ascii_case_equal(data_type, "blob") ||
-        ascii_case_equal(data_type, "mediumblob") || ascii_case_equal(data_type, "longblob")) {
+    if (mylite_ascii_case_equal(data_type, "binary") ||
+        mylite_ascii_case_equal(data_type, "varbinary") ||
+        mylite_ascii_case_equal(data_type, "tinyblob") ||
+        mylite_ascii_case_equal(data_type, "blob") ||
+        mylite_ascii_case_equal(data_type, "mediumblob") ||
+        mylite_ascii_case_equal(data_type, "longblob")) {
         return "BLOB";
     }
     return "TEXT";
@@ -41624,15 +41697,15 @@ static char *copy_expression_text(const struct mylite_sql_ast_node *node)
     }
     if (node->kind == MYLITE_SQL_AST_LITERAL &&
         node->literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
-        return copy_string_literal_span(node);
+        return mylite_copy_string_literal_span(node);
     }
     if (node->kind == MYLITE_SQL_AST_LITERAL && node->literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
         return NULL;
     }
     if (node->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP) {
-        return copy_span_text("CURRENT_TIMESTAMP", strlen("CURRENT_TIMESTAMP"));
+        return mylite_copy_span_text("CURRENT_TIMESTAMP", strlen("CURRENT_TIMESTAMP"));
     }
-    return copy_span_text(node->span.text, node->span.length);
+    return mylite_copy_span_text(node->span.text, node->span.length);
 }
 
 static int normalize_create_table_options(mylite_db *database, const char *schema_name,
@@ -41692,7 +41765,7 @@ static int normalize_create_table_options(mylite_db *database, const char *schem
 
 static int normalize_create_table_option_text(mylite_db *database, char **target, const char *value)
 {
-    char *copy = copy_span_text(value, strlen(value));
+    char *copy = mylite_copy_span_text(value, strlen(value));
 
     if (copy == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
@@ -41709,7 +41782,7 @@ static bool is_supported_engine_name(const char *name)
     if (name == NULL) {
         return true;
     }
-    return ascii_case_equal(name, "InnoDB");
+    return mylite_ascii_case_equal(name, "InnoDB");
 }
 
 static bool validate_create_table_column_names(mylite_db *database,
@@ -41723,7 +41796,7 @@ static bool validate_create_table_column_names(mylite_db *database,
 
     for (size_t left = 0U; left < plan->column_count; ++left) {
         for (size_t right = left + 1U; right < plan->column_count; ++right) {
-            if (ascii_case_equal(plan->columns[left].name, plan->columns[right].name)) {
+            if (mylite_ascii_case_equal(plan->columns[left].name, plan->columns[right].name)) {
                 (void)mylite_diagnostics_set_error_message_parts(
                     database, "Duplicate column name '", plan->columns[right].name, "'");
                 return false;
@@ -41777,8 +41850,8 @@ static void apply_create_table_primary_key_nullability(struct mylite_create_tabl
         }
         for (size_t part = 0U; part < table_index->part_count; ++part) {
             for (size_t column = 0U; column < plan->column_count; ++column) {
-                if (ascii_case_equal(plan->columns[column].name,
-                                     table_index->parts[part].column_name)) {
+                if (mylite_ascii_case_equal(plan->columns[column].name,
+                                            table_index->parts[part].column_name)) {
                     plan->columns[column].nullable = false;
                 }
             }
@@ -41790,7 +41863,7 @@ static const struct mylite_create_table_column *
 find_create_table_column(const struct mylite_create_table_plan *plan, const char *name)
 {
     for (size_t index = 0U; index < plan->column_count; ++index) {
-        if (ascii_case_equal(plan->columns[index].name, name)) {
+        if (mylite_ascii_case_equal(plan->columns[index].name, name)) {
             return &plan->columns[index];
         }
     }
@@ -41811,7 +41884,7 @@ create_table_column_index_status(const struct mylite_create_table_plan *plan,
         const struct mylite_create_table_index *table_index = &plan->indexes[index];
 
         for (size_t part = 0U; part < table_index->part_count; ++part) {
-            if (!ascii_case_equal(table_index->parts[part].column_name, column_name)) {
+            if (!mylite_ascii_case_equal(table_index->parts[part].column_name, column_name)) {
                 continue;
             }
             status.indexed = true;
@@ -41934,8 +42007,8 @@ static int create_user_savepoint(mylite_db *database, const char *name, const ch
     struct mylite_savepoint savepoint = {0};
     int status = MYLITE_OK;
 
-    savepoint.original_name = copy_span_text(name, strlen(name));
-    savepoint.normalized_name = copy_span_text(normalized_name, strlen(normalized_name));
+    savepoint.original_name = mylite_copy_span_text(name, strlen(name));
+    savepoint.normalized_name = mylite_copy_span_text(normalized_name, strlen(normalized_name));
     savepoint.sqlite_name = make_sqlite_savepoint_name(database);
     savepoint.level = database->savepoints.current_level;
     if (savepoint.original_name == NULL || savepoint.normalized_name == NULL ||
@@ -42165,8 +42238,8 @@ static int record_pending_auto_increment(mylite_db *database, const char *schema
         return MYLITE_NOMEM;
     }
 
-    schema_copy = copy_span_text(schema_name, strlen(schema_name));
-    table_copy = copy_span_text(table_name, strlen(table_name));
+    schema_copy = mylite_copy_span_text(schema_name, strlen(schema_name));
+    table_copy = mylite_copy_span_text(table_name, strlen(table_name));
     if (schema_copy == NULL || table_copy == NULL) {
         free(schema_copy);
         free(table_copy);
@@ -42316,22 +42389,22 @@ static void rollback_statement_atomicity(mylite_db *database,
 static int apply_schema_option(const struct mylite_sql_ast_node *option,
                                struct mylite_schema_options *options)
 {
-    const struct mylite_sql_ast_node *value = child_at(option, 0U);
+    const struct mylite_sql_ast_node *value = mylite_ast_child_at(option, 0U);
     char **target = NULL;
     char *copy = NULL;
 
     switch (option->schema_option) {
     case MYLITE_SQL_AST_SCHEMA_OPTION_CHARACTER_SET:
         target = &options->character_set;
-        copy = copy_schema_text_span(value);
+        copy = mylite_copy_schema_text_span(value);
         break;
     case MYLITE_SQL_AST_SCHEMA_OPTION_COLLATE:
         target = &options->collation;
-        copy = copy_schema_text_span(value);
+        copy = mylite_copy_schema_text_span(value);
         break;
     case MYLITE_SQL_AST_SCHEMA_OPTION_ENCRYPTION:
         target = &options->encryption;
-        copy = copy_string_literal_span(value);
+        copy = mylite_copy_string_literal_span(value);
         break;
     case MYLITE_SQL_AST_SCHEMA_OPTION_READ_ONLY:
         options->has_read_only = true;
@@ -42423,7 +42496,7 @@ static int normalize_schema_charset_and_collation(mylite_db *database,
 
 static int normalize_schema_option_text(mylite_db *database, char **target, const char *value)
 {
-    char *copy = copy_span_text(value, strlen(value));
+    char *copy = mylite_copy_span_text(value, strlen(value));
 
     if (copy == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
@@ -42565,93 +42638,9 @@ static bool is_valid_encryption_value(const char *value)
     return false;
 }
 
-static bool ascii_span_equal_ci(struct mylite_sql_source_span span, const char *text)
-{
-    size_t text_length = text == NULL ? 0U : strlen(text);
-
-    if (span.text == NULL || text == NULL || span.length != text_length) {
-        return false;
-    }
-    for (size_t index = 0U; index < span.length; ++index) {
-        unsigned char left_byte = (unsigned char)span.text[index];
-        unsigned char right_byte = (unsigned char)text[index];
-
-        if (left_byte >= 'A' && left_byte <= 'Z') {
-            left_byte = (unsigned char)(left_byte - 'A' + 'a');
-        }
-        if (right_byte >= 'A' && right_byte <= 'Z') {
-            right_byte = (unsigned char)(right_byte - 'A' + 'a');
-        }
-        if (left_byte != right_byte) {
-            return false;
-        }
-    }
-    return true;
-}
-
-static bool ascii_case_equal(const char *left, const char *right)
-{
-    size_t index = 0U;
-
-    if (left == NULL || right == NULL) {
-        return false;
-    }
-
-    while (left[index] != '\0' && right[index] != '\0') {
-        unsigned char left_byte = (unsigned char)left[index];
-        unsigned char right_byte = (unsigned char)right[index];
-
-        if (left_byte >= 'A' && left_byte <= 'Z') {
-            left_byte = (unsigned char)(left_byte - 'A' + 'a');
-        }
-        if (right_byte >= 'A' && right_byte <= 'Z') {
-            right_byte = (unsigned char)(right_byte - 'A' + 'a');
-        }
-        if (left_byte != right_byte) {
-            return false;
-        }
-        ++index;
-    }
-    if (left[index] == '\0' && right[index] == '\0') {
-        return true;
-    }
-    return false;
-}
-
-static char *copy_identifier_span(const struct mylite_sql_ast_node *node)
-{
-    const char *text = node == NULL ? NULL : node->span.text;
-    size_t length = node == NULL ? 0U : node->span.length;
-    char *copy = NULL;
-    size_t output = 0U;
-
-    if (text == NULL) {
-        return NULL;
-    }
-    if (length < 2U || text[0] != '`' || text[length - 1U] != '`') {
-        return copy_span_text(text, length);
-    }
-
-    copy = malloc(length - 1U);
-    if (copy == NULL) {
-        return NULL;
-    }
-
-    for (size_t index = 1U; index + 1U < length; ++index) {
-        if (text[index] == '`' && index + 2U < length && text[index + 1U] == '`') {
-            copy[output++] = '`';
-            ++index;
-        } else {
-            copy[output++] = text[index];
-        }
-    }
-    copy[output] = '\0';
-    return copy;
-}
-
 static char *copy_normalized_savepoint_name(const char *name)
 {
-    char *copy = copy_span_text(name, name == NULL ? 0U : strlen(name));
+    char *copy = mylite_copy_span_text(name, name == NULL ? 0U : strlen(name));
 
     if (copy == NULL) {
         return NULL;
@@ -42663,116 +42652,6 @@ static char *copy_normalized_savepoint_name(const char *name)
         }
     }
     return copy;
-}
-
-static char *copy_string_literal_span(const struct mylite_sql_ast_node *node)
-{
-    const char *text = node == NULL ? NULL : node->span.text;
-    size_t length = node == NULL ? 0U : node->span.length;
-    char quote = '\0';
-    char *copy = NULL;
-    size_t output = 0U;
-
-    if (text == NULL) {
-        return NULL;
-    }
-    if (length < 2U || (text[0] != '\'' && text[0] != '"')) {
-        return copy_span_text(text, length);
-    }
-
-    quote = text[0];
-    copy = malloc(length - 1U);
-    if (copy == NULL) {
-        return NULL;
-    }
-
-    for (size_t index = 1U; index + 1U < length; ++index) {
-        if (text[index] == quote && index + 2U < length && text[index + 1U] == quote) {
-            copy[output++] = quote;
-            ++index;
-        } else if (text[index] == '\\' && index + 2U < length) {
-            copy[output++] = text[++index];
-        } else {
-            copy[output++] = text[index];
-        }
-    }
-    copy[output] = '\0';
-    return copy;
-}
-
-static char *copy_schema_text_span(const struct mylite_sql_ast_node *node)
-{
-    if (node != NULL && node->kind == MYLITE_SQL_AST_LITERAL) {
-        return copy_string_literal_span(node);
-    }
-    return copy_identifier_span(node);
-}
-
-static char *copy_unquoted_span_text(struct mylite_sql_source_span span)
-{
-    const char *text = span.text == NULL ? "" : span.text;
-    size_t start = 0U;
-    size_t end = span.text == NULL ? 0U : span.length;
-
-    if (end >= 2U && (text[0] == '\'' || text[0] == '"') && text[end - 1U] == text[0]) {
-        start = 1U;
-        --end;
-    }
-    return copy_span_text(text + start, end - start);
-}
-
-static char *copy_nonempty_cstring(const char *text)
-{
-    size_t length = 0U;
-    char *copy = NULL;
-
-    if (text == NULL || text[0] == '\0') {
-        return NULL;
-    }
-    length = strlen(text);
-    if (length == 0U || length == SIZE_MAX) {
-        return NULL;
-    }
-
-    copy = malloc(length + 1U);
-    if (copy == NULL) {
-        return NULL;
-    }
-    memcpy(copy, text, length + 1U);
-    return copy;
-}
-
-static char *copy_span_text(const char *text, size_t length)
-{
-    char *copy = malloc(length + 1U);
-
-    if (copy == NULL) {
-        return NULL;
-    }
-
-    if (length > 0U) {
-        memcpy(copy, text, length);
-    }
-    copy[length] = '\0';
-    return copy;
-}
-
-static bool span_contains_newline(const char *text, size_t length)
-{
-    for (size_t index = 0U; index < length; ++index) {
-        if (text[index] == '\n' || text[index] == '\r') {
-            return true;
-        }
-    }
-    return false;
-}
-
-static bool text_contains_word(const char *text, const char *word)
-{
-    if (text == NULL || word == NULL || word[0] == '\0') {
-        return false;
-    }
-    return strstr(text, word) != NULL;
 }
 
 static const struct mylite_result_column_metadata *result_metadata_column(const mylite_stmt *stmt,
@@ -42797,7 +42676,7 @@ insert_column_uses_numeric_implicit_default(const struct mylite_insert_table_col
         return false;
     }
     for (size_t index = 0U; index < sizeof(numeric_types) / sizeof(numeric_types[0]); ++index) {
-        if (ascii_case_equal(column->data_type, numeric_types[index])) {
+        if (mylite_ascii_case_equal(column->data_type, numeric_types[index])) {
             return true;
         }
     }
@@ -42836,14 +42715,14 @@ static bool column_default_is_current_timestamp(const char *default_text)
         }
     }
 
-    copy = copy_span_text(start, (size_t)(end - start));
+    copy = mylite_copy_span_text(start, (size_t)(end - start));
     if (copy == NULL) {
         return false;
     }
     for (size_t index = 0U; index < sizeof(supported_current_timestamp_defaults) /
                                         sizeof(supported_current_timestamp_defaults[0]);
          ++index) {
-        if (ascii_case_equal(copy, supported_current_timestamp_defaults[index])) {
+        if (mylite_ascii_case_equal(copy, supported_current_timestamp_defaults[index])) {
             matches = true;
             break;
         }
@@ -43698,39 +43577,6 @@ static void create_table_key_part_deinit(struct mylite_create_table_key_part *pa
     *part = (struct mylite_create_table_key_part){0};
 }
 
-static const struct mylite_sql_ast_node *child_at(const struct mylite_sql_ast_node *node,
-                                                  size_t index)
-{
-    const struct mylite_sql_ast_node *child = NULL;
-
-    if (node == NULL) {
-        return NULL;
-    }
-
-    child = node->first_child;
-    for (size_t current = 0U; current < index && child != NULL; ++current) {
-        child = child->next_sibling;
-    }
-    return child;
-}
-
-static const struct mylite_sql_ast_node *find_child_kind(const struct mylite_sql_ast_node *node,
-                                                         enum mylite_sql_ast_node_kind kind)
-{
-    const struct mylite_sql_ast_node *child = NULL;
-
-    if (node == NULL) {
-        return NULL;
-    }
-
-    for (child = node->first_child; child != NULL; child = child->next_sibling) {
-        if (child->kind == kind) {
-            return child;
-        }
-    }
-    return NULL;
-}
-
 static bool row_subquery_expression_is_supported(const struct mylite_sql_ast_node *expression)
 {
     if (binary_expression_is_row_in_subquery(expression)) {
@@ -43779,9 +43625,9 @@ static bool binary_expression_is_row_subquery(const struct mylite_sql_ast_node *
 static bool binary_expression_is_row_in_subquery(const struct mylite_sql_ast_node *expression)
 {
     const struct mylite_sql_ast_node *left =
-        unwrap_parenthesized_expression(child_at(expression, 0U));
+        unwrap_parenthesized_expression(mylite_ast_child_at(expression, 0U));
     const struct mylite_sql_ast_node *right =
-        unwrap_parenthesized_expression(child_at(expression, 1U));
+        unwrap_parenthesized_expression(mylite_ast_child_at(expression, 1U));
 
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_BINARY_EXPRESSION ||
         left == NULL || left->kind != MYLITE_SQL_AST_ROW_CONSTRUCTOR || right == NULL ||
@@ -43797,9 +43643,9 @@ static bool binary_expression_is_row_in_subquery(const struct mylite_sql_ast_nod
 static bool binary_expression_is_row_scalar_subquery(const struct mylite_sql_ast_node *expression)
 {
     const struct mylite_sql_ast_node *left =
-        unwrap_parenthesized_expression(child_at(expression, 0U));
+        unwrap_parenthesized_expression(mylite_ast_child_at(expression, 0U));
     const struct mylite_sql_ast_node *right =
-        unwrap_parenthesized_expression(child_at(expression, 1U));
+        unwrap_parenthesized_expression(mylite_ast_child_at(expression, 1U));
 
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_BINARY_EXPRESSION ||
         left == NULL || left->kind != MYLITE_SQL_AST_ROW_CONSTRUCTOR || right == NULL ||
@@ -43863,16 +43709,16 @@ static const struct mylite_sql_ast_node *
 row_subquery_select_statement(const struct mylite_sql_ast_node *expression)
 {
     const struct mylite_sql_ast_node *right =
-        unwrap_parenthesized_expression(child_at(expression, 1U));
+        unwrap_parenthesized_expression(mylite_ast_child_at(expression, 1U));
 
     if (quantified_comparison_is_row_subquery_alias(expression)) {
-        return child_at(expression, 1U);
+        return mylite_ast_child_at(expression, 1U);
     }
     if (binary_expression_is_row_in_subquery(expression)) {
         return right;
     }
     if (binary_expression_is_row_scalar_subquery(expression)) {
-        return child_at(right, 0U);
+        return mylite_ast_child_at(right, 0U);
     }
     return NULL;
 }
@@ -43880,7 +43726,7 @@ row_subquery_select_statement(const struct mylite_sql_ast_node *expression)
 static bool quantified_comparison_has_row_left(const struct mylite_sql_ast_node *expression)
 {
     const struct mylite_sql_ast_node *left =
-        unwrap_parenthesized_expression(child_at(expression, 0U));
+        unwrap_parenthesized_expression(mylite_ast_child_at(expression, 0U));
 
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_QUANTIFIED_COMPARISON ||
         left == NULL) {
@@ -43923,7 +43769,7 @@ static size_t row_constructor_width(const struct mylite_sql_ast_node *row)
 
 static bool binary_expression_is_in_subquery(const struct mylite_sql_ast_node *expression)
 {
-    const struct mylite_sql_ast_node *right = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *right = mylite_ast_child_at(expression, 1U);
 
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_BINARY_EXPRESSION) {
         return false;
@@ -43941,16 +43787,6 @@ static bool binary_expression_is_in_subquery(const struct mylite_sql_ast_node *e
     default:
         return false;
     }
-}
-
-static const struct mylite_sql_ast_node *single_statement(const struct mylite_sql_ast_node *root)
-{
-    if (root == NULL || root->kind != MYLITE_SQL_AST_SCRIPT || root->first_child == NULL ||
-        root->first_child->next_sibling != NULL) {
-        return NULL;
-    }
-
-    return root->first_child;
 }
 
 static bool statement_preserves_diagnostics(const struct mylite_sql_ast_node *statement)

@@ -336,13 +336,6 @@ struct mylite_table_select_result {
     bool has_current_row;
 };
 
-struct mylite_table_select_expression_context {
-    mylite_stmt *stmt;
-    const struct mylite_table_select_row *row;
-    bool order_resolution;
-    bool having_resolution;
-};
-
 struct mylite_union_plan {
     mylite_stmt **operands;
     enum mylite_sql_ast_set_duplicate_mode *operators;

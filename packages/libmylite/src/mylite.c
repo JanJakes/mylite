@@ -24,6 +24,7 @@
 #include "runtime/mylite_schema.h"
 #include "runtime/mylite_schema_types.h"
 #include "runtime/mylite_select.h"
+#include "runtime/mylite_select_eval.h"
 #include "runtime/mylite_select_from.h"
 #include "runtime/mylite_select_projection.h"
 #include "runtime/mylite_select_resolve.h"
@@ -1216,13 +1217,6 @@ static int update_table_select_group(mylite_stmt *stmt, struct mylite_table_sele
                                      const struct mylite_table_select_row *row);
 static int finalize_table_select_group(mylite_stmt *stmt, struct mylite_table_select_group *group,
                                        struct mylite_table_select_row *out_row);
-static int evaluate_table_select_group_key(mylite_stmt *stmt,
-                                           const struct mylite_table_select_row *row,
-                                           const struct mylite_select_group_key *group_key,
-                                           struct mylite_expression_value *out_value);
-static int evaluate_table_select_having(mylite_stmt *stmt,
-                                        const struct mylite_table_select_row *row,
-                                        bool *out_matches);
 static int
 update_table_select_aggregate_state(mylite_stmt *stmt, struct mylite_select_aggregate_state *state,
                                     const struct mylite_select_aggregate_binding *binding,
@@ -1251,39 +1245,14 @@ finalize_table_select_aggregate_state(mylite_stmt *stmt,
                                       struct mylite_expression_value *out_value);
 static void count_distinct_tuple_deinit(struct mylite_count_distinct_tuple *tuple);
 static void select_aggregate_state_deinit(struct mylite_select_aggregate_state *state);
-static int evaluate_table_select_aggregate_argument(
-    mylite_stmt *stmt, const struct mylite_select_aggregate_binding *binding,
-    const struct mylite_table_select_row *row, struct mylite_expression_value *out_value);
 static int append_aggregate_numeric_conversion_warning(struct mylite_expression_warnings *warnings,
                                                        const char *text);
 static int aggregate_value_to_double(struct mylite_expression_warnings *warnings,
                                      const struct mylite_expression_value *value,
                                      struct mylite_aggregate_numeric_value *out_value);
 static int aggregate_format_double(double value, struct mylite_expression_value *out_value);
-static int evaluate_table_select_order_values(mylite_stmt *stmt,
-                                              struct mylite_table_select_row *row);
-static int evaluate_table_select_order_key(mylite_stmt *stmt,
-                                           const struct mylite_table_select_row *row,
-                                           const struct mylite_select_order_key *order_key,
-                                           struct mylite_expression_value *out_value);
-static int materialize_table_select_output_values(mylite_stmt *stmt,
-                                                  struct mylite_table_select_row *row);
-static int set_table_select_current_row(mylite_stmt *stmt,
-                                        const struct mylite_table_select_row *row);
-static int evaluate_table_select_cached_output_value(mylite_stmt *stmt,
-                                                     const struct mylite_table_select_row *row,
-                                                     size_t output_index,
-                                                     struct mylite_expression_value *out_value);
-static int evaluate_table_select_output_value(mylite_stmt *stmt,
-                                              const struct mylite_table_select_row *row,
-                                              size_t output_index,
-                                              struct mylite_expression_value *out_value);
-static int copy_table_select_row_value(const struct mylite_table_select_row *row,
-                                       size_t column_index,
-                                       struct mylite_expression_value *out_value);
 static void
 table_select_join_condition_cache_deinit(struct mylite_table_select_join_condition_cache *cache);
-static int evaluate_table_select_constant_predicate(mylite_stmt *stmt);
 static int evaluate_table_select_join_conditions(mylite_stmt *stmt,
                                                  const struct mylite_table_select_row *row,
                                                  bool *out_matches);
@@ -1293,45 +1262,8 @@ static int evaluate_table_select_using_conditions(mylite_stmt *stmt,
 static int evaluate_table_select_join_predicates(mylite_stmt *stmt,
                                                  const struct mylite_table_select_row *row,
                                                  bool *out_matches);
-static int evaluate_table_select_expression_predicate(mylite_stmt *stmt,
-                                                      const struct mylite_table_select_row *row,
-                                                      const struct mylite_sql_ast_node *predicate,
-                                                      bool *out_matches);
-static int evaluate_table_select_row_predicate(mylite_stmt *stmt,
-                                               const struct mylite_table_select_row *row,
-                                               bool *out_matches);
-static int evaluate_table_select_cached_constant_expression(
-    void *user_data, const struct mylite_sql_ast_node *expression,
-    struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value);
-static int evaluate_table_select_session_function(
-    void *user_data, const struct mylite_sql_ast_node *function_call,
-    const struct mylite_expression_eval_context *expression_context,
-    struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value);
-static int evaluate_table_select_aggregate_call(void *user_data,
-                                                const struct mylite_sql_ast_node *aggregate,
-                                                struct mylite_expression_value *out_value);
-static int evaluate_table_select_subquery_expression(void *user_data,
-                                                     const struct mylite_sql_ast_node *subquery,
-                                                     struct mylite_expression_warnings *warnings,
-                                                     struct mylite_expression_value *out_value);
-static int evaluate_table_select_in_subquery_expression(
-    void *user_data, const struct mylite_sql_ast_node *expression,
-    const struct mylite_expression_value *left, struct mylite_expression_warnings *warnings,
-    struct mylite_expression_value *out_value);
-static int evaluate_table_select_quantified_subquery_expression(
-    void *user_data, const struct mylite_sql_ast_node *expression,
-    const struct mylite_expression_value *left, struct mylite_expression_warnings *warnings,
-    struct mylite_expression_value *out_value);
-static int evaluate_table_select_row_subquery_expression(
-    void *user_data, const struct mylite_sql_ast_node *expression,
-    const struct mylite_expression_eval_context *expression_context,
-    struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value);
-static int resolve_table_select_expression_identifier(void *user_data,
-                                                      const struct mylite_sql_ast_node *identifier,
-                                                      struct mylite_expression_value *out_value);
 static int copy_table_select_column_value(mylite_stmt *stmt, size_t column_index,
                                           struct mylite_expression_value *out_value);
-static int map_table_select_expression_eval_status(mylite_stmt *stmt, int status);
 static int set_where_predicate_eval_error(mylite_stmt *stmt);
 static void table_select_group_deinit(struct mylite_table_select_group *group);
 static int copy_scalar_select_statement(const struct mylite_sql_ast_node *statement,
@@ -1513,6 +1445,18 @@ static int set_row_quantified_non_alias_error(mylite_db *database,
                                               const struct mylite_sql_ast_node *expression);
 static int set_scalar_subquery_cardinality_error(mylite_db *database);
 static bool binary_expression_is_in_subquery(const struct mylite_sql_ast_node *expression);
+
+static const struct mylite_select_eval_callbacks table_select_eval_callbacks = {
+    .resolve_order_reference = resolve_select_order_reference,
+    .resolve_having_reference = resolve_select_having_reference_internal,
+    .eval_session_function = evaluate_statement_session_function,
+    .eval_subquery = evaluate_select_subquery_expression,
+    .eval_in_subquery = evaluate_in_subquery_expression,
+    .eval_quantified_subquery = evaluate_quantified_subquery_expression,
+    .eval_row_subquery = evaluate_row_subquery_expression,
+    .copy_column_value = copy_table_select_column_value,
+    .set_expression_eval_error = set_where_predicate_eval_error,
+};
 
 int mylite_prepare(mylite_db *database, const char *sql, size_t length, mylite_stmt **out_stmt)
 {
@@ -11402,8 +11346,9 @@ static int execute_table_select_statement(mylite_stmt *stmt)
         return MYLITE_DONE;
     }
 
-    status =
-        set_table_select_current_row(stmt, &stmt->select_result.rows[stmt->select_result.next_row]);
+    status = mylite_select_eval_set_current_row(
+        stmt, &stmt->select_result.rows[stmt->select_result.next_row],
+        &table_select_eval_callbacks);
     if (status != MYLITE_OK) {
         return status;
     }
@@ -11428,8 +11373,9 @@ static int execute_union_query_statement(mylite_stmt *stmt)
         return MYLITE_DONE;
     }
 
-    status =
-        set_table_select_current_row(stmt, &stmt->select_result.rows[stmt->select_result.next_row]);
+    status = mylite_select_eval_set_current_row(
+        stmt, &stmt->select_result.rows[stmt->select_result.next_row],
+        &table_select_eval_callbacks);
     if (status != MYLITE_OK) {
         return status;
     }
@@ -11807,7 +11753,7 @@ static int materialize_table_select_result(mylite_stmt *stmt)
 
 static int materialize_ordered_table_select_result(mylite_stmt *stmt)
 {
-    int status = evaluate_table_select_constant_predicate(stmt);
+    int status = mylite_select_eval_constant_predicate(stmt, &table_select_eval_callbacks);
     int rc = SQLITE_OK;
 
     if (status != MYLITE_OK) {
@@ -11848,7 +11794,7 @@ static int materialize_ordered_table_select_result(mylite_stmt *stmt)
                 continue;
             }
         }
-        status = evaluate_table_select_order_values(stmt, &row);
+        status = mylite_select_eval_order_values(stmt, &row, &table_select_eval_callbacks);
         if (status == MYLITE_OK) {
             status = mylite_select_result_append_row(stmt->database, &stmt->select_result, &row);
         }
@@ -11880,7 +11826,7 @@ static int materialize_unordered_table_select_result(mylite_stmt *stmt)
         return MYLITE_OK;
     }
 
-    status = evaluate_table_select_constant_predicate(stmt);
+    status = mylite_select_eval_constant_predicate(stmt, &table_select_eval_callbacks);
     if (status != MYLITE_OK) {
         return status;
     }
@@ -11995,7 +11941,7 @@ static int materialize_joined_table_select_result(mylite_stmt *stmt)
         return MYLITE_OK;
     }
 
-    status = evaluate_table_select_constant_predicate(stmt);
+    status = mylite_select_eval_constant_predicate(stmt, &table_select_eval_callbacks);
     if (status != MYLITE_OK) {
         return status;
     }
@@ -12067,7 +12013,7 @@ static int materialize_outer_joined_table_select_result(mylite_stmt *stmt)
         return MYLITE_OK;
     }
 
-    status = evaluate_table_select_constant_predicate(stmt);
+    status = mylite_select_eval_constant_predicate(stmt, &table_select_eval_callbacks);
     if (status != MYLITE_OK) {
         return status;
     }
@@ -13265,8 +13211,8 @@ static int evaluate_table_select_join_stage_predicates(mylite_stmt *stmt,
         if (predicate->first_table + predicate->table_count != available_table_count) {
             continue;
         }
-        int status = evaluate_table_select_expression_predicate(stmt, row, predicate->expression,
-                                                                out_matches);
+        int status = mylite_select_eval_expression_predicate(
+            stmt, row, predicate->expression, &table_select_eval_callbacks, out_matches);
 
         if (status != MYLITE_OK || !*out_matches) {
             return status;
@@ -13315,7 +13261,8 @@ process_joined_table_select_full_row(mylite_stmt *stmt,
     if (stmt->select_predicate == NULL || stmt->select_constant_predicate_evaluated) {
         matches = true;
     } else {
-        status = evaluate_table_select_row_predicate(stmt, row, &matches);
+        status =
+            mylite_select_eval_row_predicate(stmt, row, &table_select_eval_callbacks, &matches);
     }
     if (status != MYLITE_OK || !matches) {
         return status;
@@ -13358,7 +13305,7 @@ static int process_joined_table_select_nonaggregate_row(
             return MYLITE_OK;
         }
         if (status == MYLITE_OK && stmt->select_plan.order_key_count != 0U) {
-            status = evaluate_table_select_order_values(stmt, &copy);
+            status = mylite_select_eval_order_values(stmt, &copy, &table_select_eval_callbacks);
         }
         if (status == MYLITE_OK) {
             status = mylite_select_result_append_row(stmt->database, &stmt->select_result, &copy);
@@ -13419,7 +13366,7 @@ static int scan_aggregate_table_select_groups(mylite_stmt *stmt,
                                               struct mylite_table_select_group **groups,
                                               size_t *group_count)
 {
-    int status = evaluate_table_select_constant_predicate(stmt);
+    int status = mylite_select_eval_constant_predicate(stmt, &table_select_eval_callbacks);
     int rc = SQLITE_OK;
 
     *groups = NULL;
@@ -13513,7 +13460,8 @@ static int append_finalized_table_select_group(mylite_stmt *stmt,
     int status = finalize_table_select_group(stmt, group, &row);
 
     if (status == MYLITE_OK) {
-        status = evaluate_table_select_having(stmt, &row, &having_matches);
+        status =
+            mylite_select_eval_having(stmt, &row, &table_select_eval_callbacks, &having_matches);
     }
     if (status == MYLITE_OK && having_matches &&
         mylite_select_duplicate_mode_is_distinct(stmt->select_plan.duplicate_mode)) {
@@ -13524,7 +13472,7 @@ static int append_finalized_table_select_group(mylite_stmt *stmt,
         return MYLITE_OK;
     }
     if (status == MYLITE_OK && having_matches && stmt->select_plan.order_key_count != 0U) {
-        status = evaluate_table_select_order_values(stmt, &row);
+        status = mylite_select_eval_order_values(stmt, &row, &table_select_eval_callbacks);
     }
     if (status == MYLITE_OK && having_matches) {
         status = mylite_select_result_append_row(stmt->database, &stmt->select_result, &row);
@@ -13546,7 +13494,7 @@ static int evaluate_table_select_row_matches(mylite_stmt *stmt,
     if (stmt->select_predicate == NULL || stmt->select_constant_predicate_evaluated) {
         return MYLITE_OK;
     }
-    return evaluate_table_select_row_predicate(stmt, row, out_matches);
+    return mylite_select_eval_row_predicate(stmt, row, &table_select_eval_callbacks, out_matches);
 }
 
 static int evaluate_table_select_join_conditions(mylite_stmt *stmt,
@@ -13594,8 +13542,9 @@ static int evaluate_table_select_join_predicates(mylite_stmt *stmt,
 {
     *out_matches = true;
     for (size_t index = 0U; index < stmt->select_plan.join_predicate_count; ++index) {
-        int status = evaluate_table_select_expression_predicate(
-            stmt, row, stmt->select_plan.join_predicates[index].expression, out_matches);
+        int status = mylite_select_eval_expression_predicate(
+            stmt, row, stmt->select_plan.join_predicates[index].expression,
+            &table_select_eval_callbacks, out_matches);
 
         if (status != MYLITE_OK || !*out_matches) {
             return status;
@@ -13608,7 +13557,8 @@ static int check_table_select_distinct_duplicate(mylite_stmt *stmt,
                                                  struct mylite_table_select_row *row,
                                                  bool *out_duplicate)
 {
-    int status = materialize_table_select_output_values(stmt, row);
+    int status =
+        mylite_select_eval_materialize_output_values(stmt, row, &table_select_eval_callbacks);
 
     *out_duplicate = false;
     if (status != MYLITE_OK) {
@@ -13736,8 +13686,8 @@ static int find_table_select_group(mylite_stmt *stmt, struct mylite_table_select
         return MYLITE_NOMEM;
     }
     for (size_t index = 0U; index < value_count; ++index) {
-        status = evaluate_table_select_group_key(stmt, row, &stmt->select_plan.group_keys[index],
-                                                 &values[index]);
+        status = mylite_select_eval_group_key(stmt, row, &stmt->select_plan.group_keys[index],
+                                              &table_select_eval_callbacks, &values[index]);
         if (status != MYLITE_OK) {
             goto cleanup;
         }
@@ -13798,8 +13748,9 @@ static int initialize_table_select_group(mylite_stmt *stmt, struct mylite_table_
         return MYLITE_NOMEM;
     }
     for (size_t index = 0U; index < group->group_value_count; ++index) {
-        int status = evaluate_table_select_group_key(
-            stmt, row, &stmt->select_plan.group_keys[index], &group->group_values[index]);
+        int status =
+            mylite_select_eval_group_key(stmt, row, &stmt->select_plan.group_keys[index],
+                                         &table_select_eval_callbacks, &group->group_values[index]);
 
         if (status != MYLITE_OK) {
             return status;
@@ -13869,84 +13820,6 @@ static int finalize_table_select_group(mylite_stmt *stmt, struct mylite_table_se
     return MYLITE_OK;
 }
 
-static int evaluate_table_select_group_key(mylite_stmt *stmt,
-                                           const struct mylite_table_select_row *row,
-                                           const struct mylite_select_group_key *group_key,
-                                           struct mylite_expression_value *out_value)
-{
-    if (group_key->kind == MYLITE_SELECT_GROUP_KEY_OUTPUT) {
-        return evaluate_table_select_cached_output_value(stmt, row, group_key->output_index,
-                                                         out_value);
-    }
-
-    struct mylite_table_select_expression_context user_context = {
-        .stmt = stmt,
-        .row = row,
-    };
-    struct mylite_expression_eval_context context = {
-        .user_data = &user_context,
-        .resolve_identifier = resolve_table_select_expression_identifier,
-        .eval_constant = evaluate_table_select_cached_constant_expression,
-        .eval_aggregate = evaluate_table_select_aggregate_call,
-        .eval_subquery = evaluate_table_select_subquery_expression,
-        .eval_in_subquery = evaluate_table_select_in_subquery_expression,
-        .eval_quantified_subquery = evaluate_table_select_quantified_subquery_expression,
-        .eval_row_subquery = evaluate_table_select_row_subquery_expression,
-        .eval_session_function = evaluate_table_select_session_function,
-    };
-    int status = mylite_expression_eval_with_context(group_key->expression, &context,
-                                                     &stmt->database->warnings, out_value);
-
-    if (status != 0) {
-        return map_table_select_expression_eval_status(stmt, status);
-    }
-    return MYLITE_OK;
-}
-
-static int evaluate_table_select_having(mylite_stmt *stmt,
-                                        const struct mylite_table_select_row *row,
-                                        bool *out_matches)
-{
-    struct mylite_expression_value value = {0};
-    int truth = -1;
-    int status = 0;
-
-    *out_matches = true;
-    if (stmt->select_plan.having_expression == NULL) {
-        return MYLITE_OK;
-    }
-
-    struct mylite_table_select_expression_context user_context = {
-        .stmt = stmt,
-        .row = row,
-        .having_resolution = true,
-    };
-    struct mylite_expression_eval_context context = {
-        .user_data = &user_context,
-        .resolve_identifier = resolve_table_select_expression_identifier,
-        .eval_constant = evaluate_table_select_cached_constant_expression,
-        .eval_aggregate = evaluate_table_select_aggregate_call,
-        .eval_subquery = evaluate_table_select_subquery_expression,
-        .eval_in_subquery = evaluate_table_select_in_subquery_expression,
-        .eval_quantified_subquery = evaluate_table_select_quantified_subquery_expression,
-        .eval_row_subquery = evaluate_table_select_row_subquery_expression,
-        .eval_session_function = evaluate_table_select_session_function,
-    };
-
-    status = mylite_expression_eval_with_context(stmt->select_plan.having_expression, &context,
-                                                 &stmt->database->warnings, &value);
-    if (status == 0) {
-        status = mylite_expression_value_truth(&value, &stmt->database->warnings, &truth);
-    }
-    mylite_expression_value_deinit(&value);
-    if (status != 0) {
-        return map_table_select_expression_eval_status(stmt, status);
-    }
-
-    *out_matches = truth == 1;
-    return MYLITE_OK;
-}
-
 static int
 update_table_select_aggregate_state(mylite_stmt *stmt, struct mylite_select_aggregate_state *state,
                                     const struct mylite_select_aggregate_binding *binding,
@@ -13965,7 +13838,8 @@ update_table_select_aggregate_state(mylite_stmt *stmt, struct mylite_select_aggr
         return update_table_select_count_distinct_state(stmt, state, binding, row);
     }
 
-    status = evaluate_table_select_aggregate_argument(stmt, binding, row, &value);
+    status = mylite_select_eval_aggregate_argument(stmt, binding, row, &table_select_eval_callbacks,
+                                                   &value);
     if (status != MYLITE_OK) {
         return status;
     }
@@ -14080,8 +13954,8 @@ static int evaluate_table_select_count_distinct_tuple(
             .argument = argument,
             .argument_kind = MYLITE_SQL_AST_AGGREGATE_ARGUMENT_EXPRESSION,
         };
-        int status = evaluate_table_select_aggregate_argument(stmt, &argument_binding, row,
-                                                              &out_tuple->values[index]);
+        int status = mylite_select_eval_aggregate_argument(
+            stmt, &argument_binding, row, &table_select_eval_callbacks, &out_tuple->values[index]);
 
         if (status != MYLITE_OK) {
             return status;
@@ -14235,34 +14109,6 @@ finalize_table_select_aggregate_state(mylite_stmt *stmt,
     return MYLITE_OK;
 }
 
-static int evaluate_table_select_aggregate_argument(
-    mylite_stmt *stmt, const struct mylite_select_aggregate_binding *binding,
-    const struct mylite_table_select_row *row, struct mylite_expression_value *out_value)
-{
-    struct mylite_table_select_expression_context user_context = {
-        .stmt = stmt,
-        .row = row,
-    };
-    struct mylite_expression_eval_context context = {
-        .user_data = &user_context,
-        .resolve_identifier = resolve_table_select_expression_identifier,
-        .eval_constant = evaluate_table_select_cached_constant_expression,
-        .eval_aggregate = evaluate_table_select_aggregate_call,
-        .eval_subquery = evaluate_table_select_subquery_expression,
-        .eval_in_subquery = evaluate_table_select_in_subquery_expression,
-        .eval_quantified_subquery = evaluate_table_select_quantified_subquery_expression,
-        .eval_row_subquery = evaluate_table_select_row_subquery_expression,
-        .eval_session_function = evaluate_table_select_session_function,
-    };
-    int status = mylite_expression_eval_with_context(binding->argument, &context,
-                                                     &stmt->database->warnings, out_value);
-
-    if (status != 0) {
-        return map_table_select_expression_eval_status(stmt, status);
-    }
-    return MYLITE_OK;
-}
-
 static int append_aggregate_numeric_conversion_warning(struct mylite_expression_warnings *warnings,
                                                        const char *text)
 {
@@ -14353,190 +14199,6 @@ static int aggregate_format_double(double value, struct mylite_expression_value 
     return out_value->text_value == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
 
-static int evaluate_table_select_order_values(mylite_stmt *stmt,
-                                              struct mylite_table_select_row *row)
-{
-    size_t order_key_count = stmt->select_plan.order_key_count;
-
-    row->order_values = calloc(order_key_count, sizeof(*row->order_values));
-    if (row->order_values == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    row->order_value_count = order_key_count;
-
-    for (size_t index = 0U; index < order_key_count; ++index) {
-        int status = evaluate_table_select_order_key(
-            stmt, row, &stmt->select_plan.order_keys[index], &row->order_values[index]);
-
-        if (status != MYLITE_OK) {
-            return status;
-        }
-    }
-    return MYLITE_OK;
-}
-
-static int evaluate_table_select_order_key(mylite_stmt *stmt,
-                                           const struct mylite_table_select_row *row,
-                                           const struct mylite_select_order_key *order_key,
-                                           struct mylite_expression_value *out_value)
-{
-    if (order_key->kind == MYLITE_SELECT_ORDER_KEY_OUTPUT) {
-        return evaluate_table_select_cached_output_value(stmt, row, order_key->output_index,
-                                                         out_value);
-    }
-
-    struct mylite_table_select_expression_context user_context = {
-        .stmt = stmt,
-        .row = row,
-        .order_resolution = true,
-    };
-    struct mylite_expression_eval_context context = {
-        .user_data = &user_context,
-        .resolve_identifier = resolve_table_select_expression_identifier,
-        .eval_constant = evaluate_table_select_cached_constant_expression,
-        .eval_aggregate = evaluate_table_select_aggregate_call,
-        .eval_subquery = evaluate_table_select_subquery_expression,
-        .eval_in_subquery = evaluate_table_select_in_subquery_expression,
-        .eval_quantified_subquery = evaluate_table_select_quantified_subquery_expression,
-        .eval_row_subquery = evaluate_table_select_row_subquery_expression,
-        .eval_session_function = evaluate_table_select_session_function,
-    };
-    int status = mylite_expression_eval_with_context(order_key->expression, &context,
-                                                     &stmt->database->warnings, out_value);
-
-    if (status != 0) {
-        return map_table_select_expression_eval_status(stmt, status);
-    }
-    return MYLITE_OK;
-}
-
-static int materialize_table_select_output_values(mylite_stmt *stmt,
-                                                  struct mylite_table_select_row *row)
-{
-    if (row->output_value_count == stmt->select_plan.output_count) {
-        return MYLITE_OK;
-    }
-
-    row->output_values = calloc(stmt->select_plan.output_count, sizeof(*row->output_values));
-    if (row->output_values == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    row->output_value_count = stmt->select_plan.output_count;
-
-    for (size_t index = 0U; index < stmt->select_plan.output_count; ++index) {
-        int status =
-            evaluate_table_select_output_value(stmt, row, index, &row->output_values[index]);
-
-        if (status != MYLITE_OK) {
-            return status;
-        }
-    }
-    return MYLITE_OK;
-}
-
-static int set_table_select_current_row(mylite_stmt *stmt,
-                                        const struct mylite_table_select_row *row)
-{
-    mylite_select_result_current_values_deinit(&stmt->select_result);
-
-    stmt->select_result.current_values =
-        calloc(stmt->select_plan.output_count, sizeof(*stmt->select_result.current_values));
-    stmt->select_result.current_texts =
-        (char **)calloc(stmt->select_plan.output_count, sizeof(*stmt->select_result.current_texts));
-    if (stmt->select_result.current_values == NULL || stmt->select_result.current_texts == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    stmt->select_result.current_value_count = stmt->select_plan.output_count;
-
-    for (size_t index = 0U; index < stmt->select_plan.output_count; ++index) {
-        int status = evaluate_table_select_cached_output_value(
-            stmt, row, index, &stmt->select_result.current_values[index]);
-
-        if (status != MYLITE_OK) {
-            return status;
-        }
-        if (stmt->select_result.current_values[index].kind != MYLITE_EXPRESSION_VALUE_NULL) {
-            stmt->select_result.current_texts[index] =
-                mylite_expression_value_to_text(&stmt->select_result.current_values[index]);
-            if (stmt->select_result.current_texts[index] == NULL) {
-                (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-                return MYLITE_NOMEM;
-            }
-        }
-    }
-    stmt->select_result.has_current_row = true;
-    return MYLITE_OK;
-}
-
-static int evaluate_table_select_cached_output_value(mylite_stmt *stmt,
-                                                     const struct mylite_table_select_row *row,
-                                                     size_t output_index,
-                                                     struct mylite_expression_value *out_value)
-{
-    if (row != NULL && row->output_value_count == stmt->select_plan.output_count &&
-        output_index < row->output_value_count) {
-        if (mylite_expression_value_copy(&row->output_values[output_index], out_value) != 0) {
-            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-            return MYLITE_NOMEM;
-        }
-        return MYLITE_OK;
-    }
-    return evaluate_table_select_output_value(stmt, row, output_index, out_value);
-}
-
-static int evaluate_table_select_output_value(mylite_stmt *stmt,
-                                              const struct mylite_table_select_row *row,
-                                              size_t output_index,
-                                              struct mylite_expression_value *out_value)
-{
-    const struct mylite_select_output_column *output = &stmt->select_plan.outputs[output_index];
-
-    if (output->kind == MYLITE_SELECT_OUTPUT_COLUMN) {
-        if (copy_table_select_row_value(row, output->column_index, out_value) != 0) {
-            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-            return MYLITE_NOMEM;
-        }
-        return MYLITE_OK;
-    }
-
-    struct mylite_table_select_expression_context user_context = {
-        .stmt = stmt,
-        .row = row,
-        .order_resolution = false,
-    };
-    struct mylite_expression_eval_context context = {
-        .user_data = &user_context,
-        .resolve_identifier = resolve_table_select_expression_identifier,
-        .eval_constant = evaluate_table_select_cached_constant_expression,
-        .eval_aggregate = evaluate_table_select_aggregate_call,
-        .eval_subquery = evaluate_table_select_subquery_expression,
-        .eval_in_subquery = evaluate_table_select_in_subquery_expression,
-        .eval_quantified_subquery = evaluate_table_select_quantified_subquery_expression,
-        .eval_row_subquery = evaluate_table_select_row_subquery_expression,
-        .eval_session_function = evaluate_table_select_session_function,
-    };
-    int status = mylite_expression_eval_with_context(output->expression, &context,
-                                                     &stmt->database->warnings, out_value);
-
-    if (status != 0) {
-        return map_table_select_expression_eval_status(stmt, status);
-    }
-    return MYLITE_OK;
-}
-
-static int copy_table_select_row_value(const struct mylite_table_select_row *row,
-                                       size_t column_index,
-                                       struct mylite_expression_value *out_value)
-{
-    if (row == NULL || column_index >= row->value_count) {
-        return -1;
-    }
-    return mylite_expression_value_copy(&row->values[column_index], out_value);
-}
-
 static void
 table_select_join_condition_cache_deinit(struct mylite_table_select_join_condition_cache *cache)
 {
@@ -14548,265 +14210,6 @@ table_select_join_condition_cache_deinit(struct mylite_table_select_join_conditi
     }
     free(cache->entries);
     *cache = (struct mylite_table_select_join_condition_cache){0};
-}
-
-static int evaluate_table_select_constant_predicate(mylite_stmt *stmt)
-{
-    struct mylite_expression_value value = {0};
-    int truth = -1;
-    int status = 0;
-
-    if (stmt->select_constant_predicate_evaluated ||
-        !mylite_expression_is_cacheable_no_table(stmt->select_predicate)) {
-        return MYLITE_OK;
-    }
-
-    status = mylite_expression_eval(stmt->select_predicate, &stmt->database->warnings, &value);
-    if (status == 0) {
-        status = mylite_expression_value_truth(&value, &stmt->database->warnings, &truth);
-    }
-    if (status != 0) {
-        mylite_expression_value_deinit(&value);
-        return set_where_predicate_eval_error(stmt);
-    }
-
-    stmt->select_constant_predicate_evaluated = true;
-    stmt->select_constant_predicate_matches = truth == 1;
-    mylite_expression_value_deinit(&value);
-    return MYLITE_OK;
-}
-
-static int evaluate_table_select_expression_predicate(mylite_stmt *stmt,
-                                                      const struct mylite_table_select_row *row,
-                                                      const struct mylite_sql_ast_node *predicate,
-                                                      bool *out_matches)
-{
-    struct mylite_table_select_expression_context user_context = {
-        .stmt = stmt,
-        .row = row,
-    };
-    struct mylite_expression_eval_context context = {
-        .user_data = &user_context,
-        .resolve_identifier = resolve_table_select_expression_identifier,
-        .eval_constant = evaluate_table_select_cached_constant_expression,
-        .eval_aggregate = evaluate_table_select_aggregate_call,
-        .eval_subquery = evaluate_table_select_subquery_expression,
-        .eval_in_subquery = evaluate_table_select_in_subquery_expression,
-        .eval_quantified_subquery = evaluate_table_select_quantified_subquery_expression,
-        .eval_row_subquery = evaluate_table_select_row_subquery_expression,
-        .eval_session_function = evaluate_table_select_session_function,
-    };
-    struct mylite_expression_value value = {0};
-    int truth = 0;
-    int status =
-        mylite_expression_eval_with_context(predicate, &context, &stmt->database->warnings, &value);
-
-    *out_matches = false;
-    if (status == 0) {
-        status = mylite_expression_value_truth(&value, &stmt->database->warnings, &truth);
-    }
-    mylite_expression_value_deinit(&value);
-    if (status != 0) {
-        return map_table_select_expression_eval_status(stmt, status);
-    }
-
-    *out_matches = truth == 1;
-    return MYLITE_OK;
-}
-
-static int evaluate_table_select_row_predicate(mylite_stmt *stmt,
-                                               const struct mylite_table_select_row *row,
-                                               bool *out_matches)
-{
-    return evaluate_table_select_expression_predicate(stmt, row, stmt->select_predicate,
-                                                      out_matches);
-}
-
-static int evaluate_table_select_cached_constant_expression(
-    void *user_data, const struct mylite_sql_ast_node *expression,
-    struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value)
-{
-    struct mylite_table_select_expression_context *context = user_data;
-    mylite_stmt *stmt = context == NULL ? NULL : context->stmt;
-    struct mylite_cached_expression_value *entry = NULL;
-
-    if (stmt == NULL || expression == NULL) {
-        return -1;
-    }
-
-    for (size_t index = 0U; index < stmt->select_constant_value_count; ++index) {
-        if (stmt->select_constant_values[index].expression == expression) {
-            entry = &stmt->select_constant_values[index];
-            break;
-        }
-    }
-    if (entry == NULL) {
-        struct mylite_cached_expression_value *values =
-            realloc(stmt->select_constant_values, (stmt->select_constant_value_count + 1U) *
-                                                      sizeof(*stmt->select_constant_values));
-
-        if (values == NULL) {
-            return -1;
-        }
-        stmt->select_constant_values = values;
-        entry = &stmt->select_constant_values[stmt->select_constant_value_count++];
-        *entry = (struct mylite_cached_expression_value){.expression = expression};
-    }
-
-    if (!entry->evaluated) {
-        entry->status = mylite_expression_eval(expression, warnings, &entry->value);
-        entry->evaluated = true;
-    }
-    if (entry->status != 0) {
-        return entry->status;
-    }
-    return mylite_expression_value_copy(&entry->value, out_value);
-}
-
-static int evaluate_table_select_session_function(
-    void *user_data, const struct mylite_sql_ast_node *function_call,
-    const struct mylite_expression_eval_context *expression_context,
-    struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value)
-{
-    struct mylite_table_select_expression_context *context = user_data;
-
-    return evaluate_statement_session_function(context == NULL ? NULL : context->stmt,
-                                               function_call, expression_context, warnings, NULL,
-                                               out_value);
-}
-
-static int evaluate_table_select_aggregate_call(void *user_data,
-                                                const struct mylite_sql_ast_node *aggregate,
-                                                struct mylite_expression_value *out_value)
-{
-    struct mylite_table_select_expression_context *context = user_data;
-
-    if (context == NULL || context->stmt == NULL || context->row == NULL || aggregate == NULL) {
-        return -1;
-    }
-
-    for (size_t index = 0U; index < context->stmt->select_plan.aggregate_binding_count; ++index) {
-        if (context->stmt->select_plan.aggregate_bindings[index].call == aggregate) {
-            if (index >= context->row->aggregate_value_count) {
-                return -1;
-            }
-            return mylite_expression_value_copy(&context->row->aggregate_values[index], out_value);
-        }
-    }
-    return -1;
-}
-
-static int evaluate_table_select_subquery_expression(void *user_data,
-                                                     const struct mylite_sql_ast_node *subquery,
-                                                     struct mylite_expression_warnings *warnings,
-                                                     struct mylite_expression_value *out_value)
-{
-    struct mylite_table_select_expression_context *context = user_data;
-
-    if (context == NULL) {
-        return MYLITE_UNSUPPORTED;
-    }
-    return evaluate_select_subquery_expression(context->stmt, subquery, warnings, out_value);
-}
-
-static int evaluate_table_select_in_subquery_expression(
-    void *user_data, const struct mylite_sql_ast_node *expression,
-    const struct mylite_expression_value *left, struct mylite_expression_warnings *warnings,
-    struct mylite_expression_value *out_value)
-{
-    struct mylite_table_select_expression_context *context = user_data;
-
-    if (context == NULL) {
-        return MYLITE_UNSUPPORTED;
-    }
-    return evaluate_in_subquery_expression(context->stmt, expression, left, warnings, out_value);
-}
-
-static int evaluate_table_select_quantified_subquery_expression(
-    void *user_data, const struct mylite_sql_ast_node *expression,
-    const struct mylite_expression_value *left, struct mylite_expression_warnings *warnings,
-    struct mylite_expression_value *out_value)
-{
-    struct mylite_table_select_expression_context *context = user_data;
-
-    if (context == NULL) {
-        return MYLITE_UNSUPPORTED;
-    }
-    return evaluate_quantified_subquery_expression(context->stmt, expression, left, warnings,
-                                                   out_value);
-}
-
-static int evaluate_table_select_row_subquery_expression(
-    void *user_data, const struct mylite_sql_ast_node *expression,
-    const struct mylite_expression_eval_context *expression_context,
-    struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value)
-{
-    struct mylite_table_select_expression_context *context = user_data;
-
-    if (context == NULL) {
-        return MYLITE_UNSUPPORTED;
-    }
-    return evaluate_row_subquery_expression(context->stmt, expression, expression_context, warnings,
-                                            out_value);
-}
-
-static int resolve_table_select_expression_identifier(void *user_data,
-                                                      const struct mylite_sql_ast_node *identifier,
-                                                      struct mylite_expression_value *out_value)
-{
-    struct mylite_table_select_expression_context *context = user_data;
-    size_t column_index = 0U;
-    int status = MYLITE_OK;
-
-    if (context == NULL || context->stmt == NULL) {
-        return -1;
-    }
-
-    if (context->having_resolution) {
-        enum mylite_select_order_key_kind kind = MYLITE_SELECT_ORDER_KEY_EXPRESSION;
-        size_t index = 0U;
-
-        status = resolve_select_having_reference_internal(
-            context->stmt->database, &context->stmt->select_plan, identifier, &kind, &index, false);
-        if (status != MYLITE_OK) {
-            return -1;
-        }
-        if (kind == MYLITE_SELECT_ORDER_KEY_OUTPUT) {
-            return evaluate_table_select_cached_output_value(context->stmt, context->row, index,
-                                                             out_value) == MYLITE_OK
-                       ? 0
-                       : -1;
-        }
-    }
-
-    if (context->order_resolution) {
-        enum mylite_select_order_key_kind kind = MYLITE_SELECT_ORDER_KEY_EXPRESSION;
-        size_t index = 0U;
-
-        status = resolve_select_order_reference(
-            context->stmt->database, &context->stmt->select_plan, identifier, &kind, &index);
-        if (status != MYLITE_OK) {
-            return -1;
-        }
-        if (kind == MYLITE_SELECT_ORDER_KEY_OUTPUT) {
-            return evaluate_table_select_cached_output_value(context->stmt, context->row, index,
-                                                             out_value) == MYLITE_OK
-                       ? 0
-                       : -1;
-        }
-    }
-
-    status = mylite_select_resolve_plan_column_reference(context->stmt->database,
-                                                         &context->stmt->select_plan, identifier,
-                                                         "field list", &column_index);
-    if (status != MYLITE_OK ||
-        column_index == mylite_select_plan_column_count(&context->stmt->select_plan)) {
-        return -1;
-    }
-    if (context->row != NULL) {
-        return copy_table_select_row_value(context->row, column_index, out_value);
-    }
-    return copy_table_select_column_value(context->stmt, column_index, out_value);
 }
 
 static int copy_table_select_column_value(mylite_stmt *stmt, size_t column_index,
@@ -14830,26 +14233,6 @@ static int copy_table_select_column_value(mylite_stmt *stmt, size_t column_index
             column == NULL ? NULL : &column->descriptor);
     }
     return status;
-}
-
-static int map_table_select_expression_eval_status(mylite_stmt *stmt, int status)
-{
-    if (status == 0) {
-        return MYLITE_OK;
-    }
-    if (status == MYLITE_NOMEM) {
-        if (stmt != NULL && stmt->database != NULL && stmt->database->error_message == NULL) {
-            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        }
-        return MYLITE_NOMEM;
-    }
-    if (stmt != NULL && stmt->database != NULL && stmt->database->error_message != NULL) {
-        return status > 0 ? status : MYLITE_EXEC_ERROR;
-    }
-    if (stmt == NULL || stmt->database == NULL) {
-        return MYLITE_EXEC_ERROR;
-    }
-    return set_where_predicate_eval_error(stmt);
 }
 
 static int set_where_predicate_eval_error(mylite_stmt *stmt)

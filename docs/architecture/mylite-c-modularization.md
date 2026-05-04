@@ -382,6 +382,8 @@ only the core object model and transitional shared helpers listed here:
 - [ ] Move insert row execution into `mylite_dml`.
 - [x] Move insert unique-conflict checks into `mylite_dml`.
 - [x] Move `ON DUPLICATE KEY UPDATE` row writeback helpers into `mylite_dml`.
+- [x] Move `ON DUPLICATE KEY UPDATE` `VALUES()` deprecation warnings into
+  `mylite_dml`.
 - [ ] Move insert auto-increment reservation/update logic into `mylite_dml`
   while keeping rollback hooks in transactions.
 - [ ] Move `INSERT ... ON DUPLICATE KEY UPDATE` execution into `mylite_dml`.

@@ -73,6 +73,8 @@ int mylite_dml_write_insert_update_candidate(mylite_db *database,
 bool mylite_dml_insert_update_row_changed(const struct mylite_insert_bound_value *stored,
                                           const struct mylite_insert_bound_value *candidate,
                                           size_t value_count);
+int mylite_dml_append_insert_update_deprecated_warnings(
+    mylite_db *database, const struct mylite_insert_duplicate_update_plan *plan);
 int mylite_dml_advance_insert_row_auto_increment(const struct mylite_insert_table *table,
                                                  const struct mylite_insert_bound_value *values,
                                                  struct mylite_insert_execution_state *state);

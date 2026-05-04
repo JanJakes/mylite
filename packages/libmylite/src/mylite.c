@@ -2219,8 +2219,6 @@ static bool insert_row_alias_matches(const struct mylite_insert_values_plan *pla
 static int set_insert_update_unknown_column_error(mylite_db *database, const char *column_name);
 static int set_insert_update_ambiguous_column_error(mylite_db *database, const char *column_name);
 static int set_insert_alias_column_count_error(mylite_db *database);
-static int append_insert_values_deprecated_warnings(mylite_stmt *stmt);
-static int append_insert_values_deprecated_warning(mylite_db *database);
 static int validate_insert_set_assignments(mylite_stmt *stmt,
                                            const struct mylite_insert_table *table,
                                            const char *schema_name, size_t **out_column_indexes,
@@ -24413,7 +24411,8 @@ static int execute_insert_values_transaction(mylite_stmt *stmt, const char *sche
         mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
         return status;
     }
-    status = append_insert_values_deprecated_warnings(stmt);
+    status =
+        mylite_dml_append_insert_update_deprecated_warnings(stmt->database, &stmt->insert_update);
     if (status != MYLITE_OK) {
         mylite_dml_insert_execution_state_deinit(&state);
         mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
@@ -25090,37 +25089,6 @@ static int set_insert_alias_column_count_error(mylite_db *database)
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
-static int append_insert_values_deprecated_warnings(mylite_stmt *stmt)
-{
-    size_t warning_count = 0U;
-
-    if (!stmt->insert_update.has_clause) {
-        return MYLITE_OK;
-    }
-    for (size_t index = 0U; index < stmt->insert_update.assignment_count; ++index) {
-        warning_count += stmt->insert_update.assignments[index].value.values_function_count;
-    }
-    for (size_t index = 0U; index < warning_count; ++index) {
-        int status = append_insert_values_deprecated_warning(stmt->database);
-
-        if (status != MYLITE_OK) {
-            return status;
-        }
-    }
-    return MYLITE_OK;
-}
-
-static int append_insert_values_deprecated_warning(mylite_db *database)
-{
-    static const char message[] =
-        "'VALUES function' is deprecated and will be removed in a future release. Please use an "
-        "alias (INSERT INTO ... VALUES (...) AS alias) and replace VALUES(col) in the ON "
-        "DUPLICATE KEY UPDATE clause with alias.col instead";
-
-    return mylite_diagnostics_append_warning(database, MYLITE_MYSQL_ER_WARN_DEPRECATED_SYNTAX,
-                                             message);
-}
-
 static int validate_insert_set_assignments(mylite_stmt *stmt,
                                            const struct mylite_insert_table *table,
                                            const char *schema_name, size_t **out_column_indexes,
@@ -25212,7 +25180,8 @@ static int execute_insert_set_transaction(mylite_stmt *stmt, const char *schema_
         mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
         return status;
     }
-    status = append_insert_values_deprecated_warnings(stmt);
+    status =
+        mylite_dml_append_insert_update_deprecated_warnings(stmt->database, &stmt->insert_update);
     if (status != MYLITE_OK) {
         mylite_dml_insert_execution_state_deinit(&state);
         mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);

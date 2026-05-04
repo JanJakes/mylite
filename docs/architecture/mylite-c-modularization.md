@@ -379,7 +379,7 @@ only the core object model and transitional shared helpers listed here:
 - [x] Move insert bound-value conversion into `mylite_dml`.
 - [x] Move shared insert row-write helpers into `mylite_dml`.
 - [ ] Move insert row execution into `mylite_dml`.
-- [ ] Move insert unique-conflict checks into `mylite_dml`.
+- [x] Move insert unique-conflict checks into `mylite_dml`.
 - [ ] Move insert auto-increment reservation/update logic into `mylite_dml`
   while keeping rollback hooks in transactions.
 - [ ] Move `INSERT ... ON DUPLICATE KEY UPDATE` execution into `mylite_dml`.

@@ -7,6 +7,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+static int
+apply_insert_update_assignments(mylite_db *database, const char *selected_schema,
+                                const struct mylite_insert_values_plan *values_plan,
+                                const struct mylite_insert_duplicate_update_plan *update_plan,
+                                const struct mylite_insert_table *table,
+                                const struct mylite_insert_row_column_indexes *column_indexes,
+                                const struct mylite_insert_bound_value *candidate_values,
+                                struct mylite_insert_bound_value *updated_values);
 static int evaluate_insert_update_assignment_value(
     mylite_db *database, const char *selected_schema,
     const struct mylite_insert_values_plan *values_plan, const struct mylite_insert_table *table,
@@ -92,14 +100,14 @@ static int set_insert_null_error(mylite_db *database, const char *column_name);
 static int set_insert_unsupported_expression_error(mylite_db *database);
 static int append_insert_values_deprecated_warning(mylite_db *database);
 
-int mylite_dml_apply_insert_update_assignments(
-    mylite_db *database, const char *selected_schema,
-    const struct mylite_insert_values_plan *values_plan,
-    const struct mylite_insert_duplicate_update_plan *update_plan,
-    const struct mylite_insert_table *table,
-    const struct mylite_insert_row_column_indexes *column_indexes,
-    const struct mylite_insert_bound_value *candidate_values,
-    struct mylite_insert_bound_value *updated_values)
+static int
+apply_insert_update_assignments(mylite_db *database, const char *selected_schema,
+                                const struct mylite_insert_values_plan *values_plan,
+                                const struct mylite_insert_duplicate_update_plan *update_plan,
+                                const struct mylite_insert_table *table,
+                                const struct mylite_insert_row_column_indexes *column_indexes,
+                                const struct mylite_insert_bound_value *candidate_values,
+                                struct mylite_insert_bound_value *updated_values)
 {
     if (database == NULL || values_plan == NULL || update_plan == NULL || table == NULL ||
         column_indexes == NULL || column_indexes->update_columns == NULL ||
@@ -124,6 +132,71 @@ int mylite_dml_apply_insert_update_assignments(
         updated_values[column_index] = value;
     }
     return MYLITE_OK;
+}
+
+int mylite_dml_execute_insert_update_row(
+    mylite_db *database, const char *selected_schema,
+    const struct mylite_insert_values_plan *values_plan,
+    const struct mylite_insert_duplicate_update_plan *update_plan, sqlite3_stmt *insert,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_row_column_indexes *column_indexes,
+    struct mylite_insert_execution_state *state, const struct mylite_insert_bound_value *values)
+{
+    struct mylite_insert_unique_conflict conflict = {0};
+    struct mylite_insert_bound_value *stored_values = NULL;
+    struct mylite_insert_bound_value *updated_values = NULL;
+    bool update_conflicts = false;
+    int status = MYLITE_OK;
+
+    if (database == NULL || values_plan == NULL || update_plan == NULL || insert == NULL ||
+        table == NULL || column_indexes == NULL || column_indexes->update_columns == NULL ||
+        state == NULL || values == NULL ||
+        (values_plan->schema_name == NULL && selected_schema == NULL)) {
+        return MYLITE_MISUSE;
+    }
+
+    status = mylite_dml_find_insert_unique_conflict(database, table, values, &conflict);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (!conflict.conflicts) {
+        return mylite_dml_write_insert_candidate_row(database, insert, table, values, state);
+    }
+
+    ++state->duplicate_count;
+    stored_values = calloc(table->column_count, sizeof(*stored_values));
+    if (stored_values == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    status = mylite_dml_load_insert_conflict_row(database, table, conflict.rowid, stored_values);
+    if (status == MYLITE_OK) {
+        status = mylite_dml_copy_insert_bound_values(database, stored_values, table->column_count,
+                                                     &updated_values);
+    }
+    if (status == MYLITE_OK) {
+        status =
+            apply_insert_update_assignments(database, selected_schema, values_plan, update_plan,
+                                            table, column_indexes, values, updated_values);
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_dml_validate_insert_update_unique_indexes(
+            database, values_plan->table_name, values_plan->ignore, table, updated_values,
+            conflict.rowid, &update_conflicts);
+    }
+    if (status == MYLITE_OK && !update_conflicts &&
+        mylite_dml_insert_update_row_changed(stored_values, updated_values, table->column_count)) {
+        status = mylite_dml_write_insert_update_candidate(database, table, conflict.rowid,
+                                                          updated_values, state);
+        if (status == MYLITE_OK) {
+            state->accepted_row_count += 2U;
+        }
+    }
+
+    mylite_dml_insert_bound_values_deinit(stored_values, table->column_count);
+    mylite_dml_insert_bound_values_deinit(updated_values, table->column_count);
+    return status;
 }
 
 int mylite_dml_validate_insert_update_assignments(

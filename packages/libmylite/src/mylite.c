@@ -2134,12 +2134,6 @@ static int execute_insert_row_with_duplicate_update(
     mylite_stmt *stmt, sqlite3_stmt *insert, const struct mylite_insert_table *table,
     const struct mylite_insert_row_column_indexes *column_indexes,
     struct mylite_insert_execution_state *state, const struct mylite_insert_bound_value *values);
-static int execute_insert_duplicate_update_branch(
-    mylite_stmt *stmt, const struct mylite_insert_table *table,
-    const struct mylite_insert_row_column_indexes *column_indexes,
-    struct mylite_insert_execution_state *state,
-    const struct mylite_insert_bound_value *candidate_values,
-    const struct mylite_insert_unique_conflict *conflict);
 static int set_insert_alias_column_count_error(mylite_db *database);
 static int validate_insert_set_assignments(mylite_stmt *stmt,
                                            const struct mylite_insert_table *table,
@@ -24348,71 +24342,9 @@ static int execute_insert_row_with_duplicate_update(
     const struct mylite_insert_row_column_indexes *column_indexes,
     struct mylite_insert_execution_state *state, const struct mylite_insert_bound_value *values)
 {
-    struct mylite_insert_unique_conflict conflict = {0};
-    int status = mylite_dml_find_insert_unique_conflict(stmt->database, table, values, &conflict);
-
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    if (!conflict.conflicts) {
-        return mylite_dml_write_insert_candidate_row(stmt->database, insert, table, values, state);
-    }
-
-    ++state->duplicate_count;
-    return execute_insert_duplicate_update_branch(stmt, table, column_indexes, state, values,
-                                                  &conflict);
-}
-
-static int execute_insert_duplicate_update_branch(
-    mylite_stmt *stmt, const struct mylite_insert_table *table,
-    const struct mylite_insert_row_column_indexes *column_indexes,
-    struct mylite_insert_execution_state *state,
-    const struct mylite_insert_bound_value *candidate_values,
-    const struct mylite_insert_unique_conflict *conflict)
-{
-    struct mylite_insert_bound_value *stored_values = NULL;
-    struct mylite_insert_bound_value *updated_values = NULL;
-    bool update_conflicts = false;
-    int status = MYLITE_OK;
-
-    if (column_indexes == NULL || column_indexes->update_columns == NULL) {
-        return MYLITE_UNSUPPORTED;
-    }
-
-    stored_values = calloc(table->column_count, sizeof(*stored_values));
-    if (stored_values == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    status =
-        mylite_dml_load_insert_conflict_row(stmt->database, table, conflict->rowid, stored_values);
-    if (status == MYLITE_OK) {
-        status = mylite_dml_copy_insert_bound_values(stmt->database, stored_values,
-                                                     table->column_count, &updated_values);
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_dml_apply_insert_update_assignments(
-            stmt->database, stmt->database->selected_schema, &stmt->insert_values,
-            &stmt->insert_update, table, column_indexes, candidate_values, updated_values);
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_dml_validate_insert_update_unique_indexes(
-            stmt->database, stmt->insert_values.table_name, stmt->insert_values.ignore, table,
-            updated_values, conflict->rowid, &update_conflicts);
-    }
-    if (status == MYLITE_OK && !update_conflicts &&
-        mylite_dml_insert_update_row_changed(stored_values, updated_values, table->column_count)) {
-        status = mylite_dml_write_insert_update_candidate(stmt->database, table, conflict->rowid,
-                                                          updated_values, state);
-        if (status == MYLITE_OK) {
-            state->accepted_row_count += 2U;
-        }
-    }
-
-    mylite_dml_insert_bound_values_deinit(stored_values, table->column_count);
-    mylite_dml_insert_bound_values_deinit(updated_values, table->column_count);
-    return status;
+    return mylite_dml_execute_insert_update_row(stmt->database, stmt->database->selected_schema,
+                                                &stmt->insert_values, &stmt->insert_update, insert,
+                                                table, column_indexes, state, values);
 }
 
 static int set_insert_alias_column_count_error(mylite_db *database)

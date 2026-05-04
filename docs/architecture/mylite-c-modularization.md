@@ -386,6 +386,8 @@ only the core object model and transitional shared helpers listed here:
   `mylite_dml`.
 - [x] Move `ON DUPLICATE KEY UPDATE` assignment validation into `mylite_dml`.
 - [x] Move `ON DUPLICATE KEY UPDATE` assignment evaluation into `mylite_dml`.
+- [x] Move `ON DUPLICATE KEY UPDATE` conflict/update row branch into
+  `mylite_dml`.
 - [x] Move insert auto-increment persistence behind a stmt-free transaction
   helper while keeping rollback hooks in transactions.
 - [ ] Move `INSERT ... ON DUPLICATE KEY UPDATE` execution into `mylite_dml`.

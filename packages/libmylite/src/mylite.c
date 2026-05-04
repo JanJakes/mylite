@@ -378,14 +378,6 @@ static int prepare_show_diagnostics_count_statement(mylite_db *database,
                                                     mylite_stmt **out_stmt);
 static bool show_diagnostics_query_from_statement(const struct mylite_sql_ast_node *statement,
                                                   struct mylite_show_diagnostics_query *out_query);
-static char *show_diagnostics_sql(mylite_db *database,
-                                  const struct mylite_show_diagnostics_query *query);
-static char *show_diagnostics_count_sql(mylite_db *database,
-                                        enum mylite_sql_ast_show_diagnostics_kind kind);
-static bool diagnostic_condition_matches(const struct mylite_expression_warning *condition,
-                                         enum mylite_sql_ast_show_diagnostics_kind kind);
-static const char *
-diagnostic_condition_level_name(const struct mylite_expression_warning *condition);
 static int copy_show_create_table_target(mylite_db *database,
                                          const struct mylite_sql_ast_node *statement,
                                          struct mylite_show_create_table_target *out_target);
@@ -4414,7 +4406,7 @@ static int prepare_show_diagnostics_statement(mylite_db *database,
         return MYLITE_UNSUPPORTED;
     }
 
-    sqlite_sql = show_diagnostics_sql(database, &query);
+    sqlite_sql = mylite_show_diagnostics_sql(database, &query);
     if (sqlite_sql == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
@@ -4432,7 +4424,8 @@ static int prepare_show_diagnostics_count_statement(mylite_db *database,
                                                     const struct mylite_sql_ast_node *statement,
                                                     mylite_stmt **out_stmt)
 {
-    char *sqlite_sql = show_diagnostics_count_sql(database, statement->show_diagnostics_kind);
+    char *sqlite_sql =
+        mylite_show_diagnostics_count_sql(database, statement->show_diagnostics_kind);
     int status = MYLITE_OK;
 
     if (sqlite_sql == NULL) {
@@ -4471,92 +4464,6 @@ static bool show_diagnostics_query_from_statement(const struct mylite_sql_ast_no
     out_query->row_count = mylite_ast_child_at(limit, 1U)->limit_bound_value;
     out_query->has_limit = true;
     return true;
-}
-
-static char *show_diagnostics_sql(mylite_db *database,
-                                  const struct mylite_show_diagnostics_query *query)
-{
-    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
-    uint64_t matched = 0U;
-    uint64_t emitted = 0U;
-    bool first = true;
-
-    if (sql == NULL) {
-        return NULL;
-    }
-
-    for (size_t index = 0U; index < database->warnings.count; ++index) {
-        const struct mylite_expression_warning *condition = &database->warnings.items[index];
-
-        if (!diagnostic_condition_matches(condition, query->kind)) {
-            continue;
-        }
-        if (query->has_limit && matched++ < query->offset) {
-            continue;
-        }
-        if (query->has_limit && emitted >= query->row_count) {
-            break;
-        }
-        if (!first) {
-            sqlite3_str_appendall(sql, " UNION ALL ");
-        }
-        sqlite3_str_appendf(sql, "SELECT %Q AS \"Level\", %u AS \"Code\", %Q AS \"Message\"",
-                            diagnostic_condition_level_name(condition), condition->code,
-                            condition->message == NULL ? "" : condition->message);
-        first = false;
-        ++emitted;
-    }
-
-    if (first) {
-        sqlite3_str_appendall(sql, "SELECT CAST(NULL AS TEXT) AS \"Level\", "
-                                   "CAST(NULL AS INTEGER) AS \"Code\", "
-                                   "CAST(NULL AS TEXT) AS \"Message\" WHERE 0");
-    }
-    return sqlite3_str_finish(sql);
-}
-
-static char *show_diagnostics_count_sql(mylite_db *database,
-                                        enum mylite_sql_ast_show_diagnostics_kind kind)
-{
-    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
-    uint64_t count = 0U;
-    const char *column_name = kind == MYLITE_SQL_AST_SHOW_DIAGNOSTICS_ERRORS
-                                  ? "@@session.error_count"
-                                  : "@@session.warning_count";
-
-    if (sql == NULL) {
-        return NULL;
-    }
-
-    for (size_t index = 0U; index < database->warnings.count; ++index) {
-        if (diagnostic_condition_matches(&database->warnings.items[index], kind)) {
-            ++count;
-        }
-    }
-
-    sqlite3_str_appendf(sql, "SELECT %llu AS \"%w\"", (unsigned long long)count, column_name);
-    return sqlite3_str_finish(sql);
-}
-
-static bool diagnostic_condition_matches(const struct mylite_expression_warning *condition,
-                                         enum mylite_sql_ast_show_diagnostics_kind kind)
-{
-    if (kind == MYLITE_SQL_AST_SHOW_DIAGNOSTICS_WARNINGS) {
-        return true;
-    }
-    return condition->level == MYLITE_EXPRESSION_WARNING_LEVEL_ERROR;
-}
-
-static const char *
-diagnostic_condition_level_name(const struct mylite_expression_warning *condition)
-{
-    if (condition->level == MYLITE_EXPRESSION_WARNING_LEVEL_ERROR) {
-        return "Error";
-    }
-    if (condition->level == MYLITE_EXPRESSION_WARNING_LEVEL_NOTE) {
-        return "Note";
-    }
-    return "Warning";
 }
 
 static int prepare_show_variables_statement(mylite_db *database,

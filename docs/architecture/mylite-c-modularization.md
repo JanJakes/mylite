@@ -327,7 +327,7 @@ only the core object model and transitional shared helpers listed here:
 - [ ] Move `SHOW INDEX` prepare code into `mylite_show`.
 - [ ] Move `SHOW CREATE TABLE` prepare/build code into `mylite_show`.
 - [ ] Move `SHOW CREATE DATABASE` prepare/build code into `mylite_show`.
-- [ ] Move `SHOW WARNINGS`, `SHOW ERRORS`, and diagnostic count display into
+- [x] Move `SHOW WARNINGS`, `SHOW ERRORS`, and diagnostic count display into
   `mylite_show` or diagnostics.
 - [ ] Create `src/runtime/mylite_information_schema.{h,c}` and wire it into
   CMake.

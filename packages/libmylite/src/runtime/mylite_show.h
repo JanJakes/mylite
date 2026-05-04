@@ -3,9 +3,12 @@
 
 #include <mylite/mylite.h>
 
+#include "sql/mylite_ast.h"
+
 struct mylite_show_character_set_query;
 struct mylite_show_columns_query;
 struct mylite_show_collation_query;
+struct mylite_show_diagnostics_query;
 struct mylite_show_index_query;
 struct mylite_show_status_query;
 struct mylite_show_table_status_query;
@@ -26,6 +29,10 @@ int mylite_show_information_schema_collations_sql(mylite_db *database, char **ou
 int mylite_show_information_schema_collation_character_set_applicability_sql(mylite_db *database,
                                                                              char **out_sql);
 int mylite_show_information_schema_keywords_sql(mylite_db *database, char **out_sql);
+char *mylite_show_diagnostics_sql(mylite_db *database,
+                                  const struct mylite_show_diagnostics_query *query);
+char *mylite_show_diagnostics_count_sql(mylite_db *database,
+                                        enum mylite_sql_ast_show_diagnostics_kind kind);
 int mylite_show_status_sql(mylite_db *database, const struct mylite_show_status_query *query,
                            char **out_sql);
 char *mylite_show_tables_sql(mylite_db *database, const struct mylite_show_tables_query *query);

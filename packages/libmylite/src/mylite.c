@@ -6,6 +6,7 @@
 #include "mylite_parser.h"
 #include "mylite_sqlite_translator.h"
 #include "mylite_vfs.h"
+#include "runtime/mylite_diagnostics.h"
 #include "runtime/mylite_runtime.h"
 #include "sql/mylite_lexer.h"
 #include "sqlite3.h"
@@ -3886,23 +3887,6 @@ static const struct mylite_sql_ast_node *single_statement(const struct mylite_sq
 static bool statement_preserves_diagnostics(const struct mylite_sql_ast_node *statement);
 static int map_parse_status(mylite_db *database, enum mylite_sql_parse_status status);
 static int map_translate_status(mylite_db *database, enum mylite_sqlite_translate_status status);
-static int set_sqlite_error(mylite_db *database);
-static void clear_warnings(mylite_db *database);
-static int set_error_message(mylite_db *database, const char *message);
-static int set_error_message_parts(mylite_db *database, const char *prefix, const char *value,
-                                   const char *suffix);
-static int append_database_warning(mylite_db *database, unsigned int code, const char *message);
-static int append_database_note(mylite_db *database, unsigned int code, const char *message);
-static int append_database_error(mylite_db *database, unsigned int code, const char *message);
-static int ensure_current_error_condition(mylite_db *database, unsigned int fallback_code);
-static bool database_has_error_condition(const mylite_db *database);
-static bool promote_current_error_message_condition(mylite_db *database);
-static unsigned int current_error_condition_code(mylite_db *database, unsigned int fallback_code);
-static int append_database_condition(mylite_db *database,
-                                     enum mylite_expression_warning_level level, unsigned int code,
-                                     const char *message);
-static int append_current_error_condition(mylite_db *database, unsigned int code);
-static void clear_error_message(mylite_db *database);
 static sqlite3_destructor_type sqlite_transient_destructor(void);
 
 const char *mylite_status_name(int status)
@@ -3977,15 +3961,6 @@ void mylite_close(mylite_db *database)
     free(database);
 }
 
-const char *mylite_error_message(const mylite_db *database)
-{
-    if (database == NULL || database->error_message == NULL) {
-        return "";
-    }
-
-    return database->error_message;
-}
-
 int mylite_prepare(mylite_db *database, const char *sql, size_t length, mylite_stmt **out_stmt)
 {
     struct mylite_sql_parse_result parse_result;
@@ -4002,7 +3977,7 @@ int mylite_prepare(mylite_db *database, const char *sql, size_t length, mylite_s
         return MYLITE_MISUSE;
     }
 
-    clear_error_message(database);
+    mylite_diagnostics_clear_error_message(database);
     if (database->transaction_released) {
         return set_connection_released_error(database);
     }
@@ -4014,10 +3989,11 @@ int mylite_prepare(mylite_db *database, const char *sql, size_t length, mylite_s
         },
         &parse_result);
     if (parse_status != MYLITE_SQL_PARSE_OK) {
-        clear_warnings(database);
+        mylite_diagnostics_clear_warnings(database);
         status = map_parse_status(database, parse_status);
         if (status != MYLITE_NOMEM) {
-            (void)append_current_error_condition(database, MYLITE_MYSQL_ER_PARSE_ERROR);
+            (void)mylite_diagnostics_append_current_error_condition(database,
+                                                                    MYLITE_MYSQL_ER_PARSE_ERROR);
         }
         mylite_sql_parse_result_deinit(&parse_result);
         return status;
@@ -4025,12 +4001,13 @@ int mylite_prepare(mylite_db *database, const char *sql, size_t length, mylite_s
 
     statement = single_statement(parse_result.root);
     if (!statement_preserves_diagnostics(statement)) {
-        clear_warnings(database);
+        mylite_diagnostics_clear_warnings(database);
     }
 
     status = prepare_parsed_statement(database, parse_result.root, sql, length, out_stmt);
     if (status != MYLITE_OK && status != MYLITE_NOMEM) {
-        (void)ensure_current_error_condition(database, MYLITE_MYSQL_ER_UNKNOWN_ERROR);
+        (void)mylite_diagnostics_ensure_current_error_condition(database,
+                                                                MYLITE_MYSQL_ER_UNKNOWN_ERROR);
     }
     mylite_sql_parse_result_deinit(&parse_result);
     return status;
@@ -4086,12 +4063,12 @@ int mylite_step(mylite_stmt *stmt)
         return MYLITE_MISUSE;
     }
 
-    clear_error_message(stmt->database);
+    mylite_diagnostics_clear_error_message(stmt->database);
     if (stmt->database->transaction_released) {
         return set_connection_released_error(stmt->database);
     }
     if (!stmt->executed && !stmt->preserve_prepare_warnings) {
-        clear_warnings(stmt->database);
+        mylite_diagnostics_clear_warnings(stmt->database);
     }
     if (stmt->kind != MYLITE_STMT_SQLITE) {
         int status = execute_custom_statement(stmt);
@@ -4101,7 +4078,8 @@ int mylite_step(mylite_stmt *stmt)
         }
         if (status != MYLITE_ROW && status != MYLITE_DONE && status != MYLITE_OK &&
             status != MYLITE_NOMEM) {
-            (void)ensure_current_error_condition(stmt->database, MYLITE_MYSQL_ER_UNKNOWN_ERROR);
+            (void)mylite_diagnostics_ensure_current_error_condition(stmt->database,
+                                                                    MYLITE_MYSQL_ER_UNKNOWN_ERROR);
         }
         return status;
     }
@@ -4117,9 +4095,10 @@ int mylite_step(mylite_stmt *stmt)
         return MYLITE_DONE;
     }
 
-    rc = set_sqlite_error(stmt->database);
+    rc = mylite_diagnostics_set_sqlite_error(stmt->database);
     if (rc != MYLITE_NOMEM) {
-        (void)ensure_current_error_condition(stmt->database, MYLITE_MYSQL_ER_UNKNOWN_ERROR);
+        (void)mylite_diagnostics_ensure_current_error_condition(stmt->database,
+                                                                MYLITE_MYSQL_ER_UNKNOWN_ERROR);
     }
     return rc;
 }
@@ -4140,27 +4119,6 @@ uint64_t mylite_last_insert_id(const mylite_db *database)
     }
 
     return database->last_insert_id;
-}
-
-int mylite_warning_count(const mylite_db *database)
-{
-    return database == NULL ? 0 : (int)database->warnings.count;
-}
-
-unsigned int mylite_warning_code(const mylite_db *database, int warning)
-{
-    if (database == NULL || warning < 0 || (size_t)warning >= database->warnings.count) {
-        return 0U;
-    }
-    return database->warnings.items[warning].code;
-}
-
-const char *mylite_warning_message(const mylite_db *database, int warning)
-{
-    if (database == NULL || warning < 0 || (size_t)warning >= database->warnings.count) {
-        return NULL;
-    }
-    return database->warnings.items[warning].message;
 }
 
 int mylite_column_count(const mylite_stmt *stmt)
@@ -4409,22 +4367,22 @@ static int initialize_schema_catalog(mylite_db *database)
     int rc = sqlite3_exec(database->sqlite, schema_catalog_sql, NULL, NULL, NULL);
 
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
 
     rc = sqlite3_exec(database->sqlite, table_catalog_sql, NULL, NULL, NULL);
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
 
     rc = sqlite3_exec(database->sqlite, column_catalog_sql, NULL, NULL, NULL);
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
 
     rc = sqlite3_exec(database->sqlite, index_catalog_sql, NULL, NULL, NULL);
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
 
     rc = seed_system_schema(database, "information_schema", "utf8mb3", "utf8mb3_general_ci");
@@ -4458,7 +4416,7 @@ static int seed_system_schema(mylite_db *database, const char *name, const char 
     int rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
 
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
 
     sqlite3_bind_text(stmt, 1, name, -1, SQLITE_STATIC);
@@ -4467,7 +4425,7 @@ static int seed_system_schema(mylite_db *database, const char *name, const char 
     rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
     return MYLITE_OK;
 }
@@ -5077,7 +5035,7 @@ static int prepare_update_statement(mylite_db *database,
     int status = MYLITE_OK;
 
     if (stmt == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -5093,7 +5051,7 @@ static int prepare_update_statement(mylite_db *database,
     }
     if (status != MYLITE_OK) {
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
         }
         mylite_finalize(stmt);
         return status;
@@ -5111,7 +5069,7 @@ static int prepare_delete_statement(mylite_db *database,
     int status = MYLITE_OK;
 
     if (stmt == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -5127,7 +5085,7 @@ static int prepare_delete_statement(mylite_db *database,
     }
     if (status != MYLITE_OK) {
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
         }
         mylite_finalize(stmt);
         return status;
@@ -5319,7 +5277,7 @@ static int prepare_show_diagnostics_statement(mylite_db *database,
 
     sqlite_sql = show_diagnostics_sql(database, &query);
     if (sqlite_sql == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -5339,7 +5297,7 @@ static int prepare_show_diagnostics_count_statement(mylite_db *database,
     int status = MYLITE_OK;
 
     if (sqlite_sql == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -5471,7 +5429,8 @@ static int prepare_show_variables_statement(mylite_db *database,
     int status = MYLITE_OK;
 
     if (find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
-        (void)set_error_message(database, "SHOW VARIABLES WHERE is not supported");
+        (void)mylite_diagnostics_set_error_message(database,
+                                                   "SHOW VARIABLES WHERE is not supported");
         return MYLITE_UNSUPPORTED;
     }
 
@@ -5492,7 +5451,7 @@ static int prepare_show_variables_statement(mylite_db *database,
     }
 
     if (status == MYLITE_NOMEM) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
     }
     free(like_pattern);
     sqlite3_free(sqlite_sql);
@@ -5611,7 +5570,7 @@ static int prepare_show_status_statement(mylite_db *database,
     int status = MYLITE_OK;
 
     if (find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
-        (void)set_error_message(database, "SHOW STATUS WHERE is not supported");
+        (void)mylite_diagnostics_set_error_message(database, "SHOW STATUS WHERE is not supported");
         return MYLITE_UNSUPPORTED;
     }
 
@@ -5632,7 +5591,7 @@ static int prepare_show_status_statement(mylite_db *database,
     }
 
     if (status == MYLITE_NOMEM) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
     }
     free(like_pattern);
     sqlite3_free(sqlite_sql);
@@ -5762,7 +5721,7 @@ static int prepare_show_engines_statement(mylite_db *database, mylite_stmt **out
     } else {
         mylite_finalize(stmt);
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
         }
     }
     sqlite3_free(sqlite_sql);
@@ -5851,7 +5810,7 @@ static int attach_show_engines_result_metadata(mylite_db *database, mylite_stmt 
 
     metadata.columns = calloc(sizeof(columns) / sizeof(columns[0]), sizeof(*metadata.columns));
     if (metadata.columns == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     metadata.column_count = sizeof(columns) / sizeof(columns[0]);
@@ -5896,7 +5855,8 @@ static int prepare_show_character_set_statement(mylite_db *database,
     int status = MYLITE_OK;
 
     if (find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
-        (void)set_error_message(database, "SHOW CHARACTER SET WHERE is not supported");
+        (void)mylite_diagnostics_set_error_message(database,
+                                                   "SHOW CHARACTER SET WHERE is not supported");
         return MYLITE_UNSUPPORTED;
     }
 
@@ -5916,7 +5876,7 @@ static int prepare_show_character_set_statement(mylite_db *database,
     }
 
     if (status == MYLITE_NOMEM) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
     }
     free(like_pattern);
     sqlite3_free(sqlite_sql);
@@ -6018,7 +5978,8 @@ static int prepare_show_collation_statement(mylite_db *database,
     int status = MYLITE_OK;
 
     if (find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
-        (void)set_error_message(database, "SHOW COLLATION WHERE is not supported");
+        (void)mylite_diagnostics_set_error_message(database,
+                                                   "SHOW COLLATION WHERE is not supported");
         return MYLITE_UNSUPPORTED;
     }
 
@@ -6038,7 +5999,7 @@ static int prepare_show_collation_statement(mylite_db *database,
     }
 
     if (status == MYLITE_NOMEM) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
     }
     free(like_pattern);
     sqlite3_free(sqlite_sql);
@@ -6225,7 +6186,7 @@ static int prepare_show_tables_statement(mylite_db *database,
         status = validate_show_tables_schema(database, schema_name);
     }
     if (status == MYLITE_OK && find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
-        (void)set_error_message(database, "SHOW TABLES WHERE is not supported");
+        (void)mylite_diagnostics_set_error_message(database, "SHOW TABLES WHERE is not supported");
         status = MYLITE_UNSUPPORTED;
     }
     if (status == MYLITE_OK) {
@@ -6269,7 +6230,7 @@ static int prepare_show_tables_statement(mylite_db *database,
     }
 
     if (status == MYLITE_NOMEM) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
     }
     free(schema_name);
     free(like_pattern);
@@ -6296,7 +6257,7 @@ static int copy_show_tables_schema_name(mylite_db *database,
         return normalize_show_tables_schema_name(out_schema_name);
     }
     if (database->selected_schema == NULL || database->selected_schema[0] == '\0') {
-        (void)set_error_message(database, "No database selected");
+        (void)mylite_diagnostics_set_error_message(database, "No database selected");
         return MYLITE_EXEC_ERROR;
     }
 
@@ -6336,7 +6297,8 @@ static int validate_show_tables_schema(mylite_db *database, const char *schema_n
         return status;
     }
     if (!presence.exists) {
-        (void)set_error_message_parts(database, "Unknown database '", schema_name, "'");
+        (void)mylite_diagnostics_set_error_message_parts(database, "Unknown database '",
+                                                         schema_name, "'");
         return MYLITE_EXEC_ERROR;
     }
     return MYLITE_OK;
@@ -6463,7 +6425,8 @@ static int prepare_show_table_status_statement(mylite_db *database,
         status = validate_show_tables_schema(database, schema_name);
     }
     if (status == MYLITE_OK && find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
-        (void)set_error_message(database, "SHOW TABLE STATUS WHERE is not supported");
+        (void)mylite_diagnostics_set_error_message(database,
+                                                   "SHOW TABLE STATUS WHERE is not supported");
         status = MYLITE_UNSUPPORTED;
     }
     if (status == MYLITE_OK) {
@@ -6499,7 +6462,7 @@ static int prepare_show_table_status_statement(mylite_db *database,
     }
 
     if (status == MYLITE_NOMEM) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
     }
     free(schema_name);
     free(like_pattern);
@@ -6573,7 +6536,7 @@ static int prepare_show_columns_statement(mylite_db *database,
             database, &target, "SHOW COLUMNS for information_schema tables is not supported");
     }
     if (status == MYLITE_OK && find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
-        (void)set_error_message(database, "SHOW COLUMNS WHERE is not supported");
+        (void)mylite_diagnostics_set_error_message(database, "SHOW COLUMNS WHERE is not supported");
         status = MYLITE_UNSUPPORTED;
     }
     if (status == MYLITE_OK) {
@@ -6598,7 +6561,7 @@ static int prepare_show_columns_statement(mylite_db *database,
     }
 
     if (status == MYLITE_NOMEM) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
     }
     show_columns_target_deinit(&target);
     free(like_pattern);
@@ -6627,9 +6590,9 @@ static int copy_show_columns_target(mylite_db *database,
         out_target);
     if (status != MYLITE_OK) {
         if (status == MYLITE_UNSUPPORTED) {
-            (void)set_error_message(database,
-                                    "SHOW COLUMNS table names with more than two parts are not "
-                                    "supported");
+            (void)mylite_diagnostics_set_error_message(
+                database, "SHOW COLUMNS table names with more than two parts are not "
+                          "supported");
         }
         return status;
     }
@@ -6690,7 +6653,7 @@ static int copy_show_columns_selected_schema(mylite_db *database,
                                              struct mylite_show_columns_target *target)
 {
     if (database->selected_schema == NULL || database->selected_schema[0] == '\0') {
-        (void)set_error_message(database, "No database selected");
+        (void)mylite_diagnostics_set_error_message(database, "No database selected");
         return MYLITE_EXEC_ERROR;
     }
 
@@ -6733,7 +6696,8 @@ static int validate_show_columns_target(mylite_db *database,
         return status;
     }
     if (!presence.exists) {
-        (void)set_error_message_parts(database, "Unknown database '", target->schema_name, "'");
+        (void)mylite_diagnostics_set_error_message_parts(database, "Unknown database '",
+                                                         target->schema_name, "'");
         return MYLITE_EXEC_ERROR;
     }
     if (ascii_case_equal(target->schema_name, "information_schema")) {
@@ -6741,7 +6705,8 @@ static int validate_show_columns_target(mylite_db *database,
             MYLITE_INFORMATION_SCHEMA_NONE) {
             return set_unknown_information_schema_table_error(database, target->table_name);
         }
-        (void)set_error_message(database, information_schema_unsupported_message);
+        (void)mylite_diagnostics_set_error_message(database,
+                                                   information_schema_unsupported_message);
         return MYLITE_UNSUPPORTED;
     }
 
@@ -6762,7 +6727,7 @@ static int set_unknown_information_schema_table_error(mylite_db *database, const
     int status = MYLITE_OK;
 
     if (display_name == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     uppercase_ascii_text(display_name);
@@ -6770,13 +6735,13 @@ static int set_unknown_information_schema_table_error(mylite_db *database, const
     message = sqlite3_mprintf("Unknown table '%q' in information_schema", display_name);
     free(display_name);
     if (message == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
-    status = set_error_message(database, message);
+    status = mylite_diagnostics_set_error_message(database, message);
     if (status == MYLITE_OK) {
-        status = append_database_error(database, MYLITE_MYSQL_ER_NO_SUCH_TABLE, message);
+        status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_NO_SUCH_TABLE, message);
     }
     sqlite3_free(message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
@@ -6866,7 +6831,7 @@ static int prepare_describe_table_statement(mylite_db *database,
     }
 
     if (status == MYLITE_NOMEM) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
     }
     show_columns_target_deinit(&target);
     free(column_pattern);
@@ -6889,9 +6854,9 @@ static int copy_describe_table_target(mylite_db *database,
         out_target);
     if (status != MYLITE_OK) {
         if (status == MYLITE_UNSUPPORTED) {
-            (void)set_error_message(database,
-                                    "DESCRIBE table names with more than two parts are not "
-                                    "supported");
+            (void)mylite_diagnostics_set_error_message(
+                database, "DESCRIBE table names with more than two parts are not "
+                          "supported");
         }
         return status;
     }
@@ -6926,7 +6891,7 @@ static int prepare_show_index_statement(mylite_db *database,
         status = validate_show_index_target(database, &target);
     }
     if (status == MYLITE_OK && find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
-        (void)set_error_message(database, "SHOW INDEX WHERE is not supported");
+        (void)mylite_diagnostics_set_error_message(database, "SHOW INDEX WHERE is not supported");
         status = MYLITE_UNSUPPORTED;
     }
     if (status == MYLITE_OK) {
@@ -6943,7 +6908,7 @@ static int prepare_show_index_statement(mylite_db *database,
     }
 
     if (status == MYLITE_NOMEM) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
     }
     show_index_target_deinit(&target);
     sqlite3_free(sqlite_sql);
@@ -6970,9 +6935,9 @@ static int copy_show_index_target(mylite_db *database, const struct mylite_sql_a
         out_target);
     if (status != MYLITE_OK) {
         if (status == MYLITE_UNSUPPORTED) {
-            (void)set_error_message(database,
-                                    "SHOW INDEX table names with more than two parts are not "
-                                    "supported");
+            (void)mylite_diagnostics_set_error_message(
+                database, "SHOW INDEX table names with more than two parts are not "
+                          "supported");
         }
         return status;
     }
@@ -7033,7 +6998,7 @@ static int copy_show_index_selected_schema(mylite_db *database,
                                            struct mylite_show_index_target *target)
 {
     if (database->selected_schema == NULL || database->selected_schema[0] == '\0') {
-        (void)set_error_message(database, "No database selected");
+        (void)mylite_diagnostics_set_error_message(database, "No database selected");
         return MYLITE_EXEC_ERROR;
     }
 
@@ -7075,7 +7040,8 @@ static int validate_show_index_target(mylite_db *database,
         return status;
     }
     if (!presence.exists) {
-        (void)set_error_message_parts(database, "Unknown database '", target->schema_name, "'");
+        (void)mylite_diagnostics_set_error_message_parts(database, "Unknown database '",
+                                                         target->schema_name, "'");
         return MYLITE_EXEC_ERROR;
     }
     if (ascii_case_equal(target->schema_name, "information_schema")) {
@@ -7149,7 +7115,7 @@ static int prepare_show_create_table_statement(mylite_db *database,
     }
 
     if (status == MYLITE_NOMEM) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
     }
     show_create_table_target_deinit(&target);
     sqlite3_free(sqlite_sql);
@@ -7172,7 +7138,7 @@ static int copy_show_create_table_target(mylite_db *database,
         &target);
     if (status != MYLITE_OK) {
         if (status == MYLITE_UNSUPPORTED) {
-            (void)set_error_message(
+            (void)mylite_diagnostics_set_error_message(
                 database, "SHOW CREATE TABLE names with more than two parts are not supported");
         }
         return status;
@@ -7265,7 +7231,7 @@ static int read_show_create_table_info(mylite_db *database,
 
     *out_info = (struct mylite_show_create_table_info){0};
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
     sqlite3_bind_text(select, 1, target->schema_name, -1, sqlite_transient_destructor());
     sqlite3_bind_text(select, 2, target->table_name, -1, sqlite_transient_destructor());
@@ -7297,7 +7263,7 @@ static int read_show_create_table_info(mylite_db *database,
     if (rc == SQLITE_DONE) {
         return set_table_doesnt_exist_error(database, target->schema_name, target->table_name);
     }
-    return set_sqlite_error(database);
+    return mylite_diagnostics_set_sqlite_error(database);
 }
 
 static int append_show_create_table_columns(mylite_db *database, sqlite3_str *create_sql,
@@ -7315,7 +7281,7 @@ static int append_show_create_table_columns(mylite_db *database, sqlite3_str *cr
         sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select, NULL);
 
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
     sqlite3_bind_text(select, 1, target->schema_name, -1, sqlite_transient_destructor());
     sqlite3_bind_text(select, 2, target->table_name, -1, sqlite_transient_destructor());
@@ -7329,7 +7295,7 @@ static int append_show_create_table_columns(mylite_db *database, sqlite3_str *cr
     }
 
     sqlite3_finalize(select);
-    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(database);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
 static int append_show_create_table_column(sqlite3_str *create_sql, sqlite3_stmt *select,
@@ -7416,7 +7382,7 @@ static int append_show_create_table_indexes(mylite_db *database, sqlite3_str *cr
         sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select, NULL);
 
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
     sqlite3_bind_text(select, 1, target->schema_name, -1, sqlite_transient_destructor());
     sqlite3_bind_text(select, 2, target->table_name, -1, sqlite_transient_destructor());
@@ -7439,7 +7405,7 @@ static int append_show_create_table_indexes(mylite_db *database, sqlite3_str *cr
     }
 
     sqlite3_finalize(select);
-    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(database);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
 static int append_show_create_table_index(sqlite3_str *create_sql, sqlite3_stmt *select)
@@ -7486,7 +7452,7 @@ static int append_show_create_table_key_parts(mylite_db *database, sqlite3_str *
     int rc = sqlite3_prepare_v3(sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &parts, NULL);
 
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
     sqlite3_bind_text(parts, 1, schema_name, -1, sqlite_transient_destructor());
     sqlite3_bind_text(parts, 2, table_name, -1, sqlite_transient_destructor());
@@ -7515,7 +7481,7 @@ static int append_show_create_table_key_parts(mylite_db *database, sqlite3_str *
     }
     sqlite3_finalize(parts);
     if (rc != SQLITE_DONE) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
 
     sqlite3_str_appendall(create_sql, ")");
@@ -7666,7 +7632,7 @@ static int prepare_show_create_schema_statement(mylite_db *database,
     }
 
     if (status == MYLITE_NOMEM) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
     }
     sqlite3_free(sqlite_sql);
     return status;
@@ -7730,7 +7696,7 @@ static int read_show_create_schema_info(mylite_db *database, const char *schema_
 
     *out_info = (struct mylite_show_create_schema_info){0};
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
 
     sqlite3_bind_text(select, 1, schema_name, -1, sqlite_transient_destructor());
@@ -7761,9 +7727,10 @@ static int read_show_create_schema_info(mylite_db *database, const char *schema_
 
     sqlite3_finalize(select);
     if (rc != SQLITE_DONE) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
-    (void)set_error_message_parts(database, "Unknown database '", schema_name, "'");
+    (void)mylite_diagnostics_set_error_message_parts(database, "Unknown database '", schema_name,
+                                                     "'");
     return MYLITE_EXEC_ERROR;
 }
 
@@ -7938,7 +7905,7 @@ static int prepare_information_schema_select_statement(mylite_db *database,
         }
         sqlite3_free(sqlite_sql);
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
         }
         return status;
     }
@@ -8083,7 +8050,7 @@ static int prepare_table_select_sqlite_statement(mylite_db *database,
     int status = MYLITE_OK;
 
     if (sqlite_sql == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -8199,7 +8166,7 @@ static int prepare_union_query_expression_statement(mylite_db *database,
 
     stmt = calloc(1U, sizeof(*stmt));
     if (stmt == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     *stmt = (mylite_stmt){
@@ -8226,7 +8193,7 @@ static int prepare_union_query_expression_statement(mylite_db *database,
     }
     if (status != MYLITE_OK) {
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
         }
         mylite_finalize(stmt);
         return status;
@@ -8278,7 +8245,7 @@ static int bind_union_query_clauses(mylite_db *database,
     if (status == MYLITE_OK && stmt->select_plan.order_key_count != 0U) {
         stmt->select_sql_text = copy_span_text(sql, sql_length);
         if (stmt->select_sql_text == NULL) {
-            (void)set_error_message(database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
             return MYLITE_NOMEM;
         }
     }
@@ -8348,7 +8315,7 @@ static int append_union_query_operand(mylite_db *database, struct mylite_union_p
     operands = (mylite_stmt **)realloc((void *)plan->operands,
                                        (plan->operand_count + 1U) * sizeof(*plan->operands));
     if (operands == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     plan->operands = operands;
@@ -8359,7 +8326,7 @@ static int append_union_query_operand(mylite_db *database, struct mylite_union_p
                 (void *)plan->operators, plan->operand_count * sizeof(*plan->operators));
 
         if (operators == NULL) {
-            (void)set_error_message(database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
             return MYLITE_NOMEM;
         }
         plan->operators = operators;
@@ -8411,7 +8378,7 @@ static int attach_union_result_metadata(mylite_stmt *stmt)
 
     metadata.columns = calloc((size_t)column_count, sizeof(*metadata.columns));
     if (metadata.columns == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     metadata.column_count = (size_t)column_count;
@@ -8466,7 +8433,7 @@ static int add_union_output_column(mylite_db *database, struct mylite_select_pla
 
     output.label = label == NULL ? NULL : copy_span_text(label, strlen(label));
     if (label != NULL && output.label == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -8475,7 +8442,7 @@ static int add_union_output_column(mylite_db *database, struct mylite_select_pla
 
         if (status != MYLITE_OK) {
             select_output_column_deinit(&output);
-            (void)set_error_message(database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
         }
         return status;
     }
@@ -8675,7 +8642,7 @@ static int bind_union_global_order_item(mylite_db *database,
             int status = MYLITE_OK;
 
             if (reference == NULL) {
-                (void)set_error_message(database, "out of memory");
+                (void)mylite_diagnostics_set_error_message(database, "out of memory");
                 return MYLITE_NOMEM;
             }
             status = set_select_unknown_order_column_error(database, reference);
@@ -8828,7 +8795,7 @@ static int resolve_union_order_reference(mylite_db *database, const struct mylit
     *out_index = 0U;
     if (status != MYLITE_OK) {
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
         }
         return status;
     }
@@ -8875,7 +8842,7 @@ static int attach_select_result_metadata(mylite_stmt *stmt, const struct mylite_
 
     metadata.columns = calloc(plan->output_count, sizeof(*metadata.columns));
     if (metadata.columns == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     metadata.column_count = plan->output_count;
@@ -13833,7 +13800,7 @@ static int copy_result_metadata_text(mylite_db *database, char **out_text, const
 
     *out_text = copy_span_text(text, strlen(text));
     if (*out_text == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     return MYLITE_OK;
@@ -13976,7 +13943,7 @@ static int add_select_from_range(mylite_db *database, struct mylite_select_plan 
         realloc(plan->from_ranges, (plan->from_range_count + 1U) * sizeof(*plan->from_ranges));
 
     if (ranges == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     plan->from_ranges = ranges;
@@ -14026,7 +13993,7 @@ static int add_select_join_stack_entry(mylite_db *database,
     }
     new_entries = realloc(*entries, (*entry_count + 1U) * sizeof(**entries));
     if (new_entries == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     *entries = new_entries;
@@ -14099,7 +14066,7 @@ static int add_select_join_step(mylite_db *database, struct mylite_select_plan *
         realloc(plan->join_steps, (plan->join_step_count + 1U) * sizeof(*plan->join_steps));
 
     if (steps == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     plan->join_steps = steps;
@@ -14149,7 +14116,7 @@ static int add_select_plan_table(mylite_db *database, struct mylite_select_plan 
         realloc(plan->tables, (plan->table_count + 1U) * sizeof(*plan->tables));
 
     if (tables == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     plan->tables = tables;
@@ -14171,7 +14138,7 @@ static int add_select_join_predicate(mylite_db *database, struct mylite_select_p
     predicates = realloc(plan->join_predicates,
                          (plan->join_predicate_count + 1U) * sizeof(*plan->join_predicates));
     if (predicates == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     plan->join_predicates = predicates;
@@ -14222,7 +14189,7 @@ static int add_select_using_request(mylite_db *database, struct mylite_select_pl
             free(request.names[index]);
         }
         free((void *)request.names);
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     plan->using_requests = requests;
@@ -14238,7 +14205,7 @@ static int add_select_using_request_name(mylite_db *database,
     char **names = NULL;
 
     if (name == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     if (select_using_column_name_seen(request, name)) {
@@ -14250,7 +14217,7 @@ static int add_select_using_request_name(mylite_db *database,
                              (request->name_count + 1U) * sizeof(*request->names));
     if (names == NULL) {
         free(name);
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     request->names = names;
@@ -14281,12 +14248,12 @@ static int resolve_select_table_target(mylite_db *database, struct mylite_select
 
     if (table->schema_name == NULL) {
         if (database->selected_schema == NULL || database->selected_schema[0] == '\0') {
-            (void)set_error_message(database, "No database selected");
+            (void)mylite_diagnostics_set_error_message(database, "No database selected");
             return MYLITE_EXEC_ERROR;
         }
         table->schema_name = copy_nonempty_cstring(database->selected_schema);
         if (table->schema_name == NULL) {
-            (void)set_error_message(database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
             return MYLITE_NOMEM;
         }
     }
@@ -14299,7 +14266,8 @@ static int resolve_select_table_target(mylite_db *database, struct mylite_select
         return status;
     }
     if (!presence.exists) {
-        (void)set_error_message_parts(database, "Unknown database '", table->schema_name, "'");
+        (void)mylite_diagnostics_set_error_message_parts(database, "Unknown database '",
+                                                         table->schema_name, "'");
         return MYLITE_EXEC_ERROR;
     }
     if (presence.is_system) {
@@ -14316,7 +14284,7 @@ static int resolve_select_table_target(mylite_db *database, struct mylite_select
 
     table->physical_name = physical_table_name(table->schema_name, table->table_name);
     if (table->physical_name == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     return MYLITE_OK;
@@ -14337,12 +14305,12 @@ static int validate_select_table_aliases(mylite_db *database, const struct mylit
                 right_table->alias == NULL ? right_table->table_name : right_table->alias;
 
             if (strcmp(left_name, right_name) == 0) {
-                int status =
-                    set_error_message_parts(database, "Not unique table/alias: '", left_name, "'");
+                int status = mylite_diagnostics_set_error_message_parts(
+                    database, "Not unique table/alias: '", left_name, "'");
 
                 if (status == MYLITE_OK) {
-                    status = append_database_error(database, MYLITE_MYSQL_ER_NONUNIQ_TABLE,
-                                                   mylite_error_message(database));
+                    status = mylite_diagnostics_append_error(
+                        database, MYLITE_MYSQL_ER_NONUNIQ_TABLE, mylite_error_message(database));
                 }
                 return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
             }
@@ -14399,7 +14367,7 @@ static int load_select_columns(mylite_db *database, struct mylite_select_table *
         sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select, NULL);
 
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
 
     sqlite3_bind_text(select, 1, table->schema_name, -1, sqlite_transient_destructor());
@@ -14410,14 +14378,14 @@ static int load_select_columns(mylite_db *database, struct mylite_select_table *
         if (status != MYLITE_OK) {
             sqlite3_finalize(select);
             if (status == MYLITE_NOMEM) {
-                (void)set_error_message(database, "out of memory");
+                (void)mylite_diagnostics_set_error_message(database, "out of memory");
             }
             return status;
         }
     }
     sqlite3_finalize(select);
     if (rc != SQLITE_DONE) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
     if (table->column_count == 0U) {
         return set_table_doesnt_exist_error(database, table->schema_name, table->table_name);
@@ -14547,11 +14515,12 @@ static int resolve_select_using_request_column(mylite_db *database,
 
 static int set_select_unknown_from_column_error(mylite_db *database, const char *name)
 {
-    int status = set_error_message_parts(database, "Unknown column '", name, "' in 'from clause'");
+    int status = mylite_diagnostics_set_error_message_parts(database, "Unknown column '", name,
+                                                            "' in 'from clause'");
 
     if (status == MYLITE_OK) {
-        status = append_database_error(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
-                                       mylite_error_message(database));
+        status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
+                                                 mylite_error_message(database));
     }
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
@@ -14565,14 +14534,14 @@ static int add_select_using_column(mylite_db *database, struct mylite_select_pla
     char *name_copy = copy_span_text(name, strlen(name));
 
     if (name_copy == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     columns = realloc(plan->using_columns,
                       (plan->using_column_count + 1U) * sizeof(*plan->using_columns));
     if (columns == NULL) {
         free(name_copy);
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     plan->using_columns = columns;
@@ -14647,7 +14616,7 @@ static int prepare_table_select_custom_statement(mylite_db *database,
     if (select_plan_table_count(plan) <= 1U) {
         scan_sql = build_select_scan_sql(database, plan);
         if (scan_sql == NULL) {
-            (void)set_error_message(database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
             return MYLITE_NOMEM;
         }
 
@@ -14655,14 +14624,14 @@ static int prepare_table_select_custom_statement(mylite_db *database,
                                 &sqlite_stmt, NULL);
         sqlite3_free(scan_sql);
         if (rc != SQLITE_OK) {
-            return set_sqlite_error(database);
+            return mylite_diagnostics_set_sqlite_error(database);
         }
     }
 
     stmt = calloc(1U, sizeof(*stmt));
     if (stmt == NULL) {
         sqlite3_finalize(sqlite_stmt);
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     *stmt = (mylite_stmt){
@@ -15851,7 +15820,7 @@ static int infer_count_distinct_argument_descriptors(
 
     binding->argument_descriptors = calloc(argument_count, sizeof(*binding->argument_descriptors));
     if (binding->argument_descriptors == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     binding->argument_descriptor_count = argument_count;
@@ -15922,7 +15891,7 @@ static int bind_select_group_item(mylite_db *database, const struct mylite_sql_a
             int status = MYLITE_OK;
 
             if (reference == NULL) {
-                (void)set_error_message(database, "out of memory");
+                (void)mylite_diagnostics_set_error_message(database, "out of memory");
                 return MYLITE_NOMEM;
             }
             status = set_select_unknown_group_column_error(database, reference);
@@ -16092,7 +16061,7 @@ static int bind_select_order_item(mylite_db *database, const struct mylite_sql_a
             int status = MYLITE_OK;
 
             if (reference == NULL) {
-                (void)set_error_message(database, "out of memory");
+                (void)mylite_diagnostics_set_error_message(database, "out of memory");
                 return MYLITE_NOMEM;
             }
             status = set_select_unknown_order_column_error(database, reference);
@@ -16535,7 +16504,7 @@ static int push_select_distinct_order_expression_child(
 
     frames = realloc(stack->frames, next_count * sizeof(*stack->frames));
     if (frames == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     stack->frames = frames;
@@ -16565,7 +16534,7 @@ static int push_select_distinct_order_expression_children(
 
     children = calloc(child_count, sizeof(*children));
     if (children == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     child = expression->first_child;
@@ -16652,7 +16621,7 @@ static int validate_select_distinct_order_identifier_column_first(
     *out_resolved = false;
     if (status != MYLITE_OK) {
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
         }
         return status;
     }
@@ -16804,7 +16773,7 @@ static int validate_select_grouping_clause_expression(
     expression_text =
         expression == NULL ? NULL : copy_span_text(expression->span.text, expression->span.length);
     if (expression != NULL && expression_text == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -17278,7 +17247,7 @@ static int append_select_wildcard_outputs(mylite_db *database,
         char *qualifier = copy_select_wildcard_qualifier_name(wildcard);
 
         if (qualifier == NULL) {
-            (void)set_error_message(database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
             return MYLITE_NOMEM;
         }
         status = set_select_unknown_table_error(database, qualifier);
@@ -17544,7 +17513,7 @@ static int append_select_column_to_sequence(mylite_db *database,
         realloc(sequence->column_indexes, (sequence->column_count + 1U) * sizeof(*columns));
 
     if (columns == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     sequence->column_indexes = columns;
@@ -17624,7 +17593,7 @@ static int append_select_plan_column_output(mylite_db *database, struct mylite_s
 
     label = copy_span_text(column->name, strlen(column->name));
     if (label == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -17636,7 +17605,7 @@ static int append_select_plan_column_output(mylite_db *database, struct mylite_s
     if (status != MYLITE_OK) {
         free(label);
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
         }
         return status;
     }
@@ -17663,7 +17632,7 @@ static int append_select_column_output(mylite_db *database,
     label =
         alias == NULL ? copy_select_final_identifier_label(expression) : copy_select_alias(alias);
     if (label == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -17675,7 +17644,7 @@ static int append_select_column_output(mylite_db *database,
     if (status != MYLITE_OK) {
         free(label);
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
         }
         return status;
     }
@@ -17702,7 +17671,7 @@ static int append_select_expression_output(mylite_db *database,
     label = alias == NULL ? copy_span_text(expression->span.text, expression->span.length)
                           : copy_select_alias(alias);
     if (label == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -17714,7 +17683,7 @@ static int append_select_expression_output(mylite_db *database,
     if (status != MYLITE_OK) {
         free(label);
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
         }
         return status;
     }
@@ -17974,14 +17943,14 @@ static int resolve_select_plan_wildcard(mylite_db *database, const struct mylite
 
     first_name = copy_identifier_span(first);
     if (first_name == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     if (second != NULL) {
         second_name = copy_identifier_span(second);
         if (second_name == NULL) {
             free(first_name);
-            (void)set_error_message(database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
             return MYLITE_NOMEM;
         }
     }
@@ -18168,7 +18137,7 @@ static int set_select_unknown_column_parts_error(mylite_db *database, char **par
     int status = MYLITE_OK;
 
     if (text == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     for (size_t index = 0U; index < part_count; ++index) {
@@ -18179,7 +18148,7 @@ static int set_select_unknown_column_parts_error(mylite_db *database, char **par
     }
     reference = sqlite3_str_finish(text);
     if (reference == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     status = set_select_unknown_column_in_clause_error(database, reference, clause_context);
@@ -18212,12 +18181,12 @@ static int set_select_ambiguous_column_error(mylite_db *database, const char *co
     int status = MYLITE_OK;
 
     if (message == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
-    status = set_error_message(database, message);
+    status = mylite_diagnostics_set_error_message(database, message);
     if (status == MYLITE_OK) {
-        status = append_database_error(database, MYLITE_MYSQL_ER_NON_UNIQ_ERROR, message);
+        status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_NON_UNIQ_ERROR, message);
     }
     sqlite3_free(message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
@@ -18238,12 +18207,13 @@ static int set_select_unknown_column_in_clause_error(mylite_db *database, const 
     message = sqlite3_mprintf("Unknown column '%q' in '%q'", reference,
                               clause_context == NULL ? "field list" : clause_context);
     if (message == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
-    status = set_error_message(database, message);
+    status = mylite_diagnostics_set_error_message(database, message);
     if (status == MYLITE_OK) {
-        status = append_database_error(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR, message);
+        status =
+            mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR, message);
     }
     sqlite3_free(message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
@@ -18295,7 +18265,7 @@ static int resolve_select_order_reference(mylite_db *database,
     *out_index = 0U;
     if (status != MYLITE_OK) {
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
         }
         return status;
     }
@@ -18343,7 +18313,7 @@ static int resolve_select_group_reference(mylite_db *database,
     *out_index = 0U;
     if (status != MYLITE_OK) {
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
         }
         return status;
     }
@@ -18363,7 +18333,7 @@ static int resolve_select_group_reference(mylite_db *database,
         char *reference = copy_select_reference_name(expression);
 
         if (reference == NULL) {
-            (void)set_error_message(database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
             status = MYLITE_NOMEM;
             goto cleanup;
         }
@@ -18467,7 +18437,7 @@ static int resolve_select_having_reference_internal(mylite_db *database,
     *out_index = 0U;
     if (status != MYLITE_OK) {
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
         }
         return status;
     }
@@ -18487,15 +18457,15 @@ static int resolve_select_having_reference_internal(mylite_db *database,
         char *reference = copy_select_reference_name(expression);
 
         if (reference == NULL) {
-            (void)set_error_message(database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
             status = MYLITE_NOMEM;
             goto cleanup;
         }
-        status = set_error_message_parts(database, "Unknown column '", reference,
-                                         "' in 'having clause'");
+        status = mylite_diagnostics_set_error_message_parts(database, "Unknown column '", reference,
+                                                            "' in 'having clause'");
         if (status == MYLITE_OK) {
-            status = append_database_error(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
-                                           mylite_error_message(database));
+            status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
+                                                     mylite_error_message(database));
             status = status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
         }
         free(reference);
@@ -18832,53 +18802,53 @@ static char *copy_select_wildcard_qualifier_name(const struct mylite_sql_ast_nod
 
 static int set_select_unknown_where_column_error(mylite_db *database, const char *column_name)
 {
-    int status =
-        set_error_message_parts(database, "Unknown column '", column_name, "' in 'where clause'");
+    int status = mylite_diagnostics_set_error_message_parts(database, "Unknown column '",
+                                                            column_name, "' in 'where clause'");
 
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_error(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
-                                   mylite_error_message(database));
+    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
+                                             mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int set_select_unknown_order_column_error(mylite_db *database, const char *column_name)
 {
-    int status =
-        set_error_message_parts(database, "Unknown column '", column_name, "' in 'order clause'");
+    int status = mylite_diagnostics_set_error_message_parts(database, "Unknown column '",
+                                                            column_name, "' in 'order clause'");
 
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_error(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
-                                   mylite_error_message(database));
+    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
+                                             mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int set_select_ambiguous_order_column_error(mylite_db *database, const char *column_name)
 {
-    int status = set_error_message_parts(database, "Column '", column_name,
-                                         "' in order clause is ambiguous");
+    int status = mylite_diagnostics_set_error_message_parts(database, "Column '", column_name,
+                                                            "' in order clause is ambiguous");
 
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_error(database, MYLITE_MYSQL_ER_NON_UNIQ_ERROR,
-                                   mylite_error_message(database));
+    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_NON_UNIQ_ERROR,
+                                             mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int set_select_unknown_group_column_error(mylite_db *database, const char *column_name)
 {
-    int status = set_error_message_parts(database, "Unknown column '", column_name,
-                                         "' in 'group statement'");
+    int status = mylite_diagnostics_set_error_message_parts(database, "Unknown column '",
+                                                            column_name, "' in 'group statement'");
 
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_error(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
-                                   mylite_error_message(database));
+    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
+                                             mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
@@ -18890,36 +18860,37 @@ static int set_select_ambiguous_group_column_warning(mylite_db *database, const 
     int status = MYLITE_OK;
 
     if (message == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
-    status = append_database_warning(database, MYLITE_MYSQL_ER_NON_UNIQ_ERROR, message);
+    status = mylite_diagnostics_append_warning(database, MYLITE_MYSQL_ER_NON_UNIQ_ERROR, message);
     sqlite3_free(message);
     return status;
 }
 
 static int set_select_invalid_group_function_error(mylite_db *database)
 {
-    int status = set_error_message(database, "Invalid use of group function");
+    int status = mylite_diagnostics_set_error_message(database, "Invalid use of group function");
 
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_error(database, MYLITE_MYSQL_ER_INVALID_GROUP_FUNC_USE,
-                                   mylite_error_message(database));
+    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_INVALID_GROUP_FUNC_USE,
+                                             mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int set_select_duplicate_mode_error(mylite_db *database)
 {
-    int status = set_error_message(database, "Incorrect usage of ALL and DISTINCT");
+    int status =
+        mylite_diagnostics_set_error_message(database, "Incorrect usage of ALL and DISTINCT");
 
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_error(database, MYLITE_MYSQL_ER_WRONG_USAGE,
-                                   mylite_error_message(database));
+    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_WRONG_USAGE,
+                                             mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
@@ -18929,7 +18900,7 @@ static int set_select_only_full_group_by_error(mylite_db *database, const char *
     int status = MYLITE_OK;
 
     if (implicit_group) {
-        status = set_error_message_parts(
+        status = mylite_diagnostics_set_error_message_parts(
             database,
             "In aggregated query without GROUP BY, expression contains nonaggregated "
             "column '",
@@ -18938,10 +18909,10 @@ static int set_select_only_full_group_by_error(mylite_db *database, const char *
         if (status == MYLITE_NOMEM) {
             return MYLITE_NOMEM;
         }
-        status = append_database_error(database, MYLITE_MYSQL_ER_MIX_OF_GROUP_FUNC_AND_FIELDS,
-                                       mylite_error_message(database));
+        status = mylite_diagnostics_append_error(
+            database, MYLITE_MYSQL_ER_MIX_OF_GROUP_FUNC_AND_FIELDS, mylite_error_message(database));
     } else {
-        status = set_error_message_parts(
+        status = mylite_diagnostics_set_error_message_parts(
             database, "Expression contains nonaggregated column '",
             expression_text == NULL ? "" : expression_text,
             "' which is not functionally dependent on GROUP BY; this is incompatible with "
@@ -18949,8 +18920,8 @@ static int set_select_only_full_group_by_error(mylite_db *database, const char *
         if (status == MYLITE_NOMEM) {
             return MYLITE_NOMEM;
         }
-        status = append_database_error(database, MYLITE_MYSQL_ER_WRONG_FIELD_WITH_GROUP,
-                                       mylite_error_message(database));
+        status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_WRONG_FIELD_WITH_GROUP,
+                                                 mylite_error_message(database));
     }
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
@@ -18970,7 +18941,7 @@ static int set_select_distinct_order_column_error(
     int status = MYLITE_OK;
 
     if (reference == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     message = sqlite3_mprintf(
@@ -18979,13 +18950,13 @@ static int set_select_distinct_order_column_error(
         (unsigned long long)context.order_position, reference);
     sqlite3_free(reference);
     if (message == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
-    status = set_error_message(database, message);
+    status = mylite_diagnostics_set_error_message(database, message);
     if (status == MYLITE_OK) {
-        status =
-            append_database_error(database, MYLITE_MYSQL_ER_FIELD_IN_ORDER_NOT_SELECT, message);
+        status = mylite_diagnostics_append_error(
+            database, MYLITE_MYSQL_ER_FIELD_IN_ORDER_NOT_SELECT, message);
     }
     sqlite3_free(message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
@@ -18993,14 +18964,16 @@ static int set_select_distinct_order_column_error(
 
 static int set_select_unknown_table_error(mylite_db *database, const char *table_name)
 {
-    int status = set_error_message_parts(database, "Unknown table '", table_name, "'");
+    int status =
+        mylite_diagnostics_set_error_message_parts(database, "Unknown table '", table_name, "'");
 
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int set_select_unsupported_projection_error(mylite_db *database)
 {
-    if (set_error_message(database, "Unsupported SELECT projection") == MYLITE_NOMEM) {
+    if (mylite_diagnostics_set_error_message(database, "Unsupported SELECT projection") ==
+        MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
     return MYLITE_UNSUPPORTED;
@@ -19008,7 +18981,8 @@ static int set_select_unsupported_projection_error(mylite_db *database)
 
 static int set_select_unsupported_where_error(mylite_db *database)
 {
-    if (set_error_message(database, "Unsupported WHERE predicate") == MYLITE_NOMEM) {
+    if (mylite_diagnostics_set_error_message(database, "Unsupported WHERE predicate") ==
+        MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
     return MYLITE_UNSUPPORTED;
@@ -19016,7 +18990,8 @@ static int set_select_unsupported_where_error(mylite_db *database)
 
 static int set_select_unsupported_order_error(mylite_db *database)
 {
-    if (set_error_message(database, "Unsupported ORDER BY expression") == MYLITE_NOMEM) {
+    if (mylite_diagnostics_set_error_message(database, "Unsupported ORDER BY expression") ==
+        MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
     return MYLITE_UNSUPPORTED;
@@ -19024,8 +18999,8 @@ static int set_select_unsupported_order_error(mylite_db *database)
 
 static int set_select_unsupported_join_grouping_error(mylite_db *database)
 {
-    if (set_error_message(database, "Unsupported GROUP BY or HAVING over joined tables") ==
-        MYLITE_NOMEM) {
+    if (mylite_diagnostics_set_error_message(
+            database, "Unsupported GROUP BY or HAVING over joined tables") == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
     return MYLITE_EXEC_ERROR;
@@ -19034,13 +19009,13 @@ static int set_select_unsupported_join_grouping_error(mylite_db *database)
 static int set_union_column_count_error(mylite_db *database)
 {
     static const char message[] = "The used SELECT statements have a different number of columns";
-    int status = set_error_message(database, message);
+    int status = mylite_diagnostics_set_error_message(database, message);
 
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status =
-        append_database_error(database, MYLITE_MYSQL_ER_WRONG_NUMBER_OF_COLUMNS_IN_SELECT, message);
+    status = mylite_diagnostics_append_error(
+        database, MYLITE_MYSQL_ER_WRONG_NUMBER_OF_COLUMNS_IN_SELECT, message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
@@ -19052,13 +19027,13 @@ static int set_union_global_order_table_error(mylite_db *database, const char *t
     int status = MYLITE_OK;
 
     if (message == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
-    status = set_error_message(database, message);
+    status = mylite_diagnostics_set_error_message(database, message);
     if (status == MYLITE_OK) {
-        status =
-            append_database_error(database, MYLITE_MYSQL_ER_TABLENAME_NOT_ALLOWED_HERE, message);
+        status = mylite_diagnostics_append_error(
+            database, MYLITE_MYSQL_ER_TABLENAME_NOT_ALLOWED_HERE, message);
     }
     sqlite3_free(message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
@@ -19146,7 +19121,7 @@ static int clone_table_select_expressions(mylite_stmt *stmt,
 
     stmt->select_sql_text = copy_span_text(sql, sql_length);
     if (stmt->select_sql_text == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -19335,7 +19310,7 @@ static int clone_table_select_expression_node(mylite_stmt *stmt,
                                        stmt->select_sql_text, sql_length, out_node);
 
     if (status == MYLITE_NOMEM) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
     }
     return status;
 }
@@ -19349,7 +19324,7 @@ static int clone_update_plan_nodes(mylite_stmt *stmt, const struct mylite_sql_as
 
     stmt->update_sql_text = copy_span_text(sql, sql_length);
     if (stmt->update_sql_text == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -19395,7 +19370,7 @@ static int clone_update_ast_node(mylite_stmt *stmt, const struct mylite_sql_ast_
                                        sql_length, &clone);
 
     if (status == MYLITE_NOMEM) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
     }
     *out_node = clone;
     return status;
@@ -19408,7 +19383,7 @@ static int clone_delete_plan_nodes(mylite_stmt *stmt, const struct mylite_sql_as
 
     stmt->delete_sql_text = copy_span_text(sql, sql_length);
     if (stmt->delete_sql_text == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -19436,7 +19411,7 @@ static int clone_delete_ast_node(mylite_stmt *stmt, const struct mylite_sql_ast_
                                        sql_length, &clone);
 
     if (status == MYLITE_NOMEM) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
     }
     *out_node = clone;
     return status;
@@ -19519,13 +19494,13 @@ static int prepare_sqlite_statement(mylite_db *database, const char *sqlite_sql,
                                 &sqlite_stmt, NULL);
 
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
 
     stmt = malloc(sizeof(*stmt));
     if (stmt == NULL) {
         sqlite3_finalize(sqlite_stmt);
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -19548,7 +19523,7 @@ static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind k
     int status = MYLITE_OK;
 
     if (stmt == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -19631,7 +19606,7 @@ static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind k
     }
     if (status != MYLITE_OK) {
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
         }
         mylite_finalize(stmt);
         return status;
@@ -19948,17 +19923,17 @@ static int execute_create_schema_statement(mylite_stmt *stmt)
     }
     if (presence.exists) {
         if (stmt->if_not_exists) {
-            int note_status = set_error_message_parts(stmt->database, "Can't create database '",
-                                                      stmt->schema_name, "'; database exists");
+            int note_status = mylite_diagnostics_set_error_message_parts(
+                stmt->database, "Can't create database '", stmt->schema_name, "'; database exists");
 
             if (note_status == MYLITE_NOMEM) {
                 return MYLITE_NOMEM;
             }
-            return append_database_note(stmt->database, MYLITE_MYSQL_ER_DB_CREATE_EXISTS,
-                                        mylite_error_message(stmt->database));
+            return mylite_diagnostics_append_note(stmt->database, MYLITE_MYSQL_ER_DB_CREATE_EXISTS,
+                                                  mylite_error_message(stmt->database));
         }
-        (void)set_error_message_parts(stmt->database, "Can't create database '", stmt->schema_name,
-                                      "'; database exists");
+        (void)mylite_diagnostics_set_error_message_parts(stmt->database, "Can't create database '",
+                                                         stmt->schema_name, "'; database exists");
         return MYLITE_EXEC_ERROR;
     }
 
@@ -19976,7 +19951,7 @@ static int execute_alter_schema_statement(mylite_stmt *stmt)
         return status;
     }
     if (schema_name == NULL) {
-        (void)set_error_message(stmt->database, "No database selected");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "No database selected");
         return MYLITE_EXEC_ERROR;
     }
 
@@ -19985,12 +19960,13 @@ static int execute_alter_schema_statement(mylite_stmt *stmt)
         return status;
     }
     if (!presence.exists) {
-        (void)set_error_message_parts(stmt->database, "Database '", schema_name, "' doesn't exist");
+        (void)mylite_diagnostics_set_error_message_parts(stmt->database, "Database '", schema_name,
+                                                         "' doesn't exist");
         return MYLITE_EXEC_ERROR;
     }
     if (presence.is_system) {
-        (void)set_error_message_parts(stmt->database, "Access to system schema '", schema_name,
-                                      "' is rejected.");
+        (void)mylite_diagnostics_set_error_message_parts(
+            stmt->database, "Access to system schema '", schema_name, "' is rejected.");
         return MYLITE_EXEC_ERROR;
     }
 
@@ -20009,13 +19985,14 @@ static int execute_drop_schema_statement(mylite_stmt *stmt)
         if (stmt->if_exists) {
             return MYLITE_OK;
         }
-        (void)set_error_message_parts(stmt->database, "Can't drop database '", stmt->schema_name,
-                                      "'; database doesn't exist");
+        (void)mylite_diagnostics_set_error_message_parts(stmt->database, "Can't drop database '",
+                                                         stmt->schema_name,
+                                                         "'; database doesn't exist");
         return MYLITE_EXEC_ERROR;
     }
     if (presence.is_system) {
-        (void)set_error_message_parts(stmt->database, "Access to system schema '",
-                                      stmt->schema_name, "' is rejected.");
+        (void)mylite_diagnostics_set_error_message_parts(
+            stmt->database, "Access to system schema '", stmt->schema_name, "' is rejected.");
         return MYLITE_EXEC_ERROR;
     }
 
@@ -20032,7 +20009,8 @@ static int execute_use_schema_statement(mylite_stmt *stmt)
     int status = MYLITE_OK;
 
     if (span_contains_newline(stmt->schema_name, strlen(stmt->schema_name))) {
-        (void)set_error_message(stmt->database, "USE database names must be single-line");
+        (void)mylite_diagnostics_set_error_message(stmt->database,
+                                                   "USE database names must be single-line");
         return MYLITE_EXEC_ERROR;
     }
 
@@ -20041,7 +20019,8 @@ static int execute_use_schema_statement(mylite_stmt *stmt)
         return status;
     }
     if (!presence.exists) {
-        (void)set_error_message_parts(stmt->database, "Unknown database '", stmt->schema_name, "'");
+        (void)mylite_diagnostics_set_error_message_parts(stmt->database, "Unknown database '",
+                                                         stmt->schema_name, "'");
         return MYLITE_EXEC_ERROR;
     }
 
@@ -20078,7 +20057,7 @@ static int execute_create_table_statement(mylite_stmt *stmt)
     int status = MYLITE_OK;
 
     if (schema_name == NULL) {
-        (void)set_error_message(stmt->database, "No database selected");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "No database selected");
         return MYLITE_EXEC_ERROR;
     }
 
@@ -20126,12 +20105,13 @@ static int validate_create_table_plan(mylite_stmt *stmt, const char *schema_name
         return status;
     }
     if (!presence.exists) {
-        (void)set_error_message_parts(stmt->database, "Unknown database '", schema_name, "'");
+        (void)mylite_diagnostics_set_error_message_parts(stmt->database, "Unknown database '",
+                                                         schema_name, "'");
         return MYLITE_EXEC_ERROR;
     }
     if (presence.is_system) {
-        (void)set_error_message_parts(stmt->database, "Access to system schema '", schema_name,
-                                      "' is rejected.");
+        (void)mylite_diagnostics_set_error_message_parts(
+            stmt->database, "Access to system schema '", schema_name, "' is rejected.");
         return MYLITE_EXEC_ERROR;
     }
 
@@ -20141,21 +20121,22 @@ static int validate_create_table_plan(mylite_stmt *stmt, const char *schema_name
     }
     if (exists) {
         if (stmt->if_not_exists) {
-            int note_status = set_error_message_parts(
+            int note_status = mylite_diagnostics_set_error_message_parts(
                 stmt->database, "Table '", stmt->create_table.table_name, "' already exists");
 
             if (note_status == MYLITE_NOMEM) {
                 return MYLITE_NOMEM;
             }
-            note_status = append_database_note(stmt->database, MYLITE_MYSQL_ER_TABLE_EXISTS_ERROR,
+            note_status =
+                mylite_diagnostics_append_note(stmt->database, MYLITE_MYSQL_ER_TABLE_EXISTS_ERROR,
                                                mylite_error_message(stmt->database));
             if (note_status == MYLITE_OK) {
                 *out_skip_create = true;
             }
             return note_status;
         }
-        (void)set_error_message_parts(stmt->database, "Table '", stmt->create_table.table_name,
-                                      "' already exists");
+        (void)mylite_diagnostics_set_error_message_parts(
+            stmt->database, "Table '", stmt->create_table.table_name, "' already exists");
         return MYLITE_EXEC_ERROR;
     }
 
@@ -20220,21 +20201,21 @@ static int create_physical_table(mylite_stmt *stmt, const char *schema_name,
     int rc = SQLITE_OK;
 
     if (physical_name == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
     sql = build_create_physical_table_sql(stmt, physical_name, schema_default);
     free(physical_name);
     if (sql == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
     rc = sqlite3_exec(stmt->database->sqlite, sql, NULL, NULL, NULL);
     sqlite3_free(sql);
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
     return MYLITE_OK;
 }
@@ -20265,7 +20246,7 @@ static int insert_table_catalog_row(mylite_stmt *stmt, const char *schema_name,
                                 NULL);
 
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     sqlite3_bind_text(insert, 1, schema_name, -1, sqlite_transient_destructor());
@@ -20283,7 +20264,7 @@ static int insert_table_catalog_row(mylite_stmt *stmt, const char *schema_name,
     rc = sqlite3_step(insert);
     sqlite3_finalize(insert);
     if (rc != SQLITE_DONE) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
     return MYLITE_OK;
 }
@@ -20305,7 +20286,7 @@ static int insert_column_catalog_rows(mylite_stmt *stmt, const char *schema_name
                                 NULL);
 
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     for (size_t index = 0U; index < stmt->create_table.column_count; ++index) {
@@ -20429,7 +20410,7 @@ static int insert_column_catalog_row(mylite_stmt *stmt, sqlite3_stmt *insert,
 
     rc = sqlite3_step(insert);
     if (rc != SQLITE_DONE) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
     return MYLITE_OK;
 }
@@ -20447,7 +20428,7 @@ static int insert_index_catalog_rows(mylite_stmt *stmt, const char *schema_name)
                                 NULL);
 
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     for (size_t index_index = 0U; index_index < stmt->create_table.index_count; ++index_index) {
@@ -20535,7 +20516,7 @@ static int insert_index_catalog_part(mylite_stmt *stmt, sqlite3_stmt *insert,
 
     rc = sqlite3_step(insert);
     if (rc != SQLITE_DONE) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
     return MYLITE_OK;
 }
@@ -20547,20 +20528,20 @@ static int validate_drop_table_plan(mylite_stmt *stmt)
 
         if (target->schema_name == NULL) {
             if (stmt->database->selected_schema == NULL) {
-                (void)set_error_message(stmt->database, "No database selected");
+                (void)mylite_diagnostics_set_error_message(stmt->database, "No database selected");
                 return MYLITE_EXEC_ERROR;
             }
             target->schema_name = copy_span_text(stmt->database->selected_schema,
                                                  strlen(stmt->database->selected_schema));
             if (target->schema_name == NULL) {
-                (void)set_error_message(stmt->database, "out of memory");
+                (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
                 return MYLITE_NOMEM;
             }
         }
 
         if (drop_table_target_is_duplicate(&stmt->drop_table, index)) {
-            (void)set_error_message_parts(stmt->database, "Not unique table/alias: '",
-                                          target->table_name, "'");
+            (void)mylite_diagnostics_set_error_message_parts(
+                stmt->database, "Not unique table/alias: '", target->table_name, "'");
             return MYLITE_EXEC_ERROR;
         }
     }
@@ -20598,8 +20579,8 @@ static int validate_drop_table_temporary_target(mylite_stmt *stmt,
         return status;
     }
     if (presence.is_system) {
-        (void)set_error_message_parts(stmt->database, "Access to system schema '",
-                                      target->schema_name, "' is rejected.");
+        (void)mylite_diagnostics_set_error_message_parts(
+            stmt->database, "Access to system schema '", target->schema_name, "' is rejected.");
         return MYLITE_EXEC_ERROR;
     }
     return MYLITE_OK;
@@ -20615,8 +20596,8 @@ static int validate_drop_table_target(mylite_stmt *stmt, struct mylite_drop_tabl
         return status;
     }
     if (presence.is_system) {
-        (void)set_error_message_parts(stmt->database, "Access to system schema '",
-                                      target->schema_name, "' is rejected.");
+        (void)mylite_diagnostics_set_error_message_parts(
+            stmt->database, "Access to system schema '", target->schema_name, "' is rejected.");
         return MYLITE_EXEC_ERROR;
     }
     if (!presence.exists) {
@@ -20693,14 +20674,14 @@ static int drop_physical_table(mylite_stmt *stmt, const struct mylite_drop_table
     int rc = SQLITE_OK;
 
     if (physical_name == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
     sql = sqlite3_str_new(stmt->database->sqlite);
     if (sql == NULL) {
         free(physical_name);
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     sqlite3_str_appendf(sql, "DROP TABLE \"%w\"", physical_name);
@@ -20708,14 +20689,14 @@ static int drop_physical_table(mylite_stmt *stmt, const struct mylite_drop_table
 
     drop_sql = sqlite3_str_finish(sql);
     if (drop_sql == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
     rc = sqlite3_exec(stmt->database->sqlite, drop_sql, NULL, NULL, NULL);
     sqlite3_free(drop_sql);
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
     return MYLITE_OK;
 }
@@ -20748,7 +20729,7 @@ static int delete_table_catalog_row(mylite_db *database, const char *sql,
                                 NULL);
 
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
 
     sqlite3_bind_text(delete_stmt, 1, target->schema_name, -1, sqlite_transient_destructor());
@@ -20756,7 +20737,7 @@ static int delete_table_catalog_row(mylite_db *database, const char *sql,
     rc = sqlite3_step(delete_stmt);
     sqlite3_finalize(delete_stmt);
     if (rc != SQLITE_DONE) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
     return MYLITE_OK;
 }
@@ -20812,20 +20793,20 @@ static int resolve_rename_table_names(mylite_stmt *stmt)
 
         if ((target->source_schema_name == NULL || target->target_schema_name == NULL) &&
             (selected_schema == NULL || selected_schema[0] == '\0')) {
-            (void)set_error_message(stmt->database, "No database selected");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "No database selected");
             return MYLITE_EXEC_ERROR;
         }
         if (target->source_schema_name == NULL) {
             target->source_schema_name = copy_nonempty_cstring(selected_schema);
             if (target->source_schema_name == NULL) {
-                (void)set_error_message(stmt->database, "out of memory");
+                (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
                 return MYLITE_NOMEM;
             }
         }
         if (target->target_schema_name == NULL) {
             target->target_schema_name = copy_nonempty_cstring(selected_schema);
             if (target->target_schema_name == NULL) {
-                (void)set_error_message(stmt->database, "out of memory");
+                (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
                 return MYLITE_NOMEM;
             }
         }
@@ -20844,13 +20825,14 @@ static int validate_rename_table_target_schemas(mylite_stmt *stmt,
         return status;
     }
     if (!source_presence.exists) {
-        (void)set_error_message_parts(stmt->database, "Unknown database '",
-                                      target->source_schema_name, "'");
+        (void)mylite_diagnostics_set_error_message_parts(stmt->database, "Unknown database '",
+                                                         target->source_schema_name, "'");
         return MYLITE_EXEC_ERROR;
     }
     if (source_presence.is_system) {
-        (void)set_error_message_parts(stmt->database, "Access to system schema '",
-                                      target->source_schema_name, "' is rejected.");
+        (void)mylite_diagnostics_set_error_message_parts(
+            stmt->database, "Access to system schema '", target->source_schema_name,
+            "' is rejected.");
         return MYLITE_EXEC_ERROR;
     }
 
@@ -20859,13 +20841,14 @@ static int validate_rename_table_target_schemas(mylite_stmt *stmt,
         return status;
     }
     if (!target_presence.exists) {
-        (void)set_error_message_parts(stmt->database, "Unknown database '",
-                                      target->target_schema_name, "'");
+        (void)mylite_diagnostics_set_error_message_parts(stmt->database, "Unknown database '",
+                                                         target->target_schema_name, "'");
         return MYLITE_EXEC_ERROR;
     }
     if (target_presence.is_system) {
-        (void)set_error_message_parts(stmt->database, "Access to system schema '",
-                                      target->target_schema_name, "' is rejected.");
+        (void)mylite_diagnostics_set_error_message_parts(
+            stmt->database, "Access to system schema '", target->target_schema_name,
+            "' is rejected.");
         return MYLITE_EXEC_ERROR;
     }
     return MYLITE_OK;
@@ -20994,7 +20977,7 @@ static int rename_physical_table(mylite_stmt *stmt, const struct mylite_rename_t
     if (source_physical_name == NULL || target_physical_name == NULL) {
         free(source_physical_name);
         free(target_physical_name);
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -21003,13 +20986,13 @@ static int rename_physical_table(mylite_stmt *stmt, const struct mylite_rename_t
     free(source_physical_name);
     free(target_physical_name);
     if (sql == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
     rc = sqlite3_exec(stmt->database->sqlite, sql, NULL, NULL, NULL);
     sqlite3_free(sql);
-    return rc == SQLITE_OK ? MYLITE_OK : set_sqlite_error(stmt->database);
+    return rc == SQLITE_OK ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
 }
 
 static int rewrite_rename_table_catalog(mylite_stmt *stmt,
@@ -21040,7 +21023,7 @@ static int rewrite_rename_table_catalog_row(mylite_db *database, const char *sql
         sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &update, NULL);
 
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
 
     sqlite3_bind_text(update, 1, target->target_schema_name, -1, sqlite_transient_destructor());
@@ -21049,7 +21032,7 @@ static int rewrite_rename_table_catalog_row(mylite_db *database, const char *sql
     sqlite3_bind_text(update, 4, target->source_table_name, -1, sqlite_transient_destructor());
     rc = sqlite3_step(update);
     sqlite3_finalize(update);
-    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(database);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
 static int rewrite_rename_table_index_catalog(mylite_db *database,
@@ -21070,7 +21053,7 @@ static int rewrite_rename_table_index_catalog(mylite_db *database,
         sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &update, NULL);
 
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
 
     sqlite3_bind_text(update, bind_target_schema, target->target_schema_name, -1,
@@ -21085,7 +21068,7 @@ static int rewrite_rename_table_index_catalog(mylite_db *database,
                       sqlite_transient_destructor());
     rc = sqlite3_step(update);
     sqlite3_finalize(update);
-    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(database);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
 static int execute_truncate_table_statement(mylite_stmt *stmt)
@@ -21123,13 +21106,13 @@ static int resolve_truncate_table_name(mylite_stmt *stmt)
         return MYLITE_OK;
     }
     if (selected_schema == NULL || selected_schema[0] == '\0') {
-        (void)set_error_message(stmt->database, "No database selected");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "No database selected");
         return MYLITE_EXEC_ERROR;
     }
 
     stmt->truncate_table.schema_name = copy_nonempty_cstring(selected_schema);
     if (stmt->truncate_table.schema_name == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     return MYLITE_OK;
@@ -21145,8 +21128,9 @@ static int validate_truncate_table_target(mylite_stmt *stmt)
         return status;
     }
     if (presence.is_system) {
-        (void)set_error_message_parts(stmt->database, "Access to system schema '",
-                                      stmt->truncate_table.schema_name, "' is rejected.");
+        (void)mylite_diagnostics_set_error_message_parts(
+            stmt->database, "Access to system schema '", stmt->truncate_table.schema_name,
+            "' is rejected.");
         return MYLITE_EXEC_ERROR;
     }
     if (!presence.exists) {
@@ -21197,20 +21181,20 @@ static int delete_truncate_table_rows(mylite_stmt *stmt)
     int rc = SQLITE_OK;
 
     if (physical_name == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
     sql = sqlite3_mprintf("DELETE FROM \"%w\"", physical_name);
     free(physical_name);
     if (sql == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
     rc = sqlite3_exec(stmt->database->sqlite, sql, NULL, NULL, NULL);
     sqlite3_free(sql);
-    return rc == SQLITE_OK ? MYLITE_OK : set_sqlite_error(stmt->database);
+    return rc == SQLITE_OK ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
 }
 
 static int reset_truncate_table_auto_increment(mylite_stmt *stmt)
@@ -21222,7 +21206,7 @@ static int reset_truncate_table_auto_increment(mylite_stmt *stmt)
                                 NULL);
 
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     sqlite3_bind_text(update, 1, stmt->truncate_table.schema_name, -1,
@@ -21231,7 +21215,7 @@ static int reset_truncate_table_auto_increment(mylite_stmt *stmt)
                       sqlite_transient_destructor());
     rc = sqlite3_step(update);
     sqlite3_finalize(update);
-    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(stmt->database);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
 }
 
 static bool alter_table_has_table_rename_action(const mylite_stmt *stmt)
@@ -21267,7 +21251,7 @@ static int execute_alter_table_rename_statement(mylite_stmt *stmt)
     status = add_alter_table_rename_target(stmt);
     if (status != MYLITE_OK) {
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         }
         stmt->affected_rows = -1;
         return status;
@@ -21311,11 +21295,11 @@ static int set_rename_table_exists_error(mylite_db *database, const char *schema
     int status = MYLITE_OK;
 
     if (message == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
-    status = set_error_message(database, message);
+    status = mylite_diagnostics_set_error_message(database, message);
     sqlite3_free(message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
@@ -21388,13 +21372,13 @@ static int resolve_alter_table_schema(mylite_stmt *stmt)
         return MYLITE_OK;
     }
     if (stmt->database->selected_schema == NULL || stmt->database->selected_schema[0] == '\0') {
-        (void)set_error_message(stmt->database, "No database selected");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "No database selected");
         return MYLITE_EXEC_ERROR;
     }
 
     stmt->alter_table.schema_name = copy_nonempty_cstring(stmt->database->selected_schema);
     if (stmt->alter_table.schema_name == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     return MYLITE_OK;
@@ -21410,13 +21394,14 @@ static int validate_alter_table_target(mylite_stmt *stmt)
         return status;
     }
     if (!presence.exists) {
-        (void)set_error_message_parts(stmt->database, "Unknown database '",
-                                      stmt->alter_table.schema_name, "'");
+        (void)mylite_diagnostics_set_error_message_parts(stmt->database, "Unknown database '",
+                                                         stmt->alter_table.schema_name, "'");
         return MYLITE_EXEC_ERROR;
     }
     if (presence.is_system) {
-        (void)set_error_message_parts(stmt->database, "Access to system schema '",
-                                      stmt->alter_table.schema_name, "' is rejected.");
+        (void)mylite_diagnostics_set_error_message_parts(
+            stmt->database, "Access to system schema '", stmt->alter_table.schema_name,
+            "' is rejected.");
         return MYLITE_EXEC_ERROR;
     }
 
@@ -21447,7 +21432,7 @@ static int load_alter_table_model(mylite_stmt *stmt, const char *schema_name,
     model->table_name = copy_nonempty_cstring(stmt->alter_table.table_name);
     model->physical_name = physical_table_name(schema_name, stmt->alter_table.table_name);
     if (model->schema_name == NULL || model->table_name == NULL || model->physical_name == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         alter_table_model_deinit(model);
         return MYLITE_NOMEM;
     }
@@ -21456,7 +21441,7 @@ static int load_alter_table_model(mylite_stmt *stmt, const char *schema_name,
                             NULL);
     if (rc != SQLITE_OK) {
         alter_table_model_deinit(model);
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
     sqlite3_bind_text(select, 1, schema_name, -1, sqlite_transient_destructor());
     sqlite3_bind_text(select, 2, stmt->alter_table.table_name, -1, sqlite_transient_destructor());
@@ -21466,7 +21451,7 @@ static int load_alter_table_model(mylite_stmt *stmt, const char *schema_name,
     } else {
         status = rc == SQLITE_DONE ? set_table_doesnt_exist_error(stmt->database, schema_name,
                                                                   stmt->alter_table.table_name)
-                                   : set_sqlite_error(stmt->database);
+                                   : mylite_diagnostics_set_sqlite_error(stmt->database);
     }
     sqlite3_finalize(select);
     if (status == MYLITE_OK) {
@@ -21494,7 +21479,7 @@ static int load_alter_table_columns(mylite_stmt *stmt, struct mylite_alter_table
                                 NULL);
 
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     sqlite3_bind_text(select, 1, model->schema_name, -1, sqlite_transient_destructor());
@@ -21509,7 +21494,7 @@ static int load_alter_table_columns(mylite_stmt *stmt, struct mylite_alter_table
     }
     sqlite3_finalize(select);
     if (rc != SQLITE_DONE) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
     if (model->column_count == 0U) {
         return set_table_doesnt_exist_error(stmt->database, model->schema_name, model->table_name);
@@ -21527,7 +21512,7 @@ static int load_alter_table_column_from_catalog_row(mylite_stmt *stmt, sqlite3_s
     if (status != MYLITE_OK) {
         alter_table_column_deinit(&column);
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         }
         return status;
     }
@@ -21537,7 +21522,7 @@ static int load_alter_table_column_from_catalog_row(mylite_stmt *stmt, sqlite3_s
     if (status != MYLITE_OK) {
         alter_table_column_deinit(&column);
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         }
     }
     return status;
@@ -21676,7 +21661,7 @@ static int load_alter_table_indexes(mylite_stmt *stmt, struct mylite_alter_table
                                 NULL);
 
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     sqlite3_bind_text(select, 1, model->schema_name, -1, sqlite_transient_destructor());
@@ -21690,7 +21675,7 @@ static int load_alter_table_indexes(mylite_stmt *stmt, struct mylite_alter_table
         }
     }
     sqlite3_finalize(select);
-    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(stmt->database);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
 }
 
 static int add_alter_table_index_part(mylite_stmt *stmt, struct mylite_alter_table_model *model,
@@ -21707,7 +21692,7 @@ static int add_alter_table_index_part(mylite_stmt *stmt, struct mylite_alter_tab
             realloc(model->indexes, (model->index_count + 1U) * sizeof(*model->indexes));
 
         if (indexes == NULL) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
         model->indexes = indexes;
@@ -21740,7 +21725,7 @@ static int add_alter_table_index_part(mylite_stmt *stmt, struct mylite_alter_tab
         }
         if (status != MYLITE_OK) {
             if (status == MYLITE_NOMEM) {
-                (void)set_error_message(stmt->database, "out of memory");
+                (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             }
             return status;
         }
@@ -21766,7 +21751,7 @@ static int add_alter_table_index_part(mylite_stmt *stmt, struct mylite_alter_tab
     if (status != MYLITE_OK) {
         alter_table_index_part_deinit(&part);
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         }
     }
     return status;
@@ -21858,7 +21843,7 @@ static int apply_alter_table_actions(mylite_stmt *stmt, struct mylite_alter_tabl
         status = refresh_alter_table_index_nullability(model);
     }
     if (status == MYLITE_NOMEM) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
     }
     return status;
 }
@@ -21955,7 +21940,7 @@ static int apply_alter_table_rename_column(mylite_stmt *stmt,
 
     new_name = copy_nonempty_cstring(action->new_name);
     if (new_name == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     free(model->columns[column_index].name);
@@ -21967,7 +21952,7 @@ static int apply_alter_table_rename_column(mylite_stmt *stmt,
                 char *part_name = copy_nonempty_cstring(action->new_name);
 
                 if (part_name == NULL) {
-                    (void)set_error_message(stmt->database, "out of memory");
+                    (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
                     return MYLITE_NOMEM;
                 }
                 free(model->indexes[index].parts[part].column_name);
@@ -22016,7 +22001,7 @@ static int apply_alter_table_change_column(mylite_stmt *stmt,
                 char *part_name = copy_nonempty_cstring(new_name);
 
                 if (part_name == NULL) {
-                    (void)set_error_message(stmt->database, "out of memory");
+                    (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
                     return MYLITE_NOMEM;
                 }
                 free(model->indexes[index].parts[part].column_name);
@@ -22075,7 +22060,7 @@ static int apply_alter_table_add_index(mylite_stmt *stmt,
         return status;
     }
     if (index_name == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -22162,7 +22147,7 @@ static int apply_alter_table_rename_index(mylite_stmt *stmt,
 
     new_name = copy_nonempty_cstring(action->new_name);
     if (new_name == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     free(model->indexes[index].name);
@@ -22208,7 +22193,7 @@ static int apply_alter_table_alter_index_visibility(mylite_stmt *stmt,
 
     visibility = copy_span_text(visibility_text, strlen(visibility_text));
     if (visibility == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     free(model->indexes[index].is_visible);
@@ -22218,7 +22203,7 @@ static int apply_alter_table_alter_index_visibility(mylite_stmt *stmt,
 
 static int set_alter_table_unsupported_action_error(mylite_db *database, const char *feature)
 {
-    int status = set_error_message_parts(database, "Unsupported ", feature, "");
+    int status = mylite_diagnostics_set_error_message_parts(database, "Unsupported ", feature, "");
 
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_UNSUPPORTED;
 }
@@ -22282,7 +22267,7 @@ static int replace_alter_table_column_from_definition(
     int status = MYLITE_OK;
 
     if (source_name != NULL && source_copy == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     status =
@@ -22339,7 +22324,7 @@ static int init_alter_table_column_from_definition(
         out_column->extra == NULL || out_column->column_comment == NULL ||
         out_column->generation_expression == NULL) {
         alter_table_column_deinit(out_column);
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -22365,7 +22350,7 @@ static int init_alter_table_column_from_definition(
         out_column->character_set_name = copy_nonempty_cstring(descriptor.character_set_name);
         if (out_column->character_set_name == NULL) {
             alter_table_column_deinit(out_column);
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
     }
@@ -22373,7 +22358,7 @@ static int init_alter_table_column_from_definition(
         out_column->collation_name = copy_nonempty_cstring(descriptor.collation_name);
         if (out_column->collation_name == NULL) {
             alter_table_column_deinit(out_column);
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
     }
@@ -22400,7 +22385,8 @@ static int alter_table_column_descriptor(mylite_stmt *stmt,
         return MYLITE_MISUSE;
     }
     if (schema_default.character_set == NULL || schema_default.collation == NULL) {
-        (void)set_error_message(stmt->database, "Unsupported charset/collation registry entry");
+        (void)mylite_diagnostics_set_error_message(stmt->database,
+                                                   "Unsupported charset/collation registry entry");
         return MYLITE_EXEC_ERROR;
     }
     options.character_set = (char *)schema_default.character_set;
@@ -22491,7 +22477,7 @@ static int init_alter_table_index_from_create_index(mylite_stmt *stmt,
         out_index->comment == NULL || out_index->index_comment == NULL ||
         out_index->is_visible == NULL) {
         alter_table_index_deinit(out_index);
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -22534,7 +22520,7 @@ init_alter_table_index_part_from_key_part(mylite_stmt *stmt,
     if (out_part->column_name == NULL || out_part->collation == NULL ||
         out_part->nullable == NULL) {
         alter_table_index_part_deinit(out_part);
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     if (source->has_prefix_length) {
@@ -22554,7 +22540,7 @@ static int assign_alter_table_generated_index_name(mylite_stmt *stmt,
 
     *out_name = NULL;
     if (source->part_count == 0U || source->parts[0].column_name == NULL) {
-        (void)set_error_message(stmt->database, "Index has no key parts");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "Index has no key parts");
         return MYLITE_EXEC_ERROR;
     }
 
@@ -22563,7 +22549,7 @@ static int assign_alter_table_generated_index_name(mylite_stmt *stmt,
         char *candidate = generated_index_name_candidate(base, suffix);
 
         if (candidate == NULL) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
         if (!alter_table_index_name_exists(model, candidate)) {
@@ -22587,8 +22573,8 @@ static int validate_alter_table_added_index(mylite_stmt *stmt,
                                             const char *index_name, bool is_primary)
 {
     if (index->has_with_parser) {
-        (void)set_error_message(stmt->database,
-                                "WITH PARSER is only supported for FULLTEXT indexes");
+        (void)mylite_diagnostics_set_error_message(
+            stmt->database, "WITH PARSER is only supported for FULLTEXT indexes");
         return MYLITE_EXEC_ERROR;
     }
     if (is_primary && alter_table_index_name_exists(model, "PRIMARY")) {
@@ -22666,21 +22652,21 @@ validate_alter_table_primary_key_part_not_null(mylite_stmt *stmt,
     sql = sqlite3_mprintf("SELECT 1 FROM \"%w\" WHERE \"%w\" IS NULL LIMIT 1", model->physical_name,
                           column->source_name);
     if (sql == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     rc = sqlite3_prepare_v3(stmt->database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select,
                             NULL);
     sqlite3_free(sql);
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
     rc = sqlite3_step(select);
     sqlite3_finalize(select);
     if (rc == SQLITE_ROW) {
         return set_alter_table_invalid_null_error(stmt->database);
     }
-    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(stmt->database);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
 }
 
 static int
@@ -22717,7 +22703,7 @@ static int set_alter_table_column_nullable(mylite_stmt *stmt,
 
     copy = copy_span_text(nullable_text, strlen(nullable_text));
     if (copy == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     free(column->is_nullable);
@@ -22791,21 +22777,21 @@ static int validate_alter_table_source_not_null(mylite_stmt *stmt,
     int rc = SQLITE_OK;
 
     if (sql == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     rc = sqlite3_prepare_v3(stmt->database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select,
                             NULL);
     sqlite3_free(sql);
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
     rc = sqlite3_step(select);
     sqlite3_finalize(select);
     if (rc == SQLITE_ROW) {
         return set_insert_null_error(stmt->database, column->name);
     }
-    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(stmt->database);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
 }
 
 static int validate_alter_table_auto_increment_shape(mylite_stmt *stmt,
@@ -22887,7 +22873,7 @@ static int validate_alter_table_unique_index(mylite_stmt *stmt,
         return status;
     }
     if (sql == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -22895,16 +22881,16 @@ static int validate_alter_table_unique_index(mylite_stmt *stmt,
                             NULL);
     sqlite3_free(sql);
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
     rc = sqlite3_step(select);
     sqlite3_finalize(select);
     if (rc == SQLITE_ROW) {
-        (void)set_error_message_parts(stmt->database, "Duplicate entry for key '", index->name,
-                                      "'");
+        (void)mylite_diagnostics_set_error_message_parts(
+            stmt->database, "Duplicate entry for key '", index->name, "'");
         return MYLITE_EXEC_ERROR;
     }
-    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(stmt->database);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
 }
 
 static int build_alter_table_unique_duplicate_sql(mylite_stmt *stmt,
@@ -22917,7 +22903,7 @@ static int build_alter_table_unique_duplicate_sql(mylite_stmt *stmt,
 
     *out_sql = NULL;
     if (sql == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     sqlite3_str_append(sql, "SELECT 1 FROM (SELECT ", (int)strlen("SELECT 1 FROM (SELECT "));
@@ -22954,7 +22940,7 @@ static int build_alter_table_unique_duplicate_sql(mylite_stmt *stmt,
                        (int)strlen(" HAVING COUNT(*) > 1) LIMIT 1"));
     *out_sql = sqlite3_str_finish(sql);
     if (*out_sql == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     return MYLITE_OK;
@@ -23050,7 +23036,7 @@ static int execute_alter_table_transaction(mylite_stmt *stmt,
     int status = MYLITE_OK;
 
     if (shadow_name == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -23084,7 +23070,7 @@ static int execute_alter_table_transaction(mylite_stmt *stmt,
     }
 
     rollback_statement_atomicity(stmt->database, &atomicity);
-    clear_warnings(stmt->database);
+    mylite_diagnostics_clear_warnings(stmt->database);
     free(shadow_name);
     return status;
 }
@@ -23097,13 +23083,13 @@ static int create_alter_table_shadow_table(mylite_stmt *stmt,
     int rc = SQLITE_OK;
 
     if (sql == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
     rc = sqlite3_exec(stmt->database->sqlite, sql, NULL, NULL, NULL);
     sqlite3_free(sql);
-    return rc == SQLITE_OK ? MYLITE_OK : set_sqlite_error(stmt->database);
+    return rc == SQLITE_OK ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
 }
 
 static char *build_alter_table_create_shadow_sql(mylite_db *database,
@@ -23138,7 +23124,7 @@ static int copy_alter_table_rows(mylite_stmt *stmt, const struct mylite_alter_ta
 
     *out_copied_rows = 0;
     if (sql == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -23146,13 +23132,13 @@ static int copy_alter_table_rows(mylite_stmt *stmt, const struct mylite_alter_ta
                             NULL);
     sqlite3_free(sql);
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
     status = bind_alter_table_added_column_values(stmt, insert, model);
     if (status == MYLITE_OK) {
         rc = sqlite3_step(insert);
         if (rc != SQLITE_DONE) {
-            status = set_sqlite_error(stmt->database);
+            status = mylite_diagnostics_set_sqlite_error(stmt->database);
         }
     }
     if (status == MYLITE_OK) {
@@ -23210,7 +23196,7 @@ static int bind_alter_table_added_column_values(mylite_stmt *stmt, sqlite3_stmt 
         status = resolve_alter_table_added_column_value(stmt, &model->columns[index], &value);
         if (status == MYLITE_OK &&
             bind_insert_bound_value(insert, bind_index, &value) != SQLITE_OK) {
-            status = set_sqlite_error(stmt->database);
+            status = mylite_diagnostics_set_sqlite_error(stmt->database);
         }
         insert_bound_value_deinit(&value);
         if (status != MYLITE_OK) {
@@ -23296,7 +23282,7 @@ static int insert_alter_table_column_catalog_rows(mylite_stmt *stmt,
                                 NULL);
 
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     for (size_t index = 0U; index < model->column_count; ++index) {
@@ -23424,7 +23410,7 @@ static int insert_alter_table_column_catalog_row(mylite_stmt *stmt, sqlite3_stmt
     }
 
     rc = sqlite3_step(insert);
-    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(stmt->database);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
 }
 
 static int insert_alter_table_index_catalog_rows(mylite_stmt *stmt,
@@ -23441,7 +23427,7 @@ static int insert_alter_table_index_catalog_rows(mylite_stmt *stmt,
                                 NULL);
 
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     for (size_t index = 0U; index < model->index_count; ++index) {
@@ -23518,7 +23504,7 @@ static int insert_alter_table_index_catalog_part(mylite_stmt *stmt, sqlite3_stmt
                       sqlite_transient_destructor());
 
     rc = sqlite3_step(insert);
-    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(stmt->database);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
 }
 
 static int update_alter_table_auto_increment(mylite_stmt *stmt,
@@ -23535,14 +23521,14 @@ static int update_alter_table_auto_increment(mylite_stmt *stmt,
     rc = sqlite3_prepare_v3(stmt->database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &update,
                             NULL);
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     sqlite3_bind_text(update, 1, model->schema_name, -1, sqlite_transient_destructor());
     sqlite3_bind_text(update, 2, model->table_name, -1, sqlite_transient_destructor());
     rc = sqlite3_step(update);
     sqlite3_finalize(update);
-    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(stmt->database);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
 }
 
 static int swap_alter_table_physical_table(mylite_stmt *stmt, const char *shadow_name,
@@ -23553,12 +23539,12 @@ static int swap_alter_table_physical_table(mylite_stmt *stmt, const char *shadow
     int rc = SQLITE_OK;
 
     if (sql == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     rc = sqlite3_exec(stmt->database->sqlite, sql, NULL, NULL, NULL);
     sqlite3_free(sql);
-    return rc == SQLITE_OK ? MYLITE_OK : set_sqlite_error(stmt->database);
+    return rc == SQLITE_OK ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
 }
 
 static char *alter_table_shadow_physical_name(mylite_db *database, const char *physical_name)
@@ -23800,23 +23786,24 @@ static int set_alter_table_unsupported_option_error(mylite_db *database, const c
     int status = MYLITE_OK;
 
     if (message == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
-    status = set_error_message(database, message);
+    status = mylite_diagnostics_set_error_message(database, message);
     sqlite3_free(message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_UNSUPPORTED;
 }
 
 static int set_alter_table_duplicate_column_error(mylite_db *database, const char *column_name)
 {
-    int status = set_error_message_parts(database, "Duplicate column name '", column_name, "'");
+    int status = mylite_diagnostics_set_error_message_parts(database, "Duplicate column name '",
+                                                            column_name, "'");
 
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_error(database, MYLITE_MYSQL_ER_DUP_FIELDNAME,
-                                   mylite_error_message(database));
+    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_DUP_FIELDNAME,
+                                             mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
@@ -23827,16 +23814,16 @@ static int set_alter_table_unknown_column_error(mylite_db *database, const char 
     int status = MYLITE_OK;
 
     if (message == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
-    status = set_error_message(database, message);
+    status = mylite_diagnostics_set_error_message(database, message);
     sqlite3_free(message);
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_error(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
-                                   mylite_error_message(database));
+    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
+                                             mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
@@ -23846,47 +23833,49 @@ static int set_alter_table_cant_drop_column_error(mylite_db *database, const cha
     int status = MYLITE_OK;
 
     if (message == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
-    status = set_error_message(database, message);
+    status = mylite_diagnostics_set_error_message(database, message);
     sqlite3_free(message);
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_error(database, MYLITE_MYSQL_ER_CANT_DROP_FIELD_OR_KEY,
-                                   mylite_error_message(database));
+    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_CANT_DROP_FIELD_OR_KEY,
+                                             mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int set_alter_table_cant_remove_all_columns_error(mylite_db *database)
 {
-    int status = set_error_message(database,
-                                   "You can't delete all columns with ALTER TABLE; use DROP TABLE");
+    int status = mylite_diagnostics_set_error_message(
+        database, "You can't delete all columns with ALTER TABLE; use DROP TABLE");
 
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_error(database, MYLITE_MYSQL_ER_CANT_REMOVE_ALL_FIELDS,
-                                   mylite_error_message(database));
+    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_CANT_REMOVE_ALL_FIELDS,
+                                             mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int set_alter_table_all_invisible_error(mylite_db *database)
 {
-    int status = set_error_message(database, "A table must have at least one visible column");
+    int status = mylite_diagnostics_set_error_message(
+        database, "A table must have at least one visible column");
 
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_error(database, MYLITE_MYSQL_ER_INVISIBLE_NOT_NULL_WITHOUT_DEFAULT,
-                                   mylite_error_message(database));
+    status = mylite_diagnostics_append_error(database,
+                                             MYLITE_MYSQL_ER_INVISIBLE_NOT_NULL_WITHOUT_DEFAULT,
+                                             mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int set_alter_table_wrong_auto_increment_error(mylite_db *database)
 {
-    int status = set_error_message(
+    int status = mylite_diagnostics_set_error_message(
         database,
         "Incorrect table definition; there can be only one auto column and it must be defined "
         "as a key");
@@ -23894,69 +23883,71 @@ static int set_alter_table_wrong_auto_increment_error(mylite_db *database)
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_error(database, MYLITE_MYSQL_ER_WRONG_AUTO_KEY,
-                                   mylite_error_message(database));
+    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_WRONG_AUTO_KEY,
+                                             mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int set_alter_table_multiple_primary_key_error(mylite_db *database)
 {
-    int status = set_error_message(database, "Multiple primary key defined");
+    int status = mylite_diagnostics_set_error_message(database, "Multiple primary key defined");
 
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_error(database, MYLITE_MYSQL_ER_MULTIPLE_PRI_KEY,
-                                   mylite_error_message(database));
+    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_MULTIPLE_PRI_KEY,
+                                             mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int set_alter_table_duplicate_key_name_error(mylite_db *database, const char *index_name)
 {
-    int status = set_error_message_parts(database, "Duplicate key name '", index_name, "'");
+    int status = mylite_diagnostics_set_error_message_parts(database, "Duplicate key name '",
+                                                            index_name, "'");
 
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_error(database, MYLITE_MYSQL_ER_DUP_KEYNAME,
-                                   mylite_error_message(database));
+    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_DUP_KEYNAME,
+                                             mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int set_alter_table_missing_key_column_error(mylite_db *database, const char *column_name)
 {
-    int status =
-        set_error_message_parts(database, "Key column '", column_name, "' doesn't exist in table");
+    int status = mylite_diagnostics_set_error_message_parts(database, "Key column '", column_name,
+                                                            "' doesn't exist in table");
 
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_error(database, MYLITE_MYSQL_ER_KEY_COLUMN_DOES_NOT_EXITS,
-                                   mylite_error_message(database));
+    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_KEY_COLUMN_DOES_NOT_EXITS,
+                                             mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int set_alter_table_invalid_null_error(mylite_db *database)
 {
-    int status = set_error_message(database, "Invalid use of NULL value");
+    int status = mylite_diagnostics_set_error_message(database, "Invalid use of NULL value");
 
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_error(database, MYLITE_MYSQL_ER_INVALID_USE_OF_NULL,
-                                   mylite_error_message(database));
+    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_INVALID_USE_OF_NULL,
+                                             mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int set_alter_table_primary_invisible_error(mylite_db *database)
 {
-    int status = set_error_message(database, "A primary key index cannot be invisible");
+    int status =
+        mylite_diagnostics_set_error_message(database, "A primary key index cannot be invisible");
 
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_error(database, MYLITE_MYSQL_ER_PK_INDEX_CANT_BE_INVISIBLE,
-                                   mylite_error_message(database));
+    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_PK_INDEX_CANT_BE_INVISIBLE,
+                                             mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
@@ -24049,8 +24040,8 @@ static int validate_create_index_plan(mylite_stmt *stmt)
         return status;
     }
     if (exists) {
-        (void)set_error_message_parts(stmt->database, "Duplicate key name '",
-                                      stmt->index_ddl.index.name, "'");
+        (void)mylite_diagnostics_set_error_message_parts(stmt->database, "Duplicate key name '",
+                                                         stmt->index_ddl.index.name, "'");
         return MYLITE_EXEC_ERROR;
     }
     return MYLITE_OK;
@@ -24079,8 +24070,9 @@ static int validate_drop_index_plan(mylite_stmt *stmt)
         return status;
     }
     if (name == NULL) {
-        (void)set_error_message_parts(stmt->database, "Can't DROP '", stmt->index_ddl.index_name,
-                                      "'; check that column/key exists");
+        (void)mylite_diagnostics_set_error_message_parts(stmt->database, "Can't DROP '",
+                                                         stmt->index_ddl.index_name,
+                                                         "'; check that column/key exists");
         return MYLITE_EXEC_ERROR;
     }
     free(stmt->index_ddl.index_name);
@@ -24094,14 +24086,14 @@ static int resolve_index_ddl_schema(mylite_stmt *stmt)
         return MYLITE_OK;
     }
     if (stmt->database->selected_schema == NULL) {
-        (void)set_error_message(stmt->database, "No database selected");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "No database selected");
         return MYLITE_EXEC_ERROR;
     }
 
     stmt->index_ddl.schema_name =
         copy_span_text(stmt->database->selected_schema, strlen(stmt->database->selected_schema));
     if (stmt->index_ddl.schema_name == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     return MYLITE_OK;
@@ -24117,13 +24109,14 @@ static int validate_index_ddl_target(mylite_stmt *stmt)
         return status;
     }
     if (!presence.exists) {
-        (void)set_error_message_parts(stmt->database, "Unknown database '",
-                                      stmt->index_ddl.schema_name, "'");
+        (void)mylite_diagnostics_set_error_message_parts(stmt->database, "Unknown database '",
+                                                         stmt->index_ddl.schema_name, "'");
         return MYLITE_EXEC_ERROR;
     }
     if (presence.is_system) {
-        (void)set_error_message_parts(stmt->database, "Access to system schema '",
-                                      stmt->index_ddl.schema_name, "' is rejected.");
+        (void)mylite_diagnostics_set_error_message_parts(
+            stmt->database, "Access to system schema '", stmt->index_ddl.schema_name,
+            "' is rejected.");
         return MYLITE_EXEC_ERROR;
     }
 
@@ -24165,7 +24158,7 @@ static int catalog_index_name(mylite_db *database, const struct mylite_index_cat
 
     *out_name = NULL;
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
 
     sqlite3_bind_text(select, 1, lookup->schema_name, -1, sqlite_transient_destructor());
@@ -24177,14 +24170,14 @@ static int catalog_index_name(mylite_db *database, const struct mylite_index_cat
             *out_name = copy_span_text(candidate, candidate == NULL ? 0U : strlen(candidate));
             sqlite3_finalize(select);
             if (*out_name == NULL) {
-                (void)set_error_message(database, "out of memory");
+                (void)mylite_diagnostics_set_error_message(database, "out of memory");
                 return MYLITE_NOMEM;
             }
             return MYLITE_OK;
         }
     }
     sqlite3_finalize(select);
-    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(database);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
 static int validate_create_index_columns(mylite_stmt *stmt, const struct mylite_insert_table *table)
@@ -24193,8 +24186,8 @@ static int validate_create_index_columns(mylite_stmt *stmt, const struct mylite_
         const char *column_name = stmt->index_ddl.index.parts[part].column_name;
 
         if (insert_table_column_index(table, column_name) == table->column_count) {
-            (void)set_error_message_parts(stmt->database, "Key column '", column_name,
-                                          "' doesn't exist in table");
+            (void)mylite_diagnostics_set_error_message_parts(
+                stmt->database, "Key column '", column_name, "' doesn't exist in table");
             return MYLITE_EXEC_ERROR;
         }
     }
@@ -24205,12 +24198,13 @@ static int validate_create_index_supported_features(mylite_stmt *stmt)
 {
     if (stmt->index_ddl.index_class == MYLITE_SQL_AST_INDEX_CLASS_FULLTEXT ||
         stmt->index_ddl.index_class == MYLITE_SQL_AST_INDEX_CLASS_SPATIAL) {
-        (void)set_error_message(stmt->database, "Unsupported standalone index class");
+        (void)mylite_diagnostics_set_error_message(stmt->database,
+                                                   "Unsupported standalone index class");
         return MYLITE_UNSUPPORTED;
     }
     if (stmt->index_ddl.index.has_with_parser) {
-        (void)set_error_message(stmt->database,
-                                "WITH PARSER is only supported for FULLTEXT indexes");
+        (void)mylite_diagnostics_set_error_message(
+            stmt->database, "WITH PARSER is only supported for FULLTEXT indexes");
         return MYLITE_EXEC_ERROR;
     }
     return MYLITE_OK;
@@ -24225,7 +24219,7 @@ static int validate_create_unique_index_values(mylite_stmt *stmt,
     int rc = SQLITE_OK;
 
     if (sql == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -24233,16 +24227,16 @@ static int validate_create_unique_index_values(mylite_stmt *stmt,
                             NULL);
     sqlite3_free(sql);
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
     rc = sqlite3_step(select);
     sqlite3_finalize(select);
     if (rc == SQLITE_ROW) {
-        (void)set_error_message_parts(stmt->database, "Duplicate entry for key '",
-                                      stmt->index_ddl.index.name, "'");
+        (void)mylite_diagnostics_set_error_message_parts(
+            stmt->database, "Duplicate entry for key '", stmt->index_ddl.index.name, "'");
         return MYLITE_EXEC_ERROR;
     }
-    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(stmt->database);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
 }
 
 static char *build_create_unique_index_duplicate_sql(mylite_db *database,
@@ -24325,7 +24319,7 @@ static int insert_standalone_index_catalog_rows(mylite_stmt *stmt,
                                 NULL);
 
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     for (size_t part = 0U; part < stmt->index_ddl.index.part_count; ++part) {
@@ -24405,7 +24399,7 @@ static int insert_standalone_index_catalog_part(mylite_stmt *stmt, sqlite3_stmt 
     sqlite3_bind_text(insert, bind_is_visible, is_visible, -1, SQLITE_STATIC);
 
     rc = sqlite3_step(insert);
-    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(stmt->database);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
 }
 
 static int drop_index_transaction(mylite_stmt *stmt)
@@ -24437,7 +24431,7 @@ static int delete_index_catalog_rows(mylite_stmt *stmt)
                                 &delete_stmt, NULL);
 
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     sqlite3_bind_text(delete_stmt, 1, stmt->index_ddl.schema_name, -1,
@@ -24448,7 +24442,7 @@ static int delete_index_catalog_rows(mylite_stmt *stmt)
                       sqlite_transient_destructor());
     rc = sqlite3_step(delete_stmt);
     sqlite3_finalize(delete_stmt);
-    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(stmt->database);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
 }
 
 static int append_create_index_warnings(mylite_stmt *stmt)
@@ -24466,7 +24460,7 @@ static int append_create_index_warnings(mylite_stmt *stmt)
 
 static int append_using_hash_warning(mylite_db *database)
 {
-    return append_database_warning(
+    return mylite_diagnostics_append_warning(
         database, MYLITE_MYSQL_ER_WARN_USING_OTHER_HANDLER,
         "This storage engine does not support HASH indexes; using BTREE instead");
 }
@@ -24480,10 +24474,10 @@ static int append_duplicate_index_warning(mylite_db *database, const char *index
     int status = MYLITE_OK;
 
     if (message == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
-    status = append_database_warning(database, MYLITE_MYSQL_ER_DUP_INDEX, message);
+    status = mylite_diagnostics_append_warning(database, MYLITE_MYSQL_ER_DUP_INDEX, message);
     sqlite3_free(message);
     return status;
 }
@@ -24497,7 +24491,7 @@ static int maybe_append_duplicate_index_warning(mylite_stmt *stmt)
                                 NULL);
 
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     sqlite3_bind_text(select, 1, stmt->index_ddl.schema_name, -1, sqlite_transient_destructor());
@@ -24519,7 +24513,7 @@ static int maybe_append_duplicate_index_warning(mylite_stmt *stmt)
         }
     }
     sqlite3_finalize(select);
-    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(stmt->database);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
 }
 
 static int catalog_index_matches_create_index(mylite_db *database, const char *schema_name,
@@ -24539,7 +24533,7 @@ static int catalog_index_matches_create_index(mylite_db *database, const char *s
 
     *out_matches = false;
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
     if (create_index->is_unique) {
         expected_non_unique = 0;
@@ -24570,7 +24564,7 @@ static int catalog_index_matches_create_index(mylite_db *database, const char *s
     }
     sqlite3_finalize(select);
     if (rc != SQLITE_DONE) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
 
     *out_matches = part == create_index->part_count;
@@ -24752,7 +24746,7 @@ static int execute_update_statement(mylite_stmt *stmt)
     if (status == MYLITE_OK) {
         status = sort_update_rowset(&rowset, &order_plan);
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         }
     }
     if (status == MYLITE_OK) {
@@ -24780,19 +24774,19 @@ static int copy_update_target_to_select_table(mylite_stmt *stmt, struct mylite_s
     if (target->schema_name != NULL) {
         table->schema_name = copy_nonempty_cstring(target->schema_name);
         if (table->schema_name == NULL) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
     }
     table->table_name = copy_nonempty_cstring(target->table_name);
     if (table->table_name == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     if (target->alias != NULL) {
         table->alias = copy_nonempty_cstring(target->alias);
         if (table->alias == NULL) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
     }
@@ -24816,7 +24810,7 @@ static int bind_update_subset(mylite_stmt *stmt, const struct mylite_select_tabl
 
     assignments = calloc(assignment_count, sizeof(*assignments));
     if (assignments == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -24865,7 +24859,7 @@ static int bind_update_assignment_targets(mylite_stmt *stmt,
             int status = MYLITE_OK;
 
             if (reference == NULL) {
-                (void)set_error_message(stmt->database, "out of memory");
+                (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
                 return MYLITE_NOMEM;
             }
             status = set_update_unknown_field_error(stmt->database, reference);
@@ -24943,7 +24937,7 @@ static int bind_update_predicate_expression(mylite_stmt *stmt,
             char *reference = copy_select_reference_name(expression);
 
             if (reference == NULL) {
-                (void)set_error_message(stmt->database, "out of memory");
+                (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
                 return MYLITE_NOMEM;
             }
             status = set_update_unknown_column_error(stmt->database, reference, clause_context);
@@ -25169,7 +25163,7 @@ static int bind_update_order_by_clause(mylite_stmt *stmt, const struct mylite_se
         if (status == MYLITE_OK) {
             status = add_update_order_key(order_plan, &order_key);
             if (status == MYLITE_NOMEM) {
-                (void)set_error_message(stmt->database, "out of memory");
+                (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             }
         }
         if (status != MYLITE_OK) {
@@ -25210,7 +25204,7 @@ static int materialize_update_rows(mylite_stmt *stmt, const struct mylite_select
     int status = MYLITE_OK;
 
     if (scan_sql == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -25218,7 +25212,7 @@ static int materialize_update_rows(mylite_stmt *stmt, const struct mylite_select
                             NULL);
     sqlite3_free(scan_sql);
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     while ((rc = sqlite3_step(scan)) == SQLITE_ROW) {
@@ -25242,7 +25236,7 @@ static int materialize_update_rows(mylite_stmt *stmt, const struct mylite_select
         }
     }
     sqlite3_finalize(scan);
-    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(stmt->database);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
 }
 
 static char *build_update_scan_sql(mylite_db *database, const struct mylite_select_table *table)
@@ -25267,7 +25261,7 @@ static int copy_update_sqlite_row(mylite_stmt *stmt, const struct mylite_select_
     out_row->rowid = sqlite3_column_int64(scan, 0);
     out_row->values = calloc(table->column_count, sizeof(*out_row->values));
     if (out_row->values == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     out_row->value_count = table->column_count;
@@ -25276,7 +25270,7 @@ static int copy_update_sqlite_row(mylite_stmt *stmt, const struct mylite_select_
         if (copy_update_sqlite_column_value(scan, (int)index + 1, &table->columns[index].descriptor,
                                             &out_row->values[index]) != 0) {
             update_row_deinit(out_row);
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
     }
@@ -25378,7 +25372,7 @@ static int evaluate_update_order_values(mylite_stmt *stmt, const struct mylite_s
 
     row->order_values = calloc(order_plan->order_key_count, sizeof(*row->order_values));
     if (row->order_values == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     row->order_value_count = order_plan->order_key_count;
@@ -25429,7 +25423,7 @@ static int append_update_row(mylite_stmt *stmt, struct mylite_update_rowset *row
         realloc(rowset->rows, (rowset->row_count + 1U) * sizeof(*rowset->rows));
 
     if (rows == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -25571,7 +25565,7 @@ static int execute_update_rows_transaction(mylite_stmt *stmt,
 
     update_sql = build_update_physical_sql(stmt->database, table);
     if (update_sql == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         rollback_statement_atomicity(stmt->database, &atomicity);
         return MYLITE_NOMEM;
     }
@@ -25581,7 +25575,7 @@ static int execute_update_rows_transaction(mylite_stmt *stmt,
     sqlite3_free(update_sql);
     if (rc != SQLITE_OK) {
         rollback_statement_atomicity(stmt->database, &atomicity);
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     for (size_t index = 0U; index < rowset->row_count; ++index) {
@@ -25654,12 +25648,12 @@ static int write_update_candidate(mylite_stmt *stmt, sqlite3_stmt *update,
 
     rc = sqlite3_bind_int64(update, (int)candidate->value_count + 1, candidate->rowid);
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     rc = sqlite3_step(update);
     if (rc != SQLITE_DONE) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     ++stmt->affected_rows;
@@ -25691,7 +25685,7 @@ static int copy_update_candidate_values(mylite_stmt *stmt, const struct mylite_u
     candidate->rowid = row->rowid;
     candidate->values = calloc(row->value_count, sizeof(*candidate->values));
     if (candidate->values == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     candidate->value_count = row->value_count;
@@ -25699,7 +25693,7 @@ static int copy_update_candidate_values(mylite_stmt *stmt, const struct mylite_u
     for (size_t index = 0U; index < row->value_count; ++index) {
         if (mylite_expression_value_copy(&row->values[index], &candidate->values[index]) != 0) {
             update_row_deinit(candidate);
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
     }
@@ -25760,7 +25754,7 @@ static int evaluate_update_assignment_value(mylite_stmt *stmt,
         if (eval_status == 0) {
             status = MYLITE_OK;
         } else if (eval_status == MYLITE_NOMEM) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             status = MYLITE_NOMEM;
         } else {
             status = set_dml_expression_condition_error(stmt->database, warning_start);
@@ -25787,7 +25781,7 @@ static int promote_update_expression_warnings(mylite_stmt *stmt, size_t warning_
     }
 
     const struct mylite_expression_warning *warning = &database->warnings.items[warning_start];
-    int status = set_error_message(database, warning->message);
+    int status = mylite_diagnostics_set_error_message(database, warning->message);
 
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
@@ -25805,7 +25799,7 @@ static int set_dml_expression_condition_error(mylite_db *database, size_t warnin
             continue;
         }
 
-        int status = set_error_message(database, condition->message);
+        int status = mylite_diagnostics_set_error_message(database, condition->message);
 
         return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
     }
@@ -25837,7 +25831,7 @@ static int resolve_update_default_value(mylite_stmt *stmt,
         char *timestamp = insert_current_timestamp_text();
 
         if (timestamp == NULL) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
         *out_value = (struct mylite_expression_value){
@@ -25855,7 +25849,7 @@ static int resolve_update_default_value(mylite_stmt *stmt,
     if (status == MYLITE_OK) {
         status = copy_insert_bound_value_to_expression(&value, out_value);
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         }
     }
     insert_bound_value_deinit(&value);
@@ -25971,7 +25965,7 @@ static int update_unique_index_conflicts(mylite_stmt *stmt, const struct mylite_
 
     sql = build_update_unique_check_sql(stmt->database, table, write_table, index);
     if (sql == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -25979,7 +25973,7 @@ static int update_unique_index_conflicts(mylite_stmt *stmt, const struct mylite_
                             NULL);
     sqlite3_free(sql);
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     status = bind_update_unique_check_values(stmt->database, check, index, candidate);
@@ -25988,7 +25982,7 @@ static int update_unique_index_conflicts(mylite_stmt *stmt, const struct mylite_
         if (rc == SQLITE_ROW) {
             *out_conflicts = true;
         } else if (rc != SQLITE_DONE) {
-            status = set_sqlite_error(stmt->database);
+            status = mylite_diagnostics_set_sqlite_error(stmt->database);
         }
     }
     sqlite3_finalize(check);
@@ -26035,7 +26029,7 @@ static int bind_update_unique_check_values(mylite_db *database, sqlite3_stmt *ch
                                    &candidate->values[index->column_indexes[part]]);
 
         if (rc != SQLITE_OK) {
-            return set_sqlite_error(database);
+            return mylite_diagnostics_set_sqlite_error(database);
         }
     }
 
@@ -26043,7 +26037,7 @@ static int bind_update_unique_check_values(mylite_db *database, sqlite3_stmt *ch
         int rc = sqlite3_bind_int64(check, (int)index->column_count + 1, candidate->rowid);
 
         if (rc != SQLITE_OK) {
-            return set_sqlite_error(database);
+            return mylite_diagnostics_set_sqlite_error(database);
         }
     }
     return MYLITE_OK;
@@ -26056,7 +26050,7 @@ static int bind_update_row_values(mylite_db *database, sqlite3_stmt *update,
         int rc = bind_update_value(update, (int)index + 1, &candidate->values[index]);
 
         if (rc != SQLITE_OK) {
-            return set_sqlite_error(database);
+            return mylite_diagnostics_set_sqlite_error(database);
         }
     }
     return MYLITE_OK;
@@ -26098,7 +26092,8 @@ static int advance_update_auto_increment(mylite_stmt *stmt, const struct mylite_
         return MYLITE_OK;
     }
     if (value == UINT64_MAX) {
-        (void)set_error_message(stmt->database, "AUTO_INCREMENT value is out of range");
+        (void)mylite_diagnostics_set_error_message(stmt->database,
+                                                   "AUTO_INCREMENT value is out of range");
         return MYLITE_EXEC_ERROR;
     }
     if (value >= *next_auto_increment) {
@@ -26243,11 +26238,11 @@ static int set_update_unknown_column_error(mylite_db *database, const char *colu
     int status = MYLITE_OK;
 
     if (message == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
-    status = set_error_message(database, message);
+    status = mylite_diagnostics_set_error_message(database, message);
     sqlite3_free(message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
@@ -26266,7 +26261,7 @@ static int set_update_duplicate_entry_error(mylite_db *database, const char *tab
     int status = MYLITE_OK;
 
     if (entry == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -26274,11 +26269,11 @@ static int set_update_duplicate_entry_error(mylite_db *database, const char *tab
         sqlite3_mprintf("Duplicate entry '%q' for key '%q.%q'", entry, table_name, index->name);
     free(entry);
     if (message == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
-    status = set_error_message(database, message);
+    status = mylite_diagnostics_set_error_message(database, message);
     sqlite3_free(message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
@@ -26331,7 +26326,8 @@ static int set_update_unsupported_expression_error(mylite_db *database, const ch
 
 static int set_update_unsupported_clause_error(mylite_db *database)
 {
-    if (set_error_message(database, "Unsupported UPDATE clause") == MYLITE_NOMEM) {
+    if (mylite_diagnostics_set_error_message(database, "Unsupported UPDATE clause") ==
+        MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
     return MYLITE_EXEC_ERROR;
@@ -26339,7 +26335,8 @@ static int set_update_unsupported_clause_error(mylite_db *database)
 
 static int set_update_unsupported_assignment_error(mylite_db *database)
 {
-    if (set_error_message(database, "Unsupported UPDATE assignment") == MYLITE_NOMEM) {
+    if (mylite_diagnostics_set_error_message(database, "Unsupported UPDATE assignment") ==
+        MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
     return MYLITE_EXEC_ERROR;
@@ -26359,8 +26356,8 @@ static int execute_delete_statement(mylite_stmt *stmt)
         status = resolve_select_table_target(stmt->database, &table);
         if (status == MYLITE_UNSUPPORTED && table.schema_name != NULL &&
             select_schema_name_is_system(table.schema_name)) {
-            (void)set_error_message_parts(stmt->database, "Access to system schema '",
-                                          table.schema_name, "' is rejected.");
+            (void)mylite_diagnostics_set_error_message_parts(
+                stmt->database, "Access to system schema '", table.schema_name, "' is rejected.");
             status = MYLITE_EXEC_ERROR;
         }
     }
@@ -26379,7 +26376,7 @@ static int execute_delete_statement(mylite_stmt *stmt)
     if (status == MYLITE_OK) {
         status = sort_update_rowset(&rowset, &order_plan);
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         }
     }
     if (status == MYLITE_OK) {
@@ -26403,19 +26400,19 @@ static int copy_delete_target_to_select_table(mylite_stmt *stmt, struct mylite_s
     if (target->schema_name != NULL) {
         table->schema_name = copy_nonempty_cstring(target->schema_name);
         if (table->schema_name == NULL) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
     }
     table->table_name = copy_nonempty_cstring(target->table_name);
     if (table->table_name == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     if (target->alias != NULL) {
         table->alias = copy_nonempty_cstring(target->alias);
         if (table->alias == NULL) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
     }
@@ -26486,7 +26483,7 @@ static int bind_delete_predicate_expression(mylite_stmt *stmt,
             char *reference = copy_select_reference_name(expression);
 
             if (reference == NULL) {
-                (void)set_error_message(stmt->database, "out of memory");
+                (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
                 return MYLITE_NOMEM;
             }
             status = set_delete_unknown_column_error(stmt->database, reference, clause_context);
@@ -26712,7 +26709,7 @@ static int bind_delete_order_by_clause(mylite_stmt *stmt, const struct mylite_se
         if (status == MYLITE_OK) {
             status = add_update_order_key(order_plan, &order_key);
             if (status == MYLITE_NOMEM) {
-                (void)set_error_message(stmt->database, "out of memory");
+                (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             }
         }
         if (status != MYLITE_OK) {
@@ -26739,7 +26736,7 @@ static int materialize_delete_rows(mylite_stmt *stmt, const struct mylite_select
     int status = MYLITE_OK;
 
     if (scan_sql == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -26747,7 +26744,7 @@ static int materialize_delete_rows(mylite_stmt *stmt, const struct mylite_select
                             NULL);
     sqlite3_free(scan_sql);
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     while ((rc = sqlite3_step(scan)) == SQLITE_ROW) {
@@ -26771,7 +26768,7 @@ static int materialize_delete_rows(mylite_stmt *stmt, const struct mylite_select
         }
     }
     sqlite3_finalize(scan);
-    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(stmt->database);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
 }
 
 static int evaluate_delete_row_matches(mylite_stmt *stmt, const struct mylite_select_table *table,
@@ -26828,7 +26825,7 @@ static int evaluate_delete_order_values(mylite_stmt *stmt, const struct mylite_s
 
     row->order_values = calloc(order_plan->order_key_count, sizeof(*row->order_values));
     if (row->order_values == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     row->order_value_count = order_plan->order_key_count;
@@ -26881,7 +26878,7 @@ static int promote_delete_expression_warnings(mylite_stmt *stmt, size_t warning_
     }
 
     const struct mylite_expression_warning *warning = &database->warnings.items[warning_start];
-    int status = set_error_message(database, warning->message);
+    int status = mylite_diagnostics_set_error_message(database, warning->message);
 
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
@@ -26908,7 +26905,7 @@ static int execute_delete_rows_transaction(mylite_stmt *stmt,
     delete_sql = build_delete_physical_sql(stmt->database, table);
     if (delete_sql == NULL) {
         rollback_statement_atomicity(stmt->database, &atomicity);
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -26917,7 +26914,7 @@ static int execute_delete_rows_transaction(mylite_stmt *stmt,
     sqlite3_free(delete_sql);
     if (rc != SQLITE_OK) {
         rollback_statement_atomicity(stmt->database, &atomicity);
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     for (size_t index = 0U; index < rowset->row_count; ++index) {
@@ -26928,7 +26925,7 @@ static int execute_delete_rows_transaction(mylite_stmt *stmt,
             rc = sqlite3_step(delete_stmt);
         }
         if (rc != SQLITE_DONE) {
-            status = set_sqlite_error(stmt->database);
+            status = mylite_diagnostics_set_sqlite_error(stmt->database);
             break;
         }
         ++stmt->affected_rows;
@@ -26966,18 +26963,19 @@ static int set_delete_unknown_column_error(mylite_db *database, const char *colu
     int status = MYLITE_OK;
 
     if (message == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
-    status = set_error_message(database, message);
+    status = mylite_diagnostics_set_error_message(database, message);
     sqlite3_free(message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int set_delete_unsupported_clause_error(mylite_db *database)
 {
-    if (set_error_message(database, "Unsupported DELETE clause") == MYLITE_NOMEM) {
+    if (mylite_diagnostics_set_error_message(database, "Unsupported DELETE clause") ==
+        MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
     return MYLITE_EXEC_ERROR;
@@ -27039,7 +27037,7 @@ static int evaluate_scalar_select_result_item(mylite_stmt *stmt, size_t index)
         mylite_expression_value_to_text(&stmt->scalar_result.values[index]);
     if (stmt->scalar_result.values[index].kind != MYLITE_EXPRESSION_VALUE_NULL &&
         stmt->scalar_result.texts[index] == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     return MYLITE_OK;
@@ -27114,7 +27112,7 @@ static int evaluate_statement_session_function(
         out_value->text_value = copy_span_text(database->selected_schema, schema_length);
         out_value->text_length = schema_length;
         if (out_value->text_value == NULL) {
-            (void)set_error_message(database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
             return MYLITE_NOMEM;
         }
         return 0;
@@ -27127,7 +27125,7 @@ static int evaluate_statement_session_function(
         out_value->text_value = copy_span_text(version, version_length);
         out_value->text_length = version_length;
         if (out_value->text_value == NULL) {
-            (void)set_error_message(database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
             return MYLITE_NOMEM;
         }
         return 0;
@@ -27270,7 +27268,7 @@ static int set_current_temporal_value(mylite_stmt *stmt, const char *format, siz
     }
     text = malloc(text_length + 1U);
     if (text == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 #ifdef _WIN32
@@ -27519,20 +27517,20 @@ static int strcmp_value_to_text(mylite_db *database, const struct mylite_express
         if (*out_text != NULL) {
             return MYLITE_OK;
         }
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     case MYLITE_EXPRESSION_VALUE_NULL:
         return -1;
     }
 
     if (length <= 0 || (size_t)length >= sizeof(buffer)) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     *out_length = (size_t)length;
     *out_text = copy_span_text(buffer, *out_length);
     if (*out_text == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -27600,24 +27598,24 @@ static int strcmp_decimal_literal_to_text(mylite_db *database,
     sign_length = negative && !zero ? 1U : 0U;
     if (fractional_length > 0U) {
         if (fractional_length == SIZE_MAX) {
-            (void)set_error_message(database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
             return MYLITE_NOMEM;
         }
         fractional_output_length = 1U + fractional_length;
     }
     if (normalized_integer_length > SIZE_MAX - sign_length) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     result_length = sign_length + normalized_integer_length;
     if (result_length == SIZE_MAX || fractional_output_length >= SIZE_MAX - result_length) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     result_length += fractional_output_length;
     result = malloc(result_length + 1U);
     if (result == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -27807,7 +27805,7 @@ static int set_session_text_function_value(mylite_db *database, const char *text
     out_value->text_value = copy_span_text(text == NULL ? "" : text, length);
     out_value->text_length = length;
     if (out_value->text_value == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     return MYLITE_OK;
@@ -28561,7 +28559,7 @@ static int materialize_union_query_result(mylite_stmt *stmt)
     }
     stmt->database->warnings = saved_warnings;
     if (append_subquery_warnings(&stmt->database->warnings, &accumulated_warnings) != MYLITE_OK) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         status = MYLITE_NOMEM;
     }
     mylite_expression_warnings_deinit(&accumulated_warnings);
@@ -28629,7 +28627,7 @@ static int execute_union_operand_statement(mylite_stmt *operand)
         if (rc == SQLITE_DONE) {
             return MYLITE_DONE;
         }
-        return set_sqlite_error(operand->database);
+        return mylite_diagnostics_set_sqlite_error(operand->database);
     }
     case MYLITE_STMT_SCALAR_SELECT:
         return execute_scalar_select_statement(operand);
@@ -28676,7 +28674,7 @@ static int copy_union_operand_current_row(mylite_stmt *stmt, mylite_stmt *operan
     *out_row = (struct mylite_table_select_row){0};
     out_row->output_values = calloc(column_count, sizeof(*out_row->output_values));
     if (out_row->output_values == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     out_row->output_value_count = column_count;
@@ -28687,7 +28685,7 @@ static int copy_union_operand_current_row(mylite_stmt *stmt, mylite_stmt *operan
 
         if (status != MYLITE_OK) {
             if (status == MYLITE_NOMEM) {
-                (void)set_error_message(stmt->database, "out of memory");
+                (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             }
             return status;
         }
@@ -28736,7 +28734,7 @@ static int evaluate_union_order_values(mylite_stmt *stmt, struct mylite_table_se
 {
     row->order_values = calloc(stmt->select_plan.order_key_count, sizeof(*row->order_values));
     if (row->order_values == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     row->order_value_count = stmt->select_plan.order_key_count;
@@ -28760,7 +28758,7 @@ static int evaluate_union_order_key(mylite_stmt *stmt, const struct mylite_table
         if (order_key->output_index >= row->output_value_count ||
             mylite_expression_value_copy(&row->output_values[order_key->output_index], out_value) !=
                 0) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
         return MYLITE_OK;
@@ -28783,7 +28781,7 @@ static int evaluate_union_order_key(mylite_stmt *stmt, const struct mylite_table
             return MYLITE_OK;
         }
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
         if (stmt->database->error_message != NULL) {
@@ -28809,7 +28807,7 @@ static int resolve_union_expression_identifier(void *user_data,
     status = copy_select_identifier_parts(identifier, parts, &part_count);
     if (status != MYLITE_OK) {
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(context->stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(context->stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
         return -1;
@@ -28835,7 +28833,7 @@ static int resolve_union_expression_identifier(void *user_data,
         free(parts[index]);
     }
     if (status == MYLITE_NOMEM) {
-        (void)set_error_message(context->stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(context->stmt->database, "out of memory");
     }
     return status;
 }
@@ -28850,7 +28848,7 @@ static int append_and_clear_union_database_warnings(mylite_db *database,
     status = append_subquery_warnings(warnings, &current);
     mylite_expression_warnings_deinit(&current);
     if (status != MYLITE_OK) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
     }
     return status;
 }
@@ -28931,7 +28929,7 @@ static int materialize_ordered_table_select_result(mylite_stmt *stmt)
         }
     }
     if (rc != SQLITE_DONE) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     status = sort_table_select_result_rows(stmt);
@@ -28988,7 +28986,7 @@ static int materialize_unordered_table_select_result(mylite_stmt *stmt)
     }
     if (rc != SQLITE_DONE &&
         !table_select_limit_is_full(&stmt->select_plan.limit, stmt->select_result.row_count)) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
     if (distinct) {
         return apply_table_select_limit(stmt);
@@ -29080,7 +29078,7 @@ static int materialize_joined_table_select_result(mylite_stmt *stmt)
 
     state.rowsets = calloc(table_count, sizeof(*state.rowsets));
     if (state.rowsets == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -29089,7 +29087,7 @@ static int materialize_joined_table_select_result(mylite_stmt *stmt)
         row.values = calloc(row.value_count, sizeof(*row.values));
         if (row.values == NULL) {
             table_select_table_rowsets_deinit(state.rowsets, table_count);
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
     }
@@ -29163,7 +29161,7 @@ static int materialize_outer_joined_table_select_result(mylite_stmt *stmt)
 
     state.rowsets = calloc(table_count, sizeof(*state.rowsets));
     if (state.rowsets == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -29226,7 +29224,7 @@ static int load_table_select_join_rowset(mylite_stmt *stmt, size_t table_index,
 
     scan_sql = build_select_table_scan_sql(stmt->database, table);
     if (scan_sql == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -29234,7 +29232,7 @@ static int load_table_select_join_rowset(mylite_stmt *stmt, size_t table_index,
                             NULL);
     sqlite3_free(scan_sql);
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     while ((rc = sqlite3_step(scan)) == SQLITE_ROW) {
@@ -29246,7 +29244,7 @@ static int load_table_select_join_rowset(mylite_stmt *stmt, size_t table_index,
         }
     }
     sqlite3_finalize(scan);
-    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(stmt->database);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
 }
 
 static char *build_select_table_scan_sql(mylite_db *database,
@@ -29281,7 +29279,7 @@ static int append_table_select_join_scan_row(mylite_stmt *stmt, sqlite3_stmt *sc
     if (row.value_count != 0U) {
         row.values = calloc(row.value_count, sizeof(*row.values));
         if (row.values == NULL) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
     }
@@ -29289,7 +29287,7 @@ static int append_table_select_join_scan_row(mylite_stmt *stmt, sqlite3_stmt *sc
     for (size_t index = 0U; index < row.value_count; ++index) {
         if (copy_sqlite_column_value(scan, index, &row.values[index]) != 0) {
             table_select_row_deinit(&row);
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
     }
@@ -29297,7 +29295,7 @@ static int append_table_select_join_scan_row(mylite_stmt *stmt, sqlite3_stmt *sc
     rows = realloc(rowset->rows, (rowset->row_count + 1U) * sizeof(*rowset->rows));
     if (rows == NULL) {
         table_select_row_deinit(&row);
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     rowset->rows = rows;
@@ -29327,7 +29325,7 @@ static int scan_joined_table_select_rows(mylite_stmt *stmt,
 
     scan.frames = calloc(table_count, sizeof(*scan.frames));
     if (scan.frames == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -29356,7 +29354,7 @@ scan_outer_joined_table_select_rows(mylite_stmt *stmt,
     }
     range_rowsets = calloc(range_count, sizeof(*range_rowsets));
     if (range_rowsets == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -29435,7 +29433,7 @@ static int apply_select_join_step_to_rowset(
     if (step->join_type == MYLITE_SQL_AST_JOIN_RIGHT && right->row_count != 0U) {
         right_matched = calloc(right->row_count, sizeof(*right_matched));
         if (right_matched == NULL) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
     }
@@ -29531,7 +29529,7 @@ static int append_select_join_step_match(mylite_stmt *stmt,
 
     *out_matches = false;
     if (status == MYLITE_NOMEM) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     if (right_table == NULL) {
@@ -29627,7 +29625,7 @@ static int append_empty_joined_table_select_row(mylite_stmt *stmt,
     }
     if (status != MYLITE_OK) {
         table_select_row_deinit(&row);
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return status;
     }
     for (size_t index = 0U; index < row.source_row_index_count; ++index) {
@@ -29651,7 +29649,7 @@ static int append_table_select_row_copy_to_rowset(mylite_stmt *stmt,
     int status = table_select_row_copy(row, &copy);
 
     if (status == MYLITE_NOMEM) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     status = append_table_select_row_to_rowset(stmt, rowset, &copy);
@@ -29669,7 +29667,7 @@ static int append_table_select_row_to_rowset(mylite_stmt *stmt,
         realloc(rowset->rows, (rowset->row_count + 1U) * sizeof(*rowset->rows));
 
     if (rows == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     rowset->rows = rows;
@@ -29696,7 +29694,7 @@ static int copy_select_base_table_row_values(mylite_db *database,
         }
         mylite_expression_value_deinit(&row->values[column_index]);
         if (mylite_expression_value_copy(&source->values[index], &row->values[column_index]) != 0) {
-            (void)set_error_message(database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
             return MYLITE_NOMEM;
         }
     }
@@ -29763,7 +29761,7 @@ static int process_outer_joined_table_range_rows(
 
     row_indexes = calloc(range_count, sizeof(*row_indexes));
     if (row_indexes == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -29818,7 +29816,7 @@ process_outer_joined_table_range_row(mylite_stmt *stmt,
     }
     if (status != MYLITE_OK) {
         table_select_row_deinit(&row);
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return status;
     }
     for (size_t index = 0U; index < row.source_row_index_count; ++index) {
@@ -29928,7 +29926,7 @@ static int process_joined_table_select_scan_row(
 
     if (status != MYLITE_OK) {
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         }
         return status;
     }
@@ -30299,7 +30297,7 @@ store_table_select_join_condition_cache(mylite_stmt *stmt,
         entry.row_indexes = calloc(range.table_count, sizeof(*entry.row_indexes));
     }
     if (entry.row_indexes == NULL && range.table_count != 0U) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     for (size_t index = 0U; index < range.table_count; ++index) {
@@ -30309,7 +30307,7 @@ store_table_select_join_condition_cache(mylite_stmt *stmt,
     entries = realloc(cache->entries, (cache->entry_count + 1U) * sizeof(*cache->entries));
     if (entries == NULL) {
         free(entry.row_indexes);
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     cache->entries = entries;
@@ -30336,7 +30334,7 @@ static int store_table_select_join_condition_cache_row(
         entry.row_indexes = calloc(range.table_count, sizeof(*entry.row_indexes));
     }
     if (entry.row_indexes == NULL && range.table_count != 0U) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     for (size_t index = 0U; index < range.table_count; ++index) {
@@ -30346,7 +30344,7 @@ static int store_table_select_join_condition_cache_row(
     entries = realloc(cache->entries, (cache->entry_count + 1U) * sizeof(*cache->entries));
     if (entries == NULL) {
         free(entry.row_indexes);
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     cache->entries = entries;
@@ -30496,7 +30494,7 @@ static int process_joined_table_select_nonaggregate_row(
         bool duplicate = false;
 
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         }
         if (status == MYLITE_OK && distinct) {
             status = check_table_select_distinct_duplicate(stmt, &copy, &duplicate);
@@ -30609,7 +30607,7 @@ static int scan_aggregate_table_select_groups(mylite_stmt *stmt,
         }
     }
     if (rc != SQLITE_DONE) {
-        status = set_sqlite_error(stmt->database);
+        status = mylite_diagnostics_set_sqlite_error(stmt->database);
     }
     return status;
 }
@@ -30621,7 +30619,7 @@ static int append_empty_implicit_table_select_group(mylite_stmt *stmt,
     struct mylite_table_select_group *new_groups = calloc(1U, sizeof(*new_groups));
 
     if (new_groups == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     *groups = new_groups;
@@ -30629,7 +30627,7 @@ static int append_empty_implicit_table_select_group(mylite_stmt *stmt,
     (*groups)[0].aggregate_states =
         calloc(stmt->select_plan.aggregate_binding_count, sizeof(*(*groups)[0].aggregate_states));
     if ((*groups)[0].aggregate_states == NULL && stmt->select_plan.aggregate_binding_count != 0U) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     (*groups)[0].aggregate_state_count = stmt->select_plan.aggregate_binding_count;
@@ -30771,7 +30769,7 @@ static int append_table_select_result_row(mylite_stmt *stmt, struct mylite_table
                 (stmt->select_result.row_count + 1U) * sizeof(*stmt->select_result.rows));
 
     if (rows == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -30788,7 +30786,7 @@ static int append_table_select_result_row_copy(mylite_stmt *stmt,
     int status = table_select_row_copy(row, &copy);
 
     if (status == MYLITE_NOMEM) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
     }
     if (status == MYLITE_OK) {
         status = append_table_select_result_row(stmt, &copy);
@@ -30908,7 +30906,7 @@ static int copy_table_select_sqlite_row(mylite_stmt *stmt, struct mylite_table_s
     }
     out_row->values = calloc(column_count, sizeof(*out_row->values));
     if (out_row->values == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     out_row->value_count = column_count;
@@ -30918,7 +30916,7 @@ static int copy_table_select_sqlite_row(mylite_stmt *stmt, struct mylite_table_s
 
         if (status != 0) {
             table_select_row_deinit(out_row);
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
     }
@@ -30976,7 +30974,7 @@ static int append_table_select_group(mylite_stmt *stmt, struct mylite_table_sele
 
     *out_group = NULL;
     if (new_groups == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -31011,7 +31009,7 @@ static int find_table_select_group(mylite_stmt *stmt, struct mylite_table_select
 
     values = calloc(value_count, sizeof(*values));
     if (values == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     for (size_t index = 0U; index < value_count; ++index) {
@@ -31055,7 +31053,7 @@ static int initialize_table_select_group(mylite_stmt *stmt, struct mylite_table_
     if (column_count != 0U) {
         group->representative.values = calloc(column_count, sizeof(*group->representative.values));
         if (group->representative.values == NULL) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
     }
@@ -31063,7 +31061,7 @@ static int initialize_table_select_group(mylite_stmt *stmt, struct mylite_table_
         for (size_t index = 0U; index < column_count; ++index) {
             if (mylite_expression_value_copy(&row->values[index],
                                              &group->representative.values[index]) != 0) {
-                (void)set_error_message(stmt->database, "out of memory");
+                (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
                 return MYLITE_NOMEM;
             }
         }
@@ -31073,7 +31071,7 @@ static int initialize_table_select_group(mylite_stmt *stmt, struct mylite_table_
     group->group_value_count = stmt->select_plan.group_key_count;
     group->group_values = calloc(group->group_value_count, sizeof(*group->group_values));
     if (group->group_values == NULL && group->group_value_count != 0U) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     for (size_t index = 0U; index < group->group_value_count; ++index) {
@@ -31089,7 +31087,7 @@ static int initialize_table_select_group(mylite_stmt *stmt, struct mylite_table_
     group->aggregate_states =
         calloc(group->aggregate_state_count, sizeof(*group->aggregate_states));
     if (group->aggregate_states == NULL && group->aggregate_state_count != 0U) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     return MYLITE_OK;
@@ -31117,14 +31115,14 @@ static int finalize_table_select_group(mylite_stmt *stmt, struct mylite_table_se
 
     out_row->values = calloc(column_count, sizeof(*out_row->values));
     if (out_row->values == NULL && column_count != 0U) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     out_row->value_count = column_count;
     for (size_t index = 0U; index < column_count; ++index) {
         if (mylite_expression_value_copy(&group->representative.values[index],
                                          &out_row->values[index]) != 0) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
     }
@@ -31132,7 +31130,7 @@ static int finalize_table_select_group(mylite_stmt *stmt, struct mylite_table_se
     out_row->aggregate_values =
         calloc(group->aggregate_state_count, sizeof(*out_row->aggregate_values));
     if (out_row->aggregate_values == NULL && group->aggregate_state_count != 0U) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     out_row->aggregate_value_count = group->aggregate_state_count;
@@ -31294,7 +31292,7 @@ update_table_select_aggregate_state(mylite_stmt *stmt, struct mylite_select_aggr
 
     mylite_expression_value_deinit(&value);
     if (status == MYLITE_NOMEM) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
     }
     return status;
 }
@@ -31322,7 +31320,7 @@ update_table_select_count_distinct_state(mylite_stmt *stmt,
     if (status != MYLITE_OK) {
         count_distinct_tuple_deinit(&tuple);
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         }
         return status;
     }
@@ -31347,7 +31345,7 @@ static int evaluate_table_select_count_distinct_tuple(
 
     out_tuple->values = calloc(value_count, sizeof(*out_tuple->values));
     if (out_tuple->values == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     out_tuple->value_count = value_count;
@@ -31502,7 +31500,7 @@ finalize_table_select_aggregate_state(mylite_stmt *stmt,
             return MYLITE_OK;
         }
         if (mylite_expression_value_copy(&state->value, out_value) != 0) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
         return MYLITE_OK;
@@ -31639,7 +31637,7 @@ static int evaluate_table_select_order_values(mylite_stmt *stmt,
 
     row->order_values = calloc(order_key_count, sizeof(*row->order_values));
     if (row->order_values == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     row->order_value_count = order_key_count;
@@ -31702,7 +31700,7 @@ static int sort_table_select_result_rows(mylite_stmt *stmt)
 
     scratch = calloc(row_count, sizeof(*scratch));
     if (scratch == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     status = merge_sort_table_select_rows(stmt->select_result.rows, scratch, 0U, row_count,
@@ -31788,7 +31786,7 @@ static int materialize_table_select_output_values(mylite_stmt *stmt,
 
     row->output_values = calloc(stmt->select_plan.output_count, sizeof(*row->output_values));
     if (row->output_values == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     row->output_value_count = stmt->select_plan.output_count;
@@ -32065,7 +32063,7 @@ static int set_table_select_current_row(mylite_stmt *stmt,
     stmt->select_result.current_texts =
         (char **)calloc(stmt->select_plan.output_count, sizeof(*stmt->select_result.current_texts));
     if (stmt->select_result.current_values == NULL || stmt->select_result.current_texts == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     stmt->select_result.current_value_count = stmt->select_plan.output_count;
@@ -32081,7 +32079,7 @@ static int set_table_select_current_row(mylite_stmt *stmt,
             stmt->select_result.current_texts[index] =
                 mylite_expression_value_to_text(&stmt->select_result.current_values[index]);
             if (stmt->select_result.current_texts[index] == NULL) {
-                (void)set_error_message(stmt->database, "out of memory");
+                (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
                 return MYLITE_NOMEM;
             }
         }
@@ -32098,7 +32096,7 @@ static int evaluate_table_select_cached_output_value(mylite_stmt *stmt,
     if (row != NULL && row->output_value_count == stmt->select_plan.output_count &&
         output_index < row->output_value_count) {
         if (mylite_expression_value_copy(&row->output_values[output_index], out_value) != 0) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
         return MYLITE_OK;
@@ -32115,7 +32113,7 @@ static int evaluate_table_select_output_value(mylite_stmt *stmt,
 
     if (output->kind == MYLITE_SELECT_OUTPUT_COLUMN) {
         if (copy_table_select_row_value(row, output->column_index, out_value) != 0) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
         return MYLITE_OK;
@@ -32513,7 +32511,7 @@ static int map_table_select_expression_eval_status(mylite_stmt *stmt, int status
     }
     if (status == MYLITE_NOMEM) {
         if (stmt != NULL && stmt->database != NULL && stmt->database->error_message == NULL) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         }
         return MYLITE_NOMEM;
     }
@@ -32538,12 +32536,12 @@ static int set_where_predicate_eval_error(mylite_stmt *stmt)
             &database->warnings.items[database->warnings.count - 1U];
 
         if (warning->level == MYLITE_EXPRESSION_WARNING_LEVEL_ERROR) {
-            int status = set_error_message(database, warning->message);
+            int status = mylite_diagnostics_set_error_message(database, warning->message);
 
             return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
         }
         if (warning->code == MYLITE_MYSQL_ER_WRONG_ARGUMENTS) {
-            int status = set_error_message(database, warning->message);
+            int status = mylite_diagnostics_set_error_message(database, warning->message);
 
             return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
         }
@@ -32562,7 +32560,7 @@ static int validate_insert_values_target(mylite_stmt *stmt, const char **out_sch
 
     *out_schema_name = NULL;
     if (schema_name == NULL) {
-        (void)set_error_message(stmt->database, "No database selected");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "No database selected");
         return MYLITE_EXEC_ERROR;
     }
 
@@ -32571,12 +32569,13 @@ static int validate_insert_values_target(mylite_stmt *stmt, const char **out_sch
         return status;
     }
     if (!presence.exists) {
-        (void)set_error_message_parts(stmt->database, "Unknown database '", schema_name, "'");
+        (void)mylite_diagnostics_set_error_message_parts(stmt->database, "Unknown database '",
+                                                         schema_name, "'");
         return MYLITE_EXEC_ERROR;
     }
     if (presence.is_system) {
-        (void)set_error_message_parts(stmt->database, "Access to system schema '", schema_name,
-                                      "' is rejected.");
+        (void)mylite_diagnostics_set_error_message_parts(
+            stmt->database, "Access to system schema '", schema_name, "' is rejected.");
         return MYLITE_EXEC_ERROR;
     }
 
@@ -32614,7 +32613,7 @@ static int load_write_table(mylite_stmt *stmt, const char *schema_name, const ch
 
     *out_table = (struct mylite_insert_table){0};
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     sqlite3_bind_text(select, 1, schema_name, -1, sqlite_transient_destructor());
@@ -32632,12 +32631,12 @@ static int load_write_table(mylite_stmt *stmt, const char *schema_name, const ch
     if (rc != SQLITE_ROW) {
         return rc == SQLITE_DONE
                    ? set_table_doesnt_exist_error(stmt->database, schema_name, table_name)
-                   : set_sqlite_error(stmt->database);
+                   : mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     out_table->physical_name = physical_table_name(schema_name, table_name);
     if (out_table->physical_name == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -32664,7 +32663,7 @@ static int load_insert_columns(mylite_stmt *stmt, const char *schema_name, const
                                 NULL);
 
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     sqlite3_bind_text(select, 1, schema_name, -1, sqlite_transient_destructor());
@@ -32679,10 +32678,11 @@ static int load_insert_columns(mylite_stmt *stmt, const char *schema_name, const
     }
     sqlite3_finalize(select);
     if (rc != SQLITE_DONE) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
     if (table->column_count == 0U) {
-        (void)set_error_message(stmt->database, "INSERT target table has no columns");
+        (void)mylite_diagnostics_set_error_message(stmt->database,
+                                                   "INSERT target table has no columns");
         return MYLITE_EXEC_ERROR;
     }
     return MYLITE_OK;
@@ -32712,7 +32712,7 @@ static int load_insert_column_from_catalog_row(mylite_stmt *stmt, sqlite3_stmt *
     if (column.name == NULL || (default_text != NULL && column.default_text == NULL) ||
         column.data_type == NULL || column.extra == NULL) {
         insert_table_column_deinit(&column);
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -32727,7 +32727,7 @@ static int load_insert_column_from_catalog_row(mylite_stmt *stmt, sqlite3_stmt *
     if (status != MYLITE_OK) {
         insert_table_column_deinit(&column);
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         }
     }
     return status;
@@ -32761,7 +32761,7 @@ static int load_insert_unique_indexes(mylite_stmt *stmt, const char *schema_name
                                 NULL);
 
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     sqlite3_bind_text(select, 1, schema_name, -1, sqlite_transient_destructor());
@@ -32781,7 +32781,7 @@ static int load_insert_unique_indexes(mylite_stmt *stmt, const char *schema_name
         }
     }
     sqlite3_finalize(select);
-    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(stmt->database);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
 }
 
 static int add_insert_unique_index_part(struct mylite_db *database,
@@ -32797,8 +32797,8 @@ static int add_insert_unique_index_part(struct mylite_db *database,
     };
 
     if (column_index == table->column_count) {
-        (void)set_error_message_parts(database, "Index references unknown column '",
-                                      part->column_name, "'");
+        (void)mylite_diagnostics_set_error_message_parts(
+            database, "Index references unknown column '", part->column_name, "'");
         return MYLITE_EXEC_ERROR;
     }
 
@@ -32808,7 +32808,7 @@ static int add_insert_unique_index_part(struct mylite_db *database,
                 append_insert_unique_index_part(&table->unique_indexes[current], &insert_part);
 
             if (status == MYLITE_NOMEM) {
-                (void)set_error_message(database, "out of memory");
+                (void)mylite_diagnostics_set_error_message(database, "out of memory");
             }
             return status;
         }
@@ -32817,7 +32817,7 @@ static int add_insert_unique_index_part(struct mylite_db *database,
     index = realloc(table->unique_indexes,
                     (table->unique_index_count + 1U) * sizeof(*table->unique_indexes));
     if (index == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     table->unique_indexes = index;
@@ -32828,13 +32828,13 @@ static int add_insert_unique_index_part(struct mylite_db *database,
     index->name =
         copy_span_text(part->index_name, part->index_name == NULL ? 0U : strlen(part->index_name));
     if (index->name == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
     int status = append_insert_unique_index_part(index, &insert_part);
     if (status == MYLITE_NOMEM) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
     }
     return status;
 }
@@ -32902,7 +32902,7 @@ static int read_insert_auto_increment_max(mylite_stmt *stmt,
 
     *out_next_auto_increment = 1U;
     if (sql == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -32911,7 +32911,7 @@ static int read_insert_auto_increment_max(mylite_stmt *stmt,
                         table->physical_name);
     select_sql = sqlite3_str_finish(sql);
     if (select_sql == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -32919,7 +32919,7 @@ static int read_insert_auto_increment_max(mylite_stmt *stmt,
                             &select, NULL);
     sqlite3_free(select_sql);
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     rc = sqlite3_step(select);
@@ -32931,7 +32931,7 @@ static int read_insert_auto_increment_max(mylite_stmt *stmt,
         }
     }
     sqlite3_finalize(select);
-    return rc == SQLITE_ROW ? MYLITE_OK : set_sqlite_error(stmt->database);
+    return rc == SQLITE_ROW ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
 }
 
 static int validate_insert_column_list(mylite_stmt *stmt, const struct mylite_insert_table *table,
@@ -32949,7 +32949,7 @@ static int validate_insert_column_list(mylite_stmt *stmt, const struct mylite_in
 
     column_indexes = calloc(stmt->insert_values.column_count, sizeof(*column_indexes));
     if (column_indexes == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -32957,17 +32957,17 @@ static int validate_insert_column_list(mylite_stmt *stmt, const struct mylite_in
         size_t column_index = insert_table_column_index(table, stmt->insert_values.columns[index]);
 
         if (column_index == table->column_count) {
-            int status =
-                set_error_message_parts(stmt->database, "Unknown column '",
-                                        stmt->insert_values.columns[index], "' in 'field list'");
+            int status = mylite_diagnostics_set_error_message_parts(
+                stmt->database, "Unknown column '", stmt->insert_values.columns[index],
+                "' in 'field list'");
             free(column_indexes);
             return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
         }
         for (size_t previous = 0U; previous < index; ++previous) {
             if (column_indexes[previous] == column_index) {
-                int status = set_error_message_parts(stmt->database, "Column '",
-                                                     stmt->insert_values.columns[index],
-                                                     "' specified twice");
+                int status = mylite_diagnostics_set_error_message_parts(
+                    stmt->database, "Column '", stmt->insert_values.columns[index],
+                    "' specified twice");
                 free(column_indexes);
                 return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
             }
@@ -32987,8 +32987,8 @@ static int validate_insert_row_alias(mylite_stmt *stmt, size_t source_column_cou
         return MYLITE_OK;
     }
     if (ascii_case_equal(plan->row_alias, plan->table_name)) {
-        int status = set_error_message_parts(stmt->database, "Not unique table/alias: '",
-                                             plan->row_alias, "'");
+        int status = mylite_diagnostics_set_error_message_parts(
+            stmt->database, "Not unique table/alias: '", plan->row_alias, "'");
 
         return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
     }
@@ -32998,8 +32998,8 @@ static int validate_insert_row_alias(mylite_stmt *stmt, size_t source_column_cou
     for (size_t index = 0U; index < plan->alias_column_count; ++index) {
         for (size_t previous = 0U; previous < index; ++previous) {
             if (ascii_case_equal(plan->alias_columns[previous], plan->alias_columns[index])) {
-                int status = set_error_message_parts(stmt->database, "Duplicate column name '",
-                                                     plan->alias_columns[index], "'");
+                int status = mylite_diagnostics_set_error_message_parts(
+                    stmt->database, "Duplicate column name '", plan->alias_columns[index], "'");
 
                 return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
             }
@@ -33026,7 +33026,7 @@ validate_insert_update_assignments(mylite_stmt *stmt, const struct mylite_insert
 
     column_indexes = calloc(assignment_count, sizeof(*column_indexes));
     if (column_indexes == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -33159,7 +33159,7 @@ static int execute_insert_values_transaction(mylite_stmt *stmt, const char *sche
     if (insert_sql == NULL) {
         insert_execution_state_deinit(&state);
         rollback_statement_atomicity(stmt->database, &atomicity);
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -33169,7 +33169,7 @@ static int execute_insert_values_transaction(mylite_stmt *stmt, const char *sche
     if (rc != SQLITE_OK) {
         insert_execution_state_deinit(&state);
         rollback_statement_atomicity(stmt->database, &atomicity);
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     for (size_t row_index = 0U; row_index < stmt->insert_values.row_count; ++row_index) {
@@ -33241,7 +33241,7 @@ static int initialize_insert_ignore_warning_state(mylite_stmt *stmt,
     state->warned_null_columns = calloc(table->column_count, sizeof(*state->warned_null_columns));
     if (state->warned_omitted_no_default_columns == NULL || state->warned_null_columns == NULL) {
         insert_execution_state_deinit(state);
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     return MYLITE_OK;
@@ -33295,13 +33295,14 @@ static int execute_insert_row(mylite_stmt *stmt, sqlite3_stmt *insert,
     int status = MYLITE_OK;
 
     if (table->column_count == 0U) {
-        (void)set_error_message(stmt->database, "INSERT target table has no columns");
+        (void)mylite_diagnostics_set_error_message(stmt->database,
+                                                   "INSERT target table has no columns");
         return MYLITE_EXEC_ERROR;
     }
 
     values = calloc(table->column_count, sizeof(*values));
     if (values == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -33359,7 +33360,7 @@ static int execute_insert_duplicate_update_branch(
 
     stored_values = calloc(table->column_count, sizeof(*stored_values));
     if (stored_values == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -33412,7 +33413,7 @@ static int write_insert_candidate_row(mylite_stmt *stmt, sqlite3_stmt *insert,
     if (status == MYLITE_OK) {
         rc = sqlite3_step(insert);
         if (rc != SQLITE_DONE) {
-            status = set_sqlite_error(stmt->database);
+            status = mylite_diagnostics_set_sqlite_error(stmt->database);
         }
     }
     if (status == MYLITE_OK) {
@@ -33432,19 +33433,19 @@ static int load_insert_conflict_row(mylite_stmt *stmt, const struct mylite_inser
     int status = MYLITE_OK;
 
     if (sql == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     rc = sqlite3_prepare_v3(stmt->database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select,
                             NULL);
     sqlite3_free(sql);
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
     rc = sqlite3_bind_int64(select, 1, rowid);
     if (rc != SQLITE_OK) {
         sqlite3_finalize(select);
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     rc = sqlite3_step(select);
@@ -33452,14 +33453,16 @@ static int load_insert_conflict_row(mylite_stmt *stmt, const struct mylite_inser
         for (size_t index = 0U; index < table->column_count; ++index) {
             if (copy_insert_sqlite_column_value(select, (int)index, &values[index]) != 0) {
                 status = MYLITE_NOMEM;
-                (void)set_error_message(stmt->database, "out of memory");
+                (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
                 break;
             }
         }
     } else {
-        status = rc == SQLITE_DONE ? MYLITE_EXEC_ERROR : set_sqlite_error(stmt->database);
+        status = rc == SQLITE_DONE ? MYLITE_EXEC_ERROR
+                                   : mylite_diagnostics_set_sqlite_error(stmt->database);
         if (status == MYLITE_EXEC_ERROR) {
-            (void)set_error_message(stmt->database, "Duplicate row disappeared during INSERT");
+            (void)mylite_diagnostics_set_error_message(stmt->database,
+                                                       "Duplicate row disappeared during INSERT");
         }
     }
 
@@ -33592,7 +33595,7 @@ static int resolve_insert_update_default_value(mylite_stmt *stmt,
         char *timestamp = insert_current_timestamp_text();
 
         if (timestamp == NULL) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
         *out_value = (struct mylite_insert_bound_value){
@@ -33668,7 +33671,7 @@ static int evaluate_insert_update_simple_expression(
         out_value->text_value =
             copy_span_text(value->text, value->text == NULL ? 0U : strlen(value->text));
         if (out_value->text_value == NULL) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
         out_value->kind = MYLITE_INSERT_BOUND_TEXT;
@@ -33676,7 +33679,7 @@ static int evaluate_insert_update_simple_expression(
     case MYLITE_INSERT_VALUE_CURRENT_TIMESTAMP:
         timestamp = insert_current_timestamp_text();
         if (timestamp == NULL) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
         *out_value = (struct mylite_insert_bound_value){
@@ -33874,7 +33877,7 @@ static int evaluate_insert_update_column_reference(
         status = copy_insert_bound_value(source_value, out_value);
     }
     if (status == MYLITE_NOMEM) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
     }
     return status;
 }
@@ -33894,7 +33897,7 @@ static int evaluate_insert_values_function(mylite_stmt *stmt,
 
     status = copy_insert_bound_value(&candidate_values[column_index], out_value);
     if (status == MYLITE_NOMEM) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
     }
     return status;
 }
@@ -33966,7 +33969,7 @@ static int write_insert_update_candidate(mylite_stmt *stmt, const struct mylite_
     int status = MYLITE_OK;
 
     if (sql == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -33974,20 +33977,20 @@ static int write_insert_update_candidate(mylite_stmt *stmt, const struct mylite_
                             NULL);
     sqlite3_free(sql);
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     status = bind_insert_row_values(stmt->database, update, values, table->column_count);
     if (status == MYLITE_OK) {
         rc = sqlite3_bind_int64(update, (int)table->column_count + 1, rowid);
         if (rc != SQLITE_OK) {
-            status = set_sqlite_error(stmt->database);
+            status = mylite_diagnostics_set_sqlite_error(stmt->database);
         }
     }
     if (status == MYLITE_OK) {
         rc = sqlite3_step(update);
         if (rc != SQLITE_DONE) {
-            status = set_sqlite_error(stmt->database);
+            status = mylite_diagnostics_set_sqlite_error(stmt->database);
         }
     }
     sqlite3_finalize(update);
@@ -34147,16 +34150,16 @@ static bool insert_row_alias_matches(const struct mylite_insert_values_plan *pla
 
 static int set_insert_update_unknown_column_error(mylite_db *database, const char *column_name)
 {
-    int status =
-        set_error_message_parts(database, "Unknown column '", column_name, "' in 'field list'");
+    int status = mylite_diagnostics_set_error_message_parts(database, "Unknown column '",
+                                                            column_name, "' in 'field list'");
 
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int set_insert_update_ambiguous_column_error(mylite_db *database, const char *column_name)
 {
-    int status =
-        set_error_message_parts(database, "Column '", column_name, "' in field list is ambiguous");
+    int status = mylite_diagnostics_set_error_message_parts(database, "Column '", column_name,
+                                                            "' in field list is ambiguous");
 
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
@@ -34166,7 +34169,7 @@ static int set_insert_alias_column_count_error(mylite_db *database)
     static const char message[] =
         "In definition of view, derived table or common table expression, "
         "SELECT list and column names list have different column counts";
-    int status = set_error_message(database, message);
+    int status = mylite_diagnostics_set_error_message(database, message);
 
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
@@ -34198,7 +34201,8 @@ static int append_insert_values_deprecated_warning(mylite_db *database)
         "alias (INSERT INTO ... VALUES (...) AS alias) and replace VALUES(col) in the ON "
         "DUPLICATE KEY UPDATE clause with alias.col instead";
 
-    return append_database_warning(database, MYLITE_MYSQL_ER_WARN_DEPRECATED_SYNTAX, message);
+    return mylite_diagnostics_append_warning(database, MYLITE_MYSQL_ER_WARN_DEPRECATED_SYNTAX,
+                                             message);
 }
 
 static void record_insert_row_auto_increment_id(const struct mylite_insert_table *table,
@@ -34351,7 +34355,7 @@ static int validate_insert_set_assignments(mylite_stmt *stmt,
 
     column_indexes = calloc(assignment_count, sizeof(*column_indexes));
     if (column_indexes == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -34362,8 +34366,8 @@ static int validate_insert_set_assignments(mylite_stmt *stmt,
             table, schema_name, stmt->insert_values.table_name, target);
 
         if (column_index == table->column_count) {
-            int status = set_error_message_parts(stmt->database, "Unknown column '",
-                                                 target->column_name, "' in 'field list'");
+            int status = mylite_diagnostics_set_error_message_parts(
+                stmt->database, "Unknown column '", target->column_name, "' in 'field list'");
 
             free(column_indexes);
             return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
@@ -34374,7 +34378,7 @@ static int validate_insert_set_assignments(mylite_stmt *stmt,
     for (size_t index = 0U; index < assignment_count; ++index) {
         for (size_t previous = 0U; previous < index; ++previous) {
             if (column_indexes[previous] == column_indexes[index]) {
-                int status = set_error_message_parts(
+                int status = mylite_diagnostics_set_error_message_parts(
                     stmt->database, "Column '",
                     stmt->insert_set.assignments[index].target.column_name, "' specified twice");
 
@@ -34410,7 +34414,8 @@ static int execute_insert_set_transaction(mylite_stmt *stmt, const char *schema_
     int rc = SQLITE_OK;
 
     if (table->column_count == 0U) {
-        (void)set_error_message(stmt->database, "INSERT target table has no columns");
+        (void)mylite_diagnostics_set_error_message(stmt->database,
+                                                   "INSERT target table has no columns");
         return MYLITE_EXEC_ERROR;
     }
 
@@ -34436,14 +34441,14 @@ static int execute_insert_set_transaction(mylite_stmt *stmt, const char *schema_
     row_state.assigned_columns = calloc(table->column_count, sizeof(*row_state.assigned_columns));
     if (values == NULL || row_state.generate_auto_increment == NULL ||
         row_state.assigned_columns == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         status = MYLITE_NOMEM;
         goto cleanup;
     }
 
     insert_sql = build_insert_physical_sql(stmt->database, table);
     if (insert_sql == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         status = MYLITE_NOMEM;
         goto cleanup;
     }
@@ -34453,7 +34458,7 @@ static int execute_insert_set_transaction(mylite_stmt *stmt, const char *schema_
     sqlite3_free(insert_sql);
     insert_sql = NULL;
     if (rc != SQLITE_OK) {
-        status = set_sqlite_error(stmt->database);
+        status = mylite_diagnostics_set_sqlite_error(stmt->database);
         goto cleanup;
     }
 
@@ -34557,7 +34562,7 @@ static int execute_replace_values_transaction(mylite_stmt *stmt, const char *sch
         sqlite3_free(insert_sql);
         sqlite3_free(delete_sql);
         rollback_statement_atomicity(stmt->database, &atomicity);
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -34574,7 +34579,7 @@ static int execute_replace_values_transaction(mylite_stmt *stmt, const char *sch
     if (rc != SQLITE_OK) {
         sqlite3_finalize(insert);
         rollback_statement_atomicity(stmt->database, &atomicity);
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     for (size_t row_index = 0U; row_index < stmt->insert_values.row_count; ++row_index) {
@@ -34603,13 +34608,14 @@ static int execute_replace_row(mylite_stmt *stmt, sqlite3_stmt *insert, sqlite3_
     int status = MYLITE_OK;
 
     if (table->column_count == 0U) {
-        (void)set_error_message(stmt->database, "REPLACE target table has no columns");
+        (void)mylite_diagnostics_set_error_message(stmt->database,
+                                                   "REPLACE target table has no columns");
         return MYLITE_EXEC_ERROR;
     }
 
     values = calloc(table->column_count, sizeof(*values));
     if (values == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -34658,12 +34664,12 @@ static int delete_replace_conflict_row(mylite_stmt *stmt, sqlite3_stmt *delete_s
     sqlite3_clear_bindings(delete_stmt);
     rc = sqlite3_bind_int64(delete_stmt, 1, rowid);
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     rc = sqlite3_step(delete_stmt);
     if (rc != SQLITE_DONE) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
     ++state->duplicate_count;
     return MYLITE_OK;
@@ -34687,7 +34693,8 @@ static int execute_replace_set_transaction(mylite_stmt *stmt, const char *schema
     int rc = SQLITE_OK;
 
     if (table->column_count == 0U) {
-        (void)set_error_message(stmt->database, "REPLACE target table has no columns");
+        (void)mylite_diagnostics_set_error_message(stmt->database,
+                                                   "REPLACE target table has no columns");
         return MYLITE_EXEC_ERROR;
     }
 
@@ -34701,7 +34708,7 @@ static int execute_replace_set_transaction(mylite_stmt *stmt, const char *schema
     row_state.assigned_columns = calloc(table->column_count, sizeof(*row_state.assigned_columns));
     if (values == NULL || row_state.generate_auto_increment == NULL ||
         row_state.assigned_columns == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         status = MYLITE_NOMEM;
         goto cleanup;
     }
@@ -34709,7 +34716,7 @@ static int execute_replace_set_transaction(mylite_stmt *stmt, const char *schema
     insert_sql = build_insert_physical_sql(stmt->database, table);
     delete_sql = build_replace_delete_sql(stmt->database, table);
     if (insert_sql == NULL || delete_sql == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         status = MYLITE_NOMEM;
         goto cleanup;
     }
@@ -34721,7 +34728,7 @@ static int execute_replace_set_transaction(mylite_stmt *stmt, const char *schema
                                 &delete_stmt, NULL);
     }
     if (rc != SQLITE_OK) {
-        status = set_sqlite_error(stmt->database);
+        status = mylite_diagnostics_set_sqlite_error(stmt->database);
         goto cleanup;
     }
 
@@ -34783,9 +34790,10 @@ static int append_replace_delayed_warning(mylite_stmt *stmt)
     if (!stmt->insert_values.replace_delayed) {
         return MYLITE_OK;
     }
-    return append_database_warning(stmt->database, MYLITE_MYSQL_ER_WARN_LEGACY_SYNTAX_CONVERTED,
-                                   "REPLACE DELAYED is no longer supported. The statement was "
-                                   "converted to REPLACE.");
+    return mylite_diagnostics_append_warning(
+        stmt->database, MYLITE_MYSQL_ER_WARN_LEGACY_SYNTAX_CONVERTED,
+        "REPLACE DELAYED is no longer supported. The statement was "
+        "converted to REPLACE.");
 }
 
 static int finish_successful_replace_transaction(mylite_stmt *stmt, const char *schema_name,
@@ -35174,7 +35182,7 @@ static int evaluate_insert_set_simple_expression(mylite_stmt *stmt,
         out_value->text_value =
             copy_span_text(value->text, value->text == NULL ? 0U : strlen(value->text));
         if (out_value->text_value == NULL) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
         out_value->kind = MYLITE_INSERT_BOUND_TEXT;
@@ -35182,7 +35190,7 @@ static int evaluate_insert_set_simple_expression(mylite_stmt *stmt,
     case MYLITE_INSERT_VALUE_CURRENT_TIMESTAMP:
         timestamp = insert_current_timestamp_text();
         if (timestamp == NULL) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
         *out_value = (struct mylite_insert_bound_value){
@@ -35217,15 +35225,15 @@ static int evaluate_insert_set_column_reference(mylite_stmt *stmt,
         stmt->insert_values.table_name, ref);
 
     if (column_index == table->column_count) {
-        int status = set_error_message_parts(stmt->database, "Unknown column '", ref->column_name,
-                                             "' in 'field list'");
+        int status = mylite_diagnostics_set_error_message_parts(
+            stmt->database, "Unknown column '", ref->column_name, "' in 'field list'");
 
         return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
     }
     int status = copy_insert_bound_value(&values[column_index], out_value);
 
     if (status == MYLITE_NOMEM) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
     }
     return status;
 }
@@ -35254,7 +35262,7 @@ static int copy_insert_bound_values(mylite_stmt *stmt,
     *out_values = NULL;
     copy = calloc(value_count, sizeof(*copy));
     if (copy == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     for (size_t index = 0U; index < value_count; ++index) {
@@ -35263,7 +35271,7 @@ static int copy_insert_bound_values(mylite_stmt *stmt,
         if (status != MYLITE_OK) {
             insert_bound_values_deinit(copy, value_count);
             if (status == MYLITE_NOMEM) {
-                (void)set_error_message(stmt->database, "out of memory");
+                (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             }
             return status;
         }
@@ -35329,7 +35337,7 @@ resolve_insert_implicit_expression_default(mylite_stmt *stmt,
 
     out_value->text_value = copy_span_text(text_default, strlen(text_default));
     if (out_value->text_value == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     out_value->kind = MYLITE_INSERT_BOUND_TEXT;
@@ -35389,7 +35397,7 @@ static int resolve_insert_explicit_value(mylite_stmt *stmt,
         }
         timestamp = insert_current_timestamp_text();
         if (timestamp == NULL) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
         *out_value = (struct mylite_insert_bound_value){
@@ -35462,7 +35470,7 @@ static int resolve_insert_default_value(mylite_stmt *stmt,
         char *timestamp = insert_current_timestamp_text();
 
         if (timestamp == NULL) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
         *out_value = (struct mylite_insert_bound_value){
@@ -35551,7 +35559,7 @@ static int set_insert_bound_text_value(mylite_stmt *stmt, const char *text,
 {
     out_value->text_value = copy_span_text(text, strlen(text));
     if (out_value->text_value == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     out_value->kind = MYLITE_INSERT_BOUND_TEXT;
@@ -35566,7 +35574,8 @@ static int allocate_insert_auto_increment(mylite_stmt *stmt,
     int status = MYLITE_OK;
 
     if (value > (uint64_t)INT64_MAX) {
-        (void)set_error_message(stmt->database, "AUTO_INCREMENT value is out of range");
+        (void)mylite_diagnostics_set_error_message(stmt->database,
+                                                   "AUTO_INCREMENT value is out of range");
         return MYLITE_EXEC_ERROR;
     }
     status = reserve_insert_auto_increment(stmt, state, value);
@@ -35592,7 +35601,8 @@ static int reserve_insert_auto_increment(mylite_stmt *stmt,
         return MYLITE_OK;
     }
     if (row_count > (uint64_t)INT64_MAX - first_value) {
-        (void)set_error_message(stmt->database, "AUTO_INCREMENT value is out of range");
+        (void)mylite_diagnostics_set_error_message(stmt->database,
+                                                   "AUTO_INCREMENT value is out of range");
         return MYLITE_EXEC_ERROR;
     }
     state->reserved_auto_increment_end = first_value + row_count;
@@ -35659,7 +35669,7 @@ static int bind_insert_row_values(mylite_db *database, sqlite3_stmt *insert,
         int rc = bind_insert_bound_value(insert, (int)index + 1, &values[index]);
 
         if (rc != SQLITE_OK) {
-            return set_sqlite_error(database);
+            return mylite_diagnostics_set_sqlite_error(database);
         }
     }
     return MYLITE_OK;
@@ -35731,7 +35741,7 @@ static int insert_unique_index_conflicts(mylite_stmt *stmt, const struct mylite_
 
     sql = build_insert_unique_check_sql(stmt->database, table, index, values);
     if (sql == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -35739,7 +35749,7 @@ static int insert_unique_index_conflicts(mylite_stmt *stmt, const struct mylite_
                             NULL);
     sqlite3_free(sql);
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     status = bind_insert_unique_check_values(stmt->database, check, index, values);
@@ -35748,7 +35758,7 @@ static int insert_unique_index_conflicts(mylite_stmt *stmt, const struct mylite_
         if (rc == SQLITE_ROW) {
             *out_conflicts = true;
         } else if (rc != SQLITE_DONE) {
-            status = set_sqlite_error(stmt->database);
+            status = mylite_diagnostics_set_sqlite_error(stmt->database);
         }
     }
     sqlite3_finalize(check);
@@ -35803,7 +35813,7 @@ static int insert_unique_index_conflict_rowid(mylite_stmt *stmt,
 
     sql = build_insert_unique_conflict_sql(stmt->database, table, index, has_excluded_rowid);
     if (sql == NULL) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -35811,7 +35821,7 @@ static int insert_unique_index_conflict_rowid(mylite_stmt *stmt,
                             NULL);
     sqlite3_free(sql);
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(stmt->database);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     status = bind_insert_unique_conflict_values(stmt->database, check, index, values,
@@ -35822,7 +35832,7 @@ static int insert_unique_index_conflict_rowid(mylite_stmt *stmt,
             *out_conflicts = true;
             *out_rowid = sqlite3_column_int64(check, 0);
         } else if (rc != SQLITE_DONE) {
-            status = set_sqlite_error(stmt->database);
+            status = mylite_diagnostics_set_sqlite_error(stmt->database);
         }
     }
     sqlite3_finalize(check);
@@ -35873,14 +35883,14 @@ static int bind_insert_unique_conflict_values(mylite_db *database, sqlite3_stmt 
             bind_insert_bound_value(check, (int)part + 1, &values[index->column_indexes[part]]);
 
         if (rc != SQLITE_OK) {
-            return set_sqlite_error(database);
+            return mylite_diagnostics_set_sqlite_error(database);
         }
     }
     if (has_excluded_rowid) {
         int rc = sqlite3_bind_int64(check, (int)index->column_count + 1, excluded_rowid);
 
         if (rc != SQLITE_OK) {
-            return set_sqlite_error(database);
+            return mylite_diagnostics_set_sqlite_error(database);
         }
     }
     return MYLITE_OK;
@@ -35927,7 +35937,7 @@ static int bind_insert_unique_check_values(mylite_db *database, sqlite3_stmt *ch
             bind_insert_bound_value(check, (int)part + 1, &values[index->column_indexes[part]]);
 
         if (rc != SQLITE_OK) {
-            return set_sqlite_error(database);
+            return mylite_diagnostics_set_sqlite_error(database);
         }
     }
     return MYLITE_OK;
@@ -35963,7 +35973,7 @@ static int update_auto_increment_catalog(mylite_db *database, const char *schema
         sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &update, NULL);
 
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
 
     sqlite3_bind_int64(update, 1, (sqlite3_int64)next_auto_increment);
@@ -35971,7 +35981,7 @@ static int update_auto_increment_catalog(mylite_db *database, const char *schema
     sqlite3_bind_text(update, 3, table_name, -1, sqlite_transient_destructor());
     rc = sqlite3_step(update);
     sqlite3_finalize(update);
-    return rc == SQLITE_DONE ? MYLITE_OK : set_sqlite_error(database);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
 static bool insert_row_uses_all_defaults(const struct mylite_insert_values_plan *plan,
@@ -36005,8 +36015,9 @@ static int set_insert_wrong_value_count_error(mylite_db *database, size_t row_in
     char buffer[row_number_buffer_size];
 
     (void)snprintf(buffer, sizeof(buffer), "%zu", row_index + 1U);
-    if (set_error_message_parts(database, "Column count doesn't match value count at row ", buffer,
-                                "") == MYLITE_NOMEM) {
+    if (mylite_diagnostics_set_error_message_parts(database,
+                                                   "Column count doesn't match value count at row ",
+                                                   buffer, "") == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
     return MYLITE_EXEC_ERROR;
@@ -36014,15 +36025,16 @@ static int set_insert_wrong_value_count_error(mylite_db *database, size_t row_in
 
 static int set_insert_no_default_error(mylite_db *database, const char *column_name)
 {
-    int status =
-        set_error_message_parts(database, "Field '", column_name, "' doesn't have a default value");
+    int status = mylite_diagnostics_set_error_message_parts(database, "Field '", column_name,
+                                                            "' doesn't have a default value");
 
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int set_insert_null_error(mylite_db *database, const char *column_name)
 {
-    int status = set_error_message_parts(database, "Column '", column_name, "' cannot be null");
+    int status = mylite_diagnostics_set_error_message_parts(database, "Column '", column_name,
+                                                            "' cannot be null");
 
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
@@ -36030,15 +36042,16 @@ static int set_insert_null_error(mylite_db *database, const char *column_name)
 static int set_insert_unsupported_generated_default_error(mylite_db *database,
                                                           const char *column_name)
 {
-    int status = set_error_message_parts(database, "Unsupported generated default expression for '",
-                                         column_name, "'");
+    int status = mylite_diagnostics_set_error_message_parts(
+        database, "Unsupported generated default expression for '", column_name, "'");
 
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int set_insert_unsupported_expression_error(mylite_db *database)
 {
-    if (set_error_message(database, "Unsupported INSERT value expression") == MYLITE_NOMEM) {
+    if (mylite_diagnostics_set_error_message(database, "Unsupported INSERT value expression") ==
+        MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
     return MYLITE_EXEC_ERROR;
@@ -36053,7 +36066,7 @@ static int set_insert_duplicate_entry_error(mylite_db *database, const char *tab
     int status = MYLITE_OK;
 
     if (entry == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -36061,11 +36074,11 @@ static int set_insert_duplicate_entry_error(mylite_db *database, const char *tab
         sqlite3_mprintf("Duplicate entry '%q' for key '%q.%q'", entry, table_name, index->name);
     free(entry);
     if (message == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
-    status = set_error_message(database, message);
+    status = mylite_diagnostics_set_error_message(database, message);
     sqlite3_free(message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
@@ -36079,7 +36092,7 @@ static int append_insert_duplicate_entry_warning(mylite_db *database, const char
     int status = MYLITE_OK;
 
     if (entry == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -36087,11 +36100,11 @@ static int append_insert_duplicate_entry_warning(mylite_db *database, const char
         sqlite3_mprintf("Duplicate entry '%q' for key '%q.%q'", entry, table_name, index->name);
     free(entry);
     if (message == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
-    status = append_database_warning(database, MYLITE_MYSQL_ER_DUP_ENTRY, message);
+    status = mylite_diagnostics_append_warning(database, MYLITE_MYSQL_ER_DUP_ENTRY, message);
     sqlite3_free(message);
     return status;
 }
@@ -36102,11 +36115,12 @@ static int append_insert_no_default_warning(mylite_db *database, const char *col
     int status = MYLITE_OK;
 
     if (message == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
-    status = append_database_warning(database, MYLITE_MYSQL_ER_NO_DEFAULT_FOR_FIELD, message);
+    status =
+        mylite_diagnostics_append_warning(database, MYLITE_MYSQL_ER_NO_DEFAULT_FOR_FIELD, message);
     sqlite3_free(message);
     return status;
 }
@@ -36138,11 +36152,11 @@ static int append_insert_null_warning(mylite_db *database, const char *column_na
     int status = MYLITE_OK;
 
     if (message == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
-    status = append_database_warning(database, MYLITE_MYSQL_ER_BAD_NULL_ERROR, message);
+    status = mylite_diagnostics_append_warning(database, MYLITE_MYSQL_ER_BAD_NULL_ERROR, message);
     sqlite3_free(message);
     return status;
 }
@@ -36208,13 +36222,13 @@ static int set_table_doesnt_exist_error(mylite_db *database, const char *schema_
     int status = MYLITE_OK;
 
     if (message == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
-    status = set_error_message(database, message);
+    status = mylite_diagnostics_set_error_message(database, message);
     if (status == MYLITE_OK) {
-        status = append_database_error(database, MYLITE_MYSQL_ER_NO_SUCH_TABLE, message);
+        status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_NO_SUCH_TABLE, message);
     }
     sqlite3_free(message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
@@ -36304,7 +36318,7 @@ static int selected_schema_default(mylite_db *database, struct mylite_schema_def
 
     rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
 
     sqlite3_bind_text(stmt, 1, database->selected_schema, -1, sqlite_transient_destructor());
@@ -36335,11 +36349,11 @@ static int selected_schema_default(mylite_db *database, struct mylite_schema_def
 
     sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
 
-    if (set_error_message(database, "Selected schema default charset is unavailable") ==
-        MYLITE_NOMEM) {
+    if (mylite_diagnostics_set_error_message(
+            database, "Selected schema default charset is unavailable") == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
     return MYLITE_EXEC_ERROR;
@@ -36357,7 +36371,7 @@ static int schema_exists(mylite_db *database, const char *schema_name,
         .is_system = false,
     };
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
 
     sqlite3_bind_text(stmt, 1, schema_name, -1, sqlite_transient_destructor());
@@ -36373,7 +36387,7 @@ static int schema_exists(mylite_db *database, const char *schema_name,
 
     sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
     return MYLITE_OK;
 }
@@ -36388,7 +36402,7 @@ static int table_exists(mylite_db *database, const char *schema_name, const char
 
     *out_exists = false;
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
 
     sqlite3_bind_text(stmt, 1, schema_name, -1, sqlite_transient_destructor());
@@ -36402,7 +36416,7 @@ static int table_exists(mylite_db *database, const char *schema_name, const char
 
     sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
     return MYLITE_OK;
 }
@@ -36421,7 +36435,7 @@ static int schema_default_by_name(mylite_db *database, const char *schema_name,
         .collation = mylite_charset_default_collation_name(),
     };
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
 
     sqlite3_bind_text(stmt, 1, schema_name, -1, sqlite_transient_destructor());
@@ -36452,9 +36466,10 @@ static int schema_default_by_name(mylite_db *database, const char *schema_name,
 
     sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
-    (void)set_error_message_parts(database, "Unknown database '", schema_name, "'");
+    (void)mylite_diagnostics_set_error_message_parts(database, "Unknown database '", schema_name,
+                                                     "'");
     return MYLITE_EXEC_ERROR;
 }
 
@@ -36476,7 +36491,7 @@ static int insert_schema(mylite_db *database, const char *schema_name,
     int rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
 
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
 
     if (options->has_read_only) {
@@ -36492,7 +36507,7 @@ static int insert_schema(mylite_db *database, const char *schema_name,
     rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
     return MYLITE_OK;
 }
@@ -36516,7 +36531,7 @@ static int update_schema(mylite_db *database, const char *schema_name,
     int rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
 
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
 
     if (options->has_read_only) {
@@ -36545,7 +36560,7 @@ static int update_schema(mylite_db *database, const char *schema_name,
     rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
     return MYLITE_OK;
 }
@@ -36557,14 +36572,14 @@ static int delete_schema(mylite_db *database, const char *schema_name)
     int rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
 
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
 
     sqlite3_bind_text(stmt, 1, schema_name, -1, sqlite_transient_destructor());
     rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
     return MYLITE_OK;
 }
@@ -36574,7 +36589,7 @@ static int set_selected_schema(mylite_db *database, const char *schema_name)
     char *copy = copy_span_text(schema_name, strlen(schema_name));
 
     if (copy == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -37854,7 +37869,7 @@ static int copy_scalar_select_item_expression(mylite_stmt *stmt,
                                        stmt->scalar_select_sql_text, source_sql_length, &clone);
 
     if (status == MYLITE_NOMEM) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
     }
     if (status == MYLITE_OK) {
         stmt->scalar_result.expressions[index] = clone;
@@ -37903,7 +37918,7 @@ static int validate_scalar_select_order_item(mylite_db *database,
             int status = MYLITE_OK;
 
             if (reference == NULL) {
-                (void)set_error_message(database, "out of memory");
+                (void)mylite_diagnostics_set_error_message(database, "out of memory");
                 return MYLITE_NOMEM;
             }
             status = set_select_unknown_order_column_error(database, reference);
@@ -38015,7 +38030,7 @@ static int resolve_scalar_select_order_reference(mylite_db *database,
 
     if (status != MYLITE_OK) {
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
         }
         return status;
     }
@@ -38076,7 +38091,7 @@ static int append_scalar_select_warnings_to_database(mylite_stmt *stmt)
 
     status = append_subquery_warnings(&stmt->database->warnings, &stmt->scalar_result.warnings);
     if (status != MYLITE_OK) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
     }
     return status;
 }
@@ -38105,7 +38120,7 @@ static int evaluate_scalar_select_expression(mylite_stmt *stmt,
         return MYLITE_OK;
     }
     if (status == MYLITE_NOMEM) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     if (stmt->database->error_message != NULL) {
@@ -38116,7 +38131,8 @@ static int evaluate_scalar_select_expression(mylite_stmt *stmt,
             &stmt->scalar_result.warnings.items[index];
 
         if (warning->level == MYLITE_EXPRESSION_WARNING_LEVEL_ERROR) {
-            int error_status = set_error_message(stmt->database, warning->message);
+            int error_status =
+                mylite_diagnostics_set_error_message(stmt->database, warning->message);
 
             return error_status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
         }
@@ -38159,7 +38175,7 @@ static int evaluate_scalar_aggregate_expression(mylite_stmt *stmt,
                                                  &stmt->scalar_result.warnings, &argument);
     if (status != 0) {
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
         if (stmt->database->error_message != NULL) {
@@ -38229,7 +38245,7 @@ static int evaluate_scalar_count_distinct_expression(
         if (status != 0) {
             mylite_expression_value_deinit(&argument);
             if (status == MYLITE_NOMEM) {
-                (void)set_error_message(stmt->database, "out of memory");
+                (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
                 return MYLITE_NOMEM;
             }
             if (stmt->database->error_message != NULL) {
@@ -38264,7 +38280,7 @@ static int evaluate_scalar_numeric_aggregate_expression(
 
     if (status != MYLITE_OK) {
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         }
         return status;
     }
@@ -38292,7 +38308,7 @@ static int evaluate_scalar_numeric_aggregate_expression(
 
     status = aggregate_format_double(numeric.value, out_value);
     if (status == MYLITE_NOMEM) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
     }
     return status;
 }
@@ -38363,7 +38379,7 @@ static int evaluate_select_subquery_expression(mylite_stmt *stmt,
     stmt->database->warnings = saved_warnings;
     if (append_subquery_warnings(warnings, &subquery_warnings) != MYLITE_OK) {
         mylite_expression_value_deinit(out_value);
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         status = MYLITE_NOMEM;
     }
     mylite_expression_warnings_deinit(&subquery_warnings);
@@ -38393,7 +38409,7 @@ static int evaluate_in_subquery_expression(mylite_stmt *stmt,
     stmt->database->warnings = saved_warnings;
     if (append_subquery_warnings(warnings, &subquery_warnings) != MYLITE_OK) {
         mylite_expression_value_deinit(out_value);
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         status = MYLITE_NOMEM;
     }
     mylite_expression_warnings_deinit(&subquery_warnings);
@@ -38519,7 +38535,8 @@ static int scan_in_subquery_statement_row(const struct mylite_in_subquery_scan_c
     if (status != MYLITE_OK) {
         mylite_expression_value_deinit(&right);
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(context->outer_stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(context->outer_stmt->database,
+                                                       "out of memory");
         }
         return status;
     }
@@ -38592,7 +38609,7 @@ evaluate_row_subquery_expression(mylite_stmt *stmt, const struct mylite_sql_ast_
     stmt->database->warnings = saved_warnings;
     if (append_subquery_warnings(warnings, &subquery_warnings) != MYLITE_OK) {
         mylite_expression_value_deinit(out_value);
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         status = MYLITE_NOMEM;
     }
     mylite_expression_warnings_deinit(&subquery_warnings);
@@ -38642,7 +38659,7 @@ static int evaluate_row_subquery_expression_inner(
     mylite_finalize(subquery_stmt);
     row_expression_values_deinit(&left);
     if (status == MYLITE_NOMEM) {
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
     }
     return status;
 }
@@ -38675,7 +38692,7 @@ static int evaluate_row_in_subquery_statement(mylite_stmt *stmt,
     }
     if (append_subquery_warnings(warnings, &comparison_warnings) != MYLITE_OK) {
         mylite_expression_warnings_deinit(&comparison_warnings);
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     mylite_expression_warnings_deinit(&comparison_warnings);
@@ -38817,7 +38834,8 @@ scan_row_in_subquery_statement_row(const struct mylite_row_in_subquery_scan_cont
     row_expression_values_deinit(&right);
     if (status != MYLITE_OK) {
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(context->outer_stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(context->outer_stmt->database,
+                                                       "out of memory");
         }
         return status;
     }
@@ -38904,7 +38922,7 @@ static int evaluate_quantified_subquery_expression(mylite_stmt *stmt,
     stmt->database->warnings = saved_warnings;
     if (append_subquery_warnings(warnings, &subquery_warnings) != MYLITE_OK) {
         mylite_expression_value_deinit(out_value);
-        (void)set_error_message(stmt->database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         status = MYLITE_NOMEM;
     }
     mylite_expression_warnings_deinit(&subquery_warnings);
@@ -39038,7 +39056,8 @@ static int scan_quantified_subquery_statement_row(
     if (status != MYLITE_OK) {
         mylite_expression_value_deinit(&right);
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(context->outer_stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(context->outer_stmt->database,
+                                                       "out of memory");
         }
         return status;
     }
@@ -39535,7 +39554,7 @@ static int evaluate_scalar_subquery_expression(mylite_stmt *stmt,
     if (status != MYLITE_OK) {
         mylite_finalize(subquery_stmt);
         if (status == MYLITE_NOMEM) {
-            (void)set_error_message(stmt->database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         }
         return status;
     }
@@ -39779,12 +39798,13 @@ static int set_subquery_operand_column_count_error(mylite_db *database, size_t e
     int status = MYLITE_OK;
 
     if (message == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
-    status = set_error_message(database, message);
+    status = mylite_diagnostics_set_error_message(database, message);
     if (status == MYLITE_OK) {
-        status = append_database_error(database, MYLITE_MYSQL_ER_OPERAND_COLUMNS, message);
+        status =
+            mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_OPERAND_COLUMNS, message);
     }
     sqlite3_free(message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
@@ -39794,10 +39814,11 @@ static int set_in_subquery_limit_error(mylite_db *database)
 {
     static const char message[] =
         "This version of MySQL doesn't yet support 'LIMIT & IN/ALL/ANY/SOME subquery'";
-    int status = set_error_message(database, message);
+    int status = mylite_diagnostics_set_error_message(database, message);
 
     if (status == MYLITE_OK) {
-        status = append_database_error(database, MYLITE_MYSQL_ER_NOT_SUPPORTED_YET, message);
+        status =
+            mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_NOT_SUPPORTED_YET, message);
     }
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
@@ -39816,10 +39837,11 @@ static int set_row_quantified_non_alias_error(mylite_db *database,
 static int set_scalar_subquery_cardinality_error(mylite_db *database)
 {
     static const char message[] = "Subquery returns more than 1 row";
-    int status = set_error_message(database, message);
+    int status = mylite_diagnostics_set_error_message(database, message);
 
     if (status == MYLITE_OK) {
-        status = append_database_error(database, MYLITE_MYSQL_ER_SUBQUERY_NO_1_ROW, message);
+        status =
+            mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_SUBQUERY_NO_1_ROW, message);
     }
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
@@ -41232,7 +41254,7 @@ static int assign_generated_index_name(mylite_db *database, struct mylite_create
         return MYLITE_OK;
     }
     if (table_index->part_count == 0U || table_index->parts[0].column_name == NULL) {
-        (void)set_error_message(database, "Index has no key parts");
+        (void)mylite_diagnostics_set_error_message(database, "Index has no key parts");
         return MYLITE_EXEC_ERROR;
     }
 
@@ -41241,7 +41263,7 @@ static int assign_generated_index_name(mylite_db *database, struct mylite_create
         char *candidate = generated_index_name_candidate(base, suffix);
 
         if (candidate == NULL) {
-            (void)set_error_message(database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
             return MYLITE_NOMEM;
         }
         if (!create_table_index_name_exists(plan, candidate, index)) {
@@ -41647,8 +41669,8 @@ static int normalize_create_table_options(mylite_db *database, const char *schem
 
     (void)schema_name;
     if (options->engine != NULL && !is_supported_engine_name(options->engine)) {
-        status = set_error_message_parts(database, "Unsupported storage engine: '", options->engine,
-                                         "'");
+        status = mylite_diagnostics_set_error_message_parts(
+            database, "Unsupported storage engine: '", options->engine, "'");
         return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
     }
     if (options->character_set != NULL) {
@@ -41675,7 +41697,8 @@ static int normalize_create_table_options(mylite_db *database, const char *schem
         collation = mylite_collation_lookup(collation_name);
     }
     if (character_set == NULL || collation == NULL) {
-        (void)set_error_message(database, "Unsupported charset/collation registry entry");
+        (void)mylite_diagnostics_set_error_message(database,
+                                                   "Unsupported charset/collation registry entry");
         return MYLITE_EXEC_ERROR;
     }
     if (!mylite_charset_collation_match(character_set, collation)) {
@@ -41695,7 +41718,7 @@ static int normalize_create_table_option_text(mylite_db *database, char **target
     char *copy = copy_span_text(value, strlen(value));
 
     if (copy == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -41716,15 +41739,16 @@ static bool validate_create_table_column_names(mylite_db *database,
                                                const struct mylite_create_table_plan *plan)
 {
     if (plan->column_count == 0U) {
-        (void)set_error_message(database, "CREATE TABLE requires at least one column");
+        (void)mylite_diagnostics_set_error_message(database,
+                                                   "CREATE TABLE requires at least one column");
         return false;
     }
 
     for (size_t left = 0U; left < plan->column_count; ++left) {
         for (size_t right = left + 1U; right < plan->column_count; ++right) {
             if (ascii_case_equal(plan->columns[left].name, plan->columns[right].name)) {
-                (void)set_error_message_parts(database, "Duplicate column name '",
-                                              plan->columns[right].name, "'");
+                (void)mylite_diagnostics_set_error_message_parts(
+                    database, "Duplicate column name '", plan->columns[right].name, "'");
                 return false;
             }
         }
@@ -41742,21 +41766,23 @@ static bool validate_create_table_indexes(mylite_db *database,
 
         if (table_index->is_primary) {
             if (has_primary) {
-                (void)set_error_message(database, "Multiple primary key defined");
+                (void)mylite_diagnostics_set_error_message(database,
+                                                           "Multiple primary key defined");
                 return false;
             }
             has_primary = true;
         }
         if (table_index->explicit_name &&
             create_table_index_name_exists(plan, table_index->name, index)) {
-            (void)set_error_message_parts(database, "Duplicate key name '", table_index->name, "'");
+            (void)mylite_diagnostics_set_error_message_parts(database, "Duplicate key name '",
+                                                             table_index->name, "'");
             return false;
         }
         for (size_t part = 0U; part < table_index->part_count; ++part) {
             if (find_create_table_column(plan, table_index->parts[part].column_name) == NULL) {
-                (void)set_error_message_parts(database, "Key column '",
-                                              table_index->parts[part].column_name,
-                                              "' doesn't exist in table");
+                (void)mylite_diagnostics_set_error_message_parts(
+                    database, "Key column '", table_index->parts[part].column_name,
+                    "' doesn't exist in table");
                 return false;
             }
         }
@@ -41883,7 +41909,7 @@ static int begin_explicit_transaction(mylite_db *database,
     int rc = sqlite3_exec(database->sqlite, "BEGIN DEFERRED", NULL, NULL, NULL);
 
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
 
     database->transaction_active = true;
@@ -41914,7 +41940,7 @@ static int rollback_explicit_transaction(mylite_db *database)
     int rc = sqlite3_exec(database->sqlite, "ROLLBACK", NULL, NULL, NULL);
 
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
 
     database->transaction_active = false;
@@ -41938,7 +41964,7 @@ static int create_user_savepoint(mylite_db *database, const char *name, const ch
     if (savepoint.original_name == NULL || savepoint.normalized_name == NULL ||
         savepoint.sqlite_name == NULL) {
         savepoint_deinit(&savepoint);
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -42003,20 +42029,20 @@ static int reserve_user_savepoint_capacity(mylite_db *database, size_t required_
     size_t capacity = database->savepoints.capacity == 0U ? 4U : database->savepoints.capacity;
 
     if (required_capacity > SIZE_MAX / sizeof(*database->savepoints.items)) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     if (required_capacity > database->savepoints.capacity) {
         while (capacity < required_capacity) {
             if (capacity > SIZE_MAX / 2U) {
-                (void)set_error_message(database, "out of memory");
+                (void)mylite_diagnostics_set_error_message(database, "out of memory");
                 return MYLITE_NOMEM;
             }
             capacity *= 2U;
         }
         items = realloc(database->savepoints.items, capacity * sizeof(*items));
         if (items == NULL) {
-            (void)set_error_message(database, "out of memory");
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
             return MYLITE_NOMEM;
         }
         database->savepoints.items = items;
@@ -42028,7 +42054,7 @@ static int reserve_user_savepoint_capacity(mylite_db *database, size_t required_
 static int append_user_savepoint(mylite_db *database, struct mylite_savepoint savepoint)
 {
     if (database->savepoints.count >= database->savepoints.capacity) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -42080,18 +42106,18 @@ static char *make_sqlite_savepoint_name(mylite_db *database)
     char *name = NULL;
 
     if (next_id == 0U) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return NULL;
     }
     length = snprintf(NULL, 0, "mylite_user_savepoint_%llu", (unsigned long long)next_id);
     if (length < 0) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return NULL;
     }
 
     name = malloc((size_t)length + 1U);
     if (name == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return NULL;
     }
     (void)snprintf(name, (size_t)length + 1U, "mylite_user_savepoint_%llu",
@@ -42107,13 +42133,13 @@ static int exec_sqlite_savepoint_command(mylite_db *database, const char *comman
     int rc = SQLITE_OK;
 
     if (sql == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
     rc = sqlite3_exec(database->sqlite, sql, NULL, NULL, NULL);
     sqlite3_free(sql);
-    return rc == SQLITE_OK ? MYLITE_OK : set_sqlite_error(database);
+    return rc == SQLITE_OK ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
 static void clear_user_savepoints(mylite_db *database)
@@ -42158,7 +42184,7 @@ static int record_pending_auto_increment(mylite_db *database, const char *schema
 
     if (database->pending_auto_increment_count >=
         SIZE_MAX / sizeof(*database->pending_auto_increments)) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -42167,7 +42193,7 @@ static int record_pending_auto_increment(mylite_db *database, const char *schema
     if (schema_copy == NULL || table_copy == NULL) {
         free(schema_copy);
         free(table_copy);
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -42176,7 +42202,7 @@ static int record_pending_auto_increment(mylite_db *database, const char *schema
     if (items == NULL) {
         free(schema_copy);
         free(table_copy);
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -42221,14 +42247,14 @@ static int begin_sqlite_transaction(mylite_db *database)
 {
     int rc = sqlite3_exec(database->sqlite, "BEGIN IMMEDIATE", NULL, NULL, NULL);
 
-    return rc == SQLITE_OK ? MYLITE_OK : set_sqlite_error(database);
+    return rc == SQLITE_OK ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
 static int commit_sqlite_transaction(mylite_db *database)
 {
     int rc = sqlite3_exec(database->sqlite, "COMMIT", NULL, NULL, NULL);
 
-    return rc == SQLITE_OK ? MYLITE_OK : set_sqlite_error(database);
+    return rc == SQLITE_OK ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
 static void rollback_sqlite_transaction(mylite_db *database)
@@ -42257,7 +42283,7 @@ static int begin_statement_atomicity(mylite_db *database,
 
     rc = sqlite3_exec(database->sqlite, "SAVEPOINT mylite_statement_atomicity", NULL, NULL, NULL);
     if (rc != SQLITE_OK) {
-        return set_sqlite_error(database);
+        return mylite_diagnostics_set_sqlite_error(database);
     }
     atomicity->kind = MYLITE_STATEMENT_ATOMICITY_SAVEPOINT;
     return MYLITE_OK;
@@ -42280,7 +42306,7 @@ static int commit_statement_atomicity(mylite_db *database,
         rc = sqlite3_exec(database->sqlite, "RELEASE SAVEPOINT mylite_statement_atomicity", NULL,
                           NULL, NULL);
         atomicity->kind = MYLITE_STATEMENT_ATOMICITY_NONE;
-        return rc == SQLITE_OK ? MYLITE_OK : set_sqlite_error(database);
+        return rc == SQLITE_OK ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
     case MYLITE_STATEMENT_ATOMICITY_NONE:
         return MYLITE_OK;
     }
@@ -42365,11 +42391,12 @@ static int normalize_schema_options(mylite_db *database, struct mylite_schema_op
     int status = MYLITE_OK;
 
     if (options->invalid_encryption) {
-        (void)set_error_message(database, "Incorrect argument (should be Y or N) value");
+        (void)mylite_diagnostics_set_error_message(database,
+                                                   "Incorrect argument (should be Y or N) value");
         return MYLITE_EXEC_ERROR;
     }
     if (options->invalid_read_only) {
-        (void)set_error_message(database, "Incorrect READ ONLY value");
+        (void)mylite_diagnostics_set_error_message(database, "Incorrect READ ONLY value");
         return MYLITE_EXEC_ERROR;
     }
 
@@ -42405,7 +42432,8 @@ static int normalize_schema_charset_and_collation(mylite_db *database,
         collation = mylite_collation_lookup(character_set->default_collation);
     }
     if (character_set == NULL || collation == NULL) {
-        (void)set_error_message(database, "Unsupported charset/collation registry entry");
+        (void)mylite_diagnostics_set_error_message(database,
+                                                   "Unsupported charset/collation registry entry");
         return MYLITE_EXEC_ERROR;
     }
 
@@ -42421,7 +42449,7 @@ static int normalize_schema_option_text(mylite_db *database, char **target, cons
     char *copy = copy_span_text(value, strlen(value));
 
     if (copy == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
@@ -42432,14 +42460,16 @@ static int normalize_schema_option_text(mylite_db *database, char **target, cons
 
 static int set_unknown_charset_error(mylite_db *database, const char *name)
 {
-    int status = set_error_message_parts(database, "Unknown character set: '", name, "'");
+    int status =
+        mylite_diagnostics_set_error_message_parts(database, "Unknown character set: '", name, "'");
 
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int set_unknown_collation_error(mylite_db *database, const char *name)
 {
-    int status = set_error_message_parts(database, "Unknown collation: '", name, "'");
+    int status =
+        mylite_diagnostics_set_error_message_parts(database, "Unknown collation: '", name, "'");
 
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
@@ -42450,14 +42480,15 @@ static int set_collation_charset_error(mylite_db *database, const char *collatio
     char *prefix = NULL;
     int status = MYLITE_EXEC_ERROR;
 
-    if (set_error_message_parts(database, "COLLATION '", collation,
-                                "' is not valid for CHARACTER SET '") == MYLITE_NOMEM) {
+    if (mylite_diagnostics_set_error_message_parts(database, "COLLATION '", collation,
+                                                   "' is not valid for CHARACTER SET '") ==
+        MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
 
     prefix = database->error_message;
     database->error_message = NULL;
-    status = set_error_message_parts(database, prefix, character_set, "'");
+    status = mylite_diagnostics_set_error_message_parts(database, prefix, character_set, "'");
     free(prefix);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
@@ -42469,13 +42500,14 @@ static int set_unknown_table_error(mylite_db *database, const char *schema_name,
     int status = MYLITE_OK;
 
     if (message == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
-    status = set_error_message(database, message);
+    status = mylite_diagnostics_set_error_message(database, message);
     if (status == MYLITE_OK) {
-        status = append_database_error(database, MYLITE_MYSQL_ER_BAD_TABLE_ERROR, message);
+        status =
+            mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_BAD_TABLE_ERROR, message);
     }
     sqlite3_free(message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
@@ -42488,11 +42520,11 @@ static int append_unknown_table_note(mylite_db *database, const char *schema_nam
     int status = MYLITE_OK;
 
     if (message == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
-    status = append_database_note(database, MYLITE_MYSQL_ER_BAD_TABLE_ERROR, message);
+    status = mylite_diagnostics_append_note(database, MYLITE_MYSQL_ER_BAD_TABLE_ERROR, message);
     sqlite3_free(message);
     return status;
 }
@@ -42511,14 +42543,16 @@ static bool write_statement_kind(enum mylite_stmt_kind kind)
 
 static int set_connection_released_error(mylite_db *database)
 {
-    int status = set_error_message(database, "Connection was released by transaction completion");
+    int status = mylite_diagnostics_set_error_message(
+        database, "Connection was released by transaction completion");
 
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int set_read_only_transaction_error(mylite_db *database)
 {
-    int status = set_error_message(database, "Cannot execute statement in a READ ONLY transaction");
+    int status = mylite_diagnostics_set_error_message(
+        database, "Cannot execute statement in a READ ONLY transaction");
 
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
@@ -42529,17 +42563,17 @@ static int set_savepoint_does_not_exist_error(mylite_db *database, const char *n
     int status = MYLITE_OK;
 
     if (message == NULL) {
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
-    status = set_error_message(database, message);
+    status = mylite_diagnostics_set_error_message(database, message);
     sqlite3_free(message);
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = append_database_error(database, MYLITE_MYSQL_ER_SP_DOES_NOT_EXIST,
-                                   mylite_error_message(database));
+    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_SP_DOES_NOT_EXIST,
+                                             mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
@@ -43964,12 +43998,13 @@ static int map_parse_status(mylite_db *database, enum mylite_sql_parse_status st
     case MYLITE_SQL_PARSE_MISUSE:
         return MYLITE_MISUSE;
     case MYLITE_SQL_PARSE_NOMEM:
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     case MYLITE_SQL_PARSE_LEXER_ERROR:
     case MYLITE_SQL_PARSE_SYNTAX_ERROR:
     case MYLITE_SQL_PARSE_STACK_OVERFLOW:
-        if (set_error_message(database, mylite_sql_parse_status_name(status)) == MYLITE_NOMEM) {
+        if (mylite_diagnostics_set_error_message(database, mylite_sql_parse_status_name(status)) ==
+            MYLITE_NOMEM) {
             return MYLITE_NOMEM;
         }
         return MYLITE_PARSE_ERROR;
@@ -43984,221 +44019,17 @@ static int map_translate_status(mylite_db *database, enum mylite_sqlite_translat
     case MYLITE_SQLITE_TRANSLATE_OK:
         return MYLITE_OK;
     case MYLITE_SQLITE_TRANSLATE_NOMEM:
-        (void)set_error_message(database, "out of memory");
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     case MYLITE_SQLITE_TRANSLATE_UNSUPPORTED:
-        if (set_error_message(database, "unsupported SQL statement") == MYLITE_NOMEM) {
+        if (mylite_diagnostics_set_error_message(database, "unsupported SQL statement") ==
+            MYLITE_NOMEM) {
             return MYLITE_NOMEM;
         }
         return MYLITE_UNSUPPORTED;
     }
 
     return MYLITE_UNSUPPORTED;
-}
-
-static void clear_warnings(mylite_db *database)
-{
-    if (database == NULL) {
-        return;
-    }
-
-    mylite_expression_warnings_deinit(&database->warnings);
-}
-
-static int set_sqlite_error(mylite_db *database)
-{
-    if (set_error_message(database, sqlite3_errmsg(database->sqlite)) == MYLITE_NOMEM) {
-        return MYLITE_NOMEM;
-    }
-
-    return MYLITE_SQLITE_ERROR;
-}
-
-static int set_error_message(mylite_db *database, const char *message)
-{
-    size_t length = message == NULL ? 0U : strlen(message);
-    char *copy = malloc(length + 1U);
-
-    if (copy == NULL) {
-        clear_error_message(database);
-        return MYLITE_NOMEM;
-    }
-
-    if (length > 0U) {
-        memcpy(copy, message, length);
-    }
-    copy[length] = '\0';
-
-    free(database->error_message);
-    database->error_message = copy;
-    return MYLITE_OK;
-}
-
-static int set_error_message_parts(mylite_db *database, const char *prefix, const char *value,
-                                   const char *suffix)
-{
-    size_t prefix_length = prefix == NULL ? 0U : strlen(prefix);
-    size_t value_length = value == NULL ? 0U : strlen(value);
-    size_t suffix_length = suffix == NULL ? 0U : strlen(suffix);
-    size_t length = prefix_length + value_length + suffix_length;
-    char *message = malloc(length + 1U);
-    size_t offset = 0U;
-    int status = MYLITE_OK;
-
-    if (message == NULL) {
-        clear_error_message(database);
-        return MYLITE_NOMEM;
-    }
-
-    if (prefix_length > 0U) {
-        memcpy(message + offset, prefix, prefix_length);
-        offset += prefix_length;
-    }
-    if (value_length > 0U) {
-        memcpy(message + offset, value, value_length);
-        offset += value_length;
-    }
-    if (suffix_length > 0U) {
-        memcpy(message + offset, suffix, suffix_length);
-        offset += suffix_length;
-    }
-    message[offset] = '\0';
-
-    status = set_error_message(database, message);
-    free(message);
-    return status;
-}
-
-static int append_database_warning(mylite_db *database, unsigned int code, const char *message)
-{
-    return append_database_condition(database, MYLITE_EXPRESSION_WARNING_LEVEL_WARNING, code,
-                                     message);
-}
-
-static int append_database_note(mylite_db *database, unsigned int code, const char *message)
-{
-    return append_database_condition(database, MYLITE_EXPRESSION_WARNING_LEVEL_NOTE, code, message);
-}
-
-static int append_database_error(mylite_db *database, unsigned int code, const char *message)
-{
-    return append_database_condition(database, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, code,
-                                     message);
-}
-
-static int ensure_current_error_condition(mylite_db *database, unsigned int fallback_code)
-{
-    if (database_has_error_condition(database)) {
-        if (database != NULL && database->error_message == NULL) {
-            for (size_t index = 0U; index < database->warnings.count; ++index) {
-                const struct mylite_expression_warning *condition =
-                    &database->warnings.items[index];
-
-                if (condition->level == MYLITE_EXPRESSION_WARNING_LEVEL_ERROR) {
-                    return set_error_message(database, condition->message);
-                }
-            }
-        }
-        return MYLITE_OK;
-    }
-    if (promote_current_error_message_condition(database)) {
-        return MYLITE_OK;
-    }
-    return append_current_error_condition(database, fallback_code);
-}
-
-static bool database_has_error_condition(const mylite_db *database)
-{
-    if (database == NULL) {
-        return false;
-    }
-    for (size_t index = 0U; index < database->warnings.count; ++index) {
-        if (database->warnings.items[index].level == MYLITE_EXPRESSION_WARNING_LEVEL_ERROR) {
-            return true;
-        }
-    }
-    return false;
-}
-
-static bool promote_current_error_message_condition(mylite_db *database)
-{
-    const char *message = mylite_error_message(database);
-
-    if (database == NULL || message == NULL || message[0] == '\0') {
-        return false;
-    }
-    for (size_t index = database->warnings.count; index > 0U; --index) {
-        struct mylite_expression_warning *condition = &database->warnings.items[index - 1U];
-
-        if (condition->level == MYLITE_EXPRESSION_WARNING_LEVEL_WARNING &&
-            condition->message != NULL && strcmp(condition->message, message) == 0) {
-            condition->level = MYLITE_EXPRESSION_WARNING_LEVEL_ERROR;
-            return true;
-        }
-    }
-    return false;
-}
-
-static int append_database_condition(mylite_db *database,
-                                     enum mylite_expression_warning_level level, unsigned int code,
-                                     const char *message)
-{
-    struct mylite_expression_warning *items = NULL;
-    char *copy = NULL;
-
-    if (database == NULL) {
-        return MYLITE_MISUSE;
-    }
-
-    copy = copy_span_text(message == NULL ? "" : message, message == NULL ? 0U : strlen(message));
-    if (copy == NULL) {
-        (void)set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    items = realloc(database->warnings.items,
-                    (database->warnings.count + 1U) * sizeof(*database->warnings.items));
-    if (items == NULL) {
-        free(copy);
-        (void)set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    database->warnings.items = items;
-    database->warnings.items[database->warnings.count++] =
-        (struct mylite_expression_warning){.code = code, .message = copy, .level = level};
-    return MYLITE_OK;
-}
-
-static int append_current_error_condition(mylite_db *database, unsigned int code)
-{
-    const char *message = mylite_error_message(database);
-
-    if (message == NULL || message[0] == '\0') {
-        message = "Unknown error";
-    } else {
-        code = current_error_condition_code(database, code);
-    }
-    return append_database_error(database, code, message);
-}
-
-static unsigned int current_error_condition_code(mylite_db *database, unsigned int fallback_code)
-{
-    const char *message = mylite_error_message(database);
-
-    if (message != NULL && strcmp(message, "No database selected") == 0) {
-        return MYLITE_MYSQL_ER_NO_DB_ERROR;
-    }
-    return fallback_code;
-}
-
-static void clear_error_message(mylite_db *database)
-{
-    if (database == NULL) {
-        return;
-    }
-
-    free(database->error_message);
-    database->error_message = NULL;
 }
 
 static sqlite3_destructor_type sqlite_transient_destructor(void)

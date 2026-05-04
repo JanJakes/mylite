@@ -39,6 +39,7 @@ add_library(mylite STATIC
   "${MYLITE_SQL_PARSE_C}"
   src/mylite.c
   src/charset/mylite_charset.c
+  src/runtime/mylite_diagnostics.c
   src/sql/mylite_ast.c
   src/sql/mylite_expression.c
   src/sql/mylite_lexer.c

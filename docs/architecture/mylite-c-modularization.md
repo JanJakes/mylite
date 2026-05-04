@@ -57,7 +57,7 @@ after every step.
   `src/runtime/mylite_runtime.h`.
 - [ ] Move immutable runtime constants from `mylite.c` into focused private
   modules without creating unused-header warnings.
-- [ ] Extract diagnostics into `src/runtime/mylite_diagnostics.{h,c}`.
+- [x] Extract diagnostics into `src/runtime/mylite_diagnostics.{h,c}`.
 - [ ] Extract public connection lifecycle and session charset accessors into
   `src/runtime/mylite_connection.{h,c}`.
 - [ ] Extract public statement lifecycle and result accessors into

@@ -9,5 +9,6 @@ void mylite_statement_select_constant_values_deinit(mylite_stmt *stmt);
 void mylite_statement_table_select_result_deinit(struct mylite_table_select_result *result);
 void mylite_statement_table_select_current_values_deinit(struct mylite_table_select_result *result);
 void mylite_statement_table_select_row_deinit(struct mylite_table_select_row *row);
+void mylite_statement_union_plan_deinit(struct mylite_union_plan *plan);
 
 #endif

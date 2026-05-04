@@ -3720,7 +3720,6 @@ static void insert_unique_index_deinit(struct mylite_insert_unique_index *index)
 static void result_metadata_deinit(struct mylite_result_metadata *metadata);
 static void result_column_metadata_deinit(struct mylite_result_column_metadata *metadata);
 static void select_plan_deinit(struct mylite_select_plan *plan);
-static void union_plan_deinit(struct mylite_union_plan *plan);
 static void select_table_deinit(struct mylite_select_table *table);
 static void select_column_deinit(struct mylite_select_column *column);
 static void select_output_column_deinit(struct mylite_select_output_column *column);
@@ -3813,7 +3812,7 @@ void mylite_finalize(mylite_stmt *stmt)
     delete_plan_deinit(&stmt->delete_plan);
     free(stmt->savepoint.name);
     free(stmt->savepoint.normalized_name);
-    union_plan_deinit(&stmt->union_plan);
+    mylite_statement_union_plan_deinit(&stmt->union_plan);
     select_plan_deinit(&stmt->select_plan);
     result_metadata_deinit(&stmt->result_metadata);
     mylite_statement_scalar_result_deinit(&stmt->scalar_result);
@@ -42149,21 +42148,6 @@ static void select_plan_deinit(struct mylite_select_plan *plan)
     }
     free(plan->using_requests);
     *plan = (struct mylite_select_plan){0};
-}
-
-// NOLINTNEXTLINE(misc-no-recursion)
-static void union_plan_deinit(struct mylite_union_plan *plan)
-{
-    if (plan == NULL) {
-        return;
-    }
-
-    for (size_t index = 0U; index < plan->operand_count; ++index) {
-        mylite_finalize(plan->operands[index]);
-    }
-    free((void *)plan->operands);
-    free(plan->operators);
-    *plan = (struct mylite_union_plan){0};
 }
 
 static void select_table_deinit(struct mylite_select_table *table)

@@ -108,3 +108,18 @@ void mylite_statement_table_select_row_deinit(struct mylite_table_select_row *ro
     free(row->source_row_indexes);
     *row = (struct mylite_table_select_row){0};
 }
+
+// NOLINTNEXTLINE(misc-no-recursion)
+void mylite_statement_union_plan_deinit(struct mylite_union_plan *plan)
+{
+    if (plan == NULL) {
+        return;
+    }
+
+    for (size_t index = 0U; index < plan->operand_count; ++index) {
+        mylite_finalize(plan->operands[index]);
+    }
+    free((void *)plan->operands);
+    free(plan->operators);
+    *plan = (struct mylite_union_plan){0};
+}

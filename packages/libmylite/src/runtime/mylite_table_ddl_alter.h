@@ -9,9 +9,22 @@
 
 struct mylite_schema_default;
 
+struct mylite_table_ddl_alter_callbacks {
+    void *user_data;
+    int (*validate_primary_key_part_not_null)(void *user_data,
+                                              const struct mylite_alter_table_model *model,
+                                              const struct mylite_create_table_key_part *part);
+};
+
 int mylite_table_ddl_apply_alter_table_column_action(
     mylite_db *database, const struct mylite_schema_default *schema_default,
     const struct mylite_alter_table_action *action, struct mylite_alter_table_model *model);
+int mylite_table_ddl_apply_alter_table_index_action(
+    mylite_db *database, const struct mylite_alter_table_action *action,
+    struct mylite_alter_table_model *model,
+    const struct mylite_table_ddl_alter_callbacks *callbacks);
+int mylite_table_ddl_refresh_alter_table_index_metadata(mylite_db *database,
+                                                        struct mylite_alter_table_model *model);
 const struct mylite_alter_table_column *
 mylite_table_ddl_find_alter_table_column(const struct mylite_alter_table_model *model,
                                          const char *name);

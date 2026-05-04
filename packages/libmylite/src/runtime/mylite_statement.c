@@ -21,6 +21,37 @@ void mylite_statement_record_row_count(mylite_stmt *stmt)
     stmt->previous_row_count_recorded = true;
 }
 
+void mylite_statement_scalar_result_deinit(struct mylite_scalar_result *result)
+{
+    if (result == NULL) {
+        return;
+    }
+
+    for (size_t index = 0U; index < result->value_count; ++index) {
+        mylite_expression_value_deinit(&result->values[index]);
+        free(result->texts[index]);
+    }
+    mylite_expression_warnings_deinit(&result->warnings);
+    free(result->values);
+    free((void *)result->texts);
+    free((void *)result->expressions);
+    *result = (struct mylite_scalar_result){0};
+}
+
+void mylite_statement_select_constant_values_deinit(mylite_stmt *stmt)
+{
+    if (stmt == NULL) {
+        return;
+    }
+
+    for (size_t index = 0U; index < stmt->select_constant_value_count; ++index) {
+        mylite_expression_value_deinit(&stmt->select_constant_values[index].value);
+    }
+    free(stmt->select_constant_values);
+    stmt->select_constant_values = NULL;
+    stmt->select_constant_value_count = 0U;
+}
+
 void mylite_statement_table_select_result_deinit(struct mylite_table_select_result *result)
 {
     if (result == NULL) {

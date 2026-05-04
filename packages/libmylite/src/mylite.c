@@ -3718,11 +3718,9 @@ static void insert_table_deinit(struct mylite_insert_table *table);
 static void insert_table_column_deinit(struct mylite_insert_table_column *column);
 static void insert_unique_index_deinit(struct mylite_insert_unique_index *index);
 static void result_metadata_deinit(struct mylite_result_metadata *metadata);
-static void scalar_result_deinit(struct mylite_scalar_result *result);
 static void result_column_metadata_deinit(struct mylite_result_column_metadata *metadata);
 static void select_plan_deinit(struct mylite_select_plan *plan);
 static void union_plan_deinit(struct mylite_union_plan *plan);
-static void select_constant_values_deinit(mylite_stmt *stmt);
 static void select_table_deinit(struct mylite_select_table *table);
 static void select_column_deinit(struct mylite_select_column *column);
 static void select_output_column_deinit(struct mylite_select_output_column *column);
@@ -3818,7 +3816,7 @@ void mylite_finalize(mylite_stmt *stmt)
     union_plan_deinit(&stmt->union_plan);
     select_plan_deinit(&stmt->select_plan);
     result_metadata_deinit(&stmt->result_metadata);
-    scalar_result_deinit(&stmt->scalar_result);
+    mylite_statement_scalar_result_deinit(&stmt->scalar_result);
     mylite_statement_table_select_result_deinit(&stmt->select_result);
     mylite_sql_ast_deinit(&stmt->select_predicate_ast);
     mylite_sql_ast_deinit(&stmt->scalar_select_ast);
@@ -3828,7 +3826,7 @@ void mylite_finalize(mylite_stmt *stmt)
     free(stmt->scalar_select_sql_text);
     free(stmt->update_sql_text);
     free(stmt->delete_sql_text);
-    select_constant_values_deinit(stmt);
+    mylite_statement_select_constant_values_deinit(stmt);
     free(stmt);
 }
 
@@ -42081,23 +42079,6 @@ static void result_metadata_deinit(struct mylite_result_metadata *metadata)
     *metadata = (struct mylite_result_metadata){0};
 }
 
-static void scalar_result_deinit(struct mylite_scalar_result *result)
-{
-    if (result == NULL) {
-        return;
-    }
-
-    for (size_t index = 0U; index < result->value_count; ++index) {
-        mylite_expression_value_deinit(&result->values[index]);
-        free(result->texts[index]);
-    }
-    mylite_expression_warnings_deinit(&result->warnings);
-    free(result->values);
-    free((void *)result->texts);
-    free((void *)result->expressions);
-    *result = (struct mylite_scalar_result){0};
-}
-
 static void table_select_group_deinit(struct mylite_table_select_group *group)
 {
     if (group == NULL) {
@@ -42183,20 +42164,6 @@ static void union_plan_deinit(struct mylite_union_plan *plan)
     free((void *)plan->operands);
     free(plan->operators);
     *plan = (struct mylite_union_plan){0};
-}
-
-static void select_constant_values_deinit(mylite_stmt *stmt)
-{
-    if (stmt == NULL) {
-        return;
-    }
-
-    for (size_t index = 0U; index < stmt->select_constant_value_count; ++index) {
-        mylite_expression_value_deinit(&stmt->select_constant_values[index].value);
-    }
-    free(stmt->select_constant_values);
-    stmt->select_constant_values = NULL;
-    stmt->select_constant_value_count = 0U;
 }
 
 static void select_table_deinit(struct mylite_select_table *table)

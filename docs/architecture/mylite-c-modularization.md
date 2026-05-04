@@ -76,6 +76,8 @@ after every step.
   row-count bookkeeping.
 - [x] Move table-select row/current-result cleanup into
   `src/runtime/mylite_statement`.
+- [x] Move scalar SELECT result and select-constant cleanup into
+  `src/runtime/mylite_statement`.
 - [x] Extract public result metadata accessors into
   `src/runtime/mylite_metadata.{h,c}`.
 - [ ] Split catalog lookup helpers into `src/runtime/mylite_catalog`.

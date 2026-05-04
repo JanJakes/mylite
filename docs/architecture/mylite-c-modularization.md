@@ -251,7 +251,7 @@ only the core object model and transitional shared helpers listed here:
   `mylite_metadata`.
 - [ ] Move charset/collation constant names and ids into charset/metadata
   boundaries.
-- [ ] Move storage-engine registry rows into `mylite_show` or
+- [x] Move storage-engine registry rows into `mylite_show` or
   `mylite_information_schema`.
 - [x] Extract diagnostics into `src/runtime/mylite_diagnostics.{h,c}`.
 - [x] Move reusable charset/collation diagnostic helpers into
@@ -293,7 +293,7 @@ only the core object model and transitional shared helpers listed here:
 - [ ] Move connection charset AST copy/prepare helpers into the connection
   module or a small connection-statement module.
 - [ ] Split `SHOW` and `information_schema` dynamic result builders.
-- [ ] Create `src/runtime/mylite_show.{h,c}` and wire it into CMake.
+- [x] Create `src/runtime/mylite_show.{h,c}` and wire it into CMake.
 - [ ] Move `SHOW DATABASES` prepare/build code into `mylite_show`.
 - [ ] Move `SHOW VARIABLES` prepare/build code into `mylite_show`.
 - [ ] Move `SHOW STATUS` prepare/build code into `mylite_show`.

@@ -53,8 +53,10 @@ after every step.
 ## Task List
 
 - [x] Document the intended runtime module layout and migration order.
-- [ ] Move shared runtime structs, enums, and immutable runtime constants from
-  `mylite.c` into `src/runtime/mylite_runtime.h`.
+- [x] Move shared runtime structs and enums from `mylite.c` into
+  `src/runtime/mylite_runtime.h`.
+- [ ] Move immutable runtime constants from `mylite.c` into focused private
+  modules without creating unused-header warnings.
 - [ ] Extract diagnostics into `src/runtime/mylite_diagnostics.{h,c}`.
 - [ ] Extract public connection lifecycle and session charset accessors into
   `src/runtime/mylite_connection.{h,c}`.

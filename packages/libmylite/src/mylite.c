@@ -2018,9 +2018,6 @@ static int copy_table_select_column_value(mylite_stmt *stmt, size_t column_index
 static int map_table_select_expression_eval_status(mylite_stmt *stmt, int status);
 static int set_where_predicate_eval_error(mylite_stmt *stmt);
 static void table_select_group_deinit(struct mylite_table_select_group *group);
-static int validate_create_table_plan(mylite_stmt *stmt, const char *schema_name,
-                                      struct mylite_schema_default *schema_default,
-                                      bool *out_skip_create);
 static int create_table_transaction(mylite_stmt *stmt, const char *schema_name,
                                     const struct mylite_schema_default *schema_default);
 static int create_physical_table(mylite_stmt *stmt, const char *schema_name,
@@ -3053,12 +3050,6 @@ static int copy_delete_target(const struct mylite_sql_ast_node *target,
                               struct mylite_delete_target *out_target);
 static int copy_delete_table_name(const struct mylite_sql_ast_node *table_name,
                                   struct mylite_delete_target *target);
-static int assign_generated_index_names(mylite_db *database, struct mylite_create_table_plan *plan);
-static int assign_generated_index_name(mylite_db *database, struct mylite_create_table_plan *plan,
-                                       size_t index);
-static char *generated_index_name_candidate(const char *base, unsigned int suffix);
-static bool create_table_index_name_exists(const struct mylite_create_table_plan *plan,
-                                           const char *name, size_t before_index);
 static int describe_create_table_column(const struct mylite_create_table_column *column,
                                         const struct mylite_schema_default *schema_default,
                                         const struct mylite_create_table_options *table_options,
@@ -3079,19 +3070,6 @@ sqlite_affinity_for_descriptor(const struct mylite_column_type_descriptor *descr
 static const char *sqlite_affinity_for_catalog_data_type(const char *data_type);
 static char *build_create_physical_table_sql(mylite_stmt *stmt, const char *physical_name,
                                              const struct mylite_schema_default *schema_default);
-static int normalize_create_table_options(mylite_db *database, const char *schema_name,
-                                          const struct mylite_schema_default *schema_default,
-                                          struct mylite_create_table_options *options);
-static int normalize_create_table_option_text(mylite_db *database, char **target,
-                                              const char *value);
-static bool is_supported_engine_name(const char *name);
-static bool validate_create_table_column_names(mylite_db *database,
-                                               const struct mylite_create_table_plan *plan);
-static bool validate_create_table_indexes(mylite_db *database,
-                                          const struct mylite_create_table_plan *plan);
-static void apply_create_table_primary_key_nullability(struct mylite_create_table_plan *plan);
-static const struct mylite_create_table_column *
-find_create_table_column(const struct mylite_create_table_plan *plan, const char *name);
 static struct mylite_create_table_column_index_status
 create_table_column_index_status(const struct mylite_create_table_plan *plan,
                                  const char *column_name);
@@ -15564,7 +15542,9 @@ static int execute_create_table_statement(mylite_stmt *stmt)
         return MYLITE_EXEC_ERROR;
     }
 
-    status = validate_create_table_plan(stmt, schema_name, &schema_default, &skip_create);
+    status = mylite_table_ddl_validate_create_table_plan(stmt->database, schema_name,
+                                                         &stmt->create_table, stmt->if_not_exists,
+                                                         &schema_default, &skip_create);
     if (status != MYLITE_OK) {
         return status;
     }
@@ -15593,78 +15573,6 @@ static int execute_drop_table_statement(mylite_stmt *stmt)
     }
 
     return drop_table_transaction(stmt);
-}
-
-static int validate_create_table_plan(mylite_stmt *stmt, const char *schema_name,
-                                      struct mylite_schema_default *schema_default,
-                                      bool *out_skip_create)
-{
-    struct mylite_schema_presence presence;
-    bool exists = false;
-    int status = mylite_catalog_schema_exists(stmt->database, schema_name, &presence);
-
-    *out_skip_create = false;
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    if (!presence.exists) {
-        (void)mylite_diagnostics_set_error_message_parts(stmt->database, "Unknown database '",
-                                                         schema_name, "'");
-        return MYLITE_EXEC_ERROR;
-    }
-    if (presence.is_system) {
-        (void)mylite_diagnostics_set_error_message_parts(
-            stmt->database, "Access to system schema '", schema_name, "' is rejected.");
-        return MYLITE_EXEC_ERROR;
-    }
-
-    status = mylite_catalog_table_exists(stmt->database, schema_name, stmt->create_table.table_name,
-                                         &exists);
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    if (exists) {
-        if (stmt->if_not_exists) {
-            int note_status = mylite_diagnostics_set_error_message_parts(
-                stmt->database, "Table '", stmt->create_table.table_name, "' already exists");
-
-            if (note_status == MYLITE_NOMEM) {
-                return MYLITE_NOMEM;
-            }
-            note_status =
-                mylite_diagnostics_append_note(stmt->database, MYLITE_MYSQL_ER_TABLE_EXISTS_ERROR,
-                                               mylite_error_message(stmt->database));
-            if (note_status == MYLITE_OK) {
-                *out_skip_create = true;
-            }
-            return note_status;
-        }
-        (void)mylite_diagnostics_set_error_message_parts(
-            stmt->database, "Table '", stmt->create_table.table_name, "' already exists");
-        return MYLITE_EXEC_ERROR;
-    }
-
-    status = mylite_catalog_schema_default_by_name(stmt->database, schema_name, schema_default);
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    status = normalize_create_table_options(stmt->database, schema_name, schema_default,
-                                            &stmt->create_table.options);
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    if (!validate_create_table_column_names(stmt->database, &stmt->create_table)) {
-        return MYLITE_EXEC_ERROR;
-    }
-    status = assign_generated_index_names(stmt->database, &stmt->create_table);
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    if (!validate_create_table_indexes(stmt->database, &stmt->create_table)) {
-        return MYLITE_EXEC_ERROR;
-    }
-    apply_create_table_primary_key_nullability(&stmt->create_table);
-    return MYLITE_OK;
 }
 
 static int create_table_transaction(mylite_stmt *stmt, const char *schema_name,
@@ -15975,7 +15883,7 @@ static int insert_index_catalog_part(mylite_stmt *stmt, sqlite3_stmt *insert,
         bind_is_visible = 13,
     };
     const struct mylite_create_table_column *column =
-        find_create_table_column(&stmt->create_table, part->column_name);
+        mylite_table_ddl_find_create_table_column(&stmt->create_table, part->column_name);
     int non_unique = 1;
     const char *nullable = "";
     const char *index_type = "BTREE";
@@ -18062,7 +17970,7 @@ static int assign_alter_table_generated_index_name(mylite_stmt *stmt,
 
     base = source->parts[0].column_name;
     for (;;) {
-        char *candidate = generated_index_name_candidate(base, suffix);
+        char *candidate = mylite_table_ddl_generated_index_name_candidate(base, suffix);
 
         if (candidate == NULL) {
             (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
@@ -35472,86 +35380,6 @@ static int add_drop_table_target(struct mylite_drop_table_plan *plan,
     return MYLITE_OK;
 }
 
-static int assign_generated_index_names(mylite_db *database, struct mylite_create_table_plan *plan)
-{
-    for (size_t index = 0U; index < plan->index_count; ++index) {
-        int status = assign_generated_index_name(database, plan, index);
-        if (status != MYLITE_OK) {
-            return status;
-        }
-    }
-    return MYLITE_OK;
-}
-
-static int assign_generated_index_name(mylite_db *database, struct mylite_create_table_plan *plan,
-                                       size_t index)
-{
-    struct mylite_create_table_index *table_index = &plan->indexes[index];
-    const char *base = NULL;
-    unsigned int suffix = 1U;
-
-    if (table_index->name != NULL) {
-        return MYLITE_OK;
-    }
-    if (table_index->part_count == 0U || table_index->parts[0].column_name == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "Index has no key parts");
-        return MYLITE_EXEC_ERROR;
-    }
-
-    base = table_index->parts[0].column_name;
-    for (;;) {
-        char *candidate = generated_index_name_candidate(base, suffix);
-
-        if (candidate == NULL) {
-            (void)mylite_diagnostics_set_error_message(database, "out of memory");
-            return MYLITE_NOMEM;
-        }
-        if (!create_table_index_name_exists(plan, candidate, index)) {
-            table_index->name = candidate;
-            return MYLITE_OK;
-        }
-        free(candidate);
-        ++suffix;
-    }
-}
-
-static char *generated_index_name_candidate(const char *base, unsigned int suffix)
-{
-    enum { suffix_buffer_size = 32 };
-    char suffix_buffer[suffix_buffer_size];
-    size_t candidate_length = strlen(base);
-    char *candidate = NULL;
-
-    suffix_buffer[0] = '\0';
-    if (suffix > 1U) {
-        int written = snprintf(suffix_buffer, sizeof(suffix_buffer), "_%u", suffix);
-
-        if (written < 0) {
-            return NULL;
-        }
-        candidate_length += (size_t)written;
-    }
-
-    candidate = malloc(candidate_length + 1U);
-    if (candidate == NULL) {
-        return NULL;
-    }
-    (void)snprintf(candidate, candidate_length + 1U, "%s%s", base, suffix_buffer);
-    return candidate;
-}
-
-static bool create_table_index_name_exists(const struct mylite_create_table_plan *plan,
-                                           const char *name, size_t before_index)
-{
-    for (size_t index = 0U; index < before_index; ++index) {
-        if (plan->indexes[index].name != NULL &&
-            mylite_ascii_case_equal(plan->indexes[index].name, name)) {
-            return true;
-        }
-    }
-    return false;
-}
-
 static int describe_create_table_column(const struct mylite_create_table_column *column,
                                         const struct mylite_schema_default *schema_default,
                                         const struct mylite_create_table_options *table_options,
@@ -35799,169 +35627,6 @@ static char *build_create_physical_table_sql(mylite_stmt *stmt, const char *phys
     }
     sqlite3_str_append(sql, ")", 1);
     return sqlite3_str_finish(sql);
-}
-
-static int normalize_create_table_options(mylite_db *database, const char *schema_name,
-                                          const struct mylite_schema_default *schema_default,
-                                          struct mylite_create_table_options *options)
-{
-    const struct mylite_charset *character_set = NULL;
-    const struct mylite_collation *collation = NULL;
-    const char *collation_name = NULL;
-    int status = MYLITE_OK;
-
-    (void)schema_name;
-    if (options->engine != NULL && !is_supported_engine_name(options->engine)) {
-        status = mylite_diagnostics_set_error_message_parts(
-            database, "Unsupported storage engine: '", options->engine, "'");
-        return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-    }
-    if (options->character_set != NULL) {
-        character_set = mylite_charset_lookup(options->character_set);
-        if (character_set == NULL) {
-            return mylite_diagnostics_set_unknown_charset_error(database, options->character_set);
-        }
-    }
-    if (options->collation != NULL) {
-        collation = mylite_collation_lookup(options->collation);
-        if (collation == NULL) {
-            return mylite_diagnostics_set_unknown_collation_error(database, options->collation);
-        }
-    }
-    if (character_set == NULL && collation != NULL) {
-        character_set = mylite_charset_lookup(collation->character_set);
-    }
-    if (character_set == NULL) {
-        character_set = mylite_charset_lookup(schema_default->character_set);
-    }
-    if (collation == NULL) {
-        collation_name = options->character_set == NULL ? schema_default->collation
-                                                        : character_set->default_collation;
-        collation = mylite_collation_lookup(collation_name);
-    }
-    if (character_set == NULL || collation == NULL) {
-        (void)mylite_diagnostics_set_error_message(database,
-                                                   "Unsupported charset/collation registry entry");
-        return MYLITE_EXEC_ERROR;
-    }
-    if (!mylite_charset_collation_match(character_set, collation)) {
-        return mylite_diagnostics_set_collation_charset_error(database, collation->name,
-                                                              character_set->name);
-    }
-
-    status =
-        normalize_create_table_option_text(database, &options->character_set, character_set->name);
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    return normalize_create_table_option_text(database, &options->collation, collation->name);
-}
-
-static int normalize_create_table_option_text(mylite_db *database, char **target, const char *value)
-{
-    char *copy = mylite_copy_span_text(value, strlen(value));
-
-    if (copy == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    free(*target);
-    *target = copy;
-    return MYLITE_OK;
-}
-
-static bool is_supported_engine_name(const char *name)
-{
-    if (name == NULL) {
-        return true;
-    }
-    return mylite_ascii_case_equal(name, "InnoDB");
-}
-
-static bool validate_create_table_column_names(mylite_db *database,
-                                               const struct mylite_create_table_plan *plan)
-{
-    if (plan->column_count == 0U) {
-        (void)mylite_diagnostics_set_error_message(database,
-                                                   "CREATE TABLE requires at least one column");
-        return false;
-    }
-
-    for (size_t left = 0U; left < plan->column_count; ++left) {
-        for (size_t right = left + 1U; right < plan->column_count; ++right) {
-            if (mylite_ascii_case_equal(plan->columns[left].name, plan->columns[right].name)) {
-                (void)mylite_diagnostics_set_error_message_parts(
-                    database, "Duplicate column name '", plan->columns[right].name, "'");
-                return false;
-            }
-        }
-    }
-    return true;
-}
-
-static bool validate_create_table_indexes(mylite_db *database,
-                                          const struct mylite_create_table_plan *plan)
-{
-    bool has_primary = false;
-
-    for (size_t index = 0U; index < plan->index_count; ++index) {
-        const struct mylite_create_table_index *table_index = &plan->indexes[index];
-
-        if (table_index->is_primary) {
-            if (has_primary) {
-                (void)mylite_diagnostics_set_error_message(database,
-                                                           "Multiple primary key defined");
-                return false;
-            }
-            has_primary = true;
-        }
-        if (table_index->explicit_name &&
-            create_table_index_name_exists(plan, table_index->name, index)) {
-            (void)mylite_diagnostics_set_error_message_parts(database, "Duplicate key name '",
-                                                             table_index->name, "'");
-            return false;
-        }
-        for (size_t part = 0U; part < table_index->part_count; ++part) {
-            if (find_create_table_column(plan, table_index->parts[part].column_name) == NULL) {
-                (void)mylite_diagnostics_set_error_message_parts(
-                    database, "Key column '", table_index->parts[part].column_name,
-                    "' doesn't exist in table");
-                return false;
-            }
-        }
-    }
-    return true;
-}
-
-static void apply_create_table_primary_key_nullability(struct mylite_create_table_plan *plan)
-{
-    for (size_t index = 0U; index < plan->index_count; ++index) {
-        const struct mylite_create_table_index *table_index = &plan->indexes[index];
-
-        if (!table_index->is_primary) {
-            continue;
-        }
-        for (size_t part = 0U; part < table_index->part_count; ++part) {
-            for (size_t column = 0U; column < plan->column_count; ++column) {
-                if (mylite_ascii_case_equal(plan->columns[column].name,
-                                            table_index->parts[part].column_name)) {
-                    plan->columns[column].nullable = false;
-                }
-            }
-        }
-    }
-}
-
-static const struct mylite_create_table_column *
-find_create_table_column(const struct mylite_create_table_plan *plan, const char *name)
-{
-    for (size_t index = 0U; index < plan->column_count; ++index) {
-        if (mylite_ascii_case_equal(plan->columns[index].name, name)) {
-            return &plan->columns[index];
-        }
-    }
-    return NULL;
 }
 
 static struct mylite_create_table_column_index_status

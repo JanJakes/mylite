@@ -499,8 +499,8 @@ only the core object model and transitional shared helpers listed here:
 - [ ] Move table SELECT materialization into `mylite_select`.
 - [x] Move table SELECT row copying, result ownership, rowset allocation, and
   LIMIT trimming helpers into `mylite_select_rowset`.
-- [ ] Move table SELECT result sorting, DISTINCT checks, and LIMIT application
-  into `mylite_select`.
+- [x] Move table SELECT result sorting, DISTINCT checks, and LIMIT application
+  into focused SELECT rowset helpers.
 - [ ] Move outer join materialization into `mylite_select`.
 - [ ] Move table SELECT join rowset loading and join condition caches into
   `mylite_select`.

@@ -1266,31 +1266,8 @@ static int evaluate_table_select_order_key(mylite_stmt *stmt,
                                            const struct mylite_table_select_row *row,
                                            const struct mylite_select_order_key *order_key,
                                            struct mylite_expression_value *out_value);
-static int sort_table_select_result_rows(mylite_stmt *stmt);
-// NOLINTNEXTLINE(misc-no-recursion)
-static int merge_sort_table_select_rows(struct mylite_table_select_row *rows,
-                                        struct mylite_table_select_row *scratch, size_t first,
-                                        size_t last, const struct mylite_select_plan *plan);
-static void merge_table_select_rows(struct mylite_table_select_row *rows,
-                                    struct mylite_table_select_row *scratch, size_t first,
-                                    size_t middle, size_t last,
-                                    const struct mylite_select_plan *plan);
-static int compare_table_select_rows(const struct mylite_table_select_row *left,
-                                     const struct mylite_table_select_row *right,
-                                     const struct mylite_select_plan *plan);
 static int materialize_table_select_output_values(mylite_stmt *stmt,
                                                   struct mylite_table_select_row *row);
-static bool table_select_distinct_row_exists(const mylite_stmt *stmt,
-                                             const struct mylite_table_select_row *row);
-static bool table_select_output_values_equal(const mylite_stmt *stmt,
-                                             const struct mylite_table_select_row *left,
-                                             const struct mylite_table_select_row *right);
-static int compare_table_select_distinct_values(const struct mylite_expression_value *left,
-                                                const struct mylite_expression_value *right,
-                                                const struct mylite_field_descriptor *descriptor);
-static size_t expression_value_text_length(const struct mylite_expression_value *value);
-static bool
-table_select_text_descriptor_is_binary(const struct mylite_field_descriptor *descriptor);
 static int set_table_select_current_row(mylite_stmt *stmt,
                                         const struct mylite_table_select_row *row);
 static int evaluate_table_select_cached_output_value(mylite_stmt *stmt,
@@ -11492,7 +11469,8 @@ static int materialize_union_query_result(mylite_stmt *stmt)
             status = evaluate_union_order_values(stmt, &stmt->select_result.rows[index]);
         }
         if (status == MYLITE_OK) {
-            status = sort_table_select_result_rows(stmt);
+            status = mylite_select_result_sort_rows(stmt->database, &stmt->select_result,
+                                                    &stmt->select_plan);
         }
     }
     if (status == MYLITE_OK) {
@@ -11644,7 +11622,8 @@ static int copy_union_operand_current_row(mylite_stmt *stmt, mylite_stmt *operan
 
 static int append_union_distinct_row(mylite_stmt *stmt, struct mylite_table_select_row *row)
 {
-    if (table_select_distinct_row_exists(stmt, row)) {
+    if (mylite_select_result_distinct_row_exists(&stmt->select_result, &stmt->select_plan,
+                                                 &stmt->result_metadata, row)) {
         mylite_select_row_deinit(row);
         return MYLITE_OK;
     }
@@ -11659,8 +11638,9 @@ static int deduplicate_union_result_rows(mylite_stmt *stmt)
         bool duplicate = false;
 
         for (size_t compare = 0U; compare < kept; ++compare) {
-            if (table_select_output_values_equal(stmt, &stmt->select_result.rows[compare],
-                                                 &stmt->select_result.rows[index])) {
+            if (mylite_select_output_values_equal(&stmt->select_plan, &stmt->result_metadata,
+                                                  &stmt->select_result.rows[compare],
+                                                  &stmt->select_result.rows[index])) {
                 duplicate = true;
                 break;
             }
@@ -11881,7 +11861,8 @@ static int materialize_ordered_table_select_result(mylite_stmt *stmt)
         return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
-    status = sort_table_select_result_rows(stmt);
+    status =
+        mylite_select_result_sort_rows(stmt->database, &stmt->select_result, &stmt->select_plan);
     if (status == MYLITE_OK) {
         status = mylite_select_result_apply_limit(&stmt->select_result, &stmt->select_plan.limit);
     }
@@ -12054,7 +12035,8 @@ static int materialize_joined_table_select_result(mylite_stmt *stmt)
         status = append_finalized_table_select_groups(stmt, state.groups, state.group_count);
     }
     if (status == MYLITE_OK && stmt->select_plan.order_key_count != 0U) {
-        status = sort_table_select_result_rows(stmt);
+        status = mylite_select_result_sort_rows(stmt->database, &stmt->select_result,
+                                                &stmt->select_plan);
     }
     if (status == MYLITE_OK &&
         (aggregate_query || stmt->select_plan.order_key_count != 0U || distinct)) {
@@ -12115,7 +12097,8 @@ static int materialize_outer_joined_table_select_result(mylite_stmt *stmt)
         status = append_finalized_table_select_groups(stmt, state.groups, state.group_count);
     }
     if (status == MYLITE_OK && stmt->select_plan.order_key_count != 0U) {
-        status = sort_table_select_result_rows(stmt);
+        status = mylite_select_result_sort_rows(stmt->database, &stmt->select_result,
+                                                &stmt->select_plan);
     }
     if (status == MYLITE_OK &&
         (aggregate_query || stmt->select_plan.order_key_count != 0U || distinct)) {
@@ -13418,7 +13401,8 @@ static int materialize_aggregate_table_select_result(mylite_stmt *stmt)
         status = append_finalized_table_select_groups(stmt, groups, group_count);
     }
     if (status == MYLITE_OK && stmt->select_plan.order_key_count != 0U) {
-        status = sort_table_select_result_rows(stmt);
+        status = mylite_select_result_sort_rows(stmt->database, &stmt->select_result,
+                                                &stmt->select_plan);
     }
     if (status == MYLITE_OK) {
         status = mylite_select_result_apply_limit(&stmt->select_result, &stmt->select_plan.limit);
@@ -13630,7 +13614,8 @@ static int check_table_select_distinct_duplicate(mylite_stmt *stmt,
     if (status != MYLITE_OK) {
         return status;
     }
-    *out_duplicate = table_select_distinct_row_exists(stmt, row);
+    *out_duplicate = mylite_select_result_distinct_row_exists(
+        &stmt->select_result, &stmt->select_plan, &stmt->result_metadata, row);
     return MYLITE_OK;
 }
 
@@ -14131,8 +14116,8 @@ static bool count_distinct_tuples_equal(const struct mylite_count_distinct_tuple
     }
 
     for (size_t index = 0U; index < left->value_count; ++index) {
-        if (compare_table_select_distinct_values(&left->values[index], &right->values[index],
-                                                 &binding->argument_descriptors[index]) != 0) {
+        if (mylite_select_compare_distinct_values(&left->values[index], &right->values[index],
+                                                  &binding->argument_descriptors[index]) != 0) {
             return false;
         }
     }
@@ -14426,95 +14411,6 @@ static int evaluate_table_select_order_key(mylite_stmt *stmt,
     return MYLITE_OK;
 }
 
-static int sort_table_select_result_rows(mylite_stmt *stmt)
-{
-    size_t row_count = stmt->select_result.row_count;
-    struct mylite_table_select_row *scratch = NULL;
-    int status = MYLITE_OK;
-
-    if (row_count < 2U) {
-        return MYLITE_OK;
-    }
-
-    scratch = calloc(row_count, sizeof(*scratch));
-    if (scratch == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    status = merge_sort_table_select_rows(stmt->select_result.rows, scratch, 0U, row_count,
-                                          &stmt->select_plan);
-    free(scratch);
-    return status;
-}
-
-// NOLINTNEXTLINE(misc-no-recursion)
-static int merge_sort_table_select_rows(struct mylite_table_select_row *rows,
-                                        struct mylite_table_select_row *scratch, size_t first,
-                                        size_t last, const struct mylite_select_plan *plan)
-{
-    size_t count = last - first;
-    size_t middle = first + (count / 2U);
-
-    if (count < 2U) {
-        return MYLITE_OK;
-    }
-
-    int status = merge_sort_table_select_rows(rows, scratch, first, middle, plan);
-
-    if (status == MYLITE_OK) {
-        status = merge_sort_table_select_rows(rows, scratch, middle, last, plan);
-    }
-    if (status == MYLITE_OK) {
-        merge_table_select_rows(rows, scratch, first, middle, last, plan);
-    }
-    return status;
-}
-
-static void merge_table_select_rows(struct mylite_table_select_row *rows,
-                                    struct mylite_table_select_row *scratch, size_t first,
-                                    size_t middle, size_t last,
-                                    const struct mylite_select_plan *plan)
-{
-    size_t left = first;
-    size_t right = middle;
-    size_t output = first;
-
-    while (left < middle && right < last) {
-        if (compare_table_select_rows(&rows[left], &rows[right], plan) <= 0) {
-            scratch[output++] = rows[left++];
-        } else {
-            scratch[output++] = rows[right++];
-        }
-    }
-    while (left < middle) {
-        scratch[output++] = rows[left++];
-    }
-    while (right < last) {
-        scratch[output++] = rows[right++];
-    }
-    for (size_t index = first; index < last; ++index) {
-        rows[index] = scratch[index];
-    }
-}
-
-static int compare_table_select_rows(const struct mylite_table_select_row *left,
-                                     const struct mylite_table_select_row *right,
-                                     const struct mylite_select_plan *plan)
-{
-    for (size_t index = 0U; index < plan->order_key_count; ++index) {
-        int comparison =
-            mylite_select_compare_values(&left->order_values[index], &right->order_values[index]);
-
-        if (comparison != 0) {
-            if (plan->order_keys[index].direction == MYLITE_SQL_AST_KEY_PART_ORDER_DESC) {
-                comparison = -comparison;
-            }
-            return comparison;
-        }
-    }
-    return 0;
-}
-
 static int materialize_table_select_output_values(mylite_stmt *stmt,
                                                   struct mylite_table_select_row *row)
 {
@@ -14538,95 +14434,6 @@ static int materialize_table_select_output_values(mylite_stmt *stmt,
         }
     }
     return MYLITE_OK;
-}
-
-static bool table_select_distinct_row_exists(const mylite_stmt *stmt,
-                                             const struct mylite_table_select_row *row)
-{
-    for (size_t index = 0U; index < stmt->select_result.row_count; ++index) {
-        if (table_select_output_values_equal(stmt, &stmt->select_result.rows[index], row)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-static bool table_select_output_values_equal(const mylite_stmt *stmt,
-                                             const struct mylite_table_select_row *left,
-                                             const struct mylite_table_select_row *right)
-{
-    if (left->output_value_count != stmt->select_plan.output_count ||
-        right->output_value_count != stmt->select_plan.output_count) {
-        return false;
-    }
-
-    for (size_t index = 0U; index < stmt->select_plan.output_count; ++index) {
-        const struct mylite_field_descriptor *descriptor =
-            index < stmt->result_metadata.column_count
-                ? &stmt->result_metadata.columns[index].descriptor
-                : NULL;
-
-        if (compare_table_select_distinct_values(&left->output_values[index],
-                                                 &right->output_values[index], descriptor) != 0) {
-            return false;
-        }
-    }
-    return true;
-}
-
-static int compare_table_select_distinct_values(const struct mylite_expression_value *left,
-                                                const struct mylite_expression_value *right,
-                                                const struct mylite_field_descriptor *descriptor)
-{
-    bool left_null = left->kind == MYLITE_EXPRESSION_VALUE_NULL;
-    bool right_null = right->kind == MYLITE_EXPRESSION_VALUE_NULL;
-
-    if (left_null || right_null) {
-        if (left_null == right_null) {
-            return 0;
-        }
-        if (left_null) {
-            return -1;
-        }
-        return 1;
-    }
-    if (left->kind == MYLITE_EXPRESSION_VALUE_TEXT && right->kind == MYLITE_EXPRESSION_VALUE_TEXT &&
-        table_select_text_descriptor_is_binary(descriptor)) {
-        return mylite_select_compare_binary_text_values(
-            left->text_value, expression_value_text_length(left), right->text_value,
-            expression_value_text_length(right));
-    }
-    return mylite_select_compare_values(left, right);
-}
-
-static size_t expression_value_text_length(const struct mylite_expression_value *value)
-{
-    if (value == NULL || value->text_value == NULL) {
-        return 0U;
-    }
-    return value->text_length;
-}
-
-static bool table_select_text_descriptor_is_binary(const struct mylite_field_descriptor *descriptor)
-{
-    if (descriptor == NULL) {
-        return false;
-    }
-    switch (descriptor->type) {
-    case MYLITE_FIELD_TYPE_STRING:
-    case MYLITE_FIELD_TYPE_VAR_STRING:
-    case MYLITE_FIELD_TYPE_BLOB:
-        if ((descriptor->flags & MYLITE_FIELD_FLAG_BINARY) != 0U) {
-            return true;
-        }
-        if (descriptor->charset_id == mylite_mysql_binary_charset_id ||
-            descriptor->charset_id == mylite_mysql_utf8mb4_bin_charset_id) {
-            return true;
-        }
-        return false;
-    default:
-        return false;
-    }
 }
 
 static int set_table_select_current_row(mylite_stmt *stmt,

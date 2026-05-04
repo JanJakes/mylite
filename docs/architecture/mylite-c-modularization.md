@@ -355,7 +355,7 @@ only the core object model and transitional shared helpers listed here:
 - [x] Move create-table catalog writes behind a narrow table DDL/catalog API.
 - [x] Move create-table physical SQL construction into `mylite_table_ddl`.
 - [x] Move `CREATE TABLE` execution into `mylite_table_ddl`.
-- [ ] Move drop-table AST copy helpers into `mylite_table_ddl`.
+- [x] Move drop-table AST copy helpers into `mylite_table_ddl`.
 - [ ] Move `DROP TABLE` validation and execution into `mylite_table_ddl`.
 - [ ] Move rename-table AST copy helpers into `mylite_table_ddl`.
 - [ ] Move `RENAME TABLE` validation and execution into `mylite_table_ddl`.

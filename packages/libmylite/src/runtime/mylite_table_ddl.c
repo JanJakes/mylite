@@ -102,6 +102,10 @@ static int add_single_column_index(struct mylite_create_table_plan *plan, const 
                                    bool is_primary, bool is_unique);
 static const struct mylite_create_table_column *
 find_create_table_column(const struct mylite_create_table_plan *plan, const char *name);
+static int copy_drop_table_target(const struct mylite_sql_ast_node *table_name,
+                                  struct mylite_drop_table_target *target);
+static int add_drop_table_target(struct mylite_drop_table_plan *plan,
+                                 struct mylite_drop_table_target target);
 static char *copy_expression_text(const struct mylite_sql_ast_node *node);
 static void create_table_options_deinit(struct mylite_create_table_options *options);
 
@@ -931,6 +935,76 @@ int mylite_table_ddl_copy_create_table_index_options(const struct mylite_sql_ast
             break;
         }
     }
+    return MYLITE_OK;
+}
+
+int mylite_table_ddl_copy_drop_table_statement(const struct mylite_sql_ast_node *statement,
+                                               struct mylite_drop_table_plan *plan)
+{
+    const struct mylite_sql_ast_node *table_names = mylite_ast_child_at(statement, 0U);
+
+    plan->temporary = statement->drop_table_temporary;
+    plan->restrict_mode = statement->drop_table_restrict;
+    plan->cascade_mode = statement->drop_table_cascade;
+
+    for (const struct mylite_sql_ast_node *table_name =
+             table_names == NULL ? NULL : table_names->first_child;
+         table_name != NULL; table_name = table_name->next_sibling) {
+        struct mylite_drop_table_target target = {0};
+        int status = copy_drop_table_target(table_name, &target);
+
+        if (status == MYLITE_OK) {
+            status = add_drop_table_target(plan, target);
+        }
+        if (status != MYLITE_OK) {
+            mylite_table_ddl_drop_table_target_deinit(&target);
+            return status;
+        }
+    }
+    return plan->target_count == 0U ? MYLITE_UNSUPPORTED : MYLITE_OK;
+}
+
+static int copy_drop_table_target(const struct mylite_sql_ast_node *table_name,
+                                  struct mylite_drop_table_target *target)
+{
+    if (table_name == NULL) {
+        return MYLITE_NOMEM;
+    }
+    if (table_name->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        target->table_name = mylite_copy_identifier_span(table_name);
+        return target->table_name == NULL ? MYLITE_NOMEM : MYLITE_OK;
+    }
+    if (table_name->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER &&
+        mylite_ast_child_at(table_name, 0U) != NULL &&
+        mylite_ast_child_at(table_name, 1U) != NULL &&
+        mylite_ast_child_at(table_name, 0U)->kind == MYLITE_SQL_AST_IDENTIFIER &&
+        mylite_ast_child_at(table_name, 1U)->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        target->schema_name = mylite_copy_identifier_span(mylite_ast_child_at(table_name, 0U));
+        if (target->schema_name == NULL) {
+            return MYLITE_NOMEM;
+        }
+        target->table_name = mylite_copy_identifier_span(mylite_ast_child_at(table_name, 1U));
+        if (target->table_name == NULL) {
+            return MYLITE_NOMEM;
+        }
+        return MYLITE_OK;
+    }
+    return MYLITE_UNSUPPORTED;
+}
+
+static int add_drop_table_target(struct mylite_drop_table_plan *plan,
+                                 struct mylite_drop_table_target target)
+{
+    struct mylite_drop_table_target *targets =
+        realloc(plan->targets, sizeof(*plan->targets) * (plan->target_count + 1U));
+
+    if (targets == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    plan->targets = targets;
+    plan->targets[plan->target_count] = target;
+    ++plan->target_count;
     return MYLITE_OK;
 }
 

@@ -2727,8 +2727,6 @@ static int append_insert_null_warning_once(mylite_stmt *stmt,
                                            size_t column_index);
 static char *copy_insert_duplicate_entry_value(const struct mylite_insert_unique_index *index,
                                                const struct mylite_insert_bound_value *values);
-static int copy_drop_table_statement(const struct mylite_sql_ast_node *statement,
-                                     mylite_stmt *stmt);
 static int copy_rename_table_statement(const struct mylite_sql_ast_node *statement,
                                        mylite_stmt *stmt);
 static int copy_rename_table_pair(const struct mylite_sql_ast_node *pair,
@@ -2965,12 +2963,8 @@ static int set_row_quantified_non_alias_error(mylite_db *database,
 static int set_scalar_subquery_cardinality_error(mylite_db *database);
 static int copy_index_ddl_table_name(const struct mylite_sql_ast_node *table_name,
                                      struct mylite_index_ddl_plan *plan);
-static int copy_drop_table_target(const struct mylite_sql_ast_node *table_name,
-                                  struct mylite_drop_table_target *target);
 static int copy_insert_table_name(const struct mylite_sql_ast_node *table_name,
                                   struct mylite_insert_values_plan *plan);
-static int add_drop_table_target(struct mylite_drop_table_plan *plan,
-                                 struct mylite_drop_table_target target);
 static int copy_insert_column_list(const struct mylite_sql_ast_node *columns,
                                    struct mylite_insert_values_plan *plan);
 static int add_insert_column(struct mylite_insert_values_plan *plan, char *column_name);
@@ -15289,7 +15283,7 @@ static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind k
         status = mylite_table_ddl_copy_create_table_statement(statement, &stmt->create_table);
         break;
     case MYLITE_STMT_DROP_TABLE:
-        status = copy_drop_table_statement(statement, stmt);
+        status = mylite_table_ddl_copy_drop_table_statement(statement, &stmt->drop_table);
         break;
     case MYLITE_STMT_RENAME_TABLE:
         status = copy_rename_table_statement(statement, stmt);
@@ -31185,31 +31179,6 @@ static char *copy_insert_duplicate_entry_value(const struct mylite_insert_unique
     return sqlite3_str_finish(text);
 }
 
-static int copy_drop_table_statement(const struct mylite_sql_ast_node *statement, mylite_stmt *stmt)
-{
-    const struct mylite_sql_ast_node *table_names = mylite_ast_child_at(statement, 0U);
-
-    stmt->drop_table.temporary = statement->drop_table_temporary;
-    stmt->drop_table.restrict_mode = statement->drop_table_restrict;
-    stmt->drop_table.cascade_mode = statement->drop_table_cascade;
-
-    for (const struct mylite_sql_ast_node *table_name =
-             table_names == NULL ? NULL : table_names->first_child;
-         table_name != NULL; table_name = table_name->next_sibling) {
-        struct mylite_drop_table_target target = {0};
-        int status = copy_drop_table_target(table_name, &target);
-
-        if (status == MYLITE_OK) {
-            status = add_drop_table_target(&stmt->drop_table, target);
-        }
-        if (status != MYLITE_OK) {
-            mylite_table_ddl_drop_table_target_deinit(&target);
-            return status;
-        }
-    }
-    return stmt->drop_table.target_count == 0U ? MYLITE_UNSUPPORTED : MYLITE_OK;
-}
-
 static int copy_rename_table_statement(const struct mylite_sql_ast_node *statement,
                                        mylite_stmt *stmt)
 {
@@ -31735,34 +31704,6 @@ static int copy_index_ddl_table_name(const struct mylite_sql_ast_node *table_nam
     table_plan.table_name = NULL;
     mylite_table_ddl_create_table_plan_deinit(&table_plan);
     return MYLITE_OK;
-}
-
-static int copy_drop_table_target(const struct mylite_sql_ast_node *table_name,
-                                  struct mylite_drop_table_target *target)
-{
-    if (table_name == NULL) {
-        return MYLITE_NOMEM;
-    }
-    if (table_name->kind == MYLITE_SQL_AST_IDENTIFIER) {
-        target->table_name = mylite_copy_identifier_span(table_name);
-        return target->table_name == NULL ? MYLITE_NOMEM : MYLITE_OK;
-    }
-    if (table_name->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER &&
-        mylite_ast_child_at(table_name, 0U) != NULL &&
-        mylite_ast_child_at(table_name, 1U) != NULL &&
-        mylite_ast_child_at(table_name, 0U)->kind == MYLITE_SQL_AST_IDENTIFIER &&
-        mylite_ast_child_at(table_name, 1U)->kind == MYLITE_SQL_AST_IDENTIFIER) {
-        target->schema_name = mylite_copy_identifier_span(mylite_ast_child_at(table_name, 0U));
-        if (target->schema_name == NULL) {
-            return MYLITE_NOMEM;
-        }
-        target->table_name = mylite_copy_identifier_span(mylite_ast_child_at(table_name, 1U));
-        if (target->table_name == NULL) {
-            return MYLITE_NOMEM;
-        }
-        return MYLITE_OK;
-    }
-    return MYLITE_UNSUPPORTED;
 }
 
 static int copy_insert_values_statement(const struct mylite_sql_ast_node *statement,
@@ -34932,22 +34873,6 @@ static int copy_update_column_reference_parts(const struct mylite_sql_ast_node *
         }
         *part_count += 1U;
     }
-    return MYLITE_OK;
-}
-
-static int add_drop_table_target(struct mylite_drop_table_plan *plan,
-                                 struct mylite_drop_table_target target)
-{
-    struct mylite_drop_table_target *targets =
-        realloc(plan->targets, sizeof(*plan->targets) * (plan->target_count + 1U));
-
-    if (targets == NULL) {
-        return MYLITE_NOMEM;
-    }
-
-    plan->targets = targets;
-    plan->targets[plan->target_count] = target;
-    ++plan->target_count;
     return MYLITE_OK;
 }
 

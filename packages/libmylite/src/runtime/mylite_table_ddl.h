@@ -32,6 +32,8 @@ int mylite_table_ddl_copy_create_table_key_parts(const struct mylite_sql_ast_nod
                                                  struct mylite_create_table_index *index);
 int mylite_table_ddl_copy_create_table_index_options(const struct mylite_sql_ast_node *options,
                                                      struct mylite_create_table_index *index);
+int mylite_table_ddl_copy_drop_table_statement(const struct mylite_sql_ast_node *statement,
+                                               struct mylite_drop_table_plan *plan);
 char *mylite_table_ddl_generated_index_name_candidate(const char *base, unsigned int suffix);
 void mylite_table_ddl_create_table_plan_deinit(struct mylite_create_table_plan *plan);
 void mylite_table_ddl_drop_table_plan_deinit(struct mylite_drop_table_plan *plan);

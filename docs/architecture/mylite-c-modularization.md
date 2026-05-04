@@ -366,7 +366,7 @@ only the core object model and transitional shared helpers listed here:
 - [x] Move alter-table catalog model loading behind table DDL/catalog APIs.
 - [x] Move alter-table column operations into `mylite_table_ddl`.
 - [x] Move alter-table key/index operations into `mylite_table_ddl`.
-- [ ] Move create/drop index AST copy helpers into `mylite_table_ddl`.
+- [x] Move create/drop index AST copy helpers into `mylite_table_ddl`.
 - [ ] Move `CREATE INDEX` and `DROP INDEX` validation/execution into
   `mylite_table_ddl`.
 - [ ] Move generated index-name logic into `mylite_table_ddl`.

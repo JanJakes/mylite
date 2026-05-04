@@ -101,6 +101,8 @@ static int add_alter_table_index_part(mylite_db *database, struct mylite_alter_t
                                       sqlite3_stmt *select);
 static size_t loaded_alter_table_index_index(const struct mylite_alter_table_model *model,
                                              const char *name);
+static int copy_index_ddl_table_name(const struct mylite_sql_ast_node *table_name,
+                                     struct mylite_index_ddl_plan *plan);
 static int copy_sqlite_text_column(sqlite3_stmt *stmt, int column, char **out_text);
 static int copy_sqlite_nullable_text_column(sqlite3_stmt *stmt, int column, char **out_text);
 static int normalize_create_table_options(mylite_db *database, const char *schema_name,
@@ -1992,6 +1994,99 @@ int mylite_table_ddl_copy_create_table_name(const struct mylite_sql_ast_node *ta
         return MYLITE_OK;
     }
     return MYLITE_UNSUPPORTED;
+}
+
+int mylite_table_ddl_copy_create_index_statement(const struct mylite_sql_ast_node *statement,
+                                                 struct mylite_index_ddl_plan *plan)
+{
+    const struct mylite_sql_ast_node *child = statement == NULL ? NULL : statement->first_child;
+    const struct mylite_sql_ast_node *index_name = child;
+    const struct mylite_sql_ast_node *pre_index_type = NULL;
+    const struct mylite_sql_ast_node *table_name = NULL;
+    const struct mylite_sql_ast_node *key_parts = NULL;
+    const struct mylite_sql_ast_node *options = NULL;
+    int status = MYLITE_OK;
+
+    if (statement == NULL || plan == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    child = child == NULL ? NULL : child->next_sibling;
+    if (child != NULL && child->kind == MYLITE_SQL_AST_INDEX_TYPE) {
+        pre_index_type = child;
+        child = child->next_sibling;
+    }
+    table_name = child;
+    child = child == NULL ? NULL : child->next_sibling;
+    key_parts = child;
+    child = child == NULL ? NULL : child->next_sibling;
+    options = child;
+
+    plan->index_class = statement->index_class;
+    plan->index = (struct mylite_create_table_index){
+        .algorithm = MYLITE_SQL_AST_INDEX_ALGORITHM_BTREE,
+        .is_unique = statement->index_class == MYLITE_SQL_AST_INDEX_CLASS_UNIQUE,
+        .is_visible = true,
+        .explicit_name = true,
+    };
+
+    status = copy_index_ddl_table_name(table_name, plan);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    plan->index.name = mylite_copy_identifier_span(index_name);
+    if (plan->index.name == NULL) {
+        return MYLITE_NOMEM;
+    }
+    if (pre_index_type != NULL) {
+        plan->index.algorithm = pre_index_type->index_algorithm;
+    }
+    status = mylite_table_ddl_copy_create_table_key_parts(key_parts, &plan->index);
+    if (status == MYLITE_OK) {
+        status = mylite_table_ddl_copy_create_table_index_options(options, &plan->index);
+    }
+    return status;
+}
+
+int mylite_table_ddl_copy_drop_index_statement(const struct mylite_sql_ast_node *statement,
+                                               struct mylite_index_ddl_plan *plan)
+{
+    const struct mylite_sql_ast_node *index_name = NULL;
+    const struct mylite_sql_ast_node *table_name = NULL;
+    int status = MYLITE_OK;
+
+    if (statement == NULL || plan == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    index_name = mylite_ast_child_at(statement, 0U);
+    table_name = mylite_ast_child_at(statement, 1U);
+    status = copy_index_ddl_table_name(table_name, plan);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    plan->index_name = mylite_copy_identifier_span(index_name);
+    return plan->index_name == NULL ? MYLITE_NOMEM : MYLITE_OK;
+}
+
+static int copy_index_ddl_table_name(const struct mylite_sql_ast_node *table_name,
+                                     struct mylite_index_ddl_plan *plan)
+{
+    struct mylite_create_table_plan table_plan = {0};
+    int status = mylite_table_ddl_copy_create_table_name(table_name, &table_plan);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    plan->schema_name = table_plan.schema_name;
+    plan->table_name = table_plan.table_name;
+    table_plan.schema_name = NULL;
+    table_plan.table_name = NULL;
+    mylite_table_ddl_create_table_plan_deinit(&table_plan);
+    return MYLITE_OK;
 }
 
 int mylite_table_ddl_copy_create_table_column(const struct mylite_sql_ast_node *column_node,

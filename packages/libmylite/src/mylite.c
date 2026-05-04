@@ -2566,10 +2566,6 @@ static int append_insert_null_warning_once(mylite_stmt *stmt,
                                            size_t column_index);
 static char *copy_insert_duplicate_entry_value(const struct mylite_insert_unique_index *index,
                                                const struct mylite_insert_bound_value *values);
-static int copy_create_index_statement(const struct mylite_sql_ast_node *statement,
-                                       mylite_stmt *stmt);
-static int copy_drop_index_statement(const struct mylite_sql_ast_node *statement,
-                                     mylite_stmt *stmt);
 static int copy_insert_values_statement(const struct mylite_sql_ast_node *statement,
                                         mylite_stmt *stmt);
 static int copy_insert_set_statement(const struct mylite_sql_ast_node *statement,
@@ -2758,8 +2754,6 @@ static int set_in_subquery_limit_error(mylite_db *database);
 static int set_row_quantified_non_alias_error(mylite_db *database,
                                               const struct mylite_sql_ast_node *expression);
 static int set_scalar_subquery_cardinality_error(mylite_db *database);
-static int copy_index_ddl_table_name(const struct mylite_sql_ast_node *table_name,
-                                     struct mylite_index_ddl_plan *plan);
 static int copy_insert_table_name(const struct mylite_sql_ast_node *table_name,
                                   struct mylite_insert_values_plan *plan);
 static int copy_insert_column_list(const struct mylite_sql_ast_node *columns,
@@ -15088,10 +15082,10 @@ static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind k
         status = mylite_table_ddl_copy_alter_table_statement(statement, &stmt->alter_table);
         break;
     case MYLITE_STMT_CREATE_INDEX:
-        status = copy_create_index_statement(statement, stmt);
+        status = mylite_table_ddl_copy_create_index_statement(statement, &stmt->index_ddl);
         break;
     case MYLITE_STMT_DROP_INDEX:
-        status = copy_drop_index_statement(statement, stmt);
+        status = mylite_table_ddl_copy_drop_index_statement(statement, &stmt->index_ddl);
         break;
     case MYLITE_STMT_INSERT_VALUES:
         status = copy_insert_values_statement(statement, stmt);
@@ -28798,87 +28792,6 @@ static char *copy_insert_duplicate_entry_value(const struct mylite_insert_unique
         }
     }
     return sqlite3_str_finish(text);
-}
-
-static int copy_create_index_statement(const struct mylite_sql_ast_node *statement,
-                                       mylite_stmt *stmt)
-{
-    const struct mylite_sql_ast_node *child = statement == NULL ? NULL : statement->first_child;
-    const struct mylite_sql_ast_node *index_name = child;
-    const struct mylite_sql_ast_node *pre_index_type = NULL;
-    const struct mylite_sql_ast_node *table_name = NULL;
-    const struct mylite_sql_ast_node *key_parts = NULL;
-    const struct mylite_sql_ast_node *options = NULL;
-    int status = MYLITE_OK;
-
-    child = child == NULL ? NULL : child->next_sibling;
-    if (child != NULL && child->kind == MYLITE_SQL_AST_INDEX_TYPE) {
-        pre_index_type = child;
-        child = child->next_sibling;
-    }
-    table_name = child;
-    child = child == NULL ? NULL : child->next_sibling;
-    key_parts = child;
-    child = child == NULL ? NULL : child->next_sibling;
-    options = child;
-
-    stmt->index_ddl.index_class = statement->index_class;
-    stmt->index_ddl.index = (struct mylite_create_table_index){
-        .algorithm = MYLITE_SQL_AST_INDEX_ALGORITHM_BTREE,
-        .is_unique = statement->index_class == MYLITE_SQL_AST_INDEX_CLASS_UNIQUE,
-        .is_visible = true,
-        .explicit_name = true,
-    };
-
-    status = copy_index_ddl_table_name(table_name, &stmt->index_ddl);
-    if (status != MYLITE_OK) {
-        return status;
-    }
-
-    stmt->index_ddl.index.name = mylite_copy_identifier_span(index_name);
-    if (stmt->index_ddl.index.name == NULL) {
-        return MYLITE_NOMEM;
-    }
-    if (pre_index_type != NULL) {
-        stmt->index_ddl.index.algorithm = pre_index_type->index_algorithm;
-    }
-    status = mylite_table_ddl_copy_create_table_key_parts(key_parts, &stmt->index_ddl.index);
-    if (status == MYLITE_OK) {
-        status = mylite_table_ddl_copy_create_table_index_options(options, &stmt->index_ddl.index);
-    }
-    return status;
-}
-
-static int copy_drop_index_statement(const struct mylite_sql_ast_node *statement, mylite_stmt *stmt)
-{
-    const struct mylite_sql_ast_node *index_name = mylite_ast_child_at(statement, 0U);
-    const struct mylite_sql_ast_node *table_name = mylite_ast_child_at(statement, 1U);
-    int status = copy_index_ddl_table_name(table_name, &stmt->index_ddl);
-
-    if (status != MYLITE_OK) {
-        return status;
-    }
-
-    stmt->index_ddl.index_name = mylite_copy_identifier_span(index_name);
-    return stmt->index_ddl.index_name == NULL ? MYLITE_NOMEM : MYLITE_OK;
-}
-
-static int copy_index_ddl_table_name(const struct mylite_sql_ast_node *table_name,
-                                     struct mylite_index_ddl_plan *plan)
-{
-    struct mylite_create_table_plan table_plan = {0};
-    int status = mylite_table_ddl_copy_create_table_name(table_name, &table_plan);
-
-    if (status != MYLITE_OK) {
-        return status;
-    }
-
-    plan->schema_name = table_plan.schema_name;
-    plan->table_name = table_plan.table_name;
-    table_plan.schema_name = NULL;
-    table_plan.table_name = NULL;
-    mylite_table_ddl_create_table_plan_deinit(&table_plan);
-    return MYLITE_OK;
 }
 
 static int copy_insert_values_statement(const struct mylite_sql_ast_node *statement,

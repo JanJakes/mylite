@@ -2,7 +2,20 @@
 #define MYLITE_RUNTIME_MYLITE_TABLE_DDL_H
 
 #include "mylite_table_ddl_types.h"
+#include "sql/mylite_ast.h"
 
+int mylite_table_ddl_copy_create_table_statement(const struct mylite_sql_ast_node *statement,
+                                                 struct mylite_create_table_plan *plan);
+int mylite_table_ddl_copy_create_table_name(const struct mylite_sql_ast_node *table_name,
+                                            struct mylite_create_table_plan *plan);
+int mylite_table_ddl_copy_create_table_column(const struct mylite_sql_ast_node *column_node,
+                                              struct mylite_create_table_plan *plan);
+int mylite_table_ddl_copy_create_table_index(const struct mylite_sql_ast_node *index_node,
+                                             struct mylite_create_table_plan *plan);
+int mylite_table_ddl_copy_create_table_key_parts(const struct mylite_sql_ast_node *key_parts,
+                                                 struct mylite_create_table_index *index);
+int mylite_table_ddl_copy_create_table_index_options(const struct mylite_sql_ast_node *options,
+                                                     struct mylite_create_table_index *index);
 void mylite_table_ddl_create_table_plan_deinit(struct mylite_create_table_plan *plan);
 void mylite_table_ddl_drop_table_plan_deinit(struct mylite_drop_table_plan *plan);
 void mylite_table_ddl_rename_table_plan_deinit(struct mylite_rename_table_plan *plan);

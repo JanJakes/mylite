@@ -350,7 +350,7 @@ only the core object model and transitional shared helpers listed here:
 - [x] Move `USE DATABASE` execution into `mylite_schema`.
 - [x] Start `src/runtime/mylite_table_ddl.{h,c}` with table/index DDL plan
   cleanup.
-- [ ] Move create-table AST copy helpers into `mylite_table_ddl`.
+- [x] Move create-table AST copy helpers into `mylite_table_ddl`.
 - [ ] Move create-table normalization and validation into `mylite_table_ddl`.
 - [ ] Move create-table catalog writes behind a narrow table DDL/catalog API.
 - [ ] Move create-table physical SQL construction into `mylite_table_ddl`.

@@ -110,44 +110,44 @@ planning, and ALTER/SELECT helper slices. The remaining major regions are:
 
 - Lines 1-53: includes and small process-wide constants. Split only when a
   concrete owner needs each constant.
-- Lines 54-1381: file-local prototype wall. Treat this as a symptom, not a
+- Lines 54-1380: file-local prototype wall. Treat this as a symptom, not a
   module. It should shrink naturally as statement families move.
-- Lines 1382-2056: public `mylite_prepare()`, parsed statement dispatch,
+- Lines 1381-2055: public `mylite_prepare()`, parsed statement dispatch,
   SQLite fallback translation, and family prepare wrappers. Move to
   `mylite_statement` after family-owned prepare entry points are stable.
-- Lines 2057-2407: table SELECT, scalar SELECT, and UNION preparation. Move
+- Lines 2056-2406: table SELECT, scalar SELECT, and UNION preparation. Move
   after SELECT planning, scalar-select, and union boundaries are narrower than
   the current implementation.
-- Lines 2408-6443: result metadata attachment, descriptor inference, function
+- Lines 2407-6442: result metadata attachment, descriptor inference, function
   descriptor inference, catalog-column descriptor loading, and scalar/text
   helper predicates. Extract metadata inference before larger SELECT runtime
   moves.
-- Lines 6444-9021: SELECT predicate binding,
+- Lines 6443-9020: SELECT predicate binding,
   grouping/order validation, reference resolution, and subquery validation.
   Move into focused SELECT planning modules instead of one broad select
   runtime.
-- Lines 9022-9985: table SELECT expression clone/remap and aggregate binding
+- Lines 9021-9984: table SELECT expression clone/remap and aggregate binding
   collection. Move with SELECT prepared-statement ownership.
-- Lines 9986-10104: custom statement allocation plus `mylite_statement_execute_custom()`
+- Lines 9985-10103: custom statement allocation plus `mylite_statement_execute_custom()`
   dispatch. Move allocation/dispatch to `mylite_statement` after every
   statement family exposes narrow prepare and execute APIs.
-- Lines 10105-11250: scalar SELECT execution, session functions, `STRCMP()`,
+- Lines 10104-11249: scalar SELECT execution, session functions, `STRCMP()`,
   charset/collation/coercibility evaluation, and collation inference. Split
   into session, string, and collation modules before moving larger SELECT
   execution.
-- Lines 11251-11651: table SELECT and UNION execution entry points plus UNION
+- Lines 11250-11650: table SELECT and UNION execution entry points plus UNION
   materialization, de-duplication, ordering, and warning propagation. Move UNION
   into a focused SELECT/UNION module.
-- Lines 11652-13475: table SELECT materialization: joins, outer joins, grouping,
+- Lines 11651-13433: table SELECT materialization: joins, outer joins, grouping,
   scans, and predicate diagnostics. Split by join execution, group
   orchestration, and row-loading concerns.
-- Lines 13476-14079: scalar SELECT statement copy/evaluation helpers and
+- Lines 13434-14037: scalar SELECT statement copy/evaluation helpers and
   scalar aggregate evaluation. Move to a small scalar-select module after
   metadata inference is split.
-- Lines 14080-15578: subquery preparation/scanning/evaluation, row-value
+- Lines 14038-15538: subquery preparation/scanning/evaluation, row-value
   comparison, and subquery diagnostics. Move after SELECT entry points and
   expression callback APIs are stable.
-- Lines 15579-15807: remaining utility/classifier tail: table-select group
+- Lines 15539-15767: remaining utility/classifier tail: table-select group
   cleanup, row-subquery classifiers, and parse/translate status mapping. Move
   each helper with its owning family; do not create a generic catch-all utility
   module.
@@ -498,6 +498,8 @@ only the core object model and transitional shared helpers listed here:
 - [ ] Move table SELECT materialization into `mylite_select`.
 - [x] Move table SELECT row copying, result ownership, rowset allocation, and
   LIMIT trimming helpers into `mylite_select_rowset`.
+- [x] Move shared SQLite column-to-expression value copying into a focused
+  runtime helper used by SELECT and subquery row copying.
 - [x] Move table SELECT result sorting, DISTINCT checks, and LIMIT application
   into focused SELECT rowset helpers.
 - [x] Move table SELECT expression evaluation callbacks, output

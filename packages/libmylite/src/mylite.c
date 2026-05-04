@@ -37,6 +37,7 @@
 #include "runtime/mylite_show.h"
 #include "runtime/mylite_show_types.h"
 #include "runtime/mylite_span.h"
+#include "runtime/mylite_sqlite_value.h"
 #include "runtime/mylite_statement.h"
 #include "runtime/mylite_statement_prepare.h"
 #include "runtime/mylite_table_ddl.h"
@@ -1160,8 +1161,6 @@ static int check_table_select_distinct_duplicate(mylite_stmt *stmt,
                                                  struct mylite_table_select_row *row,
                                                  bool *out_duplicate);
 static int copy_table_select_sqlite_row(mylite_stmt *stmt, struct mylite_table_select_row *out_row);
-static int copy_sqlite_column_value(sqlite3_stmt *sqlite_stmt, size_t column_index,
-                                    struct mylite_expression_value *out_value);
 static int append_table_select_group(mylite_stmt *stmt, struct mylite_table_select_group **groups,
                                      size_t *group_count, const struct mylite_table_select_row *row,
                                      struct mylite_table_select_group **out_group);
@@ -12052,7 +12051,7 @@ static int append_table_select_join_scan_row(mylite_stmt *stmt, sqlite3_stmt *sc
     }
 
     for (size_t index = 0U; index < row.value_count; ++index) {
-        if (copy_sqlite_column_value(scan, index, &row.values[index]) != 0) {
+        if (mylite_sqlite_copy_column_value(scan, index, &row.values[index]) != 0) {
             mylite_select_row_deinit(&row);
             (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
@@ -13200,47 +13199,6 @@ static int copy_table_select_sqlite_row(mylite_stmt *stmt, struct mylite_table_s
     return MYLITE_OK;
 }
 
-static int copy_sqlite_column_value(sqlite3_stmt *sqlite_stmt, size_t column_index,
-                                    struct mylite_expression_value *out_value)
-{
-    int sqlite_type = SQLITE_NULL;
-
-    if (sqlite_stmt == NULL) {
-        return -1;
-    }
-
-    sqlite_type = sqlite3_column_type(sqlite_stmt, (int)column_index);
-    switch (sqlite_type) {
-    case SQLITE_NULL:
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
-        return 0;
-    case SQLITE_INTEGER:
-        *out_value = (struct mylite_expression_value){
-            .kind = MYLITE_EXPRESSION_VALUE_INT64,
-            .int64_value = sqlite3_column_int64(sqlite_stmt, (int)column_index)};
-        return 0;
-    case SQLITE_FLOAT:
-        *out_value = (struct mylite_expression_value){
-            .kind = MYLITE_EXPRESSION_VALUE_REAL,
-            .real_value = sqlite3_column_double(sqlite_stmt, (int)column_index)};
-        return 0;
-    case SQLITE_TEXT:
-    case SQLITE_BLOB: {
-        const unsigned char *text = sqlite3_column_text(sqlite_stmt, (int)column_index);
-        int bytes = sqlite3_column_bytes(sqlite_stmt, (int)column_index);
-
-        out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
-        out_value->preserve_temporal_fraction_digits = false;
-        out_value->text_length = bytes < 0 ? 0U : (size_t)bytes;
-        out_value->text_value = mylite_copy_span_text((const char *)text, out_value->text_length);
-        return out_value->text_value == NULL ? -1 : 0;
-    }
-    default:
-        break;
-    }
-    return -1;
-}
-
 static int append_table_select_group(mylite_stmt *stmt, struct mylite_table_select_group **groups,
                                      size_t *group_count, const struct mylite_table_select_row *row,
                                      struct mylite_table_select_group **out_group)
@@ -13435,7 +13393,7 @@ static int copy_table_select_column_value(mylite_stmt *stmt, size_t column_index
         return -1;
     }
 
-    status = copy_sqlite_column_value(stmt->sqlite_stmt, column_index, out_value);
+    status = mylite_sqlite_copy_column_value(stmt->sqlite_stmt, column_index, out_value);
     if (status == 0) {
         column = mylite_select_plan_column_const(&stmt->select_plan, column_index, NULL);
         out_value->preserve_temporal_fraction_digits =
@@ -15022,8 +14980,9 @@ static int copy_subquery_statement_row_value(mylite_stmt *stmt, size_t index,
         return mylite_expression_value_copy(value, out_value) == 0 ? MYLITE_OK : MYLITE_NOMEM;
     }
     if (stmt->sqlite_stmt != NULL) {
-        return copy_sqlite_column_value(stmt->sqlite_stmt, index, out_value) == 0 ? MYLITE_OK
-                                                                                  : MYLITE_NOMEM;
+        return mylite_sqlite_copy_column_value(stmt->sqlite_stmt, index, out_value) == 0
+                   ? MYLITE_OK
+                   : MYLITE_NOMEM;
     }
     return MYLITE_UNSUPPORTED;
 }
@@ -15409,8 +15368,9 @@ static int copy_subquery_statement_column_value(mylite_stmt *stmt,
         return mylite_expression_value_copy(value, out_value) == 0 ? MYLITE_OK : MYLITE_NOMEM;
     }
     if (stmt->sqlite_stmt != NULL) {
-        return copy_sqlite_column_value(stmt->sqlite_stmt, 0U, out_value) == 0 ? MYLITE_OK
-                                                                               : MYLITE_NOMEM;
+        return mylite_sqlite_copy_column_value(stmt->sqlite_stmt, 0U, out_value) == 0
+                   ? MYLITE_OK
+                   : MYLITE_NOMEM;
     }
     return MYLITE_UNSUPPORTED;
 }

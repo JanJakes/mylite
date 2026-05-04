@@ -73,6 +73,14 @@ int mylite_dml_write_insert_update_candidate(mylite_db *database,
 bool mylite_dml_insert_update_row_changed(const struct mylite_insert_bound_value *stored,
                                           const struct mylite_insert_bound_value *candidate,
                                           size_t value_count);
+int mylite_dml_apply_insert_update_assignments(
+    mylite_db *database, const char *selected_schema,
+    const struct mylite_insert_values_plan *values_plan,
+    const struct mylite_insert_duplicate_update_plan *update_plan,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_row_column_indexes *column_indexes,
+    const struct mylite_insert_bound_value *candidate_values,
+    struct mylite_insert_bound_value *updated_values);
 int mylite_dml_execute_insert_update_values_row(
     mylite_db *database, const char *selected_schema,
     const struct mylite_insert_values_plan *values_plan,

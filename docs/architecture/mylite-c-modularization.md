@@ -386,6 +386,8 @@ only the core object model and transitional shared helpers listed here:
   `mylite_dml`.
 - [x] Move `ON DUPLICATE KEY UPDATE` assignment validation into `mylite_dml`.
 - [x] Move `ON DUPLICATE KEY UPDATE` assignment evaluation into `mylite_dml`.
+- [x] Split `ON DUPLICATE KEY UPDATE` assignment validation/evaluation into a
+  focused DML companion module.
 - [x] Move `ON DUPLICATE KEY UPDATE` conflict/update row branch into
   `mylite_dml`.
 - [x] Move `ON DUPLICATE KEY UPDATE` row value resolution into `mylite_dml`.

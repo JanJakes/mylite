@@ -21837,6 +21837,11 @@ static char *build_update_scan_sql(mylite_db *database, const struct mylite_sele
 static int copy_update_sqlite_row(mylite_stmt *stmt, const struct mylite_select_table *table,
                                   sqlite3_stmt *scan, struct mylite_update_row *out_row)
 {
+    if (table->column_count == 0U) {
+        return mylite_diagnostics_set_table_doesnt_exist_error(stmt->database, table->schema_name,
+                                                               table->table_name);
+    }
+
     out_row->rowid = sqlite3_column_int64(scan, 0);
     out_row->values = calloc(table->column_count, sizeof(*out_row->values));
     if (out_row->values == NULL) {

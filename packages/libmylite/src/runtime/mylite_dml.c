@@ -1,5 +1,7 @@
 #include "mylite_dml.h"
 
+#include "mylite_expression.h"
+
 #include <stdlib.h>
 
 static void insert_column_reference_deinit(struct mylite_insert_column_reference *reference);

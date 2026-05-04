@@ -203,7 +203,7 @@ Rules for future moves:
   state, pending auto-increment state, and statement atomicity structs.
 - [x] Add `mylite_table_ddl_types.h`; move create/drop/rename/truncate/alter
   table and index DDL plan structs.
-- [ ] Add `mylite_dml_types.h`; move insert/update/delete plan and execution
+- [x] Add `mylite_dml_types.h`; move insert/update/delete plan and execution
   structs.
 - [ ] Add `mylite_metadata_types.h`; move result metadata structs.
 - [ ] Add `mylite_select_types.h`; move SELECT plan, row, join, group,

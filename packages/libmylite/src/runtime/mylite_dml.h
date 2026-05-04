@@ -1,7 +1,7 @@
 #ifndef MYLITE_RUNTIME_MYLITE_DML_H
 #define MYLITE_RUNTIME_MYLITE_DML_H
 
-#include "mylite_runtime.h"
+#include "mylite_dml_types.h"
 
 void mylite_dml_insert_values_plan_deinit(struct mylite_insert_values_plan *plan);
 void mylite_dml_insert_set_plan_deinit(struct mylite_insert_set_plan *plan);

@@ -249,6 +249,7 @@ int mylite_dml_set_update_unsupported_expression_error(mylite_db *database,
                                                        const char *clause_context);
 int mylite_dml_set_update_unsupported_clause_error(mylite_db *database);
 int mylite_dml_set_update_unsupported_assignment_error(mylite_db *database);
+int mylite_dml_set_not_null_column_error(mylite_db *database, const char *column_name);
 int mylite_dml_sort_update_rowset(struct mylite_update_rowset *rowset,
                                   const struct mylite_update_order_plan *order_plan);
 void mylite_dml_apply_update_limit(const struct mylite_sql_ast_node *limit_clause,

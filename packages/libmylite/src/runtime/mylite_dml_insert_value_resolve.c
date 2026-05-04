@@ -157,7 +157,6 @@ static size_t insert_row_target_column_count(const struct mylite_insert_values_p
                                              size_t row_index);
 static int set_insert_wrong_value_count_error(mylite_db *database, size_t row_index);
 static int set_insert_no_default_error(mylite_db *database, const char *column_name);
-static int set_insert_null_error(mylite_db *database, const char *column_name);
 static int set_insert_unsupported_generated_default_error(mylite_db *database,
                                                           const char *column_name);
 static int set_insert_unsupported_expression_error(mylite_db *database);
@@ -777,7 +776,7 @@ static int finish_insert_set_required_null(mylite_db *database,
         return MYLITE_OK;
     }
     if (!plan->ignore) {
-        return set_insert_null_error(database, column->name);
+        return mylite_dml_set_not_null_column_error(database, column->name);
     }
 
     int status = append_insert_null_warning(database, column->name);
@@ -837,7 +836,7 @@ static int evaluate_insert_set_assignment_value(
                                                                          out_value);
         }
         mylite_dml_insert_bound_value_deinit(out_value);
-        return set_insert_null_error(database, column->name);
+        return mylite_dml_set_not_null_column_error(database, column->name);
     }
     return MYLITE_OK;
 }
@@ -1134,7 +1133,7 @@ resolve_insert_explicit_value(mylite_db *database, const struct mylite_insert_va
                 return mylite_dml_resolve_insert_implicit_expression_default(database, column,
                                                                              out_value);
             }
-            return set_insert_null_error(database, column->name);
+            return mylite_dml_set_not_null_column_error(database, column->name);
         }
         *out_value = (struct mylite_insert_bound_value){.kind = MYLITE_INSERT_BOUND_NULL};
         return MYLITE_OK;
@@ -1227,7 +1226,7 @@ static int resolve_insert_text_value(mylite_db *database,
 
     if (text == NULL) {
         if (!column->nullable) {
-            return set_insert_null_error(database, column->name);
+            return mylite_dml_set_not_null_column_error(database, column->name);
         }
         *out_value = (struct mylite_insert_bound_value){.kind = MYLITE_INSERT_BOUND_NULL};
         return MYLITE_OK;
@@ -1442,14 +1441,6 @@ static int set_insert_no_default_error(mylite_db *database, const char *column_n
 {
     int status = mylite_diagnostics_set_error_message_parts(database, "Field '", column_name,
                                                             "' doesn't have a default value");
-
-    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-}
-
-static int set_insert_null_error(mylite_db *database, const char *column_name)
-{
-    int status = mylite_diagnostics_set_error_message_parts(database, "Column '", column_name,
-                                                            "' cannot be null");
 
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }

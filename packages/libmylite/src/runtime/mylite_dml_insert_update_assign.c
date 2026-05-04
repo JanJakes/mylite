@@ -87,7 +87,6 @@ insert_column_reference_qualifiers_match(const struct mylite_insert_column_refer
                                          const char *schema_name, const char *table_name);
 static int set_insert_update_unknown_column_error(mylite_db *database, const char *column_name);
 static int set_insert_update_ambiguous_column_error(mylite_db *database, const char *column_name);
-static int set_insert_null_error(mylite_db *database, const char *column_name);
 static int set_insert_unsupported_expression_error(mylite_db *database);
 
 int mylite_dml_apply_insert_update_assignments(
@@ -514,7 +513,7 @@ static int validate_insert_update_assignment_result(mylite_db *database,
         if (column->nullable) {
             return MYLITE_OK;
         }
-        return set_insert_null_error(database, column->name);
+        return mylite_dml_set_not_null_column_error(database, column->name);
     }
     if (!column->auto_increment) {
         return MYLITE_OK;
@@ -738,14 +737,6 @@ static int set_insert_update_ambiguous_column_error(mylite_db *database, const c
 {
     int status = mylite_diagnostics_set_error_message_parts(database, "Column '", column_name,
                                                             "' in field list is ambiguous");
-
-    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-}
-
-static int set_insert_null_error(mylite_db *database, const char *column_name)
-{
-    int status = mylite_diagnostics_set_error_message_parts(database, "Column '", column_name,
-                                                            "' cannot be null");
 
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }

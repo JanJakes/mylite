@@ -428,6 +428,8 @@ only the core object model and transitional shared helpers listed here:
 - [ ] Move delete row materialization/sorting/limit logic into `mylite_dml`.
 - [x] Move delete physical row execution into `mylite_dml`.
 - [x] Move DELETE-specific diagnostics into a focused DML companion module.
+- [x] Move shared DML NOT NULL column diagnostics into a focused DML companion
+  module.
 - [ ] Move remaining DML-specific diagnostics into `mylite_dml`.
 - [ ] Split SELECT, UNION, aggregate, and subquery planning/execution.
 - [x] Start `src/runtime/mylite_select.{h,c}` with SELECT plan cleanup.

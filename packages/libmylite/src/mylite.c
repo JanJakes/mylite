@@ -2008,7 +2008,6 @@ static int set_alter_table_invalid_null_error(mylite_db *database);
 static int append_using_hash_warning(mylite_db *database);
 static int append_duplicate_index_warning(mylite_db *database, const char *index_name);
 static int append_replace_delayed_warning(mylite_stmt *stmt);
-static int set_insert_null_error(mylite_db *database, const char *column_name);
 static int copy_scalar_select_statement(const struct mylite_sql_ast_node *statement,
                                         mylite_stmt *stmt);
 static int append_scalar_select_warnings_to_database(mylite_stmt *stmt);
@@ -14824,7 +14823,7 @@ static int validate_alter_table_source_not_null(mylite_stmt *stmt,
     rc = sqlite3_step(select);
     sqlite3_finalize(select);
     if (rc == SQLITE_ROW) {
-        return set_insert_null_error(stmt->database, column->name);
+        return mylite_dml_set_not_null_column_error(stmt->database, column->name);
     }
     return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
 }
@@ -16759,7 +16758,7 @@ static int validate_update_assignment_value(mylite_stmt *stmt,
         if (column->nullable) {
             return MYLITE_OK;
         }
-        return set_insert_null_error(stmt->database, column->name);
+        return mylite_dml_set_not_null_column_error(stmt->database, column->name);
     }
     if (!column->auto_increment) {
         return MYLITE_OK;
@@ -22778,14 +22777,6 @@ static int append_replace_delayed_warning(mylite_stmt *stmt)
         stmt->database, MYLITE_MYSQL_ER_WARN_LEGACY_SYNTAX_CONVERTED,
         "REPLACE DELAYED is no longer supported. The statement was "
         "converted to REPLACE.");
-}
-
-static int set_insert_null_error(mylite_db *database, const char *column_name)
-{
-    int status = mylite_diagnostics_set_error_message_parts(database, "Column '", column_name,
-                                                            "' cannot be null");
-
-    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)

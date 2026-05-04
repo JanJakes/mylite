@@ -120,6 +120,8 @@ static int copy_drop_table_target(const struct mylite_sql_ast_node *table_name,
                                   struct mylite_drop_table_target *target);
 static int add_drop_table_target(struct mylite_drop_table_plan *plan,
                                  struct mylite_drop_table_target target);
+static int copy_rename_table_pair(const struct mylite_sql_ast_node *pair,
+                                  struct mylite_rename_table_target *target);
 static char *copy_expression_text(const struct mylite_sql_ast_node *node);
 static void create_table_options_deinit(struct mylite_create_table_options *options);
 
@@ -1259,6 +1261,88 @@ static int add_drop_table_target(struct mylite_drop_table_plan *plan,
     plan->targets = targets;
     plan->targets[plan->target_count] = target;
     ++plan->target_count;
+    return MYLITE_OK;
+}
+
+int mylite_table_ddl_copy_rename_table_statement(const struct mylite_sql_ast_node *statement,
+                                                 struct mylite_rename_table_plan *plan)
+{
+    const struct mylite_sql_ast_node *pairs = mylite_ast_child_at(statement, 0U);
+
+    for (const struct mylite_sql_ast_node *pair = pairs == NULL ? NULL : pairs->first_child;
+         pair != NULL; pair = pair->next_sibling) {
+        struct mylite_rename_table_target target = {0};
+        int status = copy_rename_table_pair(pair, &target);
+
+        if (status == MYLITE_OK) {
+            status = mylite_table_ddl_add_rename_table_target(plan, target);
+        }
+        if (status != MYLITE_OK) {
+            mylite_table_ddl_rename_table_target_deinit(&target);
+            return status;
+        }
+    }
+    return plan->target_count == 0U ? MYLITE_UNSUPPORTED : MYLITE_OK;
+}
+
+static int copy_rename_table_pair(const struct mylite_sql_ast_node *pair,
+                                  struct mylite_rename_table_target *target)
+{
+    int status = MYLITE_OK;
+
+    if (pair == NULL || pair->kind != MYLITE_SQL_AST_RENAME_TABLE_PAIR) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    status = mylite_table_ddl_copy_table_name_parts(
+        mylite_ast_child_at(pair, 0U), &target->source_schema_name, &target->source_table_name);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    return mylite_table_ddl_copy_table_name_parts(
+        mylite_ast_child_at(pair, 1U), &target->target_schema_name, &target->target_table_name);
+}
+
+int mylite_table_ddl_copy_table_name_parts(const struct mylite_sql_ast_node *table_name,
+                                           char **out_schema_name, char **out_table_name)
+{
+    *out_schema_name = NULL;
+    *out_table_name = NULL;
+    if (table_name == NULL) {
+        return MYLITE_NOMEM;
+    }
+    if (table_name->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        *out_table_name = mylite_copy_identifier_span(table_name);
+        return *out_table_name == NULL ? MYLITE_NOMEM : MYLITE_OK;
+    }
+    if (table_name->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER &&
+        mylite_ast_child_at(table_name, 0U) != NULL &&
+        mylite_ast_child_at(table_name, 1U) != NULL &&
+        mylite_ast_child_at(table_name, 0U)->kind == MYLITE_SQL_AST_IDENTIFIER &&
+        mylite_ast_child_at(table_name, 1U)->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        *out_schema_name = mylite_copy_identifier_span(mylite_ast_child_at(table_name, 0U));
+        *out_table_name = mylite_copy_identifier_span(mylite_ast_child_at(table_name, 1U));
+        if (*out_schema_name == NULL || *out_table_name == NULL) {
+            return MYLITE_NOMEM;
+        }
+        return MYLITE_OK;
+    }
+    return MYLITE_UNSUPPORTED;
+}
+
+int mylite_table_ddl_add_rename_table_target(struct mylite_rename_table_plan *plan,
+                                             struct mylite_rename_table_target target)
+{
+    struct mylite_rename_table_target *targets =
+        realloc(plan->targets, (plan->target_count + 1U) * sizeof(*plan->targets));
+
+    if (targets == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    plan->targets = targets;
+    plan->targets[plan->target_count++] = target;
     return MYLITE_OK;
 }
 

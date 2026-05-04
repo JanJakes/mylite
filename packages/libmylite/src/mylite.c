@@ -2714,14 +2714,6 @@ static int append_insert_null_warning_once(mylite_stmt *stmt,
                                            size_t column_index);
 static char *copy_insert_duplicate_entry_value(const struct mylite_insert_unique_index *index,
                                                const struct mylite_insert_bound_value *values);
-static int copy_rename_table_statement(const struct mylite_sql_ast_node *statement,
-                                       mylite_stmt *stmt);
-static int copy_rename_table_pair(const struct mylite_sql_ast_node *pair,
-                                  struct mylite_rename_table_target *target);
-static int copy_rename_table_name(const struct mylite_sql_ast_node *table_name,
-                                  char **out_schema_name, char **out_table_name);
-static int add_rename_table_target(struct mylite_rename_table_plan *plan,
-                                   struct mylite_rename_table_target target);
 static int copy_truncate_table_statement(const struct mylite_sql_ast_node *statement,
                                          mylite_stmt *stmt);
 static int copy_alter_table_statement(const struct mylite_sql_ast_node *statement,
@@ -15269,7 +15261,7 @@ static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind k
         status = mylite_table_ddl_copy_drop_table_statement(statement, &stmt->drop_table);
         break;
     case MYLITE_STMT_RENAME_TABLE:
-        status = copy_rename_table_statement(statement, stmt);
+        status = mylite_table_ddl_copy_rename_table_statement(statement, &stmt->rename_table);
         break;
     case MYLITE_STMT_TRUNCATE_TABLE:
         status = copy_truncate_table_statement(statement, stmt);
@@ -16004,7 +15996,7 @@ static int add_alter_table_rename_target(mylite_stmt *stmt)
         return MYLITE_NOMEM;
     }
 
-    status = add_rename_table_target(&stmt->rename_table, target);
+    status = mylite_table_ddl_add_rename_table_target(&stmt->rename_table, target);
     if (status != MYLITE_OK) {
         mylite_table_ddl_rename_table_target_deinit(&target);
     }
@@ -30909,94 +30901,12 @@ static char *copy_insert_duplicate_entry_value(const struct mylite_insert_unique
     return sqlite3_str_finish(text);
 }
 
-static int copy_rename_table_statement(const struct mylite_sql_ast_node *statement,
-                                       mylite_stmt *stmt)
-{
-    const struct mylite_sql_ast_node *pairs = mylite_ast_child_at(statement, 0U);
-
-    for (const struct mylite_sql_ast_node *pair = pairs == NULL ? NULL : pairs->first_child;
-         pair != NULL; pair = pair->next_sibling) {
-        struct mylite_rename_table_target target = {0};
-        int status = copy_rename_table_pair(pair, &target);
-
-        if (status == MYLITE_OK) {
-            status = add_rename_table_target(&stmt->rename_table, target);
-        }
-        if (status != MYLITE_OK) {
-            mylite_table_ddl_rename_table_target_deinit(&target);
-            return status;
-        }
-    }
-    return stmt->rename_table.target_count == 0U ? MYLITE_UNSUPPORTED : MYLITE_OK;
-}
-
-static int copy_rename_table_pair(const struct mylite_sql_ast_node *pair,
-                                  struct mylite_rename_table_target *target)
-{
-    int status = MYLITE_OK;
-
-    if (pair == NULL || pair->kind != MYLITE_SQL_AST_RENAME_TABLE_PAIR) {
-        return MYLITE_UNSUPPORTED;
-    }
-
-    status = copy_rename_table_name(mylite_ast_child_at(pair, 0U), &target->source_schema_name,
-                                    &target->source_table_name);
-
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    return copy_rename_table_name(mylite_ast_child_at(pair, 1U), &target->target_schema_name,
-                                  &target->target_table_name);
-}
-
-static int copy_rename_table_name(const struct mylite_sql_ast_node *table_name,
-                                  char **out_schema_name, char **out_table_name)
-{
-    *out_schema_name = NULL;
-    *out_table_name = NULL;
-    if (table_name == NULL) {
-        return MYLITE_NOMEM;
-    }
-    if (table_name->kind == MYLITE_SQL_AST_IDENTIFIER) {
-        *out_table_name = mylite_copy_identifier_span(table_name);
-        return *out_table_name == NULL ? MYLITE_NOMEM : MYLITE_OK;
-    }
-    if (table_name->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER &&
-        mylite_ast_child_at(table_name, 0U) != NULL &&
-        mylite_ast_child_at(table_name, 1U) != NULL &&
-        mylite_ast_child_at(table_name, 0U)->kind == MYLITE_SQL_AST_IDENTIFIER &&
-        mylite_ast_child_at(table_name, 1U)->kind == MYLITE_SQL_AST_IDENTIFIER) {
-        *out_schema_name = mylite_copy_identifier_span(mylite_ast_child_at(table_name, 0U));
-        *out_table_name = mylite_copy_identifier_span(mylite_ast_child_at(table_name, 1U));
-        if (*out_schema_name == NULL || *out_table_name == NULL) {
-            return MYLITE_NOMEM;
-        }
-        return MYLITE_OK;
-    }
-    return MYLITE_UNSUPPORTED;
-}
-
-static int add_rename_table_target(struct mylite_rename_table_plan *plan,
-                                   struct mylite_rename_table_target target)
-{
-    struct mylite_rename_table_target *targets =
-        realloc(plan->targets, (plan->target_count + 1U) * sizeof(*plan->targets));
-
-    if (targets == NULL) {
-        return MYLITE_NOMEM;
-    }
-
-    plan->targets = targets;
-    plan->targets[plan->target_count++] = target;
-    return MYLITE_OK;
-}
-
 static int copy_truncate_table_statement(const struct mylite_sql_ast_node *statement,
                                          mylite_stmt *stmt)
 {
-    return copy_rename_table_name(mylite_ast_child_at(statement, 0U),
-                                  &stmt->truncate_table.schema_name,
-                                  &stmt->truncate_table.table_name);
+    return mylite_table_ddl_copy_table_name_parts(mylite_ast_child_at(statement, 0U),
+                                                  &stmt->truncate_table.schema_name,
+                                                  &stmt->truncate_table.table_name);
 }
 
 static int copy_alter_table_statement(const struct mylite_sql_ast_node *statement,
@@ -31212,8 +31122,8 @@ static int copy_alter_table_rename_table_action(const struct mylite_sql_ast_node
                                                 struct mylite_alter_table_action *action)
 {
     action->kind = MYLITE_ALTER_TABLE_ACTION_RENAME_TABLE;
-    return copy_rename_table_name(mylite_ast_child_at(action_node, 0U), &action->new_schema_name,
-                                  &action->new_name);
+    return mylite_table_ddl_copy_table_name_parts(mylite_ast_child_at(action_node, 0U),
+                                                  &action->new_schema_name, &action->new_name);
 }
 
 static int copy_alter_table_change_column_action(const struct mylite_sql_ast_node *action_node,

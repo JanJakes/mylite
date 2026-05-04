@@ -396,6 +396,8 @@ only the core object model and transitional shared helpers listed here:
   without coupling DML execution to `mylite_stmt`.
 - [x] Split INSERT/REPLACE transaction orchestration into a focused DML
   companion module.
+- [x] Move INSERT/REPLACE statement execution wrappers into a focused DML
+  statement module.
 - [ ] Move `INSERT IGNORE` warning/error downgrade logic into `mylite_dml`.
 - [x] Move `REPLACE` delete-then-insert behavior into `mylite_dml`.
 - [x] Move update target copy and assignment target binding into `mylite_dml`.

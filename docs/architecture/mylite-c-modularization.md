@@ -381,7 +381,7 @@ only the core object model and transitional shared helpers listed here:
 - [x] Move insert bound-value conversion into `mylite_dml`.
 - [x] Move shared insert row-write helpers into `mylite_dml`.
 - [x] Move non-ODKU insert row execution into `mylite_dml`.
-- [ ] Move insert row execution into `mylite_dml`.
+- [x] Move insert row execution into `mylite_dml`.
 - [x] Move insert unique-conflict checks into `mylite_dml`.
 - [x] Move `ON DUPLICATE KEY UPDATE` row writeback helpers into `mylite_dml`.
 - [x] Move `ON DUPLICATE KEY UPDATE` `VALUES()` deprecation warnings into
@@ -395,7 +395,9 @@ only the core object model and transitional shared helpers listed here:
 - [x] Move `ON DUPLICATE KEY UPDATE` row value resolution into `mylite_dml`.
 - [x] Move insert auto-increment persistence behind a stmt-free transaction
   helper while keeping rollback hooks in transactions.
-- [ ] Move `INSERT ... ON DUPLICATE KEY UPDATE` execution into `mylite_dml`.
+- [x] Move `INSERT ... ON DUPLICATE KEY UPDATE` execution into `mylite_dml`.
+- [x] Move INSERT/REPLACE transaction orchestration into `mylite_dml`
+  without coupling DML execution to `mylite_stmt`.
 - [ ] Move `INSERT IGNORE` warning/error downgrade logic into `mylite_dml`.
 - [x] Move `REPLACE` delete-then-insert behavior into `mylite_dml`.
 - [ ] Move update target binding and validation into `mylite_dml`.

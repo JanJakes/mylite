@@ -42,6 +42,31 @@ char *mylite_dml_build_insert_physical_sql(mylite_db *database,
                                            const struct mylite_insert_table *table);
 char *mylite_dml_build_replace_delete_sql(mylite_db *database,
                                           const struct mylite_insert_table *table);
+int mylite_dml_execute_insert_values_transaction(
+    mylite_db *database, const char *selected_schema, const char *schema_name,
+    const struct mylite_insert_values_plan *values_plan,
+    const struct mylite_insert_duplicate_update_plan *update_plan,
+    const struct mylite_insert_table *table, const size_t *column_indexes,
+    const size_t *update_column_indexes, struct mylite_insert_transaction_result *out_result);
+int mylite_dml_execute_insert_set_transaction(
+    mylite_db *database, const char *selected_schema, const char *schema_name,
+    const struct mylite_insert_values_plan *values_plan,
+    const struct mylite_insert_set_plan *set_plan,
+    const struct mylite_insert_duplicate_update_plan *update_plan,
+    const struct mylite_insert_table *table, const size_t *column_indexes,
+    size_t column_index_count, const size_t *update_column_indexes,
+    struct mylite_insert_transaction_result *out_result);
+int mylite_dml_execute_replace_values_transaction(
+    mylite_db *database, const char *schema_name,
+    const struct mylite_insert_values_plan *values_plan, const struct mylite_insert_table *table,
+    const size_t *column_indexes, struct mylite_insert_transaction_result *out_result);
+int mylite_dml_execute_replace_set_transaction(mylite_db *database, const char *schema_name,
+                                               const struct mylite_insert_values_plan *values_plan,
+                                               const struct mylite_insert_set_plan *set_plan,
+                                               const struct mylite_insert_table *table,
+                                               const size_t *column_indexes,
+                                               size_t column_index_count,
+                                               struct mylite_insert_transaction_result *out_result);
 int mylite_dml_write_insert_candidate_row(mylite_db *database, sqlite3_stmt *insert,
                                           const struct mylite_insert_table *table,
                                           const struct mylite_insert_bound_value *values,

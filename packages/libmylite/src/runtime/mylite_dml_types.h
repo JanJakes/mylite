@@ -186,6 +186,12 @@ struct mylite_insert_execution_state {
     bool generated_insert_id;
 };
 
+struct mylite_insert_transaction_result {
+    int64_t affected_rows;
+    uint64_t last_insert_id;
+    bool generated_insert_id;
+};
+
 struct mylite_insert_unique_conflict {
     const struct mylite_insert_unique_index *index;
     sqlite3_int64 rowid;

@@ -5614,6 +5614,21 @@ static int test_scalar_function_call_syntax(void)
         expect_function_call(child_at(child_at(select_list, 8U), 0U), "MOD", 2U, "MOD call");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SELECT DATE('2024-02-29 12:34:56'), "
+                          "DATEDIFF('2024-03-01','2024-02-29'), DATE(NOW()), "
+                          "DATEDIFF(CURDATE(), DATE(NOW()));",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_function_call(child_at(child_at(select_list, 0U), 0U), "DATE", 1U,
+                                     "DATE keyword function call");
+    failures += expect_function_call(child_at(child_at(select_list, 1U), 0U), "DATEDIFF", 2U,
+                                     "DATEDIFF function call");
+    failures += expect_function_call(child_at(child_at(select_list, 2U), 0U), "DATE", 1U,
+                                     "DATE current temporal call");
+    failures += expect_function_call(child_at(child_at(select_list, 3U), 0U), "DATEDIFF", 2U,
+                                     "DATEDIFF nested current temporal call");
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("SELECT CURRENT_DATE, CURRENT_TIME, LOCALTIME, LOCALTIMESTAMP, "
                           "UTC_DATE, UTC_TIME, UTC_TIMESTAMP;",
                           MYLITE_SQL_PARSE_OK, &result);

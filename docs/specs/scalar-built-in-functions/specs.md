@@ -176,6 +176,11 @@ by common scalar expressions:
 - session identity functions: `CONNECTION_ID`, `USER`, `SESSION_USER`,
   `SYSTEM_USER`, and `CURRENT_USER` / bare `CURRENT_USER`; see
   `docs/specs/session-identity-functions/specs.md`
+- temporal functions: `NOW`, `CURRENT_TIMESTAMP`, `LOCALTIME`,
+  `LOCALTIMESTAMP`, `CURDATE`/`CURRENT_DATE`, `CURTIME`/`CURRENT_TIME`,
+  `DATE`, and `DATEDIFF`; see
+  `docs/specs/current-temporal-functions/specs.md` and
+  `docs/specs/date-and-datediff-functions/specs.md`
 - grammar-level cast expressions: `CAST(expr AS type)`, `CONVERT(expr, type)`,
   and `CONVERT(expr USING charset_name)` for the supported CAST target and
   charset-registry subsets; see `docs/specs/cast-expression/specs.md` and
@@ -608,6 +613,7 @@ Verified `mysql --column-type-info -vvv` examples:
 | `STRCMP('text','text2') AS strcmp_value` | `LONGLONG` | `2` | `0` | `binary` | `NOT_NULL BINARY NUM` |
 | `NOW(6) AS now6` | `DATETIME` | `26` | `6` | `binary` | `NOT_NULL BINARY` |
 | `CURDATE() AS curdate_value` | `DATE` | `10` | `0` | `binary` | `NOT_NULL BINARY` |
+| `DATE(...) AS date_value` | `DATE` | `10` | `0` | `binary` | `BINARY` |
 | `DATEDIFF(...) AS datediff_value` | `LONGLONG` | `9` | `0` | `binary` | `BINARY NUM` |
 | `DATE_ADD('2024-02-29', INTERVAL 1 DAY) AS date_add_value` | `STRING` | `116` | `31` | `utf8mb4_0900_ai_ci` | none |
 | `DATABASE() AS database_value` | `VAR_STRING` | `256` | `31` | `utf8mb4_0900_ai_ci` | nullable |

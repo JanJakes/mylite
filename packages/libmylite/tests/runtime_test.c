@@ -255,6 +255,7 @@ static int test_select_integer_literal_with_semicolon(void);
 static int test_expression_operator_foundation(void);
 static int test_scalar_builtin_functions_execution(void);
 static int test_current_temporal_functions_execution(void);
+static int test_date_and_datediff_functions_execution(void);
 static int test_round_scalar_function_execution(mylite_db *database);
 static int test_format_scalar_function_execution(mylite_db *database);
 static int test_truncate_scalar_function_execution(mylite_db *database);
@@ -466,6 +467,7 @@ int main(void)
     failures += test_expression_operator_foundation();
     failures += test_scalar_builtin_functions_execution();
     failures += test_current_temporal_functions_execution();
+    failures += test_date_and_datediff_functions_execution();
     failures += test_inet_ipv4_functions_execution();
     failures += test_charset_collation_functions_execution();
     failures += test_session_information_functions_execution();
@@ -5746,6 +5748,274 @@ static int test_current_temporal_functions_execution(void)
     failures += expect_no_stmt_handle(&stmt, "CURTIME invalid arity");
     failures += prepare_sql(database, "SELECT CURRENT_DATE(0)", MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "CURRENT_DATE invalid arity");
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_date_and_datediff_functions_execution(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const struct expected_result_metadata metadata[] = {
+        {"date_value", NULL, NULL, NULL, NULL, NULL, 10U, MYLITE_FIELD_TYPE_DATE, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"diff_value", NULL, NULL, NULL, NULL, NULL, 9U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"date_null", NULL, NULL, NULL, NULL, NULL, 10U, MYLITE_FIELD_TYPE_DATE, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"diff_null", NULL, NULL, NULL, NULL, NULL, 9U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+    };
+    static const char *const projection_columns[] = {"id", "extracted", "days"};
+    static const char *const projection_values[] = {
+        "2", "2024-03-02", "3", "1", "2024-02-29", "1",
+    };
+    static const char *const updated_columns[] = {"id", "d", "n", "note"};
+    static const char *const updated_values[] = {"1", "2024-02-29", "1", "leap"};
+    static const char *const unchanged_updated_values[] = {"1", "2024-02-29", "1", "leap"};
+    static const char *const remaining_columns[] = {"id"};
+    static const char *const remaining_values[] = {"1", "3"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open date and datediff database");
+
+    failures += prepare_sql(database,
+                            "SELECT DATE('2003-12-31 01:02:03') AS date_value, "
+                            "DATEDIFF('2007-12-31','2007-12-30') AS diff_value, "
+                            "DATE(NULL) AS date_null, "
+                            "DATEDIFF(NULL,'2024-01-01') AS diff_null",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_result_metadata(stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])),
+                               "DATE and DATEDIFF metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "DATE and DATEDIFF metadata row");
+    failures += expect_string(mylite_column_text(stmt, 0), "2003-12-31", "DATE metadata value");
+    failures += expect_string(mylite_column_text(stmt, 1), "1", "DATEDIFF metadata value");
+    failures += expect_null_text(mylite_column_text(stmt, 2), "DATE metadata null");
+    failures += expect_null_text(mylite_column_text(stmt, 3), "DATEDIFF metadata null");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "DATE and DATEDIFF metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT DATE('2003-12-31 01:02:03') AS date_datetime, "
+                            "DATE('2024-02-29 23:59:59.123456') AS date_fraction, "
+                            "DATE('70-01-01') AS date_70, "
+                            "DATE('69-12-31') AS date_69, "
+                            "DATE('0000-01-01') AS date_year_zero, "
+                            "DATE('20240229') AS date_compact_string, "
+                            "DATE('240229123456') AS date_short_datetime_string, "
+                            "DATE(20240229123456) AS date_num_datetime, "
+                            "DATE(240229) AS date_short_num, "
+                            "DATE(101) AS date_padded_num, "
+                            "DATEDIFF('2007-12-31 23:59:59','2007-12-30') AS diff_pos, "
+                            "DATEDIFF('2010-11-30 23:59:59','2010-12-31') AS diff_neg, "
+                            "DATEDIFF('2024-03-01','2024-02-29') AS diff_leap, "
+                            "DATEDIFF('20240301','20240229') AS diff_compact_string, "
+                            "DATEDIFF(240301,240229) AS diff_compact_num, "
+                            "DATEDIFF('0001-01-01','0000-01-01') AS diff_year_zero, "
+                            "DATEDIFF('2024-02-29 00:00:00','2024-02-29 23:59:59') "
+                            "AS diff_same, "
+                            "DATE(NULL) AS date_null, "
+                            "DATEDIFF(NULL,'2024-01-01') AS diff_null_left, "
+                            "DATEDIFF('2024-01-01',NULL) AS diff_null_right",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "DATE and DATEDIFF scalar row");
+    failures += expect_string(mylite_column_text(stmt, 0), "2003-12-31", "DATE datetime");
+    failures +=
+        expect_string(mylite_column_text(stmt, 1), "2024-02-29", "DATE fractional datetime");
+    failures += expect_string(mylite_column_text(stmt, 2), "1970-01-01", "DATE two-digit 70");
+    failures += expect_string(mylite_column_text(stmt, 3), "2069-12-31", "DATE two-digit 69");
+    failures += expect_string(mylite_column_text(stmt, 4), "0000-01-01", "DATE year zero");
+    failures += expect_string(mylite_column_text(stmt, 5), "2024-02-29", "DATE compact string");
+    failures += expect_string(mylite_column_text(stmt, 6), "2024-02-29",
+                              "DATE short compact datetime string");
+    failures += expect_string(mylite_column_text(stmt, 7), "2024-02-29", "DATE numeric datetime");
+    failures += expect_string(mylite_column_text(stmt, 8), "2024-02-29", "DATE short numeric");
+    failures += expect_string(mylite_column_text(stmt, 9), "2000-01-01", "DATE padded numeric");
+    failures += expect_string(mylite_column_text(stmt, 10), "1", "DATEDIFF positive");
+    failures += expect_string(mylite_column_text(stmt, 11), "-31", "DATEDIFF negative");
+    failures += expect_string(mylite_column_text(stmt, 12), "1", "DATEDIFF leap day");
+    failures += expect_string(mylite_column_text(stmt, 13), "1", "DATEDIFF compact string");
+    failures += expect_string(mylite_column_text(stmt, 14), "1", "DATEDIFF compact numeric");
+    failures += expect_string(mylite_column_text(stmt, 15), "365", "DATEDIFF year zero boundary");
+    failures += expect_string(mylite_column_text(stmt, 16), "0", "DATEDIFF ignores time");
+    failures += expect_null_text(mylite_column_text(stmt, 17), "DATE null");
+    failures += expect_null_text(mylite_column_text(stmt, 18), "DATEDIFF null left");
+    failures += expect_null_text(mylite_column_text(stmt, 19), "DATEDIFF null right");
+    failures += expect_int(mylite_warning_count(database), 0, "DATE scalar warning count");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "DATE and DATEDIFF scalar done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT DATE(NOW(6)) AS now_date, CURDATE() AS current_date_value, "
+                            "DATEDIFF(CURDATE(), DATE(NOW())) AS current_diff",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "DATE current temporal row");
+    failures += expect_date_text(mylite_column_text(stmt, 0), "DATE NOW shape");
+    failures += expect_string(mylite_column_text(stmt, 0), mylite_column_text(stmt, 1),
+                              "DATE NOW equals CURDATE");
+    failures += expect_string(mylite_column_text(stmt, 2), "0", "DATEDIFF current temporal");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "DATE current temporal done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT DATE('bad') AS bad_text, "
+                            "DATE('2024-02-30') AS bad_day, "
+                            "DATE('0000-00-00') AS zero_date, "
+                            "DATE('2024-02-29foo') AS truncated_date, "
+                            "DATE('2024-02-29 99:99:99') AS bad_time",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "DATE invalid row");
+    failures += expect_null_text(mylite_column_text(stmt, 0), "DATE bad text");
+    failures += expect_null_text(mylite_column_text(stmt, 1), "DATE bad day");
+    failures += expect_null_text(mylite_column_text(stmt, 2), "DATE zero date");
+    failures += expect_string(mylite_column_text(stmt, 3), "2024-02-29", "DATE truncated suffix");
+    failures += expect_null_text(mylite_column_text(stmt, 4), "DATE bad time");
+    failures += expect_int(mylite_warning_count(database), 5, "DATE invalid warning count");
+    for (int index = 0; index < 5; ++index) {
+        failures += expect_int((int)mylite_warning_code(database, index),
+                               mysql_warning_truncated_wrong_value, "DATE invalid warning code");
+    }
+    failures += expect_string(mylite_warning_message(database, 0),
+                              "Incorrect datetime value: 'bad'", "DATE bad text warning");
+    failures +=
+        expect_string(mylite_warning_message(database, 3),
+                      "Truncated incorrect date value: '2024-02-29foo'", "DATE truncated warning");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "DATE invalid done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT DATEDIFF('bad','worse') AS both_bad, "
+                            "DATEDIFF(NULL,'bad') AS null_left_bad_right, "
+                            "DATEDIFF('bad',NULL) AS bad_left_null_right",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "DATEDIFF invalid row");
+    failures += expect_null_text(mylite_column_text(stmt, 0), "DATEDIFF both bad");
+    failures += expect_null_text(mylite_column_text(stmt, 1), "DATEDIFF null left bad right");
+    failures += expect_null_text(mylite_column_text(stmt, 2), "DATEDIFF bad left null right");
+    failures += expect_int(mylite_warning_count(database), 4, "DATEDIFF invalid warning count");
+    for (int index = 0; index < 4; ++index) {
+        failures +=
+            expect_int((int)mylite_warning_code(database, index),
+                       mysql_warning_truncated_wrong_value, "DATEDIFF invalid warning code");
+    }
+    failures += expect_string(mylite_warning_message(database, 0),
+                              "Incorrect datetime value: 'bad'", "DATEDIFF left warning");
+    failures += expect_string(mylite_warning_message(database, 1),
+                              "Incorrect datetime value: 'worse'", "DATEDIFF right warning");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "DATEDIFF invalid done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT DATEDIFF(20240229.9, 20240228.1) AS diff_real",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "DATEDIFF real row");
+    failures += expect_string(mylite_column_text(stmt, 0), "1", "DATEDIFF real value");
+    failures += expect_int(mylite_warning_count(database), 2, "DATEDIFF real warning count");
+    for (int index = 0; index < 2; ++index) {
+        failures += expect_int((int)mylite_warning_code(database, index),
+                               mysql_warning_truncated_wrong_value, "DATEDIFF real warning code");
+    }
+    failures +=
+        expect_string(mylite_warning_message(database, 0),
+                      "Truncated incorrect date value: '20240229.9'", "DATEDIFF real left warning");
+    failures += expect_string(mylite_warning_message(database, 1),
+                              "Truncated incorrect date value: '20240228.1'",
+                              "DATEDIFF real right warning");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "DATEDIFF real done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE DATABASE date_datediff_functions", MYLITE_DONE);
+    failures += execute_sql(database, "USE date_datediff_functions", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE temporal_diff ("
+                            "id INT PRIMARY KEY, "
+                            "dt DATETIME(6), "
+                            "d DATE, "
+                            "n INT, "
+                            "note VARCHAR(32))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO temporal_diff VALUES "
+                            "(1, '2024-02-29 23:59:59.123456', NULL, NULL, 'leap'), "
+                            "(2, '2024-03-02 00:00:00', NULL, NULL, 'march'), "
+                            "(3, NULL, NULL, NULL, 'null')",
+                            MYLITE_DONE);
+    failures += expect_select_rows(database,
+                                   "SELECT id, DATE(dt) AS extracted, "
+                                   "DATEDIFF(dt,'2024-02-28') AS days "
+                                   "FROM temporal_diff "
+                                   "WHERE DATEDIFF(dt,'2024-02-28') >= 1 "
+                                   "ORDER BY DATEDIFF(dt,'2024-02-28') DESC, DATE(dt), id",
+                                   projection_columns, 3, projection_values, 2,
+                                   "DATE and DATEDIFF table projection");
+    failures += execute_sql_expect_done_affected(database,
+                                                 "UPDATE temporal_diff "
+                                                 "SET d = DATE(dt), n = DATEDIFF(dt,'2024-02-28') "
+                                                 "WHERE id = 1",
+                                                 1, "DATE and DATEDIFF update");
+    failures +=
+        expect_select_rows(database, "SELECT id, d, n, note FROM temporal_diff WHERE id = 1",
+                           updated_columns, 4, updated_values, 1, "DATE and DATEDIFF updated row");
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM temporal_diff WHERE DATEDIFF(dt,'2024-02-28') = 3", 1,
+        "DATE and DATEDIFF delete");
+    failures +=
+        expect_select_rows(database, "SELECT id FROM temporal_diff ORDER BY id", remaining_columns,
+                           1, remaining_values, 2, "DATE and DATEDIFF delete result");
+    failures += prepare_sql(database, "UPDATE temporal_diff SET d = DATE('bad') WHERE id = 1",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "DATE invalid update warning promoted");
+    failures += expect_contains(mylite_error_message(database), "Incorrect datetime value: 'bad'",
+                                "DATE invalid update error");
+    failures += expect_int(mylite_warning_count(database), 1, "DATE invalid update warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "DATE invalid update warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database, "SELECT id, d, n, note FROM temporal_diff WHERE id = 1", updated_columns, 4,
+        unchanged_updated_values, 1, "DATE invalid update unchanged row");
+    failures += prepare_sql(database, "DELETE FROM temporal_diff WHERE DATEDIFF('bad', dt) IS NULL",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR,
+                              "DATEDIFF invalid delete warning promoted");
+    failures += expect_contains(mylite_error_message(database), "Incorrect datetime value: 'bad'",
+                                "DATEDIFF invalid delete error");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "DATEDIFF invalid delete warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_truncated_wrong_value,
+                   "DATEDIFF invalid delete warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_select_rows(database, "SELECT id FROM temporal_diff ORDER BY id", remaining_columns,
+                           1, remaining_values, 2, "DATEDIFF invalid delete unchanged rows");
+
+    failures += prepare_sql(database, "SELECT DATE()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "DATE empty arity");
+    failures += prepare_sql(database, "SELECT DATE('2024-01-01','x')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "DATE two arity");
+    failures += prepare_sql(database, "SELECT DATEDIFF('2024-01-01')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "DATEDIFF one arity");
+    failures += prepare_sql(database, "SELECT DATEDIFF('2024-01-01','2024-01-02','x')",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "DATEDIFF three arity");
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)

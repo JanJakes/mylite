@@ -205,6 +205,7 @@ static const uint64_t mylite_mysql_int_unsigned_display_length = 10U;
 static const uint64_t mylite_mysql_int_signed_display_length = 11U;
 static const uint64_t mylite_mysql_year_display_length = 4U;
 static const uint64_t mylite_mysql_date_display_length = 10U;
+static const uint64_t mylite_mysql_datediff_function_display_length = 9U;
 static const uint64_t mylite_mysql_time_display_length = 10U;
 static const uint64_t mylite_mysql_current_time_display_length = 8U;
 static const uint64_t mylite_mysql_current_time_fraction_display_base = 9U;
@@ -2133,6 +2134,9 @@ infer_current_temporal_function_descriptor(const struct mylite_sql_ast_node *exp
 static struct mylite_field_descriptor current_datetime_function_descriptor(unsigned int fsp);
 static struct mylite_field_descriptor current_date_function_descriptor(void);
 static struct mylite_field_descriptor current_time_function_descriptor(unsigned int fsp);
+static bool
+infer_temporal_scalar_function_descriptor(const struct mylite_sql_ast_node *name,
+                                          struct mylite_field_descriptor *out_descriptor);
 static bool infer_fixed_integer_function_descriptor(const struct mylite_sql_ast_node *name,
                                                     bool result_nullable,
                                                     struct mylite_field_descriptor *out_descriptor);
@@ -2438,6 +2442,8 @@ static bool function_name_is_current_temporal(const struct mylite_sql_ast_node *
 static bool function_name_is_current_temporal_datetime(const struct mylite_sql_ast_node *name);
 static bool function_name_is_current_temporal_date(const struct mylite_sql_ast_node *name);
 static bool function_name_is_current_temporal_time(const struct mylite_sql_ast_node *name);
+static bool function_name_is_date_extraction(const struct mylite_sql_ast_node *name);
+static bool function_name_is_datediff(const struct mylite_sql_ast_node *name);
 static bool function_name_has_integer_result(const struct mylite_sql_ast_node *name);
 static bool function_name_is_exp(const struct mylite_sql_ast_node *name);
 static bool function_name_is_logarithm(const struct mylite_sql_ast_node *name);
@@ -10903,6 +10909,9 @@ static bool infer_common_scalar_function_descriptor(mylite_db *database,
     if (infer_angle_conversion_function_descriptor(name, result_nullable, out_descriptor)) {
         return true;
     }
+    if (infer_temporal_scalar_function_descriptor(name, out_descriptor)) {
+        return true;
+    }
     return infer_base_conversion_function_descriptor(database, name, out_descriptor);
 }
 
@@ -11819,6 +11828,31 @@ static struct mylite_field_descriptor current_time_function_descriptor(unsigned 
 
     field_descriptor_set_nullable(&descriptor, false);
     return descriptor;
+}
+
+static bool
+infer_temporal_scalar_function_descriptor(const struct mylite_sql_ast_node *name,
+                                          struct mylite_field_descriptor *out_descriptor)
+{
+    if (function_name_is_date_extraction(name)) {
+        struct mylite_field_descriptor descriptor = {
+            .type = MYLITE_FIELD_TYPE_DATE,
+            .flags = MYLITE_FIELD_FLAG_BINARY,
+            .length = mylite_mysql_date_display_length,
+            .charset_id = mylite_mysql_binary_charset_id,
+            .nullable = true,
+        };
+
+        field_descriptor_set_nullable(&descriptor, true);
+        *out_descriptor = descriptor;
+        return true;
+    }
+    if (function_name_is_datediff(name)) {
+        *out_descriptor = signed_longlong_expression_descriptor(true);
+        out_descriptor->length = mylite_mysql_datediff_function_display_length;
+        return true;
+    }
+    return false;
 }
 
 static bool infer_list_index_function_descriptor(const struct mylite_sql_ast_node *name,
@@ -13614,6 +13648,20 @@ static bool function_name_is_current_temporal_date(const struct mylite_sql_ast_n
 static bool function_name_is_current_temporal_time(const struct mylite_sql_ast_node *name)
 {
     static const char *const names[] = {"CURTIME", "CURRENT_TIME"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_is_date_extraction(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"DATE"};
+
+    return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+static bool function_name_is_datediff(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"DATEDIFF"};
 
     return function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }

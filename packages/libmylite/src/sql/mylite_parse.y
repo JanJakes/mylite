@@ -3401,6 +3401,9 @@ function_name(A) ::= CURRENT_TIME(T). {
 function_name(A) ::= CURRENT_USER(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+function_name(A) ::= DATE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 function_name(A) ::= DATABASE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }

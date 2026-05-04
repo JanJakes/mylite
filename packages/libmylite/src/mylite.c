@@ -3665,10 +3665,6 @@ static int normalize_schema_options(mylite_db *database, struct mylite_schema_op
 static int normalize_schema_charset_and_collation(mylite_db *database,
                                                   struct mylite_schema_options *options);
 static int normalize_schema_option_text(mylite_db *database, char **target, const char *value);
-static int set_unknown_charset_error(mylite_db *database, const char *name);
-static int set_unknown_collation_error(mylite_db *database, const char *name);
-static int set_collation_charset_error(mylite_db *database, const char *collation,
-                                       const char *character_set);
 static int set_unknown_table_error(mylite_db *database, const char *schema_name,
                                    const char *table_name);
 static int append_unknown_table_note(mylite_db *database, const char *schema_name,
@@ -10335,7 +10331,7 @@ static int infer_char_function_descriptor(mylite_db *database,
     if (mylite_ascii_case_equal(charset_name, "binary")) {
         binary_result = true;
     } else if (!char_function_charset_name_is_supported(charset_name)) {
-        int status = set_unknown_charset_error(database, charset_name);
+        int status = mylite_diagnostics_set_unknown_charset_error(database, charset_name);
 
         free(charset_name);
         return status;
@@ -10390,7 +10386,7 @@ static int validate_char_function_charset(mylite_db *database,
         return MYLITE_NOMEM;
     }
     if (!char_function_charset_name_is_supported(charset_name)) {
-        status = set_unknown_charset_error(database, charset_name);
+        status = mylite_diagnostics_set_unknown_charset_error(database, charset_name);
     }
     free(charset_name);
     return status;
@@ -10414,7 +10410,7 @@ static int validate_cast_expression_target_charset(mylite_db *database,
         return MYLITE_NOMEM;
     }
     if (mylite_charset_lookup(charset_name) == NULL) {
-        status = set_unknown_charset_error(database, charset_name);
+        status = mylite_diagnostics_set_unknown_charset_error(database, charset_name);
     }
     free(charset_name);
     return status;
@@ -12921,7 +12917,7 @@ static int field_descriptor_collation_id(mylite_db *database, const char *collat
 
     collation = mylite_collation_lookup(collation_name);
     if (collation == NULL) {
-        (void)set_unknown_collation_error(database, collation_name);
+        (void)mylite_diagnostics_set_unknown_collation_error(database, collation_name);
         return MYLITE_EXEC_ERROR;
     }
 
@@ -27350,7 +27346,7 @@ static int infer_char_function_collation_info(mylite_db *database,
         return MYLITE_NOMEM;
     }
     if (!char_function_charset_name_is_supported(charset_name)) {
-        int status = set_unknown_charset_error(database, charset_name);
+        int status = mylite_diagnostics_set_unknown_charset_error(database, charset_name);
 
         free(charset_name);
         return status;
@@ -27488,7 +27484,7 @@ static int infer_cast_collation_info(mylite_db *database,
             return MYLITE_NOMEM;
         }
         if (!char_function_charset_name_is_supported(charset_name)) {
-            int status = set_unknown_charset_error(database, charset_name);
+            int status = mylite_diagnostics_set_unknown_charset_error(database, charset_name);
 
             free(charset_name);
             return status;
@@ -35430,7 +35426,7 @@ static int set_names_connection_state(mylite_db *database,
     const struct mylite_collation *collation = NULL;
 
     if (character_set == NULL) {
-        return set_unknown_charset_error(database, request.character_set_name);
+        return mylite_diagnostics_set_unknown_charset_error(database, request.character_set_name);
     }
 
     if (request.collation_name == NULL) {
@@ -35438,10 +35434,11 @@ static int set_names_connection_state(mylite_db *database,
     } else {
         collation = mylite_collation_lookup(request.collation_name);
         if (collation == NULL) {
-            return set_unknown_collation_error(database, request.collation_name);
+            return mylite_diagnostics_set_unknown_collation_error(database, request.collation_name);
         }
         if (!mylite_charset_collation_match(character_set, collation)) {
-            return set_collation_charset_error(database, collation->name, character_set->name);
+            return mylite_diagnostics_set_collation_charset_error(database, collation->name,
+                                                                  character_set->name);
         }
     }
 
@@ -35460,7 +35457,7 @@ static int set_character_set_connection_state(mylite_db *database, const char *c
     int status = MYLITE_OK;
 
     if (character_set == NULL) {
-        return set_unknown_charset_error(database, character_set_name);
+        return mylite_diagnostics_set_unknown_charset_error(database, character_set_name);
     }
 
     status = selected_schema_default(database, &schema_default);
@@ -35470,7 +35467,7 @@ static int set_character_set_connection_state(mylite_db *database, const char *c
 
     connection_collation = mylite_collation_lookup(schema_default.collation);
     if (connection_collation == NULL) {
-        return set_unknown_collation_error(database, schema_default.collation);
+        return mylite_diagnostics_set_unknown_collation_error(database, schema_default.collation);
     }
 
     database->character_set_client = character_set->name;
@@ -35510,12 +35507,12 @@ static int selected_schema_default(mylite_db *database, struct mylite_schema_def
         const struct mylite_collation *collation_entry = mylite_collation_lookup(collation);
 
         if (character_set_entry == NULL) {
-            int status = set_unknown_charset_error(database, character_set);
+            int status = mylite_diagnostics_set_unknown_charset_error(database, character_set);
             sqlite3_finalize(stmt);
             return status;
         }
         if (collation_entry == NULL) {
-            int status = set_unknown_collation_error(database, collation);
+            int status = mylite_diagnostics_set_unknown_collation_error(database, collation);
             sqlite3_finalize(stmt);
             return status;
         }
@@ -35627,12 +35624,12 @@ static int schema_default_by_name(mylite_db *database, const char *schema_name,
         const struct mylite_collation *collation_entry = mylite_collation_lookup(collation);
 
         if (character_set_entry == NULL) {
-            int status = set_unknown_charset_error(database, character_set);
+            int status = mylite_diagnostics_set_unknown_charset_error(database, character_set);
             sqlite3_finalize(stmt);
             return status;
         }
         if (collation_entry == NULL) {
-            int status = set_unknown_collation_error(database, collation);
+            int status = mylite_diagnostics_set_unknown_collation_error(database, collation);
             sqlite3_finalize(stmt);
             return status;
         }
@@ -40806,13 +40803,13 @@ static int normalize_create_table_options(mylite_db *database, const char *schem
     if (options->character_set != NULL) {
         character_set = mylite_charset_lookup(options->character_set);
         if (character_set == NULL) {
-            return set_unknown_charset_error(database, options->character_set);
+            return mylite_diagnostics_set_unknown_charset_error(database, options->character_set);
         }
     }
     if (options->collation != NULL) {
         collation = mylite_collation_lookup(options->collation);
         if (collation == NULL) {
-            return set_unknown_collation_error(database, options->collation);
+            return mylite_diagnostics_set_unknown_collation_error(database, options->collation);
         }
     }
     if (character_set == NULL && collation != NULL) {
@@ -40832,7 +40829,8 @@ static int normalize_create_table_options(mylite_db *database, const char *schem
         return MYLITE_EXEC_ERROR;
     }
     if (!mylite_charset_collation_match(character_set, collation)) {
-        return set_collation_charset_error(database, collation->name, character_set->name);
+        return mylite_diagnostics_set_collation_charset_error(database, collation->name,
+                                                              character_set->name);
     }
 
     status =
@@ -41108,14 +41106,15 @@ static int normalize_schema_charset_and_collation(mylite_db *database,
     int status = MYLITE_OK;
 
     if (options->character_set != NULL && character_set == NULL) {
-        return set_unknown_charset_error(database, options->character_set);
+        return mylite_diagnostics_set_unknown_charset_error(database, options->character_set);
     }
     if (options->collation != NULL && collation == NULL) {
-        return set_unknown_collation_error(database, options->collation);
+        return mylite_diagnostics_set_unknown_collation_error(database, options->collation);
     }
     if (character_set != NULL && collation != NULL &&
         !mylite_charset_collation_match(character_set, collation)) {
-        return set_collation_charset_error(database, collation->name, character_set->name);
+        return mylite_diagnostics_set_collation_charset_error(database, collation->name,
+                                                              character_set->name);
     }
     if (character_set == NULL && collation == NULL) {
         return MYLITE_OK;
@@ -41152,41 +41151,6 @@ static int normalize_schema_option_text(mylite_db *database, char **target, cons
     free(*target);
     *target = copy;
     return MYLITE_OK;
-}
-
-static int set_unknown_charset_error(mylite_db *database, const char *name)
-{
-    int status =
-        mylite_diagnostics_set_error_message_parts(database, "Unknown character set: '", name, "'");
-
-    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-}
-
-static int set_unknown_collation_error(mylite_db *database, const char *name)
-{
-    int status =
-        mylite_diagnostics_set_error_message_parts(database, "Unknown collation: '", name, "'");
-
-    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-}
-
-static int set_collation_charset_error(mylite_db *database, const char *collation,
-                                       const char *character_set)
-{
-    char *prefix = NULL;
-    int status = MYLITE_EXEC_ERROR;
-
-    if (mylite_diagnostics_set_error_message_parts(database, "COLLATION '", collation,
-                                                   "' is not valid for CHARACTER SET '") ==
-        MYLITE_NOMEM) {
-        return MYLITE_NOMEM;
-    }
-
-    prefix = database->error_message;
-    database->error_message = NULL;
-    status = mylite_diagnostics_set_error_message_parts(database, prefix, character_set, "'");
-    free(prefix);
-    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int set_unknown_table_error(mylite_db *database, const char *schema_name,

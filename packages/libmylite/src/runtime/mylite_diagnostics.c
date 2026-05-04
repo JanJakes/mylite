@@ -133,6 +133,41 @@ int mylite_diagnostics_set_error_message_parts(mylite_db *database, const char *
     return status;
 }
 
+int mylite_diagnostics_set_unknown_charset_error(mylite_db *database, const char *name)
+{
+    int status =
+        mylite_diagnostics_set_error_message_parts(database, "Unknown character set: '", name, "'");
+
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+int mylite_diagnostics_set_unknown_collation_error(mylite_db *database, const char *name)
+{
+    int status =
+        mylite_diagnostics_set_error_message_parts(database, "Unknown collation: '", name, "'");
+
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+int mylite_diagnostics_set_collation_charset_error(mylite_db *database, const char *collation,
+                                                   const char *character_set)
+{
+    char *prefix = NULL;
+    int status = MYLITE_EXEC_ERROR;
+
+    if (mylite_diagnostics_set_error_message_parts(database, "COLLATION '", collation,
+                                                   "' is not valid for CHARACTER SET '") ==
+        MYLITE_NOMEM) {
+        return MYLITE_NOMEM;
+    }
+
+    prefix = database->error_message;
+    database->error_message = NULL;
+    status = mylite_diagnostics_set_error_message_parts(database, prefix, character_set, "'");
+    free(prefix);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
 int mylite_diagnostics_append_warning(mylite_db *database, unsigned int code, const char *message)
 {
     return append_database_condition(database, MYLITE_EXPRESSION_WARNING_LEVEL_WARNING, code,

@@ -13,6 +13,10 @@ static inline int mylite_diagnostics_set_sqlite_error(mylite_db *database)
 }
 int mylite_diagnostics_set_error_message_parts(mylite_db *database, const char *prefix,
                                                const char *value, const char *suffix);
+int mylite_diagnostics_set_unknown_charset_error(mylite_db *database, const char *name);
+int mylite_diagnostics_set_unknown_collation_error(mylite_db *database, const char *name);
+int mylite_diagnostics_set_collation_charset_error(mylite_db *database, const char *collation,
+                                                   const char *character_set);
 int mylite_diagnostics_append_warning(mylite_db *database, unsigned int code, const char *message);
 int mylite_diagnostics_append_note(mylite_db *database, unsigned int code, const char *message);
 int mylite_diagnostics_append_error(mylite_db *database, unsigned int code, const char *message);

@@ -362,7 +362,7 @@ only the core object model and transitional shared helpers listed here:
 - [x] Move truncate-table AST copy helpers into `mylite_table_ddl`.
 - [x] Move `TRUNCATE TABLE` validation and execution into `mylite_table_ddl`.
 - [x] Move alter-table AST copy helpers into `mylite_table_ddl`.
-- [ ] Move alter-table catalog model loading behind table DDL/catalog APIs.
+- [x] Move alter-table catalog model loading behind table DDL/catalog APIs.
 - [ ] Move alter-table column operations into `mylite_table_ddl`.
 - [ ] Move alter-table key/index operations into `mylite_table_ddl`.
 - [ ] Move create/drop index AST copy helpers into `mylite_table_ddl`.

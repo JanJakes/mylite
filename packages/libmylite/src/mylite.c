@@ -10,6 +10,7 @@
 #include "runtime/mylite_metadata.h"
 #include "runtime/mylite_runtime.h"
 #include "runtime/mylite_span.h"
+#include "runtime/mylite_statement.h"
 #include "runtime/mylite_transactions.h"
 #include "sql/mylite_lexer.h"
 #include "sqlite3.h"
@@ -1746,7 +1747,6 @@ static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind k
                                     const struct mylite_sql_ast_node *statement,
                                     mylite_stmt **out_stmt);
 static int execute_custom_statement(mylite_stmt *stmt);
-static void record_statement_row_count(mylite_stmt *stmt);
 static int execute_create_schema_statement(mylite_stmt *stmt);
 static int execute_alter_schema_statement(mylite_stmt *stmt);
 static int execute_drop_schema_statement(mylite_stmt *stmt);
@@ -3854,7 +3854,7 @@ int mylite_step(mylite_stmt *stmt)
         int status = execute_custom_statement(stmt);
 
         if (status == MYLITE_DONE) {
-            record_statement_row_count(stmt);
+            mylite_statement_record_row_count(stmt);
         }
         if (status != MYLITE_ROW && status != MYLITE_DONE && status != MYLITE_OK &&
             status != MYLITE_NOMEM) {
@@ -3871,7 +3871,7 @@ int mylite_step(mylite_stmt *stmt)
     if (rc == SQLITE_DONE) {
         stmt->affected_rows =
             sqlite3_stmt_readonly(stmt->sqlite_stmt) ? -1 : sqlite3_changes(stmt->database->sqlite);
-        record_statement_row_count(stmt);
+        mylite_statement_record_row_count(stmt);
         return MYLITE_DONE;
     }
 
@@ -3881,15 +3881,6 @@ int mylite_step(mylite_stmt *stmt)
                                                                 MYLITE_MYSQL_ER_UNKNOWN_ERROR);
     }
     return rc;
-}
-
-int64_t mylite_affected_rows(const mylite_stmt *stmt)
-{
-    if (stmt == NULL) {
-        return -1;
-    }
-
-    return stmt->affected_rows;
 }
 
 int64_t mylite_column_int64(const mylite_stmt *stmt, int column)
@@ -3940,16 +3931,6 @@ const char *mylite_column_text(const mylite_stmt *stmt, int column)
     }
 
     return (const char *)sqlite3_column_text(stmt->sqlite_stmt, column);
-}
-
-static void record_statement_row_count(mylite_stmt *stmt)
-{
-    if (stmt == NULL || stmt->database == NULL || stmt->previous_row_count_recorded) {
-        return;
-    }
-
-    stmt->database->previous_row_count = stmt->affected_rows;
-    stmt->previous_row_count_recorded = true;
 }
 
 static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql_ast_node *root,

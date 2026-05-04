@@ -2255,10 +2255,6 @@ insert_table_column_reference_index(const struct mylite_insert_table *table,
 static bool
 insert_column_reference_qualifiers_match(const struct mylite_insert_column_reference *reference,
                                          const char *schema_name, const char *table_name);
-static int update_insert_auto_increment(mylite_stmt *stmt, const char *schema_name,
-                                        uint64_t next_auto_increment);
-static int update_table_auto_increment(mylite_stmt *stmt, const char *schema_name,
-                                       const char *table_name, uint64_t next_auto_increment);
 static int set_insert_null_error(mylite_db *database, const char *column_name);
 static int set_insert_unsupported_expression_error(mylite_db *database);
 static int copy_scalar_select_statement(const struct mylite_sql_ast_node *statement,
@@ -17287,8 +17283,8 @@ static int execute_update_rows_transaction(mylite_stmt *stmt,
 
     if (status == MYLITE_OK && write_table->has_auto_increment &&
         next_auto_increment > write_table->next_auto_increment) {
-        status = update_table_auto_increment(stmt, table->schema_name, table->table_name,
-                                             next_auto_increment);
+        status = mylite_transaction_update_table_auto_increment(
+            stmt->database, table->schema_name, table->table_name, next_auto_increment);
     }
     if (status == MYLITE_OK) {
         status = mylite_transaction_commit_statement_atomicity(stmt->database, &atomicity);
@@ -24457,8 +24453,9 @@ static int execute_insert_values_transaction(mylite_stmt *stmt, const char *sche
     }
 
     if (table->has_auto_increment) {
-        status = update_insert_auto_increment(stmt, schema_name,
-                                              mylite_dml_insert_auto_increment_next_value(&state));
+        status = mylite_transaction_update_table_auto_increment(
+            stmt->database, schema_name, stmt->insert_values.table_name,
+            mylite_dml_insert_auto_increment_next_value(&state));
     }
     if (status == MYLITE_OK) {
         status = mylite_transaction_commit_statement_atomicity(stmt->database, &atomicity);
@@ -24487,7 +24484,8 @@ static int finish_failed_insert_values_transaction(
 
     mylite_transaction_rollback_statement_atomicity(stmt->database, atomicity);
     if (table->has_auto_increment && next_auto_increment > table->next_auto_increment) {
-        status = update_insert_auto_increment(stmt, schema_name, next_auto_increment);
+        status = mylite_transaction_update_table_auto_increment(
+            stmt->database, schema_name, stmt->insert_values.table_name, next_auto_increment);
         if (status != MYLITE_OK) {
             return status;
         }
@@ -25239,8 +25237,9 @@ cleanup:
     }
 
     if (table->has_auto_increment) {
-        status = update_insert_auto_increment(stmt, schema_name,
-                                              mylite_dml_insert_auto_increment_next_value(&state));
+        status = mylite_transaction_update_table_auto_increment(
+            stmt->database, schema_name, stmt->insert_values.table_name,
+            mylite_dml_insert_auto_increment_next_value(&state));
     }
     if (status == MYLITE_OK) {
         status = mylite_transaction_commit_statement_atomicity(stmt->database, &atomicity);
@@ -25445,8 +25444,9 @@ static int finish_successful_replace_transaction(mylite_stmt *stmt, const char *
     int status = MYLITE_OK;
 
     if (table->has_auto_increment) {
-        status = update_insert_auto_increment(stmt, schema_name,
-                                              mylite_dml_insert_auto_increment_next_value(state));
+        status = mylite_transaction_update_table_auto_increment(
+            stmt->database, schema_name, stmt->insert_values.table_name,
+            mylite_dml_insert_auto_increment_next_value(state));
     }
     if (status == MYLITE_OK) {
         status = mylite_transaction_commit_statement_atomicity(stmt->database, atomicity);
@@ -25499,26 +25499,6 @@ insert_column_reference_qualifiers_match(const struct mylite_insert_column_refer
         return false;
     }
     return true;
-}
-
-static int update_insert_auto_increment(mylite_stmt *stmt, const char *schema_name,
-                                        uint64_t next_auto_increment)
-{
-    return update_table_auto_increment(stmt, schema_name, stmt->insert_values.table_name,
-                                       next_auto_increment);
-}
-
-static int update_table_auto_increment(mylite_stmt *stmt, const char *schema_name,
-                                       const char *table_name, uint64_t next_auto_increment)
-{
-    int status = mylite_catalog_update_auto_increment(stmt->database, schema_name, table_name,
-                                                      next_auto_increment);
-
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    return mylite_transaction_record_pending_auto_increment(stmt->database, schema_name, table_name,
-                                                            next_auto_increment);
 }
 
 static int set_insert_null_error(mylite_db *database, const char *column_name)

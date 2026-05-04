@@ -13,6 +13,8 @@
 #include <string.h>
 
 static int reapply_pending_auto_increments(mylite_db *database);
+static int record_pending_auto_increment(mylite_db *database, const char *schema_name,
+                                         const char *table_name, uint64_t next_auto_increment);
 static int execute_start_transaction_statement(mylite_stmt *stmt);
 static int execute_begin_transaction_statement(mylite_stmt *stmt);
 static int execute_commit_statement(mylite_stmt *stmt);
@@ -459,9 +461,26 @@ void mylite_transaction_savepoint_state_deinit(struct mylite_savepoint_state *st
     *state = (struct mylite_savepoint_state){0};
 }
 
-int mylite_transaction_record_pending_auto_increment(mylite_db *database, const char *schema_name,
-                                                     const char *table_name,
-                                                     uint64_t next_auto_increment)
+int mylite_transaction_update_table_auto_increment(mylite_db *database, const char *schema_name,
+                                                   const char *table_name,
+                                                   uint64_t next_auto_increment)
+{
+    int status = MYLITE_OK;
+
+    if (database == NULL || schema_name == NULL || table_name == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    status = mylite_catalog_update_auto_increment(database, schema_name, table_name,
+                                                  next_auto_increment);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    return record_pending_auto_increment(database, schema_name, table_name, next_auto_increment);
+}
+
+static int record_pending_auto_increment(mylite_db *database, const char *schema_name,
+                                         const char *table_name, uint64_t next_auto_increment)
 {
     struct mylite_pending_auto_increment *items = NULL;
     char *schema_copy = NULL;

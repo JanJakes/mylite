@@ -64,16 +64,6 @@ static const long mylite_nanoseconds_per_microsecond = 1000L;
 static const long mylite_max_microsecond = 999999L;
 static const uint64_t mylite_decimal_radix = 10U;
 
-static const char show_schemas_sql[] =
-    "SELECT name AS \"Database\" FROM __mylite_schema_catalog ORDER BY name COLLATE BINARY";
-static const char information_schema_schemata_sql[] =
-    "SELECT 'def' AS CATALOG_NAME,"
-    "name AS SCHEMA_NAME,"
-    "default_character_set AS DEFAULT_CHARACTER_SET_NAME,"
-    "default_collation AS DEFAULT_COLLATION_NAME,"
-    "NULL AS SQL_PATH,"
-    "CASE WHEN upper(default_encryption) = 'Y' THEN 'YES' ELSE 'NO' END AS DEFAULT_ENCRYPTION "
-    "FROM __mylite_schema_catalog ORDER BY name COLLATE BINARY";
 static const char information_schema_tables_sql[] =
     "SELECT * FROM ("
     "SELECT 'def' AS TABLE_CATALOG,"
@@ -4462,7 +4452,7 @@ static int prepare_transaction_statement(mylite_db *database,
 
 static int prepare_show_schemas_statement(mylite_db *database, mylite_stmt **out_stmt)
 {
-    return prepare_sqlite_statement(database, show_schemas_sql, out_stmt);
+    return prepare_sqlite_statement(database, mylite_show_schemas_sql(), out_stmt);
 }
 
 static int prepare_show_diagnostics_statement(mylite_db *database,
@@ -35300,7 +35290,7 @@ static const char *information_schema_table_sql(enum mylite_information_schema_t
 {
     switch (table) {
     case MYLITE_INFORMATION_SCHEMA_SCHEMATA:
-        return information_schema_schemata_sql;
+        return mylite_show_information_schema_schemata_sql();
     case MYLITE_INFORMATION_SCHEMA_TABLES:
         return information_schema_tables_sql;
     case MYLITE_INFORMATION_SCHEMA_COLUMNS:

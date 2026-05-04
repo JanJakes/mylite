@@ -361,7 +361,6 @@ static int validate_show_columns_target(mylite_db *database,
                                         const char *information_schema_unsupported_message);
 static int set_unknown_information_schema_table_error(mylite_db *database, const char *table_name);
 static char *copy_show_columns_like_pattern(const struct mylite_sql_ast_node *statement);
-static char *show_columns_sql(mylite_db *database, const struct mylite_show_columns_query *query);
 static void show_columns_target_deinit(struct mylite_show_columns_target *target);
 static int prepare_describe_table_statement(mylite_db *database,
                                             const struct mylite_sql_ast_node *statement,
@@ -5131,12 +5130,12 @@ static int prepare_show_columns_statement(mylite_db *database,
         }
     }
     if (status == MYLITE_OK) {
-        sqlite_sql = show_columns_sql(database, &(const struct mylite_show_columns_query){
-                                                    .schema_name = target.schema_name,
-                                                    .table_name = target.table_name,
-                                                    .like_pattern = like_pattern,
-                                                    .full = statement->show_columns_full,
-                                                });
+        sqlite_sql = mylite_show_columns_sql(database, &(const struct mylite_show_columns_query){
+                                                           .schema_name = target.schema_name,
+                                                           .table_name = target.table_name,
+                                                           .like_pattern = like_pattern,
+                                                           .full = statement->show_columns_full,
+                                                       });
         if (sqlite_sql == NULL) {
             status = MYLITE_NOMEM;
         }
@@ -5344,33 +5343,6 @@ static char *copy_show_columns_like_pattern(const struct mylite_sql_ast_node *st
     return copy_show_like_pattern_span(literal);
 }
 
-static char *show_columns_sql(mylite_db *database, const struct mylite_show_columns_query *query)
-{
-    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
-
-    if (sql == NULL) {
-        return NULL;
-    }
-
-    sqlite3_str_appendf(sql, "SELECT column_name AS \"Field\", column_type AS \"Type\"");
-    if (query->full) {
-        sqlite3_str_appendf(sql, ", collation_name AS \"Collation\"");
-    }
-    sqlite3_str_appendf(sql, ", is_nullable AS \"Null\", column_key AS \"Key\", "
-                             "column_default AS \"Default\", extra AS \"Extra\"");
-    if (query->full) {
-        sqlite3_str_appendf(sql, ", privileges AS \"Privileges\", column_comment AS \"Comment\"");
-    }
-    sqlite3_str_appendf(sql,
-                        " FROM __mylite_column_catalog WHERE table_schema = %Q AND table_name = %Q",
-                        query->schema_name, query->table_name);
-    if (query->like_pattern != NULL) {
-        sqlite3_str_appendf(sql, " AND column_name LIKE %Q ESCAPE '\\'", query->like_pattern);
-    }
-    sqlite3_str_appendf(sql, " ORDER BY ordinal_position");
-    return sqlite3_str_finish(sql);
-}
-
 static void show_columns_target_deinit(struct mylite_show_columns_target *target)
 {
     if (target == NULL) {
@@ -5403,12 +5375,12 @@ static int prepare_describe_table_statement(mylite_db *database,
         }
     }
     if (status == MYLITE_OK) {
-        sqlite_sql = show_columns_sql(database, &(const struct mylite_show_columns_query){
-                                                    .schema_name = target.schema_name,
-                                                    .table_name = target.table_name,
-                                                    .like_pattern = column_pattern,
-                                                    .full = false,
-                                                });
+        sqlite_sql = mylite_show_columns_sql(database, &(const struct mylite_show_columns_query){
+                                                           .schema_name = target.schema_name,
+                                                           .table_name = target.table_name,
+                                                           .like_pattern = column_pattern,
+                                                           .full = false,
+                                                       });
         if (sqlite_sql == NULL) {
             status = MYLITE_NOMEM;
         }

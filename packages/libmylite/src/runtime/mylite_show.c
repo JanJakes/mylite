@@ -129,6 +129,33 @@ int mylite_show_information_schema_character_sets_sql(mylite_db *database, char 
     return *out_sql == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
 
+char *mylite_show_columns_sql(mylite_db *database, const struct mylite_show_columns_query *query)
+{
+    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
+
+    if (sql == NULL) {
+        return NULL;
+    }
+
+    sqlite3_str_appendf(sql, "SELECT column_name AS \"Field\", column_type AS \"Type\"");
+    if (query->full) {
+        sqlite3_str_appendf(sql, ", collation_name AS \"Collation\"");
+    }
+    sqlite3_str_appendf(sql, ", is_nullable AS \"Null\", column_key AS \"Key\", "
+                             "column_default AS \"Default\", extra AS \"Extra\"");
+    if (query->full) {
+        sqlite3_str_appendf(sql, ", privileges AS \"Privileges\", column_comment AS \"Comment\"");
+    }
+    sqlite3_str_appendf(sql,
+                        " FROM __mylite_column_catalog WHERE table_schema = %Q AND table_name = %Q",
+                        query->schema_name, query->table_name);
+    if (query->like_pattern != NULL) {
+        sqlite3_str_appendf(sql, " AND column_name LIKE %Q ESCAPE '\\'", query->like_pattern);
+    }
+    sqlite3_str_appendf(sql, " ORDER BY ordinal_position");
+    return sqlite3_str_finish(sql);
+}
+
 int mylite_show_collation_sql(mylite_db *database, const struct mylite_show_collation_query *query,
                               char **out_sql)
 {

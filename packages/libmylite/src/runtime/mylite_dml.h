@@ -31,6 +31,14 @@ int mylite_dml_write_insert_candidate_row(mylite_db *database, sqlite3_stmt *ins
                                           const struct mylite_insert_table *table,
                                           const struct mylite_insert_bound_value *values,
                                           struct mylite_insert_execution_state *state);
+int mylite_dml_write_insert_update_candidate(mylite_db *database,
+                                             const struct mylite_insert_table *table,
+                                             sqlite3_int64 rowid,
+                                             const struct mylite_insert_bound_value *values,
+                                             struct mylite_insert_execution_state *state);
+bool mylite_dml_insert_update_row_changed(const struct mylite_insert_bound_value *stored,
+                                          const struct mylite_insert_bound_value *candidate,
+                                          size_t value_count);
 int mylite_dml_advance_insert_row_auto_increment(const struct mylite_insert_table *table,
                                                  const struct mylite_insert_bound_value *values,
                                                  struct mylite_insert_execution_state *state);

@@ -2203,17 +2203,6 @@ static int evaluate_insert_values_function(mylite_stmt *stmt,
 static int validate_insert_update_assignment_result(mylite_stmt *stmt,
                                                     const struct mylite_insert_table_column *column,
                                                     struct mylite_insert_bound_value *value);
-static int write_insert_update_candidate(mylite_stmt *stmt, const struct mylite_insert_table *table,
-                                         sqlite3_int64 rowid,
-                                         const struct mylite_insert_bound_value *values,
-                                         struct mylite_insert_execution_state *state);
-static char *build_insert_update_physical_sql(mylite_db *database,
-                                              const struct mylite_insert_table *table);
-static bool insert_update_row_changed(const struct mylite_insert_bound_value *stored,
-                                      const struct mylite_insert_bound_value *candidate,
-                                      size_t value_count);
-static bool insert_bound_values_equal(const struct mylite_insert_bound_value *left,
-                                      const struct mylite_insert_bound_value *right);
 static int resolve_insert_update_column_reference(mylite_stmt *stmt,
                                                   const struct mylite_insert_table *table,
                                                   const char *schema_name,
@@ -24624,8 +24613,9 @@ static int execute_insert_duplicate_update_branch(
             updated_values, conflict->rowid, &update_conflicts);
     }
     if (status == MYLITE_OK && !update_conflicts &&
-        insert_update_row_changed(stored_values, updated_values, table->column_count)) {
-        status = write_insert_update_candidate(stmt, table, conflict->rowid, updated_values, state);
+        mylite_dml_insert_update_row_changed(stored_values, updated_values, table->column_count)) {
+        status = mylite_dml_write_insert_update_candidate(stmt->database, table, conflict->rowid,
+                                                          updated_values, state);
         if (status == MYLITE_OK) {
             state->accepted_row_count += 2U;
         }
@@ -25002,102 +24992,6 @@ static int validate_insert_update_assignment_result(mylite_stmt *stmt,
         return MYLITE_OK;
     }
     return set_insert_unsupported_expression_error(stmt->database);
-}
-
-static int write_insert_update_candidate(mylite_stmt *stmt, const struct mylite_insert_table *table,
-                                         sqlite3_int64 rowid,
-                                         const struct mylite_insert_bound_value *values,
-                                         struct mylite_insert_execution_state *state)
-{
-    sqlite3_stmt *update = NULL;
-    char *sql = build_insert_update_physical_sql(stmt->database, table);
-    int rc = SQLITE_OK;
-    int status = MYLITE_OK;
-
-    if (sql == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    rc = sqlite3_prepare_v3(stmt->database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &update,
-                            NULL);
-    sqlite3_free(sql);
-    if (rc != SQLITE_OK) {
-        return mylite_diagnostics_set_sqlite_error(stmt->database);
-    }
-
-    status = mylite_dml_bind_insert_row_values(stmt->database, update, values, table->column_count);
-    if (status == MYLITE_OK) {
-        rc = sqlite3_bind_int64(update, (int)table->column_count + 1, rowid);
-        if (rc != SQLITE_OK) {
-            status = mylite_diagnostics_set_sqlite_error(stmt->database);
-        }
-    }
-    if (status == MYLITE_OK) {
-        rc = sqlite3_step(update);
-        if (rc != SQLITE_DONE) {
-            status = mylite_diagnostics_set_sqlite_error(stmt->database);
-        }
-    }
-    sqlite3_finalize(update);
-    if (status == MYLITE_OK) {
-        status = mylite_dml_advance_insert_row_auto_increment(table, values, state);
-    }
-    return status;
-}
-
-static char *build_insert_update_physical_sql(mylite_db *database,
-                                              const struct mylite_insert_table *table)
-{
-    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
-
-    if (sql == NULL) {
-        return NULL;
-    }
-
-    sqlite3_str_appendf(sql, "UPDATE \"%w\" SET ", table->physical_name);
-    for (size_t index = 0U; index < table->column_count; ++index) {
-        if (index != 0U) {
-            sqlite3_str_append(sql, ",", 1);
-        }
-        sqlite3_str_appendf(sql, "\"%w\" = ?", table->columns[index].name);
-    }
-    sqlite3_str_append(sql, " WHERE rowid = ?", (int)strlen(" WHERE rowid = ?"));
-    return sqlite3_str_finish(sql);
-}
-
-static bool insert_update_row_changed(const struct mylite_insert_bound_value *stored,
-                                      const struct mylite_insert_bound_value *candidate,
-                                      size_t value_count)
-{
-    for (size_t index = 0U; index < value_count; ++index) {
-        if (!insert_bound_values_equal(&stored[index], &candidate[index])) {
-            return true;
-        }
-    }
-    return false;
-}
-
-static bool insert_bound_values_equal(const struct mylite_insert_bound_value *left,
-                                      const struct mylite_insert_bound_value *right)
-{
-    if (left->kind != right->kind) {
-        return false;
-    }
-    switch (left->kind) {
-    case MYLITE_INSERT_BOUND_NULL:
-        return true;
-    case MYLITE_INSERT_BOUND_INTEGER:
-        return left->integer_value == right->integer_value;
-    case MYLITE_INSERT_BOUND_REAL:
-        return left->real_value == right->real_value;
-    case MYLITE_INSERT_BOUND_TEXT:
-        if (left->text_value == NULL || right->text_value == NULL) {
-            return left->text_value == right->text_value;
-        }
-        return strcmp(left->text_value, right->text_value) == 0;
-    }
-    return false;
 }
 
 static int resolve_insert_update_column_reference(

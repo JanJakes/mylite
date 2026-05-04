@@ -222,6 +222,9 @@ int mylite_dml_copy_update_target_to_select_table(mylite_db *database,
 int mylite_dml_copy_delete_target_to_select_table(mylite_db *database,
                                                   const struct mylite_delete_plan *plan,
                                                   struct mylite_select_table *table);
+int mylite_dml_set_delete_unknown_column_error(mylite_db *database, const char *column_name,
+                                               const char *clause_context);
+int mylite_dml_set_delete_unsupported_clause_error(mylite_db *database);
 int mylite_dml_bind_update_assignment_targets(mylite_db *database,
                                               const struct mylite_update_plan *plan,
                                               const struct mylite_select_table *table,

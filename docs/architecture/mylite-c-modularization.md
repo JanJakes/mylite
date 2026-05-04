@@ -352,7 +352,7 @@ only the core object model and transitional shared helpers listed here:
   cleanup.
 - [x] Move create-table AST copy helpers into `mylite_table_ddl`.
 - [x] Move create-table normalization and validation into `mylite_table_ddl`.
-- [ ] Move create-table catalog writes behind a narrow table DDL/catalog API.
+- [x] Move create-table catalog writes behind a narrow table DDL/catalog API.
 - [ ] Move create-table physical SQL construction into `mylite_table_ddl`.
 - [ ] Move `CREATE TABLE` execution into `mylite_table_ddl`.
 - [ ] Move drop-table AST copy helpers into `mylite_table_ddl`.

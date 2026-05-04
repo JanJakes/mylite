@@ -13,6 +13,20 @@ int mylite_table_ddl_validate_create_table_plan(mylite_db *database, const char 
                                                 bool if_not_exists,
                                                 struct mylite_schema_default *schema_default,
                                                 bool *out_skip_create);
+int mylite_table_ddl_insert_create_table_catalog_rows(
+    mylite_db *database, const char *schema_name,
+    const struct mylite_schema_default *schema_default,
+    const struct mylite_create_table_plan *plan);
+int mylite_table_ddl_describe_create_table_column(
+    const struct mylite_create_table_column *column,
+    const struct mylite_schema_default *schema_default,
+    const struct mylite_create_table_options *table_options,
+    struct mylite_column_type_descriptor *out_descriptor);
+const char *mylite_table_ddl_create_table_column_key(const struct mylite_create_table_plan *plan,
+                                                     const char *column_name);
+const char *
+mylite_table_ddl_create_table_column_extra(const struct mylite_create_table_column *column);
+const char *mylite_table_ddl_index_collation_for_order(enum mylite_sql_ast_key_part_order order);
 int mylite_table_ddl_copy_create_table_statement(const struct mylite_sql_ast_node *statement,
                                                  struct mylite_create_table_plan *plan);
 int mylite_table_ddl_copy_create_table_name(const struct mylite_sql_ast_node *table_name,

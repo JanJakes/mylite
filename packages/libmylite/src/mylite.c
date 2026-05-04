@@ -13,6 +13,7 @@
 #include "runtime/mylite_metadata.h"
 #include "runtime/mylite_runtime.h"
 #include "runtime/mylite_schema.h"
+#include "runtime/mylite_schema_types.h"
 #include "runtime/mylite_select.h"
 #include "runtime/mylite_span.h"
 #include "runtime/mylite_statement.h"

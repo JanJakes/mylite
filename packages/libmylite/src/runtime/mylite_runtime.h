@@ -5,6 +5,7 @@
 
 #include "mylite_expression.h"
 #include "mylite_field_descriptor.h"
+#include "mylite_schema_types.h"
 #include "sql/mylite_ast.h"
 #include "sqlite3.h"
 #include "types/mylite_column_type.h"
@@ -85,26 +86,6 @@ enum mylite_statement_atomicity_kind {
     MYLITE_STATEMENT_ATOMICITY_NONE = 0,
     MYLITE_STATEMENT_ATOMICITY_TRANSACTION = 1,
     MYLITE_STATEMENT_ATOMICITY_SAVEPOINT = 2,
-};
-
-struct mylite_schema_options {
-    char *character_set;
-    char *collation;
-    char *encryption;
-    bool has_read_only;
-    int read_only;
-    bool invalid_encryption;
-    bool invalid_read_only;
-};
-
-struct mylite_schema_presence {
-    bool exists;
-    bool is_system;
-};
-
-struct mylite_schema_default {
-    const char *character_set;
-    const char *collation;
 };
 
 struct mylite_create_table_options {

@@ -1,7 +1,9 @@
 #ifndef MYLITE_RUNTIME_MYLITE_CATALOG_H
 #define MYLITE_RUNTIME_MYLITE_CATALOG_H
 
-#include "mylite_runtime.h"
+#include <mylite/mylite.h>
+
+#include "mylite_schema_types.h"
 
 #include <stdbool.h>
 #include <stdint.h>

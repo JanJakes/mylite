@@ -198,7 +198,7 @@ Rules for future moves:
   of `mylite_runtime.h`.
 - [x] Add `mylite_field_descriptor.h`; move `struct mylite_field_descriptor`
   and `enum mylite_format_metadata_length`.
-- [ ] Add `mylite_schema_types.h`; move schema option/default/presence structs.
+- [x] Add `mylite_schema_types.h`; move schema option/default/presence structs.
 - [ ] Add `mylite_transaction_types.h`; move transaction enums, savepoint
   state, pending auto-increment state, and statement atomicity structs.
 - [ ] Add `mylite_table_ddl_types.h`; move create/drop/rename/truncate/alter

@@ -15,6 +15,8 @@ int mylite_diagnostics_set_error_message_parts(mylite_db *database, const char *
                                                const char *value, const char *suffix);
 int mylite_diagnostics_set_unknown_charset_error(mylite_db *database, const char *name);
 int mylite_diagnostics_set_unknown_collation_error(mylite_db *database, const char *name);
+int mylite_diagnostics_set_table_doesnt_exist_error(mylite_db *database, const char *schema_name,
+                                                    const char *table_name);
 int mylite_diagnostics_set_collation_charset_error(mylite_db *database, const char *collation,
                                                    const char *character_set);
 int mylite_diagnostics_append_warning(mylite_db *database, unsigned int code, const char *message);

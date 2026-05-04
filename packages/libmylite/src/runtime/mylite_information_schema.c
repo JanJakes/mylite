@@ -1,6 +1,7 @@
 #include "mylite_information_schema.h"
 
 #include "mylite_diagnostics.h"
+#include "mylite_error_codes.h"
 #include "mylite_show.h"
 #include "mylite_span.h"
 #include "mylite_statement.h"
@@ -280,6 +281,33 @@ int mylite_information_schema_prepare_select_statement(mylite_db *database,
 bool mylite_information_schema_has_table(const char *name)
 {
     return information_schema_table_from_name(name) != MYLITE_INFORMATION_SCHEMA_NONE;
+}
+
+int mylite_information_schema_set_unknown_table_error(mylite_db *database, const char *table_name)
+{
+    char *display_name = mylite_copy_nonempty_cstring(table_name);
+    char *message = NULL;
+    int status = MYLITE_OK;
+
+    if (display_name == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    mylite_uppercase_ascii_text(display_name);
+
+    message = sqlite3_mprintf("Unknown table '%q' in information_schema", display_name);
+    free(display_name);
+    if (message == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    status = mylite_diagnostics_set_error_message(database, message);
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_NO_SUCH_TABLE, message);
+    }
+    sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int information_schema_table_from_select(const struct mylite_sql_ast_node *statement,

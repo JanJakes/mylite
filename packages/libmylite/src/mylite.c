@@ -114,7 +114,6 @@ static int normalize_show_columns_schema_name(char **schema_name);
 static int validate_show_columns_target(mylite_db *database,
                                         const struct mylite_show_columns_target *target,
                                         const char *information_schema_unsupported_message);
-static int set_unknown_information_schema_table_error(mylite_db *database, const char *table_name);
 static char *copy_show_columns_like_pattern(const struct mylite_sql_ast_node *statement);
 static void show_columns_target_deinit(struct mylite_show_columns_target *target);
 static int prepare_describe_table_statement(mylite_db *database,
@@ -2845,8 +2844,6 @@ static int append_insert_null_warning_once(mylite_stmt *stmt,
                                            size_t column_index);
 static char *copy_insert_duplicate_entry_value(const struct mylite_insert_unique_index *index,
                                                const struct mylite_insert_bound_value *values);
-static int set_table_doesnt_exist_error(mylite_db *database, const char *schema_name,
-                                        const char *table_name);
 static int copy_statement_schema_name(const struct mylite_sql_ast_node *statement,
                                       enum mylite_stmt_kind kind, char **out_schema_name);
 static int copy_schema_options(const struct mylite_sql_ast_node *statement,
@@ -4316,7 +4313,7 @@ static int validate_show_columns_target(mylite_db *database,
     }
     if (mylite_ascii_case_equal(target->schema_name, "information_schema")) {
         if (!mylite_information_schema_has_table(target->table_name)) {
-            return set_unknown_information_schema_table_error(database, target->table_name);
+            return mylite_information_schema_set_unknown_table_error(database, target->table_name);
         }
         (void)mylite_diagnostics_set_error_message(database,
                                                    information_schema_unsupported_message);
@@ -4329,36 +4326,10 @@ static int validate_show_columns_target(mylite_db *database,
         return status;
     }
     if (!exists) {
-        return set_table_doesnt_exist_error(database, target->schema_name, target->table_name);
+        return mylite_diagnostics_set_table_doesnt_exist_error(database, target->schema_name,
+                                                               target->table_name);
     }
     return MYLITE_OK;
-}
-
-static int set_unknown_information_schema_table_error(mylite_db *database, const char *table_name)
-{
-    char *display_name = mylite_copy_nonempty_cstring(table_name);
-    char *message = NULL;
-    int status = MYLITE_OK;
-
-    if (display_name == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    mylite_uppercase_ascii_text(display_name);
-
-    message = sqlite3_mprintf("Unknown table '%q' in information_schema", display_name);
-    free(display_name);
-    if (message == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    status = mylite_diagnostics_set_error_message(database, message);
-    if (status == MYLITE_OK) {
-        status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_NO_SUCH_TABLE, message);
-    }
-    sqlite3_free(message);
-    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static char *copy_show_columns_like_pattern(const struct mylite_sql_ast_node *statement)
@@ -4635,7 +4606,7 @@ static int validate_show_index_target(mylite_db *database,
     }
     if (mylite_ascii_case_equal(target->schema_name, "information_schema")) {
         if (!mylite_information_schema_has_table(target->table_name)) {
-            return set_unknown_information_schema_table_error(database, target->table_name);
+            return mylite_information_schema_set_unknown_table_error(database, target->table_name);
         }
         return MYLITE_OK;
     }
@@ -4646,7 +4617,8 @@ static int validate_show_index_target(mylite_db *database,
         return status;
     }
     if (!exists) {
-        return set_table_doesnt_exist_error(database, target->schema_name, target->table_name);
+        return mylite_diagnostics_set_table_doesnt_exist_error(database, target->schema_name,
+                                                               target->table_name);
     }
     return MYLITE_OK;
 }
@@ -4828,7 +4800,8 @@ static int read_show_create_table_info(mylite_db *database,
 
     sqlite3_finalize(select);
     if (rc == SQLITE_DONE) {
-        return set_table_doesnt_exist_error(database, target->schema_name, target->table_name);
+        return mylite_diagnostics_set_table_doesnt_exist_error(database, target->schema_name,
+                                                               target->table_name);
     }
     return mylite_diagnostics_set_sqlite_error(database);
 }
@@ -11660,7 +11633,8 @@ static int resolve_select_table_target(mylite_db *database, struct mylite_select
         return status;
     }
     if (!exists) {
-        return set_table_doesnt_exist_error(database, table->schema_name, table->table_name);
+        return mylite_diagnostics_set_table_doesnt_exist_error(database, table->schema_name,
+                                                               table->table_name);
     }
 
     table->physical_name =
@@ -11770,7 +11744,8 @@ static int load_select_columns(mylite_db *database, struct mylite_select_table *
         return mylite_diagnostics_set_sqlite_error(database);
     }
     if (table->column_count == 0U) {
-        return set_table_doesnt_exist_error(database, table->schema_name, table->table_name);
+        return mylite_diagnostics_set_table_doesnt_exist_error(database, table->schema_name,
+                                                               table->table_name);
     }
     return MYLITE_OK;
 }
@@ -18039,8 +18014,8 @@ static int validate_rename_table_target(mylite_stmt *stmt, size_t target_index)
         return status;
     }
     if (!source_exists) {
-        return set_table_doesnt_exist_error(stmt->database, target->source_schema_name,
-                                            target->source_table_name);
+        return mylite_diagnostics_set_table_doesnt_exist_error(
+            stmt->database, target->source_schema_name, target->source_table_name);
     }
 
     status = simulated_rename_table_exists_before_target(
@@ -18308,8 +18283,8 @@ static int validate_truncate_table_target(mylite_stmt *stmt)
         return MYLITE_EXEC_ERROR;
     }
     if (!presence.exists) {
-        return set_table_doesnt_exist_error(stmt->database, stmt->truncate_table.schema_name,
-                                            stmt->truncate_table.table_name);
+        return mylite_diagnostics_set_table_doesnt_exist_error(
+            stmt->database, stmt->truncate_table.schema_name, stmt->truncate_table.table_name);
     }
 
     status = mylite_catalog_table_exists(stmt->database, stmt->truncate_table.schema_name,
@@ -18318,8 +18293,8 @@ static int validate_truncate_table_target(mylite_stmt *stmt)
         return status;
     }
     if (!exists) {
-        return set_table_doesnt_exist_error(stmt->database, stmt->truncate_table.schema_name,
-                                            stmt->truncate_table.table_name);
+        return mylite_diagnostics_set_table_doesnt_exist_error(
+            stmt->database, stmt->truncate_table.schema_name, stmt->truncate_table.table_name);
     }
     return MYLITE_OK;
 }
@@ -18586,8 +18561,8 @@ static int validate_alter_table_target(mylite_stmt *stmt)
         return status;
     }
     if (!exists) {
-        return set_table_doesnt_exist_error(stmt->database, stmt->alter_table.schema_name,
-                                            stmt->alter_table.table_name);
+        return mylite_diagnostics_set_table_doesnt_exist_error(
+            stmt->database, stmt->alter_table.schema_name, stmt->alter_table.table_name);
     }
     return MYLITE_OK;
 }
@@ -18625,8 +18600,8 @@ static int load_alter_table_model(mylite_stmt *stmt, const char *schema_name,
     if (rc == SQLITE_ROW) {
         status = copy_sqlite_nullable_text_column(select, 0, &model->table_collation);
     } else {
-        status = rc == SQLITE_DONE ? set_table_doesnt_exist_error(stmt->database, schema_name,
-                                                                  stmt->alter_table.table_name)
+        status = rc == SQLITE_DONE ? mylite_diagnostics_set_table_doesnt_exist_error(
+                                         stmt->database, schema_name, stmt->alter_table.table_name)
                                    : mylite_diagnostics_set_sqlite_error(stmt->database);
     }
     sqlite3_finalize(select);
@@ -18673,7 +18648,8 @@ static int load_alter_table_columns(mylite_stmt *stmt, struct mylite_alter_table
         return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
     if (model->column_count == 0U) {
-        return set_table_doesnt_exist_error(stmt->database, model->schema_name, model->table_name);
+        return mylite_diagnostics_set_table_doesnt_exist_error(stmt->database, model->schema_name,
+                                                               model->table_name);
     }
     return MYLITE_OK;
 }
@@ -21307,8 +21283,8 @@ static int validate_index_ddl_target(mylite_stmt *stmt)
         return status;
     }
     if (!exists) {
-        return set_table_doesnt_exist_error(stmt->database, stmt->index_ddl.schema_name,
-                                            stmt->index_ddl.table_name);
+        return mylite_diagnostics_set_table_doesnt_exist_error(
+            stmt->database, stmt->index_ddl.schema_name, stmt->index_ddl.table_name);
     }
     return MYLITE_OK;
 }
@@ -29749,8 +29725,8 @@ static int validate_insert_values_target(mylite_stmt *stmt, const char **out_sch
         return status;
     }
     if (!exists) {
-        return set_table_doesnt_exist_error(stmt->database, schema_name,
-                                            stmt->insert_values.table_name);
+        return mylite_diagnostics_set_table_doesnt_exist_error(stmt->database, schema_name,
+                                                               stmt->insert_values.table_name);
     }
 
     *out_schema_name = schema_name;
@@ -29794,9 +29770,9 @@ static int load_write_table(mylite_stmt *stmt, const char *schema_name, const ch
     }
     sqlite3_finalize(select);
     if (rc != SQLITE_ROW) {
-        return rc == SQLITE_DONE
-                   ? set_table_doesnt_exist_error(stmt->database, schema_name, table_name)
-                   : mylite_diagnostics_set_sqlite_error(stmt->database);
+        return rc == SQLITE_DONE ? mylite_diagnostics_set_table_doesnt_exist_error(
+                                       stmt->database, schema_name, table_name)
+                                 : mylite_diagnostics_set_sqlite_error(stmt->database);
     }
 
     out_table->physical_name = mylite_catalog_physical_table_name(schema_name, table_name);
@@ -33362,25 +33338,6 @@ static char *copy_insert_duplicate_entry_value(const struct mylite_insert_unique
         }
     }
     return sqlite3_str_finish(text);
-}
-
-static int set_table_doesnt_exist_error(mylite_db *database, const char *schema_name,
-                                        const char *table_name)
-{
-    char *message = sqlite3_mprintf("Table '%q.%q' doesn't exist", schema_name, table_name);
-    int status = MYLITE_OK;
-
-    if (message == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    status = mylite_diagnostics_set_error_message(database, message);
-    if (status == MYLITE_OK) {
-        status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_NO_SUCH_TABLE, message);
-    }
-    sqlite3_free(message);
-    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int copy_statement_schema_name(const struct mylite_sql_ast_node *statement,

@@ -150,6 +150,25 @@ int mylite_diagnostics_set_unknown_collation_error(mylite_db *database, const ch
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
+int mylite_diagnostics_set_table_doesnt_exist_error(mylite_db *database, const char *schema_name,
+                                                    const char *table_name)
+{
+    char *message = sqlite3_mprintf("Table '%q.%q' doesn't exist", schema_name, table_name);
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    status = mylite_diagnostics_set_error_message(database, message);
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_NO_SUCH_TABLE, message);
+    }
+    sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
 int mylite_diagnostics_set_collation_charset_error(mylite_db *database, const char *collation,
                                                    const char *character_set)
 {

@@ -99,6 +99,168 @@ void mylite_select_aggregate_binding_deinit(struct mylite_select_aggregate_bindi
     *binding = (struct mylite_select_aggregate_binding){0};
 }
 
+void mylite_select_column_sequence_deinit(struct mylite_select_column_sequence *sequence)
+{
+    if (sequence == NULL) {
+        return;
+    }
+    free(sequence->column_indexes);
+    *sequence = (struct mylite_select_column_sequence){0};
+}
+
+int mylite_select_plan_add_output_column(struct mylite_select_plan *plan,
+                                         const struct mylite_select_output_column *output)
+{
+    struct mylite_select_output_column *outputs =
+        realloc(plan->outputs, (plan->output_count + 1U) * sizeof(*plan->outputs));
+
+    if (outputs == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    plan->outputs = outputs;
+    plan->outputs[plan->output_count++] = *output;
+    return MYLITE_OK;
+}
+
+int mylite_select_plan_add_order_key(struct mylite_select_plan *plan,
+                                     const struct mylite_select_order_key *order_key)
+{
+    struct mylite_select_order_key *order_keys =
+        realloc(plan->order_keys, (plan->order_key_count + 1U) * sizeof(*plan->order_keys));
+
+    if (order_keys == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    plan->order_keys = order_keys;
+    plan->order_keys[plan->order_key_count++] = *order_key;
+    return MYLITE_OK;
+}
+
+int mylite_select_plan_add_group_key(struct mylite_select_plan *plan,
+                                     const struct mylite_select_group_key *group_key)
+{
+    struct mylite_select_group_key *group_keys =
+        realloc(plan->group_keys, (plan->group_key_count + 1U) * sizeof(*plan->group_keys));
+
+    if (group_keys == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    plan->group_keys = group_keys;
+    plan->group_keys[plan->group_key_count++] = *group_key;
+    return MYLITE_OK;
+}
+
+int mylite_select_plan_add_aggregate_binding(struct mylite_select_plan *plan,
+                                             const struct mylite_select_aggregate_binding *binding)
+{
+    struct mylite_select_aggregate_binding *bindings =
+        realloc(plan->aggregate_bindings,
+                (plan->aggregate_binding_count + 1U) * sizeof(*plan->aggregate_bindings));
+
+    if (bindings == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    plan->aggregate_bindings = bindings;
+    plan->aggregate_bindings[plan->aggregate_binding_count++] = *binding;
+    return MYLITE_OK;
+}
+
+void mylite_select_plan_clear_aggregate_bindings(struct mylite_select_plan *plan)
+{
+    if (plan == NULL) {
+        return;
+    }
+
+    for (size_t index = 0U; index < plan->aggregate_binding_count; ++index) {
+        mylite_select_aggregate_binding_deinit(&plan->aggregate_bindings[index]);
+    }
+    free(plan->aggregate_bindings);
+    plan->aggregate_bindings = NULL;
+    plan->aggregate_binding_count = 0U;
+    plan->has_aggregate = false;
+}
+
+void mylite_select_plan_mark_output_order_reference(struct mylite_select_plan *plan,
+                                                    size_t output_index)
+{
+    if (plan != NULL && output_index < plan->output_count) {
+        plan->outputs[output_index].referenced_by_order = true;
+    }
+}
+
+const struct mylite_select_column *
+mylite_select_plan_column_const(const struct mylite_select_plan *plan, size_t column_index,
+                                const struct mylite_select_table **out_table)
+{
+    size_t table_count = mylite_select_plan_table_count(plan);
+
+    if (out_table != NULL) {
+        *out_table = NULL;
+    }
+    for (size_t table_index = 0U; table_index < table_count; ++table_index) {
+        const struct mylite_select_table *table = mylite_select_plan_table_const(plan, table_index);
+
+        if (table != NULL && column_index >= table->first_column_index &&
+            column_index < table->first_column_index + table->column_count) {
+            if (out_table != NULL) {
+                *out_table = table;
+            }
+            return &table->columns[column_index - table->first_column_index];
+        }
+    }
+    return NULL;
+}
+
+size_t mylite_select_plan_table_count(const struct mylite_select_plan *plan)
+{
+    if (plan == NULL) {
+        return 0U;
+    }
+    if (plan->table_count != 0U) {
+        return plan->table_count;
+    }
+    return plan->table.table_name == NULL ? 0U : 1U;
+}
+
+struct mylite_select_table *mylite_select_plan_table(struct mylite_select_plan *plan,
+                                                     size_t table_index)
+{
+    if (plan == NULL) {
+        return NULL;
+    }
+    if (plan->table_count != 0U) {
+        return table_index < plan->table_count ? &plan->tables[table_index] : NULL;
+    }
+    return table_index == 0U && plan->table.table_name != NULL ? &plan->table : NULL;
+}
+
+const struct mylite_select_table *
+mylite_select_plan_table_const(const struct mylite_select_plan *plan, size_t table_index)
+{
+    if (plan == NULL) {
+        return NULL;
+    }
+    if (plan->table_count != 0U) {
+        return table_index < plan->table_count ? &plan->tables[table_index] : NULL;
+    }
+    return table_index == 0U && plan->table.table_name != NULL ? &plan->table : NULL;
+}
+
+size_t mylite_select_plan_column_count(const struct mylite_select_plan *plan)
+{
+    if (plan == NULL) {
+        return 0U;
+    }
+    if (plan->column_count != 0U || plan->table_count != 0U) {
+        return plan->column_count;
+    }
+    return plan->table.column_count;
+}
+
 int mylite_select_bind_limit_clause(const struct mylite_sql_ast_node *limit_clause,
                                     struct mylite_select_plan *plan)
 {

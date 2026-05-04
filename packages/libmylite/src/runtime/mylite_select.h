@@ -8,6 +8,27 @@ void mylite_select_table_deinit(struct mylite_select_table *table);
 void mylite_select_column_deinit(struct mylite_select_column *column);
 void mylite_select_output_column_deinit(struct mylite_select_output_column *column);
 void mylite_select_aggregate_binding_deinit(struct mylite_select_aggregate_binding *binding);
+void mylite_select_column_sequence_deinit(struct mylite_select_column_sequence *sequence);
+int mylite_select_plan_add_output_column(struct mylite_select_plan *plan,
+                                         const struct mylite_select_output_column *output);
+int mylite_select_plan_add_order_key(struct mylite_select_plan *plan,
+                                     const struct mylite_select_order_key *order_key);
+int mylite_select_plan_add_group_key(struct mylite_select_plan *plan,
+                                     const struct mylite_select_group_key *group_key);
+int mylite_select_plan_add_aggregate_binding(struct mylite_select_plan *plan,
+                                             const struct mylite_select_aggregate_binding *binding);
+void mylite_select_plan_clear_aggregate_bindings(struct mylite_select_plan *plan);
+void mylite_select_plan_mark_output_order_reference(struct mylite_select_plan *plan,
+                                                    size_t output_index);
+size_t mylite_select_plan_table_count(const struct mylite_select_plan *plan);
+struct mylite_select_table *mylite_select_plan_table(struct mylite_select_plan *plan,
+                                                     size_t table_index);
+const struct mylite_select_table *
+mylite_select_plan_table_const(const struct mylite_select_plan *plan, size_t table_index);
+size_t mylite_select_plan_column_count(const struct mylite_select_plan *plan);
+const struct mylite_select_column *
+mylite_select_plan_column_const(const struct mylite_select_plan *plan, size_t column_index,
+                                const struct mylite_select_table **out_table);
 int mylite_select_bind_limit_clause(const struct mylite_sql_ast_node *limit_clause,
                                     struct mylite_select_plan *plan);
 bool mylite_select_limit_row_is_kept(const struct mylite_select_limit *limit,

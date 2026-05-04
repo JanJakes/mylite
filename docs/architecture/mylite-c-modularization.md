@@ -457,6 +457,8 @@ only the core object model and transitional shared helpers listed here:
 - [ ] Move remaining DML-specific diagnostics into `mylite_dml`.
 - [ ] Split SELECT, UNION, aggregate, and subquery planning/execution.
 - [x] Start `src/runtime/mylite_select.{h,c}` with SELECT plan cleanup.
+- [x] Move SELECT plan accessors and plan container mutation helpers into
+  `mylite_select`.
 - [x] Move shared table-target and column-reference resolution helpers into
   `mylite_select`.
 - [ ] Move SELECT AST copy/bind helpers into `mylite_select`.

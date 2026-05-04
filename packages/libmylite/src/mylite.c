@@ -974,7 +974,6 @@ static bool select_column_index_is_step_using_column(const struct mylite_select_
                                                      size_t column_index);
 static bool select_join_step_is_in_range(const struct mylite_select_join_step *step,
                                          struct mylite_select_table_range range);
-static void select_column_sequence_deinit(struct mylite_select_column_sequence *sequence);
 static int append_select_table_wildcard_outputs(mylite_db *database,
                                                 struct mylite_select_plan *plan,
                                                 size_t table_index);
@@ -988,14 +987,6 @@ static int append_select_expression_output(mylite_db *database,
                                            const struct mylite_sql_ast_node *expression,
                                            const struct mylite_sql_ast_node *alias,
                                            struct mylite_select_plan *plan);
-static int add_select_output_column(struct mylite_select_plan *plan,
-                                    const struct mylite_select_output_column *output);
-static int add_select_order_key(struct mylite_select_plan *plan,
-                                const struct mylite_select_order_key *order_key);
-static int add_select_group_key(struct mylite_select_plan *plan,
-                                const struct mylite_select_group_key *group_key);
-static int add_select_aggregate_binding(struct mylite_select_plan *plan,
-                                        const struct mylite_select_aggregate_binding *binding);
 static int collect_select_aggregate_bindings(mylite_db *database,
                                              const struct mylite_sql_ast_node *expression,
                                              struct mylite_select_plan *plan);
@@ -1005,18 +996,6 @@ static int bind_select_count_distinct_arguments(mylite_db *database,
 static int infer_count_distinct_argument_descriptors(
     mylite_db *database, const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *arguments, struct mylite_select_aggregate_binding *binding);
-static void clear_select_aggregate_bindings(struct mylite_select_plan *plan);
-static void mark_select_output_order_reference(struct mylite_select_plan *plan,
-                                               size_t output_index);
-static size_t select_plan_table_count(const struct mylite_select_plan *plan);
-static struct mylite_select_table *select_plan_table(struct mylite_select_plan *plan,
-                                                     size_t table_index);
-static const struct mylite_select_table *
-select_plan_table_const(const struct mylite_select_plan *plan, size_t table_index);
-static size_t select_plan_column_count(const struct mylite_select_plan *plan);
-static const struct mylite_select_column *
-select_plan_column_const(const struct mylite_select_plan *plan, size_t column_index,
-                         const struct mylite_select_table **out_table);
 static int resolve_select_plan_wildcard(mylite_db *database, const struct mylite_select_plan *plan,
                                         const struct mylite_sql_ast_node *wildcard,
                                         size_t *out_table_index, bool *out_all);
@@ -2660,7 +2639,7 @@ static int prepare_table_select_statement(mylite_db *database,
     if (status == MYLITE_OK) {
         status = build_select_outputs(database, select_list, true, &plan);
     }
-    if (status == MYLITE_OK && select_plan_table_count(&plan) > 1U &&
+    if (status == MYLITE_OK && mylite_select_plan_table_count(&plan) > 1U &&
         (group_by_clause != NULL || having_clause != NULL)) {
         status = set_select_unsupported_join_grouping_error(database);
     }
@@ -2725,7 +2704,7 @@ static bool select_plan_requires_custom_runtime(const struct mylite_select_plan 
     if (select_duplicate_mode_is_distinct(plan->duplicate_mode)) {
         return true;
     }
-    if (select_plan_table_count(plan) > 1U) {
+    if (mylite_select_plan_table_count(plan) > 1U) {
         return true;
     }
     if (plan->has_aggregate) {
@@ -3080,7 +3059,7 @@ static int add_union_output_column(mylite_db *database, struct mylite_select_pla
     }
 
     {
-        int status = add_select_output_column(plan, &output);
+        int status = mylite_select_plan_add_output_column(plan, &output);
 
         if (status != MYLITE_OK) {
             mylite_select_output_column_deinit(&output);
@@ -3298,8 +3277,8 @@ static int bind_union_global_order_item(mylite_db *database,
         order_key.kind = MYLITE_SELECT_ORDER_KEY_OUTPUT;
         order_key.output_index = (size_t)(ordinal - 1U);
         order_key.expression = NULL;
-        mark_select_output_order_reference(plan, order_key.output_index);
-        return add_select_order_key(plan, &order_key);
+        mylite_select_plan_mark_output_order_reference(plan, order_key.output_index);
+        return mylite_select_plan_add_order_key(plan, &order_key);
     }
 
     if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
@@ -3315,8 +3294,8 @@ static int bind_union_global_order_item(mylite_db *database,
             order_key.kind = kind;
             order_key.output_index = index;
             order_key.expression = NULL;
-            mark_select_output_order_reference(plan, order_key.output_index);
-            return add_select_order_key(plan, &order_key);
+            mylite_select_plan_mark_output_order_reference(plan, order_key.output_index);
+            return mylite_select_plan_add_order_key(plan, &order_key);
         }
     }
 
@@ -3327,7 +3306,7 @@ static int bind_union_global_order_item(mylite_db *database,
             return status;
         }
     }
-    return add_select_order_key(plan, &order_key);
+    return mylite_select_plan_add_order_key(plan, &order_key);
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
@@ -3350,7 +3329,7 @@ static int bind_union_global_order_expression(mylite_db *database,
         int status = resolve_union_order_reference(database, plan, expression, &kind, &index);
 
         if (status == MYLITE_OK && kind == MYLITE_SELECT_ORDER_KEY_OUTPUT) {
-            mark_select_output_order_reference(plan, index);
+            mylite_select_plan_mark_output_order_reference(plan, index);
         }
         return status;
     }
@@ -3527,7 +3506,7 @@ static int copy_select_result_column_metadata(mylite_db *database,
 
     const struct mylite_select_table *table = NULL;
     const struct mylite_select_column *column =
-        select_plan_column_const(plan, output->column_index, &table);
+        mylite_select_plan_column_const(plan, output->column_index, &table);
     const char *visible_table_name;
 
     if (column == NULL || table == NULL) {
@@ -3767,17 +3746,18 @@ static int infer_identifier_descriptor(mylite_db *database, const struct mylite_
                                        const struct mylite_sql_ast_node *expression,
                                        struct mylite_field_descriptor *out_descriptor)
 {
-    size_t column_index = plan == NULL ? 0U : select_plan_column_count(plan);
+    size_t column_index = plan == NULL ? 0U : mylite_select_plan_column_count(plan);
     int status = plan == NULL ? MYLITE_UNSUPPORTED
                               : resolve_select_plan_column_reference(database, plan, expression,
                                                                      "field list", &column_index);
 
-    if (status != MYLITE_OK || column_index >= select_plan_column_count(plan)) {
+    if (status != MYLITE_OK || column_index >= mylite_select_plan_column_count(plan)) {
         *out_descriptor = mylite_expression_descriptor_defaults();
         return status == MYLITE_OK ? MYLITE_UNSUPPORTED : status;
     }
 
-    const struct mylite_select_column *column = select_plan_column_const(plan, column_index, NULL);
+    const struct mylite_select_column *column =
+        mylite_select_plan_column_const(plan, column_index, NULL);
 
     if (column == NULL) {
         *out_descriptor = mylite_expression_descriptor_defaults();
@@ -7678,7 +7658,7 @@ static int copy_select_base_table_reference_node(mylite_db *database,
     int status = MYLITE_OK;
 
     *out_range = (struct mylite_select_table_range){
-        .first_table = select_plan_table_count(plan),
+        .first_table = mylite_select_plan_table_count(plan),
     };
     if (reference == NULL || reference->kind != MYLITE_SQL_AST_FROM_TABLE) {
         return MYLITE_UNSUPPORTED;
@@ -7712,7 +7692,7 @@ static int copy_select_table_reference_list(mylite_db *database,
             return status;
         }
     }
-    return select_plan_table_count(plan) == 0U ? MYLITE_UNSUPPORTED : MYLITE_OK;
+    return mylite_select_plan_table_count(plan) == 0U ? MYLITE_UNSUPPORTED : MYLITE_OK;
 }
 
 static int add_select_from_range(mylite_db *database, struct mylite_select_plan *plan,
@@ -7877,7 +7857,7 @@ static void mark_select_range_nullable(struct mylite_select_plan *plan,
     size_t last_table = range.first_table + range.table_count;
 
     for (size_t table_index = range.first_table; table_index < last_table; ++table_index) {
-        struct mylite_select_table *table = select_plan_table(plan, table_index);
+        struct mylite_select_table *table = mylite_select_plan_table(plan, table_index);
 
         if (table == NULL) {
             continue;
@@ -8007,10 +7987,10 @@ static int add_select_using_request_name(mylite_db *database,
 
 static int resolve_select_plan_tables(mylite_db *database, struct mylite_select_plan *plan)
 {
-    size_t table_count = select_plan_table_count(plan);
+    size_t table_count = mylite_select_plan_table_count(plan);
 
     for (size_t index = 0U; index < table_count; ++index) {
-        struct mylite_select_table *table = select_plan_table(plan, index);
+        struct mylite_select_table *table = mylite_select_plan_table(plan, index);
         int status = mylite_select_resolve_table_target(database, table);
 
         if (status != MYLITE_OK) {
@@ -8022,15 +8002,16 @@ static int resolve_select_plan_tables(mylite_db *database, struct mylite_select_
 
 static int validate_select_table_aliases(mylite_db *database, const struct mylite_select_plan *plan)
 {
-    size_t table_count = select_plan_table_count(plan);
+    size_t table_count = mylite_select_plan_table_count(plan);
 
     for (size_t left = 0U; left < table_count; ++left) {
-        const struct mylite_select_table *left_table = select_plan_table_const(plan, left);
+        const struct mylite_select_table *left_table = mylite_select_plan_table_const(plan, left);
         const char *left_name =
             left_table->alias == NULL ? left_table->table_name : left_table->alias;
 
         for (size_t right = left + 1U; right < table_count; ++right) {
-            const struct mylite_select_table *right_table = select_plan_table_const(plan, right);
+            const struct mylite_select_table *right_table =
+                mylite_select_plan_table_const(plan, right);
             const char *right_name =
                 right_table->alias == NULL ? right_table->table_name : right_table->alias;
 
@@ -8051,11 +8032,11 @@ static int validate_select_table_aliases(mylite_db *database, const struct mylit
 
 static int load_select_plan_columns(mylite_db *database, struct mylite_select_plan *plan)
 {
-    size_t table_count = select_plan_table_count(plan);
+    size_t table_count = mylite_select_plan_table_count(plan);
 
     plan->column_count = 0U;
     for (size_t index = 0U; index < table_count; ++index) {
-        struct mylite_select_table *table = select_plan_table(plan, index);
+        struct mylite_select_table *table = mylite_select_plan_table(plan, index);
         int status = MYLITE_OK;
 
         table->first_column_index = plan->column_count;
@@ -8107,8 +8088,8 @@ static int resolve_select_using_request_name(mylite_db *database, struct mylite_
         .first_table = request->right_first_table,
         .table_count = request->right_table_count,
     };
-    size_t left_column = select_plan_column_count(plan);
-    size_t right_column = select_plan_column_count(plan);
+    size_t left_column = mylite_select_plan_column_count(plan);
+    size_t right_column = mylite_select_plan_column_count(plan);
     size_t coalesced_column = 0U;
     int status =
         resolve_select_using_request_column(database, plan, name, left_range, &left_column);
@@ -8137,8 +8118,8 @@ static int resolve_select_using_request_column(mylite_db *database,
 
     for (size_t index = 0U; index < range.table_count; ++index) {
         const struct mylite_select_table *table =
-            select_plan_table_const(plan, range.first_table + index);
-        size_t column_index = select_plan_column_count(plan);
+            mylite_select_plan_table_const(plan, range.first_table + index);
+        size_t column_index = mylite_select_plan_column_count(plan);
 
         if (resolve_select_plan_column_in_table(plan, table, name, &column_index) != MYLITE_OK ||
             select_column_index_is_using_column_in_range(plan, column_index, range)) {
@@ -8245,7 +8226,7 @@ static int prepare_table_select_custom_statement(mylite_db *database,
     int rc = SQLITE_OK;
     int status = MYLITE_OK;
 
-    if (select_plan_table_count(plan) <= 1U) {
+    if (mylite_select_plan_table_count(plan) <= 1U) {
         scan_sql = build_select_scan_sql(database, plan);
         if (scan_sql == NULL) {
             (void)mylite_diagnostics_set_error_message(database, "out of memory");
@@ -8353,7 +8334,7 @@ static int bind_select_predicate_expression(mylite_db *database,
                                             const struct mylite_select_plan *plan)
 {
     return bind_select_predicate_expression_in_clause(database, expression, plan, "where clause",
-                                                      0U, select_plan_table_count(plan));
+                                                      0U, mylite_select_plan_table_count(plan));
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
@@ -8377,11 +8358,11 @@ static int bind_select_predicate_expression_in_clause(mylite_db *database,
         return MYLITE_OK;
     case MYLITE_SQL_AST_IDENTIFIER:
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER: {
-        size_t column_index = select_plan_column_count(plan);
+        size_t column_index = mylite_select_plan_column_count(plan);
         int status = resolve_select_plan_column_reference_in_scope(
             database, plan, expression, clause_context, first_table, table_count, &column_index);
 
-        return status == MYLITE_OK && column_index >= select_plan_column_count(plan)
+        return status == MYLITE_OK && column_index >= mylite_select_plan_column_count(plan)
                    ? MYLITE_UNSUPPORTED
                    : status;
     }
@@ -8962,8 +8943,9 @@ static bool in_subquery_has_unqualified_outer_column_reference( // NOLINT(misc-n
 static bool select_plan_has_column_span(const struct mylite_select_plan *plan,
                                         struct mylite_sql_source_span name)
 {
-    for (size_t index = 0U; index < select_plan_column_count(plan); ++index) {
-        const struct mylite_select_column *column = select_plan_column_const(plan, index, NULL);
+    for (size_t index = 0U; index < mylite_select_plan_column_count(plan); ++index) {
+        const struct mylite_select_column *column =
+            mylite_select_plan_column_const(plan, index, NULL);
 
         if (column != NULL && column->name != NULL && mylite_span_equal_ci(name, column->name)) {
             return true;
@@ -8975,8 +8957,8 @@ static bool select_plan_has_column_span(const struct mylite_select_plan *plan,
 static bool select_plan_has_visible_table_span(const struct mylite_select_plan *plan,
                                                struct mylite_sql_source_span name)
 {
-    for (size_t index = 0U; index < select_plan_table_count(plan); ++index) {
-        const struct mylite_select_table *table = select_plan_table_const(plan, index);
+    for (size_t index = 0U; index < mylite_select_plan_table_count(plan); ++index) {
+        const struct mylite_select_table *table = mylite_select_plan_table_const(plan, index);
         const char *visible_name = table == NULL || table->alias == NULL ? NULL : table->alias;
 
         if (table != NULL && visible_name == NULL) {
@@ -9413,7 +9395,7 @@ static int bind_select_aggregate_call(mylite_db *database,
         return status;
     }
     plan->has_aggregate = true;
-    status = add_select_aggregate_binding(plan, &binding);
+    status = mylite_select_plan_add_aggregate_binding(plan, &binding);
     if (status != MYLITE_OK) {
         mylite_select_aggregate_binding_deinit(&binding);
     }
@@ -9538,7 +9520,7 @@ static int bind_select_group_item(mylite_db *database, const struct mylite_sql_a
         group_key.kind = MYLITE_SELECT_GROUP_KEY_OUTPUT;
         group_key.output_index = (size_t)(ordinal - 1U);
         group_key.expression = NULL;
-        return add_select_group_key(plan, &group_key);
+        return mylite_select_plan_add_group_key(plan, &group_key);
     }
 
     if (expression->kind == MYLITE_SQL_AST_IDENTIFIER) {
@@ -9556,7 +9538,7 @@ static int bind_select_group_item(mylite_db *database, const struct mylite_sql_a
             group_key.kind = kind;
             group_key.output_index = index;
             group_key.expression = NULL;
-            return add_select_group_key(plan, &group_key);
+            return mylite_select_plan_add_group_key(plan, &group_key);
         }
     }
 
@@ -9567,7 +9549,7 @@ static int bind_select_group_item(mylite_db *database, const struct mylite_sql_a
             return status;
         }
     }
-    return add_select_group_key(plan, &group_key);
+    return mylite_select_plan_add_group_key(plan, &group_key);
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
@@ -9684,8 +9666,8 @@ static int bind_select_order_item(mylite_db *database, const struct mylite_sql_a
         order_key.kind = MYLITE_SELECT_ORDER_KEY_OUTPUT;
         order_key.output_index = (size_t)(ordinal - 1U);
         order_key.expression = NULL;
-        mark_select_output_order_reference(plan, order_key.output_index);
-        return add_select_order_key(plan, &order_key);
+        mylite_select_plan_mark_output_order_reference(plan, order_key.output_index);
+        return mylite_select_plan_add_order_key(plan, &order_key);
     }
 
     if (expression->kind == MYLITE_SQL_AST_IDENTIFIER) {
@@ -9700,8 +9682,8 @@ static int bind_select_order_item(mylite_db *database, const struct mylite_sql_a
             order_key.kind = kind;
             order_key.output_index = index;
             order_key.expression = NULL;
-            mark_select_output_order_reference(plan, order_key.output_index);
-            return add_select_order_key(plan, &order_key);
+            mylite_select_plan_mark_output_order_reference(plan, order_key.output_index);
+            return mylite_select_plan_add_order_key(plan, &order_key);
         }
     }
 
@@ -9712,7 +9694,7 @@ static int bind_select_order_item(mylite_db *database, const struct mylite_sql_a
             return status;
         }
     }
-    return add_select_order_key(plan, &order_key);
+    return mylite_select_plan_add_order_key(plan, &order_key);
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
@@ -9735,7 +9717,7 @@ static int bind_select_order_expression(mylite_db *database,
         int status = resolve_select_order_reference(database, plan, expression, &kind, &index);
 
         if (status == MYLITE_OK && kind == MYLITE_SELECT_ORDER_KEY_OUTPUT) {
-            mark_select_output_order_reference(plan, index);
+            mylite_select_plan_mark_output_order_reference(plan, index);
         }
         return status;
     }
@@ -10228,7 +10210,7 @@ static int validate_select_distinct_order_identifier_column_first(
 {
     char *parts[3] = {0};
     size_t part_count = 0U;
-    size_t column_index = select_plan_column_count(plan);
+    size_t column_index = mylite_select_plan_column_count(plan);
     int status = mylite_copy_identifier_parts(identifier, parts, &part_count);
 
     *out_resolved = false;
@@ -10240,7 +10222,7 @@ static int validate_select_distinct_order_identifier_column_first(
     }
     if (part_count == 1U) {
         size_t column_matches = count_select_plan_column_parts_matches(
-            plan, parts, part_count, 0U, select_plan_table_count(plan), &column_index);
+            plan, parts, part_count, 0U, mylite_select_plan_table_count(plan), &column_index);
 
         if (column_matches > 1U) {
             status = set_select_ambiguous_order_column_error(database, parts[0]);
@@ -10852,13 +10834,13 @@ static int append_select_wildcard_outputs(mylite_db *database,
                                           struct mylite_select_plan *plan)
 {
     bool all_tables = false;
-    size_t table_index = select_plan_table_count(plan);
+    size_t table_index = mylite_select_plan_table_count(plan);
     int status = resolve_select_plan_wildcard(database, plan, wildcard, &table_index, &all_tables);
 
     if (status != MYLITE_OK) {
         return status;
     }
-    if (!all_tables && table_index == select_plan_table_count(plan)) {
+    if (!all_tables && table_index == mylite_select_plan_table_count(plan)) {
         char *qualifier = copy_select_wildcard_qualifier_name(wildcard);
 
         if (qualifier == NULL) {
@@ -10884,7 +10866,7 @@ static int append_select_all_wildcard_outputs(mylite_db *database, struct mylite
             database, plan,
             (struct mylite_select_table_range){
                 .first_table = 0U,
-                .table_count = select_plan_table_count(plan),
+                .table_count = mylite_select_plan_table_count(plan),
             });
     }
 
@@ -10910,7 +10892,7 @@ static int append_select_range_wildcard_outputs(mylite_db *database,
         status = append_select_plan_column_output(database, plan, sequence.column_indexes[index]);
     }
 
-    select_column_sequence_deinit(&sequence);
+    mylite_select_column_sequence_deinit(&sequence);
     return status;
 }
 
@@ -10940,7 +10922,7 @@ static int append_select_table_visible_columns_to_sequence(
     mylite_db *database, const struct mylite_select_plan *plan, size_t table_index,
     struct mylite_select_column_sequence *sequence)
 {
-    const struct mylite_select_table *table = select_plan_table_const(plan, table_index);
+    const struct mylite_select_table *table = mylite_select_plan_table_const(plan, table_index);
 
     if (table == NULL) {
         return MYLITE_UNSUPPORTED;
@@ -10995,11 +10977,11 @@ static int apply_select_join_step_to_column_sequence(mylite_db *database,
             database, plan, step->right_range.first_table, step, &next);
     }
     if (status != MYLITE_OK) {
-        select_column_sequence_deinit(&next);
+        mylite_select_column_sequence_deinit(&next);
         return status;
     }
 
-    select_column_sequence_deinit(sequence);
+    mylite_select_column_sequence_deinit(sequence);
     *sequence = next;
     return MYLITE_OK;
 }
@@ -11022,7 +11004,7 @@ static int append_select_right_using_columns_to_sequence(
     const struct mylite_select_join_step *step, struct mylite_select_column_sequence *out_sequence)
 {
     const struct mylite_select_table *table =
-        select_plan_table_const(plan, step->right_range.first_table);
+        mylite_select_plan_table_const(plan, step->right_range.first_table);
 
     if (table == NULL) {
         return MYLITE_UNSUPPORTED;
@@ -11099,7 +11081,7 @@ static int append_select_table_non_using_columns_to_sequence(
     mylite_db *database, const struct mylite_select_plan *plan, size_t table_index,
     const struct mylite_select_join_step *step, struct mylite_select_column_sequence *out_sequence)
 {
-    const struct mylite_select_table *table = select_plan_table_const(plan, table_index);
+    const struct mylite_select_table *table = mylite_select_plan_table_const(plan, table_index);
 
     if (table == NULL) {
         return MYLITE_UNSUPPORTED;
@@ -11163,19 +11145,10 @@ static bool select_join_step_is_in_range(const struct mylite_select_join_step *s
     return (step->joined_range.first_table >= range.first_table && step_end <= range_end) != 0;
 }
 
-static void select_column_sequence_deinit(struct mylite_select_column_sequence *sequence)
-{
-    if (sequence == NULL) {
-        return;
-    }
-    free(sequence->column_indexes);
-    *sequence = (struct mylite_select_column_sequence){0};
-}
-
 static int append_select_table_wildcard_outputs(mylite_db *database,
                                                 struct mylite_select_plan *plan, size_t table_index)
 {
-    const struct mylite_select_table *table = select_plan_table_const(plan, table_index);
+    const struct mylite_select_table *table = mylite_select_plan_table_const(plan, table_index);
 
     if (table == NULL) {
         return MYLITE_UNSUPPORTED;
@@ -11198,7 +11171,8 @@ static int append_select_table_wildcard_outputs(mylite_db *database,
 static int append_select_plan_column_output(mylite_db *database, struct mylite_select_plan *plan,
                                             size_t column_index)
 {
-    const struct mylite_select_column *column = select_plan_column_const(plan, column_index, NULL);
+    const struct mylite_select_column *column =
+        mylite_select_plan_column_const(plan, column_index, NULL);
     char *label = NULL;
     int status = MYLITE_OK;
 
@@ -11212,11 +11186,11 @@ static int append_select_plan_column_output(mylite_db *database, struct mylite_s
         return MYLITE_NOMEM;
     }
 
-    status = add_select_output_column(plan, &(const struct mylite_select_output_column){
-                                                .kind = MYLITE_SELECT_OUTPUT_COLUMN,
-                                                .column_index = column_index,
-                                                .label = label,
-                                            });
+    status = mylite_select_plan_add_output_column(plan, &(const struct mylite_select_output_column){
+                                                            .kind = MYLITE_SELECT_OUTPUT_COLUMN,
+                                                            .column_index = column_index,
+                                                            .label = label,
+                                                        });
     if (status != MYLITE_OK) {
         free(label);
         if (status == MYLITE_NOMEM) {
@@ -11232,7 +11206,7 @@ static int append_select_column_output(mylite_db *database,
                                        const struct mylite_sql_ast_node *alias,
                                        struct mylite_select_plan *plan)
 {
-    size_t column_index = select_plan_column_count(plan);
+    size_t column_index = mylite_select_plan_column_count(plan);
     char *label = NULL;
     int status = resolve_select_plan_column_reference(database, plan, expression, "field list",
                                                       &column_index);
@@ -11240,7 +11214,7 @@ static int append_select_column_output(mylite_db *database,
     if (status != MYLITE_OK) {
         return status;
     }
-    if (column_index == select_plan_column_count(plan)) {
+    if (column_index == mylite_select_plan_column_count(plan)) {
         return MYLITE_UNSUPPORTED;
     }
 
@@ -11251,11 +11225,11 @@ static int append_select_column_output(mylite_db *database,
         return MYLITE_NOMEM;
     }
 
-    status = add_select_output_column(plan, &(const struct mylite_select_output_column){
-                                                .kind = MYLITE_SELECT_OUTPUT_COLUMN,
-                                                .column_index = column_index,
-                                                .label = label,
-                                            });
+    status = mylite_select_plan_add_output_column(plan, &(const struct mylite_select_output_column){
+                                                            .kind = MYLITE_SELECT_OUTPUT_COLUMN,
+                                                            .column_index = column_index,
+                                                            .label = label,
+                                                        });
     if (status != MYLITE_OK) {
         free(label);
         if (status == MYLITE_NOMEM) {
@@ -11290,11 +11264,11 @@ static int append_select_expression_output(mylite_db *database,
         return MYLITE_NOMEM;
     }
 
-    status = add_select_output_column(plan, &(const struct mylite_select_output_column){
-                                                .kind = MYLITE_SELECT_OUTPUT_EXPRESSION,
-                                                .expression = expression,
-                                                .label = label,
-                                            });
+    status = mylite_select_plan_add_output_column(plan, &(const struct mylite_select_output_column){
+                                                            .kind = MYLITE_SELECT_OUTPUT_EXPRESSION,
+                                                            .expression = expression,
+                                                            .label = label,
+                                                        });
     if (status != MYLITE_OK) {
         free(label);
         if (status == MYLITE_NOMEM) {
@@ -11302,67 +11276,6 @@ static int append_select_expression_output(mylite_db *database,
         }
         return status;
     }
-    return MYLITE_OK;
-}
-
-static int add_select_output_column(struct mylite_select_plan *plan,
-                                    const struct mylite_select_output_column *output)
-{
-    struct mylite_select_output_column *outputs =
-        realloc(plan->outputs, (plan->output_count + 1U) * sizeof(*plan->outputs));
-
-    if (outputs == NULL) {
-        return MYLITE_NOMEM;
-    }
-
-    plan->outputs = outputs;
-    plan->outputs[plan->output_count++] = *output;
-    return MYLITE_OK;
-}
-
-static int add_select_order_key(struct mylite_select_plan *plan,
-                                const struct mylite_select_order_key *order_key)
-{
-    struct mylite_select_order_key *order_keys =
-        realloc(plan->order_keys, (plan->order_key_count + 1U) * sizeof(*plan->order_keys));
-
-    if (order_keys == NULL) {
-        return MYLITE_NOMEM;
-    }
-
-    plan->order_keys = order_keys;
-    plan->order_keys[plan->order_key_count++] = *order_key;
-    return MYLITE_OK;
-}
-
-static int add_select_group_key(struct mylite_select_plan *plan,
-                                const struct mylite_select_group_key *group_key)
-{
-    struct mylite_select_group_key *group_keys =
-        realloc(plan->group_keys, (plan->group_key_count + 1U) * sizeof(*plan->group_keys));
-
-    if (group_keys == NULL) {
-        return MYLITE_NOMEM;
-    }
-
-    plan->group_keys = group_keys;
-    plan->group_keys[plan->group_key_count++] = *group_key;
-    return MYLITE_OK;
-}
-
-static int add_select_aggregate_binding(struct mylite_select_plan *plan,
-                                        const struct mylite_select_aggregate_binding *binding)
-{
-    struct mylite_select_aggregate_binding *bindings =
-        realloc(plan->aggregate_bindings,
-                (plan->aggregate_binding_count + 1U) * sizeof(*plan->aggregate_bindings));
-
-    if (bindings == NULL) {
-        return MYLITE_NOMEM;
-    }
-
-    plan->aggregate_bindings = bindings;
-    plan->aggregate_bindings[plan->aggregate_binding_count++] = *binding;
     return MYLITE_OK;
 }
 
@@ -11390,7 +11303,7 @@ static int collect_select_aggregate_bindings(mylite_db *database,
                                                                &binding);
         }
         if (status == MYLITE_OK) {
-            status = add_select_aggregate_binding(plan, &binding);
+            status = mylite_select_plan_add_aggregate_binding(plan, &binding);
         }
         if (status != MYLITE_OK) {
             mylite_select_aggregate_binding_deinit(&binding);
@@ -11415,97 +11328,6 @@ static int collect_select_aggregate_bindings(mylite_db *database,
     return MYLITE_OK;
 }
 
-static void clear_select_aggregate_bindings(struct mylite_select_plan *plan)
-{
-    if (plan == NULL) {
-        return;
-    }
-
-    for (size_t index = 0U; index < plan->aggregate_binding_count; ++index) {
-        mylite_select_aggregate_binding_deinit(&plan->aggregate_bindings[index]);
-    }
-    free(plan->aggregate_bindings);
-    plan->aggregate_bindings = NULL;
-    plan->aggregate_binding_count = 0U;
-    plan->has_aggregate = false;
-}
-
-static void mark_select_output_order_reference(struct mylite_select_plan *plan, size_t output_index)
-{
-    if (plan != NULL && output_index < plan->output_count) {
-        plan->outputs[output_index].referenced_by_order = true;
-    }
-}
-
-static size_t select_plan_table_count(const struct mylite_select_plan *plan)
-{
-    if (plan == NULL) {
-        return 0U;
-    }
-    if (plan->table_count != 0U) {
-        return plan->table_count;
-    }
-    return plan->table.table_name == NULL ? 0U : 1U;
-}
-
-static struct mylite_select_table *select_plan_table(struct mylite_select_plan *plan,
-                                                     size_t table_index)
-{
-    if (plan == NULL) {
-        return NULL;
-    }
-    if (plan->table_count != 0U) {
-        return table_index < plan->table_count ? &plan->tables[table_index] : NULL;
-    }
-    return table_index == 0U && plan->table.table_name != NULL ? &plan->table : NULL;
-}
-
-static const struct mylite_select_table *
-select_plan_table_const(const struct mylite_select_plan *plan, size_t table_index)
-{
-    if (plan == NULL) {
-        return NULL;
-    }
-    if (plan->table_count != 0U) {
-        return table_index < plan->table_count ? &plan->tables[table_index] : NULL;
-    }
-    return table_index == 0U && plan->table.table_name != NULL ? &plan->table : NULL;
-}
-
-static size_t select_plan_column_count(const struct mylite_select_plan *plan)
-{
-    if (plan == NULL) {
-        return 0U;
-    }
-    if (plan->column_count != 0U || plan->table_count != 0U) {
-        return plan->column_count;
-    }
-    return plan->table.column_count;
-}
-
-static const struct mylite_select_column *
-select_plan_column_const(const struct mylite_select_plan *plan, size_t column_index,
-                         const struct mylite_select_table **out_table)
-{
-    size_t table_count = select_plan_table_count(plan);
-
-    if (out_table != NULL) {
-        *out_table = NULL;
-    }
-    for (size_t table_index = 0U; table_index < table_count; ++table_index) {
-        const struct mylite_select_table *table = select_plan_table_const(plan, table_index);
-
-        if (table != NULL && column_index >= table->first_column_index &&
-            column_index < table->first_column_index + table->column_count) {
-            if (out_table != NULL) {
-                *out_table = table;
-            }
-            return &table->columns[column_index - table->first_column_index];
-        }
-    }
-    return NULL;
-}
-
 static int resolve_select_plan_wildcard(mylite_db *database, const struct mylite_select_plan *plan,
                                         const struct mylite_sql_ast_node *wildcard,
                                         size_t *out_table_index, bool *out_all)
@@ -11514,7 +11336,7 @@ static int resolve_select_plan_wildcard(mylite_db *database, const struct mylite
     const struct mylite_sql_ast_node *second = mylite_ast_child_at(wildcard, 1U);
     char *first_name = NULL;
     char *second_name = NULL;
-    size_t table_count = select_plan_table_count(plan);
+    size_t table_count = mylite_select_plan_table_count(plan);
 
     *out_table_index = table_count;
     *out_all = false;
@@ -11538,7 +11360,7 @@ static int resolve_select_plan_wildcard(mylite_db *database, const struct mylite
     }
 
     for (size_t index = 0U; index < table_count; ++index) {
-        const struct mylite_select_table *table = select_plan_table_const(plan, index);
+        const struct mylite_select_table *table = mylite_select_plan_table_const(plan, index);
 
         if (second == NULL) {
             const char *visible_table = table->alias == NULL ? table->table_name : table->alias;
@@ -11564,8 +11386,9 @@ static int resolve_select_plan_column_reference(mylite_db *database,
                                                 const struct mylite_sql_ast_node *expression,
                                                 const char *clause_context, size_t *out_index)
 {
-    return resolve_select_plan_column_reference_in_scope(
-        database, plan, expression, clause_context, 0U, select_plan_table_count(plan), out_index);
+    return resolve_select_plan_column_reference_in_scope(database, plan, expression, clause_context,
+                                                         0U, mylite_select_plan_table_count(plan),
+                                                         out_index);
 }
 
 static int resolve_select_plan_column_reference_in_scope(
@@ -11577,7 +11400,7 @@ static int resolve_select_plan_column_reference_in_scope(
     size_t part_count = 0U;
     int status = mylite_copy_identifier_parts(expression, parts, &part_count);
 
-    *out_index = select_plan_column_count(plan);
+    *out_index = mylite_select_plan_column_count(plan);
     if (status == MYLITE_OK) {
         status = resolve_select_plan_column_parts_in_scope(
             database, plan, parts, part_count, clause_context, first_table, table_count, out_index);
@@ -11593,9 +11416,9 @@ static int resolve_select_plan_column_parts(mylite_db *database,
                                             size_t part_count, const char *clause_context,
                                             size_t *out_index)
 {
-    return resolve_select_plan_column_parts_in_scope(database, plan, parts, part_count,
-                                                     clause_context, 0U,
-                                                     select_plan_table_count(plan), out_index);
+    return resolve_select_plan_column_parts_in_scope(
+        database, plan, parts, part_count, clause_context, 0U, mylite_select_plan_table_count(plan),
+        out_index);
 }
 
 static int resolve_select_plan_column_parts_in_scope(mylite_db *database,
@@ -11604,9 +11427,9 @@ static int resolve_select_plan_column_parts_in_scope(mylite_db *database,
                                                      const char *clause_context, size_t first_table,
                                                      size_t table_count, size_t *out_index)
 {
-    size_t plan_table_count = select_plan_table_count(plan);
+    size_t plan_table_count = mylite_select_plan_table_count(plan);
     size_t match_count = 0U;
-    size_t match_index = select_plan_column_count(plan);
+    size_t match_index = mylite_select_plan_column_count(plan);
 
     if (part_count < 1U || part_count > 3U) {
         return MYLITE_UNSUPPORTED;
@@ -11633,7 +11456,7 @@ static size_t count_select_plan_column_parts_matches(const struct mylite_select_
                                                      size_t first_table, size_t table_count,
                                                      size_t *match_index)
 {
-    size_t plan_table_count = select_plan_table_count(plan);
+    size_t plan_table_count = mylite_select_plan_table_count(plan);
     size_t last_table = first_table + table_count;
     struct mylite_select_table_range range = {
         .first_table = first_table,
@@ -11641,7 +11464,7 @@ static size_t count_select_plan_column_parts_matches(const struct mylite_select_
     };
     size_t match_count = 0U;
 
-    *match_index = select_plan_column_count(plan);
+    *match_index = mylite_select_plan_column_count(plan);
     if (part_count < 1U || part_count > 3U || first_table > plan_table_count ||
         table_count > plan_table_count - first_table) {
         return 0U;
@@ -11652,8 +11475,8 @@ static size_t count_select_plan_column_parts_matches(const struct mylite_select_
     }
 
     for (size_t table_index = first_table; table_index < last_table; ++table_index) {
-        const struct mylite_select_table *table = select_plan_table_const(plan, table_index);
-        size_t column_index = select_plan_column_count(plan);
+        const struct mylite_select_table *table = mylite_select_plan_table_const(plan, table_index);
+        size_t column_index = mylite_select_plan_column_count(plan);
 
         if (!select_plan_table_qualifier_matches(table, parts, part_count) ||
             resolve_select_plan_column_in_table(plan, table, parts[part_count - 1U],
@@ -12391,7 +12214,7 @@ static int set_select_distinct_order_column_error(
 {
     const struct mylite_select_table *table = NULL;
     const struct mylite_select_column *column =
-        select_plan_column_const(plan, context.column_index, &table);
+        mylite_select_plan_column_const(plan, context.column_index, &table);
     const char *schema_name = table == NULL || table->schema_name == NULL ? "" : table->schema_name;
     const char *table_name = table == NULL || table->table_name == NULL ? "" : table->table_name;
     const char *column_name = column == NULL || column->name == NULL ? "" : column->name;
@@ -12510,7 +12333,7 @@ static char *build_select_physical_sql(mylite_db *database, const struct mylite_
     for (size_t index = 0U; index < plan->output_count; ++index) {
         const struct mylite_select_output_column *output = &plan->outputs[index];
         const struct mylite_select_column *column =
-            select_plan_column_const(plan, output->column_index, NULL);
+            mylite_select_plan_column_const(plan, output->column_index, NULL);
 
         if (index != 0U) {
             sqlite3_str_append(sql, ",", 1);
@@ -12521,7 +12344,8 @@ static char *build_select_physical_sql(mylite_db *database, const struct mylite_
         }
         sqlite3_str_appendf(sql, "\"%w\" AS \"%w\"", column->name, output->label);
     }
-    sqlite3_str_appendf(sql, " FROM \"%w\"", select_plan_table_const(plan, 0U)->physical_name);
+    sqlite3_str_appendf(sql, " FROM \"%w\"",
+                        mylite_select_plan_table_const(plan, 0U)->physical_name);
     return sqlite3_str_finish(sql);
 }
 
@@ -12535,8 +12359,9 @@ static char *build_select_scan_sql(mylite_db *database, const struct mylite_sele
     }
 
     sqlite3_str_append(sql, "SELECT ", (int)strlen("SELECT "));
-    for (size_t table_index = 0U; table_index < select_plan_table_count(plan); ++table_index) {
-        const struct mylite_select_table *table = select_plan_table_const(plan, table_index);
+    for (size_t table_index = 0U; table_index < mylite_select_plan_table_count(plan);
+         ++table_index) {
+        const struct mylite_select_table *table = mylite_select_plan_table_const(plan, table_index);
         char table_alias[sqlite_table_alias_size];
         int alias_length = snprintf(table_alias, sizeof(table_alias), "_m%zu", table_index);
 
@@ -12554,8 +12379,9 @@ static char *build_select_scan_sql(mylite_db *database, const struct mylite_sele
         }
     }
     sqlite3_str_append(sql, " FROM ", (int)strlen(" FROM "));
-    for (size_t table_index = 0U; table_index < select_plan_table_count(plan); ++table_index) {
-        const struct mylite_select_table *table = select_plan_table_const(plan, table_index);
+    for (size_t table_index = 0U; table_index < mylite_select_plan_table_count(plan);
+         ++table_index) {
+        const struct mylite_select_table *table = mylite_select_plan_table_const(plan, table_index);
         char table_alias[sqlite_table_alias_size];
         int alias_length = snprintf(table_alias, sizeof(table_alias), "_m%zu", table_index);
 
@@ -12711,7 +12537,7 @@ static int collect_table_select_aggregate_bindings(mylite_stmt *stmt)
 {
     int status = MYLITE_OK;
 
-    clear_select_aggregate_bindings(&stmt->select_plan);
+    mylite_select_plan_clear_aggregate_bindings(&stmt->select_plan);
     status = collect_table_select_expression_aggregate_bindings(stmt);
     if (status == MYLITE_OK && stmt->select_plan.having_expression != NULL) {
         status = collect_select_aggregate_bindings(
@@ -15095,7 +14921,7 @@ descriptor_collation_info(const struct mylite_field_descriptor *descriptor, int 
 
 static int execute_table_select_statement(mylite_stmt *stmt)
 {
-    if (stmt->sqlite_stmt == NULL && select_plan_table_count(&stmt->select_plan) <= 1U) {
+    if (stmt->sqlite_stmt == NULL && mylite_select_plan_table_count(&stmt->select_plan) <= 1U) {
         return MYLITE_MISUSE;
     }
     stmt->executed = true;
@@ -15496,7 +15322,7 @@ static int materialize_table_select_result(mylite_stmt *stmt)
     if (stmt->select_result.materialized) {
         return MYLITE_OK;
     }
-    if (select_plan_table_count(&stmt->select_plan) > 1U) {
+    if (mylite_select_plan_table_count(&stmt->select_plan) > 1U) {
         status = materialize_joined_table_select_result(stmt);
     } else if (stmt->select_plan.has_group_by || stmt->select_plan.has_aggregate ||
                stmt->select_plan.has_having) {
@@ -15684,7 +15510,7 @@ append_unordered_table_select_limited_row(mylite_stmt *stmt, struct mylite_table
 
 static int materialize_joined_table_select_result(mylite_stmt *stmt)
 {
-    size_t table_count = select_plan_table_count(&stmt->select_plan);
+    size_t table_count = mylite_select_plan_table_count(&stmt->select_plan);
     struct mylite_table_select_join_materialize_state state = {0};
     struct mylite_table_select_row row = {0};
     bool aggregate_query = (stmt->select_plan.has_group_by || stmt->select_plan.has_aggregate ||
@@ -15718,7 +15544,7 @@ static int materialize_joined_table_select_result(mylite_stmt *stmt)
         return MYLITE_NOMEM;
     }
 
-    row.value_count = select_plan_column_count(&stmt->select_plan);
+    row.value_count = mylite_select_plan_column_count(&stmt->select_plan);
     if (row.value_count != 0U) {
         row.values = calloc(row.value_count, sizeof(*row.values));
         if (row.values == NULL) {
@@ -15772,7 +15598,7 @@ static bool select_plan_has_outer_join(const struct mylite_select_plan *plan)
 
 static int materialize_outer_joined_table_select_result(mylite_stmt *stmt)
 {
-    size_t table_count = select_plan_table_count(&stmt->select_plan);
+    size_t table_count = mylite_select_plan_table_count(&stmt->select_plan);
     struct mylite_table_select_join_materialize_state state = {0};
     bool aggregate_query = (stmt->select_plan.has_group_by || stmt->select_plan.has_aggregate ||
                             stmt->select_plan.has_having) != 0;
@@ -15833,7 +15659,7 @@ static int materialize_outer_joined_table_select_result(mylite_stmt *stmt)
 static int load_table_select_join_rowsets(mylite_stmt *stmt,
                                           struct mylite_table_select_table_rowset *rowsets)
 {
-    size_t table_count = select_plan_table_count(&stmt->select_plan);
+    size_t table_count = mylite_select_plan_table_count(&stmt->select_plan);
 
     for (size_t table_index = 0U; table_index < table_count; ++table_index) {
         int status = load_table_select_join_rowset(stmt, table_index, &rowsets[table_index]);
@@ -15849,7 +15675,7 @@ static int load_table_select_join_rowset(mylite_stmt *stmt, size_t table_index,
                                          struct mylite_table_select_table_rowset *rowset)
 {
     const struct mylite_select_table *table =
-        select_plan_table_const(&stmt->select_plan, table_index);
+        mylite_select_plan_table_const(&stmt->select_plan, table_index);
     sqlite3_stmt *scan = NULL;
     char *scan_sql = NULL;
     int rc = SQLITE_OK;
@@ -15943,7 +15769,7 @@ static int scan_joined_table_select_rows(mylite_stmt *stmt,
                                          struct mylite_table_select_join_materialize_state *state,
                                          struct mylite_table_select_row *row)
 {
-    size_t table_count = select_plan_table_count(&stmt->select_plan);
+    size_t table_count = mylite_select_plan_table_count(&stmt->select_plan);
     struct mylite_table_select_join_scan_state scan = {
         .row = row,
         .table_count = table_count,
@@ -16034,7 +15860,7 @@ static int materialize_select_base_range_rowset(
     struct mylite_select_table_range range, struct mylite_table_select_table_rowset *out_rowset)
 {
     const struct mylite_select_table *table =
-        select_plan_table_const(&stmt->select_plan, range.first_table);
+        mylite_select_plan_table_const(&stmt->select_plan, range.first_table);
 
     if (table == NULL) {
         return MYLITE_UNSUPPORTED;
@@ -16159,7 +15985,7 @@ static int append_select_join_step_match(mylite_stmt *stmt,
                                          struct mylite_table_select_table_rowset *out_rowset)
 {
     const struct mylite_select_table *right_table =
-        select_plan_table_const(&stmt->select_plan, step->right_range.first_table);
+        mylite_select_plan_table_const(&stmt->select_plan, step->right_range.first_table);
     struct mylite_table_select_row candidate = {0};
     int status = table_select_row_copy(rows->left, &candidate);
 
@@ -16220,7 +16046,7 @@ append_select_null_extended_right_row(mylite_stmt *stmt, const struct mylite_sel
                                       struct mylite_table_select_table_rowset *out_rowset)
 {
     const struct mylite_select_table *right_table =
-        select_plan_table_const(&stmt->select_plan, step->right_range.first_table);
+        mylite_select_plan_table_const(&stmt->select_plan, step->right_range.first_table);
     struct mylite_table_select_row *row = NULL;
     int status = append_empty_joined_table_select_row(stmt, out_rowset, &row);
 
@@ -16240,8 +16066,8 @@ static int append_empty_joined_table_select_row(mylite_stmt *stmt,
                                                 struct mylite_table_select_row **out_row)
 {
     struct mylite_table_select_row row = {
-        .value_count = select_plan_column_count(&stmt->select_plan),
-        .source_row_index_count = select_plan_table_count(&stmt->select_plan),
+        .value_count = mylite_select_plan_column_count(&stmt->select_plan),
+        .source_row_index_count = mylite_select_plan_table_count(&stmt->select_plan),
     };
     int status = MYLITE_OK;
 
@@ -16346,7 +16172,7 @@ static int copy_select_row_range_values(struct mylite_table_select_row *target,
     size_t last_table = range.first_table + range.table_count;
 
     for (size_t table_index = range.first_table; table_index < last_table; ++table_index) {
-        const struct mylite_select_table *table = select_plan_table_const(plan, table_index);
+        const struct mylite_select_table *table = mylite_select_plan_table_const(plan, table_index);
 
         if (table == NULL || table_index >= target->source_row_index_count ||
             table_index >= source->source_row_index_count) {
@@ -16435,8 +16261,8 @@ process_outer_joined_table_range_row(mylite_stmt *stmt,
     struct mylite_table_select_row row = {0};
     int status = MYLITE_OK;
 
-    row.value_count = select_plan_column_count(&stmt->select_plan);
-    row.source_row_index_count = select_plan_table_count(&stmt->select_plan);
+    row.value_count = mylite_select_plan_column_count(&stmt->select_plan);
+    row.source_row_index_count = mylite_select_plan_table_count(&stmt->select_plan);
     if (row.value_count != 0U) {
         row.values = calloc(row.value_count, sizeof(*row.values));
         if (row.values == NULL) {
@@ -16516,7 +16342,7 @@ static int advance_joined_table_select_scan(
     struct mylite_table_select_join_scan_state *scan, bool *out_finished)
 {
     const struct mylite_select_table *table =
-        select_plan_table_const(&stmt->select_plan, scan->table_index);
+        mylite_select_plan_table_const(&stmt->select_plan, scan->table_index);
     const struct mylite_table_select_table_rowset *rowset = &state->rowsets[scan->table_index];
 
     *out_finished = false;
@@ -16542,7 +16368,7 @@ static int backtrack_joined_table_select_scan(mylite_stmt *stmt,
     }
 
     --scan->table_index;
-    table = select_plan_table_const(&stmt->select_plan, scan->table_index);
+    table = mylite_select_plan_table_const(&stmt->select_plan, scan->table_index);
     if (table == NULL) {
         return MYLITE_UNSUPPORTED;
     }
@@ -16608,7 +16434,7 @@ clear_joined_table_select_scan_copies(mylite_stmt *stmt,
 {
     for (size_t index = 0U; index < scan->table_count; ++index) {
         const struct mylite_select_table *table =
-            select_plan_table_const(&stmt->select_plan, index);
+            mylite_select_plan_table_const(&stmt->select_plan, index);
 
         if (table != NULL && scan->frames[index].copied) {
             clear_joined_table_select_row_values(scan->row, table);
@@ -16786,7 +16612,7 @@ static bool select_expression_referenced_table_range(mylite_db *database,
 
     if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
         expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
-        size_t column_index = select_plan_column_count(plan);
+        size_t column_index = mylite_select_plan_column_count(plan);
         struct mylite_select_table_range column_range = {0};
 
         if (resolve_select_plan_column_reference_in_scope(database, plan, expression, "on clause",
@@ -16812,8 +16638,9 @@ static bool select_column_index_table_range(const struct mylite_select_plan *pla
                                             size_t column_index,
                                             struct mylite_select_table_range *out_range)
 {
-    for (size_t table_index = 0U; table_index < select_plan_table_count(plan); ++table_index) {
-        const struct mylite_select_table *table = select_plan_table_const(plan, table_index);
+    for (size_t table_index = 0U; table_index < mylite_select_plan_table_count(plan);
+         ++table_index) {
+        const struct mylite_select_table *table = mylite_select_plan_table_const(plan, table_index);
 
         if (table != NULL && column_index >= table->first_column_index &&
             column_index < table->first_column_index + table->column_count) {
@@ -17534,7 +17361,7 @@ static int copy_table_select_expression_values(const struct mylite_expression_va
 
 static int copy_table_select_sqlite_row(mylite_stmt *stmt, struct mylite_table_select_row *out_row)
 {
-    size_t column_count = select_plan_column_count(&stmt->select_plan);
+    size_t column_count = mylite_select_plan_column_count(&stmt->select_plan);
 
     if (column_count == 0U) {
         *out_row = (struct mylite_table_select_row){0};
@@ -17683,7 +17510,7 @@ static int initialize_table_select_group(mylite_stmt *stmt, struct mylite_table_
                                          const struct mylite_table_select_row *row)
 {
     size_t column_count =
-        row == NULL ? select_plan_column_count(&stmt->select_plan) : row->value_count;
+        row == NULL ? mylite_select_plan_column_count(&stmt->select_plan) : row->value_count;
 
     group->representative.value_count = column_count;
     if (column_count != 0U) {
@@ -18933,7 +18760,7 @@ static int resolve_table_select_expression_identifier(void *user_data,
         resolve_select_plan_column_reference(context->stmt->database, &context->stmt->select_plan,
                                              identifier, "field list", &column_index);
     if (status != MYLITE_OK ||
-        column_index == select_plan_column_count(&context->stmt->select_plan)) {
+        column_index == mylite_select_plan_column_count(&context->stmt->select_plan)) {
         return -1;
     }
     if (context->row != NULL) {
@@ -18949,13 +18776,13 @@ static int copy_table_select_column_value(mylite_stmt *stmt, size_t column_index
     int status = 0;
 
     if (stmt == NULL || stmt->sqlite_stmt == NULL ||
-        column_index >= select_plan_column_count(&stmt->select_plan)) {
+        column_index >= mylite_select_plan_column_count(&stmt->select_plan)) {
         return -1;
     }
 
     status = copy_sqlite_column_value(stmt->sqlite_stmt, column_index, out_value);
     if (status == 0) {
-        column = select_plan_column_const(&stmt->select_plan, column_index, NULL);
+        column = mylite_select_plan_column_const(&stmt->select_plan, column_index, NULL);
         out_value->preserve_temporal_fraction_digits =
             mylite_field_descriptor_preserves_temporal_fraction_digits(
                 column == NULL ? NULL : &column->descriptor);

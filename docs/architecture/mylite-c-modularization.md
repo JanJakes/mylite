@@ -316,8 +316,10 @@ only the core object model and transitional shared helpers listed here:
   `information_schema.COLLATION_CHARACTER_SET_APPLICABILITY` builders into
   `mylite_show`.
 - [ ] Move `SHOW COLLATION` prepare code into `mylite_show`.
-- [ ] Move `SHOW TABLES` prepare/build code into `mylite_show`.
-- [ ] Move `SHOW TABLE STATUS` prepare/build code into `mylite_show`.
+- [x] Move `SHOW TABLES` builder into `mylite_show`.
+- [ ] Move `SHOW TABLES` prepare code into `mylite_show`.
+- [x] Move `SHOW TABLE STATUS` builder into `mylite_show`.
+- [ ] Move `SHOW TABLE STATUS` prepare code into `mylite_show`.
 - [ ] Move `SHOW COLUMNS` and `DESCRIBE` prepare/build code into `mylite_show`.
 - [ ] Move `SHOW INDEX` prepare/build code into `mylite_show`.
 - [ ] Move `SHOW CREATE TABLE` prepare/build code into `mylite_show`.

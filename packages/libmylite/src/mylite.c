@@ -342,12 +342,9 @@ static char *copy_show_tables_display_pattern(const char *like_pattern, bool upp
 static void uppercase_ascii_text(char *text);
 static char *show_tables_column_name(const char *schema_name, const char *like_pattern);
 static char *show_tables_glob_pattern(const char *like_pattern);
-static char *show_tables_sql(mylite_db *database, const struct mylite_show_tables_query *query);
 static int prepare_show_table_status_statement(mylite_db *database,
                                                const struct mylite_sql_ast_node *statement,
                                                mylite_stmt **out_stmt);
-static char *show_table_status_sql(mylite_db *database,
-                                   const struct mylite_show_table_status_query *query);
 static int prepare_show_columns_statement(mylite_db *database,
                                           const struct mylite_sql_ast_node *statement,
                                           mylite_stmt **out_stmt);
@@ -4889,12 +4886,12 @@ static int prepare_show_tables_statement(mylite_db *database,
         }
     }
     if (status == MYLITE_OK) {
-        sqlite_sql = show_tables_sql(database, &(const struct mylite_show_tables_query){
-                                                   .schema_name = schema_name,
-                                                   .column_name = column_name,
-                                                   .glob_pattern = glob_pattern,
-                                                   .full = statement->show_tables_full,
-                                               });
+        sqlite_sql = mylite_show_tables_sql(database, &(const struct mylite_show_tables_query){
+                                                          .schema_name = schema_name,
+                                                          .column_name = column_name,
+                                                          .glob_pattern = glob_pattern,
+                                                          .full = statement->show_tables_full,
+                                                      });
         if (sqlite_sql == NULL) {
             status = MYLITE_NOMEM;
         }
@@ -5043,48 +5040,6 @@ static char *show_tables_glob_pattern(const char *like_pattern)
     return sqlite3_str_finish(glob);
 }
 
-static char *show_tables_sql(mylite_db *database, const struct mylite_show_tables_query *query)
-{
-    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
-
-    if (sql == NULL) {
-        return NULL;
-    }
-
-    sqlite3_str_appendf(sql, "SELECT TABLE_NAME AS \"%w\"", query->column_name);
-    if (query->full) {
-        sqlite3_str_appendf(sql, ", TABLE_TYPE AS \"Table_type\"");
-    }
-    sqlite3_str_appendf(
-        sql,
-        " FROM ("
-        "SELECT 'information_schema' AS TABLE_SCHEMA, table_name AS TABLE_NAME, "
-        "'SYSTEM VIEW' AS TABLE_TYPE FROM ("
-        "SELECT 'CHARACTER_SETS' AS table_name "
-        "UNION ALL SELECT 'CHECK_CONSTRAINTS' "
-        "UNION ALL SELECT 'COLLATION_CHARACTER_SET_APPLICABILITY' "
-        "UNION ALL SELECT 'COLLATIONS' "
-        "UNION ALL SELECT 'SCHEMATA' "
-        "UNION ALL SELECT 'TABLES' "
-        "UNION ALL SELECT 'COLUMNS' "
-        "UNION ALL SELECT 'ENGINES' "
-        "UNION ALL SELECT 'KEYWORDS' "
-        "UNION ALL SELECT 'KEY_COLUMN_USAGE' "
-        "UNION ALL SELECT 'REFERENTIAL_CONSTRAINTS' "
-        "UNION ALL SELECT 'STATISTICS' "
-        "UNION ALL SELECT 'TABLE_CONSTRAINTS') "
-        "UNION ALL "
-        "SELECT table_schema AS TABLE_SCHEMA, table_name AS TABLE_NAME, table_type AS TABLE_TYPE "
-        "FROM __mylite_table_catalog) "
-        "WHERE TABLE_SCHEMA = %Q",
-        query->schema_name);
-    if (query->glob_pattern != NULL) {
-        sqlite3_str_appendf(sql, " AND TABLE_NAME GLOB %Q", query->glob_pattern);
-    }
-    sqlite3_str_appendf(sql, " ORDER BY TABLE_NAME COLLATE BINARY");
-    return sqlite3_str_finish(sql);
-}
-
 static int prepare_show_table_status_statement(mylite_db *database,
                                                const struct mylite_sql_ast_node *statement,
                                                mylite_stmt **out_stmt)
@@ -5126,10 +5081,11 @@ static int prepare_show_table_status_statement(mylite_db *database,
         }
     }
     if (status == MYLITE_OK) {
-        sqlite_sql = show_table_status_sql(database, &(const struct mylite_show_table_status_query){
-                                                         .schema_name = schema_name,
-                                                         .glob_pattern = glob_pattern,
-                                                     });
+        sqlite_sql = mylite_show_table_status_sql(
+            database, &(const struct mylite_show_table_status_query){
+                          .schema_name = schema_name,
+                          .glob_pattern = glob_pattern,
+                      });
         if (sqlite_sql == NULL) {
             status = MYLITE_NOMEM;
         }
@@ -5147,56 +5103,6 @@ static int prepare_show_table_status_statement(mylite_db *database,
     sqlite3_free(glob_pattern);
     sqlite3_free(sqlite_sql);
     return status;
-}
-
-static char *show_table_status_sql(mylite_db *database,
-                                   const struct mylite_show_table_status_query *query)
-{
-    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
-
-    if (sql == NULL) {
-        return NULL;
-    }
-
-    sqlite3_str_appendall(
-        sql,
-        "SELECT Name, Engine, Version, Row_format, Rows, Avg_row_length, Data_length, "
-        "Max_data_length, Index_length, Data_free, Auto_increment, Create_time, Update_time, "
-        "Check_time, Collation, Checksum, Create_options, Comment FROM ("
-        "SELECT 'information_schema' AS TABLE_SCHEMA, table_name AS Name, NULL AS Engine, "
-        "10 AS Version, NULL AS Row_format, 0 AS Rows, 0 AS Avg_row_length, 0 AS Data_length, "
-        "0 AS Max_data_length, 0 AS Index_length, 0 AS Data_free, NULL AS Auto_increment, "
-        "'1970-01-01 00:00:00' AS Create_time, NULL AS Update_time, NULL AS Check_time, "
-        "NULL AS Collation, NULL AS Checksum, '' AS Create_options, '' AS Comment FROM ("
-        "SELECT 'CHARACTER_SETS' AS table_name "
-        "UNION ALL SELECT 'CHECK_CONSTRAINTS' "
-        "UNION ALL SELECT 'COLLATION_CHARACTER_SET_APPLICABILITY' "
-        "UNION ALL SELECT 'COLLATIONS' "
-        "UNION ALL SELECT 'SCHEMATA' "
-        "UNION ALL SELECT 'TABLES' "
-        "UNION ALL SELECT 'COLUMNS' "
-        "UNION ALL SELECT 'ENGINES' "
-        "UNION ALL SELECT 'KEYWORDS' "
-        "UNION ALL SELECT 'KEY_COLUMN_USAGE' "
-        "UNION ALL SELECT 'REFERENTIAL_CONSTRAINTS' "
-        "UNION ALL SELECT 'STATISTICS' "
-        "UNION ALL SELECT 'TABLE_CONSTRAINTS') "
-        "UNION ALL "
-        "SELECT table_schema AS TABLE_SCHEMA, table_name AS Name, engine AS Engine, "
-        "version AS Version, COALESCE(row_format, 'Dynamic') AS Row_format, "
-        "COALESCE(table_rows, 0) AS Rows, COALESCE(avg_row_length, 0) AS Avg_row_length, "
-        "COALESCE(data_length, 0) AS Data_length, COALESCE(max_data_length, 0) AS "
-        "Max_data_length, COALESCE(index_length, 0) AS Index_length, "
-        "COALESCE(data_free, 0) AS Data_free, auto_increment AS Auto_increment, "
-        "create_time AS Create_time, update_time AS Update_time, check_time AS Check_time, "
-        "table_collation AS Collation, checksum AS Checksum, create_options AS Create_options, "
-        "table_comment AS Comment FROM __mylite_table_catalog) ");
-    sqlite3_str_appendf(sql, "WHERE TABLE_SCHEMA = %Q", query->schema_name);
-    if (query->glob_pattern != NULL) {
-        sqlite3_str_appendf(sql, " AND Name GLOB %Q", query->glob_pattern);
-    }
-    sqlite3_str_appendall(sql, " ORDER BY Name COLLATE BINARY");
-    return sqlite3_str_finish(sql);
 }
 
 static int prepare_show_columns_statement(mylite_db *database,

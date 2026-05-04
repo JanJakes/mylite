@@ -6,6 +6,8 @@
 struct mylite_show_character_set_query;
 struct mylite_show_collation_query;
 struct mylite_show_status_query;
+struct mylite_show_table_status_query;
+struct mylite_show_tables_query;
 struct mylite_show_variables_query;
 
 int mylite_show_engines_sql(mylite_db *database, char **out_sql);
@@ -21,6 +23,9 @@ int mylite_show_information_schema_collation_character_set_applicability_sql(myl
                                                                              char **out_sql);
 int mylite_show_status_sql(mylite_db *database, const struct mylite_show_status_query *query,
                            char **out_sql);
+char *mylite_show_tables_sql(mylite_db *database, const struct mylite_show_tables_query *query);
+char *mylite_show_table_status_sql(mylite_db *database,
+                                   const struct mylite_show_table_status_query *query);
 int mylite_show_variables_sql(mylite_db *database, const struct mylite_show_variables_query *query,
                               char **out_sql);
 const char *mylite_show_schemas_sql(void);

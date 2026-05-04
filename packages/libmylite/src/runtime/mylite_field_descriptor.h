@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "sql/mylite_expression.h"
+
 enum mylite_format_metadata_length {
     mylite_format_null_character_length = 32,
     mylite_format_decimal_literal_extra_length = 33,
@@ -27,5 +29,9 @@ void mylite_field_descriptor_set_nullable(struct mylite_field_descriptor *descri
                                           bool nullable);
 void mylite_field_descriptor_set_not_null(struct mylite_field_descriptor *descriptor,
                                           bool not_null);
+bool mylite_field_descriptor_preserves_temporal_fraction_digits(
+    const struct mylite_field_descriptor *descriptor);
+enum mylite_expression_temporal_type
+mylite_field_descriptor_expression_temporal_type(const struct mylite_field_descriptor *descriptor);
 
 #endif

@@ -411,6 +411,8 @@ only the core object model and transitional shared helpers listed here:
   focused DML companion module.
 - [x] Move update unique-check SQL and SQLite value binding into a focused DML
   companion module.
+- [x] Move update/delete rowset population helpers into a focused DML companion
+  module.
 - [ ] Move update row materialization logic into `mylite_dml`.
 - [ ] Move update row writeback into `mylite_dml`.
 - [x] Move delete target copy into `mylite_dml`.

@@ -488,10 +488,6 @@ static bool field_descriptor_has_text_result(const struct mylite_field_descripto
 static bool field_descriptor_has_numeric_result(const struct mylite_field_descriptor *descriptor);
 static bool field_descriptor_has_decimal_result(const struct mylite_field_descriptor *descriptor);
 static bool field_descriptor_has_double_result(const struct mylite_field_descriptor *descriptor);
-static bool field_descriptor_preserves_temporal_fraction_digits(
-    const struct mylite_field_descriptor *descriptor);
-static enum mylite_expression_temporal_type
-expression_temporal_type_from_descriptor(const struct mylite_field_descriptor *descriptor);
 static struct mylite_field_descriptor null_expression_descriptor(void);
 static struct mylite_field_descriptor
 cast_signed_descriptor(const struct mylite_field_descriptor *source);
@@ -1325,11 +1321,6 @@ static int add_update_order_key(struct mylite_update_order_plan *plan,
 static int materialize_update_rows(mylite_stmt *stmt, const struct mylite_select_table *table,
                                    const struct mylite_update_order_plan *order_plan,
                                    struct mylite_update_rowset *rowset);
-static int copy_update_sqlite_row(mylite_stmt *stmt, const struct mylite_select_table *table,
-                                  sqlite3_stmt *scan, struct mylite_update_row *out_row);
-static int copy_update_sqlite_column_value(sqlite3_stmt *scan, int column,
-                                           const struct mylite_field_descriptor *descriptor,
-                                           struct mylite_expression_value *out_value);
 static int evaluate_update_row_matches(mylite_stmt *stmt, const struct mylite_select_table *table,
                                        const struct mylite_update_row *row, bool *out_matches);
 static int evaluate_update_order_values(mylite_stmt *stmt, const struct mylite_select_table *table,
@@ -1339,8 +1330,6 @@ static int evaluate_update_order_key(mylite_stmt *stmt, const struct mylite_sele
                                      const struct mylite_update_row *row,
                                      const struct mylite_select_order_key *order_key,
                                      struct mylite_expression_value *out_value);
-static int append_update_row(mylite_stmt *stmt, struct mylite_update_rowset *rowset,
-                             struct mylite_update_row *row);
 static int execute_update_rows_transaction(mylite_stmt *stmt,
                                            const struct mylite_select_table *table,
                                            const struct mylite_insert_table *write_table,
@@ -6878,62 +6867,6 @@ static bool field_descriptor_has_double_result(const struct mylite_field_descrip
         return true;
     }
     return false;
-}
-
-static bool field_descriptor_preserves_temporal_fraction_digits(
-    const struct mylite_field_descriptor *descriptor)
-{
-    if (descriptor == NULL) {
-        return false;
-    }
-    if (descriptor->type == MYLITE_FIELD_TYPE_TIME ||
-        descriptor->type == MYLITE_FIELD_TYPE_DATETIME) {
-        return true;
-    }
-    return descriptor->type == MYLITE_FIELD_TYPE_TIMESTAMP;
-}
-
-static enum mylite_expression_temporal_type
-expression_temporal_type_from_descriptor(const struct mylite_field_descriptor *descriptor)
-{
-    if (descriptor == NULL) {
-        return MYLITE_EXPRESSION_TEMPORAL_NONE;
-    }
-    switch (descriptor->type) {
-    case MYLITE_FIELD_TYPE_DATE:
-        return MYLITE_EXPRESSION_TEMPORAL_DATE;
-    case MYLITE_FIELD_TYPE_TIME:
-        return MYLITE_EXPRESSION_TEMPORAL_TIME;
-    case MYLITE_FIELD_TYPE_DATETIME:
-        return MYLITE_EXPRESSION_TEMPORAL_DATETIME;
-    case MYLITE_FIELD_TYPE_TIMESTAMP:
-        return MYLITE_EXPRESSION_TEMPORAL_TIMESTAMP;
-    case MYLITE_FIELD_TYPE_DECIMAL:
-    case MYLITE_FIELD_TYPE_TINY:
-    case MYLITE_FIELD_TYPE_SHORT:
-    case MYLITE_FIELD_TYPE_LONG:
-    case MYLITE_FIELD_TYPE_FLOAT:
-    case MYLITE_FIELD_TYPE_DOUBLE:
-    case MYLITE_FIELD_TYPE_NULL:
-    case MYLITE_FIELD_TYPE_LONGLONG:
-    case MYLITE_FIELD_TYPE_INT24:
-    case MYLITE_FIELD_TYPE_YEAR:
-    case MYLITE_FIELD_TYPE_NEWDATE:
-    case MYLITE_FIELD_TYPE_VARCHAR:
-    case MYLITE_FIELD_TYPE_BIT:
-    case MYLITE_FIELD_TYPE_NEWDECIMAL:
-    case MYLITE_FIELD_TYPE_ENUM:
-    case MYLITE_FIELD_TYPE_SET:
-    case MYLITE_FIELD_TYPE_TINY_BLOB:
-    case MYLITE_FIELD_TYPE_MEDIUM_BLOB:
-    case MYLITE_FIELD_TYPE_LONG_BLOB:
-    case MYLITE_FIELD_TYPE_BLOB:
-    case MYLITE_FIELD_TYPE_VAR_STRING:
-    case MYLITE_FIELD_TYPE_STRING:
-    case MYLITE_FIELD_TYPE_GEOMETRY:
-    default:
-        return MYLITE_EXPRESSION_TEMPORAL_NONE;
-    }
 }
 
 static struct mylite_field_descriptor null_expression_descriptor(void)
@@ -16699,7 +16632,7 @@ static int materialize_update_rows(mylite_stmt *stmt, const struct mylite_select
         struct mylite_update_row row = {0};
         bool matches = false;
 
-        status = copy_update_sqlite_row(stmt, table, scan, &row);
+        status = mylite_dml_copy_update_sqlite_row(stmt->database, table, scan, &row);
         if (status == MYLITE_OK) {
             status = evaluate_update_row_matches(stmt, table, &row, &matches);
         }
@@ -16707,7 +16640,7 @@ static int materialize_update_rows(mylite_stmt *stmt, const struct mylite_select
             status = evaluate_update_order_values(stmt, table, order_plan, &row);
         }
         if (status == MYLITE_OK && matches) {
-            status = append_update_row(stmt, rowset, &row);
+            status = mylite_dml_append_update_row(stmt->database, rowset, &row);
         }
         mylite_dml_update_row_deinit(&row);
         if (status != MYLITE_OK) {
@@ -16717,74 +16650,6 @@ static int materialize_update_rows(mylite_stmt *stmt, const struct mylite_select
     }
     sqlite3_finalize(scan);
     return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
-}
-
-static int copy_update_sqlite_row(mylite_stmt *stmt, const struct mylite_select_table *table,
-                                  sqlite3_stmt *scan, struct mylite_update_row *out_row)
-{
-    if (table->column_count == 0U) {
-        return mylite_diagnostics_set_table_doesnt_exist_error(stmt->database, table->schema_name,
-                                                               table->table_name);
-    }
-
-    out_row->rowid = sqlite3_column_int64(scan, 0);
-    out_row->values = calloc(table->column_count, sizeof(*out_row->values));
-    if (out_row->values == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    out_row->value_count = table->column_count;
-
-    for (size_t index = 0U; index < table->column_count; ++index) {
-        if (copy_update_sqlite_column_value(scan, (int)index + 1, &table->columns[index].descriptor,
-                                            &out_row->values[index]) != 0) {
-            mylite_dml_update_row_deinit(out_row);
-            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-            return MYLITE_NOMEM;
-        }
-    }
-    return MYLITE_OK;
-}
-
-static int copy_update_sqlite_column_value(sqlite3_stmt *scan, int column,
-                                           const struct mylite_field_descriptor *descriptor,
-                                           struct mylite_expression_value *out_value)
-{
-    int sqlite_type = sqlite3_column_type(scan, column);
-
-    switch (sqlite_type) {
-    case SQLITE_NULL:
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
-        return 0;
-    case SQLITE_INTEGER:
-        *out_value = (struct mylite_expression_value){
-            .kind = MYLITE_EXPRESSION_VALUE_INT64,
-            .int64_value = sqlite3_column_int64(scan, column),
-        };
-        return 0;
-    case SQLITE_FLOAT:
-        *out_value = (struct mylite_expression_value){
-            .kind = MYLITE_EXPRESSION_VALUE_REAL,
-            .real_value = sqlite3_column_double(scan, column),
-        };
-        return 0;
-    case SQLITE_TEXT:
-    case SQLITE_BLOB: {
-        const unsigned char *text = sqlite3_column_text(scan, column);
-        int bytes = sqlite3_column_bytes(scan, column);
-
-        out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
-        out_value->text_length = bytes < 0 ? 0U : (size_t)bytes;
-        out_value->text_value = mylite_copy_span_text((const char *)text, out_value->text_length);
-        out_value->preserve_temporal_fraction_digits =
-            field_descriptor_preserves_temporal_fraction_digits(descriptor);
-        out_value->temporal_type = expression_temporal_type_from_descriptor(descriptor);
-        return out_value->text_value == NULL ? -1 : 0;
-    }
-    default:
-        break;
-    }
-    return -1;
 }
 
 static int evaluate_update_row_matches(mylite_stmt *stmt, const struct mylite_select_table *table,
@@ -16883,23 +16748,6 @@ static int evaluate_update_order_key(mylite_stmt *stmt, const struct mylite_sele
                                              : condition_status;
     }
     return promote_update_expression_warnings(stmt, warning_start);
-}
-
-static int append_update_row(mylite_stmt *stmt, struct mylite_update_rowset *rowset,
-                             struct mylite_update_row *row)
-{
-    struct mylite_update_row *rows =
-        realloc(rowset->rows, (rowset->row_count + 1U) * sizeof(*rowset->rows));
-
-    if (rows == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    rowset->rows = rows;
-    rowset->rows[rowset->row_count++] = *row;
-    *row = (struct mylite_update_row){0};
-    return MYLITE_OK;
 }
 
 static int execute_update_rows_transaction(mylite_stmt *stmt,
@@ -17898,7 +17746,7 @@ static int materialize_delete_rows(mylite_stmt *stmt, const struct mylite_select
         struct mylite_update_row row = {0};
         bool matches = false;
 
-        status = copy_update_sqlite_row(stmt, table, scan, &row);
+        status = mylite_dml_copy_update_sqlite_row(stmt->database, table, scan, &row);
         if (status == MYLITE_OK) {
             status = evaluate_delete_row_matches(stmt, table, &row, &matches);
         }
@@ -17906,7 +17754,7 @@ static int materialize_delete_rows(mylite_stmt *stmt, const struct mylite_select
             status = evaluate_delete_order_values(stmt, table, order_plan, &row);
         }
         if (status == MYLITE_OK && matches) {
-            status = append_update_row(stmt, rowset, &row);
+            status = mylite_dml_append_update_row(stmt->database, rowset, &row);
         }
         mylite_dml_update_row_deinit(&row);
         if (status != MYLITE_OK) {
@@ -23426,10 +23274,10 @@ static int copy_table_select_column_value(mylite_stmt *stmt, size_t column_index
     if (status == 0) {
         column = select_plan_column_const(&stmt->select_plan, column_index, NULL);
         out_value->preserve_temporal_fraction_digits =
-            field_descriptor_preserves_temporal_fraction_digits(
+            mylite_field_descriptor_preserves_temporal_fraction_digits(
                 column == NULL ? NULL : &column->descriptor);
-        out_value->temporal_type =
-            expression_temporal_type_from_descriptor(column == NULL ? NULL : &column->descriptor);
+        out_value->temporal_type = mylite_field_descriptor_expression_temporal_type(
+            column == NULL ? NULL : &column->descriptor);
     }
     return status;
 }

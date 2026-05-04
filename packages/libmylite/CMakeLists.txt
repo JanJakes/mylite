@@ -82,6 +82,7 @@ add_library(mylite STATIC
   src/runtime/mylite_select_catalog.c
   src/runtime/mylite_select_eval.c
   src/runtime/mylite_select_from.c
+  src/runtime/mylite_select_group.c
   src/runtime/mylite_select_join_cache.c
   src/runtime/mylite_select_projection.c
   src/runtime/mylite_select_resolve.c

@@ -27,6 +27,7 @@
 #include "runtime/mylite_select_aggregate.h"
 #include "runtime/mylite_select_eval.h"
 #include "runtime/mylite_select_from.h"
+#include "runtime/mylite_select_group.h"
 #include "runtime/mylite_select_join_cache.h"
 #include "runtime/mylite_select_projection.h"
 #include "runtime/mylite_select_resolve.h"
@@ -1140,9 +1141,6 @@ static int materialize_aggregate_table_select_result(mylite_stmt *stmt);
 static int scan_aggregate_table_select_groups(mylite_stmt *stmt,
                                               struct mylite_table_select_group **groups,
                                               size_t *group_count);
-static int append_empty_implicit_table_select_group(mylite_stmt *stmt,
-                                                    struct mylite_table_select_group **groups,
-                                                    size_t *group_count);
 static int append_finalized_table_select_groups(mylite_stmt *stmt,
                                                 struct mylite_table_select_group *groups,
                                                 size_t group_count);
@@ -1154,18 +1152,6 @@ static int evaluate_table_select_row_matches(mylite_stmt *stmt,
 static int check_table_select_distinct_duplicate(mylite_stmt *stmt,
                                                  struct mylite_table_select_row *row,
                                                  bool *out_duplicate);
-static int append_table_select_group(mylite_stmt *stmt, struct mylite_table_select_group **groups,
-                                     size_t *group_count, const struct mylite_table_select_row *row,
-                                     struct mylite_table_select_group **out_group);
-static int find_table_select_group(mylite_stmt *stmt, struct mylite_table_select_group *groups,
-                                   size_t group_count, const struct mylite_table_select_row *row,
-                                   struct mylite_table_select_group **out_group);
-static int initialize_table_select_group(mylite_stmt *stmt, struct mylite_table_select_group *group,
-                                         const struct mylite_table_select_row *row);
-static int update_table_select_group(mylite_stmt *stmt, struct mylite_table_select_group *group,
-                                     const struct mylite_table_select_row *row);
-static int finalize_table_select_group(mylite_stmt *stmt, struct mylite_table_select_group *group,
-                                       struct mylite_table_select_row *out_row);
 static int evaluate_table_select_join_conditions(mylite_stmt *stmt,
                                                  const struct mylite_table_select_row *row,
                                                  bool *out_matches);
@@ -1176,7 +1162,6 @@ static int evaluate_table_select_join_predicates(mylite_stmt *stmt,
                                                  const struct mylite_table_select_row *row,
                                                  bool *out_matches);
 static int set_where_predicate_eval_error(mylite_stmt *stmt);
-static void table_select_group_deinit(struct mylite_table_select_group *group);
 static int copy_scalar_select_statement(const struct mylite_sql_ast_node *statement,
                                         mylite_stmt *stmt);
 static int append_scalar_select_warnings_to_database(mylite_stmt *stmt);
@@ -11886,7 +11871,7 @@ static int materialize_joined_table_select_result(mylite_stmt *stmt)
 
     if (status == MYLITE_OK && aggregate_query && state.group_count == 0U &&
         !stmt->select_plan.has_group_by) {
-        status = append_empty_implicit_table_select_group(stmt, &state.groups, &state.group_count);
+        status = mylite_select_group_append_empty_implicit(stmt, &state.groups, &state.group_count);
     }
     if (status == MYLITE_OK && aggregate_query) {
         status = append_finalized_table_select_groups(stmt, state.groups, state.group_count);
@@ -11900,10 +11885,7 @@ static int materialize_joined_table_select_result(mylite_stmt *stmt)
         status = mylite_select_result_apply_limit(&stmt->select_result, &stmt->select_plan.limit);
     }
 
-    for (size_t index = 0U; index < state.group_count; ++index) {
-        table_select_group_deinit(&state.groups[index]);
-    }
-    free(state.groups);
+    mylite_select_groups_deinit(state.groups, state.group_count);
     mylite_select_row_deinit(&row);
     mylite_select_join_condition_cache_deinit(&state.condition_cache);
     mylite_select_rowsets_deinit(state.rowsets, table_count);
@@ -11948,7 +11930,7 @@ static int materialize_outer_joined_table_select_result(mylite_stmt *stmt)
 
     if (status == MYLITE_OK && aggregate_query && state.group_count == 0U &&
         !stmt->select_plan.has_group_by) {
-        status = append_empty_implicit_table_select_group(stmt, &state.groups, &state.group_count);
+        status = mylite_select_group_append_empty_implicit(stmt, &state.groups, &state.group_count);
     }
     if (status == MYLITE_OK && aggregate_query) {
         status = append_finalized_table_select_groups(stmt, state.groups, state.group_count);
@@ -11962,10 +11944,7 @@ static int materialize_outer_joined_table_select_result(mylite_stmt *stmt)
         status = mylite_select_result_apply_limit(&stmt->select_result, &stmt->select_plan.limit);
     }
 
-    for (size_t index = 0U; index < state.group_count; ++index) {
-        table_select_group_deinit(&state.groups[index]);
-    }
-    free(state.groups);
+    mylite_select_groups_deinit(state.groups, state.group_count);
     mylite_select_join_condition_cache_deinit(&state.condition_cache);
     mylite_select_rowsets_deinit(state.rowsets, table_count);
     return status;
@@ -12778,12 +12757,14 @@ process_joined_table_select_full_row(mylite_stmt *stmt,
 
     struct mylite_table_select_group *group = NULL;
 
-    status = find_table_select_group(stmt, state->groups, state->group_count, row, &group);
+    status = mylite_select_group_find(stmt, state->groups, state->group_count, row,
+                                      &table_select_eval_callbacks, &group);
     if (status == MYLITE_OK && group == NULL) {
-        status = append_table_select_group(stmt, &state->groups, &state->group_count, row, &group);
+        status = mylite_select_group_append(stmt, &state->groups, &state->group_count, row,
+                                            &table_select_eval_callbacks, &group);
     }
     if (status == MYLITE_OK) {
-        status = update_table_select_group(stmt, group, row);
+        status = mylite_select_group_update(stmt, group, row, &table_select_eval_callbacks);
     }
     return status;
 }
@@ -12847,7 +12828,7 @@ static int materialize_aggregate_table_select_result(mylite_stmt *stmt)
     int status = scan_aggregate_table_select_groups(stmt, &groups, &group_count);
 
     if (status == MYLITE_OK && group_count == 0U && !stmt->select_plan.has_group_by) {
-        status = append_empty_implicit_table_select_group(stmt, &groups, &group_count);
+        status = mylite_select_group_append_empty_implicit(stmt, &groups, &group_count);
     }
     if (status == MYLITE_OK) {
         status = append_finalized_table_select_groups(stmt, groups, group_count);
@@ -12860,10 +12841,7 @@ static int materialize_aggregate_table_select_result(mylite_stmt *stmt)
         status = mylite_select_result_apply_limit(&stmt->select_result, &stmt->select_plan.limit);
     }
 
-    for (size_t index = 0U; index < group_count; ++index) {
-        table_select_group_deinit(&groups[index]);
-    }
-    free(groups);
+    mylite_select_groups_deinit(groups, group_count);
     return status;
 }
 
@@ -12902,12 +12880,14 @@ static int scan_aggregate_table_select_groups(mylite_stmt *stmt,
             continue;
         }
 
-        status = find_table_select_group(stmt, *groups, *group_count, &row, &group);
+        status = mylite_select_group_find(stmt, *groups, *group_count, &row,
+                                          &table_select_eval_callbacks, &group);
         if (status == MYLITE_OK && group == NULL) {
-            status = append_table_select_group(stmt, groups, group_count, &row, &group);
+            status = mylite_select_group_append(stmt, groups, group_count, &row,
+                                                &table_select_eval_callbacks, &group);
         }
         if (status == MYLITE_OK) {
-            status = update_table_select_group(stmt, group, &row);
+            status = mylite_select_group_update(stmt, group, &row, &table_select_eval_callbacks);
         }
         mylite_select_row_deinit(&row);
         if (status != MYLITE_OK) {
@@ -12918,28 +12898,6 @@ static int scan_aggregate_table_select_groups(mylite_stmt *stmt,
         status = mylite_diagnostics_set_sqlite_error(stmt->database);
     }
     return status;
-}
-
-static int append_empty_implicit_table_select_group(mylite_stmt *stmt,
-                                                    struct mylite_table_select_group **groups,
-                                                    size_t *group_count)
-{
-    struct mylite_table_select_group *new_groups = calloc(1U, sizeof(*new_groups));
-
-    if (new_groups == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    *groups = new_groups;
-    *group_count = 1U;
-    (*groups)[0].aggregate_states =
-        calloc(stmt->select_plan.aggregate_binding_count, sizeof(*(*groups)[0].aggregate_states));
-    if ((*groups)[0].aggregate_states == NULL && stmt->select_plan.aggregate_binding_count != 0U) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    (*groups)[0].aggregate_state_count = stmt->select_plan.aggregate_binding_count;
-    return MYLITE_OK;
 }
 
 static int append_finalized_table_select_groups(mylite_stmt *stmt,
@@ -12962,7 +12920,7 @@ static int append_finalized_table_select_group(mylite_stmt *stmt,
     struct mylite_table_select_row row = {0};
     bool having_matches = true;
     bool duplicate = false;
-    int status = finalize_table_select_group(stmt, group, &row);
+    int status = mylite_select_group_finalize(stmt, group, &row);
 
     if (status == MYLITE_OK) {
         status =
@@ -13071,189 +13029,6 @@ static int check_table_select_distinct_duplicate(mylite_stmt *stmt,
     }
     *out_duplicate = mylite_select_result_distinct_row_exists(
         &stmt->select_result, &stmt->select_plan, &stmt->result_metadata, row);
-    return MYLITE_OK;
-}
-
-static int append_table_select_group(mylite_stmt *stmt, struct mylite_table_select_group **groups,
-                                     size_t *group_count, const struct mylite_table_select_row *row,
-                                     struct mylite_table_select_group **out_group)
-{
-    struct mylite_table_select_group *new_groups =
-        realloc(*groups, (*group_count + 1U) * sizeof(**groups));
-    int status = MYLITE_OK;
-
-    *out_group = NULL;
-    if (new_groups == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    *groups = new_groups;
-    (*groups)[*group_count] = (struct mylite_table_select_group){0};
-    status = initialize_table_select_group(stmt, &(*groups)[*group_count], row);
-    if (status != MYLITE_OK) {
-        table_select_group_deinit(&(*groups)[*group_count]);
-        return status;
-    }
-
-    *out_group = &(*groups)[*group_count];
-    *group_count += 1U;
-    return MYLITE_OK;
-}
-
-static int find_table_select_group(mylite_stmt *stmt, struct mylite_table_select_group *groups,
-                                   size_t group_count, const struct mylite_table_select_row *row,
-                                   struct mylite_table_select_group **out_group)
-{
-    struct mylite_expression_value *values = NULL;
-    size_t value_count = stmt->select_plan.group_key_count;
-    int status = MYLITE_OK;
-
-    *out_group = NULL;
-    if (value_count == 0U) {
-        if (group_count != 0U) {
-            *out_group = &groups[0];
-        }
-        return MYLITE_OK;
-    }
-
-    values = calloc(value_count, sizeof(*values));
-    if (values == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    for (size_t index = 0U; index < value_count; ++index) {
-        status = mylite_select_eval_group_key(stmt, row, &stmt->select_plan.group_keys[index],
-                                              &table_select_eval_callbacks, &values[index]);
-        if (status != MYLITE_OK) {
-            goto cleanup;
-        }
-    }
-
-    for (size_t group_index = 0U; group_index < group_count; ++group_index) {
-        bool matches = groups[group_index].group_value_count == value_count;
-
-        for (size_t value_index = 0U; matches && value_index < value_count; ++value_index) {
-            if (mylite_select_compare_values(&groups[group_index].group_values[value_index],
-                                             &values[value_index]) != 0) {
-                matches = false;
-            }
-        }
-        if (matches) {
-            *out_group = &groups[group_index];
-            break;
-        }
-    }
-
-cleanup:
-    for (size_t index = 0U; index < value_count; ++index) {
-        mylite_expression_value_deinit(&values[index]);
-    }
-    free(values);
-    return status;
-}
-
-static int initialize_table_select_group(mylite_stmt *stmt, struct mylite_table_select_group *group,
-                                         const struct mylite_table_select_row *row)
-{
-    size_t column_count =
-        row == NULL ? mylite_select_plan_column_count(&stmt->select_plan) : row->value_count;
-
-    group->representative.value_count = column_count;
-    if (column_count != 0U) {
-        group->representative.values = calloc(column_count, sizeof(*group->representative.values));
-        if (group->representative.values == NULL) {
-            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-            return MYLITE_NOMEM;
-        }
-    }
-    if (row != NULL) {
-        for (size_t index = 0U; index < column_count; ++index) {
-            if (mylite_expression_value_copy(&row->values[index],
-                                             &group->representative.values[index]) != 0) {
-                (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-                return MYLITE_NOMEM;
-            }
-        }
-        group->has_representative = true;
-    }
-
-    group->group_value_count = stmt->select_plan.group_key_count;
-    group->group_values = calloc(group->group_value_count, sizeof(*group->group_values));
-    if (group->group_values == NULL && group->group_value_count != 0U) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    for (size_t index = 0U; index < group->group_value_count; ++index) {
-        int status =
-            mylite_select_eval_group_key(stmt, row, &stmt->select_plan.group_keys[index],
-                                         &table_select_eval_callbacks, &group->group_values[index]);
-
-        if (status != MYLITE_OK) {
-            return status;
-        }
-    }
-
-    group->aggregate_state_count = stmt->select_plan.aggregate_binding_count;
-    group->aggregate_states =
-        calloc(group->aggregate_state_count, sizeof(*group->aggregate_states));
-    if (group->aggregate_states == NULL && group->aggregate_state_count != 0U) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    return MYLITE_OK;
-}
-
-static int update_table_select_group(mylite_stmt *stmt, struct mylite_table_select_group *group,
-                                     const struct mylite_table_select_row *row)
-{
-    for (size_t index = 0U; index < stmt->select_plan.aggregate_binding_count; ++index) {
-        int status = mylite_select_update_aggregate_state(
-            stmt, &group->aggregate_states[index], &stmt->select_plan.aggregate_bindings[index],
-            row, &table_select_eval_callbacks);
-
-        if (status != MYLITE_OK) {
-            return status;
-        }
-    }
-    return MYLITE_OK;
-}
-
-static int finalize_table_select_group(mylite_stmt *stmt, struct mylite_table_select_group *group,
-                                       struct mylite_table_select_row *out_row)
-{
-    size_t column_count = group->representative.value_count;
-
-    out_row->values = calloc(column_count, sizeof(*out_row->values));
-    if (out_row->values == NULL && column_count != 0U) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    out_row->value_count = column_count;
-    for (size_t index = 0U; index < column_count; ++index) {
-        if (mylite_expression_value_copy(&group->representative.values[index],
-                                         &out_row->values[index]) != 0) {
-            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-            return MYLITE_NOMEM;
-        }
-    }
-
-    out_row->aggregate_values =
-        calloc(group->aggregate_state_count, sizeof(*out_row->aggregate_values));
-    if (out_row->aggregate_values == NULL && group->aggregate_state_count != 0U) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    out_row->aggregate_value_count = group->aggregate_state_count;
-    for (size_t index = 0U; index < group->aggregate_state_count; ++index) {
-        int status = mylite_select_finalize_aggregate_state(
-            stmt, &group->aggregate_states[index], &stmt->select_plan.aggregate_bindings[index],
-            &out_row->aggregate_values[index]);
-
-        if (status != MYLITE_OK) {
-            return status;
-        }
-    }
     return MYLITE_OK;
 }
 
@@ -15386,24 +15161,6 @@ static int set_scalar_subquery_cardinality_error(mylite_db *database)
             mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_SUBQUERY_NO_1_ROW, message);
     }
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-}
-
-static void table_select_group_deinit(struct mylite_table_select_group *group)
-{
-    if (group == NULL) {
-        return;
-    }
-
-    mylite_select_row_deinit(&group->representative);
-    for (size_t index = 0U; index < group->group_value_count; ++index) {
-        mylite_expression_value_deinit(&group->group_values[index]);
-    }
-    for (size_t index = 0U; index < group->aggregate_state_count; ++index) {
-        mylite_select_aggregate_state_deinit(&group->aggregate_states[index]);
-    }
-    free(group->group_values);
-    free(group->aggregate_states);
-    *group = (struct mylite_table_select_group){0};
 }
 
 static bool row_subquery_expression_is_supported(const struct mylite_sql_ast_node *expression)

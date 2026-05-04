@@ -88,6 +88,7 @@ add_library(mylite STATIC
   src/runtime/mylite_storage_engine.c
   src/runtime/mylite_table_ddl.c
   src/runtime/mylite_table_ddl_alter.c
+  src/runtime/mylite_table_ddl_alter_catalog.c
   src/runtime/mylite_table_ddl_index.c
   src/runtime/mylite_table_ddl_statement.c
   src/runtime/mylite_temporal_functions.c

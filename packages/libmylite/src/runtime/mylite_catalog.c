@@ -121,6 +121,27 @@ int mylite_catalog_initialize(mylite_db *database)
     return seed_system_schema(database, "sys", "utf8mb4", "utf8mb4_0900_ai_ci");
 }
 
+int mylite_catalog_update_auto_increment(mylite_db *database, const char *schema_name,
+                                         const char *table_name, uint64_t next_auto_increment)
+{
+    sqlite3_stmt *update = NULL;
+    static const char sql[] = "UPDATE __mylite_table_catalog SET auto_increment = ? "
+                              "WHERE table_schema = ? AND table_name = ?";
+    int rc =
+        sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &update, NULL);
+
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+
+    sqlite3_bind_int64(update, 1, (sqlite3_int64)next_auto_increment);
+    sqlite3_bind_text(update, 2, schema_name, -1, SQLITE_STATIC);
+    sqlite3_bind_text(update, 3, table_name, -1, SQLITE_STATIC);
+    rc = sqlite3_step(update);
+    sqlite3_finalize(update);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
+}
+
 static int seed_system_schema(mylite_db *database, const char *name, const char *character_set,
                               const char *collation)
 {

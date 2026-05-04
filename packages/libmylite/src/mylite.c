@@ -4,6 +4,7 @@
 #include "mylite_expression.h"
 #include "mylite_parser.h"
 #include "mylite_sqlite_translator.h"
+#include "runtime/mylite_catalog.h"
 #include "runtime/mylite_connection.h"
 #include "runtime/mylite_diagnostics.h"
 #include "runtime/mylite_metadata.h"
@@ -3219,8 +3220,6 @@ static int update_insert_auto_increment(mylite_stmt *stmt, const char *schema_na
                                         uint64_t next_auto_increment);
 static int update_table_auto_increment(mylite_stmt *stmt, const char *schema_name,
                                        const char *table_name, uint64_t next_auto_increment);
-static int update_auto_increment_catalog(mylite_db *database, const char *schema_name,
-                                         const char *table_name, uint64_t next_auto_increment);
 static bool insert_row_uses_all_defaults(const struct mylite_insert_values_plan *plan,
                                          size_t row_index);
 static size_t insert_row_target_column_count(const struct mylite_insert_values_plan *plan,
@@ -35637,35 +35636,14 @@ static int update_insert_auto_increment(mylite_stmt *stmt, const char *schema_na
 static int update_table_auto_increment(mylite_stmt *stmt, const char *schema_name,
                                        const char *table_name, uint64_t next_auto_increment)
 {
-    int status =
-        update_auto_increment_catalog(stmt->database, schema_name, table_name, next_auto_increment);
+    int status = mylite_catalog_update_auto_increment(stmt->database, schema_name, table_name,
+                                                      next_auto_increment);
 
     if (status != MYLITE_OK) {
         return status;
     }
     return record_pending_auto_increment(stmt->database, schema_name, table_name,
                                          next_auto_increment);
-}
-
-static int update_auto_increment_catalog(mylite_db *database, const char *schema_name,
-                                         const char *table_name, uint64_t next_auto_increment)
-{
-    sqlite3_stmt *update = NULL;
-    static const char sql[] = "UPDATE __mylite_table_catalog SET auto_increment = ? "
-                              "WHERE table_schema = ? AND table_name = ?";
-    int rc =
-        sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &update, NULL);
-
-    if (rc != SQLITE_OK) {
-        return mylite_diagnostics_set_sqlite_error(database);
-    }
-
-    sqlite3_bind_int64(update, 1, (sqlite3_int64)next_auto_increment);
-    sqlite3_bind_text(update, 2, schema_name, -1, sqlite_transient_destructor());
-    sqlite3_bind_text(update, 3, table_name, -1, sqlite_transient_destructor());
-    rc = sqlite3_step(update);
-    sqlite3_finalize(update);
-    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
 static bool insert_row_uses_all_defaults(const struct mylite_insert_values_plan *plan,
@@ -41923,8 +41901,8 @@ static int reapply_pending_auto_increments(mylite_db *database)
     for (size_t index = 0U; index < database->pending_auto_increment_count; ++index) {
         const struct mylite_pending_auto_increment *item =
             &database->pending_auto_increments[index];
-        int status = update_auto_increment_catalog(database, item->schema_name, item->table_name,
-                                                   item->next_auto_increment);
+        int status = mylite_catalog_update_auto_increment(
+            database, item->schema_name, item->table_name, item->next_auto_increment);
 
         if (status != MYLITE_OK) {
             return status;

@@ -19,6 +19,9 @@ bool mylite_expression_descriptor_has_decimal_result(
     const struct mylite_field_descriptor *descriptor);
 bool mylite_expression_descriptor_has_double_result(
     const struct mylite_field_descriptor *descriptor);
+void mylite_expression_descriptor_merge_union_operand(
+    const mylite_db *database, struct mylite_field_descriptor *descriptor,
+    const struct mylite_field_descriptor *operand);
 struct mylite_field_descriptor mylite_expression_descriptor_null(void);
 struct mylite_field_descriptor mylite_expression_descriptor_boolean(bool nullable);
 struct mylite_field_descriptor mylite_expression_descriptor_unsigned_longlong(bool nullable);

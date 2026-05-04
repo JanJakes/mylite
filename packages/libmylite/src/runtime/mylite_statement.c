@@ -8,6 +8,7 @@
 #include "mylite_metadata.h"
 #include "mylite_schema.h"
 #include "mylite_select.h"
+#include "mylite_statement_prepare.h"
 #include "mylite_table_ddl.h"
 #include "mylite_transactions.h"
 #include "sqlite3.h"
@@ -104,6 +105,49 @@ int mylite_statement_prepare_sqlite(mylite_db *database, const char *sqlite_sql,
     };
     *out_stmt = stmt;
     return MYLITE_OK;
+}
+
+int mylite_statement_map_parse_status(mylite_db *database, enum mylite_sql_parse_status status)
+{
+    switch (status) {
+    case MYLITE_SQL_PARSE_OK:
+        return MYLITE_OK;
+    case MYLITE_SQL_PARSE_MISUSE:
+        return MYLITE_MISUSE;
+    case MYLITE_SQL_PARSE_NOMEM:
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    case MYLITE_SQL_PARSE_LEXER_ERROR:
+    case MYLITE_SQL_PARSE_SYNTAX_ERROR:
+    case MYLITE_SQL_PARSE_STACK_OVERFLOW:
+        if (mylite_diagnostics_set_error_message(database, mylite_sql_parse_status_name(status)) ==
+            MYLITE_NOMEM) {
+            return MYLITE_NOMEM;
+        }
+        return MYLITE_PARSE_ERROR;
+    }
+
+    return MYLITE_PARSE_ERROR;
+}
+
+int mylite_statement_map_translate_status(mylite_db *database,
+                                          enum mylite_sqlite_translate_status status)
+{
+    switch (status) {
+    case MYLITE_SQLITE_TRANSLATE_OK:
+        return MYLITE_OK;
+    case MYLITE_SQLITE_TRANSLATE_NOMEM:
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    case MYLITE_SQLITE_TRANSLATE_UNSUPPORTED:
+        if (mylite_diagnostics_set_error_message(database, "unsupported SQL statement") ==
+            MYLITE_NOMEM) {
+            return MYLITE_NOMEM;
+        }
+        return MYLITE_UNSUPPORTED;
+    }
+
+    return MYLITE_UNSUPPORTED;
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)

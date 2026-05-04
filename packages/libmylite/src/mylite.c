@@ -28,6 +28,7 @@
 #include "runtime/mylite_show_types.h"
 #include "runtime/mylite_span.h"
 #include "runtime/mylite_statement.h"
+#include "runtime/mylite_statement_prepare.h"
 #include "runtime/mylite_table_ddl.h"
 #include "runtime/mylite_table_ddl_alter.h"
 #include "runtime/mylite_table_ddl_types.h"
@@ -1989,8 +1990,6 @@ static const char *sqlite_affinity_for_catalog_data_type(const char *data_type);
 static bool write_statement_kind(enum mylite_stmt_kind kind);
 static bool binary_expression_is_in_subquery(const struct mylite_sql_ast_node *expression);
 static bool statement_preserves_diagnostics(const struct mylite_sql_ast_node *statement);
-static int map_parse_status(mylite_db *database, enum mylite_sql_parse_status status);
-static int map_translate_status(mylite_db *database, enum mylite_sqlite_translate_status status);
 static sqlite3_destructor_type sqlite_transient_destructor(void);
 
 int mylite_prepare(mylite_db *database, const char *sql, size_t length, mylite_stmt **out_stmt)
@@ -2022,7 +2021,7 @@ int mylite_prepare(mylite_db *database, const char *sql, size_t length, mylite_s
         &parse_result);
     if (parse_status != MYLITE_SQL_PARSE_OK) {
         mylite_diagnostics_clear_warnings(database);
-        status = map_parse_status(database, parse_status);
+        status = mylite_statement_map_parse_status(database, parse_status);
         if (status != MYLITE_NOMEM) {
             (void)mylite_diagnostics_append_current_error_condition(database,
                                                                     MYLITE_MYSQL_ER_PARSE_ERROR);
@@ -2250,7 +2249,7 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
 
     translate_status = mylite_sqlite_translate(root, &translate_result);
     if (translate_status != MYLITE_SQLITE_TRANSLATE_OK) {
-        return map_translate_status(database, translate_status);
+        return mylite_statement_map_translate_status(database, translate_status);
     }
 
     status = mylite_statement_prepare_sqlite(database, translate_result.sql, out_stmt);
@@ -22499,48 +22498,6 @@ static bool statement_preserves_diagnostics(const struct mylite_sql_ast_node *st
         return true;
     }
     return false;
-}
-
-static int map_parse_status(mylite_db *database, enum mylite_sql_parse_status status)
-{
-    switch (status) {
-    case MYLITE_SQL_PARSE_OK:
-        return MYLITE_OK;
-    case MYLITE_SQL_PARSE_MISUSE:
-        return MYLITE_MISUSE;
-    case MYLITE_SQL_PARSE_NOMEM:
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    case MYLITE_SQL_PARSE_LEXER_ERROR:
-    case MYLITE_SQL_PARSE_SYNTAX_ERROR:
-    case MYLITE_SQL_PARSE_STACK_OVERFLOW:
-        if (mylite_diagnostics_set_error_message(database, mylite_sql_parse_status_name(status)) ==
-            MYLITE_NOMEM) {
-            return MYLITE_NOMEM;
-        }
-        return MYLITE_PARSE_ERROR;
-    }
-
-    return MYLITE_PARSE_ERROR;
-}
-
-static int map_translate_status(mylite_db *database, enum mylite_sqlite_translate_status status)
-{
-    switch (status) {
-    case MYLITE_SQLITE_TRANSLATE_OK:
-        return MYLITE_OK;
-    case MYLITE_SQLITE_TRANSLATE_NOMEM:
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    case MYLITE_SQLITE_TRANSLATE_UNSUPPORTED:
-        if (mylite_diagnostics_set_error_message(database, "unsupported SQL statement") ==
-            MYLITE_NOMEM) {
-            return MYLITE_NOMEM;
-        }
-        return MYLITE_UNSUPPORTED;
-    }
-
-    return MYLITE_UNSUPPORTED;
 }
 
 static sqlite3_destructor_type sqlite_transient_destructor(void)

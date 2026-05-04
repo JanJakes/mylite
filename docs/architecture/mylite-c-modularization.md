@@ -494,7 +494,7 @@ only the core object model and transitional shared helpers listed here:
   string/collation inference into the session module.
 - [ ] Move string/number conversion helpers used only by INSERT into
   `mylite_dml`.
-- [ ] Move parse/translate status mapping into `mylite_statement`.
+- [x] Move parse/translate status mapping into `mylite_statement`.
 - [ ] Move custom statement execution dispatch into `mylite_statement` after
   every statement family exposes an execution entry point.
 - [ ] Move parsed statement dispatch into `mylite_statement` after every

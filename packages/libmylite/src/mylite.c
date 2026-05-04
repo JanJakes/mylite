@@ -1160,8 +1160,6 @@ static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind k
                                     const struct mylite_sql_ast_node *statement,
                                     mylite_stmt **out_stmt);
 static int execute_alter_table_statement(mylite_stmt *stmt);
-static int execute_update_statement(mylite_stmt *stmt);
-static int execute_delete_statement(mylite_stmt *stmt);
 static int execute_union_query_statement(mylite_stmt *stmt);
 static int materialize_union_query_result(mylite_stmt *stmt);
 static int scan_union_operand(mylite_stmt *stmt, mylite_stmt *operand,
@@ -12927,6 +12925,11 @@ static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind k
 
 int mylite_statement_execute_custom(mylite_stmt *stmt)
 {
+    const struct mylite_dml_expression_callbacks dml_expression_callbacks = {
+        .user_data = stmt,
+        .eval_session_function = evaluate_dml_materialize_session_function,
+        .set_where_predicate_eval_error = set_dml_materialize_where_predicate_eval_error,
+    };
     int status = MYLITE_OK;
 
     if (stmt->kind == MYLITE_STMT_SCALAR_SELECT) {
@@ -13011,10 +13014,10 @@ int mylite_statement_execute_custom(mylite_stmt *stmt)
         status = mylite_dml_execute_replace_set_statement(stmt);
         break;
     case MYLITE_STMT_UPDATE:
-        status = execute_update_statement(stmt);
+        status = mylite_dml_execute_update_statement(stmt, &dml_expression_callbacks);
         break;
     case MYLITE_STMT_DELETE:
-        status = execute_delete_statement(stmt);
+        status = mylite_dml_execute_delete_statement(stmt, &dml_expression_callbacks);
         break;
     case MYLITE_STMT_START_TRANSACTION:
     case MYLITE_STMT_BEGIN_TRANSACTION:
@@ -13972,133 +13975,6 @@ static int set_alter_table_invalid_null_error(mylite_db *database)
     status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_INVALID_USE_OF_NULL,
                                              mylite_error_message(database));
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-}
-
-static int execute_update_statement(mylite_stmt *stmt)
-{
-    struct mylite_select_table table = {0};
-    struct mylite_insert_table write_table = {0};
-    struct mylite_update_order_plan order_plan = {0};
-    struct mylite_update_bound_assignment *assignments = NULL;
-    struct mylite_update_rowset rowset = {0};
-    const struct mylite_dml_expression_callbacks expression_callbacks = {
-        .user_data = stmt,
-        .eval_session_function = evaluate_dml_materialize_session_function,
-        .set_where_predicate_eval_error = set_dml_materialize_where_predicate_eval_error,
-    };
-    size_t assignment_count = stmt->update.assignment_count;
-    int64_t affected_rows = 0;
-    int status = MYLITE_OK;
-
-    stmt->affected_rows = 0;
-    stmt->matched_rows = 0U;
-
-    status = mylite_dml_copy_update_target_to_select_table(stmt->database, &stmt->update, &table);
-    if (status == MYLITE_OK) {
-        status = mylite_select_resolve_table_target(stmt->database, &table);
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_select_load_table_columns(stmt->database, &table);
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_dml_load_write_table(stmt->database, table.schema_name, table.table_name,
-                                             &write_table);
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_dml_bind_update_subset(stmt->database, &stmt->update, &table, &assignments);
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_dml_bind_update_order_by_clause(stmt->database, &stmt->update, &table,
-                                                        &order_plan);
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_dml_materialize_update_rows(stmt->database, &stmt->update, &table,
-                                                    &order_plan, &expression_callbacks, &rowset);
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_dml_sort_update_rowset(&rowset, &order_plan);
-        if (status == MYLITE_NOMEM) {
-            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        }
-    }
-    if (status == MYLITE_OK) {
-        mylite_dml_apply_update_limit(stmt->update.limit_clause, &rowset);
-        stmt->matched_rows = rowset.row_count;
-        status = mylite_dml_execute_update_rows_transaction(
-            stmt->database, &table, &write_table, assignments, assignment_count,
-            &expression_callbacks, &rowset, &affected_rows);
-        if (status == MYLITE_OK) {
-            stmt->affected_rows = affected_rows;
-        }
-    }
-
-    free(assignments);
-    mylite_dml_update_rowset_deinit(&rowset);
-    mylite_dml_update_order_plan_deinit(&order_plan);
-    mylite_dml_insert_table_deinit(&write_table);
-    mylite_select_table_deinit(&table);
-    if (status != MYLITE_OK) {
-        stmt->affected_rows = -1;
-    }
-    return status;
-}
-
-static int execute_delete_statement(mylite_stmt *stmt)
-{
-    struct mylite_select_table table = {0};
-    struct mylite_update_order_plan order_plan = {0};
-    struct mylite_update_rowset rowset = {0};
-    const struct mylite_dml_expression_callbacks expression_callbacks = {
-        .user_data = stmt,
-        .eval_session_function = evaluate_dml_materialize_session_function,
-        .set_where_predicate_eval_error = set_dml_materialize_where_predicate_eval_error,
-    };
-    int64_t affected_rows = 0;
-    int status = MYLITE_OK;
-
-    stmt->affected_rows = 0;
-
-    status =
-        mylite_dml_copy_delete_target_to_select_table(stmt->database, &stmt->delete_plan, &table);
-    if (status == MYLITE_OK) {
-        status = mylite_dml_resolve_delete_target(stmt->database, &table);
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_select_load_table_columns(stmt->database, &table);
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_dml_bind_delete_subset(stmt->database, &stmt->delete_plan, &table);
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_dml_bind_delete_order_by_clause(stmt->database, &stmt->delete_plan, &table,
-                                                        &order_plan);
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_dml_materialize_delete_rows(stmt->database, &stmt->delete_plan, &table,
-                                                    &order_plan, &expression_callbacks, &rowset);
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_dml_sort_update_rowset(&rowset, &order_plan);
-        if (status == MYLITE_NOMEM) {
-            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        }
-    }
-    if (status == MYLITE_OK) {
-        mylite_dml_apply_update_limit(stmt->delete_plan.limit_clause, &rowset);
-        status = mylite_dml_execute_delete_rows_transaction(stmt->database, &table, &rowset,
-                                                            &affected_rows);
-        if (status == MYLITE_OK) {
-            stmt->affected_rows = affected_rows;
-        }
-    }
-
-    mylite_dml_update_rowset_deinit(&rowset);
-    mylite_dml_update_order_plan_deinit(&order_plan);
-    mylite_select_table_deinit(&table);
-    if (status != MYLITE_OK) {
-        stmt->affected_rows = -1;
-    }
-    return status;
 }
 
 static int execute_scalar_select_statement(mylite_stmt *stmt)

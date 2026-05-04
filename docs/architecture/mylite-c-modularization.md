@@ -452,6 +452,8 @@ only the core object model and transitional shared helpers listed here:
 - [x] Move DELETE-specific diagnostics into a focused DML companion module.
 - [x] Move shared DML NOT NULL column diagnostics into a focused DML companion
   module.
+- [x] Move UPDATE/DELETE statement execution wrappers into a focused DML
+  statement module while keeping expression callbacks local.
 - [ ] Move remaining DML-specific diagnostics into `mylite_dml`.
 - [ ] Split SELECT, UNION, aggregate, and subquery planning/execution.
 - [x] Start `src/runtime/mylite_select.{h,c}` with SELECT plan cleanup.

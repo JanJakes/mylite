@@ -658,6 +658,8 @@ into focused `*_types.h` headers.
   and alias copying out of the common SELECT utility module.
 - [x] Split shared SHOW CREATE identifier quoting, string literal quoting, and
   SQLite bind lifetime helpers out of the mixed table/schema module.
+- [x] Split SHOW CREATE TABLE target resolution, catalog reads, column/index
+  rendering, and table options into a dedicated table renderer module.
 - [ ] Split `mylite_dml_insert_value_resolve.c` into insert column-list,
   positional/default, `INSERT ... SET`, and SQLite-bind modules.
 - [ ] Split `mylite_select_subquery_eval.c` into scalar subquery, quantified

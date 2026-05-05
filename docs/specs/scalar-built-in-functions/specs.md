@@ -185,7 +185,8 @@ by common scalar expressions:
 - temporal functions: `NOW`, `CURRENT_TIMESTAMP`, `LOCALTIME`,
   `LOCALTIMESTAMP`, `CURDATE`/`CURRENT_DATE`, `CURTIME`/`CURRENT_TIME`,
   `DATE`, `DATEDIFF`, `DATE_ADD`, `DATE_SUB`, `ADDDATE`, `SUBDATE`,
-  `YEAR`, `MONTH`, `DAY`, `DAYOFMONTH`, `HOUR`, `MINUTE`, `SECOND`,
+  `YEAR`, `MONTH`, `DAY`, `DAYOFMONTH`, `DAYOFWEEK`, `DAYOFYEAR`, `QUARTER`,
+  `HOUR`, `MINUTE`, `SECOND`, `MICROSECOND`,
   `EXTRACT` for the simple `YEAR`, `MONTH`, `DAY`, `HOUR`, `MINUTE`, and
   `SECOND` units, `TIMESTAMPADD` for the simple `DAY`, `WEEK`, `MONTH`,
   `YEAR`, `HOUR`, `MINUTE`, and `SECOND` units, and `TIMESTAMPDIFF` for the

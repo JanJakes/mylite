@@ -398,9 +398,13 @@ enum temporal_part_kind {
     TEMPORAL_PART_YEAR,
     TEMPORAL_PART_MONTH,
     TEMPORAL_PART_DAY,
+    TEMPORAL_PART_DAYOFWEEK,
+    TEMPORAL_PART_DAYOFYEAR,
+    TEMPORAL_PART_QUARTER,
     TEMPORAL_PART_HOUR,
     TEMPORAL_PART_MINUTE,
     TEMPORAL_PART_SECOND,
+    TEMPORAL_PART_MICROSECOND,
 };
 
 struct temporal_date_value {
@@ -593,6 +597,10 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_FOUND_ROWS = 121,
     MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME = 122,
     MYLITE_SCALAR_FUNCTION_DEFAULT = 123,
+    MYLITE_SCALAR_FUNCTION_DAYOFWEEK = 124,
+    MYLITE_SCALAR_FUNCTION_DAYOFYEAR = 125,
+    MYLITE_SCALAR_FUNCTION_QUARTER = 126,
+    MYLITE_SCALAR_FUNCTION_MICROSECOND = 127,
 };
 
 struct angle_conversion_input {
@@ -813,9 +821,13 @@ static int eval_temporal_part_function(enum mylite_scalar_function_id function_i
                                        const struct mylite_expression_eval_context *context,
                                        struct mylite_expression_warnings *warnings,
                                        struct mylite_expression_value *out_value);
+static int eval_temporal_microsecond_part(const struct mylite_expression_value *argument,
+                                          struct mylite_expression_warnings *warnings,
+                                          struct mylite_expression_value *out_value);
 static bool temporal_part_from_function(enum mylite_scalar_function_id function_id,
                                         enum mylite_sql_ast_interval_unit unit,
                                         enum temporal_part_kind *out_part);
+static bool temporal_part_requires_complete_date(enum temporal_part_kind part);
 static int temporal_part_value(const struct temporal_date_value *date,
                                enum temporal_part_kind part);
 static int eval_date_arithmetic_function(enum mylite_scalar_function_id function_id,
@@ -2044,9 +2056,13 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_YEAR:
     case MYLITE_SCALAR_FUNCTION_MONTH:
     case MYLITE_SCALAR_FUNCTION_DAY:
+    case MYLITE_SCALAR_FUNCTION_DAYOFWEEK:
+    case MYLITE_SCALAR_FUNCTION_DAYOFYEAR:
+    case MYLITE_SCALAR_FUNCTION_QUARTER:
     case MYLITE_SCALAR_FUNCTION_HOUR:
     case MYLITE_SCALAR_FUNCTION_MINUTE:
     case MYLITE_SCALAR_FUNCTION_SECOND:
+    case MYLITE_SCALAR_FUNCTION_MICROSECOND:
     case MYLITE_SCALAR_FUNCTION_TO_DAYS:
     case MYLITE_SCALAR_FUNCTION_TO_SECONDS:
     case MYLITE_SCALAR_FUNCTION_FROM_DAYS:
@@ -2977,9 +2993,13 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
     case MYLITE_SCALAR_FUNCTION_YEAR:
     case MYLITE_SCALAR_FUNCTION_MONTH:
     case MYLITE_SCALAR_FUNCTION_DAY:
+    case MYLITE_SCALAR_FUNCTION_DAYOFWEEK:
+    case MYLITE_SCALAR_FUNCTION_DAYOFYEAR:
+    case MYLITE_SCALAR_FUNCTION_QUARTER:
     case MYLITE_SCALAR_FUNCTION_HOUR:
     case MYLITE_SCALAR_FUNCTION_MINUTE:
     case MYLITE_SCALAR_FUNCTION_SECOND:
+    case MYLITE_SCALAR_FUNCTION_MICROSECOND:
     case MYLITE_SCALAR_FUNCTION_EXTRACT:
         return eval_temporal_part_function(function_id, node, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPADD:
@@ -4413,7 +4433,13 @@ static int eval_temporal_part_function(enum mylite_scalar_function_id function_i
         goto cleanup;
     }
 
-    status = temporal_date_from_value_with_mode(&argument, true, true, warnings, &date, &valid);
+    if (part == TEMPORAL_PART_MICROSECOND) {
+        status = eval_temporal_microsecond_part(&argument, warnings, out_value);
+        goto cleanup;
+    }
+
+    status = temporal_date_from_value_with_mode(
+        &argument, true, !temporal_part_requires_complete_date(part), warnings, &date, &valid);
     if (status != 0) {
         goto cleanup;
     }
@@ -4432,6 +4458,55 @@ cleanup:
     return status;
 }
 
+static int eval_temporal_microsecond_part(const struct mylite_expression_value *argument,
+                                          struct mylite_expression_warnings *warnings,
+                                          struct mylite_expression_value *out_value)
+{
+    struct temporal_date_source source = {0};
+    struct temporal_date_value date = {0};
+    struct temporal_time_value time = {0};
+    bool valid = false;
+    int status = 0;
+
+    if (argument == NULL || out_value == NULL) {
+        return -1;
+    }
+    if (argument->kind != MYLITE_EXPRESSION_VALUE_REAL) {
+        status = temporal_date_source_from_value(argument, &source);
+        if (status != 0) {
+            return status;
+        }
+        if (parse_temporal_date_source(&source, true, true, &date) && date.has_time) {
+            if (date.warning_kind != TEMPORAL_DATE_WARNING_NONE) {
+                status = append_temporal_time_warning(warnings, source.warning_text,
+                                                      source.warning_length);
+                if (status != 0) {
+                    return status;
+                }
+            }
+            *out_value = (struct mylite_expression_value){
+                .kind = MYLITE_EXPRESSION_VALUE_INT64,
+                .int64_value = date.microsecond,
+            };
+            return 0;
+        }
+    }
+
+    status = time_value_from_expression(argument, warnings, &time, &valid);
+    if (status != 0) {
+        return status;
+    }
+    if (!valid) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        return 0;
+    }
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_INT64,
+        .int64_value = time.microsecond,
+    };
+    return 0;
+}
+
 static bool temporal_part_from_function(enum mylite_scalar_function_id function_id,
                                         enum mylite_sql_ast_interval_unit unit,
                                         enum temporal_part_kind *out_part)
@@ -4448,6 +4523,15 @@ static bool temporal_part_from_function(enum mylite_scalar_function_id function_
     case MYLITE_SCALAR_FUNCTION_DAY:
         part = TEMPORAL_PART_DAY;
         break;
+    case MYLITE_SCALAR_FUNCTION_DAYOFWEEK:
+        part = TEMPORAL_PART_DAYOFWEEK;
+        break;
+    case MYLITE_SCALAR_FUNCTION_DAYOFYEAR:
+        part = TEMPORAL_PART_DAYOFYEAR;
+        break;
+    case MYLITE_SCALAR_FUNCTION_QUARTER:
+        part = TEMPORAL_PART_QUARTER;
+        break;
     case MYLITE_SCALAR_FUNCTION_HOUR:
         part = TEMPORAL_PART_HOUR;
         break;
@@ -4456,6 +4540,9 @@ static bool temporal_part_from_function(enum mylite_scalar_function_id function_
         break;
     case MYLITE_SCALAR_FUNCTION_SECOND:
         part = TEMPORAL_PART_SECOND;
+        break;
+    case MYLITE_SCALAR_FUNCTION_MICROSECOND:
+        part = TEMPORAL_PART_MICROSECOND;
         break;
     case MYLITE_SCALAR_FUNCTION_EXTRACT:
         switch (unit) {
@@ -4607,6 +4694,11 @@ static bool temporal_part_from_function(enum mylite_scalar_function_id function_
     return part != TEMPORAL_PART_NONE;
 }
 
+static bool temporal_part_requires_complete_date(enum temporal_part_kind part)
+{
+    return part == TEMPORAL_PART_DAYOFWEEK || part == TEMPORAL_PART_DAYOFYEAR;
+}
+
 static int temporal_part_value(const struct temporal_date_value *date, enum temporal_part_kind part)
 {
     switch (part) {
@@ -4616,12 +4708,20 @@ static int temporal_part_value(const struct temporal_date_value *date, enum temp
         return date == NULL ? 0 : date->month;
     case TEMPORAL_PART_DAY:
         return date == NULL ? 0 : date->day;
+    case TEMPORAL_PART_DAYOFWEEK:
+        return date == NULL ? 0 : date_format_weekday_sunday(date) + 1;
+    case TEMPORAL_PART_DAYOFYEAR:
+        return date == NULL ? 0 : date_format_day_of_year(date);
+    case TEMPORAL_PART_QUARTER:
+        return date == NULL || date->month == 0 ? 0 : ((date->month + 2) / 3);
     case TEMPORAL_PART_HOUR:
         return date == NULL ? 0 : date->hour;
     case TEMPORAL_PART_MINUTE:
         return date == NULL ? 0 : date->minute;
     case TEMPORAL_PART_SECOND:
         return date == NULL ? 0 : date->second;
+    case TEMPORAL_PART_MICROSECOND:
+        return date == NULL ? 0 : date->microsecond;
     case TEMPORAL_PART_NONE:
         return 0;
     }
@@ -8958,9 +9058,13 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_YEAR:
     case MYLITE_SCALAR_FUNCTION_MONTH:
     case MYLITE_SCALAR_FUNCTION_DAY:
+    case MYLITE_SCALAR_FUNCTION_DAYOFWEEK:
+    case MYLITE_SCALAR_FUNCTION_DAYOFYEAR:
+    case MYLITE_SCALAR_FUNCTION_QUARTER:
     case MYLITE_SCALAR_FUNCTION_HOUR:
     case MYLITE_SCALAR_FUNCTION_MINUTE:
     case MYLITE_SCALAR_FUNCTION_SECOND:
+    case MYLITE_SCALAR_FUNCTION_MICROSECOND:
     case MYLITE_SCALAR_FUNCTION_EXTRACT:
     case MYLITE_SCALAR_FUNCTION_CONCAT:
     case MYLITE_SCALAR_FUNCTION_CONCAT_WS:
@@ -10822,9 +10926,13 @@ static int trigonometric_function_result(struct trigonometric_input input,
     case MYLITE_SCALAR_FUNCTION_YEAR:
     case MYLITE_SCALAR_FUNCTION_MONTH:
     case MYLITE_SCALAR_FUNCTION_DAY:
+    case MYLITE_SCALAR_FUNCTION_DAYOFWEEK:
+    case MYLITE_SCALAR_FUNCTION_DAYOFYEAR:
+    case MYLITE_SCALAR_FUNCTION_QUARTER:
     case MYLITE_SCALAR_FUNCTION_HOUR:
     case MYLITE_SCALAR_FUNCTION_MINUTE:
     case MYLITE_SCALAR_FUNCTION_SECOND:
+    case MYLITE_SCALAR_FUNCTION_MICROSECOND:
     case MYLITE_SCALAR_FUNCTION_EXTRACT:
     case MYLITE_SCALAR_FUNCTION_CONCAT:
     case MYLITE_SCALAR_FUNCTION_CONCAT_WS:
@@ -11131,9 +11239,13 @@ static int inverse_trigonometric_function_result(struct inverse_trigonometric_in
     case MYLITE_SCALAR_FUNCTION_YEAR:
     case MYLITE_SCALAR_FUNCTION_MONTH:
     case MYLITE_SCALAR_FUNCTION_DAY:
+    case MYLITE_SCALAR_FUNCTION_DAYOFWEEK:
+    case MYLITE_SCALAR_FUNCTION_DAYOFYEAR:
+    case MYLITE_SCALAR_FUNCTION_QUARTER:
     case MYLITE_SCALAR_FUNCTION_HOUR:
     case MYLITE_SCALAR_FUNCTION_MINUTE:
     case MYLITE_SCALAR_FUNCTION_SECOND:
+    case MYLITE_SCALAR_FUNCTION_MICROSECOND:
     case MYLITE_SCALAR_FUNCTION_EXTRACT:
     case MYLITE_SCALAR_FUNCTION_CONCAT:
     case MYLITE_SCALAR_FUNCTION_CONCAT_WS:
@@ -11350,9 +11462,13 @@ static int angle_conversion_result(struct angle_conversion_input conversion, dou
     case MYLITE_SCALAR_FUNCTION_YEAR:
     case MYLITE_SCALAR_FUNCTION_MONTH:
     case MYLITE_SCALAR_FUNCTION_DAY:
+    case MYLITE_SCALAR_FUNCTION_DAYOFWEEK:
+    case MYLITE_SCALAR_FUNCTION_DAYOFYEAR:
+    case MYLITE_SCALAR_FUNCTION_QUARTER:
     case MYLITE_SCALAR_FUNCTION_HOUR:
     case MYLITE_SCALAR_FUNCTION_MINUTE:
     case MYLITE_SCALAR_FUNCTION_SECOND:
+    case MYLITE_SCALAR_FUNCTION_MICROSECOND:
     case MYLITE_SCALAR_FUNCTION_EXTRACT:
     case MYLITE_SCALAR_FUNCTION_CONCAT:
     case MYLITE_SCALAR_FUNCTION_CONCAT_WS:
@@ -15388,9 +15504,13 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"MONTH", MYLITE_SCALAR_FUNCTION_MONTH},
         {"DAY", MYLITE_SCALAR_FUNCTION_DAY},
         {"DAYOFMONTH", MYLITE_SCALAR_FUNCTION_DAY},
+        {"DAYOFWEEK", MYLITE_SCALAR_FUNCTION_DAYOFWEEK},
+        {"DAYOFYEAR", MYLITE_SCALAR_FUNCTION_DAYOFYEAR},
+        {"QUARTER", MYLITE_SCALAR_FUNCTION_QUARTER},
         {"HOUR", MYLITE_SCALAR_FUNCTION_HOUR},
         {"MINUTE", MYLITE_SCALAR_FUNCTION_MINUTE},
         {"SECOND", MYLITE_SCALAR_FUNCTION_SECOND},
+        {"MICROSECOND", MYLITE_SCALAR_FUNCTION_MICROSECOND},
         {"EXTRACT", MYLITE_SCALAR_FUNCTION_EXTRACT},
         {"BIT_COUNT", MYLITE_SCALAR_FUNCTION_BIT_COUNT},
         {"BIT_LENGTH", MYLITE_SCALAR_FUNCTION_BIT_LENGTH},
@@ -15534,9 +15654,13 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_YEAR:
     case MYLITE_SCALAR_FUNCTION_MONTH:
     case MYLITE_SCALAR_FUNCTION_DAY:
+    case MYLITE_SCALAR_FUNCTION_DAYOFWEEK:
+    case MYLITE_SCALAR_FUNCTION_DAYOFYEAR:
+    case MYLITE_SCALAR_FUNCTION_QUARTER:
     case MYLITE_SCALAR_FUNCTION_HOUR:
     case MYLITE_SCALAR_FUNCTION_MINUTE:
     case MYLITE_SCALAR_FUNCTION_SECOND:
+    case MYLITE_SCALAR_FUNCTION_MICROSECOND:
     case MYLITE_SCALAR_FUNCTION_EXTRACT:
         return false;
     }

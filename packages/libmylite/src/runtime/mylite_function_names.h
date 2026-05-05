@@ -36,9 +36,13 @@ bool mylite_function_name_is_time_extraction(const struct mylite_sql_ast_node *n
 bool mylite_function_name_is_year_part(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_month_part(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_day_part(const struct mylite_sql_ast_node *name);
+bool mylite_function_name_is_dayofweek_part(const struct mylite_sql_ast_node *name);
+bool mylite_function_name_is_dayofyear_part(const struct mylite_sql_ast_node *name);
+bool mylite_function_name_is_quarter_part(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_hour_part(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_minute_part(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_second_part(const struct mylite_sql_ast_node *name);
+bool mylite_function_name_is_microsecond_part(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_extract(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_date_interval_arithmetic(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_concat_ws(const struct mylite_sql_ast_node *name);

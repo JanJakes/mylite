@@ -5803,8 +5803,20 @@ static int test_date_and_datediff_functions_execution(void)
         {"day_value", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
          MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"dayofweek_value", NULL, NULL, NULL, NULL, NULL, 2U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"dayofyear_value", NULL, NULL, NULL, NULL, NULL, 4U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"quarter_value", NULL, NULL, NULL, NULL, NULL, 2U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED, 1},
         {"hour_value", NULL, NULL, NULL, NULL, NULL, 4U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
          MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"microsecond_value", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U,
+         63U, MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED, 1},
         {"extract_year", NULL, NULL, NULL, NULL, NULL, 5U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
          MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
@@ -5822,12 +5834,12 @@ static int test_date_and_datediff_functions_execution(void)
     static const char *const unchanged_updated_values[] = {"1", "2024-02-29", "1", "leap"};
     static const char *const remaining_columns[] = {"id"};
     static const char *const remaining_values[] = {"1", "3"};
-    static const char *const part_projection_columns[] = {"id", "y", "h", "s"};
+    static const char *const part_projection_columns[] = {"id", "y", "h", "s", "dow", "us"};
     static const char *const part_projection_values[] = {
-        "1", "2024", "12", "56", "2", "2024", "1", "3",
+        "1", "2024", "12", "56", "5", "123456", "2", "2024", "1", "3", "6", "0",
     };
     static const char *const part_updated_columns[] = {"id", "n", "note"};
-    static const char *const part_updated_values[] = {"1", "29", "leap"};
+    static const char *const part_updated_values[] = {"1", "60", "leap"};
     static const char *const part_remaining_values[] = {"1", "3"};
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
@@ -5858,7 +5870,12 @@ static int test_date_and_datediff_functions_execution(void)
                             "SELECT YEAR('2024-02-29 12:34:56') AS year_value, "
                             "MONTH('2024-02-29 12:34:56') AS month_value, "
                             "DAY('2024-02-29 12:34:56') AS day_value, "
+                            "DAYOFWEEK('2024-02-29 12:34:56') AS dayofweek_value, "
+                            "DAYOFYEAR('2024-02-29 12:34:56') AS dayofyear_value, "
+                            "QUARTER('2024-02-29 12:34:56') AS quarter_value, "
                             "HOUR('2024-02-29 12:34:56') AS hour_value, "
+                            "MICROSECOND('2024-02-29 12:34:56.123456') "
+                            "AS microsecond_value, "
                             "EXTRACT(YEAR FROM '2024-02-29 12:34:56') AS extract_year, "
                             "EXTRACT(HOUR FROM '2024-02-29 12:34:56') AS extract_hour",
                             MYLITE_OK, &stmt);
@@ -5869,9 +5886,13 @@ static int test_date_and_datediff_functions_execution(void)
     failures += expect_string(mylite_column_text(stmt, 0), "2024", "YEAR metadata value");
     failures += expect_string(mylite_column_text(stmt, 1), "2", "MONTH metadata value");
     failures += expect_string(mylite_column_text(stmt, 2), "29", "DAY metadata value");
-    failures += expect_string(mylite_column_text(stmt, 3), "12", "HOUR metadata value");
-    failures += expect_string(mylite_column_text(stmt, 4), "2024", "EXTRACT YEAR metadata value");
-    failures += expect_string(mylite_column_text(stmt, 5), "12", "EXTRACT HOUR metadata value");
+    failures += expect_string(mylite_column_text(stmt, 3), "5", "DAYOFWEEK metadata value");
+    failures += expect_string(mylite_column_text(stmt, 4), "60", "DAYOFYEAR metadata value");
+    failures += expect_string(mylite_column_text(stmt, 5), "1", "QUARTER metadata value");
+    failures += expect_string(mylite_column_text(stmt, 6), "12", "HOUR metadata value");
+    failures += expect_string(mylite_column_text(stmt, 7), "123456", "MICROSECOND metadata value");
+    failures += expect_string(mylite_column_text(stmt, 8), "2024", "EXTRACT YEAR metadata value");
+    failures += expect_string(mylite_column_text(stmt, 9), "12", "EXTRACT HOUR metadata value");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "temporal part metadata done");
     mylite_finalize(stmt);
     stmt = NULL;
@@ -5932,9 +5953,13 @@ static int test_date_and_datediff_functions_execution(void)
                             "MONTH('2024-02-29 12:34:56') AS m, "
                             "DAY('2024-02-29 12:34:56') AS d, "
                             "DAYOFMONTH('2024-02-29 12:34:56') AS dom, "
+                            "DAYOFWEEK('2024-02-29 12:34:56') AS dow, "
+                            "DAYOFYEAR('2024-02-29 12:34:56') AS doy, "
+                            "QUARTER('2024-02-29 12:34:56') AS q, "
                             "HOUR('2024-02-29 12:34:56') AS h, "
                             "MINUTE('2024-02-29 12:34:56') AS mi, "
                             "SECOND('2024-02-29 12:34:56') AS s, "
+                            "MICROSECOND('2024-02-29 12:34:56.123456') AS us, "
                             "EXTRACT(YEAR FROM '2024-02-29 12:34:56') AS ey, "
                             "EXTRACT(MONTH FROM '2024-02-29 12:34:56') AS em, "
                             "EXTRACT(DAY FROM '2024-02-29 12:34:56') AS ed, "
@@ -5944,15 +5969,23 @@ static int test_date_and_datediff_functions_execution(void)
                             "YEAR('2008-00-00') AS y_zero_month, "
                             "MONTH('2008-00-00') AS m_zero_month, "
                             "DAY('2008-00-00') AS d_zero_month, "
+                            "QUARTER('2008-00-00') AS q_zero_month, "
                             "YEAR('0000-01-00') AS y_zero_day, "
                             "MONTH('0000-01-00') AS m_zero_day, "
                             "DAY('0000-01-00') AS d_zero_day, "
+                            "QUARTER('0000-00-00 12:34:56.123456') AS q_zero_datetime, "
+                            "MICROSECOND('0000-00-00 12:34:56.123456') AS us_zero_datetime, "
                             "YEAR(240229) AS y_num, "
                             "MONTH(240229) AS m_num, "
                             "DAY(240229) AS d_num, "
+                            "DAYOFWEEK(240229) AS dow_num, "
+                            "DAYOFYEAR(240229) AS doy_num, "
+                            "QUARTER(240229) AS q_num, "
                             "HOUR(20240229123456) AS h_num, "
                             "MINUTE(20240229123456) AS mi_num, "
                             "SECOND(20240229123456) AS s_num, "
+                            "MICROSECOND(20240229123456.123456) AS us_num, "
+                            "MICROSECOND('12:34:56.123456') AS us_time, "
                             "HOUR(DATE_ADD('2024-01-01', INTERVAL 1 HOUR)) AS nested_hour",
                             MYLITE_OK, &stmt);
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "temporal part scalar row");
@@ -5960,28 +5993,40 @@ static int test_date_and_datediff_functions_execution(void)
     failures += expect_string(mylite_column_text(stmt, 1), "2", "MONTH datetime");
     failures += expect_string(mylite_column_text(stmt, 2), "29", "DAY datetime");
     failures += expect_string(mylite_column_text(stmt, 3), "29", "DAYOFMONTH datetime");
-    failures += expect_string(mylite_column_text(stmt, 4), "12", "HOUR datetime");
-    failures += expect_string(mylite_column_text(stmt, 5), "34", "MINUTE datetime");
-    failures += expect_string(mylite_column_text(stmt, 6), "56", "SECOND datetime");
-    failures += expect_string(mylite_column_text(stmt, 7), "2024", "EXTRACT YEAR");
-    failures += expect_string(mylite_column_text(stmt, 8), "2", "EXTRACT MONTH");
-    failures += expect_string(mylite_column_text(stmt, 9), "29", "EXTRACT DAY");
-    failures += expect_string(mylite_column_text(stmt, 10), "12", "EXTRACT HOUR");
-    failures += expect_string(mylite_column_text(stmt, 11), "34", "EXTRACT MINUTE");
-    failures += expect_string(mylite_column_text(stmt, 12), "56", "EXTRACT SECOND");
-    failures += expect_string(mylite_column_text(stmt, 13), "2008", "YEAR zero month");
-    failures += expect_string(mylite_column_text(stmt, 14), "0", "MONTH zero month");
-    failures += expect_string(mylite_column_text(stmt, 15), "0", "DAY zero month");
-    failures += expect_string(mylite_column_text(stmt, 16), "0", "YEAR zero day");
-    failures += expect_string(mylite_column_text(stmt, 17), "1", "MONTH zero day");
-    failures += expect_string(mylite_column_text(stmt, 18), "0", "DAY zero day");
-    failures += expect_string(mylite_column_text(stmt, 19), "2024", "YEAR numeric");
-    failures += expect_string(mylite_column_text(stmt, 20), "2", "MONTH numeric");
-    failures += expect_string(mylite_column_text(stmt, 21), "29", "DAY numeric");
-    failures += expect_string(mylite_column_text(stmt, 22), "12", "HOUR numeric");
-    failures += expect_string(mylite_column_text(stmt, 23), "34", "MINUTE numeric");
-    failures += expect_string(mylite_column_text(stmt, 24), "56", "SECOND numeric");
-    failures += expect_string(mylite_column_text(stmt, 25), "1", "nested DATE_ADD hour");
+    failures += expect_string(mylite_column_text(stmt, 4), "5", "DAYOFWEEK datetime");
+    failures += expect_string(mylite_column_text(stmt, 5), "60", "DAYOFYEAR datetime");
+    failures += expect_string(mylite_column_text(stmt, 6), "1", "QUARTER datetime");
+    failures += expect_string(mylite_column_text(stmt, 7), "12", "HOUR datetime");
+    failures += expect_string(mylite_column_text(stmt, 8), "34", "MINUTE datetime");
+    failures += expect_string(mylite_column_text(stmt, 9), "56", "SECOND datetime");
+    failures += expect_string(mylite_column_text(stmt, 10), "123456", "MICROSECOND datetime");
+    failures += expect_string(mylite_column_text(stmt, 11), "2024", "EXTRACT YEAR");
+    failures += expect_string(mylite_column_text(stmt, 12), "2", "EXTRACT MONTH");
+    failures += expect_string(mylite_column_text(stmt, 13), "29", "EXTRACT DAY");
+    failures += expect_string(mylite_column_text(stmt, 14), "12", "EXTRACT HOUR");
+    failures += expect_string(mylite_column_text(stmt, 15), "34", "EXTRACT MINUTE");
+    failures += expect_string(mylite_column_text(stmt, 16), "56", "EXTRACT SECOND");
+    failures += expect_string(mylite_column_text(stmt, 17), "2008", "YEAR zero month");
+    failures += expect_string(mylite_column_text(stmt, 18), "0", "MONTH zero month");
+    failures += expect_string(mylite_column_text(stmt, 19), "0", "DAY zero month");
+    failures += expect_string(mylite_column_text(stmt, 20), "0", "QUARTER zero month");
+    failures += expect_string(mylite_column_text(stmt, 21), "0", "YEAR zero day");
+    failures += expect_string(mylite_column_text(stmt, 22), "1", "MONTH zero day");
+    failures += expect_string(mylite_column_text(stmt, 23), "0", "DAY zero day");
+    failures += expect_string(mylite_column_text(stmt, 24), "0", "QUARTER zero datetime");
+    failures += expect_string(mylite_column_text(stmt, 25), "123456", "MICROSECOND zero datetime");
+    failures += expect_string(mylite_column_text(stmt, 26), "2024", "YEAR numeric");
+    failures += expect_string(mylite_column_text(stmt, 27), "2", "MONTH numeric");
+    failures += expect_string(mylite_column_text(stmt, 28), "29", "DAY numeric");
+    failures += expect_string(mylite_column_text(stmt, 29), "5", "DAYOFWEEK numeric");
+    failures += expect_string(mylite_column_text(stmt, 30), "60", "DAYOFYEAR numeric");
+    failures += expect_string(mylite_column_text(stmt, 31), "1", "QUARTER numeric");
+    failures += expect_string(mylite_column_text(stmt, 32), "12", "HOUR numeric");
+    failures += expect_string(mylite_column_text(stmt, 33), "34", "MINUTE numeric");
+    failures += expect_string(mylite_column_text(stmt, 34), "56", "SECOND numeric");
+    failures += expect_string(mylite_column_text(stmt, 35), "123456", "MICROSECOND numeric");
+    failures += expect_string(mylite_column_text(stmt, 36), "123456", "MICROSECOND time text");
+    failures += expect_string(mylite_column_text(stmt, 37), "1", "nested DATE_ADD hour");
     failures += expect_int(mylite_warning_count(database), 0, "temporal part scalar warnings");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "temporal part scalar done");
     mylite_finalize(stmt);
@@ -5991,12 +6036,18 @@ static int test_date_and_datediff_functions_execution(void)
                             "SELECT YEAR(NULL) AS y_null, "
                             "EXTRACT(YEAR FROM NULL) AS ey_null, "
                             "HOUR(NULL) AS h_null, "
+                            "DAYOFWEEK(NULL) AS dow_null, "
+                            "DAYOFYEAR(NULL) AS doy_null, "
+                            "QUARTER(NULL) AS q_null, "
+                            "MICROSECOND(NULL) AS us_null, "
                             "YEAR('0000-00-00 12:34:56') AS y_zero_datetime, "
                             "MONTH('0000-00-00 12:34:56') AS m_zero_datetime, "
                             "DAY('0000-00-00 12:34:56') AS d_zero_datetime, "
+                            "QUARTER('0000-00-00 12:34:56') AS q_zero_datetime, "
                             "HOUR('0000-00-00 12:34:56') AS h_zero_datetime, "
                             "MINUTE('0000-00-00 12:34:56') AS mi_zero_datetime, "
                             "SECOND('0000-00-00 12:34:56') AS s_zero_datetime, "
+                            "MICROSECOND('0000-00-00 12:34:56') AS us_zero_datetime, "
                             "EXTRACT(SECOND FROM '0000-00-00 12:34:56') AS es_zero_datetime",
                             MYLITE_OK, &stmt);
     failures +=
@@ -6004,13 +6055,19 @@ static int test_date_and_datediff_functions_execution(void)
     failures += expect_null_text(mylite_column_text(stmt, 0), "YEAR NULL");
     failures += expect_null_text(mylite_column_text(stmt, 1), "EXTRACT YEAR NULL");
     failures += expect_null_text(mylite_column_text(stmt, 2), "HOUR NULL");
-    failures += expect_string(mylite_column_text(stmt, 3), "0", "YEAR zero datetime");
-    failures += expect_string(mylite_column_text(stmt, 4), "0", "MONTH zero datetime");
-    failures += expect_string(mylite_column_text(stmt, 5), "0", "DAY zero datetime");
-    failures += expect_string(mylite_column_text(stmt, 6), "12", "HOUR zero datetime");
-    failures += expect_string(mylite_column_text(stmt, 7), "34", "MINUTE zero datetime");
-    failures += expect_string(mylite_column_text(stmt, 8), "56", "SECOND zero datetime");
-    failures += expect_string(mylite_column_text(stmt, 9), "56", "EXTRACT SECOND zero datetime");
+    failures += expect_null_text(mylite_column_text(stmt, 3), "DAYOFWEEK NULL");
+    failures += expect_null_text(mylite_column_text(stmt, 4), "DAYOFYEAR NULL");
+    failures += expect_null_text(mylite_column_text(stmt, 5), "QUARTER NULL");
+    failures += expect_null_text(mylite_column_text(stmt, 6), "MICROSECOND NULL");
+    failures += expect_string(mylite_column_text(stmt, 7), "0", "YEAR zero datetime");
+    failures += expect_string(mylite_column_text(stmt, 8), "0", "MONTH zero datetime");
+    failures += expect_string(mylite_column_text(stmt, 9), "0", "DAY zero datetime");
+    failures += expect_string(mylite_column_text(stmt, 10), "0", "QUARTER zero datetime");
+    failures += expect_string(mylite_column_text(stmt, 11), "12", "HOUR zero datetime");
+    failures += expect_string(mylite_column_text(stmt, 12), "34", "MINUTE zero datetime");
+    failures += expect_string(mylite_column_text(stmt, 13), "56", "SECOND zero datetime");
+    failures += expect_string(mylite_column_text(stmt, 14), "0", "MICROSECOND zero datetime");
+    failures += expect_string(mylite_column_text(stmt, 15), "56", "EXTRACT SECOND zero datetime");
     failures += expect_int(mylite_warning_count(database), 0,
                            "temporal part null and zero datetime warnings");
     failures +=
@@ -6077,7 +6134,13 @@ static int test_date_and_datediff_functions_execution(void)
                             "MONTH('2023-02-31') AS m_bad_day, "
                             "DAY('0000-00-00') AS d_zero_date, "
                             "HOUR('2024-02-29 12:34:56foo') AS h_trunc, "
-                            "EXTRACT(DAY FROM 20240229.9) AS ed_real",
+                            "EXTRACT(DAY FROM 20240229.9) AS ed_real, "
+                            "DAYOFWEEK('2008-00-00') AS dow_zero_month, "
+                            "DAYOFYEAR('2008-00-00') AS doy_zero_month, "
+                            "QUARTER('bad') AS q_bad, "
+                            "MICROSECOND('bad') AS us_bad, "
+                            "MICROSECOND('2024-02-29 12:34:56.123456foo') AS us_trunc, "
+                            "MICROSECOND('2024-02-29') AS us_date_text",
                             MYLITE_OK, &stmt);
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "temporal part invalid row");
     failures += expect_null_text(mylite_column_text(stmt, 0), "YEAR bad text");
@@ -6085,8 +6148,14 @@ static int test_date_and_datediff_functions_execution(void)
     failures += expect_null_text(mylite_column_text(stmt, 2), "DAY zero date");
     failures += expect_string(mylite_column_text(stmt, 3), "12", "HOUR truncated datetime");
     failures += expect_string(mylite_column_text(stmt, 4), "29", "EXTRACT real date");
-    failures += expect_int(mylite_warning_count(database), 5, "temporal part warning count");
-    for (int index = 0; index < 5; ++index) {
+    failures += expect_null_text(mylite_column_text(stmt, 5), "DAYOFWEEK zero month");
+    failures += expect_null_text(mylite_column_text(stmt, 6), "DAYOFYEAR zero month");
+    failures += expect_null_text(mylite_column_text(stmt, 7), "QUARTER bad text");
+    failures += expect_null_text(mylite_column_text(stmt, 8), "MICROSECOND bad text");
+    failures += expect_string(mylite_column_text(stmt, 9), "123456", "MICROSECOND truncated");
+    failures += expect_string(mylite_column_text(stmt, 10), "0", "MICROSECOND date text");
+    failures += expect_int(mylite_warning_count(database), 11, "temporal part warning count");
+    for (int index = 0; index < 11; ++index) {
         failures += expect_int((int)mylite_warning_code(database, index),
                                mysql_warning_truncated_wrong_value, "temporal part warning code");
     }
@@ -6095,6 +6164,21 @@ static int test_date_and_datediff_functions_execution(void)
     failures +=
         expect_string(mylite_warning_message(database, 4),
                       "Truncated incorrect date value: '20240229.9'", "EXTRACT real warning");
+    failures +=
+        expect_string(mylite_warning_message(database, 5), "Incorrect datetime value: '2008-00-00'",
+                      "DAYOFWEEK zero month warning");
+    failures +=
+        expect_string(mylite_warning_message(database, 6), "Incorrect datetime value: '2008-00-00'",
+                      "DAYOFYEAR zero month warning");
+    failures += expect_string(mylite_warning_message(database, 8),
+                              "Truncated incorrect time value: 'bad'", "MICROSECOND bad warning");
+    failures += expect_string(mylite_warning_message(database, 9),
+                              "Truncated incorrect time value: "
+                              "'2024-02-29 12:34:56.123456foo'",
+                              "MICROSECOND truncated warning");
+    failures += expect_string(mylite_warning_message(database, 10),
+                              "Truncated incorrect time value: '2024-02-29'",
+                              "MICROSECOND date text warning");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "temporal part invalid done");
     mylite_finalize(stmt);
     stmt = NULL;
@@ -6219,49 +6303,53 @@ static int test_date_and_datediff_functions_execution(void)
                             MYLITE_DONE);
     failures += execute_sql(database,
                             "INSERT INTO temporal_parts VALUES "
-                            "(1, '2024-02-29 12:34:56', 0, 'leap'), "
+                            "(1, '2024-02-29 12:34:56.123456', 0, 'leap'), "
                             "(2, '2024-03-01 01:02:03', 0, 'march'), "
                             "(3, NULL, 0, 'null')",
                             MYLITE_DONE);
     failures += expect_select_rows(database,
                                    "SELECT id, YEAR(dt) AS y, EXTRACT(HOUR FROM dt) AS h, "
-                                   "SECOND(dt) AS s "
+                                   "SECOND(dt) AS s, DAYOFWEEK(dt) AS dow, "
+                                   "MICROSECOND(dt) AS us "
                                    "FROM temporal_parts "
-                                   "WHERE MONTH(dt) IN (2, 3) "
-                                   "ORDER BY DAY(dt) DESC, EXTRACT(HOUR FROM dt)",
-                                   part_projection_columns, 4, part_projection_values, 2,
+                                   "WHERE QUARTER(dt) = 1 "
+                                   "ORDER BY DAYOFYEAR(dt), EXTRACT(HOUR FROM dt)",
+                                   part_projection_columns, 6, part_projection_values, 2,
                                    "temporal part table projection");
     failures += execute_sql_expect_done_affected(database,
                                                  "UPDATE temporal_parts "
-                                                 "SET n = EXTRACT(DAY FROM dt) "
+                                                 "SET n = DAYOFYEAR(dt) "
                                                  "WHERE id = 1",
                                                  1, "temporal part update");
     failures += expect_select_rows(database, "SELECT id, n, note FROM temporal_parts WHERE id = 1",
                                    part_updated_columns, 3, part_updated_values, 1,
                                    "temporal part updated row");
     failures += execute_sql_expect_done_affected(
-        database, "DELETE FROM temporal_parts WHERE YEAR(dt) = 2024 AND SECOND(dt) = 3", 1,
+        database, "DELETE FROM temporal_parts WHERE DAYOFWEEK(dt) = 6 AND SECOND(dt) = 3", 1,
         "temporal part delete");
     failures +=
         expect_select_rows(database, "SELECT id FROM temporal_parts ORDER BY id", remaining_columns,
                            1, part_remaining_values, 2, "temporal part delete result");
-    failures += prepare_sql(database, "UPDATE temporal_parts SET n = YEAR('bad') WHERE id = 1",
+    failures += prepare_sql(database,
+                            "UPDATE temporal_parts "
+                            "SET n = DAYOFWEEK('2008-00-00') WHERE id = 1",
                             MYLITE_OK, &stmt);
     failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR,
                               "temporal part invalid update warning promoted");
-    failures += expect_contains(mylite_error_message(database), "Incorrect datetime value: 'bad'",
-                                "temporal part invalid update error");
+    failures +=
+        expect_contains(mylite_error_message(database), "Incorrect datetime value: '2008-00-00'",
+                        "temporal part invalid update error");
     failures +=
         expect_int(mylite_warning_count(database), 1, "temporal part invalid update warning count");
     mylite_finalize(stmt);
     stmt = NULL;
-    failures +=
-        prepare_sql(database, "DELETE FROM temporal_parts WHERE EXTRACT(DAY FROM 'bad') IS NULL",
-                    MYLITE_OK, &stmt);
+    failures += prepare_sql(database, "DELETE FROM temporal_parts WHERE MICROSECOND('bad') IS NULL",
+                            MYLITE_OK, &stmt);
     failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR,
                               "temporal part invalid delete warning promoted");
-    failures += expect_contains(mylite_error_message(database), "Incorrect datetime value: 'bad'",
-                                "temporal part invalid delete error");
+    failures +=
+        expect_contains(mylite_error_message(database), "Truncated incorrect time value: 'bad'",
+                        "temporal part invalid delete error");
     failures +=
         expect_int(mylite_warning_count(database), 1, "temporal part invalid delete warning count");
     mylite_finalize(stmt);
@@ -6283,6 +6371,11 @@ static int test_date_and_datediff_functions_execution(void)
     failures += expect_no_stmt_handle(&stmt, "YEAR empty arity");
     failures += prepare_sql(database, "SELECT MONTH('2024-01-01','x')", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "MONTH two arity");
+    failures += prepare_sql(database, "SELECT DAYOFWEEK()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "DAYOFWEEK empty arity");
+    failures +=
+        prepare_sql(database, "SELECT MICROSECOND('12:34:56','x')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "MICROSECOND two arity");
     failures +=
         prepare_sql(database, "SELECT EXTRACT(WEEK FROM '2024-01-01')", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "EXTRACT WEEK deferred");

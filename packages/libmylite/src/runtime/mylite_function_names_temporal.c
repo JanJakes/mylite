@@ -79,6 +79,27 @@ bool mylite_function_name_is_day_part(const struct mylite_sql_ast_node *name)
     return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }
 
+bool mylite_function_name_is_dayofweek_part(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"DAYOFWEEK"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+bool mylite_function_name_is_dayofyear_part(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"DAYOFYEAR"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+bool mylite_function_name_is_quarter_part(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"QUARTER"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
 bool mylite_function_name_is_hour_part(const struct mylite_sql_ast_node *name)
 {
     static const char *const names[] = {"HOUR"};
@@ -96,6 +117,13 @@ bool mylite_function_name_is_minute_part(const struct mylite_sql_ast_node *name)
 bool mylite_function_name_is_second_part(const struct mylite_sql_ast_node *name)
 {
     static const char *const names[] = {"SECOND"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+bool mylite_function_name_is_microsecond_part(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"MICROSECOND"};
 
     return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }

@@ -174,9 +174,25 @@ bool mylite_expression_descriptor_infer_temporal_scalar_function(
         out_descriptor->length = mylite_mysql_temporal_part_short_display_length;
         return true;
     }
+    if (mylite_function_name_is_dayofweek_part(name) ||
+        mylite_function_name_is_quarter_part(name)) {
+        *out_descriptor = mylite_expression_descriptor_signed_longlong(true);
+        out_descriptor->length = mylite_mysql_temporal_part_tiny_display_length;
+        return true;
+    }
+    if (mylite_function_name_is_dayofyear_part(name)) {
+        *out_descriptor = mylite_expression_descriptor_signed_longlong(true);
+        out_descriptor->length = mylite_mysql_temporal_part_dayofyear_display_length;
+        return true;
+    }
     if (mylite_function_name_is_hour_part(name)) {
         *out_descriptor = mylite_expression_descriptor_signed_longlong(true);
         out_descriptor->length = mylite_mysql_temporal_part_hour_display_length;
+        return true;
+    }
+    if (mylite_function_name_is_microsecond_part(name)) {
+        *out_descriptor = mylite_expression_descriptor_signed_longlong(true);
+        out_descriptor->length = mylite_mysql_signed_longlong_display_length;
         return true;
     }
     return false;

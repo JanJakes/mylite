@@ -5789,9 +5789,12 @@ static int test_scalar_function_call_syntax(void)
 
     if (parse_sql("SELECT YEAR('2024-02-29'), MONTH('2024-02-29'), "
                   "DAY('2024-02-29'), DAYOFMONTH('2024-02-29'), "
+                  "DAYOFWEEK('2024-02-25'), DAYOFYEAR('2024-12-31'), "
+                  "QUARTER('2024-04-01'), "
                   "HOUR('2024-02-29 12:34:56'), "
                   "MINUTE('2024-02-29 12:34:56'), "
                   "SECOND('2024-02-29 12:34:56'), "
+                  "MICROSECOND('2024-02-29 12:34:56.123456'), "
                   "EXTRACT(YEAR FROM DATE_ADD(CURDATE(), INTERVAL 1 DAY)), "
                   "EXTRACT(SECOND FROM NOW());",
                   MYLITE_SQL_PARSE_OK, &result) == 0) {
@@ -5804,26 +5807,35 @@ static int test_scalar_function_call_syntax(void)
                                          "DAY keyword function call");
         failures += expect_function_call(child_at(child_at(select_list, 3U), 0U), "DAYOFMONTH", 1U,
                                          "DAYOFMONTH function call");
-        failures += expect_function_call(child_at(child_at(select_list, 4U), 0U), "HOUR", 1U,
+        failures += expect_function_call(child_at(child_at(select_list, 4U), 0U), "DAYOFWEEK", 1U,
+                                         "DAYOFWEEK function call");
+        failures += expect_function_call(child_at(child_at(select_list, 5U), 0U), "DAYOFYEAR", 1U,
+                                         "DAYOFYEAR function call");
+        failures += expect_function_call(child_at(child_at(select_list, 6U), 0U), "QUARTER", 1U,
+                                         "QUARTER keyword function call");
+        failures += expect_function_call(child_at(child_at(select_list, 7U), 0U), "HOUR", 1U,
                                          "HOUR keyword function call");
-        failures += expect_function_call(child_at(child_at(select_list, 5U), 0U), "MINUTE", 1U,
+        failures += expect_function_call(child_at(child_at(select_list, 8U), 0U), "MINUTE", 1U,
                                          "MINUTE keyword function call");
-        failures += expect_function_call(child_at(child_at(select_list, 6U), 0U), "SECOND", 1U,
+        failures += expect_function_call(child_at(child_at(select_list, 9U), 0U), "SECOND", 1U,
                                          "SECOND keyword function call");
-        failures += expect_function_call(child_at(child_at(select_list, 7U), 0U), "EXTRACT", 1U,
+        failures += expect_function_call(child_at(child_at(select_list, 10U), 0U), "MICROSECOND",
+                                         1U, "MICROSECOND keyword function call");
+        failures += expect_function_call(child_at(child_at(select_list, 11U), 0U), "EXTRACT", 1U,
                                          "EXTRACT YEAR function call");
-        failures += expect_bool(child_at(child_at(select_list, 7U), 0U)->interval_spec, true,
+        failures += expect_bool(child_at(child_at(select_list, 11U), 0U)->interval_spec, true,
                                 "EXTRACT YEAR interval spec");
-        failures += expect_function_call(child_at(child_at(select_list, 8U), 0U), "EXTRACT", 1U,
+        failures += expect_function_call(child_at(child_at(select_list, 12U), 0U), "EXTRACT", 1U,
                                          "EXTRACT SECOND function call");
-        failures += expect_bool(child_at(child_at(select_list, 8U), 0U)->interval_spec, true,
+        failures += expect_bool(child_at(child_at(select_list, 12U), 0U)->interval_spec, true,
                                 "EXTRACT SECOND interval spec");
     } else {
         ++failures;
     }
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("SELECT year, month, day, hour, minute, second "
+    failures += parse_sql("SELECT year, month, day, dayofweek, dayofyear, quarter, "
+                          "hour, minute, second, microsecond "
                           "FROM temporal_part_names;",
                           MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);

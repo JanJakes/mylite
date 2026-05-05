@@ -701,6 +701,8 @@ into focused `*_types.h` headers.
   into a focused aggregate bind companion.
 - [x] Split SELECT catalog descriptor row-source parsing into a focused
   descriptor source companion.
+- [x] Split SELECT catalog descriptor type inference into a focused descriptor
+  type companion.
 - [x] Split SELECT plan lifetime and vector mutation into a focused plan
   companion.
 - [x] Split SELECT table target resolution into a focused target companion.

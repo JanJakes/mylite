@@ -130,6 +130,7 @@ add_library(mylite STATIC
   src/runtime/mylite_select_catalog.c
   src/runtime/mylite_select_catalog_descriptor.c
   src/runtime/mylite_select_catalog_descriptor_source.c
+  src/runtime/mylite_select_catalog_descriptor_type.c
   src/runtime/mylite_select_compare.c
   src/runtime/mylite_select_context.c
   src/runtime/mylite_select_diagnostics.c

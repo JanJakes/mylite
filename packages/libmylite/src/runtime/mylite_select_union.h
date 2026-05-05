@@ -17,8 +17,6 @@ struct mylite_select_union_callbacks {
                                   struct mylite_expression_value *out_value);
     int (*append_warnings)(struct mylite_expression_warnings *destination,
                            const struct mylite_expression_warnings *source);
-    size_t (*select_output_label_count)(const struct mylite_select_plan *plan, const char *label,
-                                        size_t *out_index);
     int (*set_unsupported_order_error)(mylite_db *database);
 };
 

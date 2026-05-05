@@ -20,6 +20,12 @@ int mylite_select_plan_add_aggregate_binding(struct mylite_select_plan *plan,
 void mylite_select_plan_clear_aggregate_bindings(struct mylite_select_plan *plan);
 void mylite_select_plan_mark_output_order_reference(struct mylite_select_plan *plan,
                                                     size_t output_index);
+size_t mylite_select_output_label_count(const struct mylite_select_plan *plan, const char *label,
+                                        size_t *out_index);
+size_t mylite_select_output_label_span_count(const struct mylite_select_plan *plan,
+                                             struct mylite_sql_source_span label,
+                                             size_t *out_index);
+bool mylite_select_parse_uint64_span(struct mylite_sql_source_span span, uint64_t *out_value);
 size_t mylite_select_plan_table_count(const struct mylite_select_plan *plan);
 struct mylite_select_table *mylite_select_plan_table(struct mylite_select_plan *plan,
                                                      size_t table_index);

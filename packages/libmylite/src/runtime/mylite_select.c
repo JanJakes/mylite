@@ -197,6 +197,68 @@ void mylite_select_plan_mark_output_order_reference(struct mylite_select_plan *p
     }
 }
 
+size_t mylite_select_output_label_count(const struct mylite_select_plan *plan, const char *label,
+                                        size_t *out_index)
+{
+    size_t count = 0U;
+
+    *out_index = plan->output_count;
+    for (size_t index = 0U; index < plan->output_count; ++index) {
+        if (plan->outputs[index].label != NULL &&
+            mylite_ascii_case_equal(plan->outputs[index].label, label)) {
+            if (count == 0U) {
+                *out_index = index;
+            }
+            ++count;
+        }
+    }
+    return count;
+}
+
+size_t mylite_select_output_label_span_count(const struct mylite_select_plan *plan,
+                                             struct mylite_sql_source_span label, size_t *out_index)
+{
+    size_t count = 0U;
+
+    *out_index = plan->output_count;
+    for (size_t index = 0U; index < plan->output_count; ++index) {
+        if (plan->outputs[index].label != NULL &&
+            mylite_span_equal_ci(label, plan->outputs[index].label)) {
+            if (count == 0U) {
+                *out_index = index;
+            }
+            ++count;
+        }
+    }
+    return count;
+}
+
+bool mylite_select_parse_uint64_span(struct mylite_sql_source_span span, uint64_t *out_value)
+{
+    enum { decimal_radix = 10U };
+    uint64_t value = 0U;
+
+    *out_value = 0U;
+    if (span.text == NULL || span.length == 0U) {
+        return false;
+    }
+    for (size_t index = 0U; index < span.length; ++index) {
+        unsigned char byte = (unsigned char)span.text[index];
+        uint64_t digit = 0U;
+
+        if (byte < '0' || byte > '9') {
+            return false;
+        }
+        digit = (uint64_t)(byte - '0');
+        if (value > (UINT64_MAX - digit) / decimal_radix) {
+            return false;
+        }
+        value = (value * decimal_radix) + digit;
+    }
+    *out_value = value;
+    return true;
+}
+
 const struct mylite_select_column *
 mylite_select_plan_column_const(const struct mylite_select_plan *plan, size_t column_index,
                                 const struct mylite_select_table **out_table)

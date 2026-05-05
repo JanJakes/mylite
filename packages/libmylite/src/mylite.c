@@ -830,12 +830,6 @@ static int maybe_resolve_select_having_output_reference(mylite_db *database,
                                                         char **parts, size_t part_count,
                                                         enum mylite_select_order_key_kind *out_kind,
                                                         size_t *out_index, bool *out_resolved);
-static size_t select_output_label_count(const struct mylite_select_plan *plan, const char *label,
-                                        size_t *out_index);
-static size_t select_output_label_span_count(const struct mylite_select_plan *plan,
-                                             struct mylite_sql_source_span label,
-                                             size_t *out_index);
-static bool parse_uint64_span(struct mylite_sql_source_span span, uint64_t *out_value);
 static char *copy_select_alias(const struct mylite_sql_ast_node *alias);
 static char *copy_select_final_identifier_label(const struct mylite_sql_ast_node *identifier);
 static int set_select_ambiguous_order_column_error(mylite_db *database, const char *column_name);
@@ -1183,7 +1177,6 @@ static const struct mylite_select_union_callbacks union_query_callbacks = {
     .execute_table_select = execute_table_select_statement,
     .copy_operand_row_value = copy_subquery_statement_row_value,
     .append_warnings = append_subquery_warnings,
-    .select_output_label_count = select_output_label_count,
     .set_unsupported_order_error = set_select_unsupported_order_error,
 };
 
@@ -2366,7 +2359,7 @@ static int bind_union_global_order_item(mylite_db *database,
         expression->literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER) {
         uint64_t ordinal = 0U;
 
-        if (!parse_uint64_span(expression->span, &ordinal) || ordinal == 0U ||
+        if (!mylite_select_parse_uint64_span(expression->span, &ordinal) || ordinal == 0U ||
             ordinal > plan->output_count) {
             char *reference = mylite_copy_span_text(expression->span.text, expression->span.length);
             int status = MYLITE_OK;
@@ -2539,7 +2532,7 @@ static int resolve_union_order_reference(mylite_db *database, const struct mylit
 
     {
         size_t output_index = 0U;
-        size_t output_matches = select_output_label_count(plan, parts[0], &output_index);
+        size_t output_matches = mylite_select_output_label_count(plan, parts[0], &output_index);
 
         if (output_matches > 1U) {
             status = set_select_ambiguous_order_column_error(database, parts[0]);
@@ -7420,7 +7413,7 @@ static int bind_select_group_item(mylite_db *database, const struct mylite_sql_a
         expression->literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER) {
         uint64_t ordinal = 0U;
 
-        if (!parse_uint64_span(expression->span, &ordinal) || ordinal == 0U ||
+        if (!mylite_select_parse_uint64_span(expression->span, &ordinal) || ordinal == 0U ||
             ordinal > plan->output_count) {
             char *reference = mylite_copy_span_text(expression->span.text, expression->span.length);
             int status = MYLITE_OK;
@@ -7569,7 +7562,7 @@ static int bind_select_order_item(mylite_db *database, const struct mylite_sql_a
         expression->literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER) {
         uint64_t ordinal = 0U;
 
-        if (!parse_uint64_span(expression->span, &ordinal) || ordinal == 0U ||
+        if (!mylite_select_parse_uint64_span(expression->span, &ordinal) || ordinal == 0U ||
             ordinal > plan->output_count) {
             char *reference = mylite_copy_span_text(expression->span.text, expression->span.length);
             int status = MYLITE_OK;
@@ -8568,7 +8561,7 @@ static bool select_having_identifier_is_group_invariant( // NOLINT(misc-no-recur
         return false;
     }
 
-    output_matches = select_output_label_span_count(plan, identifier->span, &output_index);
+    output_matches = mylite_select_output_label_span_count(plan, identifier->span, &output_index);
     if (output_matches != 1U) {
         return false;
     }
@@ -8583,7 +8576,8 @@ static bool select_order_identifier_is_group_invariant(const struct mylite_selec
     size_t output_matches = 0U;
 
     if (identifier != NULL && identifier->kind == MYLITE_SQL_AST_IDENTIFIER) {
-        output_matches = select_output_label_span_count(plan, identifier->span, &output_index);
+        output_matches =
+            mylite_select_output_label_span_count(plan, identifier->span, &output_index);
         if (output_matches == 1U) {
             return select_output_is_group_invariant(plan, output_index);
         }
@@ -8896,7 +8890,7 @@ static int resolve_select_order_reference(mylite_db *database,
 
     if (part_count == 1U) {
         size_t output_index = 0U;
-        size_t output_matches = select_output_label_count(plan, parts[0], &output_index);
+        size_t output_matches = mylite_select_output_label_count(plan, parts[0], &output_index);
 
         if (output_matches > 1U) {
             status = set_select_ambiguous_order_column_error(database, parts[0]);
@@ -8993,7 +8987,7 @@ static int maybe_resolve_select_group_table_reference(mylite_db *database,
 
     if (part_count == 1U) {
         size_t output_index = 0U;
-        size_t output_matches = select_output_label_count(plan, parts[0], &output_index);
+        size_t output_matches = mylite_select_output_label_count(plan, parts[0], &output_index);
 
         if (output_matches != 0U) {
             int status =
@@ -9024,7 +9018,7 @@ static int maybe_resolve_select_group_output_reference(mylite_db *database,
         return MYLITE_OK;
     }
 
-    output_matches = select_output_label_count(plan, parts[0], &output_index);
+    output_matches = mylite_select_output_label_count(plan, parts[0], &output_index);
     if (output_matches > 1U) {
         return set_select_ambiguous_order_column_error(database, parts[0]);
     }
@@ -9127,7 +9121,7 @@ static int maybe_resolve_select_having_table_reference(mylite_db *database,
 
     if (part_count == 1U) {
         size_t output_index = 0U;
-        size_t output_matches = select_output_label_count(plan, parts[0], &output_index);
+        size_t output_matches = mylite_select_output_label_count(plan, parts[0], &output_index);
 
         if (emit_warnings && output_matches != 0U) {
             int status =
@@ -9158,7 +9152,7 @@ static int maybe_resolve_select_having_output_reference(mylite_db *database,
         return MYLITE_OK;
     }
 
-    output_matches = select_output_label_count(plan, parts[0], &output_index);
+    output_matches = mylite_select_output_label_count(plan, parts[0], &output_index);
     if (output_matches > 1U) {
         return set_select_ambiguous_order_column_error(database, parts[0]);
     }
@@ -9168,68 +9162,6 @@ static int maybe_resolve_select_having_output_reference(mylite_db *database,
         *out_resolved = true;
     }
     return MYLITE_OK;
-}
-
-static size_t select_output_label_count(const struct mylite_select_plan *plan, const char *label,
-                                        size_t *out_index)
-{
-    size_t count = 0U;
-
-    *out_index = plan->output_count;
-    for (size_t index = 0U; index < plan->output_count; ++index) {
-        if (plan->outputs[index].label != NULL &&
-            mylite_ascii_case_equal(plan->outputs[index].label, label)) {
-            if (count == 0U) {
-                *out_index = index;
-            }
-            ++count;
-        }
-    }
-    return count;
-}
-
-static size_t select_output_label_span_count(const struct mylite_select_plan *plan,
-                                             struct mylite_sql_source_span label, size_t *out_index)
-{
-    size_t count = 0U;
-
-    *out_index = plan->output_count;
-    for (size_t index = 0U; index < plan->output_count; ++index) {
-        if (plan->outputs[index].label != NULL &&
-            mylite_span_equal_ci(label, plan->outputs[index].label)) {
-            if (count == 0U) {
-                *out_index = index;
-            }
-            ++count;
-        }
-    }
-    return count;
-}
-
-static bool parse_uint64_span(struct mylite_sql_source_span span, uint64_t *out_value)
-{
-    enum { decimal_radix = 10U };
-    uint64_t value = 0U;
-
-    *out_value = 0U;
-    if (span.text == NULL || span.length == 0U) {
-        return false;
-    }
-    for (size_t index = 0U; index < span.length; ++index) {
-        unsigned char byte = (unsigned char)span.text[index];
-        uint64_t digit = 0U;
-
-        if (byte < '0' || byte > '9') {
-            return false;
-        }
-        digit = (uint64_t)(byte - '0');
-        if (value > (UINT64_MAX - digit) / decimal_radix) {
-            return false;
-        }
-        value = (value * decimal_radix) + digit;
-    }
-    *out_value = value;
-    return true;
 }
 
 static char *copy_select_alias(const struct mylite_sql_ast_node *alias)
@@ -11283,7 +11215,7 @@ static int validate_scalar_select_order_item(mylite_db *database,
         expression->literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER) {
         uint64_t ordinal = 0U;
 
-        if (!parse_uint64_span(expression->span, &ordinal) || ordinal == 0U ||
+        if (!mylite_select_parse_uint64_span(expression->span, &ordinal) || ordinal == 0U ||
             ordinal > metadata->column_count) {
             char *reference = mylite_copy_span_text(expression->span.text, expression->span.length);
             int status = MYLITE_OK;

@@ -392,8 +392,8 @@ static int resolve_union_expression_identifier(void *user_data,
     }
     if (part_count == 1U) {
         size_t output_index = 0U;
-        size_t output_matches = context->callbacks->select_output_label_count(
-            &context->stmt->select_plan, parts[0], &output_index);
+        size_t output_matches =
+            mylite_select_output_label_count(&context->stmt->select_plan, parts[0], &output_index);
 
         if (output_matches == 1U && output_index < context->row->output_value_count) {
             status = mylite_expression_value_copy(&context->row->output_values[output_index],

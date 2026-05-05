@@ -101,6 +101,7 @@ add_library(mylite STATIC
   src/runtime/mylite_select_row_loader.c
   src/runtime/mylite_select_rowset.c
   src/runtime/mylite_select_scalar.c
+  src/runtime/mylite_select_statement.c
   src/runtime/mylite_select_sql.c
   src/runtime/mylite_select_subquery.c
   src/runtime/mylite_select_subquery_classify.c

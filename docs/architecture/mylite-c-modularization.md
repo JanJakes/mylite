@@ -818,6 +818,8 @@ into focused `*_types.h` headers.
   copy module.
 - [x] Move INSERT/REPLACE AST copy entry points into a narrow DML insert copy
   header.
+- [x] Split INSERT VALUES row-list AST copying into a focused DML insert rows
+  copy module.
 - [x] Split INSERT duplicate-entry diagnostics out of unique-index conflict
   probing.
 - [x] Split INSERT SQLite value binding into a focused DML bind companion while

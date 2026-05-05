@@ -56,6 +56,7 @@ add_library(mylite STATIC
   src/runtime/mylite_dml_insert_execute.c
   src/runtime/mylite_dml_insert_diagnostics.c
   src/runtime/mylite_dml_insert_replace_execute.c
+  src/runtime/mylite_dml_insert_rows_copy.c
   src/runtime/mylite_dml_insert_set_copy.c
   src/runtime/mylite_dml_insert_set_expression.c
   src/runtime/mylite_dml_insert_set_row_resolve.c

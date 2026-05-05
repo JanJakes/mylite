@@ -198,8 +198,7 @@ mylite_select_context_statement_execute_callbacks(void)
     return &statement_execute_callbacks;
 }
 
-const struct mylite_select_eval_callbacks *
-mylite_select_context_table_select_eval_callbacks(void)
+const struct mylite_select_eval_callbacks *mylite_select_context_table_select_eval_callbacks(void)
 {
     return &table_select_eval_callbacks;
 }

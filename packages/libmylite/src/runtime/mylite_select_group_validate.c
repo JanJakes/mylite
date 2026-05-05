@@ -1,5 +1,6 @@
 #include "mylite_select_group_validate.h"
 
+#include "mylite_connection.h"
 #include "mylite_diagnostics.h"
 #include "mylite_error_codes.h"
 #include "mylite_select_group_invariant.h"
@@ -24,6 +25,9 @@ int mylite_select_validate_grouping(mylite_db *database, const struct mylite_sel
     }
 
     if (!aggregate_query) {
+        return MYLITE_OK;
+    }
+    if (!mylite_connection_sql_mode_has_only_full_group_by(database)) {
         return MYLITE_OK;
     }
 

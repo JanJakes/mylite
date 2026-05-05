@@ -24,8 +24,10 @@ struct mylite_select_table {
     char *alias;
     char *physical_name;
     struct mylite_select_column *columns;
+    struct mylite_select_column_sequence *unique_not_null_keys;
     size_t first_column_index;
     size_t column_count;
+    size_t unique_not_null_key_count;
 };
 
 struct mylite_select_join_predicate {
@@ -182,6 +184,7 @@ struct mylite_select_plan {
     const struct mylite_sql_ast_node *having_expression;
     struct mylite_select_limit limit;
     enum mylite_sql_ast_select_duplicate_mode duplicate_mode;
+    bool calc_found_rows;
     bool has_group_by;
     bool has_having;
     bool has_aggregate;
@@ -320,6 +323,7 @@ struct mylite_union_plan {
     mylite_stmt **operands;
     enum mylite_sql_ast_set_duplicate_mode *operators;
     size_t operand_count;
+    bool calc_found_rows;
 };
 
 struct mylite_in_subquery_scan_context {

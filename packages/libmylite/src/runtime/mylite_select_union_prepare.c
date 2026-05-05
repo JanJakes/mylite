@@ -26,6 +26,8 @@ static int append_union_query_operand(mylite_db *database, struct mylite_union_p
                                       mylite_stmt *operand,
                                       enum mylite_sql_ast_set_duplicate_mode duplicate_mode,
                                       bool has_operator);
+static bool union_operand_calc_found_rows(const mylite_stmt *operand);
+static int set_union_sql_calc_found_rows_placement_error(mylite_db *database);
 static int
 prepare_union_query_operand(mylite_db *database, const struct mylite_sql_ast_node *node,
                             mylite_stmt **out_operand,
@@ -211,6 +213,12 @@ static int append_union_query_operand(mylite_db *database, struct mylite_union_p
     if (plan == NULL || operand == NULL || (has_operator && plan->operand_count == 0U)) {
         return MYLITE_UNSUPPORTED;
     }
+    if (union_operand_calc_found_rows(operand)) {
+        if (plan->operand_count != 0U) {
+            return set_union_sql_calc_found_rows_placement_error(database);
+        }
+        plan->calc_found_rows = true;
+    }
 
     operands = (mylite_stmt **)realloc(
         (void *)plan->operands,
@@ -236,6 +244,69 @@ static int append_union_query_operand(mylite_db *database, struct mylite_union_p
 
     plan->operands[plan->operand_count++] = operand;
     return MYLITE_OK;
+}
+
+static bool union_operand_calc_found_rows(const mylite_stmt *operand)
+{
+    if (operand == NULL) {
+        return false;
+    }
+    switch (operand->kind) {
+    case MYLITE_STMT_SCALAR_SELECT:
+    case MYLITE_STMT_TABLE_SELECT:
+        return operand->select_plan.calc_found_rows;
+    case MYLITE_STMT_SQLITE:
+    case MYLITE_STMT_CREATE_SCHEMA:
+    case MYLITE_STMT_ALTER_SCHEMA:
+    case MYLITE_STMT_DROP_SCHEMA:
+    case MYLITE_STMT_USE_SCHEMA:
+    case MYLITE_STMT_SET_NAMES:
+    case MYLITE_STMT_SET_CHARACTER_SET:
+    case MYLITE_STMT_SET_SQL_MODE:
+    case MYLITE_STMT_CREATE_TABLE:
+    case MYLITE_STMT_DROP_TABLE:
+    case MYLITE_STMT_RENAME_TABLE:
+    case MYLITE_STMT_TRUNCATE_TABLE:
+    case MYLITE_STMT_ALTER_TABLE:
+    case MYLITE_STMT_CREATE_INDEX:
+    case MYLITE_STMT_DROP_INDEX:
+    case MYLITE_STMT_INSERT_VALUES:
+    case MYLITE_STMT_INSERT_SET:
+    case MYLITE_STMT_REPLACE_VALUES:
+    case MYLITE_STMT_REPLACE_SET:
+    case MYLITE_STMT_UNION_QUERY:
+    case MYLITE_STMT_UPDATE:
+    case MYLITE_STMT_DELETE:
+    case MYLITE_STMT_START_TRANSACTION:
+    case MYLITE_STMT_BEGIN_TRANSACTION:
+    case MYLITE_STMT_COMMIT:
+    case MYLITE_STMT_ROLLBACK:
+    case MYLITE_STMT_SAVEPOINT:
+    case MYLITE_STMT_ROLLBACK_TO_SAVEPOINT:
+    case MYLITE_STMT_RELEASE_SAVEPOINT:
+        return false;
+    }
+    return false;
+}
+
+static int set_union_sql_calc_found_rows_placement_error(mylite_db *database)
+{
+    static const char message[] = "Incorrect usage/placement of 'SQL_CALC_FOUND_ROWS'";
+    int status = mylite_diagnostics_append_warning(
+        database, MYLITE_MYSQL_ER_WARN_DEPRECATED_SYNTAX,
+        "SQL_CALC_FOUND_ROWS is deprecated and will be removed in a future release. "
+        "Consider using two separate queries instead.");
+
+    if (status != MYLITE_OK) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    status = mylite_diagnostics_set_error_message(database, message);
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(
+            database, MYLITE_MYSQL_ER_WRONG_USAGE_OF_SQL_CALC_FOUND_ROWS, message);
+    }
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int

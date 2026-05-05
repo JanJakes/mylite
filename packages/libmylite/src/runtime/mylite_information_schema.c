@@ -12,6 +12,14 @@
 
 #include <stdlib.h>
 
+enum { information_schema_predicate_stack_initial_capacity = 4 };
+
+struct information_schema_predicate_stack {
+    const struct mylite_sql_ast_node **items;
+    size_t count;
+    size_t capacity;
+};
+
 static int information_schema_dynamic_table_sql(mylite_db *database,
                                                 enum mylite_information_schema_table table,
                                                 char **out_sql);
@@ -19,26 +27,39 @@ static const char *information_schema_table_sql(enum mylite_information_schema_t
 static int information_schema_tables_filtered_select_sql(
     mylite_db *database, const struct mylite_sql_ast_node *statement, char **out_sql);
 static bool information_schema_tables_from_clause(const struct mylite_sql_ast_node *from_clause);
-static int append_information_schema_tables_projection(
-    sqlite3_str *sql, const struct mylite_sql_ast_node *select_list);
+static int
+append_information_schema_tables_projection(sqlite3_str *sql,
+                                            const struct mylite_sql_ast_node *select_list);
 static int append_information_schema_tables_filter(mylite_db *database, sqlite3_str *sql,
                                                    const struct mylite_sql_ast_node *where_clause);
-static int append_information_schema_tables_predicate(
-    mylite_db *database, sqlite3_str *sql, const struct mylite_sql_ast_node *expression);
-static int append_information_schema_tables_equality(
-    mylite_db *database, sqlite3_str *sql, const struct mylite_sql_ast_node *left,
-    const struct mylite_sql_ast_node *right);
-static int append_information_schema_tables_null_predicate(
-    sqlite3_str *sql, const struct mylite_sql_ast_node *operand,
-    enum mylite_sql_ast_operator operator_kind);
+static int append_information_schema_tables_predicate(mylite_db *database, sqlite3_str *sql,
+                                                      const struct mylite_sql_ast_node *expression);
+static int
+append_information_schema_tables_predicate_term(mylite_db *database, sqlite3_str *sql,
+                                                const struct mylite_sql_ast_node *expression);
+static const struct mylite_sql_ast_node *information_schema_tables_unwrap_parenthesized_expression(
+    const struct mylite_sql_ast_node *expression);
+static bool
+information_schema_tables_predicate_stack_push(struct information_schema_predicate_stack *stack,
+                                               const struct mylite_sql_ast_node *expression);
+static void
+information_schema_tables_predicate_stack_deinit(struct information_schema_predicate_stack *stack);
+static int append_information_schema_tables_equality(mylite_db *database, sqlite3_str *sql,
+                                                     const struct mylite_sql_ast_node *left,
+                                                     const struct mylite_sql_ast_node *right);
+static int
+append_information_schema_tables_null_predicate(sqlite3_str *sql,
+                                                const struct mylite_sql_ast_node *operand,
+                                                enum mylite_sql_ast_operator operator_kind);
 static int append_information_schema_tables_value(mylite_db *database, sqlite3_str *sql,
                                                   const struct mylite_sql_ast_node *expression);
-static int append_information_schema_tables_order(
-    sqlite3_str *sql, const struct mylite_sql_ast_node *order_by_clause);
-static const char *information_schema_tables_column_name(
-    const struct mylite_sql_ast_node *expression);
-static bool information_schema_tables_database_function(
-    const struct mylite_sql_ast_node *expression);
+static int
+append_information_schema_tables_order(sqlite3_str *sql,
+                                       const struct mylite_sql_ast_node *order_by_clause);
+static const char *
+information_schema_tables_column_name(const struct mylite_sql_ast_node *expression);
+static bool
+information_schema_tables_database_function(const struct mylite_sql_ast_node *expression);
 
 static const char information_schema_schemata_sql[] =
     "SELECT 'def' AS CATALOG_NAME,"
@@ -357,18 +378,20 @@ static bool information_schema_tables_from_clause(const struct mylite_sql_ast_no
     const struct mylite_sql_ast_node *table = mylite_ast_child_at(identifier, 1U);
 
     if (from_clause == NULL || from_clause->kind != MYLITE_SQL_AST_FROM_TABLE ||
-        mylite_ast_child_at(from_clause, 1U) != NULL ||
         identifier == NULL || identifier->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER ||
-        schema == NULL || schema->kind != MYLITE_SQL_AST_IDENTIFIER ||
-        table == NULL || table->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        schema == NULL || schema->kind != MYLITE_SQL_AST_IDENTIFIER || table == NULL ||
+        table->kind != MYLITE_SQL_AST_IDENTIFIER) {
         return false;
     }
-    return mylite_span_equal_ci(schema->span, "information_schema") &&
-           mylite_span_equal_ci(table->span, "tables");
+    if (!mylite_span_equal_ci(schema->span, "information_schema")) {
+        return false;
+    }
+    return mylite_span_equal_ci(table->span, "tables");
 }
 
-static int append_information_schema_tables_projection(
-    sqlite3_str *sql, const struct mylite_sql_ast_node *select_list)
+static int
+append_information_schema_tables_projection(sqlite3_str *sql,
+                                            const struct mylite_sql_ast_node *select_list)
 {
     size_t output_index = 0U;
 
@@ -419,44 +442,66 @@ static int append_information_schema_tables_filter(mylite_db *database, sqlite3_
     return append_information_schema_tables_predicate(database, sql, predicate);
 }
 
-static int append_information_schema_tables_predicate(
-    mylite_db *database, sqlite3_str *sql, const struct mylite_sql_ast_node *expression)
+static int append_information_schema_tables_predicate(mylite_db *database, sqlite3_str *sql,
+                                                      const struct mylite_sql_ast_node *expression)
 {
+    struct information_schema_predicate_stack stack = {0};
+    bool appended = false;
+    int status = MYLITE_OK;
+
+    if (!information_schema_tables_predicate_stack_push(&stack, expression)) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    while (status == MYLITE_OK && stack.count != 0U) {
+        expression = stack.items[--stack.count];
+        expression = information_schema_tables_unwrap_parenthesized_expression(expression);
+        if (expression == NULL) {
+            status = MYLITE_UNSUPPORTED;
+            break;
+        }
+        if (expression->kind == MYLITE_SQL_AST_BINARY_EXPRESSION &&
+            expression->operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_AND) {
+            if (!information_schema_tables_predicate_stack_push(
+                    &stack, mylite_ast_child_at(expression, 1U)) ||
+                !information_schema_tables_predicate_stack_push(
+                    &stack, mylite_ast_child_at(expression, 0U))) {
+                (void)mylite_diagnostics_set_error_message(database, "out of memory");
+                status = MYLITE_NOMEM;
+            }
+            continue;
+        }
+        if (appended) {
+            sqlite3_str_appendall(sql, ") AND (");
+        } else {
+            sqlite3_str_append(sql, "(", 1);
+            appended = true;
+        }
+        status = append_information_schema_tables_predicate_term(database, sql, expression);
+    }
+    if (status == MYLITE_OK && appended) {
+        sqlite3_str_append(sql, ")", 1);
+    }
+    if (status == MYLITE_OK && !appended) {
+        status = MYLITE_UNSUPPORTED;
+    }
+    information_schema_tables_predicate_stack_deinit(&stack);
+    return status;
+}
+
+static int
+append_information_schema_tables_predicate_term(mylite_db *database, sqlite3_str *sql,
+                                                const struct mylite_sql_ast_node *expression)
+{
+    expression = information_schema_tables_unwrap_parenthesized_expression(expression);
     if (expression == NULL) {
         return MYLITE_UNSUPPORTED;
     }
-
-    if (expression->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
-        sqlite3_str_append(sql, "(", 1);
-        int status = append_information_schema_tables_predicate(
-            database, sql, mylite_ast_child_at(expression, 0U));
-
-        if (status == MYLITE_OK) {
-            sqlite3_str_append(sql, ")", 1);
-        }
-        return status;
-    }
-    if (expression->kind == MYLITE_SQL_AST_BINARY_EXPRESSION &&
-        expression->operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_AND) {
-        sqlite3_str_append(sql, "(", 1);
-        int status = append_information_schema_tables_predicate(
-            database, sql, mylite_ast_child_at(expression, 0U));
-
-        if (status == MYLITE_OK) {
-            sqlite3_str_appendall(sql, ") AND (");
-            status = append_information_schema_tables_predicate(
-                database, sql, mylite_ast_child_at(expression, 1U));
-        }
-        if (status == MYLITE_OK) {
-            sqlite3_str_append(sql, ")", 1);
-        }
-        return status;
-    }
     if (expression->kind == MYLITE_SQL_AST_BINARY_EXPRESSION &&
         expression->operator_kind == MYLITE_SQL_AST_OPERATOR_EQUAL) {
-        return append_information_schema_tables_equality(
-            database, sql, mylite_ast_child_at(expression, 0U),
-            mylite_ast_child_at(expression, 1U));
+        return append_information_schema_tables_equality(database, sql,
+                                                         mylite_ast_child_at(expression, 0U),
+                                                         mylite_ast_child_at(expression, 1U));
     }
     if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION &&
         (expression->operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NULL ||
@@ -467,9 +512,46 @@ static int append_information_schema_tables_predicate(
     return MYLITE_UNSUPPORTED;
 }
 
-static int append_information_schema_tables_equality(
-    mylite_db *database, sqlite3_str *sql, const struct mylite_sql_ast_node *left,
-    const struct mylite_sql_ast_node *right)
+static const struct mylite_sql_ast_node *information_schema_tables_unwrap_parenthesized_expression(
+    const struct mylite_sql_ast_node *expression)
+{
+    while (expression != NULL && expression->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
+        expression = mylite_ast_child_at(expression, 0U);
+    }
+    return expression;
+}
+
+static bool
+information_schema_tables_predicate_stack_push(struct information_schema_predicate_stack *stack,
+                                               const struct mylite_sql_ast_node *expression)
+{
+    if (stack->count == stack->capacity) {
+        size_t new_capacity = stack->capacity == 0U
+                                  ? information_schema_predicate_stack_initial_capacity
+                                  : stack->capacity * 2U;
+        const struct mylite_sql_ast_node **new_items = (const struct mylite_sql_ast_node **)realloc(
+            (void *)stack->items, new_capacity * sizeof(*stack->items));
+
+        if (new_items == NULL) {
+            return false;
+        }
+        stack->items = new_items;
+        stack->capacity = new_capacity;
+    }
+    stack->items[stack->count++] = expression;
+    return true;
+}
+
+static void
+information_schema_tables_predicate_stack_deinit(struct information_schema_predicate_stack *stack)
+{
+    free((void *)stack->items);
+    *stack = (struct information_schema_predicate_stack){0};
+}
+
+static int append_information_schema_tables_equality(mylite_db *database, sqlite3_str *sql,
+                                                     const struct mylite_sql_ast_node *left,
+                                                     const struct mylite_sql_ast_node *right)
 {
     const char *left_column = information_schema_tables_column_name(left);
     const char *right_column = information_schema_tables_column_name(right);
@@ -495,9 +577,10 @@ static int append_information_schema_tables_equality(
     return MYLITE_UNSUPPORTED;
 }
 
-static int append_information_schema_tables_null_predicate(
-    sqlite3_str *sql, const struct mylite_sql_ast_node *operand,
-    enum mylite_sql_ast_operator operator_kind)
+static int
+append_information_schema_tables_null_predicate(sqlite3_str *sql,
+                                                const struct mylite_sql_ast_node *operand,
+                                                enum mylite_sql_ast_operator operator_kind)
 {
     const char *column_name = information_schema_tables_column_name(operand);
 
@@ -540,8 +623,8 @@ static int append_information_schema_tables_value(mylite_db *database, sqlite3_s
     return MYLITE_OK;
 }
 
-static int append_information_schema_tables_order(
-    sqlite3_str *sql, const struct mylite_sql_ast_node *order_by_clause)
+static int append_information_schema_tables_order(sqlite3_str *sql,
+                                                  const struct mylite_sql_ast_node *order_by_clause)
 {
     const struct mylite_sql_ast_node *items = mylite_ast_child_at(order_by_clause, 0U);
 
@@ -569,9 +652,12 @@ static int append_information_schema_tables_order(
     return MYLITE_OK;
 }
 
-static const char *information_schema_tables_column_name(
-    const struct mylite_sql_ast_node *expression)
+static const char *
+information_schema_tables_column_name(const struct mylite_sql_ast_node *expression)
 {
+    if (expression != NULL && expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        expression = mylite_ast_child_at(expression, 1U);
+    }
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_IDENTIFIER) {
         return NULL;
     }
@@ -593,17 +679,19 @@ static const char *information_schema_tables_column_name(
     return NULL;
 }
 
-static bool information_schema_tables_database_function(
-    const struct mylite_sql_ast_node *expression)
+static bool
+information_schema_tables_database_function(const struct mylite_sql_ast_node *expression)
 {
     const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
 
-    return expression != NULL && expression->kind == MYLITE_SQL_AST_FUNCTION_CALL &&
-           name != NULL && name->kind == MYLITE_SQL_AST_IDENTIFIER &&
-           mylite_span_equal_ci(name->span, "DATABASE") &&
-           arguments != NULL && arguments->kind == MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST &&
-           arguments->first_child == NULL;
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_FUNCTION_CALL || name == NULL ||
+        name->kind != MYLITE_SQL_AST_IDENTIFIER || arguments == NULL ||
+        arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST ||
+        arguments->first_child != NULL) {
+        return false;
+    }
+    return mylite_span_equal_ci(name->span, "DATABASE");
 }
 
 bool mylite_information_schema_has_table(const char *name)

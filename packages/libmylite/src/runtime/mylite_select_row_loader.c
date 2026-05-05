@@ -151,7 +151,8 @@ static int append_table_select_join_scan_row(mylite_stmt *stmt, sqlite3_stmt *sc
         }
     }
     if (row.source_row_index_count != 0U) {
-        row.source_row_indexes = calloc(row.source_row_index_count, sizeof(*row.source_row_indexes));
+        row.source_row_indexes =
+            calloc(row.source_row_index_count, sizeof(*row.source_row_indexes));
         if (row.source_row_indexes == NULL) {
             mylite_select_row_deinit(&row);
             (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");

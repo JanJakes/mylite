@@ -111,6 +111,8 @@ enum {
     mysql_warning_mix_group_function_fields = 1140,
     mysql_warning_wrong_usage = 1221,
     mysql_warning_wrong_number_of_columns = 1222,
+    mysql_warning_wrong_value_for_var = 1231,
+    mysql_warning_wrong_sql_calc_found_rows_placement = 1234,
     mysql_warning_not_supported_yet = 1235,
     mysql_warning_unknown = 1105,
     mysql_warning_incorrect_escape_arguments = 1210,
@@ -133,6 +135,8 @@ enum {
     mysql_warning_field_in_order_not_select = 3065,
     mysql_warning_using_other_handler = 3502,
     mysql_warning_primary_invisible = 3522,
+    mysql_warning_illegal_regexp_argument = 3685,
+    mysql_warning_regexp_error = 3691,
 };
 
 struct expected_schemata_row {
@@ -255,6 +259,7 @@ struct expected_result_metadata {
 static int test_select_integer_literal(void);
 static int test_select_integer_literal_with_semicolon(void);
 static int test_expression_operator_foundation(void);
+static int test_regexp_predicates_execution(void);
 static int test_scalar_builtin_functions_execution(void);
 static int test_current_temporal_functions_execution(void);
 static int test_date_and_datediff_functions_execution(void);
@@ -476,6 +481,7 @@ int main(void)
     failures += test_select_integer_literal();
     failures += test_select_integer_literal_with_semicolon();
     failures += test_expression_operator_foundation();
+    failures += test_regexp_predicates_execution();
     failures += test_scalar_builtin_functions_execution();
     failures += test_current_temporal_functions_execution();
     failures += test_date_and_datediff_functions_execution();
@@ -1056,6 +1062,12 @@ static int test_information_schema_tables_engine_filter_execution(void)
         "WHERE ENGINE = 'InnoDB' AND TABLE_SCHEMA = DATABASE() ORDER BY TABLE_NAME",
         table_name_columns, 1, user_table_names, 2,
         "information schema tables reordered engine filter");
+    failures += expect_select_rows(
+        database,
+        "SELECT t.TABLE_NAME FROM information_schema.TABLES AS t "
+        "WHERE t.ENGINE = 'InnoDB' AND t.TABLE_SCHEMA = DATABASE() ORDER BY t.TABLE_NAME",
+        table_name_columns, 1, user_table_names, 2,
+        "information schema tables aliased qualified engine filter");
     failures += expect_select_rows(database,
                                    "SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES "
                                    "WHERE TABLE_SCHEMA = 'information_schema' AND ENGINE IS NULL "
@@ -2485,6 +2497,178 @@ static int test_expression_operator_foundation(void)
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_regexp_predicates_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const regexp_columns[] = {
+        "regexp_basic",
+        "regexp_anchor",
+        "rlike_basic",
+        "not_regexp",
+        "null_value",
+        "null_pattern",
+        "function_default_case",
+        "function_case_sensitive",
+        "function_case_insensitive",
+        "function_multiline",
+        "dot_no_newline",
+        "dot_newline",
+        "posix_alpha",
+        "posix_lower_default",
+        "posix_lower_sensitive",
+        "posix_upper_default",
+        "posix_upper_sensitive",
+        "repeat_exact",
+        "alternation",
+        "negated_class",
+        "digit_class",
+        "group_alt",
+        "repeat_range",
+        "repeat_miss",
+        "rightmost_ci",
+        "rightmost_ic",
+        "unix_lines",
+    };
+    static const char *const regexp_values[] = {
+        "1", "1", "1", "1", NULL, NULL, "1", "0", "1", "1", "0", "1", "1", "1",
+        "0", "1", "0", "1", "1",  "1",  "1", "1", "1", "0", "1", "0", "1",
+    };
+    static const char *const metadata_columns[] = {"r", "f", "n"};
+    static const char *const metadata_values[] = {"1", "1", NULL};
+    static const struct expected_result_metadata metadata[] = {
+        {"r", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"f", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"n", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    static const char *const id_columns[] = {"id"};
+    static const char *const matching_ids[] = {"1", "2"};
+    static const char *const nonmatching_ids[] = {"3", "4"};
+    static const char *const remaining_ids[] = {"1", "2", "5"};
+    static const char *const note_columns[] = {"id", "note"};
+    static const char *const updated_notes[] = {"1", "valid", "2", "valid"};
+    static const char *const short_circuit_columns[] = {"and_short", "or_short"};
+    static const char *const short_circuit_values[] = {"0", "1"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open regexp database");
+    failures += execute_sql(database, "CREATE DATABASE mylite_regexp_predicates", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_regexp_predicates", MYLITE_DONE);
+
+    failures += expect_select_rows(database,
+                                   "SELECT 'abc' REGEXP 'a' AS regexp_basic, "
+                                   "'abc' REGEXP '^a.c$' AS regexp_anchor, "
+                                   "'abc' RLIKE '^[a-z]+$' AS rlike_basic, "
+                                   "'abc' NOT REGEXP 'z' AS not_regexp, "
+                                   "NULL REGEXP 'a' AS null_value, "
+                                   "'abc' REGEXP NULL AS null_pattern, "
+                                   "REGEXP_LIKE('abc','A') AS function_default_case, "
+                                   "REGEXP_LIKE('abc','A','c') AS function_case_sensitive, "
+                                   "REGEXP_LIKE('abc','A','i') AS function_case_insensitive, "
+                                   "REGEXP_LIKE('a\\nb','^b','m') AS function_multiline, "
+                                   "REGEXP_LIKE('a\\nb','a.b') AS dot_no_newline, "
+                                   "REGEXP_LIKE('a\\nb','a.b','n') AS dot_newline, "
+                                   "REGEXP_LIKE('abc','[[:alpha:]]+') AS posix_alpha, "
+                                   "REGEXP_LIKE('A','[[:lower:]]') AS posix_lower_default, "
+                                   "REGEXP_LIKE('A','[[:lower:]]','c') AS posix_lower_sensitive, "
+                                   "REGEXP_LIKE('a','[[:upper:]]') AS posix_upper_default, "
+                                   "REGEXP_LIKE('a','[[:upper:]]','c') AS posix_upper_sensitive, "
+                                   "REGEXP_LIKE('abc','[a-z]{3}') AS repeat_exact, "
+                                   "REGEXP_LIKE('abc','a|z') AS alternation, "
+                                   "REGEXP_LIKE('abc','[^0-9]+') AS negated_class, "
+                                   "REGEXP_LIKE('abc123','[0-9]+') AS digit_class, "
+                                   "REGEXP_LIKE('abc','(ab|xy)c') AS group_alt, "
+                                   "REGEXP_LIKE('abc','a{1,2}bc') AS repeat_range, "
+                                   "REGEXP_LIKE('abc','a{2,3}') AS repeat_miss, "
+                                   "REGEXP_LIKE('abc','A','ci') AS rightmost_ci, "
+                                   "REGEXP_LIKE('abc','A','ic') AS rightmost_ic, "
+                                   "REGEXP_LIKE('abc','a','u') AS unix_lines",
+                                   regexp_columns,
+                                   (int)(sizeof(regexp_columns) / sizeof(regexp_columns[0])),
+                                   regexp_values, 1, "regexp scalar values");
+
+    failures += prepare_sql(database,
+                            "SELECT 'abc' REGEXP 'a' AS r, "
+                            "REGEXP_LIKE('abc','a') AS f, NULL REGEXP 'a' AS n",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "regexp metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "regexp metadata row");
+    failures += expect_string(mylite_column_text(stmt, 0), metadata_values[0],
+                              "regexp metadata predicate value");
+    failures += expect_string(mylite_column_text(stmt, 1), metadata_values[1],
+                              "regexp metadata function value");
+    failures += expect_null_text(mylite_column_text(stmt, 2), "regexp metadata nullable value");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "regexp metadata done");
+    failures += expect_column_names(stmt, metadata_columns, 3, "regexp metadata columns");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database,
+                            "CREATE TABLE regexp_items ("
+                            "id INT PRIMARY KEY, slug VARCHAR(20), note VARCHAR(20))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO regexp_items VALUES "
+                            "(1,'alpha-1',NULL), (2,'Beta',NULL), "
+                            "(3,'bad space',NULL), (4,'',NULL), (5,NULL,NULL)",
+                            MYLITE_DONE);
+    failures += expect_select_rows(
+        database, "SELECT id FROM regexp_items WHERE slug REGEXP '^[a-z0-9-]+$' ORDER BY id",
+        id_columns, 1, matching_ids, 2, "regexp where matching rows");
+    failures += expect_select_rows(
+        database, "SELECT id FROM regexp_items WHERE slug NOT RLIKE '^[a-z0-9-]+$' ORDER BY id",
+        id_columns, 1, nonmatching_ids, 2, "not rlike where matching rows");
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE regexp_items SET note='valid' WHERE slug RLIKE '^[a-z0-9-]+$'", 2,
+        "regexp update affected rows");
+    failures += expect_select_rows(database,
+                                   "SELECT id, note FROM regexp_items WHERE note IS NOT NULL "
+                                   "ORDER BY id",
+                                   note_columns, 2, updated_notes, 2, "regexp update values");
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM regexp_items WHERE slug NOT REGEXP '^[a-z0-9-]+$'", 2,
+        "regexp delete affected rows");
+    failures += expect_select_rows(database, "SELECT id FROM regexp_items ORDER BY id", id_columns,
+                                   1, remaining_ids, 3, "regexp delete remaining rows");
+
+    failures += expect_select_rows(database,
+                                   "SELECT 0 AND 'a' REGEXP '(' AS and_short, "
+                                   "1 OR 'a' REGEXP '(' AS or_short",
+                                   short_circuit_columns, 2, short_circuit_values, 1,
+                                   "regexp invalid pattern short-circuit");
+    failures += expect_int(mylite_warning_count(database), 0, "regexp short-circuit warnings");
+
+    failures += expect_prepare_error(database, "SELECT 'abc' REGEXP '('", MYLITE_EXEC_ERROR,
+                                     "Mismatched parenthesis", "regexp invalid pattern error");
+    failures += expect_int(mylite_warning_count(database), 1, "regexp invalid pattern count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_regexp_error,
+                           "regexp invalid pattern code");
+
+    failures += expect_prepare_error(database, "SELECT REGEXP_LIKE('abc','')", MYLITE_EXEC_ERROR,
+                                     "Illegal argument to a regular expression",
+                                     "regexp empty pattern error");
+    failures += expect_int(mylite_warning_count(database), 1, "regexp empty pattern count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_illegal_regexp_argument, "regexp empty pattern code");
+
+    failures += expect_prepare_error(database, "SELECT REGEXP_LIKE('abc','a','x')",
+                                     MYLITE_EXEC_ERROR, "Incorrect arguments to regexp_like",
+                                     "regexp invalid match type error");
+    failures += expect_int(mylite_warning_count(database), 1, "regexp invalid match type count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_incorrect_escape_arguments,
+                   "regexp invalid match type code");
+
+    mylite_close(database);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
     return failures;
 }
 
@@ -13202,6 +13386,7 @@ static int test_session_information_functions_execution(void)
     static const char *const last_row_columns[] = {"last_id", "row_count"};
     static const char *const last_id_pair_columns[] = {"last_id", "current_id"};
     static const char *const row_count_column[] = {"row_count"};
+    static const char *const found_rows_column[] = {"found_rows"};
     static const char *const table_projection_columns[] = {"id", "db_name", "version_text",
                                                            "last_id", "row_count"};
     static const char *const identity_columns[] = {
@@ -13231,6 +13416,9 @@ static int test_session_information_functions_execution(void)
     static const char *const update_state_values[] = {"2", "1"};
     static const char *const delete_row_count[] = {"1"};
     static const char *const select_row_count[] = {"-1"};
+    static const char *const found_rows_one[] = {"1"};
+    static const char *const found_rows_two[] = {"2"};
+    static const char *const found_rows_three[] = {"3"};
     static const char *const explicit_insert_values[] = {"1", "1"};
     static const char *const prepared_last_id_values[] = {"456"};
     static const char *const prepared_row_count_values[] = {"2"};
@@ -13270,6 +13458,12 @@ static int test_session_information_functions_execution(void)
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, 1},
         {"current_name", NULL, NULL, NULL, NULL, NULL, 288U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U,
          0U, MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, 1},
+    };
+    static const struct expected_result_metadata found_rows_metadata[] = {
+        {"found_rows", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY |
+             MYLITE_FIELD_FLAG_NUM,
+         0U, 0},
     };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
@@ -13346,6 +13540,43 @@ static int test_session_information_functions_execution(void)
                                    "table select row count transition source");
     failures += expect_select_rows(database, "SELECT ROW_COUNT() AS row_count", row_count_column, 1,
                                    select_row_count, 1, "row count after result set");
+    failures += expect_select_rows(database, "SELECT FOUND_ROWS() AS found_rows", found_rows_column,
+                                   1, found_rows_one, 1, "found rows after limited result set");
+    failures += expect_int(mylite_warning_count(database), 1, "found rows warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_deprecated_syntax,
+                           "found rows warning code");
+    failures += expect_string(mylite_warning_message(database, 0),
+                              "FOUND_ROWS() is deprecated and will be removed in a future "
+                              "release. Consider using COUNT(*) instead.",
+                              "found rows warning message");
+
+    failures +=
+        expect_select_rows(database, "SELECT SQL_CALC_FOUND_ROWS id FROM ai ORDER BY id LIMIT 1",
+                           (const char *const[]){"id"}, 1, (const char *const[]){"1"}, 1,
+                           "sql calc found rows limited source");
+    failures += expect_int(mylite_warning_count(database), 1, "sql calc warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_deprecated_syntax,
+                           "sql calc warning code");
+    failures += expect_string(mylite_warning_message(database, 0),
+                              "SQL_CALC_FOUND_ROWS is deprecated and will be removed in a future "
+                              "release. Consider using two separate queries instead.",
+                              "sql calc warning message");
+    failures += expect_select_rows(database, "SELECT FOUND_ROWS() AS found_rows", found_rows_column,
+                                   1, found_rows_three, 1, "found rows after sql calc");
+
+    failures += expect_select_rows(database, "SELECT id FROM ai ORDER BY id LIMIT 1, 1",
+                                   (const char *const[]){"id"}, 1, (const char *const[]){"2"}, 1,
+                                   "found rows offset source");
+    failures += expect_select_rows(database, "SELECT FOUND_ROWS() AS found_rows", found_rows_column,
+                                   1, found_rows_two, 1, "found rows after offset limit");
+
+    failures += prepare_sql(database, "SELECT FOUND_ROWS() AS found_rows", MYLITE_OK, &stmt);
+    failures += expect_column_names(stmt, found_rows_column, 1, "found rows metadata columns");
+    failures += expect_result_metadata(stmt, found_rows_metadata, 1, "found rows metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "found rows metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "found rows metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
 
     failures += execute_sql_expect_done_affected(
         database, "UPDATE ai SET v = v + 1 WHERE id IN (1,2)", 2, "update ai rows");
@@ -13497,6 +13728,8 @@ static int test_session_information_functions_execution(void)
     failures += expect_no_stmt_handle(&stmt, "last insert id arity rejected");
     failures += prepare_sql(database, "SELECT ROW_COUNT(1)", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "row count arity rejected");
+    failures += prepare_sql(database, "SELECT FOUND_ROWS(1)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "found rows arity rejected");
     failures += prepare_sql(database, "SELECT CONNECTION_ID(1)", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "connection id arity rejected");
     failures += prepare_sql(database, "SELECT USER(1)", MYLITE_UNSUPPORTED, &stmt);
@@ -14333,10 +14566,23 @@ static int test_aggregate_grouping_execution(void)
         "a", "2", "2", "30", "15.0000", "alpha", "beta",
         "b", "2", "1", "0",  "0.0000",  "delta", "gamma",
     };
+    static const char *const calc_grouped_columns[] = {"g", "c"};
+    static const char *const calc_grouped_values[] = {NULL, "1"};
+    static const char *const found_rows_column[] = {"found_rows"};
+    static const char *const found_rows_three[] = {"3"};
     static const char *const total_columns[] = {"g", "total"};
     static const char *const total_a[] = {"a", "30"};
     static const char *const derived_columns[] = {"next_id", "c"};
     static const char *const derived_values[] = {"4", "1", "5", "1", "6", "1"};
+    static const char *const fd_columns[] = {"id", "grp", "n"};
+    static const char *const fd_values[] = {
+        "1", "a", "10", "2", "a", "20", "4", "b", "0", "5", NULL, "7", "3", "b", NULL,
+    };
+    static const char *const composite_fd_columns[] = {"tenant_id", "slug", "title"};
+    static const char *const composite_fd_values[] = {"1",    "10", "alpha", "1",    "20",
+                                                      "beta", "2",  "10",    "gamma"};
+    static const char *const sql_mode_group_columns[] = {"a", "b", "s"};
+    static const char *const sql_mode_group_values[] = {"1", "10", "3", "2", "30", "7"};
     static const char *const count_column[] = {"c"};
     static const char *const zero_count[] = {"0"};
     static const char *const alias_count_column[] = {"col2"};
@@ -14459,6 +14705,16 @@ static int test_aggregate_grouping_execution(void)
                            "AVG(n) AS avg_n, MIN(txt) AS min_txt, MAX(txt) AS max_txt "
                            "FROM t WHERE grp IS NOT NULL GROUP BY grp ORDER BY grp",
                            grouped_columns, 7, grouped_values, 2, "grouped aggregate rows");
+    failures += expect_select_rows(database,
+                                   "SELECT SQL_CALC_FOUND_ROWS grp AS g, COUNT(*) AS c "
+                                   "FROM t GROUP BY grp ORDER BY grp IS NOT NULL, grp LIMIT 1",
+                                   calc_grouped_columns, 2, calc_grouped_values, 1,
+                                   "grouped sql calc found rows source");
+    failures += expect_int(mylite_warning_count(database), 1, "grouped sql calc warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_deprecated_syntax,
+                           "grouped sql calc warning code");
+    failures += expect_select_rows(database, "SELECT FOUND_ROWS() AS found_rows", found_rows_column,
+                                   1, found_rows_three, 1, "found rows after grouped sql calc");
 
     failures += expect_select_rows(database,
                                    "SELECT grp AS g, SUM(n) AS total "
@@ -14473,6 +14729,33 @@ static int test_aggregate_grouping_execution(void)
                            "SELECT id + 1 AS next_id, COUNT(*) AS c "
                            "FROM t GROUP BY id HAVING next_id > 3 ORDER BY next_id",
                            derived_columns, 2, derived_values, 3, "derived grouped expression");
+    failures += expect_select_rows(database, "SELECT id, grp, n FROM t GROUP BY id ORDER BY txt",
+                                   fd_columns, 3, fd_values, 5,
+                                   "primary key grouped functional dependency");
+    failures += execute_sql(database,
+                            "CREATE TABLE fd_t ("
+                            "tenant_id INT NOT NULL, "
+                            "slug INT NOT NULL, "
+                            "title VARCHAR(20), "
+                            "nullable_code INT UNIQUE, "
+                            "UNIQUE KEY uq_tenant_slug (tenant_id, slug))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO fd_t VALUES "
+                            "(1,10,'alpha',NULL),"
+                            "(1,20,'beta',1),"
+                            "(2,10,'gamma',NULL)",
+                            MYLITE_DONE);
+    failures += expect_select_rows(
+        database, "SELECT tenant_id, slug, title FROM fd_t GROUP BY tenant_id, slug ORDER BY title",
+        composite_fd_columns, 3, composite_fd_values, 3,
+        "composite unique key grouped functional dependency");
+    failures += expect_prepare_error(
+        database, "SELECT tenant_id, slug, title FROM fd_t GROUP BY tenant_id", MYLITE_EXEC_ERROR,
+        "not functionally dependent", "partial composite unique key is not functional dependency");
+    failures += expect_prepare_error(
+        database, "SELECT nullable_code, title FROM fd_t GROUP BY nullable_code", MYLITE_EXEC_ERROR,
+        "not functionally dependent", "nullable unique key is not functional dependency");
     failures +=
         expect_select_rows(database, "SELECT COUNT(*) AS c FROM t WHERE id > 10 HAVING c = 0",
                            count_column, 1, zero_count, 1, "implicit group having zero count");
@@ -14537,6 +14820,23 @@ static int test_aggregate_grouping_execution(void)
     failures += expect_prepare_error(
         database, "SELECT grp, COUNT(*) AS c FROM t GROUP BY grp ORDER BY n", MYLITE_EXEC_ERROR,
         "not functionally dependent", "unsafe grouped order");
+    failures += execute_sql(database, "CREATE TABLE mode_t (id INT PRIMARY KEY, a INT, b INT)",
+                            MYLITE_DONE);
+    failures += execute_sql(
+        database, "INSERT INTO mode_t VALUES (1,1,10),(2,1,20),(3,2,30),(4,2,40)", MYLITE_DONE);
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += expect_select_rows(database,
+                                   "SELECT a, b, SUM(id) AS s "
+                                   "FROM mode_t GROUP BY a ORDER BY b",
+                                   sql_mode_group_columns, 3, sql_mode_group_values, 2,
+                                   "group by without only full group by");
+    failures += execute_sql(database, "SET SESSION sql_mode = 'ONLY_FULL_GROUP_BY'", MYLITE_DONE);
+    failures += expect_prepare_error(database,
+                                     "SELECT a, b, SUM(id) AS s "
+                                     "FROM mode_t GROUP BY a ORDER BY b",
+                                     MYLITE_EXEC_ERROR, "not functionally dependent",
+                                     "group by with only full group by restored");
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
     failures += expect_prepare_error(
         database, "SELECT grp, COUNT(*) AS c FROM t GROUP BY grp HAVING n > 0", MYLITE_EXEC_ERROR,
         "Unknown column 'n' in 'having clause'", "unknown hidden having column");
@@ -17630,6 +17930,19 @@ static int test_show_variables_execution(void)
                                                           "utf8mb4_0900_ai_ci"};
     static const char *const reset_collation_values[] = {"collation_connection",
                                                          "utf8mb4_0900_ai_ci"};
+    static const char *const empty_sql_mode_values[] = {"sql_mode", ""};
+    static const char *const canonical_sql_mode_values[] = {"sql_mode", "ONLY_FULL_GROUP_BY,"
+                                                                        "NO_ENGINE_SUBSTITUTION"};
+    static const char *const default_sql_mode_values[] = {
+        "sql_mode",
+        "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,"
+        "ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION",
+    };
+    static const char *const relaxed_sql_mode_values[] = {
+        "sql_mode",
+        "STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,"
+        "ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION",
+    };
     static const char *const selected_database_collation_values[] = {"collation_database",
                                                                      "latin1_bin"};
     static const char *const selected_connection_collation_values[] = {"collation_connection",
@@ -17652,6 +17965,7 @@ static int test_show_variables_execution(void)
         "",
     };
     mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
     int failures = 0;
 
     failures +=
@@ -17688,6 +18002,43 @@ static int test_show_variables_execution(void)
                                                      .value = mylite_version(),
                                                      .context = "show variables unfiltered version",
                                                  });
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'sql_mode'", columns, 2,
+                                   empty_sql_mode_values, 1, "show variables empty sql mode");
+    failures +=
+        expect_select_rows(database, "SHOW GLOBAL VARIABLES LIKE 'sql_mode'", columns, 2,
+                           default_sql_mode_values, 1, "show global variables sql mode default");
+    failures += execute_sql(database,
+                            "SET @@session.sql_mode = "
+                            "'no_engine_substitution,only_full_group_by'",
+                            MYLITE_DONE);
+    failures +=
+        expect_select_rows(database, "SHOW SESSION VARIABLES LIKE 'sql_mode'", columns, 2,
+                           canonical_sql_mode_values, 1, "show variables canonical sql mode");
+    failures += execute_sql(database, "SET LOCAL @@local.sql_mode = DEFAULT", MYLITE_DONE);
+    failures +=
+        expect_select_rows(database, "SHOW VARIABLES LIKE 'sql_mode'", columns, 2,
+                           default_sql_mode_values, 1, "show variables default sql mode restored");
+    failures += execute_sql(database,
+                            "SET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, "
+                            "'ONLY_FULL_GROUP_BY', '')",
+                            MYLITE_DONE);
+    failures +=
+        expect_select_rows(database, "SHOW VARIABLES LIKE 'sql_mode'", columns, 2,
+                           relaxed_sql_mode_values, 1, "show variables sql mode replace removal");
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
+    failures += prepare_sql(database, "SET SESSION sql_mode = 'NO_SUCH_MODE'", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "set invalid sql mode");
+    failures += expect_contains(mylite_error_message(database),
+                                "Variable 'sql_mode' can't be set to the value of 'NO_SUCH_MODE'",
+                                "set invalid sql mode error");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_wrong_value_for_var,
+                           "set invalid sql mode warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'sql_mode'", columns, 2,
+                                   default_sql_mode_values, 1,
+                                   "show variables sql mode unchanged after invalid set");
     failures += expect_prepare_error(database, "SHOW VARIABLES WHERE Variable_name = 'autocommit'",
                                      MYLITE_UNSUPPORTED, "SHOW VARIABLES WHERE is not supported",
                                      "show variables where is parsed but unsupported");
@@ -21679,6 +22030,10 @@ static int test_select_distinct_execution(void)
     static const char *const distinct_a_values[] = {"1", "2", "3", "4", NULL};
     static const char *const distinct_a_null_first_values[] = {NULL, "1", "2", "3", "4"};
     static const char *const distinct_a_desc_limit_values[] = {"4", "3", "2"};
+    static const char *const distinct_hidden_order_values[] = {"1", "2"};
+    static const char *const distinct_calc_limit_values[] = {NULL, "1"};
+    static const char *const found_rows_column[] = {"found_rows"};
+    static const char *const found_rows_five[] = {"5"};
     static const char *const all_a_values[] = {"1", "1", "2"};
     static const char *const a_b_columns[] = {"a", "b"};
     static const char *const distinct_a_b_values[] = {
@@ -21791,6 +22146,16 @@ static int test_select_distinct_execution(void)
         plus_one_column, 1, plus_one_values, 4, "distinct expression output");
     failures += expect_select_rows(database, "SELECT DISTINCT a FROM d ORDER BY a LIMIT 3",
                                    a_column, 1, distinct_limit_values, 3, "distinct ordered limit");
+    failures += expect_select_rows(database,
+                                   "SELECT SQL_CALC_FOUND_ROWS DISTINCT a "
+                                   "FROM d ORDER BY a LIMIT 2",
+                                   a_column, 1, distinct_calc_limit_values, 2,
+                                   "distinct sql calc found rows source");
+    failures += expect_int(mylite_warning_count(database), 1, "distinct sql calc warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_deprecated_syntax,
+                           "distinct sql calc warning code");
+    failures += expect_select_rows(database, "SELECT FOUND_ROWS() AS found_rows", found_rows_column,
+                                   1, found_rows_five, 1, "found rows after distinct sql calc");
     failures +=
         expect_select_rows(database, "SELECT DISTINCT a FROM d ORDER BY a DESC LIMIT 3", a_column,
                            1, distinct_a_desc_limit_values, 3, "distinct descending limit");
@@ -21848,6 +22213,22 @@ static int test_select_distinct_execution(void)
     failures +=
         expect_int((int)mylite_warning_code(database, 0), mysql_warning_field_in_order_not_select,
                    "distinct hidden order warning code");
+    failures += execute_sql(database,
+                            "CREATE TABLE distinct_mode_t ("
+                            "id INT PRIMARY KEY, a INT, sort_key INT)",
+                            MYLITE_DONE);
+    failures += execute_sql(
+        database, "INSERT INTO distinct_mode_t VALUES (1,2,20),(2,1,10),(3,1,30)", MYLITE_DONE);
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += expect_select_rows(
+        database, "SELECT DISTINCT a FROM distinct_mode_t ORDER BY sort_key", a_column, 1,
+        distinct_hidden_order_values, 2, "distinct hidden order without only full group by");
+    failures += execute_sql(database, "SET SESSION sql_mode = 'ONLY_FULL_GROUP_BY'", MYLITE_DONE);
+    failures += expect_prepare_error(
+        database, "SELECT DISTINCT a FROM distinct_mode_t ORDER BY sort_key", MYLITE_EXEC_ERROR,
+        "Expression #1 of ORDER BY clause is not in SELECT list",
+        "distinct hidden order with only full group by restored");
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
     failures += expect_prepare_error(database, "SELECT DISTINCT a FROM d ORDER BY sort_key + 0",
                                      MYLITE_EXEC_ERROR,
                                      "Expression #1 of ORDER BY clause is not in SELECT list",
@@ -21877,6 +22258,9 @@ static int test_union_query_expression_execution(void)
     static const char *const one_value[] = {"1"};
     static const char *const two_value[] = {"2"};
     static const char *const two_decimal_value[] = {"2.0000"};
+    static const char *const found_rows_column[] = {"found_rows"};
+    static const char *const found_rows_three[] = {"3"};
+    static const char *const found_rows_six[] = {"6"};
     static const char *const n_column[] = {"n"};
     static const char *const local_order_values[] = {NULL, "2"};
     static const char *const global_limit_values[] = {"2", "2"};
@@ -21967,6 +22351,18 @@ static int test_union_query_expression_execution(void)
                            "SELECT n FROM left_t UNION ALL SELECT n FROM right_t "
                            "ORDER BY n DESC LIMIT 2 OFFSET 1",
                            n_column, 1, global_limit_values, 2, "union global order limit offset");
+    failures += expect_select_rows(database, "SELECT FOUND_ROWS() AS found_rows", found_rows_column,
+                                   1, found_rows_three, 1, "found rows after limited union");
+    failures += expect_select_rows(
+        database,
+        "SELECT SQL_CALC_FOUND_ROWS n AS v FROM left_t UNION ALL SELECT n FROM right_t "
+        "ORDER BY v IS NULL, v LIMIT 2",
+        v_column, 1, one_two_values, 2, "union sql calc source");
+    failures += expect_int(mylite_warning_count(database), 1, "union sql calc warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_deprecated_syntax,
+                           "union sql calc warning code");
+    failures += expect_select_rows(database, "SELECT FOUND_ROWS() AS found_rows", found_rows_column,
+                                   1, found_rows_six, 1, "found rows after sql calc union");
     failures += expect_select_rows(database,
                                    "SELECT n AS first_name FROM left_t WHERE id IN (1,2) UNION ALL "
                                    "SELECT n AS later_name FROM right_t WHERE id IN (10,11) "
@@ -22037,6 +22433,17 @@ static int test_union_query_expression_execution(void)
         database, "SELECT n AS first_name FROM left_t UNION ALL SELECT n FROM right_t ORDER BY n",
         MYLITE_EXEC_ERROR, "Unknown column 'n' in 'order clause'",
         "union first alias hides source name");
+    failures += expect_prepare_error(
+        database, "SELECT n AS v FROM left_t UNION ALL SELECT SQL_CALC_FOUND_ROWS n FROM right_t",
+        MYLITE_EXEC_ERROR, "Incorrect usage/placement of 'SQL_CALC_FOUND_ROWS'",
+        "union sql calc misplaced operand");
+    failures +=
+        expect_int(mylite_warning_count(database), 2, "union misplaced sql calc warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_deprecated_syntax,
+                           "union misplaced sql calc deprecation warning code");
+    failures += expect_int((int)mylite_warning_code(database, 1),
+                           mysql_warning_wrong_sql_calc_found_rows_placement,
+                           "union misplaced sql calc error code");
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)
@@ -24438,6 +24845,11 @@ static int test_delete_single_table_execution(void)
 
 static int test_delete_multi_table_execution(void)
 {
+    enum {
+        multi_delete_all_b_row_count = 5,
+        multi_delete_two_targets_affected_rows = 5,
+        multi_delete_using_affected_rows = 5,
+    };
     static const char *const id_column[] = {"id"};
     static const char *const id_aid_columns[] = {"id", "a_id"};
     static const char *const id_xid_columns[] = {"id", "x_id"};
@@ -24481,7 +24893,8 @@ static int test_delete_multi_table_execution(void)
     failures += expect_select_rows(database, "SELECT id FROM a ORDER BY id", id_column, 1,
                                    single_target_a_values, 1, "multi delete one target rows");
     failures += expect_select_rows(database, "SELECT id, a_id FROM b ORDER BY id", id_aid_columns,
-                                   2, all_b_values, 5, "multi delete one target leaves b");
+                                   2, all_b_values, multi_delete_all_b_row_count,
+                                   "multi delete one target leaves b");
 
     failures += execute_sql(database, "CREATE TABLE a2 (id INT PRIMARY KEY, v INT)", MYLITE_DONE);
     failures +=
@@ -24501,8 +24914,8 @@ static int test_delete_multi_table_execution(void)
                             "WHERE cc.marker = 7",
                             MYLITE_OK, &stmt);
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "multi delete two targets");
-    failures +=
-        expect_int64(mylite_affected_rows(stmt), 5, "multi delete two targets affected rows");
+    failures += expect_int64(mylite_affected_rows(stmt), multi_delete_two_targets_affected_rows,
+                             "multi delete two targets affected rows");
     mylite_finalize(stmt);
     stmt = NULL;
     failures += expect_select_rows(database, "SELECT id FROM a2 ORDER BY id", id_column, 1,
@@ -24524,7 +24937,8 @@ static int test_delete_multi_table_execution(void)
                             "WHERE y.keep_flag = 0",
                             MYLITE_OK, &stmt);
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "multi delete using targets");
-    failures += expect_int64(mylite_affected_rows(stmt), 5, "multi delete using affected rows");
+    failures += expect_int64(mylite_affected_rows(stmt), multi_delete_using_affected_rows,
+                             "multi delete using affected rows");
     mylite_finalize(stmt);
     stmt = NULL;
     failures += expect_select_rows(database, "SELECT id FROM x ORDER BY id", id_column, 1,
@@ -24564,10 +24978,10 @@ static int test_delete_multi_table_execution(void)
     failures += expect_select_rows(database, "SELECT id, l_id FROM r ORDER BY id", id_lid_columns,
                                    2, right_join_values, 2, "multi delete right orphan rows");
 
-    failures += execute_sql(database, "CREATE TABLE self_t (id INT PRIMARY KEY, v INT)",
-                            MYLITE_DONE);
-    failures += execute_sql(database, "INSERT INTO self_t VALUES (1,10),(2,20),(3,30)",
-                            MYLITE_DONE);
+    failures +=
+        execute_sql(database, "CREATE TABLE self_t (id INT PRIMARY KEY, v INT)", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO self_t VALUES (1,10),(2,20),(3,30)", MYLITE_DONE);
     failures += prepare_sql(database,
                             "DELETE sa, sb FROM self_t AS sa JOIN self_t AS sb "
                             "ON sa.id = sb.id WHERE sa.id IN (1,2)",
@@ -24578,8 +24992,7 @@ static int test_delete_multi_table_execution(void)
     mylite_finalize(stmt);
     stmt = NULL;
     failures += expect_select_rows(database, "SELECT id FROM self_t ORDER BY id", id_column, 1,
-                                   self_alias_values, 1,
-                                   "multi delete self alias overlap rows");
+                                   self_alias_values, 1, "multi delete self alias overlap rows");
 
     failures +=
         prepare_sql(database, "DELETE a, a FROM a JOIN b ON a.id = b.a_id", MYLITE_OK, &stmt);

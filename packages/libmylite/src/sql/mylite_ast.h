@@ -146,6 +146,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_SHOW_TABLE_STATUS_STATEMENT = 135,
     MYLITE_SQL_AST_DELETE_TARGET_LIST = 136,
     MYLITE_SQL_AST_DELETE_TARGET_NAME = 137,
+    MYLITE_SQL_AST_SET_SQL_MODE_STATEMENT = 138,
 };
 
 enum mylite_sql_ast_delete_form {
@@ -224,6 +225,8 @@ enum mylite_sql_ast_operator {
     MYLITE_SQL_AST_OPERATOR_NOT_IN = 37,
     MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE = 38,
     MYLITE_SQL_AST_OPERATOR_MODULO = 39,
+    MYLITE_SQL_AST_OPERATOR_REGEXP = 40,
+    MYLITE_SQL_AST_OPERATOR_NOT_REGEXP = 41,
 };
 
 enum mylite_sql_ast_schema_option {
@@ -581,6 +584,7 @@ struct mylite_sql_ast_node {
     bool alter_table_action_column_keyword;
     bool select_duplicate_mode_explicit;
     bool select_duplicate_mode_conflict;
+    bool select_calc_found_rows;
     bool transaction_consistent_snapshot;
     bool show_tables_extended;
     bool show_tables_full;
@@ -692,6 +696,7 @@ void mylite_sql_ast_node_set_select_duplicate_mode(
     struct mylite_sql_ast_node *node, enum mylite_sql_ast_select_duplicate_mode mode,
     bool explicit_mode, bool conflict, size_t modifier_count,
     struct mylite_sql_ast_select_duplicate_mode_spans spans);
+void mylite_sql_ast_node_set_select_calc_found_rows(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_set_duplicate_mode(struct mylite_sql_ast_node *node,
                                                 enum mylite_sql_ast_set_duplicate_mode mode);
 void mylite_sql_ast_node_set_subquery_quantifier(

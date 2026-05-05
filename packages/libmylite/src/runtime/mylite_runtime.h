@@ -31,6 +31,7 @@ struct mylite_db {
     char *selected_schema;
     uint64_t connection_id;
     uint64_t last_insert_id;
+    uint64_t previous_found_rows;
     int64_t previous_row_count;
     enum mylite_transaction_access_mode transaction_access_mode;
     bool transaction_active;
@@ -44,6 +45,7 @@ struct mylite_db {
     const char *character_set_connection;
     const char *character_set_results;
     const char *collation_connection;
+    char *sql_mode;
 };
 
 struct mylite_statement_timestamp {
@@ -60,6 +62,7 @@ struct mylite_stmt {
     bool if_not_exists;
     bool executed;
     bool previous_row_count_recorded;
+    bool previous_found_rows_recorded;
     bool preserve_prepare_warnings;
     bool has_statement_timestamp;
     struct mylite_statement_timestamp statement_timestamp;
@@ -80,6 +83,7 @@ struct mylite_stmt {
     struct mylite_savepoint_plan savepoint;
     struct mylite_select_plan select_plan;
     struct mylite_union_plan union_plan;
+    struct mylite_connection_sql_mode_plan connection_sql_mode;
     struct mylite_result_metadata result_metadata;
     struct mylite_scalar_result scalar_result;
     struct mylite_table_select_result select_result;
@@ -98,6 +102,7 @@ struct mylite_stmt {
     bool select_constant_predicate_matches;
     int64_t affected_rows;
     uint64_t matched_rows;
+    uint64_t found_rows;
 };
 
 #endif

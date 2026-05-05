@@ -55,6 +55,10 @@ void mylite_select_table_deinit(struct mylite_select_table *table)
         mylite_select_column_deinit(&table->columns[index]);
     }
     free(table->columns);
+    for (size_t index = 0U; index < table->unique_not_null_key_count; ++index) {
+        mylite_select_column_sequence_deinit(&table->unique_not_null_keys[index]);
+    }
+    free(table->unique_not_null_keys);
     *table = (struct mylite_select_table){0};
 }
 

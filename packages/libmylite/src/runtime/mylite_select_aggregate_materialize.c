@@ -38,6 +38,7 @@ int mylite_select_materialize_aggregate_table_result(
                                                 &stmt->select_plan);
     }
     if (status == MYLITE_OK) {
+        stmt->found_rows = stmt->select_result.row_count;
         status = mylite_select_result_apply_limit(&stmt->select_result, &stmt->select_plan.limit);
     }
 
@@ -59,6 +60,7 @@ static int scan_aggregate_table_select_groups(mylite_stmt *stmt,
         return status;
     }
     if (stmt->select_constant_predicate_evaluated && !stmt->select_constant_predicate_matches) {
+        stmt->found_rows = 0U;
         return MYLITE_OK;
     }
 

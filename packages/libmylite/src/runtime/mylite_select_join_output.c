@@ -99,7 +99,8 @@ static int mylite_select_join_materialize_nonaggregate_row(
     if (state->matched_row != UINT64_MAX) {
         ++state->matched_row;
     }
-    if (mylite_select_limit_is_full(&stmt->select_plan.limit, stmt->select_result.row_count)) {
+    if (!stmt->select_plan.calc_found_rows &&
+        mylite_select_limit_is_full(&stmt->select_plan.limit, stmt->select_result.row_count)) {
         state->stop = true;
     }
     return MYLITE_OK;

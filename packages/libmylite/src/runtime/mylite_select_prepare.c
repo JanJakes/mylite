@@ -148,6 +148,7 @@ static int prepare_table_select_statement(mylite_db *database,
     }
 
     plan.duplicate_mode = statement->select_duplicate_mode;
+    plan.calc_found_rows = statement->select_calc_found_rows;
     status = mylite_select_bind_from_clause(database, from_clause, &plan);
     if (status == MYLITE_OK) {
         status = bind_select_join_predicates(database, &plan, callbacks);

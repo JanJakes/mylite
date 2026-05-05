@@ -569,6 +569,15 @@ void mylite_sql_ast_node_set_select_duplicate_mode(
     node->select_duplicate_conflict_span = spans.conflict;
 }
 
+void mylite_sql_ast_node_set_select_calc_found_rows(struct mylite_sql_ast_node *node)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->select_calc_found_rows = true;
+}
+
 void mylite_sql_ast_node_set_set_duplicate_mode(struct mylite_sql_ast_node *node,
                                                 enum mylite_sql_ast_set_duplicate_mode mode)
 {
@@ -784,6 +793,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "set_names_statement";
     case MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT:
         return "set_character_set_statement";
+    case MYLITE_SQL_AST_SET_SQL_MODE_STATEMENT:
+        return "set_sql_mode_statement";
     case MYLITE_SQL_AST_DEFAULT:
         return "default";
     case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
@@ -1621,6 +1632,10 @@ const char *mylite_sql_ast_operator_name(enum mylite_sql_ast_operator operator_k
         return "like";
     case MYLITE_SQL_AST_OPERATOR_NOT_LIKE:
         return "not_like";
+    case MYLITE_SQL_AST_OPERATOR_REGEXP:
+        return "regexp";
+    case MYLITE_SQL_AST_OPERATOR_NOT_REGEXP:
+        return "not_regexp";
     case MYLITE_SQL_AST_OPERATOR_IN:
         return "in";
     case MYLITE_SQL_AST_OPERATOR_NOT_IN:

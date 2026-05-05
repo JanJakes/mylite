@@ -40,8 +40,10 @@ int mylite_select_materialize_outer_joined_table_result(
     bool distinct = mylite_select_duplicate_mode_is_distinct(stmt->select_plan.duplicate_mode);
     int status = MYLITE_OK;
 
-    if (!aggregate_query && stmt->select_plan.order_key_count == 0U &&
-        stmt->select_plan.limit.has_limit && stmt->select_plan.limit.row_count == 0U) {
+    if (!stmt->select_plan.calc_found_rows && !aggregate_query &&
+        stmt->select_plan.order_key_count == 0U && stmt->select_plan.limit.has_limit &&
+        stmt->select_plan.limit.row_count == 0U) {
+        stmt->found_rows = 0U;
         return MYLITE_OK;
     }
 
@@ -50,6 +52,7 @@ int mylite_select_materialize_outer_joined_table_result(
         return status;
     }
     if (stmt->select_constant_predicate_evaluated && !stmt->select_constant_predicate_matches) {
+        stmt->found_rows = 0U;
         return MYLITE_OK;
     }
     if (table_count == 0U) {
@@ -81,7 +84,10 @@ int mylite_select_materialize_outer_joined_table_result(
     }
     if (status == MYLITE_OK &&
         (aggregate_query || stmt->select_plan.order_key_count != 0U || distinct)) {
+        stmt->found_rows = stmt->select_result.row_count;
         status = mylite_select_result_apply_limit(&stmt->select_result, &stmt->select_plan.limit);
+    } else if (status == MYLITE_OK) {
+        stmt->found_rows = state.matched_row;
     }
 
     mylite_select_groups_deinit(state.groups, state.group_count);

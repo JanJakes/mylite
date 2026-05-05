@@ -27,8 +27,7 @@ static int copy_multi_delete_targets(const struct mylite_sql_ast_node *targets,
                                      struct mylite_delete_plan *plan);
 static int copy_multi_delete_target(const struct mylite_sql_ast_node *target,
                                     struct mylite_delete_plan *plan);
-static int add_delete_target(struct mylite_delete_plan *plan,
-                             struct mylite_delete_target target);
+static int add_delete_target(struct mylite_delete_plan *plan, struct mylite_delete_target target);
 static void delete_target_parts_deinit(struct mylite_delete_target *target);
 static int copy_delete_table_name(const struct mylite_sql_ast_node *table_name,
                                   struct mylite_delete_target *target);
@@ -122,8 +121,7 @@ static int copy_multi_delete_target(const struct mylite_sql_ast_node *target,
     return status;
 }
 
-static int add_delete_target(struct mylite_delete_plan *plan,
-                             struct mylite_delete_target target)
+static int add_delete_target(struct mylite_delete_plan *plan, struct mylite_delete_target target)
 {
     struct mylite_delete_target *targets =
         realloc(plan->targets, (plan->target_count + 1U) * sizeof(*plan->targets));

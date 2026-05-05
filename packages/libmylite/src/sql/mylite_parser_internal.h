@@ -21,6 +21,7 @@ struct mylite_sql_parser_select_duplicate_mode {
     size_t modifier_count;
     bool explicit_mode;
     bool conflict;
+    bool calc_found_rows;
 };
 
 struct mylite_sql_parser_union_operator {
@@ -351,6 +352,8 @@ struct mylite_sql_parser_select_duplicate_mode
 mylite_sql_parser_make_all_select_duplicate_mode(struct mylite_sql_token token);
 struct mylite_sql_parser_select_duplicate_mode
 mylite_sql_parser_make_distinct_select_duplicate_mode(struct mylite_sql_token token);
+struct mylite_sql_parser_select_duplicate_mode
+mylite_sql_parser_make_sql_calc_found_rows_select_duplicate_mode(struct mylite_sql_token token);
 struct mylite_sql_parser_select_duplicate_mode
 mylite_sql_parser_append_select_duplicate_mode(struct mylite_sql_parser_state *state,
                                                struct mylite_sql_parser_select_duplicate_mode list,
@@ -691,9 +694,10 @@ struct mylite_sql_ast_node *
 mylite_sql_parser_append_delete_target_name(struct mylite_sql_parser_state *state,
                                             struct mylite_sql_ast_node *list,
                                             struct mylite_sql_ast_node *target);
-struct mylite_sql_ast_node *mylite_sql_parser_make_delete_target_name(
-    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *table_name,
-    struct mylite_sql_token wildcard_token);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_delete_target_name(struct mylite_sql_parser_state *state,
+                                          struct mylite_sql_ast_node *table_name,
+                                          struct mylite_sql_token wildcard_token);
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_delete_limit_clause(struct mylite_sql_parser_state *state,
                                            struct mylite_sql_token limit_token,
@@ -766,6 +770,9 @@ struct mylite_sql_ast_node *
 mylite_sql_parser_make_set_character_set_statement(struct mylite_sql_parser_state *state,
                                                    struct mylite_sql_token set_token,
                                                    struct mylite_sql_ast_node *character_set);
+struct mylite_sql_ast_node *mylite_sql_parser_make_set_sql_mode_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token set_token,
+    struct mylite_sql_ast_node *variable_name, struct mylite_sql_ast_node *value);
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_token create_token,
     struct mylite_sql_ast_node *if_not_exists, struct mylite_sql_ast_node *table_name,

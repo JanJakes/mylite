@@ -87,6 +87,8 @@ int mylite_select_compare_row_values(enum mylite_sql_ast_operator operator_kind,
     case MYLITE_SQL_AST_OPERATOR_NOT_BETWEEN:
     case MYLITE_SQL_AST_OPERATOR_LIKE:
     case MYLITE_SQL_AST_OPERATOR_NOT_LIKE:
+    case MYLITE_SQL_AST_OPERATOR_REGEXP:
+    case MYLITE_SQL_AST_OPERATOR_NOT_REGEXP:
     case MYLITE_SQL_AST_OPERATOR_IN:
     case MYLITE_SQL_AST_OPERATOR_NOT_IN:
     case MYLITE_SQL_AST_OPERATOR_IS_NULL:

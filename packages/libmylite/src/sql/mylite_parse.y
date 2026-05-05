@@ -19,6 +19,7 @@
 %type ddl_lock { struct mylite_sql_token }
 %type opt_index_or_key { struct mylite_sql_token }
 %type nonreserved_identifier_keyword { struct mylite_sql_token }
+%type select_modifiers { struct mylite_sql_parser_select_duplicate_mode }
 %type select_duplicate_mode { struct mylite_sql_parser_select_duplicate_mode }
 %type select_duplicate_mode_list { struct mylite_sql_parser_select_duplicate_mode }
 %type select_duplicate_mode_item { struct mylite_sql_parser_select_duplicate_mode }
@@ -93,7 +94,7 @@
 %left AND LOGICAL_AND.
 %right NOT.
 %left BETWEEN.
-%left EQ NULL_SAFE_EQ NE LT LE GT GE IS LIKE IN.
+%left EQ NULL_SAFE_EQ NE LT LE GT GE IS LIKE REGEXP RLIKE IN.
 %left BIT_OR.
 %left BIT_AND.
 %left SHIFT_LEFT SHIFT_RIGHT.
@@ -246,6 +247,9 @@ statement(A) ::= set_names_statement(B). {
     A = B;
 }
 statement(A) ::= set_character_set_statement(B). {
+    A = B;
+}
+statement(A) ::= set_sql_mode_statement(B). {
     A = B;
 }
 statement(A) ::= create_table_statement(B). {
@@ -1425,6 +1429,41 @@ set_character_set_statement(A) ::= SET(T) CHARSET DEFAULT(D). {
         state, T, mylite_sql_parser_make_default(state, D));
 }
 
+set_sql_mode_statement(A) ::= SET(T) set_sql_mode_variable(B) EQ set_sql_mode_value(C). {
+    A = mylite_sql_parser_make_set_sql_mode_statement(state, T, B, C);
+}
+set_sql_mode_statement(A) ::= SET(T) SESSION set_sql_mode_variable(B) EQ set_sql_mode_value(C). {
+    A = mylite_sql_parser_make_set_sql_mode_statement(state, T, B, C);
+}
+set_sql_mode_statement(A) ::= SET(T) LOCAL set_sql_mode_variable(B) EQ set_sql_mode_value(C). {
+    A = mylite_sql_parser_make_set_sql_mode_statement(state, T, B, C);
+}
+set_sql_mode_variable(A) ::= IDENTIFIER(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+set_sql_mode_variable(A) ::= QUOTED_IDENTIFIER(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+set_sql_mode_variable(A) ::= SYSTEM_VARIABLE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+
+set_sql_mode_value(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+set_sql_mode_value(A) ::= DEFAULT(T). {
+    A = mylite_sql_parser_make_default(state, T);
+}
+set_sql_mode_value(A) ::= REPLACE(T) LPAREN(L) set_sql_mode_variable(B) COMMA STRING(C) COMMA STRING(D) RPAREN(R). {
+    struct mylite_sql_ast_node *arguments = mylite_sql_parser_make_function_argument_list(state, B);
+    arguments = mylite_sql_parser_append_function_argument(
+        state, arguments, mylite_sql_parser_make_literal(state, C, MYLITE_SQL_AST_LITERAL_STRING));
+    arguments = mylite_sql_parser_append_function_argument(
+        state, arguments, mylite_sql_parser_make_literal(state, D, MYLITE_SQL_AST_LITERAL_STRING));
+    A = mylite_sql_parser_make_function_call(
+        state, mylite_sql_parser_make_identifier(state, T), L, arguments, R);
+}
+
 create_table_statement(A) ::= CREATE(T) TABLE opt_if_not_exists(B) table_name(C) LPAREN table_element_list(D) RPAREN table_option_list(E). {
     A = mylite_sql_parser_make_create_table_statement(state, T, B, C, D, E);
 }
@@ -2465,33 +2504,33 @@ opt_default ::= DEFAULT.
 opt_equal ::= .
 opt_equal ::= EQ.
 
-select_statement(A) ::= SELECT(T) select_duplicate_mode(M) select_item_list(B). {
+select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B). {
     A = mylite_sql_parser_make_select_statement(
         state, T, M, B, NULL, NULL, NULL, NULL, NULL, NULL);
 }
-select_statement(A) ::= SELECT(T) select_duplicate_mode(M) select_item_list(B) FROM(F) DUAL(D). {
+select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B) FROM(F) DUAL(D). {
     A = mylite_sql_parser_make_select_statement(
         state, T, M, B, mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL,
         NULL);
 }
-select_statement(A) ::= SELECT(T) select_duplicate_mode(M) select_item_list(B) FROM(F)
+select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B) FROM(F)
         table_references(C)
         opt_where_clause(E) opt_group_by_clause(G) opt_having_clause(H) opt_order_by_clause(I)
         opt_limit_clause(J). {
     A = mylite_sql_parser_make_select_statement(
         state, T, M, B, mylite_sql_parser_make_from_table_references(state, F, C), E, G, H, I, J);
 }
-select_statement(A) ::= SELECT(T) select_duplicate_mode(M) STAR(S). {
+select_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S). {
     A = mylite_sql_parser_make_select_statement(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S), NULL, NULL, NULL, NULL,
         NULL, NULL);
 }
-select_statement(A) ::= SELECT(T) select_duplicate_mode(M) STAR(S) FROM(F) DUAL(D). {
+select_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S) FROM(F) DUAL(D). {
     A = mylite_sql_parser_make_select_statement(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
         mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL, NULL);
 }
-select_statement(A) ::= SELECT(T) select_duplicate_mode(M) STAR(S) FROM(F) table_references(C)
+select_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S) FROM(F) table_references(C)
         opt_where_clause(E) opt_group_by_clause(G) opt_having_clause(H) opt_order_by_clause(I)
         opt_limit_clause(J). {
     A = mylite_sql_parser_make_select_statement(
@@ -2534,74 +2573,78 @@ union_operator(A) ::= UNION(T) DISTINCT(M). {
     A = mylite_sql_parser_make_distinct_union_operator(T, M);
 }
 
-select_union_operand(A) ::= SELECT(T) select_duplicate_mode(M) select_item_list(B). {
+select_union_operand(A) ::= SELECT(T) select_modifiers(M) select_item_list(B). {
     A = mylite_sql_parser_make_select_statement(
         state, T, M, B, NULL, NULL, NULL, NULL, NULL, NULL);
 }
-select_union_operand(A) ::= SELECT(T) select_duplicate_mode(M) select_item_list(B)
+select_union_operand(A) ::= SELECT(T) select_modifiers(M) select_item_list(B)
         FROM(F) DUAL(D). {
     A = mylite_sql_parser_make_select_statement(
         state, T, M, B, mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL,
         NULL);
 }
-select_union_operand(A) ::= SELECT(T) select_duplicate_mode(M) select_item_list(B)
+select_union_operand(A) ::= SELECT(T) select_modifiers(M) select_item_list(B)
         FROM(F) table_references(C) opt_where_clause(E) opt_group_by_clause(G)
         opt_having_clause(H). {
     A = mylite_sql_parser_make_select_statement(
         state, T, M, B, mylite_sql_parser_make_from_table_references(state, F, C), E, G, H, NULL,
         NULL);
 }
-select_union_operand(A) ::= SELECT(T) select_duplicate_mode(M) STAR(S). {
+select_union_operand(A) ::= SELECT(T) select_modifiers(M) STAR(S). {
     A = mylite_sql_parser_make_select_statement(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S), NULL, NULL, NULL, NULL,
         NULL, NULL);
 }
-select_union_operand(A) ::= SELECT(T) select_duplicate_mode(M) STAR(S) FROM(F) DUAL(D). {
+select_union_operand(A) ::= SELECT(T) select_modifiers(M) STAR(S) FROM(F) DUAL(D). {
     A = mylite_sql_parser_make_select_statement(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
         mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL, NULL);
 }
-select_union_operand(A) ::= SELECT(T) select_duplicate_mode(M) STAR(S) FROM(F)
+select_union_operand(A) ::= SELECT(T) select_modifiers(M) STAR(S) FROM(F)
         table_references(C) opt_where_clause(E) opt_group_by_clause(G) opt_having_clause(H). {
     A = mylite_sql_parser_make_select_statement(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
         mylite_sql_parser_make_from_table_references(state, F, C), E, G, H, NULL, NULL);
 }
 
-parenthesized_select_union_operand(A) ::= SELECT(T) select_duplicate_mode(M) select_item_list(B)
+parenthesized_select_union_operand(A) ::= SELECT(T) select_modifiers(M) select_item_list(B)
         opt_order_by_clause(I) opt_limit_clause(J). {
     A = mylite_sql_parser_make_select_statement(
         state, T, M, B, NULL, NULL, NULL, NULL, I, J);
 }
-parenthesized_select_union_operand(A) ::= SELECT(T) select_duplicate_mode(M) select_item_list(B)
+parenthesized_select_union_operand(A) ::= SELECT(T) select_modifiers(M) select_item_list(B)
         FROM(F) DUAL(D) opt_order_by_clause(I) opt_limit_clause(J). {
     A = mylite_sql_parser_make_select_statement(
         state, T, M, B, mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, I, J);
 }
-parenthesized_select_union_operand(A) ::= SELECT(T) select_duplicate_mode(M) select_item_list(B)
+parenthesized_select_union_operand(A) ::= SELECT(T) select_modifiers(M) select_item_list(B)
         FROM(F) table_references(C) opt_where_clause(E) opt_group_by_clause(G)
         opt_having_clause(H) opt_order_by_clause(I) opt_limit_clause(J). {
     A = mylite_sql_parser_make_select_statement(
         state, T, M, B, mylite_sql_parser_make_from_table_references(state, F, C), E, G, H, I, J);
 }
-parenthesized_select_union_operand(A) ::= SELECT(T) select_duplicate_mode(M) STAR(S)
+parenthesized_select_union_operand(A) ::= SELECT(T) select_modifiers(M) STAR(S)
         opt_order_by_clause(I) opt_limit_clause(J). {
     A = mylite_sql_parser_make_select_statement(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S), NULL, NULL, NULL, NULL,
         I, J);
 }
-parenthesized_select_union_operand(A) ::= SELECT(T) select_duplicate_mode(M) STAR(S) FROM(F)
+parenthesized_select_union_operand(A) ::= SELECT(T) select_modifiers(M) STAR(S) FROM(F)
         DUAL(D) opt_order_by_clause(I) opt_limit_clause(J). {
     A = mylite_sql_parser_make_select_statement(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
         mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, I, J);
 }
-parenthesized_select_union_operand(A) ::= SELECT(T) select_duplicate_mode(M) STAR(S) FROM(F)
+parenthesized_select_union_operand(A) ::= SELECT(T) select_modifiers(M) STAR(S) FROM(F)
         table_references(C) opt_where_clause(E) opt_group_by_clause(G) opt_having_clause(H)
         opt_order_by_clause(I) opt_limit_clause(J). {
     A = mylite_sql_parser_make_select_statement(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
         mylite_sql_parser_make_from_table_references(state, F, C), E, G, H, I, J);
+}
+
+select_modifiers(A) ::= select_duplicate_mode(B). {
+    A = B;
 }
 
 select_duplicate_mode(A) ::= . {
@@ -2626,6 +2669,9 @@ select_duplicate_mode_item(A) ::= DISTINCT(T). {
 }
 select_duplicate_mode_item(A) ::= DISTINCTROW(T). {
     A = mylite_sql_parser_make_distinct_select_duplicate_mode(T);
+}
+select_duplicate_mode_item(A) ::= SQL_CALC_FOUND_ROWS(T). {
+    A = mylite_sql_parser_make_sql_calc_found_rows_select_duplicate_mode(T);
 }
 
 opt_where_clause(A) ::= . {
@@ -2997,6 +3043,22 @@ comparison_expression(A) ::= comparison_expression(B) NOT(T) LIKE bit_or_express
                         state, B, T, MYLITE_SQL_AST_OPERATOR_NOT_LIKE, C)
                   : mylite_sql_parser_make_ternary_expression(
                         state, B, T, MYLITE_SQL_AST_OPERATOR_NOT_LIKE, C, D);
+}
+comparison_expression(A) ::= comparison_expression(B) REGEXP(T) bit_or_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_REGEXP, C);
+}
+comparison_expression(A) ::= comparison_expression(B) RLIKE(T) bit_or_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_REGEXP, C);
+}
+comparison_expression(A) ::= comparison_expression(B) NOT(T) REGEXP bit_or_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_NOT_REGEXP, C);
+}
+comparison_expression(A) ::= comparison_expression(B) NOT(T) RLIKE bit_or_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_NOT_REGEXP, C);
 }
 comparison_expression(A) ::= comparison_expression(B) IN(T) LPAREN expression_list(C) RPAREN. {
     A = mylite_sql_parser_make_binary_expression(

@@ -1,5 +1,6 @@
 #include "mylite_select_distinct_validate.h"
 
+#include "mylite_connection.h"
 #include "mylite_diagnostics.h"
 #include "mylite_error_codes.h"
 #include "mylite_select.h"
@@ -54,6 +55,9 @@ int mylite_select_validate_distinct_order(mylite_db *database,
                                           const struct mylite_select_plan *plan)
 {
     if (!mylite_select_duplicate_mode_is_distinct(plan->duplicate_mode)) {
+        return MYLITE_OK;
+    }
+    if (!mylite_connection_sql_mode_has_only_full_group_by(database)) {
         return MYLITE_OK;
     }
     for (size_t index = 0U; index < plan->order_key_count; ++index) {

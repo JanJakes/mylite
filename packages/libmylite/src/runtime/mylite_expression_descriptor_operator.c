@@ -91,6 +91,8 @@ int mylite_expression_descriptor_infer_unary_expression(
     case MYLITE_SQL_AST_OPERATOR_NOT_BETWEEN:
     case MYLITE_SQL_AST_OPERATOR_LIKE:
     case MYLITE_SQL_AST_OPERATOR_NOT_LIKE:
+    case MYLITE_SQL_AST_OPERATOR_REGEXP:
+    case MYLITE_SQL_AST_OPERATOR_NOT_REGEXP:
     case MYLITE_SQL_AST_OPERATOR_IN:
     case MYLITE_SQL_AST_OPERATOR_NOT_IN:
     case MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE:
@@ -180,7 +182,9 @@ int mylite_expression_descriptor_infer_binary_expression(
     case MYLITE_SQL_AST_OPERATOR_IN:
     case MYLITE_SQL_AST_OPERATOR_NOT_IN:
     case MYLITE_SQL_AST_OPERATOR_LIKE:
-    case MYLITE_SQL_AST_OPERATOR_NOT_LIKE: {
+    case MYLITE_SQL_AST_OPERATOR_NOT_LIKE:
+    case MYLITE_SQL_AST_OPERATOR_REGEXP:
+    case MYLITE_SQL_AST_OPERATOR_NOT_REGEXP: {
         bool descriptor_nullable = false;
 
         if (nullable) {
@@ -253,6 +257,8 @@ int mylite_expression_descriptor_infer_ternary_expression(
     case MYLITE_SQL_AST_OPERATOR_NOT_BETWEEN:
     case MYLITE_SQL_AST_OPERATOR_LIKE:
     case MYLITE_SQL_AST_OPERATOR_NOT_LIKE:
+    case MYLITE_SQL_AST_OPERATOR_REGEXP:
+    case MYLITE_SQL_AST_OPERATOR_NOT_REGEXP:
         *out_descriptor = mylite_expression_descriptor_boolean(nullable);
         return MYLITE_OK;
     case MYLITE_SQL_AST_OPERATOR_NONE:

@@ -80,6 +80,9 @@ int mylite_statement_execute_custom_with_callbacks(
     case MYLITE_STMT_SET_CHARACTER_SET:
         status = mylite_connection_execute_set_character_set_statement(stmt);
         break;
+    case MYLITE_STMT_SET_SQL_MODE:
+        status = mylite_connection_execute_set_sql_mode_statement(stmt);
+        break;
     case MYLITE_STMT_CREATE_TABLE:
         status = mylite_table_ddl_execute_create_table_statement(
             stmt->database, stmt->database->selected_schema, &stmt->create_table,

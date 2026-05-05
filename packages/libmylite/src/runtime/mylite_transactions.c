@@ -147,6 +147,7 @@ int mylite_transaction_execute_statement(mylite_stmt *stmt)
     case MYLITE_STMT_USE_SCHEMA:
     case MYLITE_STMT_SET_NAMES:
     case MYLITE_STMT_SET_CHARACTER_SET:
+    case MYLITE_STMT_SET_SQL_MODE:
     case MYLITE_STMT_CREATE_TABLE:
     case MYLITE_STMT_DROP_TABLE:
     case MYLITE_STMT_INSERT_VALUES:

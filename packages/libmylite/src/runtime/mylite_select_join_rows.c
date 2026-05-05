@@ -135,7 +135,8 @@ int mylite_select_join_row_copy_range_values(struct mylite_table_select_row *tar
             return MYLITE_UNSUPPORTED;
         }
         target->source_row_indexes[table_index] = source->source_row_indexes[table_index];
-        if (table_index >= target->source_rowid_count || table_index >= source->source_rowid_count) {
+        if (table_index >= target->source_rowid_count ||
+            table_index >= source->source_rowid_count) {
             return MYLITE_UNSUPPORTED;
         }
         target->source_rowids[table_index] = source->source_rowids[table_index];

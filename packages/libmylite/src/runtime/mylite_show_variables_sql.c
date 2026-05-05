@@ -2,6 +2,7 @@
 
 #include "mylite_catalog.h"
 #include "mylite_charset.h"
+#include "mylite_connection.h"
 #include "mylite_runtime.h"
 #include "mylite_show_types.h"
 #include "sqlite3.h"
@@ -14,9 +15,6 @@ static void append_show_variable_row(sqlite3_str *sql, bool *first, const char *
 int mylite_show_variables_sql(mylite_db *database, const struct mylite_show_variables_query *query,
                               char **out_sql)
 {
-    static const char sql_mode[] =
-        "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,"
-        "ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION";
     struct mylite_schema_default schema_default = {
         .character_set = mylite_charset_default_name(),
         .collation = mylite_charset_default_collation_name(),
@@ -30,6 +28,7 @@ int mylite_show_variables_sql(mylite_db *database, const struct mylite_show_vari
     const char *collation_database = mylite_charset_default_collation_name();
     bool first = true;
     bool global = query->scope == MYLITE_SQL_AST_SHOW_VARIABLES_GLOBAL;
+    const char *sql_mode = mylite_connection_default_sql_mode();
     int status = MYLITE_OK;
 
     *out_sql = NULL;
@@ -44,6 +43,7 @@ int mylite_show_variables_sql(mylite_db *database, const struct mylite_show_vari
         character_set_results = database->character_set_results;
         collation_connection = database->collation_connection;
         collation_database = schema_default.collation;
+        sql_mode = mylite_connection_sql_mode(database);
     }
 
     sql = sqlite3_str_new(database->sqlite);

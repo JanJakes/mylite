@@ -7,6 +7,7 @@
 #include "sqlite3.h"
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdlib.h>
 
 static int materialize_union_query_result(mylite_stmt *stmt,
@@ -23,6 +24,10 @@ static int copy_union_operand_current_row(mylite_stmt *stmt, mylite_stmt *operan
                                           const struct mylite_select_union_callbacks *callbacks);
 static int append_union_distinct_row(mylite_stmt *stmt, struct mylite_table_select_row *row);
 static int deduplicate_union_result_rows(mylite_stmt *stmt);
+static void record_union_found_rows(mylite_stmt *stmt, uint64_t pre_limit_count);
+static uint64_t found_rows_count_after_limit(uint64_t pre_limit_count,
+                                             const struct mylite_select_limit *limit,
+                                             size_t returned_count);
 static int
 append_and_clear_union_database_warnings(mylite_db *database,
                                          struct mylite_expression_warnings *warnings,
@@ -61,6 +66,7 @@ static int materialize_union_query_result(mylite_stmt *stmt,
 {
     struct mylite_expression_warnings saved_warnings = {0};
     struct mylite_expression_warnings accumulated_warnings = {0};
+    uint64_t pre_limit_count = 0U;
     int status = MYLITE_OK;
 
     if (stmt->select_result.materialized) {
@@ -96,7 +102,13 @@ static int materialize_union_query_result(mylite_stmt *stmt,
         }
     }
     if (status == MYLITE_OK) {
+        pre_limit_count = stmt->select_result.row_count;
+    }
+    if (status == MYLITE_OK) {
         status = mylite_select_result_apply_limit(&stmt->select_result, &stmt->select_plan.limit);
+    }
+    if (status == MYLITE_OK) {
+        record_union_found_rows(stmt, pre_limit_count);
     }
     if (status == MYLITE_OK) {
         stmt->select_result.materialized = true;
@@ -191,6 +203,7 @@ static int execute_union_operand_statement(mylite_stmt *operand,
     case MYLITE_STMT_USE_SCHEMA:
     case MYLITE_STMT_SET_NAMES:
     case MYLITE_STMT_SET_CHARACTER_SET:
+    case MYLITE_STMT_SET_SQL_MODE:
     case MYLITE_STMT_CREATE_TABLE:
     case MYLITE_STMT_DROP_TABLE:
     case MYLITE_STMT_RENAME_TABLE:
@@ -283,6 +296,39 @@ static int deduplicate_union_result_rows(mylite_stmt *stmt)
     }
     stmt->select_result.row_count = kept;
     return MYLITE_OK;
+}
+
+static void record_union_found_rows(mylite_stmt *stmt, uint64_t pre_limit_count)
+{
+    uint64_t found_rows;
+
+    if (stmt->union_plan.calc_found_rows) {
+        found_rows = pre_limit_count;
+    } else {
+        found_rows = found_rows_count_after_limit(pre_limit_count, &stmt->select_plan.limit,
+                                                  stmt->select_result.row_count);
+    }
+
+    stmt->database->previous_found_rows = found_rows;
+    stmt->previous_found_rows_recorded = true;
+}
+
+static uint64_t found_rows_count_after_limit(uint64_t pre_limit_count,
+                                             const struct mylite_select_limit *limit,
+                                             size_t returned_count)
+{
+    uint64_t returned = (uint64_t)returned_count;
+    uint64_t limited_count;
+
+    if (limit == NULL || !limit->has_limit) {
+        return pre_limit_count;
+    }
+    if (limit->offset > UINT64_MAX - returned) {
+        limited_count = UINT64_MAX;
+    } else {
+        limited_count = limit->offset + returned;
+    }
+    return limited_count < pre_limit_count ? limited_count : pre_limit_count;
 }
 
 static int

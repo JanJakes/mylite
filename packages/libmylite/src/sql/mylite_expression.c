@@ -1,5 +1,7 @@
 #include "mylite_expression.h"
 
+#include "mylite_regexp.h"
+
 #include <mylite/mylite.h>
 
 #include <ctype.h>
@@ -18,6 +20,7 @@
 enum {
     MYLITE_WARNING_UNKNOWN = 1105,
     MYLITE_WARNING_INCORRECT_ESCAPE_ARGUMENTS = 1210,
+    MYLITE_WARNING_INCORRECT_REGEXP_ARGUMENTS = 1210,
     MYLITE_WARNING_TRUNCATED_WRONG_VALUE = 1292,
     MYLITE_WARNING_INVALID_CHARACTER_STRING = 1300,
     MYLITE_WARNING_DIVISION_BY_ZERO = 1365,
@@ -26,6 +29,7 @@ enum {
     MYLITE_WARNING_UNKNOWN_LOCALE = 1649,
     MYLITE_WARNING_OUT_OF_RANGE = 1690,
     MYLITE_WARNING_INVALID_ARGUMENT_FOR_LOGARITHM = 3020,
+    MYLITE_WARNING_REGEXP_ERROR = 3691,
     MYLITE_EXPRESSION_TEXT_BUFFER_SIZE = 64,
     MYLITE_EXPRESSION_DECIMAL_TEXT_BUFFER_SIZE = 128,
     MYLITE_EXPRESSION_FORMAT_TEXT_BUFFER_SIZE = 512,
@@ -572,6 +576,8 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_TO_SECONDS = 114,
     MYLITE_SCALAR_FUNCTION_FROM_DAYS = 115,
     MYLITE_SCALAR_FUNCTION_TIME = 116,
+    MYLITE_SCALAR_FUNCTION_REGEXP_LIKE = 117,
+    MYLITE_SCALAR_FUNCTION_FOUND_ROWS = 118,
 };
 
 struct angle_conversion_input {
@@ -1492,6 +1498,21 @@ static int eval_like(enum mylite_sql_ast_operator operator_kind,
                      const struct mylite_expression_eval_context *context,
                      struct mylite_expression_warnings *warnings,
                      struct mylite_expression_value *out_value);
+static int eval_regexp(enum mylite_sql_ast_operator operator_kind,
+                       const struct mylite_sql_ast_node *node,
+                       const struct mylite_expression_eval_context *context,
+                       struct mylite_expression_warnings *warnings,
+                       struct mylite_expression_value *out_value);
+static int eval_regexp_like_function(const struct mylite_sql_ast_node *arguments,
+                                     const struct mylite_expression_eval_context *context,
+                                     struct mylite_expression_warnings *warnings,
+                                     struct mylite_expression_value *out_value);
+static int eval_regexp_match_type(const struct mylite_expression_value *match_type,
+                                  struct mylite_expression_warnings *warnings,
+                                  struct mylite_regexp_options *options);
+static int append_regexp_pattern_error(struct mylite_expression_warnings *warnings,
+                                       const struct mylite_regexp_error *error);
+static int append_regexp_match_type_error(struct mylite_expression_warnings *warnings);
 static int eval_in(enum mylite_sql_ast_operator operator_kind,
                    const struct mylite_sql_ast_node *node,
                    const struct mylite_expression_eval_context *context,
@@ -1902,6 +1923,8 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
         return arity >= 2U;
     case MYLITE_SCALAR_FUNCTION_STRCMP:
         return arity == 2U;
+    case MYLITE_SCALAR_FUNCTION_REGEXP_LIKE:
+        return arity == 2U || arity == 3U;
     case MYLITE_SCALAR_FUNCTION_LENGTH:
     case MYLITE_SCALAR_FUNCTION_CHAR_LENGTH:
     case MYLITE_SCALAR_FUNCTION_LOWER:
@@ -2013,6 +2036,7 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_SCHEMA:
     case MYLITE_SCALAR_FUNCTION_VERSION:
     case MYLITE_SCALAR_FUNCTION_ROW_COUNT:
+    case MYLITE_SCALAR_FUNCTION_FOUND_ROWS:
     case MYLITE_SCALAR_FUNCTION_CONNECTION_ID:
     case MYLITE_SCALAR_FUNCTION_USER:
     case MYLITE_SCALAR_FUNCTION_CURRENT_USER:
@@ -2151,6 +2175,10 @@ static int eval_binary(const struct mylite_sql_ast_node *node,
     if (node->operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE ||
         node->operator_kind == MYLITE_SQL_AST_OPERATOR_NOT_LIKE) {
         return eval_like(node->operator_kind, node, context, warnings, out_value);
+    }
+    if (node->operator_kind == MYLITE_SQL_AST_OPERATOR_REGEXP ||
+        node->operator_kind == MYLITE_SQL_AST_OPERATOR_NOT_REGEXP) {
+        return eval_regexp(node->operator_kind, node, context, warnings, out_value);
     }
     if (node->operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_AND) {
         return eval_logical_and(node, context, warnings, out_value);
@@ -2888,6 +2916,8 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
     case MYLITE_SCALAR_FUNCTION_GREATEST:
     case MYLITE_SCALAR_FUNCTION_LEAST:
         return eval_greatest_least_function(function_id, arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_REGEXP_LIKE:
+        return eval_regexp_like_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_ISNULL:
         return eval_isnull_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_DATABASE:
@@ -2895,6 +2925,7 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
     case MYLITE_SCALAR_FUNCTION_VERSION:
     case MYLITE_SCALAR_FUNCTION_LAST_INSERT_ID:
     case MYLITE_SCALAR_FUNCTION_ROW_COUNT:
+    case MYLITE_SCALAR_FUNCTION_FOUND_ROWS:
     case MYLITE_SCALAR_FUNCTION_CONNECTION_ID:
     case MYLITE_SCALAR_FUNCTION_USER:
     case MYLITE_SCALAR_FUNCTION_CURRENT_USER:
@@ -3682,6 +3713,7 @@ static bool temporal_part_from_function(enum mylite_scalar_function_id function_
     case MYLITE_SCALAR_FUNCTION_VERSION:
     case MYLITE_SCALAR_FUNCTION_LAST_INSERT_ID:
     case MYLITE_SCALAR_FUNCTION_ROW_COUNT:
+    case MYLITE_SCALAR_FUNCTION_FOUND_ROWS:
     case MYLITE_SCALAR_FUNCTION_ASCII:
     case MYLITE_SCALAR_FUNCTION_ORD:
     case MYLITE_SCALAR_FUNCTION_LOCATE:
@@ -3741,6 +3773,7 @@ static bool temporal_part_from_function(enum mylite_scalar_function_id function_
     case MYLITE_SCALAR_FUNCTION_ATAN2:
     case MYLITE_SCALAR_FUNCTION_GREATEST:
     case MYLITE_SCALAR_FUNCTION_LEAST:
+    case MYLITE_SCALAR_FUNCTION_REGEXP_LIKE:
     case MYLITE_SCALAR_FUNCTION_STRCMP:
     case MYLITE_SCALAR_FUNCTION_FORMAT:
     case MYLITE_SCALAR_FUNCTION_NOW:
@@ -8166,6 +8199,7 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_COALESCE:
     case MYLITE_SCALAR_FUNCTION_GREATEST:
     case MYLITE_SCALAR_FUNCTION_LEAST:
+    case MYLITE_SCALAR_FUNCTION_REGEXP_LIKE:
     case MYLITE_SCALAR_FUNCTION_STRCMP:
     case MYLITE_SCALAR_FUNCTION_ISNULL:
     case MYLITE_SCALAR_FUNCTION_DATABASE:
@@ -8173,6 +8207,7 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_VERSION:
     case MYLITE_SCALAR_FUNCTION_LAST_INSERT_ID:
     case MYLITE_SCALAR_FUNCTION_ROW_COUNT:
+    case MYLITE_SCALAR_FUNCTION_FOUND_ROWS:
     case MYLITE_SCALAR_FUNCTION_CONNECTION_ID:
     case MYLITE_SCALAR_FUNCTION_USER:
     case MYLITE_SCALAR_FUNCTION_CURRENT_USER:
@@ -10041,6 +10076,7 @@ static int trigonometric_function_result(struct trigonometric_input input,
     case MYLITE_SCALAR_FUNCTION_COALESCE:
     case MYLITE_SCALAR_FUNCTION_GREATEST:
     case MYLITE_SCALAR_FUNCTION_LEAST:
+    case MYLITE_SCALAR_FUNCTION_REGEXP_LIKE:
     case MYLITE_SCALAR_FUNCTION_STRCMP:
     case MYLITE_SCALAR_FUNCTION_ISNULL:
     case MYLITE_SCALAR_FUNCTION_DATABASE:
@@ -10048,6 +10084,7 @@ static int trigonometric_function_result(struct trigonometric_input input,
     case MYLITE_SCALAR_FUNCTION_VERSION:
     case MYLITE_SCALAR_FUNCTION_LAST_INSERT_ID:
     case MYLITE_SCALAR_FUNCTION_ROW_COUNT:
+    case MYLITE_SCALAR_FUNCTION_FOUND_ROWS:
     case MYLITE_SCALAR_FUNCTION_CONNECTION_ID:
     case MYLITE_SCALAR_FUNCTION_USER:
     case MYLITE_SCALAR_FUNCTION_CURRENT_USER:
@@ -10347,6 +10384,7 @@ static int inverse_trigonometric_function_result(struct inverse_trigonometric_in
     case MYLITE_SCALAR_FUNCTION_COALESCE:
     case MYLITE_SCALAR_FUNCTION_GREATEST:
     case MYLITE_SCALAR_FUNCTION_LEAST:
+    case MYLITE_SCALAR_FUNCTION_REGEXP_LIKE:
     case MYLITE_SCALAR_FUNCTION_STRCMP:
     case MYLITE_SCALAR_FUNCTION_ISNULL:
     case MYLITE_SCALAR_FUNCTION_DATABASE:
@@ -10354,6 +10392,7 @@ static int inverse_trigonometric_function_result(struct inverse_trigonometric_in
     case MYLITE_SCALAR_FUNCTION_VERSION:
     case MYLITE_SCALAR_FUNCTION_LAST_INSERT_ID:
     case MYLITE_SCALAR_FUNCTION_ROW_COUNT:
+    case MYLITE_SCALAR_FUNCTION_FOUND_ROWS:
     case MYLITE_SCALAR_FUNCTION_CONNECTION_ID:
     case MYLITE_SCALAR_FUNCTION_USER:
     case MYLITE_SCALAR_FUNCTION_CURRENT_USER:
@@ -10561,6 +10600,7 @@ static int angle_conversion_result(struct angle_conversion_input conversion, dou
     case MYLITE_SCALAR_FUNCTION_COALESCE:
     case MYLITE_SCALAR_FUNCTION_GREATEST:
     case MYLITE_SCALAR_FUNCTION_LEAST:
+    case MYLITE_SCALAR_FUNCTION_REGEXP_LIKE:
     case MYLITE_SCALAR_FUNCTION_STRCMP:
     case MYLITE_SCALAR_FUNCTION_ISNULL:
     case MYLITE_SCALAR_FUNCTION_DATABASE:
@@ -10568,6 +10608,7 @@ static int angle_conversion_result(struct angle_conversion_input conversion, dou
     case MYLITE_SCALAR_FUNCTION_VERSION:
     case MYLITE_SCALAR_FUNCTION_LAST_INSERT_ID:
     case MYLITE_SCALAR_FUNCTION_ROW_COUNT:
+    case MYLITE_SCALAR_FUNCTION_FOUND_ROWS:
     case MYLITE_SCALAR_FUNCTION_CONNECTION_ID:
     case MYLITE_SCALAR_FUNCTION_USER:
     case MYLITE_SCALAR_FUNCTION_CURRENT_USER:
@@ -10680,6 +10721,8 @@ static bool trigonometric_pi_expression_value_impl(const struct mylite_sql_ast_n
     case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_LIKE:
     case MYLITE_SQL_AST_OPERATOR_NOT_LIKE:
+    case MYLITE_SQL_AST_OPERATOR_REGEXP:
+    case MYLITE_SQL_AST_OPERATOR_NOT_REGEXP:
     case MYLITE_SQL_AST_OPERATOR_IS_NULL:
     case MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL:
     case MYLITE_SQL_AST_OPERATOR_IS_TRUE:
@@ -12621,6 +12664,177 @@ cleanup:
     return status;
 }
 
+static int eval_regexp(enum mylite_sql_ast_operator operator_kind,
+                       const struct mylite_sql_ast_node *node,
+                       const struct mylite_expression_eval_context *context,
+                       struct mylite_expression_warnings *warnings,
+                       struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value value = {0};
+    struct mylite_expression_value pattern = {0};
+    struct mylite_regexp_options options = {0};
+    struct mylite_regexp_error error = {0};
+    char *value_text = NULL;
+    char *pattern_text = NULL;
+    bool result = false;
+    int status = eval_node(child_at(node, 0U), context, warnings, &value);
+
+    if (status == 0) {
+        status = eval_node(child_at(node, 1U), context, warnings, &pattern);
+    }
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&value) || is_null(&pattern)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+
+    status = value_to_string(&value, &value_text);
+    if (status == 0) {
+        status = value_to_string(&pattern, &pattern_text);
+    }
+    if (status == 0) {
+        status = mylite_regexp_match(value_text, strlen(value_text), pattern_text,
+                                     strlen(pattern_text), options, &result, &error);
+        if (status == MYLITE_REGEXP_PATTERN_ERROR) {
+            status = append_regexp_pattern_error(warnings, &error);
+            status = status == 0 ? MYLITE_EXEC_ERROR : status;
+        }
+    }
+    if (status == 0) {
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NOT_REGEXP) {
+            result = !result;
+        }
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
+                                                      .int64_value = result ? 1 : 0};
+    }
+
+cleanup:
+    free(value_text);
+    free(pattern_text);
+    mylite_expression_value_deinit(&value);
+    mylite_expression_value_deinit(&pattern);
+    return status;
+}
+
+static int eval_regexp_like_function(const struct mylite_sql_ast_node *arguments,
+                                     const struct mylite_expression_eval_context *context,
+                                     struct mylite_expression_warnings *warnings,
+                                     struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value value = {0};
+    struct mylite_expression_value pattern = {0};
+    struct mylite_expression_value match_type = {0};
+    struct mylite_regexp_options options = {0};
+    struct mylite_regexp_error error = {0};
+    char *value_text = NULL;
+    char *pattern_text = NULL;
+    bool result = false;
+    const struct mylite_sql_ast_node *match_type_node = child_at(arguments, 2U);
+    int status = eval_node(child_at(arguments, 0U), context, warnings, &value);
+
+    if (status == 0) {
+        status = eval_node(child_at(arguments, 1U), context, warnings, &pattern);
+    }
+    if (status == 0 && match_type_node != NULL) {
+        status = eval_node(match_type_node, context, warnings, &match_type);
+    }
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&value) || is_null(&pattern) || (match_type_node != NULL && is_null(&match_type))) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+
+    if (match_type_node != NULL) {
+        status = eval_regexp_match_type(&match_type, warnings, &options);
+    }
+    if (status == 0) {
+        status = value_to_string(&value, &value_text);
+    }
+    if (status == 0) {
+        status = value_to_string(&pattern, &pattern_text);
+    }
+    if (status == 0) {
+        status = mylite_regexp_match(value_text, strlen(value_text), pattern_text,
+                                     strlen(pattern_text), options, &result, &error);
+        if (status == MYLITE_REGEXP_PATTERN_ERROR) {
+            status = append_regexp_pattern_error(warnings, &error);
+            status = status == 0 ? MYLITE_EXEC_ERROR : status;
+        }
+    }
+    if (status == 0) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
+                                                      .int64_value = result ? 1 : 0};
+    }
+
+cleanup:
+    free(value_text);
+    free(pattern_text);
+    mylite_expression_value_deinit(&value);
+    mylite_expression_value_deinit(&pattern);
+    mylite_expression_value_deinit(&match_type);
+    return status;
+}
+
+static int eval_regexp_match_type(const struct mylite_expression_value *match_type,
+                                  struct mylite_expression_warnings *warnings,
+                                  struct mylite_regexp_options *options)
+{
+    char *text = NULL;
+    int status = value_to_string(match_type, &text);
+
+    if (status != 0) {
+        return status;
+    }
+    for (size_t index = 0U; text[index] != '\0'; ++index) {
+        switch (text[index]) {
+        case 'c':
+            options->case_sensitive = true;
+            break;
+        case 'i':
+            options->case_sensitive = false;
+            break;
+        case 'm':
+            options->multiline = true;
+            break;
+        case 'n':
+            options->dot_matches_newline = true;
+            break;
+        case 'u':
+            break;
+        default:
+            status = append_regexp_match_type_error(warnings);
+            status = status == 0 ? MYLITE_EXEC_ERROR : status;
+            free(text);
+            return status;
+        }
+    }
+    free(text);
+    return 0;
+}
+
+static int append_regexp_pattern_error(struct mylite_expression_warnings *warnings,
+                                       const struct mylite_regexp_error *error)
+{
+    const char *message =
+        error == NULL || error->message == NULL ? "Invalid regular expression." : error->message;
+    unsigned int code =
+        error == NULL || error->code == 0U ? MYLITE_WARNING_REGEXP_ERROR : error->code;
+
+    return mylite_expression_warnings_append_condition(
+        warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, code, message);
+}
+
+static int append_regexp_match_type_error(struct mylite_expression_warnings *warnings)
+{
+    return mylite_expression_warnings_append_condition(
+        warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, MYLITE_WARNING_INCORRECT_REGEXP_ARGUMENTS,
+        "Incorrect arguments to regexp_like");
+}
+
 static int eval_in(enum mylite_sql_ast_operator operator_kind,
                    const struct mylite_sql_ast_node *node,
                    const struct mylite_expression_eval_context *context,
@@ -12754,6 +12968,8 @@ row_subquery_comparison_operator_is_supported(enum mylite_sql_ast_operator opera
     case MYLITE_SQL_AST_OPERATOR_NOT_BETWEEN:
     case MYLITE_SQL_AST_OPERATOR_LIKE:
     case MYLITE_SQL_AST_OPERATOR_NOT_LIKE:
+    case MYLITE_SQL_AST_OPERATOR_REGEXP:
+    case MYLITE_SQL_AST_OPERATOR_NOT_REGEXP:
     case MYLITE_SQL_AST_OPERATOR_IN:
     case MYLITE_SQL_AST_OPERATOR_NOT_IN:
     case MYLITE_SQL_AST_OPERATOR_IS_NULL:
@@ -14307,12 +14523,14 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"GREATEST", MYLITE_SCALAR_FUNCTION_GREATEST},
         {"LEAST", MYLITE_SCALAR_FUNCTION_LEAST},
         {"STRCMP", MYLITE_SCALAR_FUNCTION_STRCMP},
+        {"REGEXP_LIKE", MYLITE_SCALAR_FUNCTION_REGEXP_LIKE},
         {"ISNULL", MYLITE_SCALAR_FUNCTION_ISNULL},
         {"DATABASE", MYLITE_SCALAR_FUNCTION_DATABASE},
         {"SCHEMA", MYLITE_SCALAR_FUNCTION_SCHEMA},
         {"VERSION", MYLITE_SCALAR_FUNCTION_VERSION},
         {"LAST_INSERT_ID", MYLITE_SCALAR_FUNCTION_LAST_INSERT_ID},
         {"ROW_COUNT", MYLITE_SCALAR_FUNCTION_ROW_COUNT},
+        {"FOUND_ROWS", MYLITE_SCALAR_FUNCTION_FOUND_ROWS},
         {"CONNECTION_ID", MYLITE_SCALAR_FUNCTION_CONNECTION_ID},
         {"USER", MYLITE_SCALAR_FUNCTION_USER},
         {"SESSION_USER", MYLITE_SCALAR_FUNCTION_USER},
@@ -14371,6 +14589,7 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_VERSION:
     case MYLITE_SCALAR_FUNCTION_LAST_INSERT_ID:
     case MYLITE_SCALAR_FUNCTION_ROW_COUNT:
+    case MYLITE_SCALAR_FUNCTION_FOUND_ROWS:
     case MYLITE_SCALAR_FUNCTION_CONNECTION_ID:
     case MYLITE_SCALAR_FUNCTION_USER:
     case MYLITE_SCALAR_FUNCTION_CURRENT_USER:
@@ -14464,6 +14683,7 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_COALESCE:
     case MYLITE_SCALAR_FUNCTION_GREATEST:
     case MYLITE_SCALAR_FUNCTION_LEAST:
+    case MYLITE_SCALAR_FUNCTION_REGEXP_LIKE:
     case MYLITE_SCALAR_FUNCTION_ISNULL:
     case MYLITE_SCALAR_FUNCTION_DATE:
     case MYLITE_SCALAR_FUNCTION_DATEDIFF:

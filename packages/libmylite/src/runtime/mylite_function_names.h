@@ -24,6 +24,7 @@ bool mylite_function_name_is_field(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_find_in_set(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_greatest_least(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_strcmp(const struct mylite_sql_ast_node *name);
+bool mylite_function_name_is_regexp_like(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_date_extraction(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_datediff(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_timestampdiff(const struct mylite_sql_ast_node *name);

@@ -18,8 +18,14 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int execute_single_delete_statement(
-    mylite_stmt *stmt, const struct mylite_dml_expression_callbacks *expression_callbacks);
+struct multi_delete_target_duplicate_search {
+    size_t target_index;
+    size_t table_index;
+};
+
+static int
+execute_single_delete_statement(mylite_stmt *stmt,
+                                const struct mylite_dml_expression_callbacks *expression_callbacks);
 static int execute_multi_delete_statement(mylite_stmt *stmt);
 static int bind_multi_delete_select_plan(mylite_stmt *stmt, mylite_stmt *joined_stmt);
 static int resolve_multi_delete_targets(mylite_db *database,
@@ -33,18 +39,17 @@ static int resolve_multi_delete_target(mylite_db *database,
 static bool multi_delete_target_matches_table(const struct mylite_delete_target *target,
                                               const struct mylite_select_table *table);
 static bool multi_delete_target_is_duplicate(const size_t *target_table_indexes,
-                                             size_t target_index, size_t table_index);
+                                             struct multi_delete_target_duplicate_search search);
 static int materialize_multi_delete_rowsets(mylite_db *database,
                                             const struct mylite_table_select_result *result,
-                                            const size_t *target_table_indexes,
-                                            size_t target_count,
+                                            const size_t *target_table_indexes, size_t target_count,
                                             struct mylite_update_rowset **out_rowsets);
 static int add_multi_delete_result_row(mylite_db *database,
                                        const struct mylite_table_select_row *row,
                                        const size_t *target_table_indexes, size_t target_count,
                                        struct mylite_update_rowset *rowsets);
-static int add_unique_multi_delete_rowid(mylite_db *database,
-                                         struct mylite_update_rowset *rowset, int64_t rowid);
+static int add_unique_multi_delete_rowid(mylite_db *database, struct mylite_update_rowset *rowset,
+                                         int64_t rowid);
 static bool multi_delete_rowset_contains_rowid(const struct mylite_update_rowset *rowset,
                                                int64_t rowid);
 static int set_multi_delete_unknown_target_error(mylite_db *database,
@@ -327,8 +332,9 @@ int mylite_dml_execute_delete_statement(
     return execute_multi_delete_statement(stmt);
 }
 
-static int execute_single_delete_statement(
-    mylite_stmt *stmt, const struct mylite_dml_expression_callbacks *expression_callbacks)
+static int
+execute_single_delete_statement(mylite_stmt *stmt,
+                                const struct mylite_dml_expression_callbacks *expression_callbacks)
 {
     struct mylite_select_table table = {0};
     struct mylite_update_order_plan order_plan = {0};
@@ -404,9 +410,9 @@ static int execute_multi_delete_statement(mylite_stmt *stmt)
             &joined_stmt, mylite_select_context_table_select_eval_callbacks());
     }
     if (status == MYLITE_OK) {
-        status = materialize_multi_delete_rowsets(
-            stmt->database, &joined_stmt.select_result, target_table_indexes,
-            stmt->delete_plan.target_count, &rowsets);
+        status = materialize_multi_delete_rowsets(stmt->database, &joined_stmt.select_result,
+                                                  target_table_indexes,
+                                                  stmt->delete_plan.target_count, &rowsets);
     }
     if (status == MYLITE_OK) {
         status = mylite_dml_execute_multi_delete_rows_transaction(
@@ -437,9 +443,8 @@ static int bind_multi_delete_select_plan(mylite_stmt *stmt, mylite_stmt *joined_
     const struct mylite_select_predicate_bind_callbacks *predicate_callbacks =
         mylite_select_context_predicate_bind_callbacks();
     const struct mylite_sql_ast_node *where_clause = stmt->delete_plan.where_clause;
-    int status =
-        mylite_select_bind_from_clause(stmt->database, stmt->delete_plan.from_clause,
-                                       &joined_stmt->select_plan);
+    int status = mylite_select_bind_from_clause(stmt->database, stmt->delete_plan.from_clause,
+                                                &joined_stmt->select_plan);
 
     if (status == MYLITE_OK) {
         status = mylite_select_bind_join_predicates(stmt->database, &joined_stmt->select_plan,
@@ -480,8 +485,13 @@ static int resolve_multi_delete_targets(mylite_db *database,
             free(target_table_indexes);
             return status;
         }
-        if (multi_delete_target_is_duplicate(target_table_indexes, index, table_index)) {
-            status = set_multi_delete_nonunique_target_error(database, &delete_plan->targets[index]);
+        if (multi_delete_target_is_duplicate(target_table_indexes,
+                                             (struct multi_delete_target_duplicate_search){
+                                                 .target_index = index,
+                                                 .table_index = table_index,
+                                             })) {
+            status =
+                set_multi_delete_nonunique_target_error(database, &delete_plan->targets[index]);
             free(target_table_indexes);
             return status;
         }
@@ -517,21 +527,34 @@ static bool multi_delete_target_matches_table(const struct mylite_delete_target 
         return false;
     }
     if (target->schema_name != NULL) {
-        return table->alias == NULL && table->schema_name != NULL &&
-               strcmp(target->schema_name, table->schema_name) == 0 &&
-               strcmp(target->table_name, table->table_name) == 0;
+        if (table->alias != NULL || table->schema_name == NULL) {
+            return false;
+        }
+        if (strcmp(target->schema_name, table->schema_name) != 0) {
+            return false;
+        }
+        if (strcmp(target->table_name, table->table_name) == 0) {
+            return true;
+        }
+        return false;
     }
 
     const char *visible_name = table->alias == NULL ? table->table_name : table->alias;
 
-    return visible_name != NULL && strcmp(target->table_name, visible_name) == 0;
+    if (visible_name == NULL) {
+        return false;
+    }
+    if (strcmp(target->table_name, visible_name) == 0) {
+        return true;
+    }
+    return false;
 }
 
 static bool multi_delete_target_is_duplicate(const size_t *target_table_indexes,
-                                             size_t target_index, size_t table_index)
+                                             struct multi_delete_target_duplicate_search search)
 {
-    for (size_t index = 0U; index < target_index; ++index) {
-        if (target_table_indexes[index] == table_index) {
+    for (size_t index = 0U; index < search.target_index; ++index) {
+        if (target_table_indexes[index] == search.table_index) {
             return true;
         }
     }
@@ -540,8 +563,7 @@ static bool multi_delete_target_is_duplicate(const size_t *target_table_indexes,
 
 static int materialize_multi_delete_rowsets(mylite_db *database,
                                             const struct mylite_table_select_result *result,
-                                            const size_t *target_table_indexes,
-                                            size_t target_count,
+                                            const size_t *target_table_indexes, size_t target_count,
                                             struct mylite_update_rowset **out_rowsets)
 {
     struct mylite_update_rowset *rowsets = NULL;
@@ -558,8 +580,7 @@ static int materialize_multi_delete_rowsets(mylite_db *database,
         return MYLITE_NOMEM;
     }
 
-    for (size_t row_index = 0U; status == MYLITE_OK && row_index < result->row_count;
-         ++row_index) {
+    for (size_t row_index = 0U; status == MYLITE_OK && row_index < result->row_count; ++row_index) {
         status = add_multi_delete_result_row(database, &result->rows[row_index],
                                              target_table_indexes, target_count, rowsets);
     }
@@ -600,8 +621,8 @@ static int add_multi_delete_result_row(mylite_db *database,
     return MYLITE_OK;
 }
 
-static int add_unique_multi_delete_rowid(mylite_db *database,
-                                         struct mylite_update_rowset *rowset, int64_t rowid)
+static int add_unique_multi_delete_rowid(mylite_db *database, struct mylite_update_rowset *rowset,
+                                         int64_t rowid)
 {
     struct mylite_update_row row = {
         .rowid = rowid,
@@ -642,8 +663,8 @@ static int set_multi_delete_nonunique_target_error(mylite_db *database,
                                                    const struct mylite_delete_target *target)
 {
     const char *table_name = target == NULL || target->table_name == NULL ? "" : target->table_name;
-    int status = mylite_diagnostics_set_error_message_parts(
-        database, "Not unique table/alias: '", table_name, "'");
+    int status = mylite_diagnostics_set_error_message_parts(database, "Not unique table/alias: '",
+                                                            table_name, "'");
 
     if (status == MYLITE_OK) {
         status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_NONUNIQ_TABLE,

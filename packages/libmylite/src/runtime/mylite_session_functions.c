@@ -1,6 +1,7 @@
 #include "mylite_session_functions.h"
 
 #include "mylite_diagnostics.h"
+#include "mylite_error_codes.h"
 #include "mylite_expression.h"
 #include "mylite_runtime.h"
 #include "mylite_span.h"
@@ -61,6 +62,19 @@ int mylite_session_evaluate_core_function(
     if (mylite_span_equal_ci(name->span, "ROW_COUNT")) {
         *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
                                                       .int64_value = database->previous_row_count};
+        return 0;
+    }
+    if (mylite_span_equal_ci(name->span, "FOUND_ROWS")) {
+        if (mylite_expression_warnings_append(
+                warnings, MYLITE_MYSQL_ER_WARN_DEPRECATED_SYNTAX,
+                "FOUND_ROWS() is deprecated and will be removed in a future release. "
+                "Consider using COUNT(*) instead.") != 0) {
+            return -1;
+        }
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_UINT64,
+            .uint64_value = database->previous_found_rows,
+        };
         return 0;
     }
     if (mylite_span_equal_ci(name->span, "CONNECTION_ID")) {

@@ -159,6 +159,9 @@ bool mylite_select_plan_requires_custom_runtime(const struct mylite_select_plan 
     if (plan == NULL) {
         return false;
     }
+    if (plan->calc_found_rows) {
+        return true;
+    }
     if (mylite_select_duplicate_mode_is_distinct(plan->duplicate_mode)) {
         return true;
     }

@@ -404,8 +404,29 @@ static int test_connection_charset_statements(void)
         parse_sql("SET NAMES DEFAULT COLLATE utf8mb4_bin;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SET SESSION sql_mode = 'ANSI_QUOTES'; SET LOCAL @@session.sql_mode = "
+                          "'ONLY_FULL_GROUP_BY'; SET sql_mode = DEFAULT;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_child_count(result.root, 3U, "set sql mode script");
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SET_SQL_MODE_STATEMENT, "set sql mode");
+    failures += expect_span_text(child_at(statement, 0U), "sql_mode", "set sql mode variable");
+    failures += expect_literal(child_at(statement, 1U), MYLITE_SQL_AST_LITERAL_STRING,
+                               "set sql mode value");
+    statement = child_at(result.root, 1U);
+    failures += expect_span_text(child_at(statement, 0U), "@@session.sql_mode",
+                                 "set system sql mode variable");
+    statement = child_at(result.root, 2U);
     failures +=
-        parse_sql("SET SESSION sql_mode = 'ANSI_QUOTES';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+        expect_node(child_at(statement, 1U), MYLITE_SQL_AST_DEFAULT, "set sql mode default value");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, "
+                          "'ONLY_FULL_GROUP_BY', '')",
+                          MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(child_at(statement, 1U), MYLITE_SQL_AST_FUNCTION_CALL,
+                            "set sql mode replace value");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -5217,7 +5238,8 @@ static int test_expression_operator_foundation_syntax(void)
 
     failures += parse_sql("SELECT 1 IS NULL, 1 IS NOT TRUE, 2 BETWEEN 1 AND 3, "
                           "2 NOT BETWEEN 3 AND 1, 'a' LIKE 'a' ESCAPE '!', "
-                          "1 NOT IN (2,3), 5 DIV 2, 5 % 2, 5 MOD 2",
+                          "'a' REGEXP 'a', 'a' RLIKE 'a', 'a' NOT REGEXP 'b', "
+                          "'a' NOT RLIKE 'b', 1 NOT IN (2,3), 5 DIV 2, 5 % 2, 5 MOD 2",
                           MYLITE_SQL_PARSE_OK, &result);
     select_list = child_at(child_at(result.root, 0U), 0U);
     failures += expect_operator(child_at(child_at(select_list, 0U), 0U),
@@ -5230,14 +5252,22 @@ static int test_expression_operator_foundation_syntax(void)
     expression = child_at(child_at(select_list, 4U), 0U);
     failures += expect_node(expression, MYLITE_SQL_AST_TERNARY_EXPRESSION, "like escape node");
     failures += expect_operator(child_at(child_at(select_list, 5U), 0U),
-                                MYLITE_SQL_AST_OPERATOR_NOT_IN, "not in");
-    failures += expect_node(child_at(child_at(child_at(select_list, 5U), 0U), 1U),
-                            MYLITE_SQL_AST_EXPRESSION_LIST, "in expression list");
+                                MYLITE_SQL_AST_OPERATOR_REGEXP, "regexp");
     failures += expect_operator(child_at(child_at(select_list, 6U), 0U),
-                                MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE, "div");
+                                MYLITE_SQL_AST_OPERATOR_REGEXP, "rlike");
     failures += expect_operator(child_at(child_at(select_list, 7U), 0U),
-                                MYLITE_SQL_AST_OPERATOR_MODULO, "percent");
+                                MYLITE_SQL_AST_OPERATOR_NOT_REGEXP, "not regexp");
     failures += expect_operator(child_at(child_at(select_list, 8U), 0U),
+                                MYLITE_SQL_AST_OPERATOR_NOT_REGEXP, "not rlike");
+    failures += expect_operator(child_at(child_at(select_list, 9U), 0U),
+                                MYLITE_SQL_AST_OPERATOR_NOT_IN, "not in");
+    failures += expect_node(child_at(child_at(child_at(select_list, 9U), 0U), 1U),
+                            MYLITE_SQL_AST_EXPRESSION_LIST, "in expression list");
+    failures += expect_operator(child_at(child_at(select_list, 10U), 0U),
+                                MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE, "div");
+    failures += expect_operator(child_at(child_at(select_list, 11U), 0U),
+                                MYLITE_SQL_AST_OPERATOR_MODULO, "percent");
+    failures += expect_operator(child_at(child_at(select_list, 12U), 0U),
                                 MYLITE_SQL_AST_OPERATOR_MODULO, "mod");
     mylite_sql_parse_result_deinit(&result);
 
@@ -7318,6 +7348,20 @@ static int test_select_where_clause_syntax(void)
     mylite_sql_parse_result_deinit(&result);
 
     failures +=
+        parse_sql("SELECT id FROM t WHERE s REGEXP '^[a-z]+$';", MYLITE_SQL_PARSE_OK, &result);
+    predicate = child_at(child_at(child_at(result.root, 0U), 2U), 0U);
+    failures += expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_REGEXP, "where regexp");
+    failures += expect_child_count(predicate, 2U, "where regexp child count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT id FROM t WHERE s NOT RLIKE '[0-9]';", MYLITE_SQL_PARSE_OK, &result);
+    predicate = child_at(child_at(child_at(result.root, 0U), 2U), 0U);
+    failures += expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_NOT_REGEXP, "where not rlike");
+    failures += expect_child_count(predicate, 2U, "where not rlike child count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
         parse_sql("SELECT id FROM t WHERE n IN (1, 2, NULL);", MYLITE_SQL_PARSE_OK, &result);
     predicate = child_at(child_at(child_at(result.root, 0U), 2U), 0U);
     failures += expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_IN, "where in");
@@ -7464,8 +7508,33 @@ static int test_select_distinct_syntax(void)
     select = child_at(result.root, 0U);
     failures += expect_select_duplicate_mode(select, MYLITE_SQL_AST_SELECT_DUPLICATES_ALL, true,
                                              false, 1U, "all duplicate mode");
+    failures += expect_bool(select->select_calc_found_rows, false, "all without calc found rows");
     failures +=
         expect_node(child_at(select, 0U), MYLITE_SQL_AST_SELECT_LIST, "all select list child");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT SQL_CALC_FOUND_ROWS * FROM t LIMIT 2;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_select_duplicate_mode(select, MYLITE_SQL_AST_SELECT_DUPLICATES_IMPLICIT_ALL,
+                                             false, false, 0U, "calc implicit duplicate mode");
+    failures += expect_bool(select->select_calc_found_rows, true, "select calc found rows");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT DISTINCT SQL_CALC_FOUND_ROWS a FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_select_duplicate_mode(select, MYLITE_SQL_AST_SELECT_DUPLICATES_DISTINCT,
+                                             true, false, 1U, "distinct calc duplicate mode");
+    failures += expect_bool(select->select_calc_found_rows, true, "distinct calc found rows");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT SQL_CALC_FOUND_ROWS DISTINCT a FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_select_duplicate_mode(select, MYLITE_SQL_AST_SELECT_DUPLICATES_DISTINCT,
+                                             true, false, 1U, "calc distinct duplicate mode");
+    failures += expect_bool(select->select_calc_found_rows, true, "calc distinct found rows");
     mylite_sql_parse_result_deinit(&result);
 
     failures +=

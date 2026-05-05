@@ -51,6 +51,7 @@ materialize_ordered_table_select_result(mylite_stmt *stmt,
         return status;
     }
     if (stmt->select_constant_predicate_evaluated && !stmt->select_constant_predicate_matches) {
+        stmt->found_rows = 0U;
         return MYLITE_OK;
     }
 
@@ -102,6 +103,7 @@ materialize_ordered_table_select_result(mylite_stmt *stmt,
     status =
         mylite_select_result_sort_rows(stmt->database, &stmt->select_result, &stmt->select_plan);
     if (status == MYLITE_OK) {
+        stmt->found_rows = stmt->select_result.row_count;
         status = mylite_select_result_apply_limit(&stmt->select_result, &stmt->select_plan.limit);
     }
     return status;
@@ -116,7 +118,9 @@ materialize_unordered_table_select_result(mylite_stmt *stmt,
     int status = MYLITE_OK;
     int rc = SQLITE_OK;
 
-    if (stmt->select_plan.limit.has_limit && stmt->select_plan.limit.row_count == 0U) {
+    if (!stmt->select_plan.calc_found_rows && stmt->select_plan.limit.has_limit &&
+        stmt->select_plan.limit.row_count == 0U) {
+        stmt->found_rows = 0U;
         return MYLITE_OK;
     }
 
@@ -125,6 +129,7 @@ materialize_unordered_table_select_result(mylite_stmt *stmt,
         return status;
     }
     if (stmt->select_constant_predicate_evaluated && !stmt->select_constant_predicate_matches) {
+        stmt->found_rows = 0U;
         return MYLITE_OK;
     }
 
@@ -160,8 +165,10 @@ materialize_unordered_table_select_result(mylite_stmt *stmt,
         return mylite_diagnostics_set_sqlite_error(stmt->database);
     }
     if (distinct) {
+        stmt->found_rows = stmt->select_result.row_count;
         return mylite_select_result_apply_limit(&stmt->select_result, &stmt->select_plan.limit);
     }
+    stmt->found_rows = append_state.matched_row;
     return MYLITE_OK;
 }
 
@@ -215,7 +222,11 @@ append_unordered_table_select_limited_row(mylite_stmt *stmt, struct mylite_table
     if (state->matched_row != UINT64_MAX) {
         ++state->matched_row;
     }
-    state->stop =
-        mylite_select_limit_is_full(&stmt->select_plan.limit, stmt->select_result.row_count);
+    if (stmt->select_plan.calc_found_rows) {
+        state->stop = false;
+    } else {
+        state->stop =
+            mylite_select_limit_is_full(&stmt->select_plan.limit, stmt->select_result.row_count);
+    }
     return MYLITE_OK;
 }

@@ -22,6 +22,12 @@ static int scan_joined_table_select_rows(mylite_stmt *stmt,
                                          struct mylite_table_select_join_materialize_state *state,
                                          struct mylite_table_select_row *row,
                                          const struct mylite_select_eval_callbacks *callbacks);
+static bool joined_table_select_zero_limit_skips_scan(const mylite_stmt *stmt,
+                                                      bool aggregate_query);
+static int
+initialize_joined_table_select_buffers(mylite_stmt *stmt, size_t table_count,
+                                       struct mylite_table_select_join_materialize_state *state,
+                                       struct mylite_table_select_row *row);
 static int advance_joined_table_select_scan(
     mylite_stmt *stmt, struct mylite_table_select_join_materialize_state *state,
     struct mylite_table_select_join_scan_state *scan, bool *out_finished,
@@ -56,8 +62,8 @@ int mylite_select_materialize_joined_table_result(
         return mylite_select_materialize_outer_joined_table_result(stmt, callbacks);
     }
 
-    if (!aggregate_query && stmt->select_plan.order_key_count == 0U &&
-        stmt->select_plan.limit.has_limit && stmt->select_plan.limit.row_count == 0U) {
+    if (joined_table_select_zero_limit_skips_scan(stmt, aggregate_query)) {
+        stmt->found_rows = 0U;
         return MYLITE_OK;
     }
 
@@ -66,50 +72,16 @@ int mylite_select_materialize_joined_table_result(
         return status;
     }
     if (stmt->select_constant_predicate_evaluated && !stmt->select_constant_predicate_matches) {
+        stmt->found_rows = 0U;
         return MYLITE_OK;
     }
     if (table_count == 0U) {
         return MYLITE_UNSUPPORTED;
     }
 
-    state.rowsets = calloc(table_count, sizeof(*state.rowsets));
-    if (state.rowsets == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    row.value_count = mylite_select_plan_column_count(&stmt->select_plan);
-    row.source_row_index_count = table_count;
-    row.source_rowid_count = table_count;
-    if (row.value_count != 0U) {
-        row.values = calloc(row.value_count, sizeof(*row.values));
-        if (row.values == NULL) {
-            mylite_select_rowsets_deinit(state.rowsets, table_count);
-            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-            return MYLITE_NOMEM;
-        }
-    }
-    if (row.source_row_index_count != 0U) {
-        row.source_row_indexes =
-            calloc(row.source_row_index_count, sizeof(*row.source_row_indexes));
-        if (row.source_row_indexes == NULL) {
-            mylite_select_row_deinit(&row);
-            mylite_select_rowsets_deinit(state.rowsets, table_count);
-            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-            return MYLITE_NOMEM;
-        }
-        for (size_t index = 0U; index < row.source_row_index_count; ++index) {
-            row.source_row_indexes[index] = SIZE_MAX;
-        }
-    }
-    if (row.source_rowid_count != 0U) {
-        row.source_rowids = calloc(row.source_rowid_count, sizeof(*row.source_rowids));
-        if (row.source_rowids == NULL) {
-            mylite_select_row_deinit(&row);
-            mylite_select_rowsets_deinit(state.rowsets, table_count);
-            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-            return MYLITE_NOMEM;
-        }
+    status = initialize_joined_table_select_buffers(stmt, table_count, &state, &row);
+    if (status != MYLITE_OK) {
+        return status;
     }
 
     status = mylite_select_load_join_rowsets(stmt, state.rowsets);
@@ -131,7 +103,10 @@ int mylite_select_materialize_joined_table_result(
     }
     if (status == MYLITE_OK &&
         (aggregate_query || stmt->select_plan.order_key_count != 0U || distinct)) {
+        stmt->found_rows = stmt->select_result.row_count;
         status = mylite_select_result_apply_limit(&stmt->select_result, &stmt->select_plan.limit);
+    } else if (status == MYLITE_OK) {
+        stmt->found_rows = state.matched_row;
     }
 
     mylite_select_groups_deinit(state.groups, state.group_count);
@@ -139,6 +114,67 @@ int mylite_select_materialize_joined_table_result(
     mylite_select_join_condition_cache_deinit(&state.condition_cache);
     mylite_select_rowsets_deinit(state.rowsets, table_count);
     return status;
+}
+
+static bool joined_table_select_zero_limit_skips_scan(const mylite_stmt *stmt, bool aggregate_query)
+{
+    if (stmt->select_plan.calc_found_rows || aggregate_query) {
+        return false;
+    }
+    if (stmt->select_plan.order_key_count != 0U || !stmt->select_plan.limit.has_limit) {
+        return false;
+    }
+    if (stmt->select_plan.limit.row_count == 0U) {
+        return true;
+    }
+    return false;
+}
+
+static int
+initialize_joined_table_select_buffers(mylite_stmt *stmt, size_t table_count,
+                                       struct mylite_table_select_join_materialize_state *state,
+                                       struct mylite_table_select_row *row)
+{
+    state->rowsets = calloc(table_count, sizeof(*state->rowsets));
+    if (state->rowsets == NULL) {
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    row->value_count = mylite_select_plan_column_count(&stmt->select_plan);
+    row->source_row_index_count = table_count;
+    row->source_rowid_count = table_count;
+    if (row->value_count != 0U) {
+        row->values = calloc(row->value_count, sizeof(*row->values));
+        if (row->values == NULL) {
+            mylite_select_rowsets_deinit(state->rowsets, table_count);
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+    }
+    if (row->source_row_index_count != 0U) {
+        row->source_row_indexes =
+            calloc(row->source_row_index_count, sizeof(*row->source_row_indexes));
+        if (row->source_row_indexes == NULL) {
+            mylite_select_row_deinit(row);
+            mylite_select_rowsets_deinit(state->rowsets, table_count);
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+        for (size_t index = 0U; index < row->source_row_index_count; ++index) {
+            row->source_row_indexes[index] = SIZE_MAX;
+        }
+    }
+    if (row->source_rowid_count != 0U) {
+        row->source_rowids = calloc(row->source_rowid_count, sizeof(*row->source_rowids));
+        if (row->source_rowids == NULL) {
+            mylite_select_row_deinit(row);
+            mylite_select_rowsets_deinit(state->rowsets, table_count);
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+    }
+    return MYLITE_OK;
 }
 
 static int scan_joined_table_select_rows(mylite_stmt *stmt,

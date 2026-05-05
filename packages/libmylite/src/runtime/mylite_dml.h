@@ -225,9 +225,8 @@ int mylite_dml_execute_delete_rows_transaction(mylite_db *database,
                                                const struct mylite_update_rowset *rowset,
                                                int64_t *out_affected_rows);
 int mylite_dml_execute_multi_delete_rows_transaction(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const size_t *target_table_indexes, const struct mylite_update_rowset *rowsets,
-    size_t target_count, int64_t *out_affected_rows);
+    mylite_db *database, const struct mylite_select_plan *plan, const size_t *target_table_indexes,
+    const struct mylite_update_rowset *rowsets, size_t target_count, int64_t *out_affected_rows);
 int mylite_dml_execute_update_rows_transaction(
     mylite_db *database, const struct mylite_select_table *table,
     const struct mylite_insert_table *write_table,

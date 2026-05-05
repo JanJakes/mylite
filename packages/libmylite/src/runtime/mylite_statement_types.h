@@ -32,6 +32,7 @@ enum mylite_stmt_kind {
     MYLITE_STMT_ALTER_TABLE = 27,
     MYLITE_STMT_RENAME_TABLE = 28,
     MYLITE_STMT_TRUNCATE_TABLE = 29,
+    MYLITE_STMT_SET_SQL_MODE = 30,
 };
 
 #endif

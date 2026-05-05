@@ -14,6 +14,7 @@
 #include "mylite_transactions.h"
 #include "sqlite3.h"
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -57,11 +58,23 @@ int mylite_step(mylite_stmt *stmt)
 
     rc = sqlite3_step(stmt->sqlite_stmt);
     if (rc == SQLITE_ROW) {
+        if (sqlite3_stmt_readonly(stmt->sqlite_stmt) && stmt->found_rows != UINT64_MAX) {
+            ++stmt->found_rows;
+        }
         return MYLITE_ROW;
     }
     if (rc == SQLITE_DONE) {
-        stmt->affected_rows =
-            sqlite3_stmt_readonly(stmt->sqlite_stmt) ? -1 : sqlite3_changes(stmt->database->sqlite);
+        bool readonly = sqlite3_stmt_readonly(stmt->sqlite_stmt) != 0;
+
+        if (readonly) {
+            stmt->affected_rows = -1;
+        } else {
+            stmt->affected_rows = sqlite3_changes(stmt->database->sqlite);
+        }
+        if (readonly && !stmt->previous_found_rows_recorded) {
+            stmt->database->previous_found_rows = stmt->found_rows;
+            stmt->previous_found_rows_recorded = true;
+        }
         mylite_statement_record_row_count(stmt);
         return MYLITE_DONE;
     }
@@ -183,6 +196,7 @@ void mylite_finalize(mylite_stmt *stmt)
     free(stmt->schema_name);
     mylite_schema_options_deinit(&stmt->options);
     mylite_connection_charset_plan_deinit(&stmt->connection_charset);
+    mylite_connection_sql_mode_plan_deinit(&stmt->connection_sql_mode);
     mylite_table_ddl_create_table_plan_deinit(&stmt->create_table);
     mylite_table_ddl_drop_table_plan_deinit(&stmt->drop_table);
     mylite_table_ddl_rename_table_plan_deinit(&stmt->rename_table);

@@ -1,6 +1,8 @@
 #include "mylite_select_scalar.h"
 
 #include "mylite_diagnostics.h"
+#include "mylite_error_codes.h"
+#include "mylite_expression.h"
 #include "mylite_expression_validation.h"
 #include "mylite_metadata.h"
 #include "mylite_select.h"
@@ -23,6 +25,7 @@ static int copy_scalar_select_item_expression(mylite_stmt *stmt,
 static int
 evaluate_scalar_select_result(mylite_stmt *stmt,
                               const struct mylite_select_scalar_eval_callbacks *callbacks);
+static int append_scalar_select_calc_found_rows_warning(mylite_stmt *stmt);
 static int
 evaluate_scalar_select_result_item(mylite_stmt *stmt, size_t index,
                                    const struct mylite_select_scalar_eval_callbacks *callbacks);
@@ -69,6 +72,7 @@ int mylite_select_scalar_copy_statement(const struct mylite_sql_ast_node *statem
     stmt->scalar_result.value_count = column_count;
     stmt->result_metadata.column_count = column_count;
     stmt->affected_rows = -1;
+    stmt->select_plan.calc_found_rows = statement->select_calc_found_rows;
     stmt->scalar_result.row_available = true;
 
     if (limit_clause != NULL) {
@@ -195,12 +199,26 @@ int mylite_select_scalar_execute_statement(
         return MYLITE_UNSUPPORTED;
     }
     if (!stmt->scalar_result.row_available || stmt->scalar_result.has_row) {
+        if (!stmt->previous_found_rows_recorded) {
+            if (stmt->scalar_result.has_row) {
+                stmt->database->previous_found_rows = 1U;
+            } else {
+                stmt->database->previous_found_rows = 0U;
+            }
+            stmt->previous_found_rows_recorded = true;
+        }
         return MYLITE_DONE;
     }
 
     status = evaluate_scalar_select_result(stmt, callbacks);
     if (status != MYLITE_OK) {
         return status;
+    }
+    if (stmt->select_plan.calc_found_rows) {
+        status = append_scalar_select_calc_found_rows_warning(stmt);
+        if (status != MYLITE_OK) {
+            return status;
+        }
     }
 
     stmt->executed = true;
@@ -209,6 +227,17 @@ int mylite_select_scalar_execute_statement(
     stmt->affected_rows = -1;
     stmt->scalar_result.has_row = true;
     return MYLITE_ROW;
+}
+
+static int append_scalar_select_calc_found_rows_warning(mylite_stmt *stmt)
+{
+    if (mylite_expression_warnings_append(
+            &stmt->scalar_result.warnings, MYLITE_MYSQL_ER_WARN_DEPRECATED_SYNTAX,
+            "SQL_CALC_FOUND_ROWS is deprecated and will be removed in a future release. "
+            "Consider using two separate queries instead.") != 0) {
+        return mylite_diagnostics_set_error_message(stmt->database, "out of memory");
+    }
+    return MYLITE_OK;
 }
 
 static int

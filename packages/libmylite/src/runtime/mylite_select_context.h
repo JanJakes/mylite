@@ -17,8 +17,7 @@ const struct mylite_statement_prepare_callbacks *
 mylite_select_context_statement_prepare_callbacks(void);
 const struct mylite_statement_execute_callbacks *
 mylite_select_context_statement_execute_callbacks(void);
-const struct mylite_select_eval_callbacks *
-mylite_select_context_table_select_eval_callbacks(void);
+const struct mylite_select_eval_callbacks *mylite_select_context_table_select_eval_callbacks(void);
 const struct mylite_select_predicate_bind_callbacks *
 mylite_select_context_predicate_bind_callbacks(void);
 int mylite_select_context_prepare_subquery(mylite_db *database,

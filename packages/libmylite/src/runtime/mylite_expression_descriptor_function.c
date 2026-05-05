@@ -7,6 +7,7 @@
 #include "mylite_expression_descriptor_scalar.h"
 #include "mylite_expression_descriptor_string.h"
 #include "mylite_expression_descriptor_temporal.h"
+#include "mylite_function_names.h"
 #include "mylite_span.h"
 #include "sql/mylite_ast.h"
 
@@ -137,6 +138,10 @@ static bool infer_common_scalar_function_descriptor(mylite_db *database,
         return true;
     }
     if (mylite_expression_descriptor_infer_strcmp_function(name, result_nullable, out_descriptor)) {
+        return true;
+    }
+    if (mylite_function_name_is_regexp_like(name)) {
+        *out_descriptor = mylite_expression_descriptor_boolean(result_nullable);
         return true;
     }
     if (mylite_expression_descriptor_infer_uuid_function(database, name, out_descriptor)) {

@@ -109,8 +109,8 @@ make_aggregate_function_call(struct mylite_sql_parser_state *state,
 static bool aggregate_accepts_star(enum mylite_sql_ast_aggregate_kind aggregate_kind);
 static bool transaction_characteristics_conflict(const struct mylite_sql_ast_node *left,
                                                  const struct mylite_sql_ast_node *right);
-static bool delete_targets_are_unsupported_delete_modifier(
-    const struct mylite_sql_ast_node *targets);
+static bool
+delete_targets_are_unsupported_delete_modifier(const struct mylite_sql_ast_node *targets);
 static bool expression_contains_function_call(const struct mylite_sql_ast_node *expression);
 static void set_syntax_error_at_span(struct mylite_sql_parser_state *state,
                                      struct mylite_sql_source_span span);
@@ -386,6 +386,9 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
             .last = duplicate_mode.last_span,
             .conflict = duplicate_mode.conflict_span,
         });
+    if (duplicate_mode.calc_found_rows) {
+        mylite_sql_ast_node_set_select_calc_found_rows(statement);
+    }
     mylite_sql_ast_node_append_child(statement, select_list);
     mylite_sql_ast_node_append_child(statement, from_clause);
     mylite_sql_ast_node_append_child(statement, where_clause);
@@ -528,13 +531,32 @@ mylite_sql_parser_make_distinct_select_duplicate_mode(struct mylite_sql_token to
 }
 
 struct mylite_sql_parser_select_duplicate_mode
+mylite_sql_parser_make_sql_calc_found_rows_select_duplicate_mode(struct mylite_sql_token token)
+{
+    (void)token;
+
+    return (struct mylite_sql_parser_select_duplicate_mode){
+        .mode = MYLITE_SQL_AST_SELECT_DUPLICATES_IMPLICIT_ALL,
+        .calc_found_rows = true,
+    };
+}
+
+struct mylite_sql_parser_select_duplicate_mode
 mylite_sql_parser_append_select_duplicate_mode(struct mylite_sql_parser_state *state,
                                                struct mylite_sql_parser_select_duplicate_mode list,
                                                struct mylite_sql_parser_select_duplicate_mode item)
 {
     (void)state;
 
+    if (list.modifier_count == 0U && !list.calc_found_rows) {
+        return item;
+    }
+    if (item.calc_found_rows) {
+        list.calc_found_rows = true;
+        return list;
+    }
     if (list.modifier_count == 0U) {
+        item.calc_found_rows = list.calc_found_rows;
         return item;
     }
 
@@ -3065,6 +3087,27 @@ mylite_sql_parser_make_set_character_set_statement(struct mylite_sql_parser_stat
     }
 
     mylite_sql_ast_node_append_child(statement, character_set);
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_set_sql_mode_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token set_token,
+    struct mylite_sql_ast_node *variable_name, struct mylite_sql_ast_node *value)
+{
+    struct mylite_sql_source_span span = span_from_token(&set_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (value != NULL) {
+        span = span_join(span, value->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_SET_SQL_MODE_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, variable_name);
+    mylite_sql_ast_node_append_child(statement, value);
     return statement;
 }
 
@@ -5855,6 +5898,9 @@ static bool map_lexer_token(const struct mylite_sql_token *token, bool previous_
     case MYLITE_SQL_TOKEN_BIT_LITERAL:
         parser_token = MYLITE_SQL_PARSE_BIT_LITERAL;
         break;
+    case MYLITE_SQL_TOKEN_SYSTEM_VARIABLE:
+        parser_token = MYLITE_SQL_PARSE_SYSTEM_VARIABLE;
+        break;
     case MYLITE_SQL_TOKEN_INTEGER:
         parser_token = MYLITE_SQL_PARSE_INTEGER;
         break;
@@ -5880,7 +5926,6 @@ static bool map_lexer_token(const struct mylite_sql_token *token, bool previous_
     case MYLITE_SQL_TOKEN_VERSION_COMMENT:
     case MYLITE_SQL_TOKEN_HINT_COMMENT:
     case MYLITE_SQL_TOKEN_USER_VARIABLE:
-    case MYLITE_SQL_TOKEN_SYSTEM_VARIABLE:
     case MYLITE_SQL_TOKEN_PARAMETER:
         return false;
     }
@@ -6289,11 +6334,13 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"REAL", MYLITE_SQL_PARSE_REAL},
         {"REFERENCES", MYLITE_SQL_PARSE_REFERENCES},
         {"RELEASE", MYLITE_SQL_PARSE_RELEASE},
+        {"REGEXP", MYLITE_SQL_PARSE_REGEXP},
         {"RENAME", MYLITE_SQL_PARSE_RENAME},
         {"REPEAT", MYLITE_SQL_PARSE_REPEAT},
         {"REPLACE", MYLITE_SQL_PARSE_REPLACE},
         {"RESTRICT", MYLITE_SQL_PARSE_RESTRICT},
         {"RIGHT", MYLITE_SQL_PARSE_RIGHT},
+        {"RLIKE", MYLITE_SQL_PARSE_RLIKE},
         {"ROLLBACK", MYLITE_SQL_PARSE_ROLLBACK},
         {"ROW", MYLITE_SQL_PARSE_ROW},
         {"SCHEMA", MYLITE_SQL_PARSE_SCHEMA},
@@ -6312,6 +6359,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"SNAPSHOT", MYLITE_SQL_PARSE_SNAPSHOT},
         {"SOME", MYLITE_SQL_PARSE_SOME},
         {"SPATIAL", MYLITE_SQL_PARSE_SPATIAL},
+        {"SQL_CALC_FOUND_ROWS", MYLITE_SQL_PARSE_SQL_CALC_FOUND_ROWS},
         {"START", MYLITE_SQL_PARSE_START},
         {"STATUS", MYLITE_SQL_PARSE_STATUS},
         {"STORAGE", MYLITE_SQL_PARSE_STORAGE},
@@ -6787,8 +6835,8 @@ static bool transaction_characteristics_conflict(const struct mylite_sql_ast_nod
     return false;
 }
 
-static bool delete_targets_are_unsupported_delete_modifier(
-    const struct mylite_sql_ast_node *targets)
+static bool
+delete_targets_are_unsupported_delete_modifier(const struct mylite_sql_ast_node *targets)
 {
     const struct mylite_sql_ast_node *target = NULL;
     const struct mylite_sql_ast_node *table_name = NULL;

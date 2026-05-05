@@ -43,6 +43,7 @@ int mylite_statement_prepare_custom(
         break;
     case MYLITE_STMT_SET_NAMES:
     case MYLITE_STMT_SET_CHARACTER_SET:
+    case MYLITE_STMT_SET_SQL_MODE:
         status = MYLITE_UNSUPPORTED;
         break;
     case MYLITE_STMT_CREATE_TABLE:

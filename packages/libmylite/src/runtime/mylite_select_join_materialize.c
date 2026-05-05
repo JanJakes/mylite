@@ -79,9 +79,33 @@ int mylite_select_materialize_joined_table_result(
     }
 
     row.value_count = mylite_select_plan_column_count(&stmt->select_plan);
+    row.source_row_index_count = table_count;
+    row.source_rowid_count = table_count;
     if (row.value_count != 0U) {
         row.values = calloc(row.value_count, sizeof(*row.values));
         if (row.values == NULL) {
+            mylite_select_rowsets_deinit(state.rowsets, table_count);
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+    }
+    if (row.source_row_index_count != 0U) {
+        row.source_row_indexes =
+            calloc(row.source_row_index_count, sizeof(*row.source_row_indexes));
+        if (row.source_row_indexes == NULL) {
+            mylite_select_row_deinit(&row);
+            mylite_select_rowsets_deinit(state.rowsets, table_count);
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+        for (size_t index = 0U; index < row.source_row_index_count; ++index) {
+            row.source_row_indexes[index] = SIZE_MAX;
+        }
+    }
+    if (row.source_rowid_count != 0U) {
+        row.source_rowids = calloc(row.source_rowid_count, sizeof(*row.source_rowids));
+        if (row.source_rowids == NULL) {
+            mylite_select_row_deinit(&row);
             mylite_select_rowsets_deinit(state.rowsets, table_count);
             (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
@@ -213,6 +237,15 @@ static int process_joined_table_select_scan_row(
         }
         return status;
     }
+    if (scan->table_index >= scan->row->source_row_index_count ||
+        scan->table_index >= scan->row->source_rowid_count ||
+        scan->table_index >=
+            rowset->rows[scan->frames[scan->table_index].row_index].source_rowid_count) {
+        return MYLITE_UNSUPPORTED;
+    }
+    scan->row->source_row_indexes[scan->table_index] = scan->frames[scan->table_index].row_index;
+    scan->row->source_rowids[scan->table_index] =
+        rowset->rows[scan->frames[scan->table_index].row_index].source_rowids[scan->table_index];
 
     scan->frames[scan->table_index].copied = true;
     status = mylite_select_join_stage_conditions_match(stmt, state, scan, &matches, callbacks);
@@ -246,6 +279,9 @@ static void clear_joined_table_select_scan_frame(struct mylite_table_select_join
         return;
     }
     mylite_select_join_row_clear_table_values(scan->row, table);
+    if (table_index < scan->row->source_row_index_count) {
+        scan->row->source_row_indexes[table_index] = SIZE_MAX;
+    }
     scan->frames[table_index].copied = false;
 }
 

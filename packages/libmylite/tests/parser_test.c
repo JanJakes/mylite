@@ -4662,12 +4662,18 @@ static int test_delete_single_table_syntax(void)
     const struct mylite_sql_ast_node *order_by = NULL;
     const struct mylite_sql_ast_node *order_items = NULL;
     const struct mylite_sql_ast_node *limit = NULL;
+    const struct mylite_sql_ast_node *target_list = NULL;
+    const struct mylite_sql_ast_node *from_clause = NULL;
     int failures = 0;
 
     failures += parse_sql("DELETE FROM t", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
     target = child_at(statement, 0U);
     failures += expect_node(statement, MYLITE_SQL_AST_DELETE_STATEMENT, "delete statement");
+    if (statement->delete_form != MYLITE_SQL_AST_DELETE_SINGLE_TABLE) {
+        fprintf(stderr, "delete statement: expected single-table form\n");
+        failures = 1;
+    }
     failures += expect_child_count(statement, 1U, "delete base child count");
     failures += expect_node(target, MYLITE_SQL_AST_DELETE_TARGET, "delete target");
     failures += expect_span_text(child_at(target, 0U), "t", "delete target table");
@@ -4758,8 +4764,65 @@ static int test_delete_single_table_syntax(void)
         parse_sql("WITH c AS (SELECT 1) DELETE FROM t", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("DELETE t FROM t JOIN u ON t.id = u.id WHERE u.keep = 0",
+                          MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    target_list = child_at(statement, 0U);
+    from_clause = child_at(statement, 1U);
+    where_clause = child_at(statement, 2U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DELETE_STATEMENT,
+                            "multi delete target-from statement");
+    if (statement->delete_form != MYLITE_SQL_AST_DELETE_TARGETS_FROM) {
+        fprintf(stderr, "multi delete target-from: wrong delete form\n");
+        failures = 1;
+    }
     failures +=
-        parse_sql("DELETE t FROM t JOIN u ON t.id = u.id", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+        expect_node(target_list, MYLITE_SQL_AST_DELETE_TARGET_LIST, "multi delete target list");
+    failures += expect_child_count(target_list, 1U, "multi delete one target");
+    failures += expect_node(child_at(target_list, 0U), MYLITE_SQL_AST_DELETE_TARGET_NAME,
+                            "multi delete target name");
+    failures +=
+        expect_span_text(child_at(child_at(target_list, 0U), 0U), "t", "multi delete target span");
+    failures += expect_node(from_clause, MYLITE_SQL_AST_FROM_TABLE_REFERENCES,
+                            "multi delete from references");
+    failures += expect_node(where_clause, MYLITE_SQL_AST_WHERE_CLAUSE, "multi delete where clause");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DELETE a, b.* FROM a INNER JOIN b ON a.id = b.a_id", MYLITE_SQL_PARSE_OK,
+                          &result);
+    statement = child_at(result.root, 0U);
+    target_list = child_at(statement, 0U);
+    failures += expect_child_count(target_list, 2U, "multi delete two targets");
+    failures +=
+        expect_span_text(child_at(child_at(target_list, 0U), 0U), "a", "multi delete first target");
+    failures +=
+        expect_span_text(child_at(child_at(target_list, 1U), 0U), "b", "multi delete star target");
+    failures += expect_span_text(child_at(target_list, 1U), "b.*", "multi delete star span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DELETE FROM app.a.*, b USING app.a JOIN b ON a.id = b.a_id",
+                          MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    target_list = child_at(statement, 0U);
+    from_clause = child_at(statement, 1U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_DELETE_STATEMENT, "multi delete using statement");
+    if (statement->delete_form != MYLITE_SQL_AST_DELETE_FROM_TARGETS_USING) {
+        fprintf(stderr, "multi delete using: wrong delete form\n");
+        failures = 1;
+    }
+    failures += expect_node(child_at(child_at(target_list, 0U), 0U),
+                            MYLITE_SQL_AST_QUALIFIED_IDENTIFIER, "multi delete qualified target");
+    failures += expect_node(from_clause, MYLITE_SQL_AST_FROM_TABLE_REFERENCES,
+                            "multi delete using references");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DELETE a FROM a JOIN b ON a.id = b.a_id ORDER BY a.id",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DELETE a FROM a JOIN b ON a.id = b.a_id LIMIT 1",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

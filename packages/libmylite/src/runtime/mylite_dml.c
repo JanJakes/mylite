@@ -155,6 +155,10 @@ void mylite_dml_delete_plan_deinit(struct mylite_delete_plan *plan)
     }
 
     delete_target_deinit(&plan->target);
+    for (size_t index = 0U; index < plan->target_count; ++index) {
+        delete_target_deinit(&plan->targets[index]);
+    }
+    free(plan->targets);
     *plan = (struct mylite_delete_plan){0};
 }
 

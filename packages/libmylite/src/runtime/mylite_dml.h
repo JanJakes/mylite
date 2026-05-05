@@ -4,6 +4,8 @@
 #include "mylite_dml_insert_bound_value.h"
 #include "mylite_dml_types.h"
 
+struct mylite_select_plan;
+
 int mylite_dml_prepare_update_statement(mylite_db *database,
                                         const struct mylite_sql_ast_node *statement,
                                         const char *sql, size_t sql_length, mylite_stmt **out_stmt);
@@ -222,6 +224,10 @@ int mylite_dml_execute_delete_rows_transaction(mylite_db *database,
                                                const struct mylite_select_table *table,
                                                const struct mylite_update_rowset *rowset,
                                                int64_t *out_affected_rows);
+int mylite_dml_execute_multi_delete_rows_transaction(
+    mylite_db *database, const struct mylite_select_plan *plan,
+    const size_t *target_table_indexes, const struct mylite_update_rowset *rowsets,
+    size_t target_count, int64_t *out_affected_rows);
 int mylite_dml_execute_update_rows_transaction(
     mylite_db *database, const struct mylite_select_table *table,
     const struct mylite_insert_table *write_table,

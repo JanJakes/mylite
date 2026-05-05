@@ -261,6 +261,8 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
         case MYLITE_SQL_AST_UPDATE_LIMIT_CLAUSE:
         case MYLITE_SQL_AST_DELETE_TARGET:
         case MYLITE_SQL_AST_DELETE_LIMIT_CLAUSE:
+        case MYLITE_SQL_AST_DELETE_TARGET_LIST:
+        case MYLITE_SQL_AST_DELETE_TARGET_NAME:
         case MYLITE_SQL_AST_TRANSACTION_CHARACTERISTIC_LIST:
         case MYLITE_SQL_AST_TRANSACTION_CHARACTERISTIC:
         case MYLITE_SQL_AST_TRANSACTION_COMPLETION:

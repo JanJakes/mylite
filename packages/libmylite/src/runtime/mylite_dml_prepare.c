@@ -161,6 +161,14 @@ static int clone_delete_plan_nodes(mylite_stmt *stmt, const struct mylite_sql_as
         return MYLITE_NOMEM;
     }
 
+    if (statement->delete_form != MYLITE_SQL_AST_DELETE_SINGLE_TABLE) {
+        status = clone_delete_ast_node(stmt, mylite_ast_child_at(statement, 1U), sql, sql_length,
+                                       &stmt->delete_plan.from_clause);
+    }
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
     status = clone_delete_ast_node(
         stmt, mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE), sql, sql_length,
         &stmt->delete_plan.where_clause);

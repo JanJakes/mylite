@@ -103,3 +103,21 @@ char *mylite_select_build_table_scan_sql(mylite_db *database,
     sqlite3_str_appendf(sql, " FROM \"%w\"", table->physical_name);
     return sqlite3_str_finish(sql);
 }
+
+char *mylite_select_build_table_rowid_scan_sql(mylite_db *database,
+                                               const struct mylite_select_table *table)
+{
+    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
+
+    if (sql == NULL) {
+        return NULL;
+    }
+
+    sqlite3_str_append(sql, "SELECT rowid", (int)strlen("SELECT rowid"));
+    for (size_t index = 0U; index < table->column_count; ++index) {
+        sqlite3_str_append(sql, ",", 1);
+        sqlite3_str_appendf(sql, "\"%w\"", table->columns[index].name);
+    }
+    sqlite3_str_appendf(sql, " FROM \"%w\"", table->physical_name);
+    return sqlite3_str_finish(sql);
+}

@@ -9,6 +9,7 @@
 #include "mylite_sqlite_value.h"
 #include "sqlite3.h"
 
+#include <stdint.h>
 #include <stdlib.h>
 
 static int load_table_select_join_rowset(mylite_stmt *stmt, size_t table_index,
@@ -96,7 +97,7 @@ static int load_table_select_join_rowset(mylite_stmt *stmt, size_t table_index,
         return MYLITE_UNSUPPORTED;
     }
 
-    scan_sql = mylite_select_build_table_scan_sql(stmt->database, table);
+    scan_sql = mylite_select_build_table_rowid_scan_sql(stmt->database, table);
     if (scan_sql == NULL) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
@@ -125,10 +126,22 @@ static int append_table_select_join_scan_row(mylite_stmt *stmt, sqlite3_stmt *sc
                                              const struct mylite_select_table *table,
                                              struct mylite_table_select_table_rowset *rowset)
 {
+    size_t table_count = mylite_select_plan_table_count(&stmt->select_plan);
+    size_t table_index = 0U;
     struct mylite_table_select_row row = {
         .value_count = table->column_count,
+        .source_row_index_count = table_count,
+        .source_rowid_count = table_count,
     };
     struct mylite_table_select_row *rows = NULL;
+
+    while (table_index < table_count &&
+           mylite_select_plan_table_const(&stmt->select_plan, table_index) != table) {
+        ++table_index;
+    }
+    if (table_index == table_count) {
+        return MYLITE_UNSUPPORTED;
+    }
 
     if (row.value_count != 0U) {
         row.values = calloc(row.value_count, sizeof(*row.values));
@@ -137,9 +150,32 @@ static int append_table_select_join_scan_row(mylite_stmt *stmt, sqlite3_stmt *sc
             return MYLITE_NOMEM;
         }
     }
+    if (row.source_row_index_count != 0U) {
+        row.source_row_indexes = calloc(row.source_row_index_count, sizeof(*row.source_row_indexes));
+        if (row.source_row_indexes == NULL) {
+            mylite_select_row_deinit(&row);
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+        for (size_t index = 0U; index < row.source_row_index_count; ++index) {
+            row.source_row_indexes[index] = SIZE_MAX;
+        }
+    }
+    if (row.source_rowid_count != 0U) {
+        row.source_rowids = calloc(row.source_rowid_count, sizeof(*row.source_rowids));
+        if (row.source_rowids == NULL) {
+            mylite_select_row_deinit(&row);
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+    }
+    if (table_index < row.source_row_index_count && table_index < row.source_rowid_count) {
+        row.source_row_indexes[table_index] = rowset->row_count;
+        row.source_rowids[table_index] = sqlite3_column_int64(scan, 0);
+    }
 
     for (size_t index = 0U; index < row.value_count; ++index) {
-        if (mylite_sqlite_copy_column_value(scan, index, &row.values[index]) != 0) {
+        if (mylite_sqlite_copy_column_value(scan, index + 1U, &row.values[index]) != 0) {
             mylite_select_row_deinit(&row);
             (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;

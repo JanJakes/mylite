@@ -864,9 +864,74 @@ delete_statement(A) ::= DELETE(T) FROM single_delete_target(B) opt_where_clause(
         opt_order_by_clause(D) opt_delete_limit_clause(E). {
     A = mylite_sql_parser_make_delete_statement(state, T, B, C, D, E);
 }
+delete_statement(A) ::= DELETE(T) delete_target_list(B) FROM(F) table_references(C)
+        opt_where_clause(D). {
+    A = mylite_sql_parser_make_multi_delete_statement(
+        state, T, MYLITE_SQL_AST_DELETE_TARGETS_FROM, B,
+        mylite_sql_parser_make_from_table_references(state, F, C), D);
+}
+delete_statement(A) ::= DELETE(T) FROM delete_using_target_list(B) USING(U) table_references(C)
+        opt_where_clause(D). {
+    A = mylite_sql_parser_make_multi_delete_statement(
+        state, T, MYLITE_SQL_AST_DELETE_FROM_TARGETS_USING, B,
+        mylite_sql_parser_make_from_table_references(state, U, C), D);
+}
 
 single_delete_target(A) ::= delete_table_name(B) opt_table_alias(C). {
     A = mylite_sql_parser_make_delete_target(state, B, C);
+}
+
+delete_target_list(A) ::= delete_target_name(B). {
+    A = mylite_sql_parser_make_delete_target_list(state, B);
+}
+delete_target_list(A) ::= delete_target_list(B) COMMA delete_target_name(C). {
+    A = mylite_sql_parser_append_delete_target_name(state, B, C);
+}
+
+delete_target_name(A) ::= delete_target_identifier(B). {
+    A = mylite_sql_parser_make_delete_target_name(state, B, (struct mylite_sql_token){0});
+}
+delete_target_name(A) ::= delete_target_identifier(B) DOT STAR(C). {
+    A = mylite_sql_parser_make_delete_target_name(state, B, C);
+}
+delete_target_name(A) ::= delete_target_identifier(B) DOT delete_target_identifier(C). {
+    A = mylite_sql_parser_make_delete_target_name(
+        state, mylite_sql_parser_make_qualified_identifier(state, B, C),
+        (struct mylite_sql_token){0});
+}
+delete_target_name(A) ::= delete_target_identifier(B) DOT delete_target_identifier(C) DOT STAR(D). {
+    A = mylite_sql_parser_make_delete_target_name(
+        state, mylite_sql_parser_make_qualified_identifier(state, B, C), D);
+}
+
+delete_target_identifier(A) ::= IDENTIFIER(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+delete_target_identifier(A) ::= QUOTED_IDENTIFIER(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+
+delete_using_target_list(A) ::= delete_using_target_name(B). {
+    A = mylite_sql_parser_make_delete_target_list(state, B);
+}
+delete_using_target_list(A) ::= delete_using_target_list(B) COMMA delete_using_target_name(C). {
+    A = mylite_sql_parser_append_delete_target_name(state, B, C);
+}
+
+delete_using_target_name(A) ::= identifier(B). {
+    A = mylite_sql_parser_make_delete_target_name(state, B, (struct mylite_sql_token){0});
+}
+delete_using_target_name(A) ::= identifier(B) DOT STAR(C). {
+    A = mylite_sql_parser_make_delete_target_name(state, B, C);
+}
+delete_using_target_name(A) ::= identifier(B) DOT identifier(C). {
+    A = mylite_sql_parser_make_delete_target_name(
+        state, mylite_sql_parser_make_qualified_identifier(state, B, C),
+        (struct mylite_sql_token){0});
+}
+delete_using_target_name(A) ::= identifier(B) DOT identifier(C) DOT STAR(D). {
+    A = mylite_sql_parser_make_delete_target_name(
+        state, mylite_sql_parser_make_qualified_identifier(state, B, C), D);
 }
 
 delete_table_name(A) ::= identifier(B). {

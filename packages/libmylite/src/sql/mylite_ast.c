@@ -86,6 +86,16 @@ void mylite_sql_ast_node_set_literal_kind(struct mylite_sql_ast_node *node,
     node->literal_kind = literal_kind;
 }
 
+void mylite_sql_ast_node_set_delete_form(struct mylite_sql_ast_node *node,
+                                         enum mylite_sql_ast_delete_form delete_form)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->delete_form = delete_form;
+}
+
 void mylite_sql_ast_node_set_operator(struct mylite_sql_ast_node *node,
                                       enum mylite_sql_ast_operator operator_kind)
 {
@@ -986,6 +996,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "show_create_schema_statement";
     case MYLITE_SQL_AST_SHOW_TABLE_STATUS_STATEMENT:
         return "show_table_status_statement";
+    case MYLITE_SQL_AST_DELETE_TARGET_LIST:
+        return "delete_target_list";
+    case MYLITE_SQL_AST_DELETE_TARGET_NAME:
+        return "delete_target_name";
     }
 
     return "unknown";

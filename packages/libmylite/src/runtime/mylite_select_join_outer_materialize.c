@@ -182,6 +182,7 @@ static int process_outer_joined_table_range_row(
 
     row.value_count = mylite_select_plan_column_count(&stmt->select_plan);
     row.source_row_index_count = mylite_select_plan_table_count(&stmt->select_plan);
+    row.source_rowid_count = mylite_select_plan_table_count(&stmt->select_plan);
     if (row.value_count != 0U) {
         row.values = calloc(row.value_count, sizeof(*row.values));
         if (row.values == NULL) {
@@ -192,6 +193,12 @@ static int process_outer_joined_table_range_row(
         row.source_row_indexes =
             calloc(row.source_row_index_count, sizeof(*row.source_row_indexes));
         if (row.source_row_indexes == NULL) {
+            status = MYLITE_NOMEM;
+        }
+    }
+    if (status == MYLITE_OK && row.source_rowid_count != 0U) {
+        row.source_rowids = calloc(row.source_rowid_count, sizeof(*row.source_rowids));
+        if (row.source_rowids == NULL) {
             status = MYLITE_NOMEM;
         }
     }

@@ -109,6 +109,8 @@ make_aggregate_function_call(struct mylite_sql_parser_state *state,
 static bool aggregate_accepts_star(enum mylite_sql_ast_aggregate_kind aggregate_kind);
 static bool transaction_characteristics_conflict(const struct mylite_sql_ast_node *left,
                                                  const struct mylite_sql_ast_node *right);
+static bool delete_targets_are_unsupported_delete_modifier(
+    const struct mylite_sql_ast_node *targets);
 static bool expression_contains_function_call(const struct mylite_sql_ast_node *expression);
 static void set_syntax_error_at_span(struct mylite_sql_parser_state *state,
                                      struct mylite_sql_source_span span);
@@ -2274,10 +2276,46 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_delete_statement(
         return NULL;
     }
 
+    mylite_sql_ast_node_set_delete_form(statement, MYLITE_SQL_AST_DELETE_SINGLE_TABLE);
     mylite_sql_ast_node_append_child(statement, target);
     mylite_sql_ast_node_append_child(statement, where_clause);
     mylite_sql_ast_node_append_child(statement, order_by_clause);
     mylite_sql_ast_node_append_child(statement, limit_clause);
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_multi_delete_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token delete_token,
+    enum mylite_sql_ast_delete_form form, struct mylite_sql_ast_node *targets,
+    struct mylite_sql_ast_node *from_clause, struct mylite_sql_ast_node *where_clause)
+{
+    struct mylite_sql_source_span span = span_from_token(&delete_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (targets != NULL) {
+        span = span_join(span, targets->span);
+    }
+    if (from_clause != NULL) {
+        span = span_join(span, from_clause->span);
+    }
+    if (where_clause != NULL) {
+        span = span_join(span, where_clause->span);
+    }
+    if (form == MYLITE_SQL_AST_DELETE_TARGETS_FROM &&
+        delete_targets_are_unsupported_delete_modifier(targets)) {
+        set_syntax_error_at_span(state, targets->span);
+        return NULL;
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_DELETE_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_delete_form(statement, form);
+    mylite_sql_ast_node_append_child(statement, targets);
+    mylite_sql_ast_node_append_child(statement, from_clause);
+    mylite_sql_ast_node_append_child(statement, where_clause);
     return statement;
 }
 
@@ -2544,6 +2582,60 @@ mylite_sql_parser_make_delete_target(struct mylite_sql_parser_state *state,
 
     mylite_sql_ast_node_append_child(target, table_name);
     mylite_sql_ast_node_append_child(target, alias);
+    return target;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_delete_target_list(struct mylite_sql_parser_state *state,
+                                          struct mylite_sql_ast_node *target)
+{
+    struct mylite_sql_source_span span =
+        target == NULL ? (struct mylite_sql_source_span){0} : target->span;
+    struct mylite_sql_ast_node *list = make_node(state, MYLITE_SQL_AST_DELETE_TARGET_LIST, span);
+
+    if (list == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(list, target);
+    return list;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_delete_target_name(struct mylite_sql_parser_state *state,
+                                            struct mylite_sql_ast_node *list,
+                                            struct mylite_sql_ast_node *target)
+{
+    if (!is_parse_ok(state) || list == NULL) {
+        return list;
+    }
+
+    mylite_sql_ast_node_append_child(list, target);
+    if (target != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, target->span));
+    }
+    return list;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_delete_target_name(struct mylite_sql_parser_state *state,
+                                          struct mylite_sql_ast_node *table_name,
+                                          struct mylite_sql_token wildcard_token)
+{
+    struct mylite_sql_source_span span =
+        table_name == NULL ? (struct mylite_sql_source_span){0} : table_name->span;
+    struct mylite_sql_ast_node *target = NULL;
+
+    if (wildcard_token.text != NULL) {
+        span = span_join(span, span_from_token(&wildcard_token));
+    }
+
+    target = make_node(state, MYLITE_SQL_AST_DELETE_TARGET_NAME, span);
+    if (target == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(target, table_name);
     return target;
 }
 
@@ -6693,6 +6785,26 @@ static bool transaction_characteristics_conflict(const struct mylite_sql_ast_nod
         return true;
     }
     return false;
+}
+
+static bool delete_targets_are_unsupported_delete_modifier(
+    const struct mylite_sql_ast_node *targets)
+{
+    const struct mylite_sql_ast_node *target = NULL;
+    const struct mylite_sql_ast_node *table_name = NULL;
+
+    if (targets == NULL || targets->first_child == NULL ||
+        targets->first_child->next_sibling != NULL) {
+        return false;
+    }
+
+    target = targets->first_child;
+    table_name = target->first_child;
+    if (table_name == NULL || table_name->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        return false;
+    }
+
+    return span_text_equals(table_name->span, "QUICK");
 }
 
 static void set_syntax_error_at_span(struct mylite_sql_parser_state *state,

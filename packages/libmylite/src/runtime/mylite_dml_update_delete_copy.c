@@ -23,6 +23,13 @@ static int copy_update_column_reference(const struct mylite_sql_ast_node *identi
                                         struct mylite_update_column_reference *out_reference);
 static int copy_delete_target(const struct mylite_sql_ast_node *target,
                               struct mylite_delete_target *out_target);
+static int copy_multi_delete_targets(const struct mylite_sql_ast_node *targets,
+                                     struct mylite_delete_plan *plan);
+static int copy_multi_delete_target(const struct mylite_sql_ast_node *target,
+                                    struct mylite_delete_plan *plan);
+static int add_delete_target(struct mylite_delete_plan *plan,
+                             struct mylite_delete_target target);
+static void delete_target_parts_deinit(struct mylite_delete_target *target);
 static int copy_delete_table_name(const struct mylite_sql_ast_node *table_name,
                                   struct mylite_delete_target *target);
 static int copy_update_identifier_table_name(const struct mylite_sql_ast_node *table_name,
@@ -53,13 +60,93 @@ int mylite_dml_copy_delete_statement(const struct mylite_sql_ast_node *statement
                                      struct mylite_delete_plan *plan)
 {
     const struct mylite_sql_ast_node *target = NULL;
+    int status = MYLITE_OK;
 
     if (statement == NULL || plan == NULL) {
         return MYLITE_MISUSE;
     }
 
+    plan->form = statement->delete_form;
     target = mylite_ast_child_at(statement, 0U);
-    return copy_delete_target(target, &plan->target);
+    if (statement->delete_form == MYLITE_SQL_AST_DELETE_SINGLE_TABLE) {
+        return copy_delete_target(target, &plan->target);
+    }
+
+    if (statement->delete_form != MYLITE_SQL_AST_DELETE_TARGETS_FROM &&
+        statement->delete_form != MYLITE_SQL_AST_DELETE_FROM_TARGETS_USING) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    status = copy_multi_delete_targets(target, plan);
+    if (status == MYLITE_OK) {
+        plan->from_clause = mylite_ast_child_at(statement, 1U);
+    }
+    return status;
+}
+
+static int copy_multi_delete_targets(const struct mylite_sql_ast_node *targets,
+                                     struct mylite_delete_plan *plan)
+{
+    if (targets == NULL || targets->kind != MYLITE_SQL_AST_DELETE_TARGET_LIST) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    for (const struct mylite_sql_ast_node *target = targets->first_child; target != NULL;
+         target = target->next_sibling) {
+        int status = copy_multi_delete_target(target, plan);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return plan->target_count == 0U ? MYLITE_UNSUPPORTED : MYLITE_OK;
+}
+
+static int copy_multi_delete_target(const struct mylite_sql_ast_node *target,
+                                    struct mylite_delete_plan *plan)
+{
+    struct mylite_delete_target copied = {0};
+    int status = MYLITE_OK;
+
+    if (target == NULL || target->kind != MYLITE_SQL_AST_DELETE_TARGET_NAME) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    status = copy_delete_table_name(mylite_ast_child_at(target, 0U), &copied);
+    if (status == MYLITE_OK) {
+        status = add_delete_target(plan, copied);
+    }
+    if (status != MYLITE_OK) {
+        delete_target_parts_deinit(&copied);
+    }
+    return status;
+}
+
+static int add_delete_target(struct mylite_delete_plan *plan,
+                             struct mylite_delete_target target)
+{
+    struct mylite_delete_target *targets =
+        realloc(plan->targets, (plan->target_count + 1U) * sizeof(*plan->targets));
+
+    if (targets == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    plan->targets = targets;
+    plan->targets[plan->target_count++] = target;
+    return MYLITE_OK;
+}
+
+static void delete_target_parts_deinit(struct mylite_delete_target *target)
+{
+    if (target == NULL) {
+        return;
+    }
+
+    free(target->schema_name);
+    free(target->table_name);
+    free(target->alias);
+    *target = (struct mylite_delete_target){0};
 }
 
 static int copy_update_target(const struct mylite_sql_ast_node *target,

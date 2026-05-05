@@ -48,6 +48,7 @@ int mylite_select_join_rowset_append_empty(mylite_stmt *stmt,
     struct mylite_table_select_row row = {
         .value_count = mylite_select_plan_column_count(&stmt->select_plan),
         .source_row_index_count = mylite_select_plan_table_count(&stmt->select_plan),
+        .source_rowid_count = mylite_select_plan_table_count(&stmt->select_plan),
     };
     int status = MYLITE_OK;
 
@@ -62,6 +63,12 @@ int mylite_select_join_rowset_append_empty(mylite_stmt *stmt,
         row.source_row_indexes =
             calloc(row.source_row_index_count, sizeof(*row.source_row_indexes));
         if (row.source_row_indexes == NULL) {
+            status = MYLITE_NOMEM;
+        }
+    }
+    if (status == MYLITE_OK && row.source_rowid_count != 0U) {
+        row.source_rowids = calloc(row.source_rowid_count, sizeof(*row.source_rowids));
+        if (row.source_rowids == NULL) {
             status = MYLITE_NOMEM;
         }
     }
@@ -106,6 +113,10 @@ int mylite_select_join_row_copy_base_table_values(mylite_db *database,
         }
     }
     row->source_row_indexes[table_index] = source_row_index;
+    if (row->source_rowid_count <= table_index || source->source_rowid_count <= table_index) {
+        return MYLITE_UNSUPPORTED;
+    }
+    row->source_rowids[table_index] = source->source_rowids[table_index];
     return MYLITE_OK;
 }
 
@@ -124,6 +135,10 @@ int mylite_select_join_row_copy_range_values(struct mylite_table_select_row *tar
             return MYLITE_UNSUPPORTED;
         }
         target->source_row_indexes[table_index] = source->source_row_indexes[table_index];
+        if (table_index >= target->source_rowid_count || table_index >= source->source_rowid_count) {
+            return MYLITE_UNSUPPORTED;
+        }
+        target->source_rowids[table_index] = source->source_rowids[table_index];
         for (size_t column = 0U; column < table->column_count; ++column) {
             size_t column_index = table->first_column_index + column;
 

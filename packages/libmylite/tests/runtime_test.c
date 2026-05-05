@@ -103,6 +103,7 @@ enum {
     mysql_warning_duplicate_entry = 1062,
     mysql_warning_multiple_primary = 1068,
     mysql_warning_key_column_missing = 1072,
+    mysql_warning_unknown_table = 1109,
     mysql_warning_invalid_null = 1138,
     mysql_warning_wrong_field_with_group = 1055,
     mysql_warning_nonunique_table = 1066,
@@ -289,6 +290,7 @@ static int test_aggregate_grouping_execution(void);
 static int test_schema_lifecycle(void);
 static int test_character_set_collation_foundation(void);
 static int test_core_metadata_catalog(void);
+static int test_information_schema_tables_engine_filter_execution(void);
 static int test_information_schema_engines_execution(void);
 static int test_information_schema_character_sets_execution(void);
 static int test_information_schema_collations_execution(void);
@@ -339,6 +341,7 @@ static int test_select_order_limit_offset_execution(void);
 static int test_result_metadata_expression_labels_execution(void);
 static int test_update_single_table_execution(void);
 static int test_delete_single_table_execution(void);
+static int test_delete_multi_table_execution(void);
 static int test_transaction_statements_execution(void);
 static int test_savepoint_execution(void);
 static int test_parse_error(void);
@@ -493,6 +496,7 @@ int main(void)
     failures += test_schema_lifecycle();
     failures += test_character_set_collation_foundation();
     failures += test_core_metadata_catalog();
+    failures += test_information_schema_tables_engine_filter_execution();
     failures += test_information_schema_engines_execution();
     failures += test_information_schema_character_sets_execution();
     failures += test_information_schema_collations_execution();
@@ -542,6 +546,7 @@ int main(void)
     failures += test_result_metadata_expression_labels_execution();
     failures += test_update_single_table_execution();
     failures += test_delete_single_table_execution();
+    failures += test_delete_multi_table_execution();
     failures += test_transaction_statements_execution();
     failures += test_savepoint_execution();
     failures += test_parse_error();
@@ -1004,6 +1009,65 @@ static int test_core_metadata_catalog(void)
         failures = 1;
         mylite_finalize(stmt);
     }
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_information_schema_tables_engine_filter_execution(void)
+{
+    static const char *const table_engine_columns[] = {"TABLE_NAME", "ENGINE"};
+    static const char *const table_name_columns[] = {"TABLE_NAME"};
+    static const char *const user_table_engine_values[] = {
+        "alpha",
+        "InnoDB",
+        "beta",
+        "InnoDB",
+    };
+    static const char *const alpha_values[] = {"alpha"};
+    static const char *const user_table_names[] = {"alpha", "beta"};
+    static const char *const system_table_values[] = {"TABLES", NULL};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK,
+                              "open information schema tables filter db");
+    failures +=
+        execute_sql(database, "CREATE DATABASE mylite_information_schema_filter", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_information_schema_filter", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE alpha (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE beta (id INT PRIMARY KEY)", MYLITE_DONE);
+
+    failures += expect_select_rows(database,
+                                   "SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES "
+                                   "WHERE TABLE_SCHEMA = DATABASE() AND ENGINE = 'InnoDB' "
+                                   "ORDER BY TABLE_NAME",
+                                   table_engine_columns, 2, user_table_engine_values, 2,
+                                   "information schema tables engine filter");
+    failures += expect_select_rows(
+        database,
+        "SELECT TABLE_NAME FROM information_schema.TABLES "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'alpha' AND ENGINE = 'innodb'",
+        table_name_columns, 1, alpha_values, 1, "information schema tables lower engine filter");
+    failures += expect_select_rows(
+        database,
+        "SELECT TABLE_NAME FROM information_schema.TABLES "
+        "WHERE ENGINE = 'InnoDB' AND TABLE_SCHEMA = DATABASE() ORDER BY TABLE_NAME",
+        table_name_columns, 1, user_table_names, 2,
+        "information schema tables reordered engine filter");
+    failures += expect_select_rows(database,
+                                   "SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES "
+                                   "WHERE TABLE_SCHEMA = 'information_schema' AND ENGINE IS NULL "
+                                   "AND TABLE_NAME = 'TABLES'",
+                                   table_engine_columns, 2, system_table_values, 1,
+                                   "information schema tables null engine filter");
+
+    failures += prepare_sql(database,
+                            "SELECT TABLE_NAME FROM information_schema.TABLES "
+                            "WHERE ENGINE = 'InnoDB' OR TABLE_SCHEMA = DATABASE()",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "information schema tables or unsupported");
 
     mylite_close(database);
     return failures;
@@ -24367,6 +24431,184 @@ static int test_delete_single_table_execution(void)
                              ai_delete_after_all_delete_id, "delete all preserves auto sequence");
     failures += expect_select_rows(database, "SELECT id, v FROM ai_delete", id_v_columns, 2,
                                    ai_values, 1, "delete auto sequence row");
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_delete_multi_table_execution(void)
+{
+    static const char *const id_column[] = {"id"};
+    static const char *const id_aid_columns[] = {"id", "a_id"};
+    static const char *const id_xid_columns[] = {"id", "x_id"};
+    static const char *const id_lid_columns[] = {"id", "l_id"};
+    static const char *const single_target_a_values[] = {"2"};
+    static const char *const all_b_values[] = {
+        "10", "1", "11", "1", "20", "2", "30", "3", "40", "4",
+    };
+    static const char *const multi_target_a_values[] = {"2", "4"};
+    static const char *const multi_target_b_values[] = {"20", "2", "40", "4"};
+    static const char *const using_target_x_values[] = {"2", "4"};
+    static const char *const using_target_y_values[] = {"20", "2", "40", "4"};
+    static const char *const left_join_values[] = {"1", "2"};
+    static const char *const right_join_values[] = {"10", "1", "20", "2"};
+    static const char *const self_alias_values[] = {"3"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open delete multi db");
+    failures += execute_sql(database, "CREATE DATABASE mylite_delete_multi", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_delete_multi", MYLITE_DONE);
+
+    failures += execute_sql(database, "CREATE TABLE a (id INT PRIMARY KEY, v INT)", MYLITE_DONE);
+    failures += execute_sql(
+        database, "CREATE TABLE b (id INT PRIMARY KEY, a_id INT, keep_flag INT)", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO a VALUES (1,10),(2,20),(3,30),(4,40)", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO b VALUES "
+                            "(10,1,0),(11,1,0),(20,2,1),(30,3,0),(40,4,0)",
+                            MYLITE_DONE);
+    failures +=
+        prepare_sql(database, "DELETE a FROM a JOIN b ON a.id = b.a_id WHERE b.keep_flag = 0",
+                    MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "multi delete one target");
+    failures +=
+        expect_int64(mylite_affected_rows(stmt), 3, "multi delete one target affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM a ORDER BY id", id_column, 1,
+                                   single_target_a_values, 1, "multi delete one target rows");
+    failures += expect_select_rows(database, "SELECT id, a_id FROM b ORDER BY id", id_aid_columns,
+                                   2, all_b_values, 5, "multi delete one target leaves b");
+
+    failures += execute_sql(database, "CREATE TABLE a2 (id INT PRIMARY KEY, v INT)", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "CREATE TABLE b2 (id INT PRIMARY KEY, a_id INT)", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE c2 (id INT PRIMARY KEY, b_id INT, marker INT)",
+                            MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO a2 VALUES (1,10),(2,20),(3,30),(4,40)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO b2 VALUES (10,1),(11,1),(20,2),(30,3),(40,4)",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO c2 VALUES (100,10,7),(101,11,7),(102,30,7)",
+                            MYLITE_DONE);
+    failures += prepare_sql(database,
+                            "DELETE aa, bb FROM a2 AS aa "
+                            "JOIN b2 AS bb ON aa.id = bb.a_id "
+                            "JOIN c2 AS cc ON cc.b_id = bb.id "
+                            "WHERE cc.marker = 7",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "multi delete two targets");
+    failures +=
+        expect_int64(mylite_affected_rows(stmt), 5, "multi delete two targets affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM a2 ORDER BY id", id_column, 1,
+                                   multi_target_a_values, 2, "multi delete two target a rows");
+    failures += expect_select_rows(database, "SELECT id, a_id FROM b2 ORDER BY id", id_aid_columns,
+                                   2, multi_target_b_values, 2, "multi delete two target b rows");
+
+    failures += execute_sql(database, "CREATE TABLE x (id INT PRIMARY KEY, v INT)", MYLITE_DONE);
+    failures += execute_sql(
+        database, "CREATE TABLE y (id INT PRIMARY KEY, x_id INT, keep_flag INT)", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO x VALUES (1,10),(2,20),(3,30),(4,40)", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO y VALUES "
+                            "(10,1,0),(11,1,0),(20,2,1),(30,3,0),(40,4,1)",
+                            MYLITE_DONE);
+    failures += prepare_sql(database,
+                            "DELETE FROM x.*, y.* USING x JOIN y ON x.id = y.x_id "
+                            "WHERE y.keep_flag = 0",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "multi delete using targets");
+    failures += expect_int64(mylite_affected_rows(stmt), 5, "multi delete using affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM x ORDER BY id", id_column, 1,
+                                   using_target_x_values, 2, "multi delete using x rows");
+    failures += expect_select_rows(database, "SELECT id, x_id FROM y ORDER BY id", id_xid_columns,
+                                   2, using_target_y_values, 2, "multi delete using y rows");
+
+    failures += execute_sql(database, "CREATE TABLE o (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE p (id INT PRIMARY KEY, o_id INT)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO o VALUES (1),(2),(3),(4)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO p VALUES (10,1),(20,2)", MYLITE_DONE);
+    failures += prepare_sql(database,
+                            "DELETE o.* FROM o LEFT JOIN p ON o.id = p.o_id "
+                            "WHERE p.id IS NULL",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "multi delete left orphan");
+    failures +=
+        expect_int64(mylite_affected_rows(stmt), 2, "multi delete left orphan affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM o ORDER BY id", id_column, 1,
+                                   left_join_values, 2, "multi delete left orphan rows");
+
+    failures += execute_sql(database, "CREATE TABLE l (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE r (id INT PRIMARY KEY, l_id INT)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO l VALUES (1),(2)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO r VALUES (10,1),(20,2),(30,99)", MYLITE_DONE);
+    failures += prepare_sql(database,
+                            "DELETE r FROM l RIGHT JOIN r ON l.id = r.l_id "
+                            "WHERE l.id IS NULL",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "multi delete right orphan");
+    failures +=
+        expect_int64(mylite_affected_rows(stmt), 1, "multi delete right orphan affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id, l_id FROM r ORDER BY id", id_lid_columns,
+                                   2, right_join_values, 2, "multi delete right orphan rows");
+
+    failures += execute_sql(database, "CREATE TABLE self_t (id INT PRIMARY KEY, v INT)",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO self_t VALUES (1,10),(2,20),(3,30)",
+                            MYLITE_DONE);
+    failures += prepare_sql(database,
+                            "DELETE sa, sb FROM self_t AS sa JOIN self_t AS sb "
+                            "ON sa.id = sb.id WHERE sa.id IN (1,2)",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "multi delete self alias overlap");
+    failures += expect_int64(mylite_affected_rows(stmt), 2,
+                             "multi delete self alias overlap affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM self_t ORDER BY id", id_column, 1,
+                                   self_alias_values, 1,
+                                   "multi delete self alias overlap rows");
+
+    failures +=
+        prepare_sql(database, "DELETE a, a FROM a JOIN b ON a.id = b.a_id", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "multi delete duplicate target");
+    failures += expect_contains(mylite_error_message(database), "Not unique table/alias: 'a'",
+                                "multi delete duplicate target error");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_nonunique_table,
+                           "multi delete duplicate target warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "DELETE a FROM a AS aa JOIN b AS bb ON aa.id = bb.a_id",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "multi delete alias hides base target");
+    failures += expect_contains(mylite_error_message(database), "Unknown table 'a' in MULTI DELETE",
+                                "multi delete unknown target error");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_unknown_table,
+                           "multi delete unknown target warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "DELETE a FROM a JOIN b ON a.id = b.a_id ORDER BY a.id",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "multi delete order rejected");
+    failures += prepare_sql(database, "DELETE a FROM a JOIN b ON a.id = b.a_id LIMIT 1",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "multi delete limit rejected");
 
     mylite_close(database);
     return failures;

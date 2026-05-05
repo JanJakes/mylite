@@ -633,6 +633,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_delete_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_token delete_token,
     struct mylite_sql_ast_node *target, struct mylite_sql_ast_node *where_clause,
     struct mylite_sql_ast_node *order_by_clause, struct mylite_sql_ast_node *limit_clause);
+struct mylite_sql_ast_node *mylite_sql_parser_make_multi_delete_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token delete_token,
+    enum mylite_sql_ast_delete_form form, struct mylite_sql_ast_node *targets,
+    struct mylite_sql_ast_node *from_clause, struct mylite_sql_ast_node *where_clause);
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_start_transaction_statement(struct mylite_sql_parser_state *state,
                                                    struct mylite_sql_token start_token,
@@ -680,6 +684,16 @@ struct mylite_sql_ast_node *
 mylite_sql_parser_make_delete_target(struct mylite_sql_parser_state *state,
                                      struct mylite_sql_ast_node *table_name,
                                      struct mylite_sql_ast_node *alias);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_delete_target_list(struct mylite_sql_parser_state *state,
+                                          struct mylite_sql_ast_node *target);
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_delete_target_name(struct mylite_sql_parser_state *state,
+                                            struct mylite_sql_ast_node *list,
+                                            struct mylite_sql_ast_node *target);
+struct mylite_sql_ast_node *mylite_sql_parser_make_delete_target_name(
+    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_token wildcard_token);
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_delete_limit_clause(struct mylite_sql_parser_state *state,
                                            struct mylite_sql_token limit_token,

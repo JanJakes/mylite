@@ -198,6 +198,18 @@ mylite_select_context_statement_execute_callbacks(void)
     return &statement_execute_callbacks;
 }
 
+const struct mylite_select_eval_callbacks *
+mylite_select_context_table_select_eval_callbacks(void)
+{
+    return &table_select_eval_callbacks;
+}
+
+const struct mylite_select_predicate_bind_callbacks *
+mylite_select_context_predicate_bind_callbacks(void)
+{
+    return &select_predicate_bind_callbacks;
+}
+
 // NOLINTNEXTLINE(misc-no-recursion)
 int mylite_select_context_prepare_subquery(mylite_db *database,
                                            const struct mylite_sql_ast_node *statement,

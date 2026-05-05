@@ -10,6 +10,7 @@ static int allocate_table_select_row_copy(struct mylite_table_select_row *out_ro
 static int allocate_table_select_expression_values(struct mylite_expression_value **out_values,
                                                    size_t value_count);
 static int allocate_table_select_source_row_indexes(size_t **out_indexes, size_t index_count);
+static int allocate_table_select_source_rowids(int64_t **out_rowids, size_t rowid_count);
 static int copy_table_select_row_copy_values(const struct mylite_table_select_row *row,
                                              struct mylite_table_select_row *out_row);
 static int copy_table_select_expression_values(const struct mylite_expression_value *values,
@@ -70,6 +71,7 @@ void mylite_select_row_deinit(struct mylite_table_select_row *row)
     free(row->order_values);
     free(row->aggregate_values);
     free(row->source_row_indexes);
+    free(row->source_rowids);
     *row = (struct mylite_table_select_row){0};
 }
 
@@ -84,6 +86,7 @@ int mylite_select_row_copy(const struct mylite_table_select_row *row,
     out_row->order_value_count = row->order_value_count;
     out_row->aggregate_value_count = row->aggregate_value_count;
     out_row->source_row_index_count = row->source_row_index_count;
+    out_row->source_rowid_count = row->source_rowid_count;
 
     status = allocate_table_select_row_copy(out_row);
     if (status == MYLITE_OK) {
@@ -235,6 +238,10 @@ static int allocate_table_select_row_copy(struct mylite_table_select_row *out_ro
         status = allocate_table_select_source_row_indexes(&out_row->source_row_indexes,
                                                           out_row->source_row_index_count);
     }
+    if (status == MYLITE_OK) {
+        status = allocate_table_select_source_rowids(&out_row->source_rowids,
+                                                     out_row->source_rowid_count);
+    }
     return status;
 }
 
@@ -255,6 +262,15 @@ static int allocate_table_select_source_row_indexes(size_t **out_indexes, size_t
     }
     *out_indexes = calloc(index_count, sizeof(**out_indexes));
     return *out_indexes == NULL ? MYLITE_NOMEM : MYLITE_OK;
+}
+
+static int allocate_table_select_source_rowids(int64_t **out_rowids, size_t rowid_count)
+{
+    if (rowid_count == 0U) {
+        return MYLITE_OK;
+    }
+    *out_rowids = calloc(rowid_count, sizeof(**out_rowids));
+    return *out_rowids == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
 
 static int copy_table_select_row_copy_values(const struct mylite_table_select_row *row,
@@ -278,6 +294,10 @@ static int copy_table_select_row_copy_values(const struct mylite_table_select_ro
     if (status == MYLITE_OK && out_row->source_row_index_count != 0U) {
         memcpy(out_row->source_row_indexes, row->source_row_indexes,
                out_row->source_row_index_count * sizeof(*out_row->source_row_indexes));
+    }
+    if (status == MYLITE_OK && out_row->source_rowid_count != 0U) {
+        memcpy(out_row->source_rowids, row->source_rowids,
+               out_row->source_rowid_count * sizeof(*out_row->source_rowids));
     }
     return status;
 }

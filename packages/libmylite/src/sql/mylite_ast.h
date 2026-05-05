@@ -144,6 +144,14 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT = 133,
     MYLITE_SQL_AST_SHOW_CREATE_SCHEMA_STATEMENT = 134,
     MYLITE_SQL_AST_SHOW_TABLE_STATUS_STATEMENT = 135,
+    MYLITE_SQL_AST_DELETE_TARGET_LIST = 136,
+    MYLITE_SQL_AST_DELETE_TARGET_NAME = 137,
+};
+
+enum mylite_sql_ast_delete_form {
+    MYLITE_SQL_AST_DELETE_SINGLE_TABLE = 0,
+    MYLITE_SQL_AST_DELETE_TARGETS_FROM = 1,
+    MYLITE_SQL_AST_DELETE_FROM_TARGETS_USING = 2,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -548,6 +556,7 @@ struct mylite_sql_ast_node {
     enum mylite_sql_ast_show_diagnostics_kind show_diagnostics_kind;
     enum mylite_sql_ast_show_variables_scope show_variables_scope;
     enum mylite_sql_ast_show_status_scope show_status_scope;
+    enum mylite_sql_ast_delete_form delete_form;
     unsigned int column_display_width;
     bool column_type_unsigned;
     bool column_type_signed;
@@ -600,6 +609,8 @@ void mylite_sql_ast_node_set_span(struct mylite_sql_ast_node *node,
                                   struct mylite_sql_source_span span);
 void mylite_sql_ast_node_set_literal_kind(struct mylite_sql_ast_node *node,
                                           enum mylite_sql_ast_literal_kind literal_kind);
+void mylite_sql_ast_node_set_delete_form(struct mylite_sql_ast_node *node,
+                                         enum mylite_sql_ast_delete_form delete_form);
 void mylite_sql_ast_node_set_operator(struct mylite_sql_ast_node *node,
                                       enum mylite_sql_ast_operator operator_kind);
 void mylite_sql_ast_node_set_schema_option(struct mylite_sql_ast_node *node,

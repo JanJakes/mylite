@@ -228,11 +228,13 @@ struct mylite_table_select_row {
     struct mylite_expression_value *order_values;
     struct mylite_expression_value *aggregate_values;
     size_t *source_row_indexes;
+    int64_t *source_rowids;
     size_t value_count;
     size_t output_value_count;
     size_t order_value_count;
     size_t aggregate_value_count;
     size_t source_row_index_count;
+    size_t source_rowid_count;
 };
 
 struct mylite_unordered_table_select_append_state {

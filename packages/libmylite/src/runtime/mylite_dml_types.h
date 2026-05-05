@@ -129,7 +129,11 @@ struct mylite_delete_target {
 };
 
 struct mylite_delete_plan {
+    enum mylite_sql_ast_delete_form form;
     struct mylite_delete_target target;
+    struct mylite_delete_target *targets;
+    size_t target_count;
+    const struct mylite_sql_ast_node *from_clause;
     const struct mylite_sql_ast_node *where_clause;
     const struct mylite_sql_ast_node *order_by_clause;
     const struct mylite_sql_ast_node *limit_clause;

@@ -394,6 +394,8 @@ into focused `*_types.h` headers.
   companion module.
 - [x] Move ALTER TABLE catalog model loading into a focused table DDL model
   companion module.
+- [x] Move ALTER TABLE index-action application and key diagnostics into a
+  focused table DDL index-action companion module.
 - [ ] Continue splitting DML plans and execution; insert value resolution and
   broad DML headers remain the next ownership risks.
 - [x] Start `src/runtime/mylite_dml.{h,c}` with DML plan and row cleanup.
@@ -602,6 +604,8 @@ into focused `*_types.h` headers.
   into a focused table DDL module.
 - [x] Move ALTER TABLE final-model validation into the focused ALTER validation
   module.
+- [x] Move ALTER TABLE index-action application and key diagnostics into a
+  focused table DDL index-action companion module.
 - [x] Split SELECT row and join-condition matching into a focused SELECT
   companion module.
 - [x] Split SELECT joined-row allocation, copying, and null-extension helpers

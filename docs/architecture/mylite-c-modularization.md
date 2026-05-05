@@ -758,6 +758,8 @@ into focused `*_types.h` headers.
   module.
 - [x] Split numeric variadic descriptor inference into a focused expression
   descriptor numeric variadic module.
+- [x] Split `FORMAT()` descriptor length inference into a focused expression
+  descriptor numeric format module.
 - [x] Split `TIME()` descriptor inference and fractional-second deduction into
   a focused expression descriptor temporal time module.
 - [x] Split UNION field descriptor merge rules into a focused expression

@@ -602,6 +602,8 @@ into focused `*_types.h` headers.
   catalog-model, SQL-builder, validation, and statement-preparation modules.
 - [x] Split DROP TABLE execution, validation, catalog cleanup, and physical
   table removal into a focused table DDL module.
+- [x] Split CREATE TABLE physical SQL generation and backing-table creation into
+  a focused table DDL module.
 - [x] Split TRUNCATE TABLE validation, row deletion, and auto-increment reset
   into a focused table DDL module.
 - [x] Split RENAME TABLE validation, physical table rename, and catalog rewrite
@@ -624,6 +626,8 @@ into focused `*_types.h` headers.
   resolution into a focused DML companion module.
 - [x] Split `INSERT ... SET` expression evaluation into a focused DML companion
   module.
+- [x] Split CREATE TABLE physical SQL generation and backing-table creation into
+  a focused table DDL module.
 - [ ] Split `mylite_select_materialize.c` into base-table scan, joined-row
   assembly, outer-join, and materialization-driver modules.
 - [ ] Split `mylite_dml_insert_value_resolve.c` into insert column-list,

@@ -2,6 +2,7 @@
 #define MYLITE_RUNTIME_MYLITE_SELECT_H
 
 #include "mylite_select_compare.h"
+#include "mylite_select_target.h"
 #include "mylite_select_types.h"
 
 void mylite_select_plan_deinit(struct mylite_select_plan *plan);
@@ -69,8 +70,6 @@ int mylite_select_bind_limit_clause(const struct mylite_sql_ast_node *limit_clau
 bool mylite_select_limit_row_is_kept(const struct mylite_select_limit *limit,
                                      struct mylite_select_limit_position position);
 bool mylite_select_limit_is_full(const struct mylite_select_limit *limit, size_t kept_count);
-int mylite_select_resolve_table_target(mylite_db *database, struct mylite_select_table *table);
-bool mylite_select_schema_name_is_system(const char *schema_name);
 int mylite_select_resolve_column_reference(const struct mylite_select_table *table,
                                            const struct mylite_sql_ast_node *expression,
                                            size_t *out_index);

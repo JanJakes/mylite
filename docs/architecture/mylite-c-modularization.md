@@ -685,6 +685,7 @@ into focused `*_types.h` headers.
   descriptor source companion.
 - [x] Split SELECT plan lifetime and vector mutation into a focused plan
   companion.
+- [x] Split SELECT table target resolution into a focused target companion.
 - [x] Split string encoding descriptor inference into a focused expression
   descriptor module.
 - [x] Split shared SHOW CREATE identifier quoting, string literal quoting, and

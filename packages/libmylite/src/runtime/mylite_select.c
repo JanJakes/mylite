@@ -1,6 +1,5 @@
 #include "mylite_select.h"
 
-#include "mylite_catalog.h"
 #include "mylite_diagnostics.h"
 #include "mylite_error_codes.h"
 #include "mylite_span.h"
@@ -266,75 +265,6 @@ size_t mylite_select_plan_column_count(const struct mylite_select_plan *plan)
         return plan->column_count;
     }
     return plan->table.column_count;
-}
-
-int mylite_select_resolve_table_target(mylite_db *database, struct mylite_select_table *table)
-{
-    struct mylite_schema_presence presence;
-    bool exists = false;
-    int status = MYLITE_OK;
-
-    if (table->schema_name == NULL) {
-        if (database->selected_schema == NULL || database->selected_schema[0] == '\0') {
-            (void)mylite_diagnostics_set_error_message(database, "No database selected");
-            return MYLITE_EXEC_ERROR;
-        }
-        table->schema_name = mylite_copy_nonempty_cstring(database->selected_schema);
-        if (table->schema_name == NULL) {
-            (void)mylite_diagnostics_set_error_message(database, "out of memory");
-            return MYLITE_NOMEM;
-        }
-    }
-    if (mylite_select_schema_name_is_system(table->schema_name)) {
-        return MYLITE_UNSUPPORTED;
-    }
-
-    status = mylite_catalog_schema_exists(database, table->schema_name, &presence);
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    if (!presence.exists) {
-        (void)mylite_diagnostics_set_error_message_parts(database, "Unknown database '",
-                                                         table->schema_name, "'");
-        return MYLITE_EXEC_ERROR;
-    }
-    if (presence.is_system) {
-        return MYLITE_UNSUPPORTED;
-    }
-
-    status = mylite_catalog_table_exists(database, table->schema_name, table->table_name, &exists);
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    if (!exists) {
-        return mylite_diagnostics_set_table_doesnt_exist_error(database, table->schema_name,
-                                                               table->table_name);
-    }
-
-    table->physical_name =
-        mylite_catalog_physical_table_name(table->schema_name, table->table_name);
-    if (table->physical_name == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    return MYLITE_OK;
-}
-
-bool mylite_select_schema_name_is_system(const char *schema_name)
-{
-    if (mylite_ascii_case_equal(schema_name, "information_schema")) {
-        return true;
-    }
-    if (mylite_ascii_case_equal(schema_name, "mysql")) {
-        return true;
-    }
-    if (mylite_ascii_case_equal(schema_name, "performance_schema")) {
-        return true;
-    }
-    if (mylite_ascii_case_equal(schema_name, "sys")) {
-        return true;
-    }
-    return false;
 }
 
 static bool

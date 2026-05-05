@@ -4,7 +4,7 @@
 #include "mylite_diagnostics.h"
 #include "mylite_runtime.h"
 #include "mylite_show_create_common.h"
-#include "mylite_show_types.h"
+#include "mylite_show_create_table_target.h"
 #include "mylite_span.h"
 #include "mylite_statement.h"
 #include "sqlite3.h"
@@ -12,11 +12,6 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
-
-struct mylite_show_create_table_target {
-    char *schema_name;
-    char *table_name;
-};
 
 struct mylite_show_create_table_info {
     char *engine;
@@ -32,11 +27,6 @@ struct mylite_show_create_column_collation {
     const char *table_collation;
 };
 
-static int copy_show_create_table_target(mylite_db *database,
-                                         const struct mylite_sql_ast_node *statement,
-                                         struct mylite_show_create_table_target *out_target);
-static int validate_show_create_table_target(mylite_db *database,
-                                             const struct mylite_show_create_table_target *target);
 static int show_create_table_sql(mylite_db *database,
                                  const struct mylite_show_create_table_target *target,
                                  char **out_sql);
@@ -63,7 +53,6 @@ static void
 append_show_create_column_collation(sqlite3_str *create_sql,
                                     struct mylite_show_create_column_collation collation);
 static void show_create_table_info_deinit(struct mylite_show_create_table_info *info);
-static void show_create_table_target_deinit(struct mylite_show_create_table_target *target);
 
 int mylite_show_prepare_create_table_statement(mylite_db *database,
                                                const struct mylite_sql_ast_node *statement,
@@ -71,10 +60,10 @@ int mylite_show_prepare_create_table_statement(mylite_db *database,
 {
     struct mylite_show_create_table_target target = {0};
     char *sqlite_sql = NULL;
-    int status = copy_show_create_table_target(database, statement, &target);
+    int status = mylite_show_create_table_copy_target(database, statement, &target);
 
     if (status == MYLITE_OK) {
-        status = validate_show_create_table_target(database, &target);
+        status = mylite_show_create_table_validate_target(database, &target);
     }
     if (status == MYLITE_OK) {
         status = show_create_table_sql(database, &target, &sqlite_sql);
@@ -86,56 +75,9 @@ int mylite_show_prepare_create_table_statement(mylite_db *database,
     if (status == MYLITE_NOMEM) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
     }
-    show_create_table_target_deinit(&target);
+    mylite_show_create_table_target_deinit(&target);
     sqlite3_free(sqlite_sql);
     return status;
-}
-
-static int copy_show_create_table_target(mylite_db *database,
-                                         const struct mylite_sql_ast_node *statement,
-                                         struct mylite_show_create_table_target *out_target)
-{
-    struct mylite_show_columns_target target = {0};
-    int status = MYLITE_OK;
-
-    *out_target = (struct mylite_show_create_table_target){0};
-    status = mylite_show_copy_columns_table_target(
-        &(const struct mylite_show_columns_source_nodes){
-            .table_name = mylite_ast_child_at(statement, 0U),
-            .explicit_schema = NULL,
-        },
-        &target);
-    if (status != MYLITE_OK) {
-        if (status == MYLITE_UNSUPPORTED) {
-            (void)mylite_diagnostics_set_error_message(
-                database, "SHOW CREATE TABLE names with more than two parts are not supported");
-        }
-        return status;
-    }
-    if (target.schema_name == NULL) {
-        status = mylite_show_copy_columns_selected_schema(database, &target);
-    }
-    if (status == MYLITE_OK) {
-        out_target->schema_name = target.schema_name;
-        out_target->table_name = target.table_name;
-        target = (struct mylite_show_columns_target){0};
-    }
-
-    mylite_show_columns_target_deinit(&target);
-    return status;
-}
-
-static int validate_show_create_table_target(mylite_db *database,
-                                             const struct mylite_show_create_table_target *target)
-{
-    struct mylite_show_columns_target columns_target = {
-        .schema_name = target->schema_name,
-        .table_name = target->table_name,
-    };
-
-    return mylite_show_validate_columns_target(
-        database, &columns_target,
-        "SHOW CREATE TABLE for information_schema tables is not supported");
 }
 
 static int show_create_table_sql(mylite_db *database,
@@ -560,15 +502,4 @@ static void show_create_table_info_deinit(struct mylite_show_create_table_info *
     free(info->table_collation);
     free(info->table_comment);
     *info = (struct mylite_show_create_table_info){0};
-}
-
-static void show_create_table_target_deinit(struct mylite_show_create_table_target *target)
-{
-    if (target == NULL) {
-        return;
-    }
-
-    free(target->schema_name);
-    free(target->table_name);
-    *target = (struct mylite_show_create_table_target){0};
 }

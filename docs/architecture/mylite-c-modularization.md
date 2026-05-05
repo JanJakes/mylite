@@ -592,6 +592,8 @@ into focused `*_types.h` headers.
   reintroduced or added back to the libmylite source list.
 - [ ] Split `mylite_table_ddl.c` into narrower create/drop/rename/truncate,
   catalog-model, SQL-builder, validation, and statement-preparation modules.
+- [x] Split DROP TABLE execution, validation, catalog cleanup, and physical
+  table removal into a focused table DDL module.
 - [x] Split SELECT row and join-condition matching into a focused SELECT
   companion module.
 - [x] Split SELECT joined-row allocation, copying, and null-extension helpers

@@ -770,6 +770,8 @@ into focused `*_types.h` headers.
   duplicate-update copy module.
 - [x] Split INSERT duplicate-entry diagnostics out of unique-index conflict
   probing.
+- [x] Split INSERT/REPLACE transaction finish bookkeeping into a focused DML
+  insert transaction finish module.
 - [x] Split expression function collation inference into a focused expression
   collation companion.
 - [x] Split expression literal, identifier, and CAST collation inference into a

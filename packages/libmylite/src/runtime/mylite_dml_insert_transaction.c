@@ -1,30 +1,11 @@
 #include "mylite_dml.h"
 
 #include "mylite_diagnostics.h"
-#include "mylite_dml_insert_default.h"
+#include "mylite_dml_insert_transaction_finish.h"
 #include "mylite_transactions.h"
 #include "sqlite3.h"
 
 #include <stdlib.h>
-
-static int finish_failed_insert_transaction(mylite_db *database, const char *schema_name,
-                                            const char *table_name,
-                                            const struct mylite_insert_table *table,
-                                            const struct mylite_insert_execution_state *state,
-                                            const struct mylite_statement_atomicity *atomicity,
-                                            int original_status);
-static int finish_successful_insert_transaction(mylite_db *database, const char *schema_name,
-                                                const char *table_name,
-                                                const struct mylite_insert_table *table,
-                                                const struct mylite_insert_execution_state *state,
-                                                struct mylite_statement_atomicity *atomicity,
-                                                struct mylite_insert_transaction_result *result);
-static int finish_successful_replace_transaction(mylite_db *database, const char *schema_name,
-                                                 const char *table_name,
-                                                 const struct mylite_insert_table *table,
-                                                 const struct mylite_insert_execution_state *state,
-                                                 struct mylite_statement_atomicity *atomicity,
-                                                 struct mylite_insert_transaction_result *result);
 
 int mylite_dml_execute_insert_values_transaction(
     mylite_db *database, const char *selected_schema, const char *schema_name,
@@ -109,15 +90,15 @@ int mylite_dml_execute_insert_values_transaction(
     sqlite3_finalize(insert);
 
     if (status != MYLITE_OK) {
-        int final_status = finish_failed_insert_transaction(
+        int final_status = mylite_dml_finish_failed_insert_transaction(
             database, schema_name, values_plan->table_name, table, &state, &atomicity, status);
 
         mylite_dml_insert_execution_state_deinit(&state);
         return final_status;
     }
 
-    status = finish_successful_insert_transaction(database, schema_name, values_plan->table_name,
-                                                  table, &state, &atomicity, out_result);
+    status = mylite_dml_finish_successful_insert_transaction(
+        database, schema_name, values_plan->table_name, table, &state, &atomicity, out_result);
     mylite_dml_insert_execution_state_deinit(&state);
     return status;
 }
@@ -222,15 +203,15 @@ cleanup:
     free(row_state.assigned_columns);
 
     if (status != MYLITE_OK) {
-        int final_status = finish_failed_insert_transaction(
+        int final_status = mylite_dml_finish_failed_insert_transaction(
             database, schema_name, values_plan->table_name, table, &state, &atomicity, status);
 
         mylite_dml_insert_execution_state_deinit(&state);
         return final_status;
     }
 
-    status = finish_successful_insert_transaction(database, schema_name, values_plan->table_name,
-                                                  table, &state, &atomicity, out_result);
+    status = mylite_dml_finish_successful_insert_transaction(
+        database, schema_name, values_plan->table_name, table, &state, &atomicity, out_result);
     mylite_dml_insert_execution_state_deinit(&state);
     return status;
 }
@@ -307,11 +288,11 @@ int mylite_dml_execute_replace_values_transaction(
     sqlite3_finalize(insert);
 
     if (status != MYLITE_OK) {
-        return finish_failed_insert_transaction(database, schema_name, values_plan->table_name,
-                                                table, &state, &atomicity, status);
+        return mylite_dml_finish_failed_insert_transaction(
+            database, schema_name, values_plan->table_name, table, &state, &atomicity, status);
     }
-    return finish_successful_replace_transaction(database, schema_name, values_plan->table_name,
-                                                 table, &state, &atomicity, out_result);
+    return mylite_dml_finish_successful_replace_transaction(
+        database, schema_name, values_plan->table_name, table, &state, &atomicity, out_result);
 }
 
 int mylite_dml_execute_replace_set_transaction(mylite_db *database, const char *schema_name,
@@ -394,92 +375,9 @@ cleanup:
     free(row_state.assigned_columns);
 
     if (status != MYLITE_OK) {
-        return finish_failed_insert_transaction(database, schema_name, values_plan->table_name,
-                                                table, &state, &atomicity, status);
+        return mylite_dml_finish_failed_insert_transaction(
+            database, schema_name, values_plan->table_name, table, &state, &atomicity, status);
     }
-    return finish_successful_replace_transaction(database, schema_name, values_plan->table_name,
-                                                 table, &state, &atomicity, out_result);
-}
-
-static int finish_failed_insert_transaction(mylite_db *database, const char *schema_name,
-                                            const char *table_name,
-                                            const struct mylite_insert_table *table,
-                                            const struct mylite_insert_execution_state *state,
-                                            const struct mylite_statement_atomicity *atomicity,
-                                            int original_status)
-{
-    uint64_t next_auto_increment = mylite_dml_insert_auto_increment_next_value(state);
-    int status = MYLITE_OK;
-
-    mylite_transaction_rollback_statement_atomicity(database, atomicity);
-    if (table->has_auto_increment && next_auto_increment > table->next_auto_increment) {
-        status = mylite_transaction_update_table_auto_increment(database, schema_name, table_name,
-                                                                next_auto_increment);
-        if (status != MYLITE_OK) {
-            return status;
-        }
-    }
-    if (state->generated_insert_id) {
-        database->last_insert_id = state->first_insert_id;
-    }
-    return original_status;
-}
-
-static int finish_successful_insert_transaction(mylite_db *database, const char *schema_name,
-                                                const char *table_name,
-                                                const struct mylite_insert_table *table,
-                                                const struct mylite_insert_execution_state *state,
-                                                struct mylite_statement_atomicity *atomicity,
-                                                struct mylite_insert_transaction_result *result)
-{
-    int status = MYLITE_OK;
-
-    if (table->has_auto_increment) {
-        status = mylite_transaction_update_table_auto_increment(
-            database, schema_name, table_name, mylite_dml_insert_auto_increment_next_value(state));
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_transaction_commit_statement_atomicity(database, atomicity);
-        if (status == MYLITE_OK) {
-            result->affected_rows = (int64_t)state->accepted_row_count;
-            if (state->generated_insert_id) {
-                result->last_insert_id = state->first_insert_id;
-                result->generated_insert_id = true;
-            }
-            return MYLITE_OK;
-        }
-    }
-
-    mylite_transaction_rollback_statement_atomicity(database, atomicity);
-    return status;
-}
-
-static int finish_successful_replace_transaction(mylite_db *database, const char *schema_name,
-                                                 const char *table_name,
-                                                 const struct mylite_insert_table *table,
-                                                 const struct mylite_insert_execution_state *state,
-                                                 struct mylite_statement_atomicity *atomicity,
-                                                 struct mylite_insert_transaction_result *result)
-{
-    int status = MYLITE_OK;
-
-    if (table->has_auto_increment) {
-        status = mylite_transaction_update_table_auto_increment(
-            database, schema_name, table_name, mylite_dml_insert_auto_increment_next_value(state));
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_transaction_commit_statement_atomicity(database, atomicity);
-        if (status == MYLITE_OK) {
-            result->affected_rows =
-                (int64_t)state->accepted_row_count + (int64_t)state->duplicate_count;
-            if (state->generated_insert_id) {
-                result->last_insert_id = state->first_insert_id;
-                result->generated_insert_id = true;
-            }
-            return MYLITE_OK;
-        }
-    }
-
-    mylite_transaction_rollback_statement_atomicity(database, atomicity);
-    return status;
+    return mylite_dml_finish_successful_replace_transaction(
+        database, schema_name, values_plan->table_name, table, &state, &atomicity, out_result);
 }

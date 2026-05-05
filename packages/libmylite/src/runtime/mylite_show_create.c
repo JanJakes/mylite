@@ -3,6 +3,7 @@
 #include "mylite_charset.h"
 #include "mylite_diagnostics.h"
 #include "mylite_runtime.h"
+#include "mylite_show_create_common.h"
 #include "mylite_show_types.h"
 #include "mylite_span.h"
 #include "mylite_statement.h"
@@ -64,7 +65,6 @@ static int append_show_create_table_key_parts(mylite_db *database, sqlite3_str *
 static void append_show_create_table_options(sqlite3_str *create_sql,
                                              const struct mylite_show_create_table_info *info);
 static void append_show_create_table_line_prefix(sqlite3_str *create_sql, bool *first_line);
-static void append_show_create_string_literal(sqlite3_str *create_sql, const char *text);
 static bool show_create_column_needs_implicit_default_null(const char *data_type);
 static void
 append_show_create_column_collation(sqlite3_str *create_sql,
@@ -78,11 +78,9 @@ static int read_show_create_schema_info(mylite_db *database, const char *schema_
 static int append_show_create_schema_text(sqlite3_str *create_sql,
                                           const struct mylite_show_create_schema_info *info,
                                           bool if_not_exists);
-static void append_show_create_identifier(sqlite3_str *create_sql, const char *identifier);
 static bool show_create_schema_should_append_collation(const char *character_set,
                                                        const char *collation);
 static void show_create_schema_info_deinit(struct mylite_show_create_schema_info *info);
-static sqlite3_destructor_type sqlite_transient_destructor(void);
 
 int mylite_show_prepare_create_table_statement(mylite_db *database,
                                                const struct mylite_sql_ast_node *statement,
@@ -179,7 +177,7 @@ static int show_create_table_sql(mylite_db *database,
     }
 
     sqlite3_str_appendall(create_sql, "CREATE TABLE ");
-    append_show_create_identifier(create_sql, target->table_name);
+    mylite_show_create_append_identifier(create_sql, target->table_name);
     sqlite3_str_appendall(create_sql, " (\n");
     status = append_show_create_table_columns(database, create_sql, target, &info, &first_line);
     if (status == MYLITE_OK) {
@@ -221,8 +219,9 @@ static int read_show_create_table_info(mylite_db *database,
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
     }
-    sqlite3_bind_text(select, 1, target->schema_name, -1, sqlite_transient_destructor());
-    sqlite3_bind_text(select, 2, target->table_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(select, 1, target->schema_name, -1,
+                      mylite_show_sqlite_transient_destructor());
+    sqlite3_bind_text(select, 2, target->table_name, -1, mylite_show_sqlite_transient_destructor());
 
     rc = sqlite3_step(select);
     if (rc == SQLITE_ROW) {
@@ -273,8 +272,9 @@ static int append_show_create_table_columns(mylite_db *database, sqlite3_str *cr
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
     }
-    sqlite3_bind_text(select, 1, target->schema_name, -1, sqlite_transient_destructor());
-    sqlite3_bind_text(select, 2, target->table_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(select, 1, target->schema_name, -1,
+                      mylite_show_sqlite_transient_destructor());
+    sqlite3_bind_text(select, 2, target->table_name, -1, mylite_show_sqlite_transient_destructor());
 
     while ((rc = sqlite3_step(select)) == SQLITE_ROW) {
         append_show_create_table_line_prefix(create_sql, first_line);
@@ -313,7 +313,7 @@ static int append_show_create_table_column(sqlite3_str *create_sql, sqlite3_stmt
     const char *data_type = (const char *)sqlite3_column_text(select, data_type_column);
     bool nullable = mylite_ascii_case_equal(is_nullable, "YES");
 
-    append_show_create_identifier(create_sql, column_name);
+    mylite_show_create_append_identifier(create_sql, column_name);
     sqlite3_str_appendf(create_sql, " %s", column_type == NULL ? "" : column_type);
     append_show_create_column_collation(create_sql, (struct mylite_show_create_column_collation){
                                                         .character_set_name = character_set,
@@ -331,7 +331,7 @@ static int append_show_create_table_column(sqlite3_str *create_sql, sqlite3_stmt
         if (mylite_column_default_is_current_timestamp(column_default)) {
             sqlite3_str_appendall(create_sql, "CURRENT_TIMESTAMP");
         } else {
-            append_show_create_string_literal(create_sql, column_default);
+            mylite_show_create_append_string_literal(create_sql, column_default);
         }
     } else if (nullable && show_create_column_needs_implicit_default_null(data_type)) {
         sqlite3_str_appendall(create_sql, " DEFAULT NULL");
@@ -348,7 +348,7 @@ static int append_show_create_table_column(sqlite3_str *create_sql, sqlite3_stmt
     }
     if (comment != NULL && comment[0] != '\0') {
         sqlite3_str_appendall(create_sql, " COMMENT ");
-        append_show_create_string_literal(create_sql, comment);
+        mylite_show_create_append_string_literal(create_sql, comment);
     }
     return sqlite3_str_errcode(create_sql) == SQLITE_OK ? MYLITE_OK : MYLITE_NOMEM;
 }
@@ -375,10 +375,12 @@ static int append_show_create_table_indexes(mylite_db *database, sqlite3_str *cr
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
     }
-    sqlite3_bind_text(select, 1, target->schema_name, -1, sqlite_transient_destructor());
-    sqlite3_bind_text(select, 2, target->table_name, -1, sqlite_transient_destructor());
-    sqlite3_bind_text(select, 3, target->schema_name, -1, sqlite_transient_destructor());
-    sqlite3_bind_text(select, 4, target->table_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(select, 1, target->schema_name, -1,
+                      mylite_show_sqlite_transient_destructor());
+    sqlite3_bind_text(select, 2, target->table_name, -1, mylite_show_sqlite_transient_destructor());
+    sqlite3_bind_text(select, 3, target->schema_name, -1,
+                      mylite_show_sqlite_transient_destructor());
+    sqlite3_bind_text(select, 4, target->table_name, -1, mylite_show_sqlite_transient_destructor());
 
     while ((rc = sqlite3_step(select)) == SQLITE_ROW) {
         int status = MYLITE_OK;
@@ -415,7 +417,7 @@ static int append_show_create_table_index(sqlite3_str *create_sql, sqlite3_stmt 
             sqlite3_str_appendall(create_sql, "UNIQUE ");
         }
         sqlite3_str_appendall(create_sql, "KEY ");
-        append_show_create_identifier(create_sql, index_name);
+        mylite_show_create_append_identifier(create_sql, index_name);
         sqlite3_str_appendall(create_sql, " (");
     }
     return sqlite3_str_errcode(create_sql) == SQLITE_OK ? MYLITE_OK : MYLITE_NOMEM;
@@ -445,9 +447,9 @@ static int append_show_create_table_key_parts(mylite_db *database, sqlite3_str *
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
     }
-    sqlite3_bind_text(parts, 1, schema_name, -1, sqlite_transient_destructor());
-    sqlite3_bind_text(parts, 2, table_name, -1, sqlite_transient_destructor());
-    sqlite3_bind_text(parts, 3, index_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(parts, 1, schema_name, -1, mylite_show_sqlite_transient_destructor());
+    sqlite3_bind_text(parts, 2, table_name, -1, mylite_show_sqlite_transient_destructor());
+    sqlite3_bind_text(parts, 3, index_name, -1, mylite_show_sqlite_transient_destructor());
 
     while ((rc = sqlite3_step(parts)) == SQLITE_ROW) {
         enum {
@@ -462,7 +464,7 @@ static int append_show_create_table_key_parts(mylite_db *database, sqlite3_str *
             sqlite3_str_appendall(create_sql, ",");
         }
         first_part = false;
-        append_show_create_identifier(create_sql, column_name);
+        mylite_show_create_append_identifier(create_sql, column_name);
         if (sqlite3_column_type(parts, sub_part_column) != SQLITE_NULL) {
             sqlite3_str_appendf(create_sql, "(%lld)", sqlite3_column_int64(parts, sub_part_column));
         }
@@ -478,7 +480,7 @@ static int append_show_create_table_key_parts(mylite_db *database, sqlite3_str *
     sqlite3_str_appendall(create_sql, ")");
     if (index_comment != NULL && index_comment[0] != '\0') {
         sqlite3_str_appendall(create_sql, " COMMENT ");
-        append_show_create_string_literal(create_sql, index_comment);
+        mylite_show_create_append_string_literal(create_sql, index_comment);
     }
     if (!mylite_ascii_case_equal(index_name, "PRIMARY") &&
         mylite_ascii_case_equal(is_visible, "NO")) {
@@ -503,7 +505,7 @@ static void append_show_create_table_options(sqlite3_str *create_sql,
                                                       : info->table_collation);
     if (info->table_comment != NULL && info->table_comment[0] != '\0') {
         sqlite3_str_appendall(create_sql, " COMMENT=");
-        append_show_create_string_literal(create_sql, info->table_comment);
+        mylite_show_create_append_string_literal(create_sql, info->table_comment);
     }
 }
 
@@ -595,7 +597,7 @@ static int read_show_create_schema_info(mylite_db *database, const char *schema_
         return mylite_diagnostics_set_sqlite_error(database);
     }
 
-    sqlite3_bind_text(select, 1, schema_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(select, 1, schema_name, -1, mylite_show_sqlite_transient_destructor());
 
     rc = sqlite3_step(select);
     if (rc == SQLITE_ROW) {
@@ -639,38 +641,13 @@ static int append_show_create_schema_text(sqlite3_str *create_sql,
     if (if_not_exists) {
         sqlite3_str_appendall(create_sql, "/*!32312 IF NOT EXISTS*/ ");
     }
-    append_show_create_identifier(create_sql, info->name);
+    mylite_show_create_append_identifier(create_sql, info->name);
     sqlite3_str_appendf(create_sql, " /*!40100 DEFAULT CHARACTER SET %s", info->character_set);
     if (show_create_schema_should_append_collation(info->character_set, info->collation)) {
         sqlite3_str_appendf(create_sql, " COLLATE %s", info->collation);
     }
     sqlite3_str_appendf(create_sql, " */ /*!80016 DEFAULT ENCRYPTION='%s' */", info->encryption);
     return sqlite3_str_errcode(create_sql) == SQLITE_OK ? MYLITE_OK : MYLITE_NOMEM;
-}
-
-static void append_show_create_identifier(sqlite3_str *create_sql, const char *identifier)
-{
-    sqlite3_str_appendchar(create_sql, 1, '`');
-    for (const char *cursor = identifier == NULL ? "" : identifier; *cursor != '\0'; ++cursor) {
-        if (*cursor == '`') {
-            sqlite3_str_appendall(create_sql, "``");
-        } else {
-            sqlite3_str_appendchar(create_sql, 1, *cursor);
-        }
-    }
-    sqlite3_str_appendchar(create_sql, 1, '`');
-}
-
-static void append_show_create_string_literal(sqlite3_str *create_sql, const char *text)
-{
-    sqlite3_str_appendchar(create_sql, 1, '\'');
-    for (const char *cursor = text == NULL ? "" : text; *cursor != '\0'; ++cursor) {
-        if (*cursor == '\'' || *cursor == '\\') {
-            sqlite3_str_appendchar(create_sql, 1, '\\');
-        }
-        sqlite3_str_appendchar(create_sql, 1, *cursor);
-    }
-    sqlite3_str_appendchar(create_sql, 1, '\'');
 }
 
 static bool show_create_column_needs_implicit_default_null(const char *data_type)
@@ -773,9 +750,4 @@ static void show_create_schema_info_deinit(struct mylite_show_create_schema_info
     free(info->collation);
     free(info->encryption);
     *info = (struct mylite_show_create_schema_info){0};
-}
-
-static sqlite3_destructor_type sqlite_transient_destructor(void)
-{
-    return SQLITE_TRANSIENT; // NOLINT(performance-no-int-to-ptr)
 }

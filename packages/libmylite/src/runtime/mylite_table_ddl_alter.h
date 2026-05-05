@@ -23,8 +23,6 @@ int mylite_table_ddl_refresh_alter_table_index_metadata(mylite_db *database,
                                                         struct mylite_alter_table_model *model);
 int mylite_table_ddl_validate_alter_table_final_model(mylite_db *database,
                                                       struct mylite_alter_table_model *model);
-int mylite_table_ddl_validate_alter_table_unique_indexes(
-    mylite_db *database, const struct mylite_alter_table_model *model);
 const struct mylite_alter_table_column *
 mylite_table_ddl_find_alter_table_column(const struct mylite_alter_table_model *model,
                                          const char *name);

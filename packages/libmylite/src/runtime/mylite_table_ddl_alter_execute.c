@@ -14,6 +14,7 @@
 #include "mylite_table_ddl_alter_index.h"
 #include "mylite_table_ddl_alter_model.h"
 #include "mylite_table_ddl_alter_rebuild.h"
+#include "mylite_table_ddl_alter_unique_validate.h"
 #include "sqlite3.h"
 
 #include <mylite/mylite.h>

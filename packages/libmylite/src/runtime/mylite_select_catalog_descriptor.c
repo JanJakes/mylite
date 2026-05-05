@@ -3,6 +3,7 @@
 #include "mylite_charset.h"
 #include "mylite_diagnostics.h"
 #include "mylite_metadata_constants.h"
+#include "mylite_select_catalog_descriptor_source.h"
 #include "mylite_span.h"
 
 #include <ctype.h>
@@ -10,35 +11,8 @@
 #include <stdint.h>
 #include <string.h>
 
-struct mylite_catalog_text_match {
-    const char *text;
-    const char *word;
-};
-
-struct mylite_catalog_column_descriptor_source {
-    sqlite3_stmt *select;
-    const char *extra;
-    const char *is_nullable;
-    const char *data_type;
-    const char *collation_name;
-    const char *column_type;
-    const char *column_key;
-    int column_default_index;
-    int character_octet_length_index;
-    int numeric_precision_index;
-    int numeric_scale_index;
-    int datetime_precision_index;
-    bool nullable;
-    bool is_unsigned;
-    bool is_zerofill;
-    bool auto_increment;
-};
-
 static const uint64_t mylite_select_catalog_decimal_radix = 10U;
 
-static struct mylite_catalog_column_descriptor_source
-catalog_column_descriptor_source(sqlite3_stmt *select);
-static bool catalog_column_descriptor_source_is_nullable(const char *is_nullable);
 static int
 apply_catalog_column_type_descriptor(mylite_db *database,
                                      const struct mylite_catalog_column_descriptor_source *source,
@@ -63,7 +37,6 @@ static void apply_catalog_column_flags(const struct mylite_catalog_column_descri
 static struct mylite_field_descriptor catalog_field_descriptor_defaults(void);
 static int field_descriptor_collation_id(mylite_db *database, const char *collation_name,
                                          unsigned int *out_charset_id);
-static bool catalog_text_contains_word(struct mylite_catalog_text_match match);
 static uint64_t catalog_int64_or_zero(sqlite3_stmt *stmt, int column);
 static uint64_t catalog_text_type_length(const char *data_type);
 static uint64_t
@@ -76,7 +49,7 @@ int mylite_select_catalog_load_column_descriptor(mylite_db *database, sqlite3_st
                                                  struct mylite_field_descriptor *out_descriptor)
 {
     struct mylite_catalog_column_descriptor_source source =
-        catalog_column_descriptor_source(select);
+        mylite_select_catalog_column_descriptor_source(select);
     struct mylite_field_descriptor descriptor = catalog_field_descriptor_defaults();
     int status = MYLITE_OK;
 
@@ -90,58 +63,6 @@ int mylite_select_catalog_load_column_descriptor(mylite_db *database, sqlite3_st
 
     *out_descriptor = descriptor;
     return MYLITE_OK;
-}
-
-static struct mylite_catalog_column_descriptor_source
-catalog_column_descriptor_source(sqlite3_stmt *select)
-{
-    enum {
-        select_extra = 1,
-        select_is_nullable = 2,
-        select_data_type = 3,
-        select_character_octet_length = 4,
-        select_numeric_precision = 5,
-        select_numeric_scale = 6,
-        select_datetime_precision = 7,
-        select_collation_name = 8,
-        select_column_type = 9,
-        select_column_key = 10,
-        select_column_default = 11,
-    };
-    struct mylite_catalog_column_descriptor_source source = {
-        .select = select,
-        .extra = (const char *)sqlite3_column_text(select, select_extra),
-        .is_nullable = (const char *)sqlite3_column_text(select, select_is_nullable),
-        .data_type = (const char *)sqlite3_column_text(select, select_data_type),
-        .collation_name = (const char *)sqlite3_column_text(select, select_collation_name),
-        .column_type = (const char *)sqlite3_column_text(select, select_column_type),
-        .column_key = (const char *)sqlite3_column_text(select, select_column_key),
-        .column_default_index = select_column_default,
-        .character_octet_length_index = select_character_octet_length,
-        .numeric_precision_index = select_numeric_precision,
-        .numeric_scale_index = select_numeric_scale,
-        .datetime_precision_index = select_datetime_precision,
-    };
-
-    source.nullable = catalog_column_descriptor_source_is_nullable(source.is_nullable);
-    source.is_unsigned = catalog_text_contains_word(
-        (struct mylite_catalog_text_match){.text = source.column_type, .word = "unsigned"});
-    source.is_zerofill = catalog_text_contains_word(
-        (struct mylite_catalog_text_match){.text = source.column_type, .word = "zerofill"});
-    source.auto_increment = catalog_text_contains_word(
-        (struct mylite_catalog_text_match){.text = source.extra, .word = "auto_increment"});
-    return source;
-}
-
-static bool catalog_column_descriptor_source_is_nullable(const char *is_nullable)
-{
-    if (is_nullable == NULL) {
-        return true;
-    }
-    if (mylite_ascii_case_equal(is_nullable, "YES")) {
-        return true;
-    }
-    return false;
 }
 
 static int
@@ -400,7 +321,7 @@ static void apply_catalog_column_flags(const struct mylite_catalog_column_descri
     if (source->auto_increment) {
         descriptor->flags |= MYLITE_FIELD_FLAG_AUTO_INCREMENT;
     }
-    if (catalog_text_contains_word((struct mylite_catalog_text_match){
+    if (mylite_select_catalog_text_contains_word((struct mylite_catalog_text_match){
             .text = source->extra,
             .word = "on update CURRENT_TIMESTAMP",
         })) {
@@ -441,27 +362,6 @@ static int field_descriptor_collation_id(mylite_db *database, const char *collat
 
     *out_charset_id = (unsigned int)collation->id;
     return MYLITE_OK;
-}
-
-static bool catalog_text_contains_word(struct mylite_catalog_text_match match)
-{
-    size_t word_length = match.word == NULL ? 0U : strlen(match.word);
-
-    if (match.text == NULL || word_length == 0U) {
-        return false;
-    }
-    for (const char *cursor = match.text; *cursor != '\0'; ++cursor) {
-        size_t index = 0U;
-
-        while (index < word_length && cursor[index] != '\0' &&
-               tolower((unsigned char)cursor[index]) == tolower((unsigned char)match.word[index])) {
-            ++index;
-        }
-        if (index == word_length) {
-            return true;
-        }
-    }
-    return false;
 }
 
 static uint64_t catalog_int64_or_zero(sqlite3_stmt *stmt, int column)

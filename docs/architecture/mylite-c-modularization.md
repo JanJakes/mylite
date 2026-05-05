@@ -679,6 +679,8 @@ into focused `*_types.h` headers.
   output companion.
 - [x] Split COUNT(DISTINCT ...) aggregate argument binding and descriptor
   inference into a focused SELECT aggregate companion.
+- [x] Split SELECT catalog descriptor row-source parsing into a focused
+  descriptor source companion.
 - [x] Split string encoding descriptor inference into a focused expression
   descriptor module.
 - [x] Split shared SHOW CREATE identifier quoting, string literal quoting, and

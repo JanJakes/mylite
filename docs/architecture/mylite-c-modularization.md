@@ -654,6 +654,8 @@ into focused `*_types.h` headers.
   scalar expression callback adapters out of the statement-copy module.
 - [x] Split SELECT `LIMIT` parsing and row-retention helpers out of the common
   SELECT utility module.
+- [x] Split SELECT column-reference resolution, reference display-name copying,
+  and alias copying out of the common SELECT utility module.
 - [ ] Split `mylite_dml_insert_value_resolve.c` into insert column-list,
   positional/default, `INSERT ... SET`, and SQLite-bind modules.
 - [ ] Split `mylite_select_subquery_eval.c` into scalar subquery, quantified

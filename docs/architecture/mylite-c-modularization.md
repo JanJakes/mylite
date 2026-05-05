@@ -640,6 +640,8 @@ into focused `*_types.h` headers.
   a focused table DDL module.
 - [x] Split CREATE TABLE catalog insertion into a focused table DDL module.
 - [x] Split create-table plan column lookup into a focused table DDL helper.
+- [x] Split SELECT materialized group finalization and DISTINCT probing into a
+  focused materialization helper.
 - [ ] Split `mylite_select_materialize.c` into base-table scan, joined-row
   assembly, outer-join, and materialization-driver modules.
 - [ ] Split `mylite_dml_insert_value_resolve.c` into insert column-list,

@@ -8,6 +8,7 @@
 #include "mylite_select_join_cache.h"
 #include "mylite_select_join_range_rowset.h"
 #include "mylite_select_join_rows.h"
+#include "mylite_select_materialize_common.h"
 #include "mylite_select_row_loader.h"
 #include "mylite_select_row_match.h"
 #include "mylite_select_rowset.h"
@@ -91,17 +92,6 @@ static int scan_aggregate_table_select_groups(mylite_stmt *stmt,
                                               struct mylite_table_select_group **groups,
                                               size_t *group_count,
                                               const struct mylite_select_eval_callbacks *callbacks);
-static int
-append_finalized_table_select_groups(mylite_stmt *stmt, struct mylite_table_select_group *groups,
-                                     size_t group_count,
-                                     const struct mylite_select_eval_callbacks *callbacks);
-static int
-append_finalized_table_select_group(mylite_stmt *stmt, struct mylite_table_select_group *group,
-                                    const struct mylite_select_eval_callbacks *callbacks);
-static int
-check_table_select_distinct_duplicate(mylite_stmt *stmt, struct mylite_table_select_row *row,
-                                      bool *out_duplicate,
-                                      const struct mylite_select_eval_callbacks *callbacks);
 int mylite_select_materialize_table_result(mylite_stmt *stmt,
                                            const struct mylite_select_eval_callbacks *callbacks)
 {
@@ -161,7 +151,8 @@ materialize_ordered_table_select_result(mylite_stmt *stmt,
         if (mylite_select_duplicate_mode_is_distinct(stmt->select_plan.duplicate_mode)) {
             bool duplicate = false;
 
-            status = check_table_select_distinct_duplicate(stmt, &row, &duplicate, callbacks);
+            status = mylite_select_materialize_check_distinct_duplicate(stmt, &row, &duplicate,
+                                                                        callbacks);
             if (status != MYLITE_OK) {
                 mylite_select_row_deinit(&row);
                 return status;
@@ -267,7 +258,8 @@ append_unordered_table_select_distinct_row(mylite_stmt *stmt, struct mylite_tabl
                                            const struct mylite_select_eval_callbacks *callbacks)
 {
     bool duplicate = false;
-    int status = check_table_select_distinct_duplicate(stmt, row, &duplicate, callbacks);
+    int status =
+        mylite_select_materialize_check_distinct_duplicate(stmt, row, &duplicate, callbacks);
 
     if (status != MYLITE_OK) {
         return status;
@@ -362,8 +354,8 @@ materialize_joined_table_select_result(mylite_stmt *stmt,
         status = mylite_select_group_append_empty_implicit(stmt, &state.groups, &state.group_count);
     }
     if (status == MYLITE_OK && aggregate_query) {
-        status =
-            append_finalized_table_select_groups(stmt, state.groups, state.group_count, callbacks);
+        status = mylite_select_materialize_append_finalized_groups(stmt, state.groups,
+                                                                   state.group_count, callbacks);
     }
     if (status == MYLITE_OK && stmt->select_plan.order_key_count != 0U) {
         status = mylite_select_result_sort_rows(stmt->database, &stmt->select_result,
@@ -424,8 +416,8 @@ materialize_outer_joined_table_select_result(mylite_stmt *stmt,
         status = mylite_select_group_append_empty_implicit(stmt, &state.groups, &state.group_count);
     }
     if (status == MYLITE_OK && aggregate_query) {
-        status =
-            append_finalized_table_select_groups(stmt, state.groups, state.group_count, callbacks);
+        status = mylite_select_materialize_append_finalized_groups(stmt, state.groups,
+                                                                   state.group_count, callbacks);
     }
     if (status == MYLITE_OK && stmt->select_plan.order_key_count != 0U) {
         status = mylite_select_result_sort_rows(stmt->database, &stmt->select_result,
@@ -766,7 +758,8 @@ static int process_joined_table_select_nonaggregate_row(
             (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         }
         if (status == MYLITE_OK && distinct) {
-            status = check_table_select_distinct_duplicate(stmt, &copy, &duplicate, callbacks);
+            status = mylite_select_materialize_check_distinct_duplicate(stmt, &copy, &duplicate,
+                                                                        callbacks);
         }
         if (status == MYLITE_OK && duplicate) {
             mylite_select_row_deinit(&copy);
@@ -815,7 +808,8 @@ materialize_aggregate_table_select_result(mylite_stmt *stmt,
         status = mylite_select_group_append_empty_implicit(stmt, &groups, &group_count);
     }
     if (status == MYLITE_OK) {
-        status = append_finalized_table_select_groups(stmt, groups, group_count, callbacks);
+        status =
+            mylite_select_materialize_append_finalized_groups(stmt, groups, group_count, callbacks);
     }
     if (status == MYLITE_OK && stmt->select_plan.order_key_count != 0U) {
         status = mylite_select_result_sort_rows(stmt->database, &stmt->select_result,
@@ -881,65 +875,4 @@ static int scan_aggregate_table_select_groups(mylite_stmt *stmt,
         status = mylite_diagnostics_set_sqlite_error(stmt->database);
     }
     return status;
-}
-
-static int
-append_finalized_table_select_groups(mylite_stmt *stmt, struct mylite_table_select_group *groups,
-                                     size_t group_count,
-                                     const struct mylite_select_eval_callbacks *callbacks)
-{
-    for (size_t index = 0U; index < group_count; ++index) {
-        int status = append_finalized_table_select_group(stmt, &groups[index], callbacks);
-
-        if (status != MYLITE_OK) {
-            return status;
-        }
-    }
-    return MYLITE_OK;
-}
-
-static int append_finalized_table_select_group(mylite_stmt *stmt,
-                                               struct mylite_table_select_group *group,
-                                               const struct mylite_select_eval_callbacks *callbacks)
-{
-    struct mylite_table_select_row row = {0};
-    bool having_matches = true;
-    bool duplicate = false;
-    int status = mylite_select_group_finalize(stmt, group, &row);
-
-    if (status == MYLITE_OK) {
-        status = mylite_select_eval_having(stmt, &row, callbacks, &having_matches);
-    }
-    if (status == MYLITE_OK && having_matches &&
-        mylite_select_duplicate_mode_is_distinct(stmt->select_plan.duplicate_mode)) {
-        status = check_table_select_distinct_duplicate(stmt, &row, &duplicate, callbacks);
-    }
-    if (status == MYLITE_OK && duplicate) {
-        mylite_select_row_deinit(&row);
-        return MYLITE_OK;
-    }
-    if (status == MYLITE_OK && having_matches && stmt->select_plan.order_key_count != 0U) {
-        status = mylite_select_eval_order_values(stmt, &row, callbacks);
-    }
-    if (status == MYLITE_OK && having_matches) {
-        status = mylite_select_result_append_row(stmt->database, &stmt->select_result, &row);
-    }
-    mylite_select_row_deinit(&row);
-    return status;
-}
-
-static int
-check_table_select_distinct_duplicate(mylite_stmt *stmt, struct mylite_table_select_row *row,
-                                      bool *out_duplicate,
-                                      const struct mylite_select_eval_callbacks *callbacks)
-{
-    int status = mylite_select_eval_materialize_output_values(stmt, row, callbacks);
-
-    *out_duplicate = false;
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    *out_duplicate = mylite_select_result_distinct_row_exists(
-        &stmt->select_result, &stmt->select_plan, &stmt->result_metadata, row);
-    return MYLITE_OK;
 }

@@ -104,50 +104,48 @@ Rules for future moves:
 
 ## Current `mylite.c` Map
 
-`mylite.c` is now about 15.4k lines after the initial type, diagnostics,
+`mylite.c` is now about 13.8k lines after the initial type, diagnostics,
 connection, catalog, SHOW/information-schema, DDL, transaction, DML, SELECT
 planning, and ALTER/SELECT helper slices. The remaining major regions are:
 
 - Lines 1-53: includes and small process-wide constants. Split only when a
   concrete owner needs each constant.
-- Lines 54-1356: file-local prototype wall. Treat this as a symptom, not a
-  module. It should shrink naturally as statement families move.
-- Lines 1357-2031: public `mylite_prepare()`, parsed statement dispatch,
+- Lines 54-1202: file-local prototype wall plus the table SELECT callback
+  table. Treat this as a symptom, not a module. It should shrink naturally as
+  statement families move.
+- Lines 1203-1877: public `mylite_prepare()`, parsed statement dispatch,
   SQLite fallback translation, and family prepare wrappers. Move to
   `mylite_statement` after family-owned prepare entry points are stable.
-- Lines 2032-2731: table SELECT, scalar SELECT, and UNION preparation. Move
+- Lines 1878-2577: table SELECT, scalar SELECT, and UNION preparation. Move
   after SELECT planning, scalar-select, and union boundaries are narrower than
   the current implementation.
-- Lines 2732-6432: result metadata attachment, descriptor inference, function
+- Lines 2578-6278: result metadata attachment, descriptor inference, function
   descriptor inference, catalog-column descriptor loading, and scalar/text
   helper predicates. Extract metadata inference before larger SELECT runtime
   moves.
-- Lines 6433-9635: SELECT predicate binding,
+- Lines 6279-9481: SELECT predicate binding,
   grouping/order validation, reference resolution, and subquery validation.
   Move into focused SELECT planning modules instead of one broad select
   runtime.
-- Lines 9636-9839: table SELECT expression clone/remap and aggregate binding
+- Lines 9482-9685: table SELECT expression clone/remap and aggregate binding
   collection. Move with SELECT prepared-statement ownership.
-- Lines 9840-10079: custom statement allocation plus `mylite_statement_execute_custom()`
+- Lines 9686-9925: custom statement allocation plus `mylite_statement_execute_custom()`
   dispatch. Move allocation/dispatch to `mylite_statement` after every
   statement family exposes narrow prepare and execute APIs.
-- Lines 10080-11225: scalar SELECT execution, session functions, `STRCMP()`,
+- Lines 9926-11071: scalar SELECT execution, session functions, `STRCMP()`,
   charset/collation/coercibility evaluation, and collation inference. Split
   into session, string, and collation modules before moving larger SELECT
   execution.
-- Lines 11226-11626: table SELECT and UNION execution entry points plus UNION
+- Lines 11072-11498: table SELECT and UNION execution entry points plus UNION
   materialization, de-duplication, ordering, and warning propagation. Move UNION
   into a focused SELECT/UNION module.
-- Lines 11627-13060: table SELECT materialization: joins, outer joins,
-  group orchestration, scans, and predicate diagnostics. Split by join
-  execution, materialization orchestration, and predicate diagnostics.
-- Lines 13061-13664: scalar SELECT statement copy/evaluation helpers and
+- Lines 11499-12102: scalar SELECT statement copy/evaluation helpers and
   scalar aggregate evaluation. Move to a small scalar-select module after
   metadata inference is split.
-- Lines 13665-15165: subquery preparation/scanning/evaluation, row-value
+- Lines 12103-13603: subquery preparation/scanning/evaluation, row-value
   comparison, and subquery diagnostics. Move after SELECT entry points and
   expression callback APIs are stable.
-- Lines 15166-15376: remaining utility/classifier tail: row-subquery
+- Lines 13604-13814: remaining utility/classifier tail: row-subquery
   classifiers and parse/translate status mapping. Move each helper with its
   owning family; do not create a generic catch-all utility module.
 
@@ -183,6 +181,10 @@ planning, and ALTER/SELECT helper slices. The remaining major regions are:
 - `src/runtime/mylite_select_group.{h,c}`
   Table SELECT group state ownership, aggregate-state updates, group-key
   matching, finalized row construction, and group cleanup.
+- `src/runtime/mylite_select_materialize.{h,c}`
+  Table SELECT row materialization orchestration, join and outer-join scanning,
+  row filtering, DISTINCT checks, ORDER/LIMIT application, and result-row
+  appends behind SELECT eval callbacks.
 - `src/runtime/mylite_metadata.{h,c}`
   Field descriptors, result metadata inference, and column accessor helpers.
 - `src/runtime/mylite_show.{h,c}`
@@ -497,7 +499,8 @@ only the core object model and transitional shared helpers listed here:
 - [ ] Move DISTINCT validation into `mylite_select`.
 - [ ] Move grouping validation into `mylite_select`.
 - [x] Move SELECT SQL construction into `mylite_select`.
-- [ ] Move table SELECT materialization into `mylite_select`.
+- [x] Move table SELECT materialization into a focused SELECT materialize
+  module.
 - [x] Move table SELECT row copying, result ownership, rowset allocation, and
   LIMIT trimming helpers into `mylite_select_rowset`.
 - [x] Move shared SQLite column-to-expression value copying into a focused
@@ -507,7 +510,8 @@ only the core object model and transitional shared helpers listed here:
 - [x] Move table SELECT expression evaluation callbacks, output
   materialization, current-row projection, and order-value evaluation into a
   focused SELECT eval module.
-- [ ] Move outer join materialization into `mylite_select`.
+- [x] Move outer join materialization into the focused SELECT materialize
+  module.
 - [x] Move table SELECT join condition cache range calculation, lookups, stores,
   and cleanup into a focused SELECT join-cache module.
 - [x] Move table SELECT current SQLite row copying, eval column-copy callback,

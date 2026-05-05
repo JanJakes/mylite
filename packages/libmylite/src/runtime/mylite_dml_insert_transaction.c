@@ -1,6 +1,7 @@
 #include "mylite_dml.h"
 
 #include "mylite_diagnostics.h"
+#include "mylite_dml_insert_replace_execute.h"
 #include "mylite_dml_insert_transaction_finish.h"
 #include "mylite_transactions.h"
 #include "sqlite3.h"

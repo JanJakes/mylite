@@ -443,6 +443,8 @@ into focused `*_types.h` headers.
   statement module.
 - [ ] Move `INSERT IGNORE` warning/error downgrade logic into `mylite_dml`.
 - [x] Move `REPLACE` delete-then-insert behavior into `mylite_dml`.
+- [x] Split `REPLACE` row execution and conflict deletion into a focused DML
+  insert companion module.
 - [x] Move update target copy and assignment target binding into `mylite_dml`.
 - [x] Move remaining update clause and assignment value validation into
   `mylite_dml`.

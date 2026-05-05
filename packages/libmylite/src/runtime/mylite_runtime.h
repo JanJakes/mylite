@@ -24,11 +24,6 @@
 #include <stdint.h>
 #include <time.h>
 
-struct mylite_strcmp_compare_options {
-    bool ignore_trailing_spaces;
-    bool case_sensitive;
-};
-
 struct mylite_db {
     sqlite3 *sqlite;
     char *error_message;

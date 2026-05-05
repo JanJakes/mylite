@@ -846,6 +846,8 @@ into focused `*_types.h` headers.
   into a focused transaction companion.
 - [x] Split statement prepare custom-kind mapping into a focused prepare
   companion.
+- [x] Split standalone table-index DDL validation out of the CREATE/DROP INDEX
+  executor.
 - [ ] Split `mylite_dml_insert_value_resolve.c` into insert column-list,
   positional/default, and `INSERT ... SET` modules.
 - [ ] Split `mylite_select_subquery_eval.c` into scalar subquery, quantified

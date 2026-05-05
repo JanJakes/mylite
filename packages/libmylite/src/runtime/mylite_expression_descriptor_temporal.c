@@ -127,6 +127,19 @@ bool mylite_expression_descriptor_infer_temporal_scalar_function(
         out_descriptor->length = mylite_mysql_datediff_function_display_length;
         return true;
     }
+    if (mylite_function_name_is_last_day(name)) {
+        struct mylite_field_descriptor descriptor = {
+            .type = MYLITE_FIELD_TYPE_DATE,
+            .flags = MYLITE_FIELD_FLAG_BINARY,
+            .length = mylite_mysql_date_display_length,
+            .charset_id = mylite_mysql_binary_charset_id,
+            .nullable = true,
+        };
+
+        mylite_field_descriptor_set_nullable(&descriptor, true);
+        *out_descriptor = descriptor;
+        return true;
+    }
     if (mylite_function_name_is_timestampdiff(name)) {
         *out_descriptor = mylite_expression_descriptor_signed_longlong(true);
         out_descriptor->length = mylite_mysql_signed_longlong_display_length;

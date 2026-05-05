@@ -27,6 +27,7 @@ bool mylite_function_name_is_strcmp(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_regexp_like(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_date_extraction(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_datediff(const struct mylite_sql_ast_node *name);
+bool mylite_function_name_is_last_day(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_timestampdiff(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_to_days(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_to_seconds(const struct mylite_sql_ast_node *name);

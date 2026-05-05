@@ -264,6 +264,7 @@ static int test_regexp_predicates_execution(void);
 static int test_scalar_builtin_functions_execution(void);
 static int test_current_temporal_functions_execution(void);
 static int test_date_and_datediff_functions_execution(void);
+static int test_last_day_function_execution(void);
 static int test_timestampdiff_function_execution(void);
 static int test_timestampadd_function_execution(void);
 static int test_to_days_function_execution(void);
@@ -491,6 +492,7 @@ int main(void)
     failures += test_scalar_builtin_functions_execution();
     failures += test_current_temporal_functions_execution();
     failures += test_date_and_datediff_functions_execution();
+    failures += test_last_day_function_execution();
     failures += test_timestampdiff_function_execution();
     failures += test_timestampadd_function_execution();
     failures += test_to_days_function_execution();
@@ -6384,6 +6386,204 @@ static int test_date_and_datediff_functions_execution(void)
     failures += expect_no_stmt_handle(&stmt, "EXTRACT combined unit deferred");
     failures += prepare_sql(database, "SELECT EXTRACT(YEAR)", MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "EXTRACT ordinary call syntax");
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_last_day_function_execution(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const struct expected_result_metadata metadata[] = {
+        {"last_day_value", NULL, NULL, NULL, NULL, NULL, 10U, MYLITE_FIELD_TYPE_DATE, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"last_day_null", NULL, NULL, NULL, NULL, NULL, 10U, MYLITE_FIELD_TYPE_DATE, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+    };
+    static const char *const projection_columns[] = {"id", "month_end"};
+    static const char *const projection_values[] = {
+        "1",
+        "2024-02-29",
+        "2",
+        "2024-03-31",
+    };
+    static const char *const updated_columns[] = {"id", "month_end", "note"};
+    static const char *const updated_values[] = {"1", "2024-02-29", "feb"};
+    static const char *const remaining_columns[] = {"id"};
+    static const char *const remaining_values[] = {"1", "3"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open LAST_DAY database");
+
+    failures += prepare_sql(database,
+                            "SELECT LAST_DAY('2024-02-10') AS last_day_value, "
+                            "LAST_DAY(NULL) AS last_day_null",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "LAST_DAY metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "LAST_DAY metadata row");
+    failures += expect_string(mylite_column_text(stmt, 0), "2024-02-29", "LAST_DAY metadata value");
+    failures += expect_null_text(mylite_column_text(stmt, 1), "LAST_DAY metadata null");
+    failures += expect_int(mylite_warning_count(database), 0, "LAST_DAY metadata warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "LAST_DAY metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT LAST_DAY('2024-02-10') AS leap_feb, "
+                            "LAST_DAY('2023-02-10 12:34:56') AS normal_feb, "
+                            "LAST_DAY('2024-04-30') AS april, "
+                            "LAST_DAY('0000-01-00') AS zero_day, "
+                            "LAST_DAY(NULL) AS null_value, "
+                            "LAST_DAY(240229) AS short_num, "
+                            "LAST_DAY(20240210123456) AS datetime_num",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "LAST_DAY scalar row");
+    failures += expect_string(mylite_column_text(stmt, 0), "2024-02-29", "LAST_DAY leap feb");
+    failures += expect_string(mylite_column_text(stmt, 1), "2023-02-28", "LAST_DAY normal feb");
+    failures += expect_string(mylite_column_text(stmt, 2), "2024-04-30", "LAST_DAY april");
+    failures += expect_string(mylite_column_text(stmt, 3), "0000-01-31", "LAST_DAY zero day");
+    failures += expect_null_text(mylite_column_text(stmt, 4), "LAST_DAY null");
+    failures += expect_string(mylite_column_text(stmt, 5), "2024-02-29", "LAST_DAY short num");
+    failures += expect_string(mylite_column_text(stmt, 6), "2024-02-29", "LAST_DAY datetime num");
+    failures += expect_int(mylite_warning_count(database), 0, "LAST_DAY scalar warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "LAST_DAY scalar done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT LAST_DAY('2008-00-00') AS zero_month, "
+                            "LAST_DAY('0000-00-00 12:34:56') AS zero_datetime, "
+                            "LAST_DAY('2024-02-10foo') AS truncated_date, "
+                            "LAST_DAY('2024-02-10 12:34:56foo') AS truncated_datetime, "
+                            "LAST_DAY('bad') AS bad_text, "
+                            "LAST_DAY('2024-02-30') AS bad_day, "
+                            "LAST_DAY(20240210.9) AS decimal_date",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "LAST_DAY invalid row");
+    failures += expect_null_text(mylite_column_text(stmt, 0), "LAST_DAY zero month");
+    failures += expect_null_text(mylite_column_text(stmt, 1), "LAST_DAY zero datetime");
+    failures += expect_string(mylite_column_text(stmt, 2), "2024-02-29", "LAST_DAY truncated date");
+    failures +=
+        expect_string(mylite_column_text(stmt, 3), "2024-02-29", "LAST_DAY truncated datetime");
+    failures += expect_null_text(mylite_column_text(stmt, 4), "LAST_DAY bad text");
+    failures += expect_null_text(mylite_column_text(stmt, 5), "LAST_DAY bad day");
+    failures += expect_string(mylite_column_text(stmt, 6), "2024-02-29", "LAST_DAY decimal date");
+    failures += expect_int(mylite_warning_count(database), 7, "LAST_DAY warning count");
+    for (int index = 0; index < 7; ++index) {
+        failures += expect_int((int)mylite_warning_code(database, index),
+                               mysql_warning_truncated_wrong_value, "LAST_DAY warning code");
+    }
+    failures +=
+        expect_string(mylite_warning_message(database, 0), "Incorrect datetime value: '2008-00-00'",
+                      "LAST_DAY zero month warning");
+    failures +=
+        expect_string(mylite_warning_message(database, 1), "Incorrect datetime value: '0000-00-00'",
+                      "LAST_DAY zero datetime warning");
+    failures += expect_string(mylite_warning_message(database, 2),
+                              "Truncated incorrect date value: '2024-02-10foo'",
+                              "LAST_DAY truncated date warning");
+    failures += expect_string(mylite_warning_message(database, 3),
+                              "Truncated incorrect datetime value: "
+                              "'2024-02-10 12:34:56foo'",
+                              "LAST_DAY truncated datetime warning");
+    failures += expect_string(mylite_warning_message(database, 4),
+                              "Incorrect datetime value: 'bad'", "LAST_DAY bad text warning");
+    failures += expect_string(mylite_warning_message(database, 5),
+                              "Incorrect datetime value: '2024-02-30'", "LAST_DAY bad day warning");
+    failures +=
+        expect_string(mylite_warning_message(database, 6),
+                      "Truncated incorrect date value: '20240210.9'", "LAST_DAY decimal warning");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "LAST_DAY invalid done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE DATABASE last_day_functions", MYLITE_DONE);
+    failures += execute_sql(database, "USE last_day_functions", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE temporal_last_day ("
+                            "id INT PRIMARY KEY, "
+                            "dt VARCHAR(32), "
+                            "month_end DATE, "
+                            "note VARCHAR(16))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO temporal_last_day VALUES "
+                            "(1, '2024-02-10', NULL, 'feb'), "
+                            "(2, '2024-03-01 12:00:00', NULL, 'mar'), "
+                            "(3, NULL, NULL, 'null')",
+                            MYLITE_DONE);
+    failures += expect_select_rows(database,
+                                   "SELECT id, LAST_DAY(dt) AS month_end "
+                                   "FROM temporal_last_day "
+                                   "WHERE LAST_DAY(dt) >= '2024-02-29' "
+                                   "ORDER BY LAST_DAY(dt), id",
+                                   projection_columns, 2, projection_values, 2,
+                                   "LAST_DAY table projection");
+    failures += expect_int(mylite_warning_count(database), 0, "LAST_DAY table warnings");
+    failures += execute_sql_expect_done_affected(database,
+                                                 "UPDATE temporal_last_day "
+                                                 "SET month_end = LAST_DAY(dt) "
+                                                 "WHERE id = 1",
+                                                 1, "LAST_DAY update");
+    failures += expect_select_rows(database,
+                                   "SELECT id, month_end, note "
+                                   "FROM temporal_last_day WHERE id = 1",
+                                   updated_columns, 3, updated_values, 1, "LAST_DAY updated row");
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM temporal_last_day WHERE LAST_DAY(dt) = '2024-03-31'", 1,
+        "LAST_DAY delete");
+    failures +=
+        expect_select_rows(database, "SELECT id FROM temporal_last_day ORDER BY id",
+                           remaining_columns, 1, remaining_values, 2, "LAST_DAY delete result");
+    failures += prepare_sql(database,
+                            "UPDATE temporal_last_day "
+                            "SET month_end = LAST_DAY('2008-00-00') WHERE id = 1",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR,
+                              "LAST_DAY invalid update warning promoted");
+    failures +=
+        expect_contains(mylite_error_message(database), "Incorrect datetime value: '2008-00-00'",
+                        "LAST_DAY invalid update error");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "LAST_DAY invalid update warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_truncated_wrong_value,
+                   "LAST_DAY invalid update warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database,
+                                   "SELECT id, month_end, note "
+                                   "FROM temporal_last_day WHERE id = 1",
+                                   updated_columns, 3, updated_values, 1,
+                                   "LAST_DAY invalid update unchanged row");
+    failures += prepare_sql(database, "DELETE FROM temporal_last_day WHERE LAST_DAY('bad') IS NULL",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR,
+                              "LAST_DAY invalid delete warning promoted");
+    failures += expect_contains(mylite_error_message(database), "Incorrect datetime value: 'bad'",
+                                "LAST_DAY invalid delete error");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "LAST_DAY invalid delete warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_truncated_wrong_value,
+                   "LAST_DAY invalid delete warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM temporal_last_day ORDER BY id",
+                                   remaining_columns, 1, remaining_values, 2,
+                                   "LAST_DAY invalid delete unchanged rows");
+
+    failures += prepare_sql(database, "SELECT LAST_DAY()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "LAST_DAY empty arity");
+    failures +=
+        prepare_sql(database, "SELECT LAST_DAY('2024-01-01','x')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "LAST_DAY two arity");
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)

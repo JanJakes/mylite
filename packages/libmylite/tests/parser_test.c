@@ -5728,7 +5728,8 @@ static int test_scalar_function_call_syntax(void)
                           "TO_SECONDS(DATE_ADD(CURDATE(), INTERVAL 1 SECOND)), "
                           "FROM_DAYS(739310), FROM_DAYS(TO_DAYS('2024-02-29')), "
                           "TIME('12:34:56'), "
-                          "TIME(DATE_ADD('2024-02-29 12:34:56', INTERVAL 1 SECOND));",
+                          "TIME(DATE_ADD('2024-02-29 12:34:56', INTERVAL 1 SECOND)), "
+                          "LAST_DAY('2024-02-10');",
                           MYLITE_SQL_PARSE_OK, &result);
     select_list = child_at(child_at(result.root, 0U), 0U);
     failures += expect_function_call(child_at(child_at(select_list, 0U), 0U), "DATE", 1U,
@@ -5755,6 +5756,8 @@ static int test_scalar_function_call_syntax(void)
                                      "TIME function call");
     failures += expect_function_call(child_at(child_at(select_list, 11U), 0U), "TIME", 1U,
                                      "TIME nested temporal call");
+    failures += expect_function_call(child_at(child_at(select_list, 12U), 0U), "LAST_DAY", 1U,
+                                     "LAST_DAY function call");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT to_days FROM temporal_part_names;", MYLITE_SQL_PARSE_OK, &result);
@@ -5766,6 +5769,9 @@ static int test_scalar_function_call_syntax(void)
         parse_sql("SELECT from_days FROM temporal_part_names;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SELECT time FROM temporal_part_names;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("SELECT last_day FROM temporal_part_names;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT TO_DAYS()", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

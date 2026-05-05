@@ -9,6 +9,15 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+struct mylite_expression_eval_context;
+struct mylite_select_eval_callbacks;
+
+struct mylite_select_subquery_eval_callbacks {
+    int (*prepare_select_subquery)(mylite_db *database, const struct mylite_sql_ast_node *statement,
+                                   mylite_stmt **out_stmt);
+    const struct mylite_select_eval_callbacks *table_select_eval_callbacks;
+};
+
 bool mylite_select_subquery_row_expression_is_supported(
     const struct mylite_sql_ast_node *expression);
 bool mylite_select_subquery_row_expression_is_membership(
@@ -48,6 +57,26 @@ int mylite_select_subquery_set_in_limit_error(mylite_db *database);
 int mylite_select_subquery_set_row_quantified_non_alias_error(
     mylite_db *database, const struct mylite_sql_ast_node *expression);
 int mylite_select_subquery_set_scalar_cardinality_error(mylite_db *database);
+
+int mylite_select_subquery_eval(mylite_stmt *stmt, const struct mylite_sql_ast_node *subquery,
+                                struct mylite_expression_warnings *warnings,
+                                struct mylite_expression_value *out_value,
+                                const struct mylite_select_subquery_eval_callbacks *callbacks);
+int mylite_select_subquery_eval_in(mylite_stmt *stmt, const struct mylite_sql_ast_node *expression,
+                                   const struct mylite_expression_value *left,
+                                   struct mylite_expression_warnings *warnings,
+                                   struct mylite_expression_value *out_value,
+                                   const struct mylite_select_subquery_eval_callbacks *callbacks);
+int mylite_select_subquery_eval_quantified(
+    mylite_stmt *stmt, const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *left, struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value,
+    const struct mylite_select_subquery_eval_callbacks *callbacks);
+int mylite_select_subquery_eval_row(mylite_stmt *stmt, const struct mylite_sql_ast_node *expression,
+                                    const struct mylite_expression_eval_context *expression_context,
+                                    struct mylite_expression_warnings *warnings,
+                                    struct mylite_expression_value *out_value,
+                                    const struct mylite_select_subquery_eval_callbacks *callbacks);
 
 int mylite_select_subquery_copy_row_values(mylite_stmt *stmt, size_t width,
                                            struct mylite_row_expression_values *out_values);

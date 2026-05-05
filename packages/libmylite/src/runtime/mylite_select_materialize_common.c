@@ -5,6 +5,7 @@
 #include "mylite_select_eval.h"
 #include "mylite_select_group.h"
 #include "mylite_select_rowset.h"
+#include "mylite_select_rowset_distinct.h"
 
 static int
 append_finalized_table_select_group(mylite_stmt *stmt, struct mylite_table_select_group *group,

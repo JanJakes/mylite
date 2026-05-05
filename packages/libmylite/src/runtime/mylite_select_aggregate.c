@@ -6,6 +6,7 @@
 #include "mylite_select.h"
 #include "mylite_select_eval.h"
 #include "mylite_select_rowset.h"
+#include "mylite_select_rowset_distinct.h"
 #include "mylite_span.h"
 
 #include <ctype.h>

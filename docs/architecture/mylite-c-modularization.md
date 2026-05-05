@@ -685,6 +685,8 @@ into focused `*_types.h` headers.
   output companion.
 - [x] Split SELECT materialized row ORDER BY sorting into a focused rowset sort
   companion.
+- [x] Split SELECT rowset DISTINCT probing and distinct-value comparison into a
+  focused rowset distinct companion.
 - [x] Split COUNT(DISTINCT ...) aggregate argument binding and descriptor
   inference into a focused SELECT aggregate companion.
 - [x] Split SELECT catalog descriptor row-source parsing into a focused

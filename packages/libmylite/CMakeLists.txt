@@ -184,6 +184,7 @@ add_library(mylite STATIC
   src/runtime/mylite_table_ddl_alter_diagnostics.c
   src/runtime/mylite_table_ddl_alter_execute.c
   src/runtime/mylite_table_ddl_alter_index.c
+  src/runtime/mylite_table_ddl_alter_index_validate.c
   src/runtime/mylite_table_ddl_alter_metadata.c
   src/runtime/mylite_table_ddl_alter_model.c
   src/runtime/mylite_table_ddl_alter_rebuild.c

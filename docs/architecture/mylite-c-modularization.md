@@ -697,6 +697,8 @@ into focused `*_types.h` headers.
   column module.
 - [x] Split ALTER TABLE AST-to-plan copying into a focused table DDL alter copy
   module.
+- [x] Split ALTER TABLE added-index validation and primary-key diagnostics into
+  a focused table DDL alter index validation module.
 - [x] Split UNION global ORDER BY binding into a focused select union order
   module.
 - [x] Split numeric variadic descriptor inference into a focused expression

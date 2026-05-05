@@ -2,6 +2,8 @@
 
 #include "mylite_diagnostics.h"
 #include "mylite_error_codes.h"
+#include "mylite_expression.h"
+#include "mylite_runtime.h"
 
 int mylite_select_set_invalid_group_function_error(mylite_db *database)
 {
@@ -35,6 +37,31 @@ int mylite_select_set_unsupported_projection_error(mylite_db *database)
         return MYLITE_NOMEM;
     }
     return MYLITE_UNSUPPORTED;
+}
+
+int mylite_select_set_where_predicate_eval_error(mylite_stmt *stmt)
+{
+    mylite_db *database = stmt == NULL ? NULL : stmt->database;
+
+    if (database == NULL) {
+        return MYLITE_EXEC_ERROR;
+    }
+    if (database->warnings.count != 0U) {
+        const struct mylite_expression_warning *warning =
+            &database->warnings.items[database->warnings.count - 1U];
+
+        if (warning->level == MYLITE_EXPRESSION_WARNING_LEVEL_ERROR) {
+            int status = mylite_diagnostics_set_error_message(database, warning->message);
+
+            return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+        }
+        if (warning->code == MYLITE_MYSQL_ER_WRONG_ARGUMENTS) {
+            int status = mylite_diagnostics_set_error_message(database, warning->message);
+
+            return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+        }
+    }
+    return mylite_select_set_unsupported_where_error(database);
 }
 
 int mylite_select_set_unsupported_where_error(mylite_db *database)

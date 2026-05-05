@@ -122,7 +122,6 @@ static int evaluate_statement_session_function(
     struct mylite_expression_warnings *warnings, const struct mylite_select_table *table,
     struct mylite_expression_value *out_value);
 static int execute_table_select_statement(mylite_stmt *stmt);
-static int set_where_predicate_eval_error(mylite_stmt *stmt);
 static int evaluate_select_subquery_expression(mylite_stmt *stmt,
                                                const struct mylite_sql_ast_node *subquery,
                                                struct mylite_expression_warnings *warnings,
@@ -152,7 +151,7 @@ static const struct mylite_select_eval_callbacks table_select_eval_callbacks = {
     .eval_quantified_subquery = evaluate_quantified_subquery_expression,
     .eval_row_subquery = evaluate_row_subquery_expression,
     .copy_column_value = mylite_select_copy_current_sqlite_column_value,
-    .set_expression_eval_error = set_where_predicate_eval_error,
+    .set_expression_eval_error = mylite_select_set_where_predicate_eval_error,
 };
 
 static const struct mylite_select_subquery_eval_callbacks select_subquery_eval_callbacks = {
@@ -589,7 +588,7 @@ static int evaluate_dml_materialize_session_function(
 
 static int set_dml_materialize_where_predicate_eval_error(void *user_data)
 {
-    return set_where_predicate_eval_error((mylite_stmt *)user_data);
+    return mylite_select_set_where_predicate_eval_error((mylite_stmt *)user_data);
 }
 
 static int evaluate_statement_session_function(
@@ -605,56 +604,7 @@ static int evaluate_statement_session_function(
 
 static int execute_table_select_statement(mylite_stmt *stmt)
 {
-    if (stmt->sqlite_stmt == NULL && mylite_select_plan_table_count(&stmt->select_plan) <= 1U) {
-        return MYLITE_MISUSE;
-    }
-    stmt->executed = true;
-    stmt->affected_rows = -1;
-
-    int status = mylite_select_materialize_table_result(stmt, &table_select_eval_callbacks);
-
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    if (stmt->select_result.next_row >= stmt->select_result.row_count) {
-        mylite_select_result_current_values_deinit(&stmt->select_result);
-        stmt->select_result.has_current_row = false;
-        return MYLITE_DONE;
-    }
-
-    status = mylite_select_eval_set_current_row(
-        stmt, &stmt->select_result.rows[stmt->select_result.next_row],
-        &table_select_eval_callbacks);
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    ++stmt->select_result.next_row;
-    return MYLITE_ROW;
-}
-
-static int set_where_predicate_eval_error(mylite_stmt *stmt)
-{
-    mylite_db *database = stmt == NULL ? NULL : stmt->database;
-
-    if (database == NULL) {
-        return MYLITE_EXEC_ERROR;
-    }
-    if (database->warnings.count != 0U) {
-        const struct mylite_expression_warning *warning =
-            &database->warnings.items[database->warnings.count - 1U];
-
-        if (warning->level == MYLITE_EXPRESSION_WARNING_LEVEL_ERROR) {
-            int status = mylite_diagnostics_set_error_message(database, warning->message);
-
-            return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-        }
-        if (warning->code == MYLITE_MYSQL_ER_WRONG_ARGUMENTS) {
-            int status = mylite_diagnostics_set_error_message(database, warning->message);
-
-            return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-        }
-    }
-    return mylite_select_set_unsupported_where_error(database);
+    return mylite_select_execute_table_statement(stmt, &table_select_eval_callbacks);
 }
 
 static int evaluate_select_subquery_expression(mylite_stmt *stmt,

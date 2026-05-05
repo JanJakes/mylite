@@ -3,7 +3,10 @@
 #include "mylite_diagnostics.h"
 #include "mylite_select.h"
 #include "mylite_select_aggregate_bind.h"
+#include "mylite_select_eval.h"
+#include "mylite_select_materialize.h"
 #include "mylite_select_metadata.h"
+#include "mylite_select_rowset.h"
 #include "mylite_select_sql.h"
 #include "mylite_span.h"
 #include "mylite_statement.h"
@@ -93,6 +96,35 @@ int mylite_select_prepare_custom_table_statement(
 
     mylite_finalize(stmt);
     return status;
+}
+
+int mylite_select_execute_table_statement(mylite_stmt *stmt,
+                                          const struct mylite_select_eval_callbacks *callbacks)
+{
+    if (stmt->sqlite_stmt == NULL && mylite_select_plan_table_count(&stmt->select_plan) <= 1U) {
+        return MYLITE_MISUSE;
+    }
+    stmt->executed = true;
+    stmt->affected_rows = -1;
+
+    int status = mylite_select_materialize_table_result(stmt, callbacks);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (stmt->select_result.next_row >= stmt->select_result.row_count) {
+        mylite_select_result_current_values_deinit(&stmt->select_result);
+        stmt->select_result.has_current_row = false;
+        return MYLITE_DONE;
+    }
+
+    status = mylite_select_eval_set_current_row(
+        stmt, &stmt->select_result.rows[stmt->select_result.next_row], callbacks);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    ++stmt->select_result.next_row;
+    return MYLITE_ROW;
 }
 
 int mylite_select_clone_order_expressions(mylite_stmt *stmt, const char *sql, size_t sql_length)

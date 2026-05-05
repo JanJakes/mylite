@@ -740,6 +740,8 @@ into focused `*_types.h` headers.
   SHOW charset/collation companion.
 - [x] Split SHOW STATUS SQL builders and uptime projection into a focused SHOW
   status companion.
+- [x] Split SHOW VARIABLES SQL builders and session/global variable projection
+  into a focused SHOW variables companion.
 - [x] Split dynamic INFORMATION_SCHEMA SQL builders into a focused companion
   module.
 - [x] Split INFORMATION_SCHEMA SELECT target detection into a focused companion

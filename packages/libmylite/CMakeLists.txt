@@ -208,6 +208,7 @@ add_library(mylite STATIC
   src/runtime/mylite_show_status_sql.c
   src/runtime/mylite_show_tables.c
   src/runtime/mylite_show_targets.c
+  src/runtime/mylite_show_variables_sql.c
   src/runtime/mylite_sqlite_value.c
   src/runtime/mylite_span.c
   src/runtime/mylite_statement.c

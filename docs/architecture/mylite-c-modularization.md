@@ -358,6 +358,8 @@ into focused `*_types.h` headers.
 - [x] Start `src/runtime/mylite_table_ddl.{h,c}` with table/index DDL plan
   cleanup.
 - [x] Move create-table AST copy helpers into `mylite_table_ddl`.
+- [x] Split create-table AST plan-copy helpers into a focused table DDL create
+  copy module.
 - [x] Move create-table normalization and validation into `mylite_table_ddl`.
 - [x] Move create-table catalog writes behind a narrow table DDL/catalog API.
 - [x] Move create-table physical SQL construction into `mylite_table_ddl`.

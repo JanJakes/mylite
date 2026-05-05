@@ -2,6 +2,7 @@
 
 #include "mylite_dml_insert_copy_value.h"
 #include "mylite_dml_insert_duplicate_update_copy.h"
+#include "mylite_dml_insert_set_copy.h"
 #include "mylite_span.h"
 
 #include <stdlib.h>
@@ -16,12 +17,6 @@ static int copy_insert_rows(const struct mylite_sql_ast_node *rows,
 static int copy_insert_row(const struct mylite_sql_ast_node *row,
                            struct mylite_insert_values_plan *plan);
 static int add_insert_row(struct mylite_insert_values_plan *plan, struct mylite_insert_row row);
-static int copy_insert_set_assignments(const struct mylite_sql_ast_node *assignments,
-                                       struct mylite_insert_set_plan *plan);
-static int copy_insert_set_assignment(const struct mylite_sql_ast_node *assignment,
-                                      struct mylite_insert_set_plan *plan);
-static int add_insert_set_assignment(struct mylite_insert_set_plan *plan,
-                                     struct mylite_insert_set_assignment assignment);
 static int copy_insert_row_alias(const struct mylite_sql_ast_node *row_alias,
                                  struct mylite_insert_values_plan *plan);
 static int add_insert_alias_column(struct mylite_insert_values_plan *plan, char *column_name);
@@ -89,7 +84,7 @@ int mylite_dml_copy_insert_set_statement(const struct mylite_sql_ast_node *state
     status = copy_insert_table_name(table_name, values_plan);
     values_plan->ignore = statement->insert_ignore;
     if (status == MYLITE_OK) {
-        status = copy_insert_set_assignments(assignments, set_plan);
+        status = mylite_dml_copy_insert_set_assignments(assignments, set_plan);
     }
     if (status == MYLITE_OK) {
         status = copy_insert_row_alias(row_alias, values_plan);
@@ -148,7 +143,7 @@ int mylite_dml_copy_replace_set_statement(const struct mylite_sql_ast_node *stat
     values_plan->replace_low_priority = statement->replace_low_priority;
     values_plan->replace_delayed = statement->replace_delayed;
     if (status == MYLITE_OK) {
-        status = copy_insert_set_assignments(assignments, set_plan);
+        status = mylite_dml_copy_insert_set_assignments(assignments, set_plan);
     }
     return status;
 }
@@ -287,64 +282,6 @@ static int add_insert_row(struct mylite_insert_values_plan *plan, struct mylite_
 
     plan->rows = rows;
     plan->rows[plan->row_count++] = row;
-    return MYLITE_OK;
-}
-
-static int copy_insert_set_assignments(const struct mylite_sql_ast_node *assignments,
-                                       struct mylite_insert_set_plan *plan)
-{
-    if (assignments == NULL || assignments->kind != MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT_LIST) {
-        return MYLITE_UNSUPPORTED;
-    }
-
-    for (const struct mylite_sql_ast_node *assignment = assignments->first_child;
-         assignment != NULL; assignment = assignment->next_sibling) {
-        int status = copy_insert_set_assignment(assignment, plan);
-
-        if (status != MYLITE_OK) {
-            return status;
-        }
-    }
-    return plan->assignment_count == 0U ? MYLITE_UNSUPPORTED : MYLITE_OK;
-}
-
-static int copy_insert_set_assignment(const struct mylite_sql_ast_node *assignment,
-                                      struct mylite_insert_set_plan *plan)
-{
-    struct mylite_insert_set_assignment insert_assignment = {0};
-    int status = MYLITE_OK;
-
-    if (assignment == NULL || assignment->kind != MYLITE_SQL_AST_INSERT_SET_ASSIGNMENT) {
-        return MYLITE_UNSUPPORTED;
-    }
-
-    status = mylite_dml_copy_insert_column_reference(mylite_ast_child_at(assignment, 0U),
-                                                     &insert_assignment.target);
-    if (status == MYLITE_OK) {
-        status = mylite_dml_copy_insert_value(mylite_ast_child_at(assignment, 1U),
-                                              &insert_assignment.value);
-    }
-    if (status == MYLITE_OK) {
-        status = add_insert_set_assignment(plan, insert_assignment);
-    }
-    if (status != MYLITE_OK) {
-        mylite_dml_insert_set_assignment_deinit(&insert_assignment);
-    }
-    return status;
-}
-
-static int add_insert_set_assignment(struct mylite_insert_set_plan *plan,
-                                     struct mylite_insert_set_assignment assignment)
-{
-    struct mylite_insert_set_assignment *assignments =
-        realloc(plan->assignments, (plan->assignment_count + 1U) * sizeof(*plan->assignments));
-
-    if (assignments == NULL) {
-        return MYLITE_NOMEM;
-    }
-
-    plan->assignments = assignments;
-    plan->assignments[plan->assignment_count++] = assignment;
     return MYLITE_OK;
 }
 

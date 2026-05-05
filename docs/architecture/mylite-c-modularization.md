@@ -814,6 +814,8 @@ into focused `*_types.h` headers.
   DML insert update validation module.
 - [x] Split INSERT duplicate-key update AST copying into a focused DML insert
   duplicate-update copy module.
+- [x] Split INSERT SET assignment AST copying into a focused DML insert set
+  copy module.
 - [x] Split INSERT duplicate-entry diagnostics out of unique-index conflict
   probing.
 - [x] Split INSERT SQLite value binding into a focused DML bind companion while

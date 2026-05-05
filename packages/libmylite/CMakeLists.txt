@@ -152,6 +152,7 @@ add_library(mylite STATIC
   src/runtime/mylite_select_subquery_validate.c
   src/runtime/mylite_select_table_materialize.c
   src/runtime/mylite_select_union.c
+  src/runtime/mylite_select_union_order.c
   src/runtime/mylite_select_union_prepare.c
   src/runtime/mylite_session_functions.c
   src/runtime/mylite_show.c

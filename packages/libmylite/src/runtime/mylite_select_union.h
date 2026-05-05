@@ -32,6 +32,9 @@ int mylite_select_union_prepare_query_expression(
     mylite_db *database, const struct mylite_sql_ast_node *statement, const char *sql,
     size_t sql_length, mylite_stmt **out_stmt,
     const struct mylite_select_union_prepare_callbacks *callbacks);
+int mylite_select_union_bind_global_order_by_clause(
+    mylite_db *database, const struct mylite_sql_ast_node *order_by_clause,
+    struct mylite_select_plan *plan, const struct mylite_select_union_prepare_callbacks *callbacks);
 int mylite_select_union_execute_query(mylite_stmt *stmt,
                                       const struct mylite_select_union_callbacks *callbacks);
 

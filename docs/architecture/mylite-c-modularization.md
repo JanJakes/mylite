@@ -71,19 +71,53 @@ Use this checklist to decide when the modularization project is complete. Once
 these are checked, stop splitting and switch to feature work unless a later
 change creates a new mixed-owner module.
 
-- [ ] `mylite_runtime.h` remains object-layout-only and the architecture check
+- [x] `mylite_runtime.h` remains object-layout-only and the architecture check
   prevents statement-family structs from moving back into it.
-- [ ] Broad family headers have either been split or explicitly accepted because
+- [x] Broad family headers have either been split or explicitly accepted because
   their types form one cohesive private object model.
-- [ ] No statement dispatcher, context, or prepare module owns family-specific
+- [x] No statement dispatcher, context, or prepare module owns family-specific
   validation, cloning, metadata inference, or execution logic.
-- [ ] Remaining large C files each have one clear reason to exist; no file is
+- [x] Remaining large C files each have one clear reason to exist; no file is
   split only because of line count.
-- [ ] The focused outstanding modules in the task list are resolved or closed as
+- [x] The focused outstanding modules in the task list are resolved or closed as
   intentionally cohesive.
-- [ ] Parser/runtime tests, format-check, runtime architecture check,
+- [x] Parser/runtime tests, format-check, runtime architecture check,
   whitespace check, and tidy all pass.
-- [ ] This document reflects the final module ownership map and stop criteria.
+- [x] This document reflects the final module ownership map and stop criteria.
+
+## Completion Audit
+
+The modularization project is complete under the stop criteria above. Further
+splits should happen only when future feature work creates a real mixed-owner
+module, not as a standalone line-count exercise.
+
+- `mylite_runtime.h` is 103 lines and contains only `mylite_db`,
+  `mylite_stmt`, and the statement timestamp helper. The
+  `runtime-architecture-check` target fails if the removed `mylite.c` returns,
+  if `mylite_runtime.h` grows past its limit, if it defines feature-owned type
+  prefixes, or if private headers include it outside the allow-list.
+- Broad private family headers are accepted as cohesive private object models:
+  `mylite_select_types.h` owns the SELECT plan/result graph,
+  `mylite_table_ddl_types.h` owns table DDL plan/model structs, and
+  `mylite_dml_types.h` owns DML plan/execution structs. Splitting these now
+  would mostly create forwarding headers without reducing ownership ambiguity.
+- `mylite_dml.h` remains broader than ideal, but its declarations are
+  DML-family entry points. The risky INSERT copy and conflict entry points have
+  already moved into narrow headers.
+- Statement dispatchers are switchboards. `mylite_statement_prepare.c` routes
+  parsed statement kinds, `mylite_statement_execute.c` routes statement kinds to
+  family executors, and `mylite_select_context.c` composes callback tables plus
+  small adapters.
+- The largest C files are cohesive modules around 400 lines. They each own one
+  operation family, such as FROM-clause binding, scalar SELECT evaluation,
+  ALTER TABLE AST copying, model loading, DISTINCT validation, or predicate
+  expression binding.
+- `mylite_dml_insert_value_resolve.c` is intentionally cohesive. It owns VALUES
+  row-value resolution only; `INSERT ... SET` row and expression resolution live
+  in their own focused modules.
+- `mylite_select_subquery_eval.c` is intentionally cohesive. It owns `IN`/
+  `NOT IN` subquery evaluation only; scalar, quantified, row, diagnostics, and
+  outer-reference handling already live in focused subquery companions.
 
 ## Runtime Header Guardrails
 
@@ -368,8 +402,9 @@ into focused `*_types.h` headers.
   builders into `mylite_information_schema`.
 - [x] Move information-schema SELECT passthrough preparation into
   `mylite_information_schema`.
-- [ ] Continue splitting schema lifecycle and table/index DDL plans and
-  execution; `mylite_table_ddl.c` remains the largest runtime module.
+- [x] Close schema lifecycle and table/index DDL splitting; table DDL concerns
+  now have focused create/drop/rename/truncate/alter/index modules, and
+  `mylite_table_ddl.c` is no longer a size or ownership hotspot.
 - [x] Start `src/runtime/mylite_schema.{h,c}` with schema option cleanup.
 - [x] Move schema option normalization into `mylite_schema`.
 - [x] Move schema AST copy helpers into `mylite_schema`.
@@ -420,8 +455,9 @@ into focused `*_types.h` headers.
   companion module.
 - [x] Move ALTER TABLE index-action application and key diagnostics into a
   focused table DDL index-action companion module.
-- [ ] Continue splitting DML plans and execution; insert value resolution and
-  broad DML headers remain the next ownership risks.
+- [x] Close DML plan and execution splitting; insert value resolution is
+  intentionally cohesive, and remaining DML declarations are family entry
+  points rather than cross-runtime ownership leaks.
 - [x] Start `src/runtime/mylite_dml.{h,c}` with DML plan and row cleanup.
 - [x] Move insert/replacement AST copy helpers into `mylite_dml`.
 - [x] Move update/delete AST copy helpers into `mylite_dml`.
@@ -467,7 +503,8 @@ into focused `*_types.h` headers.
   companion module.
 - [x] Move INSERT/REPLACE statement execution wrappers into a focused DML
   statement module.
-- [ ] Move `INSERT IGNORE` warning/error downgrade logic into `mylite_dml`.
+- [x] Move `INSERT IGNORE` warning/error downgrade logic into focused DML
+  insert execution, default, diagnostics, conflict, and SET row modules.
 - [x] Move `REPLACE` delete-then-insert behavior into `mylite_dml`.
 - [x] Split `REPLACE` row execution and conflict deletion into a focused DML
   insert companion module.
@@ -519,10 +556,10 @@ into focused `*_types.h` headers.
   module while preserving dispatch-time warning order.
 - [x] Move UPDATE/DELETE statement execution wrappers into a focused DML
   statement module while keeping expression callbacks local.
-- [ ] Move remaining DML-specific diagnostics into `mylite_dml`.
-- [ ] Continue splitting SELECT, UNION, aggregate, and subquery
-  planning/execution; the old `mylite.c` code is module-owned, but several
-  SELECT modules are still broad.
+- [x] Move remaining DML-specific diagnostics into focused DML diagnostics and
+  statement-family modules.
+- [x] Close SELECT, UNION, aggregate, and subquery planning/execution splitting;
+  remaining broad SELECT modules are accepted as cohesive ownership units.
 - [x] Start `src/runtime/mylite_select.{h,c}` with SELECT plan cleanup.
 - [x] Move SELECT plan accessors and plan container mutation helpers into
   `mylite_select`.
@@ -530,29 +567,31 @@ into focused `*_types.h` headers.
   `mylite_select`.
 - [x] Move plan-level wildcard and column-reference resolution into
   `mylite_select_resolve`.
-- [ ] Move SELECT AST copy/bind helpers into `mylite_select`.
+- [x] Move SELECT AST copy/bind helpers into focused SELECT FROM, projection,
+  predicate, group, order, limit, scalar, and UNION modules.
 - [x] Move table-column catalog loading behind a focused `mylite_select_catalog`
   helper.
 - [x] Split SELECT catalog column descriptor reconstruction into a focused
   catalog descriptor module.
-- [ ] Move table target resolution and remaining column loading behind catalog/metadata
-  helper APIs.
+- [x] Move table target resolution and remaining column loading behind focused
+  SELECT target, FROM resolve, catalog, and metadata helper APIs.
 - [x] Move wildcard expansion and wildcard output-column planning into a
   focused SELECT projection module.
-- [ ] Move SELECT predicate binding into `mylite_select`.
+- [x] Move SELECT predicate binding into focused SELECT predicate modules.
 - [x] Move join planning and `USING` resolution into `mylite_select`.
 - [x] Move shared SELECT `USING` column resolution helpers into
   `mylite_select`.
 - [x] Move shared SELECT plan predicate helpers into `mylite_select`.
-- [ ] Move `ORDER BY`, `GROUP BY`, `HAVING`, and `LIMIT` binding into
-  `mylite_select`.
+- [x] Move `ORDER BY`, `GROUP BY`, `HAVING`, and `LIMIT` binding into focused
+  SELECT order, group, and limit modules.
 - [x] Split recursive `ORDER BY` expression binding into a focused SELECT
   order companion module.
 - [x] Move SELECT LIMIT binding and row-keeping helpers into `mylite_select`.
 - [x] Move SELECT duplicate-mode and custom-runtime policy helpers into
   `mylite_select`.
-- [ ] Move DISTINCT validation into `mylite_select`.
-- [ ] Move grouping validation into `mylite_select`.
+- [x] Move DISTINCT validation into a focused SELECT distinct validation module.
+- [x] Move grouping validation into focused SELECT group validation and
+  invariant modules.
 - [x] Move SELECT SQL construction into `mylite_select`.
 - [x] Move table SELECT materialization into a focused SELECT materialize
   module.
@@ -618,13 +657,14 @@ into focused `*_types.h` headers.
 - [x] Move result metadata attachment for SELECT/UNION into focused SELECT
   metadata modules.
 - [x] Move reusable result metadata label lookup into `mylite_metadata`.
-- [ ] Move column type descriptor to SQLite affinity mapping into metadata or
-  DDL according to final ownership.
+- [x] Close column type descriptor to SQLite affinity mapping as DDL-owned:
+  create and alter rebuild modules perform physical SQLite affinity rendering
+  where backing-table SQL is generated.
 - [x] Move temporal statement timestamp helpers out of `mylite.c`.
 - [x] Move core session-function evaluation out of `mylite.c` without pulling
   string/collation inference into the session module.
-- [ ] Move string/number conversion helpers used only by INSERT into
-  `mylite_dml`.
+- [x] Move string/number conversion helpers used only by INSERT into focused
+  DML insert bound-value/default modules.
 - [x] Move parse/translate status mapping into `mylite_statement`.
 - [x] Move custom statement execution dispatch into `mylite_statement` after
   every statement family exposes an execution entry point.
@@ -634,7 +674,7 @@ into focused `*_types.h` headers.
 - [x] Remove `mylite.c` when all statement families have homes.
 - [x] Add a build guard that fails if `packages/libmylite/src/mylite.c` is
   reintroduced or added back to the libmylite source list.
-- [ ] Split `mylite_table_ddl.c` into narrower create/drop/rename/truncate,
+- [x] Split `mylite_table_ddl.c` into narrower create/drop/rename/truncate,
   catalog-model, SQL-builder, validation, and statement-preparation modules.
 - [x] Split DROP TABLE execution, validation, catalog cleanup, and physical
   table removal into a focused table DDL module.
@@ -870,15 +910,17 @@ into focused `*_types.h` headers.
   executor.
 - [x] Split SELECT ORDER BY reference resolution and diagnostics out of generic
   SELECT column resolution.
-- [ ] Split `mylite_dml_insert_value_resolve.c` into insert column-list,
-  positional/default, and `INSERT ... SET` modules.
-- [ ] Split `mylite_select_subquery_eval.c` into scalar subquery, quantified
-  subquery, row-value comparison, and diagnostics modules.
-- [ ] Shrink broad type headers after the implementation modules above have
-  narrower owners.
-- [ ] Keep `mylite_select_context.c` composition-only; split callback groups if
+- [x] Close `mylite_dml_insert_value_resolve.c` as intentionally cohesive:
+  column-list and positional VALUES row resolution share explicit/default value
+  semantics, while `INSERT ... SET` resolution is already split out.
+- [x] Split `mylite_select_subquery_eval.c` into scalar subquery, quantified
+  subquery, row-value comparison, and diagnostics modules; the remaining file
+  is the focused `IN`/`NOT IN` evaluator.
+- [x] Accept broad type headers after implementation modules gained narrower
+  owners; they now define cohesive private object models rather than behavior.
+- [x] Keep `mylite_select_context.c` composition-only; split callback groups if
   it starts accumulating SELECT behavior.
-- [ ] Keep `mylite_statement_prepare.c` a switchboard; move any new family
+- [x] Keep `mylite_statement_prepare.c` a switchboard; move any new family
   validation, cloning, or metadata inference into family modules.
 
 ## Rules

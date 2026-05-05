@@ -681,6 +681,8 @@ into focused `*_types.h` headers.
   rendering, and table options into a dedicated table renderer module.
 - [x] Split SHOW CHARACTER SET and SHOW COLLATION SQL builders into a focused
   SHOW charset/collation companion.
+- [x] Split SHOW STATUS SQL builders and uptime projection into a focused SHOW
+  status companion.
 - [x] Split dynamic INFORMATION_SCHEMA SQL builders into a focused companion
   module.
 - [x] Split INFORMATION_SCHEMA SELECT target detection into a focused companion

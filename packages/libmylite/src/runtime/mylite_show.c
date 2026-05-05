@@ -14,19 +14,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <time.h>
 
 static bool diagnostic_condition_matches(const struct mylite_expression_warning *condition,
                                          enum mylite_sql_ast_show_diagnostics_kind kind);
 static const char *
 diagnostic_condition_level_name(const struct mylite_expression_warning *condition);
-static uint64_t show_status_uptime(const mylite_db *database);
 static void append_show_variable_row(sqlite3_str *sql, bool *first, const char *name,
                                      const char *value);
-static void append_show_status_row(sqlite3_str *sql, bool *first, const char *name,
-                                   const char *value);
-static void append_show_status_integer_row(sqlite3_str *sql, bool *first, const char *name,
-                                           uint64_t value);
 static struct mylite_field_descriptor show_engines_field_descriptor(uint64_t length, bool nullable);
 static int show_engines_sql(mylite_db *database, char **out_sql);
 static const unsigned int mylite_show_latin1_swedish_ci_charset_id = 8U;
@@ -184,67 +178,6 @@ char *mylite_show_diagnostics_count_sql(mylite_db *database,
 
     sqlite3_str_appendf(sql, "SELECT %llu AS \"%w\"", (unsigned long long)count, column_name);
     return sqlite3_str_finish(sql);
-}
-
-int mylite_show_status_sql(mylite_db *database, const struct mylite_show_status_query *query,
-                           char **out_sql)
-{
-    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
-    uint64_t uptime = show_status_uptime(database);
-    bool first = true;
-
-    (void)query->scope;
-    *out_sql = NULL;
-    if (sql == NULL) {
-        return MYLITE_NOMEM;
-    }
-
-    sqlite3_str_appendall(sql, "SELECT Variable_name, Value FROM (");
-    append_show_status_row(sql, &first, "Com_begin", "0");
-    append_show_status_row(sql, &first, "Com_commit", "0");
-    append_show_status_row(sql, &first, "Com_create_db", "0");
-    append_show_status_row(sql, &first, "Com_create_index", "0");
-    append_show_status_row(sql, &first, "Com_create_table", "0");
-    append_show_status_row(sql, &first, "Com_delete", "0");
-    append_show_status_row(sql, &first, "Com_drop_db", "0");
-    append_show_status_row(sql, &first, "Com_drop_index", "0");
-    append_show_status_row(sql, &first, "Com_drop_table", "0");
-    append_show_status_row(sql, &first, "Com_insert", "0");
-    append_show_status_row(sql, &first, "Com_release_savepoint", "0");
-    append_show_status_row(sql, &first, "Com_rename_table", "0");
-    append_show_status_row(sql, &first, "Com_replace", "0");
-    append_show_status_row(sql, &first, "Com_rollback", "0");
-    append_show_status_row(sql, &first, "Com_rollback_to_savepoint", "0");
-    append_show_status_row(sql, &first, "Com_savepoint", "0");
-    append_show_status_row(sql, &first, "Com_select", "0");
-    append_show_status_row(sql, &first, "Com_set_option", "0");
-    append_show_status_row(sql, &first, "Com_show_errors", "0");
-    append_show_status_row(sql, &first, "Com_show_fields", "0");
-    append_show_status_row(sql, &first, "Com_show_keys", "0");
-    append_show_status_row(sql, &first, "Com_show_status", "0");
-    append_show_status_row(sql, &first, "Com_show_tables", "0");
-    append_show_status_row(sql, &first, "Com_show_variables", "0");
-    append_show_status_row(sql, &first, "Com_show_warnings", "0");
-    append_show_status_row(sql, &first, "Com_truncate", "0");
-    append_show_status_row(sql, &first, "Com_update", "0");
-    append_show_status_row(sql, &first, "Connections", "1");
-    append_show_status_row(sql, &first, "Questions", "0");
-    append_show_status_row(sql, &first, "Threads_cached", "0");
-    append_show_status_row(sql, &first, "Threads_connected", "1");
-    append_show_status_row(sql, &first, "Threads_created", "1");
-    append_show_status_row(sql, &first, "Threads_running", "1");
-    append_show_status_integer_row(sql, &first, "Uptime", uptime);
-    append_show_status_integer_row(sql, &first, "Uptime_since_flush_status", uptime);
-    sqlite3_str_appendall(sql, ")");
-
-    if (query->like_pattern != NULL) {
-        sqlite3_str_appendf(sql, " WHERE Variable_name LIKE %Q ESCAPE '\\'", query->like_pattern);
-    }
-    sqlite3_str_appendall(sql,
-                          " ORDER BY Variable_name COLLATE NOCASE, Variable_name COLLATE BINARY");
-
-    *out_sql = sqlite3_str_finish(sql);
-    return *out_sql == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
 
 char *mylite_show_tables_sql(mylite_db *database, const struct mylite_show_tables_query *query)
@@ -479,17 +412,6 @@ diagnostic_condition_level_name(const struct mylite_expression_warning *conditio
     return "Warning";
 }
 
-static uint64_t show_status_uptime(const mylite_db *database)
-{
-    time_t now = time(NULL);
-
-    if (database == NULL || database->status_started_at == (time_t)-1 || now == (time_t)-1 ||
-        now < database->status_started_at) {
-        return 0U;
-    }
-    return (uint64_t)(now - database->status_started_at);
-}
-
 static void append_show_variable_row(sqlite3_str *sql, bool *first, const char *name,
                                      const char *value)
 {
@@ -498,28 +420,6 @@ static void append_show_variable_row(sqlite3_str *sql, bool *first, const char *
     }
     sqlite3_str_appendf(sql, "SELECT %Q AS \"Variable_name\", %Q AS \"Value\"", name,
                         value == NULL ? "" : value);
-    *first = false;
-}
-
-static void append_show_status_row(sqlite3_str *sql, bool *first, const char *name,
-                                   const char *value)
-{
-    if (!*first) {
-        sqlite3_str_appendall(sql, " UNION ALL ");
-    }
-    sqlite3_str_appendf(sql, "SELECT %Q AS \"Variable_name\", %Q AS \"Value\"", name,
-                        value == NULL ? "" : value);
-    *first = false;
-}
-
-static void append_show_status_integer_row(sqlite3_str *sql, bool *first, const char *name,
-                                           uint64_t value)
-{
-    if (!*first) {
-        sqlite3_str_appendall(sql, " UNION ALL ");
-    }
-    sqlite3_str_appendf(sql, "SELECT %Q AS \"Variable_name\", '%llu' AS \"Value\"", name,
-                        (unsigned long long)value);
     *first = false;
 }
 

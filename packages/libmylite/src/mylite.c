@@ -30,6 +30,7 @@
 #include "runtime/mylite_select_group.h"
 #include "runtime/mylite_select_join_cache.h"
 #include "runtime/mylite_select_materialize.h"
+#include "runtime/mylite_select_metadata.h"
 #include "runtime/mylite_select_projection.h"
 #include "runtime/mylite_select_resolve.h"
 #include "runtime/mylite_select_row_loader.h"
@@ -120,11 +121,6 @@ static int prepare_scalar_select_statement(mylite_db *database,
 static int prepare_select_subquery_statement(mylite_db *database,
                                              const struct mylite_sql_ast_node *statement,
                                              mylite_stmt **out_stmt);
-static int attach_select_result_metadata(mylite_stmt *stmt, const struct mylite_select_plan *plan);
-static int copy_select_result_column_metadata(mylite_db *database,
-                                              struct mylite_result_column_metadata *metadata,
-                                              const struct mylite_select_plan *plan,
-                                              size_t output_index);
 static int infer_select_expression_descriptor(mylite_db *database,
                                               const struct mylite_select_plan *plan,
                                               const struct mylite_sql_ast_node *expression,
@@ -932,6 +928,10 @@ static const struct mylite_select_subquery_eval_callbacks select_subquery_eval_c
     .table_select_eval_callbacks = &table_select_eval_callbacks,
 };
 
+static const struct mylite_select_metadata_callbacks select_metadata_callbacks = {
+    .infer_expression_descriptor = infer_select_expression_descriptor,
+};
+
 static const struct mylite_select_scalar_eval_callbacks select_scalar_eval_callbacks = {
     .infer_expression_descriptor = infer_scalar_expression_descriptor,
     .eval_session_function = evaluate_scalar_select_session_function,
@@ -1712,7 +1712,7 @@ static int prepare_table_select_sqlite_statement(mylite_db *database,
 
     status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
     if (status == MYLITE_OK) {
-        status = attach_select_result_metadata(*out_stmt, plan);
+        status = mylite_select_attach_result_metadata(*out_stmt, plan, &select_metadata_callbacks);
         if (status != MYLITE_OK) {
             mylite_finalize(*out_stmt);
             *out_stmt = NULL;
@@ -1773,87 +1773,6 @@ static int prepare_select_subquery_statement(mylite_db *database,
         return status;
     }
     return prepare_scalar_select_statement(database, statement, out_stmt);
-}
-
-// NOLINTNEXTLINE(misc-no-recursion)
-static int attach_select_result_metadata(mylite_stmt *stmt, const struct mylite_select_plan *plan)
-{
-    struct mylite_result_metadata metadata = {0};
-
-    if (plan->output_count == 0U) {
-        return MYLITE_OK;
-    }
-
-    metadata.columns = calloc(plan->output_count, sizeof(*metadata.columns));
-    if (metadata.columns == NULL) {
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    metadata.column_count = plan->output_count;
-
-    for (size_t index = 0U; index < plan->output_count; ++index) {
-        int status = copy_select_result_column_metadata(stmt->database, &metadata.columns[index],
-                                                        plan, index);
-
-        if (status != MYLITE_OK) {
-            mylite_result_metadata_deinit(&metadata);
-            return status;
-        }
-    }
-
-    mylite_result_metadata_deinit(&stmt->result_metadata);
-    stmt->result_metadata = metadata;
-    return MYLITE_OK;
-}
-
-// NOLINTNEXTLINE(misc-no-recursion)
-static int copy_select_result_column_metadata(mylite_db *database,
-                                              struct mylite_result_column_metadata *metadata,
-                                              const struct mylite_select_plan *plan,
-                                              size_t output_index)
-{
-    const struct mylite_select_output_column *output = &plan->outputs[output_index];
-    int status = mylite_result_metadata_copy_text(database, &metadata->name, output->label);
-
-    if (output->kind == MYLITE_SELECT_OUTPUT_EXPRESSION) {
-        if (status == MYLITE_OK) {
-            status = infer_select_expression_descriptor(database, plan, output->expression,
-                                                        &metadata->descriptor);
-        }
-        return status;
-    }
-
-    const struct mylite_select_table *table = NULL;
-    const struct mylite_select_column *column =
-        mylite_select_plan_column_const(plan, output->column_index, &table);
-    const char *visible_table_name;
-
-    if (column == NULL || table == NULL) {
-        return MYLITE_UNSUPPORTED;
-    }
-    visible_table_name = table->alias == NULL ? table->table_name : table->alias;
-    metadata->descriptor = column->descriptor;
-    if (status == MYLITE_OK) {
-        status =
-            mylite_result_metadata_copy_text(database, &metadata->schema_name, table->schema_name);
-    }
-    if (status == MYLITE_OK) {
-        status =
-            mylite_result_metadata_copy_text(database, &metadata->table_name, visible_table_name);
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_result_metadata_copy_text(database, &metadata->origin_schema_name,
-                                                  table->schema_name);
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_result_metadata_copy_text(database, &metadata->origin_table_name,
-                                                  table->table_name);
-    }
-    if (status == MYLITE_OK) {
-        status =
-            mylite_result_metadata_copy_text(database, &metadata->origin_column_name, column->name);
-    }
-    return status;
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
@@ -5420,7 +5339,7 @@ static int prepare_table_select_custom_statement(mylite_db *database,
         .affected_rows = -1,
     };
 
-    status = attach_select_result_metadata(stmt, plan);
+    status = mylite_select_attach_result_metadata(stmt, plan, &select_metadata_callbacks);
     if (status == MYLITE_OK) {
         stmt->select_plan = *plan;
         *plan = (struct mylite_select_plan){0};

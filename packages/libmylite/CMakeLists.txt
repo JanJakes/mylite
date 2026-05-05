@@ -63,6 +63,7 @@ add_library(mylite STATIC
   src/runtime/mylite_dml_insert_update.c
   src/runtime/mylite_dml_insert_value_resolve.c
   src/runtime/mylite_dml_insert_copy.c
+  src/runtime/mylite_dml_insert_duplicate_update_copy.c
   src/runtime/mylite_dml_insert_copy_value.c
   src/runtime/mylite_dml_insert_validate.c
   src/runtime/mylite_dml_insert_transaction.c

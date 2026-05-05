@@ -693,6 +693,8 @@ into focused `*_types.h` headers.
   into a focused SELECT projection wildcard companion.
 - [x] Split SELECT FROM table resolution, alias validation, and column loading
   into a focused FROM resolve companion.
+- [x] Split SELECT FROM outer-join descriptor nullability into a focused
+  companion that runs after catalog resolution and before JOIN `USING` binding.
 - [x] Split joined SELECT row output processing into a focused SELECT join
   output companion.
 - [x] Split SELECT materialized row ORDER BY sorting into a focused rowset sort

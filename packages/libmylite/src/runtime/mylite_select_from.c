@@ -1,8 +1,8 @@
 #include "mylite_select_from.h"
 
 #include "mylite_diagnostics.h"
-#include "mylite_field_descriptor.h"
 #include "mylite_select.h"
+#include "mylite_select_from_nullability.h"
 #include "mylite_select_from_resolve.h"
 #include "mylite_select_from_using.h"
 #include "mylite_span.h"
@@ -49,9 +49,6 @@ static int add_select_join_step(mylite_db *database, struct mylite_select_plan *
                                 struct mylite_select_table_range left_range,
                                 struct mylite_select_table_range right_range,
                                 struct mylite_select_table_range joined_range);
-static void apply_select_outer_join_nullability(struct mylite_select_plan *plan);
-static void mark_select_range_nullable(struct mylite_select_plan *plan,
-                                       struct mylite_select_table_range range);
 static int add_select_plan_table(mylite_db *database, struct mylite_select_plan *plan,
                                  struct mylite_select_table *table, size_t *out_table_index);
 static int add_select_join_predicate(mylite_db *database, struct mylite_select_plan *plan,
@@ -73,7 +70,7 @@ int mylite_select_bind_from_clause(mylite_db *database,
         status = mylite_select_from_resolve_tables(database, plan);
     }
     if (status == MYLITE_OK) {
-        apply_select_outer_join_nullability(plan);
+        mylite_select_from_apply_outer_join_nullability(plan);
     }
     if (status == MYLITE_OK) {
         status = mylite_select_from_resolve_using_requests(database, plan);
@@ -354,36 +351,6 @@ static int add_select_join_step(mylite_db *database, struct mylite_select_plan *
         .joined_range = joined_range,
     };
     return MYLITE_OK;
-}
-
-static void apply_select_outer_join_nullability(struct mylite_select_plan *plan)
-{
-    for (size_t index = 0U; index < plan->join_step_count; ++index) {
-        const struct mylite_select_join_step *step = &plan->join_steps[index];
-
-        if (step->join_type == MYLITE_SQL_AST_JOIN_LEFT) {
-            mark_select_range_nullable(plan, step->right_range);
-        } else if (step->join_type == MYLITE_SQL_AST_JOIN_RIGHT) {
-            mark_select_range_nullable(plan, step->left_range);
-        }
-    }
-}
-
-static void mark_select_range_nullable(struct mylite_select_plan *plan,
-                                       struct mylite_select_table_range range)
-{
-    size_t last_table = range.first_table + range.table_count;
-
-    for (size_t table_index = range.first_table; table_index < last_table; ++table_index) {
-        struct mylite_select_table *table = mylite_select_plan_table(plan, table_index);
-
-        if (table == NULL) {
-            continue;
-        }
-        for (size_t column_index = 0U; column_index < table->column_count; ++column_index) {
-            mylite_field_descriptor_set_nullable(&table->columns[column_index].descriptor, true);
-        }
-    }
 }
 
 static int add_select_plan_table(mylite_db *database, struct mylite_select_plan *plan,

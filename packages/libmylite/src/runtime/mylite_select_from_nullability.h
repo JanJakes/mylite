@@ -1,0 +1,8 @@
+#ifndef MYLITE_RUNTIME_MYLITE_SELECT_FROM_NULLABILITY_H
+#define MYLITE_RUNTIME_MYLITE_SELECT_FROM_NULLABILITY_H
+
+struct mylite_select_plan;
+
+void mylite_select_from_apply_outer_join_nullability(struct mylite_select_plan *plan);
+
+#endif

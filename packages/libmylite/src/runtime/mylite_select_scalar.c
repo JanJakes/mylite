@@ -58,7 +58,8 @@ int mylite_select_scalar_copy_statement(const struct mylite_sql_ast_node *statem
     stmt->scalar_result.values = calloc(column_count, sizeof(*stmt->scalar_result.values));
     stmt->scalar_result.texts = (char **)calloc(column_count, sizeof(*stmt->scalar_result.texts));
     stmt->scalar_result.expressions = (const struct mylite_sql_ast_node **)calloc(
-        column_count, sizeof(*stmt->scalar_result.expressions));
+        column_count,
+        sizeof(*stmt->scalar_result.expressions)); // NOLINT(bugprone-sizeof-expression)
     stmt->result_metadata.columns = calloc(column_count, sizeof(*stmt->result_metadata.columns));
     if (stmt->scalar_select_sql_text == NULL || stmt->scalar_result.values == NULL ||
         stmt->scalar_result.texts == NULL || stmt->scalar_result.expressions == NULL ||

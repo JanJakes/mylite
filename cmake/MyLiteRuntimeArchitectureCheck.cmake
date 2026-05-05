@@ -1,3 +1,7 @@
+if(POLICY CMP0057)
+  cmake_policy(SET CMP0057 NEW)
+endif()
+
 if(NOT DEFINED MYLITE_SOURCE_DIR)
   message(FATAL_ERROR "MYLITE_SOURCE_DIR is required")
 endif()

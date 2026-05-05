@@ -5,7 +5,6 @@
 #include "sqlite3.h"
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 static char *copy_insert_duplicate_entry_value(const struct mylite_insert_unique_index *index,
@@ -107,7 +106,7 @@ int mylite_dml_insert_set_duplicate_entry_error(mylite_db *database, const char 
 
     message =
         sqlite3_mprintf("Duplicate entry '%q' for key '%q.%q'", entry, table_name, index->name);
-    free(entry);
+    sqlite3_free(entry);
     if (message == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
@@ -138,7 +137,7 @@ int mylite_dml_insert_append_duplicate_entry_warning(mylite_db *database, const 
 
     message =
         sqlite3_mprintf("Duplicate entry '%q' for key '%q.%q'", entry, table_name, index->name);
-    free(entry);
+    sqlite3_free(entry);
     if (message == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;

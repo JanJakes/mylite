@@ -24,11 +24,8 @@ static const size_t corpus_minimum_token_count = 1000U;
 
 #define EXPECTED_TOKEN(kind_value, text_value, operator_value, error_value, keyword_flags_value)   \
     {                                                                                              \
-        .text = (text_value),                                                                      \
-        .kind = (kind_value),                                                                      \
-        .operator_kind = (operator_value),                                                         \
-        .error = (error_value),                                                                    \
-        .keyword_flags = (keyword_flags_value),                                                    \
+        .text = (text_value), .kind = (kind_value), .operator_kind = (operator_value),             \
+        .error = (error_value), .keyword_flags = (keyword_flags_value),                            \
     }
 
 #define EXPECT_SINGLE_TOKEN(sql_value, modes_value, kind_value, error_value)                       \

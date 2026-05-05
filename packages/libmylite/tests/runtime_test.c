@@ -10212,7 +10212,7 @@ static int test_trigonometric_scalar_function_execution(mylite_db *database)
         "0",
         "0.8414709848078965",
         "0.5403023058681398",
-        "1.557407724654902",
+        "1.5574077246549023",
         NULL,
         NULL,
         NULL,
@@ -10224,7 +10224,7 @@ static int test_trigonometric_scalar_function_execution(mylite_db *database)
         "-1.2246467991473532e-16",
         "0.4533964905016491",
         "-0.8913089376870335",
-        "-0.5086861259107567",
+        "-0.5086861259107568",
         "0",
         "1",
         "0",
@@ -10240,7 +10240,7 @@ static int test_trigonometric_scalar_function_execution(mylite_db *database)
         "0",
         "0",
         "1",
-        "-0.004962015874444894",
+        "-0.004962015874444895",
         "-0.004961954789184062",
         "0",
         "1",
@@ -10474,15 +10474,15 @@ static int test_cot_scalar_function_execution(mylite_db *database)
         "cot_pi",  "cot_neg_pi", "cot_huge",    "cot_tiny_pos", "cot_tiny_neg",
     };
     static const char *const cot_values[] = {
-        "0.6420926159343308",
-        "-1.5726734063976895",
-        "-0.6420926159343308",
+        "0.6420926159343306",
+        "-1.5726734063976893",
+        "-0.6420926159343306",
         NULL,
         "6.123233995736766e-17",
         "1.0000000000000002",
         "-8165619676597685",
         "8165619676597685",
-        "-1.9658487799516648",
+        "-1.9658487799516644",
         "1e308",
         "-1e308",
     };
@@ -10490,13 +10490,13 @@ static int test_cot_scalar_function_execution(mylite_db *database)
         "cot_trail", "cot_spaced", "cot_exp", "cot_pos_over", "cot_neg_over",
     };
     static const char *const warning_values[] = {
-        "0.6420926159343308", "-7.489155308722675", "-1.702956919426469",
-        "-201.5309957290032", "201.5309957290032",
+        "0.6420926159343306",  "-7.489155308722675", "-1.702956919426469",
+        "-201.53099572900314", "201.53099572900314",
     };
     static const char *const cot_projection_columns[] = {"id", "c"};
     static const char *const cot_projection_values[] = {
-        "4", "-8165619676597685",  "3", "-0.6420926159343308",
-        "2", "0.6420926159343308", "5", "1e308",
+        "4", "-8165619676597685",  "3", "-0.6420926159343306",
+        "2", "0.6420926159343306", "5", "1e308",
     };
     static const char *const id_column[] = {"id"};
     static const char *const selected_id_values[] = {"2", "5"};
@@ -10820,7 +10820,7 @@ static int test_inverse_trigonometric_scalar_function_execution(mylite_db *datab
         "0",
         "1.5707963267948966",
         "3.141592653589793",
-        "1.0471975511965976",
+        "1.0471975511965979",
         "2.0943951023931957",
         NULL,
         NULL,
@@ -10830,8 +10830,8 @@ static int test_inverse_trigonometric_scalar_function_execution(mylite_db *datab
         "0",
         "-1.5707963267948966",
         "0.2013579207903308",
-        "0.5235987755982988",
-        "-0.5235987755982988",
+        "0.5235987755982989",
+        "-0.5235987755982989",
         NULL,
         NULL,
         NULL,
@@ -10879,7 +10879,7 @@ static int test_inverse_trigonometric_scalar_function_execution(mylite_db *datab
         "0",
         "1.5707963267948966",
         "6",
-        "1.3694384060045657",
+        "1.369438406004566",
         "0.2013579207903308",
         "2",
         "1.5707963267948966",

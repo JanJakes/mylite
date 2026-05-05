@@ -149,6 +149,7 @@ static const uint64_t mylite_expression_ipv4_u32_max = UINT32_MAX;
 static const uint32_t mylite_expression_crc32_initial = UINT32_C(0xFFFFFFFF);
 static const uint32_t mylite_expression_crc32_polynomial = UINT32_C(0xEDB88320);
 static const double mylite_expression_round_half = 0.5;
+static const long double mylite_expression_long_double_one = 1.0L;
 
 struct numeric_value {
     double real_value;
@@ -1381,7 +1382,7 @@ static int round_append_signed_decimal_result(const struct decimal_text_parts *p
 static int round_approximate_value(const struct mylite_expression_value *value, int scale,
                                    struct mylite_expression_warnings *warnings,
                                    struct mylite_expression_value *out_value);
-static long double round_half_even_long_double(long double value);
+static double round_half_even_double(double value);
 static int set_round_approximate_text(long double value, struct mylite_expression_value *out_value,
                                       int scale);
 static int truncate_exact_decimal_text(const char *text, size_t text_length,
@@ -4301,7 +4302,9 @@ static bool parse_temporal_delimited_date(const char *text, size_t length,
         return false;
     }
     while (offset < length && text[offset] >= '0' && text[offset] <= '9') {
-        year = (year * MYLITE_EXPRESSION_DECIMAL_BASE) + (int)(text[offset] - '0');
+        if (offset - year_start < 4U) {
+            year = (year * MYLITE_EXPRESSION_DECIMAL_BASE) + (int)(text[offset] - '0');
+        }
         ++offset;
     }
     if ((offset - year_start != 2U && offset - year_start != 4U) || offset >= length ||
@@ -6160,7 +6163,7 @@ static int repeat_text_value(const char *text, int64_t count,
     }
     cursor = result;
     for (int64_t index = 0; index < count; ++index) {
-        memcpy(cursor, source, source_length);
+        memcpy(cursor, source, source_length); // NOLINT(bugprone-not-null-terminated-result)
         cursor += source_length;
     }
     result[output_length] = '\0';
@@ -7790,13 +7793,18 @@ static int to_base64_text_value(const char *text, size_t text_length,
         result[output++] = digits[((first & MYLITE_EXPRESSION_BASE64_TWO_BIT_MASK)
                                    << MYLITE_EXPRESSION_BASE64_SHIFT_FOUR) |
                                   (second >> MYLITE_EXPRESSION_BASE64_SHIFT_FOUR)];
-        result[output++] = source_count > 1U
-                               ? digits[((second & MYLITE_EXPRESSION_BASE64_FOUR_BIT_MASK)
-                                         << MYLITE_EXPRESSION_BASE64_SHIFT_TWO) |
-                                        (third >> MYLITE_EXPRESSION_BASE64_SHIFT_SIX)]
-                               : '=';
-        result[output++] =
-            source_count > 2U ? digits[third & MYLITE_EXPRESSION_BASE64_SIX_BIT_MASK] : '=';
+        if (source_count > 1U) {
+            result[output++] = digits[((second & MYLITE_EXPRESSION_BASE64_FOUR_BIT_MASK)
+                                       << MYLITE_EXPRESSION_BASE64_SHIFT_TWO) |
+                                      (third >> MYLITE_EXPRESSION_BASE64_SHIFT_SIX)];
+        } else {
+            result[output++] = '=';
+        }
+        if (source_count > 2U) {
+            result[output++] = digits[third & MYLITE_EXPRESSION_BASE64_SIX_BIT_MASK];
+        } else {
+            result[output++] = '=';
+        }
         line_length += MYLITE_EXPRESSION_BASE64_OUTPUT_GROUP;
         if (line_length == MYLITE_EXPRESSION_BASE64_LINE_LENGTH && input < text_length) {
             result[output++] = '\n';
@@ -8834,10 +8842,14 @@ static int append_inet_ntoa_range_text_warning(struct mylite_expression_warnings
 static int set_inet_ntoa_result(uint32_t address, struct mylite_expression_value *out_value)
 {
     char text[MYLITE_EXPRESSION_IPV4_NTOA_BUFFER_SIZE];
-    int length =
-        snprintf(text, sizeof(text), "%u.%u.%u.%u", (unsigned int)((address >> 24U) & 0xFFU),
-                 (unsigned int)((address >> 16U) & 0xFFU), (unsigned int)((address >> 8U) & 0xFFU),
-                 (unsigned int)(address & 0xFFU));
+    int length = snprintf(text, sizeof(text), "%u.%u.%u.%u",
+                          (unsigned int)((address >> MYLITE_EXPRESSION_IPV4_FIRST_OCTET_SHIFT) &
+                                         MYLITE_EXPRESSION_IPV4_OCTET_MAX),
+                          (unsigned int)((address >> MYLITE_EXPRESSION_IPV4_SECOND_OCTET_SHIFT) &
+                                         MYLITE_EXPRESSION_IPV4_OCTET_MAX),
+                          (unsigned int)((address >> MYLITE_EXPRESSION_IPV4_THIRD_OCTET_SHIFT) &
+                                         MYLITE_EXPRESSION_IPV4_OCTET_MAX),
+                          (unsigned int)(address & MYLITE_EXPRESSION_IPV4_OCTET_MAX));
 
     if (length < 0 || (size_t)length >= sizeof(text)) {
         return -1;
@@ -11038,27 +11050,27 @@ static int format_round_approximate_text(struct format_approximate_round_input i
                                          char **out_text, size_t *out_length)
 {
     char buffer[MYLITE_EXPRESSION_FORMAT_TEXT_BUFFER_SIZE];
-    long double factor = 1.0L;
-    long double scaled = 0.0L;
-    long double rounded = 0.0L;
-    long double formatted = 0.0L;
+    double factor = 1.0;
+    double scaled = 0.0;
+    double rounded = 0.0;
+    double formatted = 0.0;
     int length = 0;
 
     if (out_text == NULL || out_length == NULL) {
         return -1;
     }
     for (int index = 0; index < input.scale; ++index) {
-        factor *= (long double)MYLITE_EXPRESSION_DECIMAL_BASE;
+        factor *= (double)MYLITE_EXPRESSION_DECIMAL_BASE;
     }
-    scaled = (long double)input.value * factor;
-    rounded = round_half_even_long_double(scaled);
+    scaled = input.value * factor;
+    rounded = round_half_even_double(scaled);
     formatted = rounded / factor;
-    if (rounded == 0.0L && signbit((double)input.value)) {
-        formatted = -0.0L;
-    } else if (rounded == 0.0L) {
-        formatted = 0.0L;
+    if (rounded == 0.0 && signbit(input.value)) {
+        formatted = -0.0;
+    } else if (rounded == 0.0) {
+        formatted = 0.0;
     }
-    length = snprintf(buffer, sizeof(buffer), "%.*Lf", input.scale, formatted);
+    length = snprintf(buffer, sizeof(buffer), "%.*f", input.scale, formatted);
     if (length < 0 || (size_t)length >= sizeof(buffer)) {
         return -1;
     }
@@ -11525,8 +11537,8 @@ static int round_approximate_value(const struct mylite_expression_value *value, 
                                    struct mylite_expression_value *out_value)
 {
     struct numeric_value number = {0};
-    long double factor = 1.0L;
-    long double rounded = 0.0L;
+    double factor = 1.0;
+    double rounded = 0.0;
     int places = scale < 0 ? -scale : scale;
     int status = value_to_numeric(value, warnings, &number);
 
@@ -11534,35 +11546,35 @@ static int round_approximate_value(const struct mylite_expression_value *value, 
         return status;
     }
     for (int index = 0; index < places; ++index) {
-        factor *= (long double)MYLITE_EXPRESSION_DECIMAL_BASE;
+        factor *= (double)MYLITE_EXPRESSION_DECIMAL_BASE;
     }
     if (scale >= 0) {
-        rounded = round_half_even_long_double((long double)number.real_value * factor) / factor;
+        rounded = round_half_even_double(number.real_value * factor) / factor;
     } else {
-        rounded = round_half_even_long_double((long double)number.real_value / factor) * factor;
+        rounded = round_half_even_double(number.real_value / factor) * factor;
     }
-    return set_round_approximate_text(rounded, out_value, scale);
+    return set_round_approximate_text((long double)rounded, out_value, scale);
 }
 
-static long double round_half_even_long_double(long double value)
+static double round_half_even_double(double value)
 {
-    long double truncated = 0.0L;
-    long double fraction = 0.0L;
+    double truncated = 0.0;
+    double fraction = 0.0;
     int64_t integer = 0;
 
-    if (value >= (long double)INT64_MAX || value <= (long double)INT64_MIN) {
+    if (value >= (double)INT64_MAX || value <= (double)INT64_MIN) {
         return value;
     }
     integer = (int64_t)value;
-    truncated = (long double)integer;
+    truncated = (double)integer;
     fraction = value - truncated;
-    if (fraction > (long double)mylite_expression_round_half ||
-        (fraction == (long double)mylite_expression_round_half && (integer & INT64_C(1)) != 0)) {
-        return truncated + 1.0L;
+    if (fraction > mylite_expression_round_half ||
+        (fraction == mylite_expression_round_half && (integer & INT64_C(1)) != 0)) {
+        return truncated + 1.0;
     }
-    if (fraction < -(long double)mylite_expression_round_half ||
-        (fraction == -(long double)mylite_expression_round_half && (integer & INT64_C(1)) != 0)) {
-        return truncated - 1.0L;
+    if (fraction < -mylite_expression_round_half ||
+        (fraction == -mylite_expression_round_half && (integer & INT64_C(1)) != 0)) {
+        return truncated - 1.0;
     }
     return truncated;
 }
@@ -11741,7 +11753,7 @@ static int truncate_exact_decimal_negative_scale(const struct decimal_text_parts
 static int truncate_approximate_numeric(const struct numeric_value *number, int scale,
                                         struct mylite_expression_value *out_value)
 {
-    long double factor = 1.0L;
+    long double factor = mylite_expression_long_double_one;
     long double truncated = 0.0L;
     int places = scale < 0 ? -scale : scale;
 
@@ -14077,14 +14089,19 @@ static int append_unsigned_complement_warning(struct mylite_expression_warnings 
 
 static char *copy_span_text(const char *text, size_t length)
 {
-    char *copy = malloc(length + 1U);
+    char *copy = NULL;
 
+    if (length == 0U) {
+        return calloc(1U, 1U);
+    }
+    if (text == NULL || length == SIZE_MAX) {
+        return NULL;
+    }
+    copy = malloc(length + 1U);
     if (copy == NULL) {
         return NULL;
     }
-    if (length != 0U) {
-        memcpy(copy, text, length);
-    }
+    memcpy(copy, text, length);
     copy[length] = '\0';
     return copy;
 }

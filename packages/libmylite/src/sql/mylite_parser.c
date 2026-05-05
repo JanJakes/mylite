@@ -5713,6 +5713,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_row_constructor(
     return row;
 }
 
+// NOLINTBEGIN(bugprone-branch-clone)
 static bool map_lexer_token(const struct mylite_sql_token *token, bool previous_token_was_dot,
                             bool previous_token_allows_subquery_quantifier,
                             bool token_starts_parenthesized_select_subquery,
@@ -6379,6 +6380,7 @@ static bool map_operator_token(const struct mylite_sql_token *token, int *out_pa
 
     return false;
 }
+// NOLINTEND(bugprone-branch-clone)
 
 static bool parser_token_allows_subquery_quantifier(int parser_token)
 {

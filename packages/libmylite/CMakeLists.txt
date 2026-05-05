@@ -31,7 +31,7 @@ if(MSVC)
   )
 else()
   set_source_files_properties("${MYLITE_SQL_PARSE_C}" PROPERTIES
-    COMPILE_OPTIONS "-Wno-unused-parameter;-Wno-unused-variable"
+    COMPILE_OPTIONS "-Wno-unused-parameter;-Wno-unused-variable;-Wno-type-limits"
   )
 endif()
 
@@ -305,6 +305,8 @@ target_include_directories(mylite
 target_link_libraries(mylite PRIVATE MyLite::sqlite)
 
 if(NOT WIN32)
+  target_compile_definitions(mylite PRIVATE _POSIX_C_SOURCE=200809L)
+
   find_library(MYLITE_MATH_LIBRARY m)
   if(MYLITE_MATH_LIBRARY)
     target_link_libraries(mylite PRIVATE "${MYLITE_MATH_LIBRARY}")

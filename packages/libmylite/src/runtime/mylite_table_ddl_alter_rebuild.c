@@ -75,14 +75,14 @@ int mylite_table_ddl_execute_alter_table_rebuild(mylite_stmt *stmt,
             } else {
                 stmt->affected_rows = 0;
             }
-            free(shadow_name);
+            sqlite3_free(shadow_name);
             return MYLITE_OK;
         }
     }
 
     mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
     mylite_diagnostics_clear_warnings(stmt->database);
-    free(shadow_name);
+    sqlite3_free(shadow_name);
     return status;
 }
 

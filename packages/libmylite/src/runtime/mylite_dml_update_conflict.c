@@ -6,7 +6,6 @@
 #include "sql/mylite_expression.h"
 #include "sqlite3.h"
 
-#include <stdlib.h>
 #include <string.h>
 
 static int update_unique_index_conflicts(mylite_db *database,
@@ -106,7 +105,7 @@ static int set_update_duplicate_entry_error(mylite_db *database, const char *tab
 
     message =
         sqlite3_mprintf("Duplicate entry '%q' for key '%q.%q'", entry, table_name, index->name);
-    free(entry);
+    sqlite3_free(entry);
     if (message == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;

@@ -2,8 +2,8 @@
 
 #include "mylite_diagnostics.h"
 #include "mylite_span.h"
+#include "sqlite3.h"
 
-#include <stdlib.h>
 #include <string.h>
 
 static int copy_dml_target_name(mylite_db *database, const char *source, char **out_name);
@@ -109,7 +109,7 @@ int mylite_dml_bind_update_assignment_targets(mylite_db *database,
                 return MYLITE_NOMEM;
             }
             status = set_update_unknown_field_error(database, reference);
-            free(reference);
+            sqlite3_free(reference);
             return status;
         }
         assignments[index] = (struct mylite_update_bound_assignment){

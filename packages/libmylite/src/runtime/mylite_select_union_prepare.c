@@ -212,8 +212,9 @@ static int append_union_query_operand(mylite_db *database, struct mylite_union_p
         return MYLITE_UNSUPPORTED;
     }
 
-    operands = (mylite_stmt **)realloc((void *)plan->operands,
-                                       (plan->operand_count + 1U) * sizeof(*plan->operands));
+    operands = (mylite_stmt **)realloc(
+        (void *)plan->operands,
+        (plan->operand_count + 1U) * sizeof(*plan->operands)); // NOLINT(bugprone-sizeof-expression)
     if (operands == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;

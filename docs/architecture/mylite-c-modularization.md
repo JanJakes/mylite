@@ -790,6 +790,8 @@ into focused `*_types.h` headers.
   DDL alter index model module.
 - [x] Split ALTER TABLE index model construction and generated-name assignment
   into a focused table DDL alter index build module.
+- [x] Split ALTER TABLE added-column value resolution into a focused table DDL
+  alter column value module.
 - [x] Split UNION global ORDER BY binding into a focused select union order
   module.
 - [x] Split UNION global ORDER BY runtime value evaluation into a focused select

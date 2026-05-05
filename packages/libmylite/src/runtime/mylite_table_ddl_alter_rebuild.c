@@ -7,6 +7,7 @@
 #include "mylite_span.h"
 #include "mylite_table_ddl_alter.h"
 #include "mylite_table_ddl_alter_catalog.h"
+#include "mylite_table_ddl_alter_column_value.h"
 #include "mylite_table_ddl_alter_warnings.h"
 #include "mylite_transactions.h"
 #include "sqlite3.h"

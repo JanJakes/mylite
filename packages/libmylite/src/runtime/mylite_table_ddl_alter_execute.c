@@ -10,6 +10,7 @@
 #include "mylite_table_ddl.h"
 #include "mylite_table_ddl_alter.h"
 #include "mylite_table_ddl_alter_catalog.h"
+#include "mylite_table_ddl_alter_column_value.h"
 #include "mylite_table_ddl_alter_index.h"
 #include "mylite_table_ddl_alter_model.h"
 #include "mylite_table_ddl_alter_rebuild.h"

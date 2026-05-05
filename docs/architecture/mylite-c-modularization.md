@@ -646,8 +646,8 @@ into focused `*_types.h` headers.
   module.
 - [x] Split single-table ordered and unordered SELECT materialization into a
   focused SELECT companion module.
-- [ ] Split `mylite_select_materialize.c` into base-table scan, joined-row
-  assembly, outer-join, and materialization-driver modules.
+- [x] Split `mylite_select_materialize.c` into single-table, joined-table,
+  aggregate, and materialization-driver modules.
 - [ ] Split `mylite_dml_insert_value_resolve.c` into insert column-list,
   positional/default, `INSERT ... SET`, and SQLite-bind modules.
 - [ ] Split `mylite_select_subquery_eval.c` into scalar subquery, quantified

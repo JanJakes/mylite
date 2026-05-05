@@ -624,6 +624,8 @@ into focused `*_types.h` headers.
   into a focused DML companion module.
 - [x] Split SELECT row-constructor comparison and null detection into a focused
   SELECT companion module.
+- [x] Split scalar subquery and `EXISTS` evaluation into a focused SELECT
+  subquery companion module.
 - [x] Split insert default, text, current-timestamp, and auto-increment value
   resolution into a focused DML companion module.
 - [x] Split `INSERT ... SET` expression evaluation into a focused DML companion

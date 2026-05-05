@@ -653,6 +653,8 @@ into focused `*_types.h` headers.
 - [x] Split CREATE TABLE catalog insertion into a focused table DDL module.
 - [x] Split CREATE TABLE option normalization into a focused table DDL module.
 - [x] Split CREATE TABLE validation into a focused table DDL module.
+- [x] Split CREATE TABLE column-definition AST copying into a focused table DDL
+  create column copy module.
 - [x] Split standalone CREATE/DROP INDEX catalog mutations into a focused table
   DDL index catalog module.
 - [x] Split create-table plan column lookup into a focused table DDL helper.

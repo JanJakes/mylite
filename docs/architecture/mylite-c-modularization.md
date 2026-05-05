@@ -691,6 +691,8 @@ into focused `*_types.h` headers.
   schema seeding into a focused catalog schema module.
 - [x] Split catalog physical table-name encoding into a focused catalog
   companion module.
+- [x] Split generated CREATE TABLE index-name assignment into a focused table
+  DDL index-name module.
 - [x] Split ALTER TABLE refreshed index/column metadata into a focused table
   DDL alter metadata module.
 - [x] Split ALTER TABLE MySQL-compatible diagnostics into a focused table DDL

@@ -72,6 +72,7 @@ add_library(mylite STATIC
   src/runtime/mylite_expression_collation.c
   src/runtime/mylite_expression_descriptor.c
   src/runtime/mylite_expression_descriptor_numeric.c
+  src/runtime/mylite_expression_descriptor_scalar.c
   src/runtime/mylite_expression_validation.c
   src/runtime/mylite_field_descriptor.c
   src/runtime/mylite_function_names.c

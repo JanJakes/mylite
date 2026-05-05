@@ -15,6 +15,7 @@
 #include "runtime/mylite_expression_collation.h"
 #include "runtime/mylite_expression_descriptor.h"
 #include "runtime/mylite_expression_descriptor_numeric.h"
+#include "runtime/mylite_expression_descriptor_scalar.h"
 #include "runtime/mylite_expression_validation.h"
 #include "runtime/mylite_field_descriptor.h"
 #include "runtime/mylite_function_names.h"
@@ -174,9 +175,6 @@ static bool function_result_nullable(bool arguments_nullable,
                                      const struct mylite_expression_value *value);
 static uint64_t text_function_result_length(mylite_db *database,
                                             const struct mylite_expression_value *value);
-static bool infer_session_function_descriptor(mylite_db *database,
-                                              const struct mylite_sql_ast_node *name,
-                                              struct mylite_field_descriptor *out_descriptor);
 static bool
 infer_current_temporal_function_descriptor(const struct mylite_sql_ast_node *expression,
                                            struct mylite_field_descriptor *out_descriptor);
@@ -215,12 +213,6 @@ static struct mylite_field_descriptor date_interval_string_descriptor(mylite_db 
 static struct mylite_field_descriptor date_interval_datetime_descriptor(unsigned int decimals);
 
 static bool interval_unit_has_time_part(enum mylite_sql_ast_interval_unit unit);
-static bool infer_list_index_function_descriptor(const struct mylite_sql_ast_node *name,
-                                                 bool nullable,
-                                                 struct mylite_field_descriptor *out_descriptor);
-static bool infer_uuid_function_descriptor(mylite_db *database,
-                                           const struct mylite_sql_ast_node *name,
-                                           struct mylite_field_descriptor *out_descriptor);
 // NOLINTNEXTLINE(misc-no-recursion)
 static int infer_make_set_function_descriptor(mylite_db *database,
                                               const struct mylite_select_plan *plan,
@@ -309,16 +301,6 @@ static uint64_t slice_string_function_result_length(mylite_db *database,
                                                     const struct mylite_select_plan *plan,
                                                     const struct mylite_sql_ast_node *expression,
                                                     const struct mylite_expression_value *value);
-static bool
-infer_session_or_inet_function_descriptor(mylite_db *database,
-                                          const struct mylite_sql_ast_node *name,
-                                          struct mylite_field_descriptor *out_descriptor);
-static bool infer_strcmp_function_descriptor(const struct mylite_sql_ast_node *name,
-                                             bool result_nullable,
-                                             struct mylite_field_descriptor *out_descriptor);
-static bool infer_inet_function_descriptor(mylite_db *database,
-                                           const struct mylite_sql_ast_node *name,
-                                           struct mylite_field_descriptor *out_descriptor);
 static int infer_aggregate_expression_descriptor(mylite_db *database,
                                                  const struct mylite_select_plan *plan,
                                                  const struct mylite_sql_ast_node *expression,
@@ -444,9 +426,6 @@ static void
 truncate_decimal_descriptor_for_constant_scale(struct mylite_field_descriptor *descriptor,
                                                const struct mylite_field_descriptor *source,
                                                int scale);
-static bool infer_code_search_function_descriptor(const struct mylite_sql_ast_node *name,
-                                                  bool nullable,
-                                                  struct mylite_field_descriptor *out_descriptor);
 static bool extract_interval_unit_supported(enum mylite_sql_ast_interval_unit unit);
 static int build_select_outputs(mylite_db *database, const struct mylite_sql_ast_node *select_list,
                                 bool allow_expression_outputs, struct mylite_select_plan *plan);
@@ -2340,10 +2319,12 @@ static int infer_function_expression_descriptor(mylite_db *database,
                                                                   out_descriptor)) {
         return MYLITE_OK;
     }
-    if (infer_code_search_function_descriptor(name, result_nullable, out_descriptor)) {
+    if (mylite_expression_descriptor_infer_code_search_function(name, result_nullable,
+                                                                out_descriptor)) {
         return MYLITE_OK;
     }
-    if (infer_list_index_function_descriptor(name, result_nullable, out_descriptor)) {
+    if (mylite_expression_descriptor_infer_list_index_function(name, result_nullable,
+                                                               out_descriptor)) {
         return MYLITE_OK;
     }
     if (name != NULL && mylite_span_equal_ci(name->span, "ISNULL")) {
@@ -2411,13 +2392,14 @@ static bool infer_common_scalar_function_descriptor(mylite_db *database,
                                                     bool arguments_nullable, bool result_nullable,
                                                     struct mylite_field_descriptor *out_descriptor)
 {
-    if (infer_session_or_inet_function_descriptor(database, name, out_descriptor)) {
+    if (mylite_expression_descriptor_infer_session_or_inet_function(database, name,
+                                                                    out_descriptor)) {
         return true;
     }
-    if (infer_strcmp_function_descriptor(name, result_nullable, out_descriptor)) {
+    if (mylite_expression_descriptor_infer_strcmp_function(name, result_nullable, out_descriptor)) {
         return true;
     }
-    if (infer_uuid_function_descriptor(database, name, out_descriptor)) {
+    if (mylite_expression_descriptor_infer_uuid_function(database, name, out_descriptor)) {
         return true;
     }
     if (mylite_expression_descriptor_infer_math_function(name, result_nullable, out_descriptor)) {
@@ -2893,102 +2875,6 @@ truncate_decimal_descriptor_for_constant_scale(struct mylite_field_descriptor *d
     }
 }
 
-static bool
-infer_session_or_inet_function_descriptor(mylite_db *database,
-                                          const struct mylite_sql_ast_node *name,
-                                          struct mylite_field_descriptor *out_descriptor)
-{
-    if (infer_session_function_descriptor(database, name, out_descriptor)) {
-        return true;
-    }
-    return infer_inet_function_descriptor(database, name, out_descriptor);
-}
-
-static bool infer_strcmp_function_descriptor(const struct mylite_sql_ast_node *name,
-                                             bool result_nullable,
-                                             struct mylite_field_descriptor *out_descriptor)
-{
-    if (!mylite_function_name_is_strcmp(name)) {
-        return false;
-    }
-
-    *out_descriptor = mylite_expression_descriptor_signed_longlong(result_nullable);
-    out_descriptor->length = 2U;
-    return true;
-}
-
-static bool infer_inet_function_descriptor(mylite_db *database,
-                                           const struct mylite_sql_ast_node *name,
-                                           struct mylite_field_descriptor *out_descriptor)
-{
-    if (mylite_function_name_is_inet_aton(name)) {
-        *out_descriptor = mylite_expression_descriptor_unsigned_longlong(true);
-        out_descriptor->length = mylite_mysql_signed_longlong_display_length;
-        return true;
-    }
-    if (mylite_function_name_is_inet_ntoa(name)) {
-        uint64_t max_bytes_per_character =
-            mylite_expression_descriptor_connection_character_max_length(database);
-        uint64_t length = max_bytes_per_character > UINT64_MAX / mylite_mysql_inet_ntoa_result_chars
-                              ? mylite_mysql_long_text_length
-                              : mylite_mysql_inet_ntoa_result_chars * max_bytes_per_character;
-
-        *out_descriptor = (struct mylite_field_descriptor){
-            .type = MYLITE_FIELD_TYPE_VAR_STRING,
-            .flags = 0U,
-            .length = length,
-            .decimals = mylite_mysql_not_fixed_decimals,
-            .charset_id = mylite_expression_descriptor_connection_charset_id(database),
-            .nullable = true,
-        };
-        mylite_field_descriptor_set_nullable(out_descriptor, true);
-        return true;
-    }
-    return false;
-}
-
-static bool infer_uuid_function_descriptor(mylite_db *database,
-                                           const struct mylite_sql_ast_node *name,
-                                           struct mylite_field_descriptor *out_descriptor)
-{
-    if (mylite_function_name_is_is_uuid(name)) {
-        *out_descriptor = mylite_expression_descriptor_signed_longlong(true);
-        out_descriptor->length = 1U;
-        return true;
-    }
-    if (mylite_function_name_is_uuid_to_bin(name)) {
-        *out_descriptor = (struct mylite_field_descriptor){
-            .type = MYLITE_FIELD_TYPE_VAR_STRING,
-            .flags = MYLITE_FIELD_FLAG_BINARY,
-            .length = mylite_mysql_uuid_binary_result_bytes,
-            .decimals = mylite_mysql_not_fixed_decimals,
-            .charset_id = mylite_mysql_binary_charset_id,
-            .nullable = true,
-        };
-        mylite_field_descriptor_set_nullable(out_descriptor, true);
-        return true;
-    }
-    if (mylite_function_name_is_bin_to_uuid(name)) {
-        uint64_t max_bytes_per_character =
-            mylite_expression_descriptor_connection_character_max_length(database);
-        uint64_t length = max_bytes_per_character > UINT64_MAX / mylite_mysql_uuid_text_result_chars
-                              ? mylite_mysql_long_text_length
-                              : mylite_mysql_uuid_text_result_chars * max_bytes_per_character;
-
-        *out_descriptor = (struct mylite_field_descriptor){
-            .type = MYLITE_FIELD_TYPE_VAR_STRING,
-            .flags = 0U,
-            .length = length,
-            .decimals = mylite_mysql_not_fixed_decimals,
-            .charset_id = mylite_expression_descriptor_connection_charset_id(database),
-            .nullable = true,
-        };
-        mylite_field_descriptor_set_nullable(out_descriptor, true);
-        return true;
-    }
-    return false;
-}
-
 static bool function_result_nullable(bool arguments_nullable,
                                      const struct mylite_expression_value *value)
 {
@@ -3005,121 +2891,6 @@ static uint64_t text_function_result_length(mylite_db *database,
         return mylite_expression_descriptor_string_length(database, value, NULL);
     }
     return mylite_mysql_text_length;
-}
-
-static bool infer_session_function_descriptor(mylite_db *database,
-                                              const struct mylite_sql_ast_node *name,
-                                              struct mylite_field_descriptor *out_descriptor)
-{
-    if (name == NULL) {
-        return false;
-    }
-    if (mylite_function_name_is_charset(name) || mylite_function_name_is_collation(name)) {
-        uint64_t max_bytes_per_character =
-            mylite_expression_descriptor_connection_character_max_length(database);
-        uint64_t length =
-            max_bytes_per_character >
-                    UINT64_MAX / mylite_mysql_charset_collation_function_display_chars
-                ? mylite_mysql_long_text_length
-                : mylite_mysql_charset_collation_function_display_chars * max_bytes_per_character;
-
-        *out_descriptor = (struct mylite_field_descriptor){
-            .type = MYLITE_FIELD_TYPE_VAR_STRING,
-            .flags = 0U,
-            .length = length,
-            .decimals = mylite_mysql_not_fixed_decimals,
-            .charset_id = mylite_expression_descriptor_connection_collation_id(database),
-            .nullable = true,
-        };
-        return true;
-    }
-    if (mylite_function_name_is_coercibility(name)) {
-        *out_descriptor = (struct mylite_field_descriptor){
-            .type = MYLITE_FIELD_TYPE_LONGLONG,
-            .flags = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
-            .length = mylite_mysql_coercibility_function_display_length,
-            .charset_id = mylite_mysql_binary_charset_id,
-            .nullable = false,
-        };
-        return true;
-    }
-    if (mylite_span_equal_ci(name->span, "DATABASE") ||
-        mylite_span_equal_ci(name->span, "SCHEMA")) {
-        *out_descriptor = (struct mylite_field_descriptor){
-            .type = MYLITE_FIELD_TYPE_VAR_STRING,
-            .flags = 0U,
-            .length = mylite_mysql_schema_function_display_length,
-            .decimals = mylite_mysql_not_fixed_decimals,
-            .charset_id = mylite_expression_descriptor_connection_charset_id(database),
-            .nullable = true,
-        };
-        return true;
-    }
-    if (mylite_span_equal_ci(name->span, "VERSION")) {
-        *out_descriptor = (struct mylite_field_descriptor){
-            .type = MYLITE_FIELD_TYPE_VAR_STRING,
-            .flags = MYLITE_FIELD_FLAG_NOT_NULL,
-            .length = mylite_mysql_version_function_display_length,
-            .decimals = mylite_mysql_not_fixed_decimals,
-            .charset_id = mylite_expression_descriptor_connection_charset_id(database),
-            .nullable = false,
-        };
-        return true;
-    }
-    if (mylite_span_equal_ci(name->span, "USER") ||
-        mylite_span_equal_ci(name->span, "SESSION_USER") ||
-        mylite_span_equal_ci(name->span, "SYSTEM_USER") ||
-        mylite_span_equal_ci(name->span, "CURRENT_USER")) {
-        uint64_t max_bytes_per_character =
-            mylite_expression_descriptor_connection_character_max_length(database);
-        uint64_t length =
-            max_bytes_per_character > UINT64_MAX / mylite_mysql_identity_function_display_chars
-                ? mylite_mysql_long_text_length
-                : mylite_mysql_identity_function_display_chars * max_bytes_per_character;
-
-        *out_descriptor = (struct mylite_field_descriptor){
-            .type = MYLITE_FIELD_TYPE_VAR_STRING,
-            .flags = 0U,
-            .length = length,
-            .decimals = mylite_mysql_not_fixed_decimals,
-            .charset_id = mylite_expression_descriptor_connection_charset_id(database),
-            .nullable = true,
-        };
-        return true;
-    }
-    if (mylite_span_equal_ci(name->span, "LAST_INSERT_ID")) {
-        *out_descriptor = (struct mylite_field_descriptor){
-            .type = MYLITE_FIELD_TYPE_LONGLONG,
-            .flags = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED |
-                     MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
-            .length = mylite_mysql_session_integer_function_display_length,
-            .charset_id = mylite_mysql_binary_charset_id,
-            .nullable = false,
-        };
-        return true;
-    }
-    if (mylite_span_equal_ci(name->span, "CONNECTION_ID")) {
-        *out_descriptor = (struct mylite_field_descriptor){
-            .type = MYLITE_FIELD_TYPE_LONGLONG,
-            .flags = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED |
-                     MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
-            .length = mylite_mysql_session_integer_function_display_length,
-            .charset_id = mylite_mysql_binary_charset_id,
-            .nullable = false,
-        };
-        return true;
-    }
-    if (mylite_span_equal_ci(name->span, "ROW_COUNT")) {
-        *out_descriptor = (struct mylite_field_descriptor){
-            .type = MYLITE_FIELD_TYPE_LONGLONG,
-            .flags = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
-            .length = mylite_mysql_session_integer_function_display_length,
-            .charset_id = mylite_mysql_binary_charset_id,
-            .nullable = false,
-        };
-        return true;
-    }
-    return false;
 }
 
 static bool
@@ -3497,23 +3268,6 @@ static struct mylite_field_descriptor date_interval_datetime_descriptor(unsigned
 
     mylite_field_descriptor_set_nullable(&descriptor, true);
     return descriptor;
-}
-
-static bool infer_list_index_function_descriptor(const struct mylite_sql_ast_node *name,
-                                                 bool nullable,
-                                                 struct mylite_field_descriptor *out_descriptor)
-{
-    if (mylite_function_name_is_field(name)) {
-        *out_descriptor = mylite_expression_descriptor_signed_longlong(false);
-        out_descriptor->length = mylite_mysql_list_index_function_display_length;
-        return true;
-    }
-    if (mylite_function_name_is_find_in_set(name)) {
-        *out_descriptor = mylite_expression_descriptor_signed_longlong(nullable);
-        out_descriptor->length = mylite_mysql_list_index_function_display_length;
-        return true;
-    }
-    return false;
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
@@ -5003,28 +4757,6 @@ aggregate_greatest_least_numeric_descriptor(const struct mylite_field_descriptor
     aggregate->charset_id = mylite_mysql_binary_charset_id;
     aggregate->length = mylite_expression_descriptor_max_u64(aggregate->length, argument->length);
     aggregate->decimals = 0U;
-}
-
-static bool infer_code_search_function_descriptor(const struct mylite_sql_ast_node *name,
-                                                  bool nullable,
-                                                  struct mylite_field_descriptor *out_descriptor)
-{
-    if (mylite_function_name_is_ascii(name)) {
-        *out_descriptor = mylite_expression_descriptor_signed_longlong(nullable);
-        out_descriptor->length = mylite_mysql_ascii_function_display_length;
-        return true;
-    }
-    if (mylite_function_name_is_ord(name)) {
-        *out_descriptor = mylite_expression_descriptor_signed_longlong(nullable);
-        out_descriptor->length = mylite_mysql_ord_function_display_length;
-        return true;
-    }
-    if (mylite_function_name_has_search_result(name)) {
-        *out_descriptor = mylite_expression_descriptor_signed_longlong(nullable);
-        out_descriptor->length = mylite_mysql_search_function_display_length;
-        return true;
-    }
-    return false;
 }
 
 static bool extract_interval_unit_supported(enum mylite_sql_ast_interval_unit unit)

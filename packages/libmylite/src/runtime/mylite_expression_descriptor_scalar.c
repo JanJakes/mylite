@@ -1,0 +1,265 @@
+#include "mylite_expression_descriptor_scalar.h"
+
+#include "mylite_expression_descriptor.h"
+#include "mylite_function_names.h"
+#include "mylite_metadata_constants.h"
+#include "mylite_span.h"
+#include "sql/mylite_ast.h"
+
+#include <stdint.h>
+
+static bool infer_session_function_descriptor(mylite_db *database,
+                                              const struct mylite_sql_ast_node *name,
+                                              struct mylite_field_descriptor *out_descriptor);
+static bool infer_inet_function_descriptor(mylite_db *database,
+                                           const struct mylite_sql_ast_node *name,
+                                           struct mylite_field_descriptor *out_descriptor);
+
+bool mylite_expression_descriptor_infer_session_or_inet_function(
+    mylite_db *database, const struct mylite_sql_ast_node *name,
+    struct mylite_field_descriptor *out_descriptor)
+{
+    if (infer_session_function_descriptor(database, name, out_descriptor)) {
+        return true;
+    }
+    return infer_inet_function_descriptor(database, name, out_descriptor);
+}
+
+bool mylite_expression_descriptor_infer_strcmp_function(
+    const struct mylite_sql_ast_node *name, bool result_nullable,
+    struct mylite_field_descriptor *out_descriptor)
+{
+    if (!mylite_function_name_is_strcmp(name)) {
+        return false;
+    }
+
+    *out_descriptor = mylite_expression_descriptor_signed_longlong(result_nullable);
+    out_descriptor->length = 2U;
+    return true;
+}
+
+bool mylite_expression_descriptor_infer_uuid_function(
+    mylite_db *database, const struct mylite_sql_ast_node *name,
+    struct mylite_field_descriptor *out_descriptor)
+{
+    if (mylite_function_name_is_is_uuid(name)) {
+        *out_descriptor = mylite_expression_descriptor_signed_longlong(true);
+        out_descriptor->length = 1U;
+        return true;
+    }
+    if (mylite_function_name_is_uuid_to_bin(name)) {
+        *out_descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_VAR_STRING,
+            .flags = MYLITE_FIELD_FLAG_BINARY,
+            .length = mylite_mysql_uuid_binary_result_bytes,
+            .decimals = mylite_mysql_not_fixed_decimals,
+            .charset_id = mylite_mysql_binary_charset_id,
+            .nullable = true,
+        };
+        mylite_field_descriptor_set_nullable(out_descriptor, true);
+        return true;
+    }
+    if (mylite_function_name_is_bin_to_uuid(name)) {
+        uint64_t max_bytes_per_character =
+            mylite_expression_descriptor_connection_character_max_length(database);
+        uint64_t length = max_bytes_per_character > UINT64_MAX / mylite_mysql_uuid_text_result_chars
+                              ? mylite_mysql_long_text_length
+                              : mylite_mysql_uuid_text_result_chars * max_bytes_per_character;
+
+        *out_descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_VAR_STRING,
+            .flags = 0U,
+            .length = length,
+            .decimals = mylite_mysql_not_fixed_decimals,
+            .charset_id = mylite_expression_descriptor_connection_charset_id(database),
+            .nullable = true,
+        };
+        mylite_field_descriptor_set_nullable(out_descriptor, true);
+        return true;
+    }
+    return false;
+}
+
+bool mylite_expression_descriptor_infer_list_index_function(
+    const struct mylite_sql_ast_node *name, bool nullable,
+    struct mylite_field_descriptor *out_descriptor)
+{
+    if (mylite_function_name_is_field(name)) {
+        *out_descriptor = mylite_expression_descriptor_signed_longlong(false);
+        out_descriptor->length = mylite_mysql_list_index_function_display_length;
+        return true;
+    }
+    if (mylite_function_name_is_find_in_set(name)) {
+        *out_descriptor = mylite_expression_descriptor_signed_longlong(nullable);
+        out_descriptor->length = mylite_mysql_list_index_function_display_length;
+        return true;
+    }
+    return false;
+}
+
+bool mylite_expression_descriptor_infer_code_search_function(
+    const struct mylite_sql_ast_node *name, bool nullable,
+    struct mylite_field_descriptor *out_descriptor)
+{
+    if (mylite_function_name_is_ascii(name)) {
+        *out_descriptor = mylite_expression_descriptor_signed_longlong(nullable);
+        out_descriptor->length = mylite_mysql_ascii_function_display_length;
+        return true;
+    }
+    if (mylite_function_name_is_ord(name)) {
+        *out_descriptor = mylite_expression_descriptor_signed_longlong(nullable);
+        out_descriptor->length = mylite_mysql_ord_function_display_length;
+        return true;
+    }
+    if (mylite_function_name_has_search_result(name)) {
+        *out_descriptor = mylite_expression_descriptor_signed_longlong(nullable);
+        out_descriptor->length = mylite_mysql_search_function_display_length;
+        return true;
+    }
+    return false;
+}
+
+static bool infer_session_function_descriptor(mylite_db *database,
+                                              const struct mylite_sql_ast_node *name,
+                                              struct mylite_field_descriptor *out_descriptor)
+{
+    if (name == NULL) {
+        return false;
+    }
+    if (mylite_function_name_is_charset(name) || mylite_function_name_is_collation(name)) {
+        uint64_t max_bytes_per_character =
+            mylite_expression_descriptor_connection_character_max_length(database);
+        uint64_t length =
+            max_bytes_per_character >
+                    UINT64_MAX / mylite_mysql_charset_collation_function_display_chars
+                ? mylite_mysql_long_text_length
+                : mylite_mysql_charset_collation_function_display_chars * max_bytes_per_character;
+
+        *out_descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_VAR_STRING,
+            .flags = 0U,
+            .length = length,
+            .decimals = mylite_mysql_not_fixed_decimals,
+            .charset_id = mylite_expression_descriptor_connection_collation_id(database),
+            .nullable = true,
+        };
+        return true;
+    }
+    if (mylite_function_name_is_coercibility(name)) {
+        *out_descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_LONGLONG,
+            .flags = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+            .length = mylite_mysql_coercibility_function_display_length,
+            .charset_id = mylite_mysql_binary_charset_id,
+            .nullable = false,
+        };
+        return true;
+    }
+    if (mylite_span_equal_ci(name->span, "DATABASE") ||
+        mylite_span_equal_ci(name->span, "SCHEMA")) {
+        *out_descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_VAR_STRING,
+            .flags = 0U,
+            .length = mylite_mysql_schema_function_display_length,
+            .decimals = mylite_mysql_not_fixed_decimals,
+            .charset_id = mylite_expression_descriptor_connection_charset_id(database),
+            .nullable = true,
+        };
+        return true;
+    }
+    if (mylite_span_equal_ci(name->span, "VERSION")) {
+        *out_descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_VAR_STRING,
+            .flags = MYLITE_FIELD_FLAG_NOT_NULL,
+            .length = mylite_mysql_version_function_display_length,
+            .decimals = mylite_mysql_not_fixed_decimals,
+            .charset_id = mylite_expression_descriptor_connection_charset_id(database),
+            .nullable = false,
+        };
+        return true;
+    }
+    if (mylite_span_equal_ci(name->span, "USER") ||
+        mylite_span_equal_ci(name->span, "SESSION_USER") ||
+        mylite_span_equal_ci(name->span, "SYSTEM_USER") ||
+        mylite_span_equal_ci(name->span, "CURRENT_USER")) {
+        uint64_t max_bytes_per_character =
+            mylite_expression_descriptor_connection_character_max_length(database);
+        uint64_t length =
+            max_bytes_per_character > UINT64_MAX / mylite_mysql_identity_function_display_chars
+                ? mylite_mysql_long_text_length
+                : mylite_mysql_identity_function_display_chars * max_bytes_per_character;
+
+        *out_descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_VAR_STRING,
+            .flags = 0U,
+            .length = length,
+            .decimals = mylite_mysql_not_fixed_decimals,
+            .charset_id = mylite_expression_descriptor_connection_charset_id(database),
+            .nullable = true,
+        };
+        return true;
+    }
+    if (mylite_span_equal_ci(name->span, "LAST_INSERT_ID")) {
+        *out_descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_LONGLONG,
+            .flags = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED |
+                     MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+            .length = mylite_mysql_session_integer_function_display_length,
+            .charset_id = mylite_mysql_binary_charset_id,
+            .nullable = false,
+        };
+        return true;
+    }
+    if (mylite_span_equal_ci(name->span, "CONNECTION_ID")) {
+        *out_descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_LONGLONG,
+            .flags = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED |
+                     MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+            .length = mylite_mysql_session_integer_function_display_length,
+            .charset_id = mylite_mysql_binary_charset_id,
+            .nullable = false,
+        };
+        return true;
+    }
+    if (mylite_span_equal_ci(name->span, "ROW_COUNT")) {
+        *out_descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_LONGLONG,
+            .flags = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+            .length = mylite_mysql_session_integer_function_display_length,
+            .charset_id = mylite_mysql_binary_charset_id,
+            .nullable = false,
+        };
+        return true;
+    }
+    return false;
+}
+
+static bool infer_inet_function_descriptor(mylite_db *database,
+                                           const struct mylite_sql_ast_node *name,
+                                           struct mylite_field_descriptor *out_descriptor)
+{
+    if (mylite_function_name_is_inet_aton(name)) {
+        *out_descriptor = mylite_expression_descriptor_unsigned_longlong(true);
+        out_descriptor->length = mylite_mysql_signed_longlong_display_length;
+        return true;
+    }
+    if (mylite_function_name_is_inet_ntoa(name)) {
+        uint64_t max_bytes_per_character =
+            mylite_expression_descriptor_connection_character_max_length(database);
+        uint64_t length = max_bytes_per_character > UINT64_MAX / mylite_mysql_inet_ntoa_result_chars
+                              ? mylite_mysql_long_text_length
+                              : mylite_mysql_inet_ntoa_result_chars * max_bytes_per_character;
+
+        *out_descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_VAR_STRING,
+            .flags = 0U,
+            .length = length,
+            .decimals = mylite_mysql_not_fixed_decimals,
+            .charset_id = mylite_expression_descriptor_connection_charset_id(database),
+            .nullable = true,
+        };
+        mylite_field_descriptor_set_nullable(out_descriptor, true);
+        return true;
+    }
+    return false;
+}

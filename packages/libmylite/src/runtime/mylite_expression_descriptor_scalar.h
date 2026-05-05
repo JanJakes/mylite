@@ -1,0 +1,28 @@
+#ifndef MYLITE_RUNTIME_MYLITE_EXPRESSION_DESCRIPTOR_SCALAR_H
+#define MYLITE_RUNTIME_MYLITE_EXPRESSION_DESCRIPTOR_SCALAR_H
+
+#include <mylite/mylite.h>
+
+#include "mylite_field_descriptor.h"
+
+#include <stdbool.h>
+
+struct mylite_sql_ast_node;
+
+bool mylite_expression_descriptor_infer_session_or_inet_function(
+    mylite_db *database, const struct mylite_sql_ast_node *name,
+    struct mylite_field_descriptor *out_descriptor);
+bool mylite_expression_descriptor_infer_strcmp_function(
+    const struct mylite_sql_ast_node *name, bool result_nullable,
+    struct mylite_field_descriptor *out_descriptor);
+bool mylite_expression_descriptor_infer_uuid_function(
+    mylite_db *database, const struct mylite_sql_ast_node *name,
+    struct mylite_field_descriptor *out_descriptor);
+bool mylite_expression_descriptor_infer_list_index_function(
+    const struct mylite_sql_ast_node *name, bool nullable,
+    struct mylite_field_descriptor *out_descriptor);
+bool mylite_expression_descriptor_infer_code_search_function(
+    const struct mylite_sql_ast_node *name, bool nullable,
+    struct mylite_field_descriptor *out_descriptor);
+
+#endif

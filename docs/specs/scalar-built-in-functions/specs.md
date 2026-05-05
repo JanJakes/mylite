@@ -71,7 +71,7 @@ In scope for the initial implementation:
   - `DATE_SUB`, `SUBDATE`
   - `TIMESTAMPADD`, `TIMESTAMPDIFF`
   - `TO_DAYS`, `TO_SECONDS`, `FROM_DAYS`
-  - `TIME`, `LAST_DAY`
+  - `TIME`, `TIME_TO_SEC`, `LAST_DAY`
   - `UNIX_TIMESTAMP`, `FROM_UNIXTIME`, `DATE_FORMAT`
   - `EXTRACT`
 - conditional and comparison functions:
@@ -192,7 +192,7 @@ by common scalar expressions:
   `SECOND` units, `TIMESTAMPADD` for the simple `DAY`, `WEEK`, `MONTH`,
   `YEAR`, `HOUR`, `MINUTE`, and `SECOND` units, and `TIMESTAMPDIFF` for the
   simple `DAY`, `WEEK`, `MONTH`, `YEAR`, `HOUR`, `MINUTE`, and `SECOND` units,
-  plus `TO_DAYS`, `TO_SECONDS`, `FROM_DAYS`, `TIME`, `LAST_DAY`,
+  plus `TO_DAYS`, `TO_SECONDS`, `FROM_DAYS`, `TIME`, `TIME_TO_SEC`, `LAST_DAY`,
   `UNIX_TIMESTAMP`, `FROM_UNIXTIME`, and `DATE_FORMAT`;
   see
   `docs/specs/current-temporal-functions/specs.md` and
@@ -205,6 +205,7 @@ by common scalar expressions:
   `docs/specs/to-seconds-function/specs.md` and
   `docs/specs/from-days-function/specs.md` and
   `docs/specs/time-function/specs.md` and
+  `docs/specs/time-to-sec-function/specs.md` and
   `docs/specs/last-day-function/specs.md` and
   `docs/specs/unix-timestamp-function/specs.md` and
   `docs/specs/from-unixtime-function/specs.md` and
@@ -259,6 +260,7 @@ warning propagation, TIMESTAMPDIFF calendar and elapsed-time differences over
 supported simple units, TO_DAYS day-number conversion, TO_SECONDS seconds-count
 conversion with time-of-day inclusion, FROM_DAYS day-number-to-date conversion,
 TIME extraction/coercion over typed temporal and untyped inputs,
+TIME_TO_SEC conversion to signed whole seconds,
 LAST_DAY month-end conversion,
 UNIX_TIMESTAMP timestamp conversion,
 FROM_UNIXTIME epoch-to-datetime conversion and formatted output,
@@ -1120,7 +1122,7 @@ and `LIMIT 0` queries for:
 - conditional/comparison functions: `IF`, `IFNULL`, `COALESCE`, `GREATEST`,
   `LEAST`, `STRCMP`
 - temporal functions: `NOW(6)`, `CURDATE`, `DATEDIFF`, `DATE_ADD`,
-  `LAST_DAY`, `TIME`, `FROM_UNIXTIME`, `DATE_FORMAT`
+  `LAST_DAY`, `TIME`, `TIME_TO_SEC`, `FROM_UNIXTIME`, `DATE_FORMAT`
 - information functions: `DATABASE`, `SCHEMA`, `VERSION`, `LAST_INSERT_ID`,
   `ROW_COUNT`, `CONNECTION_ID`
 

@@ -602,6 +602,7 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_QUARTER = 126,
     MYLITE_SCALAR_FUNCTION_MICROSECOND = 127,
     MYLITE_SCALAR_FUNCTION_LAST_DAY = 128,
+    MYLITE_SCALAR_FUNCTION_TIME_TO_SEC = 129,
 };
 
 struct angle_conversion_input {
@@ -784,6 +785,10 @@ static int eval_time_function(const struct mylite_sql_ast_node *arguments,
                               const struct mylite_expression_eval_context *context,
                               struct mylite_expression_warnings *warnings,
                               struct mylite_expression_value *out_value);
+static int eval_time_to_sec_function(const struct mylite_sql_ast_node *arguments,
+                                     const struct mylite_expression_eval_context *context,
+                                     struct mylite_expression_warnings *warnings,
+                                     struct mylite_expression_value *out_value);
 static int time_value_from_expression(const struct mylite_expression_value *value,
                                       struct mylite_expression_warnings *warnings,
                                       struct temporal_time_value *out_time, bool *out_valid);
@@ -2076,6 +2081,7 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_TO_SECONDS:
     case MYLITE_SCALAR_FUNCTION_FROM_DAYS:
     case MYLITE_SCALAR_FUNCTION_TIME:
+    case MYLITE_SCALAR_FUNCTION_TIME_TO_SEC:
         return arity == 1U;
     case MYLITE_SCALAR_FUNCTION_LOG:
     case MYLITE_SCALAR_FUNCTION_ROUND:
@@ -2989,6 +2995,8 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_from_days_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_TIME:
         return eval_time_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_TIME_TO_SEC:
+        return eval_time_to_sec_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
         return eval_unix_timestamp_function(node, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
@@ -4095,6 +4103,46 @@ cleanup:
     return status;
 }
 
+static int eval_time_to_sec_function(const struct mylite_sql_ast_node *arguments,
+                                     const struct mylite_expression_eval_context *context,
+                                     struct mylite_expression_warnings *warnings,
+                                     struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value argument = {0};
+    struct temporal_time_value time = {0};
+    int64_t seconds = 0;
+    bool valid = false;
+    int status = eval_node(child_at(arguments, 0U), context, warnings, &argument);
+
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&argument)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    status = time_value_from_expression(&argument, warnings, &time, &valid);
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (!valid) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+
+    seconds = ((int64_t)time.hour * MYLITE_TEMPORAL_SECONDS_PER_HOUR) +
+              ((int64_t)time.minute * MYLITE_TEMPORAL_SECONDS_PER_MINUTE) + (int64_t)time.second;
+    if (time.negative) {
+        seconds = -seconds;
+    }
+    *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
+                                                  .int64_value = seconds};
+
+cleanup:
+    mylite_expression_value_deinit(&argument);
+    return status;
+}
+
 static int time_value_from_expression(const struct mylite_expression_value *value,
                                       struct mylite_expression_warnings *warnings,
                                       struct temporal_time_value *out_time, bool *out_valid)
@@ -4757,6 +4805,7 @@ static bool temporal_part_from_function(enum mylite_scalar_function_id function_
     case MYLITE_SCALAR_FUNCTION_TO_SECONDS:
     case MYLITE_SCALAR_FUNCTION_FROM_DAYS:
     case MYLITE_SCALAR_FUNCTION_TIME:
+    case MYLITE_SCALAR_FUNCTION_TIME_TO_SEC:
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
     case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
@@ -9127,6 +9176,7 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_TO_SECONDS:
     case MYLITE_SCALAR_FUNCTION_FROM_DAYS:
     case MYLITE_SCALAR_FUNCTION_TIME:
+    case MYLITE_SCALAR_FUNCTION_TIME_TO_SEC:
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
     case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
@@ -10996,6 +11046,7 @@ static int trigonometric_function_result(struct trigonometric_input input,
     case MYLITE_SCALAR_FUNCTION_TO_SECONDS:
     case MYLITE_SCALAR_FUNCTION_FROM_DAYS:
     case MYLITE_SCALAR_FUNCTION_TIME:
+    case MYLITE_SCALAR_FUNCTION_TIME_TO_SEC:
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
     case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
@@ -11310,6 +11361,7 @@ static int inverse_trigonometric_function_result(struct inverse_trigonometric_in
     case MYLITE_SCALAR_FUNCTION_TO_SECONDS:
     case MYLITE_SCALAR_FUNCTION_FROM_DAYS:
     case MYLITE_SCALAR_FUNCTION_TIME:
+    case MYLITE_SCALAR_FUNCTION_TIME_TO_SEC:
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
     case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
@@ -11534,6 +11586,7 @@ static int angle_conversion_result(struct angle_conversion_input conversion, dou
     case MYLITE_SCALAR_FUNCTION_TO_SECONDS:
     case MYLITE_SCALAR_FUNCTION_FROM_DAYS:
     case MYLITE_SCALAR_FUNCTION_TIME:
+    case MYLITE_SCALAR_FUNCTION_TIME_TO_SEC:
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
     case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
@@ -15576,6 +15629,7 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"TO_SECONDS", MYLITE_SCALAR_FUNCTION_TO_SECONDS},
         {"FROM_DAYS", MYLITE_SCALAR_FUNCTION_FROM_DAYS},
         {"TIME", MYLITE_SCALAR_FUNCTION_TIME},
+        {"TIME_TO_SEC", MYLITE_SCALAR_FUNCTION_TIME_TO_SEC},
         {"UNIX_TIMESTAMP", MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP},
         {"DATE_FORMAT", MYLITE_SCALAR_FUNCTION_DATE_FORMAT},
         {"FROM_UNIXTIME", MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME},
@@ -15734,6 +15788,7 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_TO_SECONDS:
     case MYLITE_SCALAR_FUNCTION_FROM_DAYS:
     case MYLITE_SCALAR_FUNCTION_TIME:
+    case MYLITE_SCALAR_FUNCTION_TIME_TO_SEC:
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
     case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
     case MYLITE_SCALAR_FUNCTION_DEFAULT:

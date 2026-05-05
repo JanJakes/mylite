@@ -271,6 +271,7 @@ static int test_to_days_function_execution(void);
 static int test_to_seconds_function_execution(void);
 static int test_from_days_function_execution(void);
 static int test_time_function_execution(void);
+static int test_time_to_sec_function_execution(void);
 static int test_unix_timestamp_function_execution(void);
 static int test_from_unixtime_function_execution(void);
 static int test_date_format_function_execution(void);
@@ -499,6 +500,7 @@ int main(void)
     failures += test_to_seconds_function_execution();
     failures += test_from_days_function_execution();
     failures += test_time_function_execution();
+    failures += test_time_to_sec_function_execution();
     failures += test_unix_timestamp_function_execution();
     failures += test_from_unixtime_function_execution();
     failures += test_date_format_function_execution();
@@ -8136,6 +8138,251 @@ static int test_time_function_execution(void)
     failures += expect_no_stmt_handle(&stmt, "TIME missing argument rejected");
     failures += prepare_sql(database, "SELECT TIME('12:34:56','x')", MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "TIME extra argument rejected");
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_time_to_sec_function_execution(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const struct expected_result_metadata metadata[] = {
+        {"seconds_value", NULL, NULL, NULL, NULL, NULL, 10U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"seconds_null", NULL, NULL, NULL, NULL, NULL, 10U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+    };
+    static const char *const projection_columns[] = {"id", "seconds"};
+    static const char *const projection_values[] = {
+        "1",
+        "45296",
+        "2",
+        "1",
+    };
+    static const char *const updated_columns[] = {"id", "seconds", "note"};
+    static const char *const updated_values[] = {"1", "45296", "midday"};
+    static const char *const remaining_columns[] = {"id"};
+    static const char *const remaining_values[] = {"1", "3"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open TIME_TO_SEC database");
+
+    failures += prepare_sql(database,
+                            "SELECT TIME_TO_SEC('22:23:00') AS seconds_value, "
+                            "TIME_TO_SEC(NULL) AS seconds_null",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "TIME_TO_SEC metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TIME_TO_SEC metadata row");
+    failures += expect_string(mylite_column_text(stmt, 0), "80580", "TIME_TO_SEC metadata value");
+    failures += expect_null_text(mylite_column_text(stmt, 1), "TIME_TO_SEC metadata null");
+    failures += expect_int(mylite_warning_count(database), 0, "TIME_TO_SEC metadata warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TIME_TO_SEC metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT TIME_TO_SEC('22:23:00') AS basic, "
+                            "TIME_TO_SEC('00:39:38') AS under_hour, "
+                            "TIME_TO_SEC('-12:34:56') AS neg_time, "
+                            "TIME_TO_SEC('838:59:59') AS max_time, "
+                            "TIME_TO_SEC('-838:59:59') AS min_time, "
+                            "TIME_TO_SEC(NULL) AS null_value, "
+                            "TIME_TO_SEC('12:34:56.123456') AS fraction6, "
+                            "TIME_TO_SEC('12:34:56.9999995') AS round_second, "
+                            "TIME_TO_SEC('2024-02-29 12:34:56') AS datetime_text, "
+                            "TIME_TO_SEC('20240229123456') AS compact_datetime, "
+                            "TIME_TO_SEC(20240229123456) AS numeric_datetime, "
+                            "TIME_TO_SEC(123456) AS numeric_time, "
+                            "TIME_TO_SEC(1234) AS numeric_short, "
+                            "TIME_TO_SEC(12) AS numeric_tiny, "
+                            "TIME_TO_SEC(123456.789) AS numeric_fraction, "
+                            "TIME_TO_SEC(123456E0) AS approx_int",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TIME_TO_SEC scalar row");
+    failures += expect_string(mylite_column_text(stmt, 0), "80580", "TIME_TO_SEC basic");
+    failures += expect_string(mylite_column_text(stmt, 1), "2378", "TIME_TO_SEC under hour");
+    failures += expect_string(mylite_column_text(stmt, 2), "-45296", "TIME_TO_SEC negative");
+    failures += expect_string(mylite_column_text(stmt, 3), "3020399", "TIME_TO_SEC max");
+    failures += expect_string(mylite_column_text(stmt, 4), "-3020399", "TIME_TO_SEC min");
+    failures += expect_null_text(mylite_column_text(stmt, 5), "TIME_TO_SEC null");
+    failures += expect_string(mylite_column_text(stmt, 6), "45296", "TIME_TO_SEC fraction");
+    failures += expect_string(mylite_column_text(stmt, 7), "45297", "TIME_TO_SEC rounded second");
+    failures += expect_string(mylite_column_text(stmt, 8), "45296", "TIME_TO_SEC datetime text");
+    failures += expect_string(mylite_column_text(stmt, 9), "45296", "TIME_TO_SEC compact datetime");
+    failures +=
+        expect_string(mylite_column_text(stmt, 10), "45296", "TIME_TO_SEC numeric datetime");
+    failures += expect_string(mylite_column_text(stmt, 11), "45296", "TIME_TO_SEC numeric time");
+    failures += expect_string(mylite_column_text(stmt, 12), "754", "TIME_TO_SEC numeric short");
+    failures += expect_string(mylite_column_text(stmt, 13), "12", "TIME_TO_SEC numeric tiny");
+    failures +=
+        expect_string(mylite_column_text(stmt, 14), "45296", "TIME_TO_SEC numeric fraction");
+    failures += expect_string(mylite_column_text(stmt, 15), "45296", "TIME_TO_SEC approx int");
+    failures += expect_int(mylite_warning_count(database), 0, "TIME_TO_SEC scalar warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TIME_TO_SEC scalar done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT TIME_TO_SEC('2024-02-29') AS date_text, "
+                            "TIME_TO_SEC('bad') AS bad_text, "
+                            "TIME_TO_SEC('') AS empty_text, "
+                            "TIME_TO_SEC('839:00:00') AS high_clip, "
+                            "TIME_TO_SEC('-839:00:00') AS low_clip, "
+                            "TIME_TO_SEC(1234567) AS bad_numeric, "
+                            "TIME_TO_SEC('2024-02-29 12:34:56x') AS datetime_tail, "
+                            "TIME_TO_SEC('12:34:') AS partial_time, "
+                            "TIME_TO_SEC('20240229') AS date_digits, "
+                            "TIME_TO_SEC('123456789') AS too_long_digits, "
+                            "TIME_TO_SEC('202402291234') AS bad_compact_string, "
+                            "TIME_TO_SEC(202402291234) AS bad_compact_number, "
+                            "TIME_TO_SEC(1e20) AS bad_approx",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TIME_TO_SEC warning row");
+    failures += expect_string(mylite_column_text(stmt, 0), "1224", "TIME_TO_SEC date text");
+    failures += expect_null_text(mylite_column_text(stmt, 1), "TIME_TO_SEC bad text");
+    failures += expect_null_text(mylite_column_text(stmt, 2), "TIME_TO_SEC empty text");
+    failures += expect_string(mylite_column_text(stmt, 3), "3020399", "TIME_TO_SEC high clip");
+    failures += expect_string(mylite_column_text(stmt, 4), "-3020399", "TIME_TO_SEC low clip");
+    failures += expect_null_text(mylite_column_text(stmt, 5), "TIME_TO_SEC bad numeric");
+    failures += expect_string(mylite_column_text(stmt, 6), "45296", "TIME_TO_SEC datetime tail");
+    failures += expect_string(mylite_column_text(stmt, 7), "45240", "TIME_TO_SEC partial time");
+    failures += expect_string(mylite_column_text(stmt, 8), "3020399", "TIME_TO_SEC date digits");
+    failures += expect_null_text(mylite_column_text(stmt, 9), "TIME_TO_SEC too long digits");
+    failures += expect_null_text(mylite_column_text(stmt, 10), "TIME_TO_SEC compact string");
+    failures += expect_null_text(mylite_column_text(stmt, 11), "TIME_TO_SEC compact number");
+    failures += expect_null_text(mylite_column_text(stmt, 12), "TIME_TO_SEC bad approximate");
+    failures += expect_int(mylite_warning_count(database), 13, "TIME_TO_SEC warning count");
+    for (int index = 0; index < 13; ++index) {
+        failures += expect_int((int)mylite_warning_code(database, index),
+                               mysql_warning_truncated_wrong_value, "TIME_TO_SEC warning code");
+    }
+    failures += expect_string(mylite_warning_message(database, 0),
+                              "Truncated incorrect time value: '2024-02-29'",
+                              "TIME_TO_SEC date text warning");
+    failures +=
+        expect_string(mylite_warning_message(database, 1), "Truncated incorrect time value: 'bad'",
+                      "TIME_TO_SEC bad text warning");
+    failures +=
+        expect_string(mylite_warning_message(database, 2), "Truncated incorrect time value: ''",
+                      "TIME_TO_SEC empty text warning");
+    failures += expect_string(mylite_warning_message(database, 3),
+                              "Truncated incorrect time value: '839:00:00'",
+                              "TIME_TO_SEC high clip warning");
+    failures += expect_string(mylite_warning_message(database, 4),
+                              "Truncated incorrect time value: '-839:00:00'",
+                              "TIME_TO_SEC low clip warning");
+    failures += expect_string(mylite_warning_message(database, 5),
+                              "Truncated incorrect time value: '1234567'",
+                              "TIME_TO_SEC bad numeric warning");
+    failures += expect_string(mylite_warning_message(database, 6),
+                              "Truncated incorrect time value: '2024-02-29 12:34:56x'",
+                              "TIME_TO_SEC datetime tail warning");
+    failures +=
+        expect_string(mylite_warning_message(database, 7),
+                      "Truncated incorrect time value: '12:34:'", "TIME_TO_SEC partial warning");
+    failures += expect_string(mylite_warning_message(database, 8),
+                              "Truncated incorrect time value: '20240229'",
+                              "TIME_TO_SEC date digits warning");
+    failures += expect_string(mylite_warning_message(database, 9),
+                              "Truncated incorrect time value: '123456789'",
+                              "TIME_TO_SEC too long digits warning");
+    failures += expect_string(mylite_warning_message(database, 10),
+                              "Truncated incorrect time value: '202402291234'",
+                              "TIME_TO_SEC compact string warning");
+    failures += expect_string(mylite_warning_message(database, 11),
+                              "Truncated incorrect time value: '202402291234'",
+                              "TIME_TO_SEC compact number warning");
+    failures +=
+        expect_string(mylite_warning_message(database, 12),
+                      "Truncated incorrect time value: '1e20'", "TIME_TO_SEC approximate warning");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TIME_TO_SEC warning done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE DATABASE time_to_sec_functions", MYLITE_DONE);
+    failures += execute_sql(database, "USE time_to_sec_functions", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE temporal_time_to_sec ("
+                            "id INT PRIMARY KEY, t VARCHAR(32), seconds BIGINT, "
+                            "note VARCHAR(16))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO temporal_time_to_sec VALUES "
+                            "(1, '12:34:56', NULL, 'midday'), "
+                            "(2, '00:00:01.500000', NULL, 'early'), "
+                            "(3, NULL, NULL, 'null')",
+                            MYLITE_DONE);
+    failures += expect_select_rows(database,
+                                   "SELECT id, TIME_TO_SEC(t) AS seconds "
+                                   "FROM temporal_time_to_sec "
+                                   "WHERE TIME_TO_SEC(t) >= 1 "
+                                   "ORDER BY TIME_TO_SEC(t) DESC, id",
+                                   projection_columns, 2, projection_values, 2,
+                                   "TIME_TO_SEC table projection");
+    failures += expect_int(mylite_warning_count(database), 0, "TIME_TO_SEC table warnings");
+    failures += execute_sql_expect_done_affected(database,
+                                                 "UPDATE temporal_time_to_sec "
+                                                 "SET seconds = TIME_TO_SEC(t) "
+                                                 "WHERE id = 1",
+                                                 1, "TIME_TO_SEC update");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT id, seconds, note "
+                           "FROM temporal_time_to_sec WHERE id = 1",
+                           updated_columns, 3, updated_values, 1, "TIME_TO_SEC updated row");
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM temporal_time_to_sec WHERE TIME_TO_SEC(t) = 1", 1,
+        "TIME_TO_SEC delete");
+    failures +=
+        expect_select_rows(database, "SELECT id FROM temporal_time_to_sec ORDER BY id",
+                           remaining_columns, 1, remaining_values, 2, "TIME_TO_SEC delete result");
+    failures += prepare_sql(database,
+                            "UPDATE temporal_time_to_sec "
+                            "SET seconds = TIME_TO_SEC('bad') WHERE id = 1",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "TIME_TO_SEC invalid update promoted");
+    failures +=
+        expect_contains(mylite_error_message(database), "Truncated incorrect time value: 'bad'",
+                        "TIME_TO_SEC invalid update error");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "TIME_TO_SEC invalid update warnings");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database,
+                                   "SELECT id, seconds, note "
+                                   "FROM temporal_time_to_sec WHERE id = 1",
+                                   updated_columns, 3, updated_values, 1,
+                                   "TIME_TO_SEC invalid update unchanged");
+    failures += prepare_sql(database,
+                            "DELETE FROM temporal_time_to_sec "
+                            "WHERE TIME_TO_SEC('bad') IS NULL",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "TIME_TO_SEC invalid delete promoted");
+    failures +=
+        expect_contains(mylite_error_message(database), "Truncated incorrect time value: 'bad'",
+                        "TIME_TO_SEC invalid delete error");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "TIME_TO_SEC invalid delete warnings");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM temporal_time_to_sec ORDER BY id",
+                                   remaining_columns, 1, remaining_values, 2,
+                                   "TIME_TO_SEC invalid delete unchanged");
+
+    failures += prepare_sql(database, "SELECT TIME_TO_SEC()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "TIME_TO_SEC missing argument rejected");
+    failures +=
+        prepare_sql(database, "SELECT TIME_TO_SEC('12:34:56','x')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "TIME_TO_SEC extra argument rejected");
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)

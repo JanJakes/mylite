@@ -208,6 +208,11 @@ bool mylite_expression_descriptor_infer_temporal_scalar_function(
         out_descriptor->length = mylite_mysql_signed_longlong_display_length;
         return true;
     }
+    if (mylite_function_name_is_time_to_sec(name)) {
+        *out_descriptor = mylite_expression_descriptor_signed_longlong(true);
+        out_descriptor->length = mylite_mysql_time_to_sec_function_display_length;
+        return true;
+    }
     return false;
 }
 

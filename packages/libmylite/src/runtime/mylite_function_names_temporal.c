@@ -65,6 +65,13 @@ bool mylite_function_name_is_time_extraction(const struct mylite_sql_ast_node *n
     return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }
 
+bool mylite_function_name_is_time_to_sec(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"TIME_TO_SEC"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
 bool mylite_function_name_is_year_part(const struct mylite_sql_ast_node *name)
 {
     static const char *const names[] = {"YEAR"};

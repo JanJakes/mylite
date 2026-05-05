@@ -34,6 +34,7 @@ bool mylite_function_name_is_to_seconds(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_from_days(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_from_unixtime(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_time_extraction(const struct mylite_sql_ast_node *name);
+bool mylite_function_name_is_time_to_sec(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_year_part(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_month_part(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_day_part(const struct mylite_sql_ast_node *name);

@@ -695,6 +695,8 @@ into focused `*_types.h` headers.
   module.
 - [x] Split UNION global ORDER BY binding into a focused select union order
   module.
+- [x] Split numeric variadic descriptor inference into a focused expression
+  descriptor numeric variadic module.
 - [x] Split transaction savepoint parsing, execution, stack management, and
   savepoint diagnostics out of the core transaction module.
 - [ ] Split `mylite_dml_insert_value_resolve.c` into insert column-list,

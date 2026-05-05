@@ -1,19 +1,18 @@
 #include "mylite_table_ddl.h"
 
 #include "mylite_catalog.h"
-#include "mylite_charset.h"
 #include "mylite_diagnostics.h"
 #include "mylite_error_codes.h"
 #include "mylite_runtime.h"
 #include "mylite_span.h"
 #include "mylite_table_ddl_catalog.h"
+#include "mylite_table_ddl_create_options.h"
 #include "mylite_table_ddl_create_sql.h"
 #include "mylite_table_ddl_plan_lookup.h"
 #include "mylite_transactions.h"
 
 #include <mylite/mylite.h>
 
-#include <stdlib.h>
 #include <string.h>
 
 static int validate_create_table_plan(mylite_db *database, const char *schema_name,
@@ -23,11 +22,6 @@ static int validate_create_table_plan(mylite_db *database, const char *schema_na
 static int create_table_transaction(mylite_db *database, const char *schema_name,
                                     const struct mylite_schema_default *schema_default,
                                     const struct mylite_create_table_plan *plan);
-static int normalize_create_table_options(mylite_db *database, const char *schema_name,
-                                          const struct mylite_schema_default *schema_default,
-                                          struct mylite_create_table_options *options);
-static int normalize_create_table_option_text(mylite_db *database, char **target,
-                                              const char *value);
 static bool validate_create_table_column_names(mylite_db *database,
                                                const struct mylite_create_table_plan *plan);
 static bool validate_create_table_indexes(mylite_db *database,
@@ -35,7 +29,6 @@ static bool validate_create_table_indexes(mylite_db *database,
 static void apply_create_table_primary_key_nullability(struct mylite_create_table_plan *plan);
 static bool create_table_index_name_exists(const struct mylite_create_table_plan *plan,
                                            const char *name, size_t before_index);
-static bool is_supported_engine_name(const char *name);
 static const char *create_table_column_type_name(enum mylite_sql_ast_column_type column_type);
 static bool
 create_table_column_uses_integer_descriptor(enum mylite_sql_ast_column_type column_type);
@@ -127,7 +120,8 @@ static int validate_create_table_plan(mylite_db *database, const char *schema_na
     if (status != MYLITE_OK) {
         return status;
     }
-    status = normalize_create_table_options(database, schema_name, schema_default, &plan->options);
+    status = mylite_table_ddl_normalize_create_table_options(database, schema_name, schema_default,
+                                                             &plan->options);
     if (status != MYLITE_OK) {
         return status;
     }
@@ -254,84 +248,6 @@ mylite_table_ddl_create_table_column_extra(const struct mylite_create_table_colu
 const char *mylite_table_ddl_index_collation_for_order(enum mylite_sql_ast_key_part_order order)
 {
     return order == MYLITE_SQL_AST_KEY_PART_ORDER_DESC ? "D" : "A";
-}
-
-static int normalize_create_table_options(mylite_db *database, const char *schema_name,
-                                          const struct mylite_schema_default *schema_default,
-                                          struct mylite_create_table_options *options)
-{
-    const struct mylite_charset *character_set = NULL;
-    const struct mylite_collation *collation = NULL;
-    const char *collation_name = NULL;
-    int status = MYLITE_OK;
-
-    (void)schema_name;
-    if (options->engine != NULL && !is_supported_engine_name(options->engine)) {
-        status = mylite_diagnostics_set_error_message_parts(
-            database, "Unsupported storage engine: '", options->engine, "'");
-        return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-    }
-    if (options->character_set != NULL) {
-        character_set = mylite_charset_lookup(options->character_set);
-        if (character_set == NULL) {
-            return mylite_diagnostics_set_unknown_charset_error(database, options->character_set);
-        }
-    }
-    if (options->collation != NULL) {
-        collation = mylite_collation_lookup(options->collation);
-        if (collation == NULL) {
-            return mylite_diagnostics_set_unknown_collation_error(database, options->collation);
-        }
-    }
-    if (character_set == NULL && collation != NULL) {
-        character_set = mylite_charset_lookup(collation->character_set);
-    }
-    if (character_set == NULL) {
-        character_set = mylite_charset_lookup(schema_default->character_set);
-    }
-    if (collation == NULL) {
-        collation_name = options->character_set == NULL ? schema_default->collation
-                                                        : character_set->default_collation;
-        collation = mylite_collation_lookup(collation_name);
-    }
-    if (character_set == NULL || collation == NULL) {
-        (void)mylite_diagnostics_set_error_message(database,
-                                                   "Unsupported charset/collation registry entry");
-        return MYLITE_EXEC_ERROR;
-    }
-    if (!mylite_charset_collation_match(character_set, collation)) {
-        return mylite_diagnostics_set_collation_charset_error(database, collation->name,
-                                                              character_set->name);
-    }
-
-    status =
-        normalize_create_table_option_text(database, &options->character_set, character_set->name);
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    return normalize_create_table_option_text(database, &options->collation, collation->name);
-}
-
-static int normalize_create_table_option_text(mylite_db *database, char **target, const char *value)
-{
-    char *copy = mylite_copy_span_text(value, strlen(value));
-
-    if (copy == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    free(*target);
-    *target = copy;
-    return MYLITE_OK;
-}
-
-static bool is_supported_engine_name(const char *name)
-{
-    if (name == NULL) {
-        return true;
-    }
-    return mylite_ascii_case_equal(name, "InnoDB");
 }
 
 static bool validate_create_table_column_names(mylite_db *database,

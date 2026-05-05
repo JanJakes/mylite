@@ -205,6 +205,7 @@ add_library(mylite STATIC
   src/runtime/mylite_table_ddl_catalog.c
   src/runtime/mylite_table_ddl_copy.c
   src/runtime/mylite_table_ddl_create_copy.c
+  src/runtime/mylite_table_ddl_create_options.c
   src/runtime/mylite_table_ddl_create_sql.c
   src/runtime/mylite_table_ddl_drop.c
   src/runtime/mylite_table_ddl_index.c

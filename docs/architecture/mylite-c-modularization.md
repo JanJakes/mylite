@@ -638,6 +638,8 @@ into focused `*_types.h` headers.
   module.
 - [x] Split `INSERT ... SET` row resolution into a focused DML companion
   module.
+- [x] Split `ON DUPLICATE KEY UPDATE` assignment column-reference resolution
+  into a focused DML companion module.
 - [x] Split CREATE TABLE physical SQL generation and backing-table creation into
   a focused table DDL module.
 - [x] Split CREATE TABLE catalog insertion into a focused table DDL module.

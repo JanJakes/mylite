@@ -737,6 +737,8 @@ into focused `*_types.h` headers.
   DML insert update validation module.
 - [x] Split expression function collation inference into a focused expression
   collation companion.
+- [x] Split `STRCMP()` evaluation and collation-aware comparison into a focused
+  statement function module.
 - [x] Split transaction savepoint parsing, execution, stack management, and
   savepoint diagnostics out of the core transaction module.
 - [x] Split statement prepare custom-kind mapping into a focused prepare

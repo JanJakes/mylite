@@ -5577,6 +5577,14 @@ static int test_current_temporal_functions_execution(void)
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, MYLITE_FIELD_FLAG_NUM, 0},
         {"current_time_fsp", NULL, NULL, NULL, NULL, NULL, 12U, MYLITE_FIELD_TYPE_TIME, 3U, 63U,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, MYLITE_FIELD_FLAG_NUM, 0},
+        {"utc_date_value", NULL, NULL, NULL, NULL, NULL, 10U, MYLITE_FIELD_TYPE_DATE, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, MYLITE_FIELD_FLAG_NUM, 0},
+        {"utc_time_fsp", NULL, NULL, NULL, NULL, NULL, 12U, MYLITE_FIELD_TYPE_TIME, 3U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, MYLITE_FIELD_FLAG_NUM, 0},
+        {"utc_timestamp_value", NULL, NULL, NULL, NULL, NULL, 19U, MYLITE_FIELD_TYPE_DATETIME, 0U,
+         63U, MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, MYLITE_FIELD_FLAG_NUM, 0},
+        {"utc_timestamp_fsp", NULL, NULL, NULL, NULL, NULL, 26U, MYLITE_FIELD_TYPE_DATETIME, 6U,
+         63U, MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, MYLITE_FIELD_FLAG_NUM, 0},
     };
     static const char *const one_table_columns[] = {"id", "dt", "d", "t"};
     static const char *const remaining_columns[] = {"id"};
@@ -5602,7 +5610,13 @@ static int test_current_temporal_functions_execution(void)
                             "CURRENT_DATE() AS current_date_call, "
                             "CURTIME() AS curtime_value, "
                             "CURRENT_TIME AS current_time_value, "
-                            "CURRENT_TIME(6) AS current_time_fsp",
+                            "CURRENT_TIME(6) AS current_time_fsp, "
+                            "UTC_DATE AS utc_date_value, "
+                            "UTC_DATE() AS utc_date_call, "
+                            "UTC_TIME AS utc_time_value, "
+                            "UTC_TIME(6) AS utc_time_fsp, "
+                            "UTC_TIMESTAMP AS utc_timestamp_value, "
+                            "UTC_TIMESTAMP(6) AS utc_timestamp_fsp",
                             MYLITE_OK, &stmt);
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "current temporal scalar row");
     failures += expect_datetime_text(mylite_column_text(stmt, 0), 0U, "NOW shape");
@@ -5633,6 +5647,19 @@ static int test_current_temporal_functions_execution(void)
         mylite_column_text(stmt, 10),
         mylite_column_text(stmt, 0) == NULL ? NULL : mylite_column_text(stmt, 0) + 11, 8U,
         "CURTIME derives from NOW");
+    failures += expect_date_text(mylite_column_text(stmt, 13), "UTC_DATE shape");
+    failures += expect_string(mylite_column_text(stmt, 14), mylite_column_text(stmt, 13),
+                              "UTC_DATE() equals UTC_DATE");
+    failures += expect_time_text(mylite_column_text(stmt, 15), 0U, "UTC_TIME shape");
+    failures += expect_time_text(mylite_column_text(stmt, 16), 6U, "UTC_TIME(6) shape");
+    failures += expect_datetime_text(mylite_column_text(stmt, 17), 0U, "UTC_TIMESTAMP shape");
+    failures += expect_datetime_text(mylite_column_text(stmt, 18), 6U, "UTC_TIMESTAMP(6) shape");
+    failures += expect_temporal_prefix(mylite_column_text(stmt, 13), mylite_column_text(stmt, 17),
+                                       10U, "UTC_DATE derives from UTC_TIMESTAMP");
+    failures += expect_temporal_prefix(
+        mylite_column_text(stmt, 15),
+        mylite_column_text(stmt, 17) == NULL ? NULL : mylite_column_text(stmt, 17) + 11, 8U,
+        "UTC_TIME derives from UTC_TIMESTAMP");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "current temporal scalar done");
     mylite_finalize(stmt);
     stmt = NULL;
@@ -5673,7 +5700,11 @@ static int test_current_temporal_functions_execution(void)
                             "LOCALTIME(2) AS localtime_fsp, "
                             "CURRENT_DATE AS current_date_value, "
                             "CURTIME() AS curtime_value, "
-                            "CURRENT_TIME(3) AS current_time_fsp",
+                            "CURRENT_TIME(3) AS current_time_fsp, "
+                            "UTC_DATE AS utc_date_value, "
+                            "UTC_TIME(3) AS utc_time_fsp, "
+                            "UTC_TIMESTAMP AS utc_timestamp_value, "
+                            "UTC_TIMESTAMP(6) AS utc_timestamp_fsp",
                             MYLITE_OK, &stmt);
     failures += expect_result_metadata(
         stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "current temporal metadata");
@@ -5729,8 +5760,40 @@ static int test_current_temporal_functions_execution(void)
     stmt = NULL;
 
     failures += prepare_sql(database,
+                            "SELECT id, UTC_TIMESTAMP(6) AS dt, UTC_DATE AS d, UTC_TIME(6) AS t "
+                            "FROM temporal_functions "
+                            "WHERE UTC_TIMESTAMP() = UTC_TIMESTAMP "
+                            "ORDER BY UTC_TIME(6), id",
+                            MYLITE_OK, &stmt);
+    failures += expect_column_names(stmt, one_table_columns, 4, "UTC temporal table columns");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "UTC temporal table first row");
+    failures += expect_string(mylite_column_text(stmt, 0), "1", "UTC temporal first id");
+    failures +=
+        expect_datetime_text(mylite_column_text(stmt, 1), 6U, "UTC temporal first datetime");
+    failures += expect_date_text(mylite_column_text(stmt, 2), "UTC temporal first date");
+    failures += expect_time_text(mylite_column_text(stmt, 3), 6U, "UTC temporal first time");
+    (void)snprintf(first_dt, sizeof(first_dt), "%s",
+                   mylite_column_text(stmt, 1) == NULL ? "" : mylite_column_text(stmt, 1));
+    (void)snprintf(first_date, sizeof(first_date), "%s",
+                   mylite_column_text(stmt, 2) == NULL ? "" : mylite_column_text(stmt, 2));
+    (void)snprintf(first_time, sizeof(first_time), "%s",
+                   mylite_column_text(stmt, 3) == NULL ? "" : mylite_column_text(stmt, 3));
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "UTC temporal table second row");
+    failures += expect_string(mylite_column_text(stmt, 0), "2", "UTC temporal second id");
+    failures += expect_string(mylite_column_text(stmt, 1), first_dt,
+                              "UTC temporal datetime statement stability");
+    failures += expect_string(mylite_column_text(stmt, 2), first_date,
+                              "UTC temporal date statement stability");
+    failures += expect_string(mylite_column_text(stmt, 3), first_time,
+                              "UTC temporal time statement stability");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "UTC temporal table done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
                             "UPDATE temporal_functions "
-                            "SET dt = NOW(6), d = CURDATE(), t = CURTIME(6), note = 'updated' "
+                            "SET dt = UTC_TIMESTAMP(6), d = UTC_DATE, t = UTC_TIME(6), "
+                            "note = 'updated' "
                             "WHERE id = 1 AND CURRENT_TIMESTAMP = LOCALTIME",
                             MYLITE_OK, &stmt);
     int update_status = mylite_step(stmt);
@@ -5755,7 +5818,7 @@ static int test_current_temporal_functions_execution(void)
 
     failures += prepare_sql(database,
                             "DELETE FROM temporal_functions "
-                            "WHERE id = 2 AND CURTIME() = CURRENT_TIME",
+                            "WHERE id = 2 AND CURTIME() = CURRENT_TIME AND UTC_DATE() = UTC_DATE",
                             MYLITE_OK, &stmt);
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "current temporal delete");
     mylite_finalize(stmt);
@@ -5764,20 +5827,24 @@ static int test_current_temporal_functions_execution(void)
                                    remaining_columns, 1, remaining_values, 1,
                                    "current temporal delete result");
 
-    failures += prepare_sql(database, "SELECT UTC_TIMESTAMP()", MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "UTC_TIMESTAMP remains deferred");
-    failures += prepare_sql(database, "SELECT UTC_DATE", MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "UTC_DATE remains deferred");
     failures += prepare_sql(database, "SELECT NOW(7)", MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "NOW invalid fsp");
     failures += prepare_sql(database, "SELECT CURRENT_TIMESTAMP(7)", MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "CURRENT_TIMESTAMP invalid fsp");
+    failures += prepare_sql(database, "SELECT UTC_TIMESTAMP(7)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "UTC_TIMESTAMP invalid fsp");
     failures += prepare_sql(database, "SELECT NOW('3')", MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "NOW string fsp");
+    failures += prepare_sql(database, "SELECT UTC_TIME('3')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "UTC_TIME string fsp");
     failures += prepare_sql(database, "SELECT CURTIME(1, 2)", MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "CURTIME invalid arity");
+    failures += prepare_sql(database, "SELECT UTC_TIME(1, 2)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "UTC_TIME invalid arity");
     failures += prepare_sql(database, "SELECT CURRENT_DATE(0)", MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "CURRENT_DATE invalid arity");
+    failures += prepare_sql(database, "SELECT UTC_DATE(0)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "UTC_DATE invalid arity");
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)

@@ -1782,6 +1782,9 @@ static bool expression_is_supported_no_table(const struct mylite_sql_ast_node *e
 static enum mylite_scalar_function_id scalar_function_id(const struct mylite_sql_ast_node *node);
 static enum mylite_scalar_function_id
 scalar_function_id_from_span(struct mylite_sql_source_span span);
+static bool
+current_temporal_function_has_supported_arguments(const struct mylite_sql_ast_node *expression,
+                                                  bool allow_fsp);
 static bool scalar_function_depends_on_session(enum mylite_scalar_function_id function_id);
 static bool ascii_span_equals(struct mylite_sql_source_span span, const char *text);
 static bool is_null(const struct mylite_expression_value *value);
@@ -2186,22 +2189,58 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_CONNECTION_ID:
     case MYLITE_SCALAR_FUNCTION_USER:
     case MYLITE_SCALAR_FUNCTION_CURRENT_USER:
+        return arity == 0U;
     case MYLITE_SCALAR_FUNCTION_CURDATE:
     case MYLITE_SCALAR_FUNCTION_CURRENT_DATE:
-        return arity == 0U;
+        return current_temporal_function_has_supported_arguments(expression, false);
     case MYLITE_SCALAR_FUNCTION_LAST_INSERT_ID:
+        return arity == 0U || arity == 1U;
     case MYLITE_SCALAR_FUNCTION_NOW:
     case MYLITE_SCALAR_FUNCTION_CURTIME:
     case MYLITE_SCALAR_FUNCTION_CURRENT_TIME:
     case MYLITE_SCALAR_FUNCTION_LOCALTIME:
     case MYLITE_SCALAR_FUNCTION_LOCALTIMESTAMP:
-        return arity == 0U || arity == 1U;
+        return current_temporal_function_has_supported_arguments(expression, true);
     case MYLITE_SCALAR_FUNCTION_COALESCE:
         return arity >= 1U;
     case MYLITE_SCALAR_FUNCTION_UNKNOWN:
         return false;
     }
     return false;
+}
+
+static bool
+current_temporal_function_has_supported_arguments(const struct mylite_sql_ast_node *expression,
+                                                  bool allow_fsp)
+{
+    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *argument = NULL;
+    unsigned int value = 0U;
+    size_t arity = child_count(arguments);
+
+    if (arity == 0U) {
+        return true;
+    }
+    if (!allow_fsp || arity != 1U) {
+        return false;
+    }
+    argument = child_at(arguments, 0U);
+    if (argument == NULL || argument->kind != MYLITE_SQL_AST_LITERAL ||
+        argument->literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        return false;
+    }
+    for (size_t index = 0U; index < argument->span.length; ++index) {
+        char character = argument->span.text[index];
+
+        if (character < '0' || character > '9') {
+            return false;
+        }
+        value = (value * MYLITE_EXPRESSION_DECIMAL_BASE) + (unsigned int)(character - '0');
+        if (value > MYLITE_TEMPORAL_MAX_FSP) {
+            return false;
+        }
+    }
+    return argument->span.length > 0U;
 }
 
 static int eval_node(const struct mylite_sql_ast_node *node,
@@ -16207,6 +16246,9 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"CURRENT_DATE", MYLITE_SCALAR_FUNCTION_CURRENT_DATE},
         {"CURTIME", MYLITE_SCALAR_FUNCTION_CURTIME},
         {"CURRENT_TIME", MYLITE_SCALAR_FUNCTION_CURRENT_TIME},
+        {"UTC_DATE", MYLITE_SCALAR_FUNCTION_CURRENT_DATE},
+        {"UTC_TIME", MYLITE_SCALAR_FUNCTION_CURRENT_TIME},
+        {"UTC_TIMESTAMP", MYLITE_SCALAR_FUNCTION_NOW},
         {"LOCALTIME", MYLITE_SCALAR_FUNCTION_LOCALTIME},
         {"LOCALTIMESTAMP", MYLITE_SCALAR_FUNCTION_LOCALTIMESTAMP},
         {"DATE", MYLITE_SCALAR_FUNCTION_DATE},

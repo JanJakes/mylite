@@ -111,21 +111,21 @@ bool mylite_temporal_function_name_is_current(const struct mylite_sql_ast_node *
 
 bool mylite_temporal_function_name_is_current_datetime(const struct mylite_sql_ast_node *name)
 {
-    static const char *const names[] = {"NOW", "LOCALTIME", "LOCALTIMESTAMP"};
+    static const char *const names[] = {"NOW", "LOCALTIME", "LOCALTIMESTAMP", "UTC_TIMESTAMP"};
 
     return temporal_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }
 
 bool mylite_temporal_function_name_is_current_date(const struct mylite_sql_ast_node *name)
 {
-    static const char *const names[] = {"CURDATE", "CURRENT_DATE"};
+    static const char *const names[] = {"CURDATE", "CURRENT_DATE", "UTC_DATE"};
 
     return temporal_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }
 
 bool mylite_temporal_function_name_is_current_time(const struct mylite_sql_ast_node *name)
 {
-    static const char *const names[] = {"CURTIME", "CURRENT_TIME"};
+    static const char *const names[] = {"CURTIME", "CURRENT_TIME", "UTC_TIME"};
 
     return temporal_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }

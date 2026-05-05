@@ -18,7 +18,6 @@ projection, `WHERE`, and `ORDER BY`, and supported single-table `UPDATE` and
 
 Out of scope:
 
-- `UTC_DATE()`, `UTC_TIME()`, `UTC_TIMESTAMP()`
 - `DATE()`, `DATE_ADD()`, `ADDDATE()`, `DATE_SUB()`, and other temporal
   arithmetic/extraction functions
 - named time zones, mutable `@@time_zone`, and time-zone table integration
@@ -37,6 +36,7 @@ Out of scope:
   https://dev.mysql.com/doc/refman/8.4/en/datetime.html
 - Existing MyLite specs:
   - `docs/specs/scalar-built-in-functions/specs.md`
+  - `docs/specs/utc-temporal-functions/specs.md`
   - `docs/specs/result-metadata-expression-labels/specs.md`
   - `docs/specs/temporal-column-types/specs.md`
   - `docs/specs/update-single-table/specs.md`
@@ -201,8 +201,8 @@ Parser tests:
   `NOW(1,2)`, `CURTIME(7)`, `CURRENT_TIME(7)`, `LOCALTIME(7)`,
   `LOCALTIMESTAMP(7)`, `CURDATE(0)`, and `CURRENT_DATE(0)` according to
   MyLite parser/binder policy
-- keep `UTC_DATE`, `UTC_TIME`, and `UTC_TIMESTAMP` accepted by existing parser
-  forms but unsupported by this runtime slice
+- keep the UTC current temporal functions covered by
+  `docs/specs/utc-temporal-functions/specs.md`
 
 Runtime tests:
 

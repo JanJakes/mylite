@@ -196,6 +196,7 @@ by common scalar expressions:
   `UNIX_TIMESTAMP`, `FROM_UNIXTIME`, `DATE_FORMAT`, and `TIME_FORMAT`;
   see
   `docs/specs/current-temporal-functions/specs.md` and
+  `docs/specs/utc-temporal-functions/specs.md` and
   `docs/specs/date-and-datediff-functions/specs.md` and
   `docs/specs/date-add-sub-functions/specs.md` and
   `docs/specs/temporal-part-functions/specs.md` and
@@ -268,6 +269,7 @@ LAST_DAY month-end conversion,
 UNIX_TIMESTAMP timestamp conversion,
 FROM_UNIXTIME epoch-to-datetime conversion and formatted output,
 TIME_FORMAT token rendering,
+UTC current temporal functions,
 zero and incomplete date warnings, unsupported functions, unsupported arity,
 and selected result metadata.
 
@@ -1127,7 +1129,7 @@ and `LIMIT 0` queries for:
   `LEAST`, `STRCMP`
 - temporal functions: `NOW(6)`, `CURDATE`, `DATEDIFF`, `DATE_ADD`,
   `LAST_DAY`, `TIME`, `TIME_TO_SEC`, `SEC_TO_TIME`, `FROM_UNIXTIME`, `DATE_FORMAT`,
-  `TIME_FORMAT`
+  `TIME_FORMAT`, `UTC_TIMESTAMP(6)`, `UTC_DATE`, `UTC_TIME`
 - information functions: `DATABASE`, `SCHEMA`, `VERSION`, `LAST_INSERT_ID`,
   `ROW_COUNT`, `CONNECTION_ID`
 

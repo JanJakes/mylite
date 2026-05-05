@@ -700,6 +700,8 @@ into focused `*_types.h` headers.
   invariant companion.
 - [x] Split SELECT subquery MySQL diagnostics into a focused subquery
   diagnostics companion.
+- [x] Split `CHAR()` string descriptor inference into a focused expression
+  descriptor module.
 - [x] Split string encoding descriptor inference into a focused expression
   descriptor module.
 - [x] Split `QUOTE()` string descriptor length inference into a focused

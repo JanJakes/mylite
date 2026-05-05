@@ -95,6 +95,7 @@ add_library(mylite STATIC
   src/runtime/mylite_expression_descriptor_operator.c
   src/runtime/mylite_expression_descriptor_scalar.c
   src/runtime/mylite_expression_descriptor_string.c
+  src/runtime/mylite_expression_descriptor_string_char.c
   src/runtime/mylite_expression_descriptor_string_encoding.c
   src/runtime/mylite_expression_descriptor_string_quote.c
   src/runtime/mylite_expression_descriptor_subquery.c

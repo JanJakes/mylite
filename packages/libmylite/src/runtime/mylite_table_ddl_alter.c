@@ -7,6 +7,7 @@
 #include "mylite_runtime.h"
 #include "mylite_span.h"
 #include "mylite_table_ddl.h"
+#include "mylite_table_ddl_alter_model.h"
 #include "sqlite3.h"
 
 #include <mylite/mylite.h>

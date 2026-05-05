@@ -26,9 +26,6 @@ int mylite_table_ddl_execute_create_index_statement(mylite_db *database,
                                                     struct mylite_index_ddl_plan *plan);
 int mylite_table_ddl_execute_drop_index_statement(mylite_db *database, const char *selected_schema,
                                                   struct mylite_index_ddl_plan *plan);
-int mylite_table_ddl_load_alter_table_model(mylite_db *database, const char *schema_name,
-                                            const char *table_name,
-                                            struct mylite_alter_table_model *model);
 int mylite_table_ddl_describe_create_table_column(
     const struct mylite_create_table_column *column,
     const struct mylite_schema_default *schema_default,
@@ -67,10 +64,6 @@ int mylite_table_ddl_add_rename_table_target(struct mylite_rename_table_plan *pl
                                              struct mylite_rename_table_target target);
 int mylite_table_ddl_assign_generated_index_names(mylite_db *database,
                                                   struct mylite_create_table_plan *plan);
-int mylite_table_ddl_add_alter_table_column(struct mylite_alter_table_model *model,
-                                            struct mylite_alter_table_column column);
-int mylite_table_ddl_append_alter_table_index_part(struct mylite_alter_table_index *index,
-                                                   struct mylite_alter_table_index_part part);
 char *mylite_table_ddl_generated_index_name_candidate(const char *base, unsigned int suffix);
 void mylite_table_ddl_create_table_plan_deinit(struct mylite_create_table_plan *plan);
 void mylite_table_ddl_drop_table_plan_deinit(struct mylite_drop_table_plan *plan);

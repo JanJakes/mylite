@@ -5,6 +5,7 @@
 #include "mylite_error_codes.h"
 #include "mylite_span.h"
 #include "mylite_table_ddl_alter.h"
+#include "mylite_table_ddl_alter_model.h"
 #include "mylite_transactions.h"
 #include "sqlite3.h"
 

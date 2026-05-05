@@ -392,6 +392,8 @@ into focused `*_types.h` headers.
   companion module.
 - [x] Move ALTER TABLE warning generation into a focused table DDL warnings
   companion module.
+- [x] Move ALTER TABLE catalog model loading into a focused table DDL model
+  companion module.
 - [ ] Continue splitting DML plans and execution; insert value resolution and
   broad DML headers remain the next ownership risks.
 - [x] Start `src/runtime/mylite_dml.{h,c}` with DML plan and row cleanup.

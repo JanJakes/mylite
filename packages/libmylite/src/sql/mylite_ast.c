@@ -685,6 +685,15 @@ void mylite_sql_ast_node_set_show_status_scope(struct mylite_sql_ast_node *node,
     node->show_status_scope = scope;
 }
 
+const struct mylite_sql_ast_node *
+mylite_sql_ast_unwrap_parenthesized_expression(const struct mylite_sql_ast_node *expression)
+{
+    while (expression != NULL && expression->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
+        expression = expression->first_child;
+    }
+    return expression;
+}
+
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node)
 {
     const struct mylite_sql_ast_node *child = NULL;

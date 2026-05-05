@@ -702,6 +702,8 @@ void mylite_sql_ast_node_set_show_variables_scope(struct mylite_sql_ast_node *no
 void mylite_sql_ast_node_set_show_status_scope(struct mylite_sql_ast_node *node,
                                                enum mylite_sql_ast_show_status_scope scope);
 
+const struct mylite_sql_ast_node *
+mylite_sql_ast_unwrap_parenthesized_expression(const struct mylite_sql_ast_node *expression);
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node);
 
 const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind);

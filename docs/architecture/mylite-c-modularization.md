@@ -642,6 +642,8 @@ into focused `*_types.h` headers.
 - [x] Split create-table plan column lookup into a focused table DDL helper.
 - [x] Split SELECT materialized group finalization and DISTINCT probing into a
   focused materialization helper.
+- [x] Split joined SELECT materialization into a focused SELECT companion
+  module.
 - [ ] Split `mylite_select_materialize.c` into base-table scan, joined-row
   assembly, outer-join, and materialization-driver modules.
 - [ ] Split `mylite_dml_insert_value_resolve.c` into insert column-list,

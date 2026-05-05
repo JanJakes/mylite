@@ -676,6 +676,8 @@ into focused `*_types.h` headers.
   rendering, and table options into a dedicated table renderer module.
 - [x] Split dynamic INFORMATION_SCHEMA SQL builders into a focused companion
   module.
+- [x] Split INFORMATION_SCHEMA SELECT target detection into a focused companion
+  module.
 - [x] Split schema catalog defaults, existence checks, mutations, and system
   schema seeding into a focused catalog schema module.
 - [x] Split transaction savepoint parsing, execution, stack management, and

@@ -175,6 +175,7 @@ add_library(mylite STATIC
   src/runtime/mylite_show_create_table_indexes.c
   src/runtime/mylite_show_create_table_options.c
   src/runtime/mylite_show_create_table_target.c
+  src/runtime/mylite_show_index_target.c
   src/runtime/mylite_show_prepare.c
   src/runtime/mylite_show_status_sql.c
   src/runtime/mylite_show_tables.c

@@ -698,6 +698,8 @@ into focused `*_types.h` headers.
   companion.
 - [x] Split SHOW CREATE TABLE index rendering into a focused indexes
   companion.
+- [x] Split SHOW INDEX target copying and validation into a focused target
+  companion.
 - [x] Split SHOW CHARACTER SET and SHOW COLLATION SQL builders into a focused
   SHOW charset/collation companion.
 - [x] Split SHOW STATUS SQL builders and uptime projection into a focused SHOW

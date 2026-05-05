@@ -6,7 +6,28 @@
 #include "mylite_expression.h"
 #include "mylite_select_types.h"
 
+#include <stdbool.h>
 #include <stddef.h>
+
+bool mylite_select_subquery_row_expression_is_supported(
+    const struct mylite_sql_ast_node *expression);
+bool mylite_select_subquery_row_expression_is_membership(
+    const struct mylite_sql_ast_node *expression);
+bool mylite_select_subquery_row_expression_is_positive_membership(
+    const struct mylite_sql_ast_node *expression);
+bool mylite_select_subquery_binary_expression_is_row(const struct mylite_sql_ast_node *expression);
+bool mylite_select_subquery_binary_expression_is_row_in(
+    const struct mylite_sql_ast_node *expression);
+bool mylite_select_subquery_binary_expression_is_row_scalar(
+    const struct mylite_sql_ast_node *expression);
+const struct mylite_sql_ast_node *
+mylite_select_subquery_row_select_statement(const struct mylite_sql_ast_node *expression);
+bool mylite_select_subquery_quantified_comparison_has_row_left(
+    const struct mylite_sql_ast_node *expression);
+bool mylite_select_subquery_quantified_comparison_is_row_alias(
+    const struct mylite_sql_ast_node *expression);
+size_t mylite_select_subquery_row_constructor_width(const struct mylite_sql_ast_node *row);
+bool mylite_select_subquery_binary_expression_is_in(const struct mylite_sql_ast_node *expression);
 
 int mylite_select_subquery_copy_row_values(mylite_stmt *stmt, size_t width,
                                            struct mylite_row_expression_values *out_values);

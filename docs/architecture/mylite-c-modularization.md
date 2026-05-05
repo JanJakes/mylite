@@ -614,6 +614,8 @@ into focused `*_types.h` headers.
   module.
 - [x] Move ALTER TABLE index-action application and key diagnostics into a
   focused table DDL index-action companion module.
+- [x] Split ALTER TABLE rebuild, shadow-table copy, and physical swap into a
+  focused table DDL alter rebuild module.
 - [x] Split SELECT row and join-condition matching into a focused SELECT
   companion module.
 - [x] Split SELECT joined-row allocation, copying, and null-extension helpers

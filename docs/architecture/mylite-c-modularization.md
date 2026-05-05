@@ -598,6 +598,8 @@ into focused `*_types.h` headers.
   into a focused table DDL module.
 - [x] Split RENAME TABLE validation, physical table rename, and catalog rewrite
   into a focused table DDL module.
+- [x] Move ALTER TABLE final-model validation into the focused ALTER validation
+  module.
 - [x] Split SELECT row and join-condition matching into a focused SELECT
   companion module.
 - [x] Split SELECT joined-row allocation, copying, and null-extension helpers

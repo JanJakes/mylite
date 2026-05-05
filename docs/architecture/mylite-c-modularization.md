@@ -18,7 +18,11 @@ concern, preserved the public ABI, and kept behavior stable. That remains the
 right migration path for a compatibility layer because broad rewrites make MySQL
 behavior regressions hard to isolate.
 
-The main monolith is gone. The remaining risk is second-order monolith growth:
+The main monolith is gone. The remaining risk is second-order monolith growth
+and, later, over-modularization. The current runtime shape is healthy enough
+that new splits should be justified by ownership, dependency, or testability
+risk, not by line count alone. A cohesive 350-400 line module is acceptable when
+it owns one clear operation and has a narrow header.
 
 - `mylite_statement_prepare.c` should stay a prepare switchboard, not a home for
   statement-family validation, cloning, or metadata inference.
@@ -28,10 +32,9 @@ The main monolith is gone. The remaining risk is second-order monolith growth:
   runtime adapters, not SELECT planning or execution logic.
 - `mylite_runtime.h` should stay a private object-layout header, not a shared
   type dumping ground.
-- The largest remaining modules need follow-up ownership splits:
-  `mylite_table_ddl.c`, `mylite_select_materialize.c`,
-  `mylite_dml_insert_value_resolve.c`, `mylite_table_ddl_alter.c`, and
-  `mylite_select_subquery_eval.c`.
+- The largest remaining C modules are mostly SELECT and ALTER helpers. They
+  should be split only when a file mixes separable concerns such as planning,
+  binding, catalog loading, runtime evaluation, diagnostics, or SQL generation.
 - The broadest type headers also need follow-up splits once ownership is clear:
   `mylite_select_types.h`, `mylite_dml.h`, `mylite_dml_types.h`, and
   `mylite_table_ddl_types.h`.
@@ -51,19 +54,36 @@ The next architecture phase should keep this layering:
 
 Good next extraction order:
 
-1. Split `mylite_table_ddl.c` into statement preparation, create/drop/rename,
-   truncate, shared catalog model, SQL builders, and validation modules.
-2. Split `mylite_select_materialize.c` into base-table scanning, joined-row
-   assembly, outer-join orchestration, and materialization driver modules.
-3. Split `mylite_dml_insert_value_resolve.c` into column-list resolution,
-   positional/default resolution, `INSERT ... SET` resolution, and SQLite bind
-   helpers.
-4. Split `mylite_select_subquery_eval.c` into scalar subquery, quantified
-   subquery, row-value comparison, and diagnostics modules.
-5. Split broad type headers after the implementation owners are narrow enough
-   that the new headers have one clear purpose.
-6. Convert guardrails from this document into build checks whenever they can be
+1. Finish explicit mixed-concern modules already identified in the task list:
+   insert value resolution, subquery evaluation, and any SELECT resolver/binder
+   files that still combine unrelated responsibilities.
+2. Shrink broad family headers after implementation ownership is clear. Header
+   fan-out is now a larger architecture risk than any single C file.
+3. Review the current top C files and split only when there is a named
+   ownership boundary. Do not split cohesive planning or evaluation modules
+   merely because they are a few hundred lines long.
+4. Convert guardrails from this document into build checks whenever they can be
    expressed mechanically.
+
+## Completion Checklist
+
+Use this checklist to decide when the modularization project is complete. Once
+these are checked, stop splitting and switch to feature work unless a later
+change creates a new mixed-owner module.
+
+- [ ] `mylite_runtime.h` remains object-layout-only and the architecture check
+  prevents statement-family structs from moving back into it.
+- [ ] Broad family headers have either been split or explicitly accepted because
+  their types form one cohesive private object model.
+- [ ] No statement dispatcher, context, or prepare module owns family-specific
+  validation, cloning, metadata inference, or execution logic.
+- [ ] Remaining large C files each have one clear reason to exist; no file is
+  split only because of line count.
+- [ ] The focused outstanding modules in the task list are resolved or closed as
+  intentionally cohesive.
+- [ ] Parser/runtime tests, format-check, runtime architecture check,
+  whitespace check, and tidy all pass.
+- [ ] This document reflects the final module ownership map and stop criteria.
 
 ## Runtime Header Guardrails
 

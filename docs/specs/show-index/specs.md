@@ -16,7 +16,6 @@ Supported forms:
 
 Deferred:
 
-- execution of `SHOW INDEX ... WHERE expr`
 - hidden storage-engine key parts exposed by MySQL `SHOW EXTENDED INDEX`
 - generated invisible primary key rows controlled by
   `show_gipk_in_create_table_and_information_schema`
@@ -66,8 +65,8 @@ MySQL returns:
   indexes use `Visible = NO`; comments appear in `Index_comment`
 
 MySQL `SHOW INDEX ... WHERE Key_name = 'mixedcase'` matched a mixed-case index
-name in the verified runtime. MyLite does not implement the filter expression in
-this slice, but the parser accepts the clause.
+name in the verified runtime. The filter uses the displayed `SHOW INDEX` column
+names.
 
 ## Syntax And AST
 
@@ -130,8 +129,6 @@ Validation order:
 4. for `information_schema`, validate known system table names and return an
    empty result set for known tables
 5. validate persistent base table existence for user schemas
-6. reject parsed `WHERE` with `MYLITE_UNSUPPORTED` and message
-   `SHOW INDEX WHERE is not supported`
 
 Successful execution selects from `__mylite_index_catalog` with MySQL-compatible
 display columns and ordering:
@@ -158,6 +155,13 @@ and standalone `CREATE INDEX` paths. The existing catalog already stores
 supported primary, unique, ordinary, prefix, collation, comment, visibility,
 nullable, and effective index-type metadata. Cardinality is reported from the
 catalog and may be `NULL` until statistics maintenance exists.
+
+`SHOW INDEX ... WHERE expr` filters rows after mapping the displayed column names
+to the result shape. The executable subset includes string and numeric literals,
+`NULL`/boolean literals, unary signs and `NOT`, comparison predicates, `LIKE`,
+`IN`/`NOT IN`, `IS NULL`/`IS NOT NULL`, parentheses, `AND`, and `OR`. Unsupported
+filter expressions return `MYLITE_UNSUPPORTED` with
+`SHOW INDEX WHERE expression is not supported`.
 
 `SHOW EXTENDED INDEX` currently returns the same rows as `SHOW INDEX`, because
 MyLite does not have hidden storage-engine key parts.
@@ -189,7 +193,7 @@ Runtime tests cover:
 - explicit-schema override behavior
 - tables with no indexes returning no rows with metadata columns
 - missing schema and missing table diagnostics
-- parsed `WHERE` returning `MYLITE_UNSUPPORTED`
+- `WHERE` equality, `IN`, and boolean disjunction filtering
 - known `information_schema` tables returning no rows
 - unknown `information_schema` tables using MySQL's uppercase object-name
   diagnostic
@@ -206,6 +210,6 @@ key parts.
 catalog rows is correct for MyLite's current storage model because hidden InnoDB
 metadata columns do not exist.
 
-`WHERE` is parsed but rejected at prepare time. This keeps grammar coverage
-correct and avoids a partial expression-filter implementation inconsistent with
-future shared `SHOW` filtering.
+`WHERE` filtering is implemented for the expression subset above by rendering the
+parsed predicate over the MySQL display-column aliases. Broader expression
+coverage remains a future shared `SHOW` filtering task.

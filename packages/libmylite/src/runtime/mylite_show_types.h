@@ -72,6 +72,7 @@ struct mylite_show_index_source_nodes {
 struct mylite_show_index_query {
     const char *schema_name;
     const char *table_name;
+    const struct mylite_sql_ast_node *where_expression;
 };
 
 struct mylite_show_diagnostics_query {

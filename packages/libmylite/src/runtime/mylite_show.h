@@ -64,7 +64,8 @@ int mylite_show_character_set_sql(mylite_db *database,
 char *mylite_show_columns_sql(mylite_db *database, const struct mylite_show_columns_query *query);
 int mylite_show_collation_sql(mylite_db *database, const struct mylite_show_collation_query *query,
                               char **out_sql);
-char *mylite_show_index_sql(mylite_db *database, const struct mylite_show_index_query *query);
+int mylite_show_index_sql(mylite_db *database, const struct mylite_show_index_query *query,
+                          char **out_sql);
 char *mylite_show_diagnostics_sql(mylite_db *database,
                                   const struct mylite_show_diagnostics_query *query);
 char *mylite_show_diagnostics_count_sql(mylite_db *database,

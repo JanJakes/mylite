@@ -19181,6 +19181,31 @@ static int test_show_index_execution(void)
         "YES",      "BTREE", "",
         "idx note", "NO",    NULL,
     };
+    static const char *const primary_index_values[] = {
+        "meta", "0", "PRIMARY", "1", "id", "A", NULL, NULL, NULL, "", "BTREE", "", "", "YES", NULL,
+    };
+    static const char *const primary_unique_index_values[] = {
+        "meta",  "0",  "PRIMARY", "1",   "id", "A",     NULL, NULL,      NULL,  "",
+        "BTREE", "",   "",        "YES", NULL, "meta",  "0",  "uq_code", "1",   "code",
+        "A",     NULL, NULL,      NULL,  "",   "BTREE", "",   "",        "YES", NULL,
+    };
+    static const char *const primary_nonunique_index_values[] = {
+        "meta",     "0",     "PRIMARY",
+        "1",        "id",    "A",
+        NULL,       NULL,    NULL,
+        "",         "BTREE", "",
+        "",         "YES",   NULL,
+        "meta",     "1",     "idx_name_tail",
+        "1",        "name",  "D",
+        NULL,       "5",     NULL,
+        "YES",      "BTREE", "",
+        "idx note", "NO",    NULL,
+        "meta",     "1",     "idx_name_tail",
+        "2",        "tail",  "A",
+        NULL,       NULL,    NULL,
+        "YES",      "BTREE", "",
+        "idx note", "NO",    NULL,
+    };
     static const char *const b_meta_values[] = {
         "meta", "1", "other_idx", "1", "other_id", "A",   NULL, NULL,
         NULL,   "",  "BTREE",     "",  "",         "YES", NULL,
@@ -19226,9 +19251,18 @@ static int test_show_index_execution(void)
                                    meta_values, 4, "show keys synonym");
     failures += expect_select_rows(database, "SHOW EXTENDED INDEX FROM meta", show_index_columns,
                                    15, meta_values, 4, "show extended index current no-op");
-    failures += expect_prepare_error(database, "SHOW INDEX FROM meta WHERE Key_name = 'PRIMARY'",
-                                     MYLITE_UNSUPPORTED, "SHOW INDEX WHERE is not supported",
-                                     "show index where is parsed but unsupported");
+    failures += expect_select_rows(database, "SHOW INDEX FROM meta WHERE Key_name = 'PRIMARY'",
+                                   show_index_columns, 15, primary_index_values, 1,
+                                   "show index where key name");
+    failures += expect_select_rows(
+        database, "SHOW INDEX FROM meta WHERE Key_name IN ('PRIMARY', 'uq_code')",
+        show_index_columns, 15, primary_unique_index_values, 2, "show index where in predicate");
+    failures += expect_select_rows(
+        database, "SHOW INDEX FROM meta WHERE Non_unique = 1 OR Key_name = 'PRIMARY'",
+        show_index_columns, 15, primary_nonunique_index_values, 3, "show index where or predicate");
+    failures += expect_prepare_error(
+        database, "SHOW INDEX FROM meta WHERE Key_name <=> 'PRIMARY'", MYLITE_UNSUPPORTED,
+        "SHOW INDEX WHERE expression is not supported", "show index where unsupported expression");
 
     failures += execute_sql(database, "CREATE TABLE no_idx (id INT)", MYLITE_DONE);
     failures += expect_select_rows(database, "SHOW INDEX FROM no_idx", show_index_columns, 15, NULL,

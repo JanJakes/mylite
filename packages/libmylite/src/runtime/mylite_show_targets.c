@@ -120,6 +120,8 @@ int mylite_show_prepare_index_statement(mylite_db *database,
                                         const struct mylite_sql_ast_node *statement,
                                         mylite_stmt **out_stmt)
 {
+    const struct mylite_sql_ast_node *where_clause =
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE);
     struct mylite_show_index_target target = {0};
     char *sqlite_sql = NULL;
     int status = mylite_show_index_copy_target(database, statement, &target);
@@ -127,19 +129,16 @@ int mylite_show_prepare_index_statement(mylite_db *database,
     if (status == MYLITE_OK) {
         status = mylite_show_index_validate_target(database, &target);
     }
-    if (status == MYLITE_OK &&
-        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "SHOW INDEX WHERE is not supported");
-        status = MYLITE_UNSUPPORTED;
-    }
     if (status == MYLITE_OK) {
-        sqlite_sql = mylite_show_index_sql(database, &(const struct mylite_show_index_query){
-                                                         .schema_name = target.schema_name,
-                                                         .table_name = target.table_name,
-                                                     });
-        if (sqlite_sql == NULL) {
-            status = MYLITE_NOMEM;
-        }
+        status = mylite_show_index_sql(
+            database,
+            &(const struct mylite_show_index_query){
+                .schema_name = target.schema_name,
+                .table_name = target.table_name,
+                .where_expression =
+                    where_clause == NULL ? NULL : mylite_ast_child_at(where_clause, 0U),
+            },
+            &sqlite_sql);
     }
     if (status == MYLITE_OK) {
         status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);

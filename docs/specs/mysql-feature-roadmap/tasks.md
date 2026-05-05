@@ -191,12 +191,13 @@ level application surfaces.
        nullable, and index-type metadata, empty no-index results, known
        `information_schema` table behavior, and selected-schema,
        missing-schema, missing-table, and unknown-system-table diagnostics.
-       `SHOW INDEX WHERE` is parsed but currently returns an unsupported
-       diagnostic; `EXTENDED` is a visible-catalog no-op until hidden
-       storage-engine key parts exist. Temporary tables, user views, privilege
-       filtering, hidden storage-engine columns, generated invisible primary key
-       rows, functional key parts, and broader metadata statements remain
-       deferred. The first `DESCRIBE` / `DESC` slice is specified and
+       `SHOW INDEX WHERE` filters over the supported displayed-column expression
+       subset; `EXTENDED` is a visible-catalog no-op until hidden storage-engine
+       key parts exist. Temporary tables, user views, privilege filtering,
+       hidden storage-engine columns, generated invisible primary key rows,
+       functional key parts, broader WHERE expressions, and broader metadata
+       statements remain deferred. The first `DESCRIBE` / `DESC` slice is
+       specified and
        implemented for supported persistent base tables, including the
        `EXPLAIN tbl_name [col_name | wild]` table-description synonym,
        schema-qualified targets, optional identifier/string-literal column and

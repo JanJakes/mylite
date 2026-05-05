@@ -100,6 +100,7 @@ add_library(mylite STATIC
   src/runtime/mylite_expression_descriptor_string_quote.c
   src/runtime/mylite_expression_descriptor_subquery.c
   src/runtime/mylite_expression_descriptor_temporal.c
+  src/runtime/mylite_expression_descriptor_union.c
   src/runtime/mylite_expression_validation.c
   src/runtime/mylite_field_descriptor.c
   src/runtime/mylite_function_names.c

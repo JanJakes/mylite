@@ -756,6 +756,8 @@ into focused `*_types.h` headers.
   module.
 - [x] Split numeric variadic descriptor inference into a focused expression
   descriptor numeric variadic module.
+- [x] Split UNION field descriptor merge rules into a focused expression
+  descriptor union companion.
 - [x] Split UPDATE expression binding into a focused DML update expression bind
   module.
 - [x] Split INSERT duplicate-key update assignment validation into a focused

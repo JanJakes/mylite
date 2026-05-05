@@ -707,6 +707,8 @@ into focused `*_types.h` headers.
   descriptor numeric variadic module.
 - [x] Split UPDATE expression binding into a focused DML update expression bind
   module.
+- [x] Split INSERT duplicate-key update assignment validation into a focused
+  DML insert update validation module.
 - [x] Split expression function collation inference into a focused expression
   collation companion.
 - [x] Split transaction savepoint parsing, execution, stack management, and

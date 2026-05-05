@@ -685,6 +685,8 @@ into focused `*_types.h` headers.
   target companion.
 - [x] Split SHOW CREATE TABLE catalog metadata reads into a focused info
   companion.
+- [x] Split SHOW CREATE TABLE table option rendering into a focused options
+  companion.
 - [x] Split SHOW CHARACTER SET and SHOW COLLATION SQL builders into a focused
   SHOW charset/collation companion.
 - [x] Split SHOW STATUS SQL builders and uptime projection into a focused SHOW

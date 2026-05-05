@@ -5,6 +5,7 @@
 #include "mylite_runtime.h"
 #include "mylite_show_create_common.h"
 #include "mylite_show_create_table_info.h"
+#include "mylite_show_create_table_options.h"
 #include "mylite_show_create_table_target.h"
 #include "mylite_span.h"
 #include "mylite_statement.h"
@@ -33,8 +34,6 @@ static int append_show_create_table_indexes(mylite_db *database, sqlite3_str *cr
 static int append_show_create_table_index(sqlite3_str *create_sql, sqlite3_stmt *select);
 static int append_show_create_table_key_parts(mylite_db *database, sqlite3_str *create_sql,
                                               sqlite3_stmt *select, const char *index_name);
-static void append_show_create_table_options(sqlite3_str *create_sql,
-                                             const struct mylite_show_create_table_info *info);
 static void append_show_create_table_line_prefix(sqlite3_str *create_sql, bool *first_line);
 static bool show_create_column_needs_implicit_default_null(const char *data_type);
 static void
@@ -97,7 +96,7 @@ static int show_create_table_sql(mylite_db *database,
     }
     if (status == MYLITE_OK) {
         sqlite3_str_appendall(create_sql, "\n)");
-        append_show_create_table_options(create_sql, &info);
+        mylite_show_create_table_append_options(create_sql, &info);
     }
     create_text = sqlite3_str_finish(create_sql);
 
@@ -348,26 +347,6 @@ static int append_show_create_table_key_parts(mylite_db *database, sqlite3_str *
         sqlite3_str_appendall(create_sql, " /*!80000 INVISIBLE */");
     }
     return sqlite3_str_errcode(create_sql) == SQLITE_OK ? MYLITE_OK : MYLITE_NOMEM;
-}
-
-static void append_show_create_table_options(sqlite3_str *create_sql,
-                                             const struct mylite_show_create_table_info *info)
-{
-    const struct mylite_collation *collation = mylite_collation_lookup(info->table_collation);
-    const char *character_set =
-        collation == NULL ? mylite_charset_default_name() : collation->character_set;
-
-    sqlite3_str_appendf(create_sql, " ENGINE=%s", info->engine == NULL ? "InnoDB" : info->engine);
-    if (info->has_auto_increment) {
-        sqlite3_str_appendf(create_sql, " AUTO_INCREMENT=%lld", info->auto_increment);
-    }
-    sqlite3_str_appendf(create_sql, " DEFAULT CHARSET=%s COLLATE=%s", character_set,
-                        info->table_collation == NULL ? mylite_charset_default_collation_name()
-                                                      : info->table_collation);
-    if (info->table_comment != NULL && info->table_comment[0] != '\0') {
-        sqlite3_str_appendall(create_sql, " COMMENT=");
-        mylite_show_create_append_string_literal(create_sql, info->table_comment);
-    }
 }
 
 static void append_show_create_table_line_prefix(sqlite3_str *create_sql, bool *first_line)

@@ -1,7 +1,7 @@
 #include "mylite_statement_custom.h"
 
 #include "mylite_diagnostics.h"
-#include "mylite_dml.h"
+#include "mylite_dml_insert_copy.h"
 #include "mylite_runtime.h"
 #include "mylite_schema.h"
 #include "mylite_select_scalar.h"

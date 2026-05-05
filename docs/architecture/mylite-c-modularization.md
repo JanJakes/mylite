@@ -816,6 +816,8 @@ into focused `*_types.h` headers.
   duplicate-update copy module.
 - [x] Split INSERT SET assignment AST copying into a focused DML insert set
   copy module.
+- [x] Move INSERT/REPLACE AST copy entry points into a narrow DML insert copy
+  header.
 - [x] Split INSERT duplicate-entry diagnostics out of unique-index conflict
   probing.
 - [x] Split INSERT SQLite value binding into a focused DML bind companion while

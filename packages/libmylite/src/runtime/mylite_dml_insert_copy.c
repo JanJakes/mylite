@@ -1,5 +1,6 @@
-#include "mylite_dml.h"
+#include "mylite_dml_insert_copy.h"
 
+#include "mylite_dml.h"
 #include "mylite_dml_insert_copy_value.h"
 #include "mylite_dml_insert_duplicate_update_copy.h"
 #include "mylite_dml_insert_set_copy.h"

@@ -7,8 +7,18 @@
 
 #include <stdbool.h>
 
+struct mylite_expression_value;
 struct mylite_sql_ast_node;
 
+bool mylite_expression_descriptor_function_result_nullable(
+    bool arguments_nullable, const struct mylite_expression_value *value);
+bool mylite_expression_descriptor_infer_text_function(
+    mylite_db *database, const struct mylite_sql_ast_node *name,
+    const struct mylite_expression_value *value, bool result_nullable,
+    struct mylite_field_descriptor *out_descriptor);
+bool mylite_expression_descriptor_infer_base_conversion_function(
+    mylite_db *database, const struct mylite_sql_ast_node *name,
+    struct mylite_field_descriptor *out_descriptor);
 bool mylite_expression_descriptor_infer_session_or_inet_function(
     mylite_db *database, const struct mylite_sql_ast_node *name,
     struct mylite_field_descriptor *out_descriptor);

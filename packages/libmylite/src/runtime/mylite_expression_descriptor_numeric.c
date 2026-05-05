@@ -3,6 +3,7 @@
 #include "mylite_expression_descriptor.h"
 #include "mylite_function_names.h"
 #include "mylite_metadata_constants.h"
+#include "mylite_span.h"
 
 static bool infer_exp_function_descriptor(const struct mylite_sql_ast_node *name,
                                           struct mylite_field_descriptor *out_descriptor);
@@ -68,6 +69,46 @@ bool mylite_expression_descriptor_infer_math_function(
         return true;
     }
     return infer_angle_conversion_function_descriptor(name, result_nullable, out_descriptor);
+}
+
+bool mylite_expression_descriptor_infer_scalar_numeric_function(
+    const struct mylite_sql_ast_node *name, const struct mylite_expression_value *value,
+    bool result_nullable, struct mylite_field_descriptor *out_descriptor)
+{
+    if (name != NULL && mylite_span_equal_ci(name->span, "ISNULL")) {
+        *out_descriptor = mylite_expression_descriptor_signed_longlong(false);
+        out_descriptor->length = 1U;
+        return true;
+    }
+    if (name != NULL && mylite_span_equal_ci(name->span, "ABS")) {
+        *out_descriptor = mylite_expression_descriptor_signed_longlong(result_nullable);
+        if (value != NULL && value->kind != MYLITE_EXPRESSION_VALUE_NULL) {
+            *out_descriptor = mylite_expression_descriptor_from_value(value);
+            mylite_field_descriptor_set_nullable(out_descriptor, result_nullable);
+        }
+        return true;
+    }
+    if (mylite_function_name_has_integer_result(name)) {
+        *out_descriptor = mylite_expression_descriptor_signed_longlong(result_nullable);
+        out_descriptor->length = mylite_mysql_integer_function_display_length;
+        return true;
+    }
+    if (name != NULL && mylite_span_equal_ci(name->span, "MOD")) {
+        *out_descriptor = mylite_expression_descriptor_signed_longlong(true);
+        return true;
+    }
+    if (name != NULL && mylite_span_equal_ci(name->span, "PI")) {
+        *out_descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_DOUBLE,
+            .flags = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+            .length = mylite_mysql_pi_function_display_length,
+            .decimals = mylite_mysql_pi_function_scale,
+            .charset_id = mylite_mysql_binary_charset_id,
+            .nullable = false,
+        };
+        return true;
+    }
+    return false;
 }
 
 static bool infer_exp_function_descriptor(const struct mylite_sql_ast_node *name,

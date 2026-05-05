@@ -172,10 +172,6 @@ static bool infer_common_scalar_function_descriptor(mylite_db *database,
                                                     const struct mylite_sql_ast_node *name,
                                                     bool arguments_nullable, bool result_nullable,
                                                     struct mylite_field_descriptor *out_descriptor);
-static bool function_result_nullable(bool arguments_nullable,
-                                     const struct mylite_expression_value *value);
-static uint64_t text_function_result_length(mylite_db *database,
-                                            const struct mylite_expression_value *value);
 static int infer_temporal_function_descriptor(mylite_db *database,
                                               const struct mylite_select_plan *plan,
                                               const struct mylite_sql_ast_node *expression,
@@ -215,10 +211,6 @@ static int infer_string_encoding_function_descriptor(mylite_db *database,
                                                      const struct mylite_sql_ast_node *expression,
                                                      struct mylite_field_descriptor *out_descriptor,
                                                      bool *out_matched);
-static bool
-infer_base_conversion_function_descriptor(mylite_db *database,
-                                          const struct mylite_sql_ast_node *name,
-                                          struct mylite_field_descriptor *out_descriptor);
 // NOLINTNEXTLINE(misc-no-recursion)
 static int infer_hex_function_descriptor(mylite_db *database, const struct mylite_select_plan *plan,
                                          const struct mylite_sql_ast_node *expression,
@@ -2265,7 +2257,7 @@ static int infer_function_expression_descriptor(mylite_db *database,
     if (status != MYLITE_OK) {
         return status;
     }
-    result_nullable = function_result_nullable(nullable, value);
+    result_nullable = mylite_expression_descriptor_function_result_nullable(nullable, value);
 
     if (infer_common_scalar_function_descriptor(database, name, nullable, result_nullable,
                                                 out_descriptor)) {
@@ -2290,16 +2282,8 @@ static int infer_function_expression_descriptor(mylite_db *database,
     if (status != MYLITE_OK || matched_slice_string) {
         return status;
     }
-    if (mylite_function_name_has_text_result(name)) {
-        *out_descriptor = (struct mylite_field_descriptor){
-            .type = MYLITE_FIELD_TYPE_VAR_STRING,
-            .flags = 0U,
-            .length = text_function_result_length(database, value),
-            .decimals = mylite_mysql_not_fixed_decimals,
-            .charset_id = mylite_expression_descriptor_connection_charset_id(database),
-            .nullable = result_nullable,
-        };
-        mylite_field_descriptor_set_nullable(out_descriptor, result_nullable);
+    if (mylite_expression_descriptor_infer_text_function(database, name, value, result_nullable,
+                                                         out_descriptor)) {
         return MYLITE_OK;
     }
     if (mylite_expression_descriptor_infer_fixed_integer_function(name, result_nullable,
@@ -2314,38 +2298,8 @@ static int infer_function_expression_descriptor(mylite_db *database,
                                                                out_descriptor)) {
         return MYLITE_OK;
     }
-    if (name != NULL && mylite_span_equal_ci(name->span, "ISNULL")) {
-        *out_descriptor = mylite_expression_descriptor_signed_longlong(false);
-        out_descriptor->length = 1U;
-        return MYLITE_OK;
-    }
-    if (name != NULL && mylite_span_equal_ci(name->span, "ABS")) {
-        *out_descriptor = mylite_expression_descriptor_signed_longlong(result_nullable);
-        if (value != NULL && value->kind != MYLITE_EXPRESSION_VALUE_NULL) {
-            *out_descriptor = mylite_expression_descriptor_from_value(value);
-            mylite_field_descriptor_set_nullable(out_descriptor, result_nullable);
-        }
-        return MYLITE_OK;
-    }
-    if (mylite_function_name_has_integer_result(name)) {
-        *out_descriptor = mylite_expression_descriptor_signed_longlong(result_nullable);
-        out_descriptor->length = mylite_mysql_integer_function_display_length;
-        return MYLITE_OK;
-    }
-    if (name != NULL && mylite_span_equal_ci(name->span, "MOD")) {
-        *out_descriptor = mylite_expression_descriptor_signed_longlong(true);
-        return MYLITE_OK;
-    }
-    if (name != NULL && mylite_span_equal_ci(name->span, "PI")) {
-        (void)value;
-        *out_descriptor = (struct mylite_field_descriptor){
-            .type = MYLITE_FIELD_TYPE_DOUBLE,
-            .flags = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
-            .length = mylite_mysql_pi_function_display_length,
-            .decimals = mylite_mysql_pi_function_scale,
-            .charset_id = mylite_mysql_binary_charset_id,
-            .nullable = false,
-        };
+    if (mylite_expression_descriptor_infer_scalar_numeric_function(name, value, result_nullable,
+                                                                   out_descriptor)) {
         return MYLITE_OK;
     }
 
@@ -2396,7 +2350,8 @@ static bool infer_common_scalar_function_descriptor(mylite_db *database,
                                                                     out_descriptor)) {
         return true;
     }
-    return infer_base_conversion_function_descriptor(database, name, out_descriptor);
+    return mylite_expression_descriptor_infer_base_conversion_function(database, name,
+                                                                       out_descriptor);
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
@@ -2863,24 +2818,6 @@ truncate_decimal_descriptor_for_constant_scale(struct mylite_field_descriptor *d
     }
 }
 
-static bool function_result_nullable(bool arguments_nullable,
-                                     const struct mylite_expression_value *value)
-{
-    if (value != NULL) {
-        return value->kind == MYLITE_EXPRESSION_VALUE_NULL;
-    }
-    return arguments_nullable;
-}
-
-static uint64_t text_function_result_length(mylite_db *database,
-                                            const struct mylite_expression_value *value)
-{
-    if (value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
-        return mylite_expression_descriptor_string_length(database, value, NULL);
-    }
-    return mylite_mysql_text_length;
-}
-
 // NOLINTNEXTLINE(misc-no-recursion)
 static int infer_time_function_descriptor(mylite_db *database,
                                           const struct mylite_select_plan *plan,
@@ -3128,33 +3065,6 @@ static int infer_make_set_function_descriptor(mylite_db *database,
     };
     mylite_field_descriptor_set_nullable(out_descriptor, nullable);
     return MYLITE_OK;
-}
-
-static bool
-infer_base_conversion_function_descriptor(mylite_db *database,
-                                          const struct mylite_sql_ast_node *name,
-                                          struct mylite_field_descriptor *out_descriptor)
-{
-    uint64_t max_bytes_per_character =
-        mylite_expression_descriptor_connection_character_max_length(database);
-    uint64_t length =
-        max_bytes_per_character > UINT64_MAX / mylite_mysql_base_conversion_result_chars
-            ? mylite_mysql_long_text_length
-            : mylite_mysql_base_conversion_result_chars * max_bytes_per_character;
-
-    if (!mylite_function_name_has_base_conversion_result(name)) {
-        return false;
-    }
-    *out_descriptor = (struct mylite_field_descriptor){
-        .type = MYLITE_FIELD_TYPE_VAR_STRING,
-        .flags = 0U,
-        .length = length,
-        .decimals = mylite_mysql_not_fixed_decimals,
-        .charset_id = mylite_expression_descriptor_connection_charset_id(database),
-        .nullable = true,
-    };
-    mylite_field_descriptor_set_nullable(out_descriptor, true);
-    return true;
 }
 
 static int infer_char_function_descriptor(mylite_db *database,

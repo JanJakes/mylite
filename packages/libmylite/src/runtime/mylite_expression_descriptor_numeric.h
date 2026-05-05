@@ -5,6 +5,7 @@
 
 #include <stdbool.h>
 
+struct mylite_expression_value;
 struct mylite_sql_ast_node;
 
 bool mylite_expression_descriptor_infer_fixed_integer_function(
@@ -13,5 +14,8 @@ bool mylite_expression_descriptor_infer_fixed_integer_function(
 bool mylite_expression_descriptor_infer_math_function(
     const struct mylite_sql_ast_node *name, bool result_nullable,
     struct mylite_field_descriptor *out_descriptor);
+bool mylite_expression_descriptor_infer_scalar_numeric_function(
+    const struct mylite_sql_ast_node *name, const struct mylite_expression_value *value,
+    bool result_nullable, struct mylite_field_descriptor *out_descriptor);
 
 #endif

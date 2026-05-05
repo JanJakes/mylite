@@ -15,6 +15,67 @@ static bool infer_inet_function_descriptor(mylite_db *database,
                                            const struct mylite_sql_ast_node *name,
                                            struct mylite_field_descriptor *out_descriptor);
 
+bool mylite_expression_descriptor_function_result_nullable(
+    bool arguments_nullable, const struct mylite_expression_value *value)
+{
+    if (value != NULL) {
+        return value->kind == MYLITE_EXPRESSION_VALUE_NULL;
+    }
+    return arguments_nullable;
+}
+
+bool mylite_expression_descriptor_infer_text_function(
+    mylite_db *database, const struct mylite_sql_ast_node *name,
+    const struct mylite_expression_value *value, bool result_nullable,
+    struct mylite_field_descriptor *out_descriptor)
+{
+    uint64_t length = mylite_mysql_text_length;
+
+    if (!mylite_function_name_has_text_result(name)) {
+        return false;
+    }
+    if (value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+        length = mylite_expression_descriptor_string_length(database, value, NULL);
+    }
+
+    *out_descriptor = (struct mylite_field_descriptor){
+        .type = MYLITE_FIELD_TYPE_VAR_STRING,
+        .flags = 0U,
+        .length = length,
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = mylite_expression_descriptor_connection_charset_id(database),
+        .nullable = result_nullable,
+    };
+    mylite_field_descriptor_set_nullable(out_descriptor, result_nullable);
+    return true;
+}
+
+bool mylite_expression_descriptor_infer_base_conversion_function(
+    mylite_db *database, const struct mylite_sql_ast_node *name,
+    struct mylite_field_descriptor *out_descriptor)
+{
+    uint64_t max_bytes_per_character =
+        mylite_expression_descriptor_connection_character_max_length(database);
+    uint64_t length =
+        max_bytes_per_character > UINT64_MAX / mylite_mysql_base_conversion_result_chars
+            ? mylite_mysql_long_text_length
+            : mylite_mysql_base_conversion_result_chars * max_bytes_per_character;
+
+    if (!mylite_function_name_has_base_conversion_result(name)) {
+        return false;
+    }
+    *out_descriptor = (struct mylite_field_descriptor){
+        .type = MYLITE_FIELD_TYPE_VAR_STRING,
+        .flags = 0U,
+        .length = length,
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = mylite_expression_descriptor_connection_charset_id(database),
+        .nullable = true,
+    };
+    mylite_field_descriptor_set_nullable(out_descriptor, true);
+    return true;
+}
+
 bool mylite_expression_descriptor_infer_session_or_inet_function(
     mylite_db *database, const struct mylite_sql_ast_node *name,
     struct mylite_field_descriptor *out_descriptor)

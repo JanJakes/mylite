@@ -3,6 +3,7 @@
 #include "mylite_diagnostics.h"
 #include "mylite_span.h"
 #include "mylite_table_ddl.h"
+#include "mylite_table_ddl_alter_index_model.h"
 #include "mylite_table_ddl_alter_model.h"
 
 #include <stdbool.h>
@@ -26,9 +27,6 @@ static int apply_alter_table_rename_index(mylite_db *database,
 static int apply_alter_table_alter_index_visibility(mylite_db *database,
                                                     const struct mylite_alter_table_action *action,
                                                     struct mylite_alter_table_model *model);
-static int insert_alter_table_index(struct mylite_alter_table_model *model,
-                                    struct mylite_alter_table_index table_index, size_t position);
-static int remove_alter_table_index(struct mylite_alter_table_model *model, size_t index);
 static int init_alter_table_index_from_create_index(mylite_db *database,
                                                     struct mylite_alter_table_model *model,
                                                     const struct mylite_create_table_index *source,
@@ -43,8 +41,6 @@ static int assign_alter_table_generated_index_name(mylite_db *database,
                                                    const struct mylite_alter_table_model *model,
                                                    const struct mylite_create_table_index *source,
                                                    char **out_name);
-static size_t alter_table_index_index(const struct mylite_alter_table_model *model,
-                                      const char *name);
 
 int mylite_table_ddl_apply_alter_table_index_action(
     mylite_db *database, const struct mylite_alter_table_action *action,
@@ -136,7 +132,7 @@ static int apply_alter_table_add_index(mylite_db *database,
         } else {
             position = model->index_count;
         }
-        status = insert_alter_table_index(model, table_index, position);
+        status = mylite_table_ddl_insert_alter_table_index(model, table_index, position);
     }
     if (status != MYLITE_OK) {
         mylite_table_ddl_alter_table_index_deinit(&table_index);
@@ -148,7 +144,7 @@ static int apply_alter_table_add_index(mylite_db *database,
 static int apply_alter_table_drop_primary_key(mylite_db *database,
                                               struct mylite_alter_table_model *model)
 {
-    size_t primary_index = alter_table_index_index(model, "PRIMARY");
+    size_t primary_index = mylite_table_ddl_alter_table_index_index(model, "PRIMARY");
 
     if (primary_index == model->index_count) {
         return mylite_table_ddl_set_alter_table_cant_drop_column_error(database, "PRIMARY");
@@ -161,26 +157,26 @@ static int apply_alter_table_drop_primary_key(mylite_db *database,
             return mylite_table_ddl_set_alter_table_wrong_auto_increment_error(database);
         }
     }
-    return remove_alter_table_index(model, primary_index);
+    return mylite_table_ddl_remove_alter_table_index(model, primary_index);
 }
 
 static int apply_alter_table_drop_index(mylite_db *database,
                                         const struct mylite_alter_table_action *action,
                                         struct mylite_alter_table_model *model)
 {
-    size_t index = alter_table_index_index(model, action->old_name);
+    size_t index = mylite_table_ddl_alter_table_index_index(model, action->old_name);
 
     if (index == model->index_count || mylite_ascii_case_equal(action->old_name, "PRIMARY")) {
         return mylite_table_ddl_set_alter_table_cant_drop_column_error(database, action->old_name);
     }
-    return remove_alter_table_index(model, index);
+    return mylite_table_ddl_remove_alter_table_index(model, index);
 }
 
 static int apply_alter_table_rename_index(mylite_db *database,
                                           const struct mylite_alter_table_action *action,
                                           struct mylite_alter_table_model *model)
 {
-    size_t index = alter_table_index_index(model, action->old_name);
+    size_t index = mylite_table_ddl_alter_table_index_index(model, action->old_name);
     char *new_name = NULL;
 
     if (index == model->index_count) {
@@ -210,9 +206,10 @@ static int apply_alter_table_alter_index_visibility(mylite_db *database,
                                                     const struct mylite_alter_table_action *action,
                                                     struct mylite_alter_table_model *model)
 {
-    size_t index = alter_table_index_index(model, action->old_name);
+    size_t index = mylite_table_ddl_alter_table_index_index(model, action->old_name);
     char *visibility = NULL;
-    bool has_primary = alter_table_index_index(model, "PRIMARY") < model->index_count;
+    bool has_primary =
+        mylite_table_ddl_alter_table_index_index(model, "PRIMARY") < model->index_count;
     bool is_implicit_primary = false;
 
     if (index == model->index_count) {
@@ -250,43 +247,6 @@ static int apply_alter_table_alter_index_visibility(mylite_db *database,
     }
     free(model->indexes[index].is_visible);
     model->indexes[index].is_visible = visibility;
-    return MYLITE_OK;
-}
-
-static int insert_alter_table_index(struct mylite_alter_table_model *model,
-                                    struct mylite_alter_table_index table_index, size_t position)
-{
-    struct mylite_alter_table_index *indexes = NULL;
-
-    if (position > model->index_count) {
-        return MYLITE_MISUSE;
-    }
-
-    indexes = realloc(model->indexes, (model->index_count + 1U) * sizeof(*model->indexes));
-    if (indexes == NULL) {
-        return MYLITE_NOMEM;
-    }
-    model->indexes = indexes;
-    for (size_t index = model->index_count; index > position; --index) {
-        model->indexes[index] = model->indexes[index - 1U];
-    }
-    model->indexes[position] = table_index;
-    ++model->index_count;
-    return MYLITE_OK;
-}
-
-static int remove_alter_table_index(struct mylite_alter_table_model *model, size_t index)
-{
-    if (index >= model->index_count) {
-        return MYLITE_MISUSE;
-    }
-
-    mylite_table_ddl_alter_table_index_deinit(&model->indexes[index]);
-    for (size_t next = index + 1U; next < model->index_count; ++next) {
-        model->indexes[next - 1U] = model->indexes[next];
-    }
-    --model->index_count;
-    model->indexes[model->index_count] = (struct mylite_alter_table_index){0};
     return MYLITE_OK;
 }
 
@@ -403,15 +363,4 @@ static int assign_alter_table_generated_index_name(mylite_db *database,
         free(candidate);
         ++suffix;
     }
-}
-
-static size_t alter_table_index_index(const struct mylite_alter_table_model *model,
-                                      const char *name)
-{
-    for (size_t index = 0U; index < model->index_count; ++index) {
-        if (mylite_ascii_case_equal(model->indexes[index].name, name)) {
-            return index;
-        }
-    }
-    return model->index_count;
 }

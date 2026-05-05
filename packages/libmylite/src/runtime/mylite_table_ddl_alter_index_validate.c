@@ -4,6 +4,7 @@
 #include "mylite_error_codes.h"
 #include "mylite_span.h"
 #include "mylite_table_ddl.h"
+#include "mylite_table_ddl_alter_index_model.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -90,17 +91,6 @@ int mylite_table_ddl_apply_alter_table_primary_key_column_nullability(
         }
     }
     return MYLITE_OK;
-}
-
-bool mylite_table_ddl_alter_table_index_name_exists(const struct mylite_alter_table_model *model,
-                                                    const char *name)
-{
-    for (size_t index = 0U; index < model->index_count; ++index) {
-        if (mylite_ascii_case_equal(model->indexes[index].name, name)) {
-            return true;
-        }
-    }
-    return false;
 }
 
 int mylite_table_ddl_set_alter_table_duplicate_key_name_error(mylite_db *database,

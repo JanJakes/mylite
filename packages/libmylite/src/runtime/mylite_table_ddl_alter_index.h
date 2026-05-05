@@ -7,8 +7,6 @@ int mylite_table_ddl_apply_alter_table_index_action(
     mylite_db *database, const struct mylite_alter_table_action *action,
     struct mylite_alter_table_model *model,
     const struct mylite_table_ddl_alter_callbacks *callbacks);
-bool mylite_table_ddl_alter_table_index_name_exists(const struct mylite_alter_table_model *model,
-                                                    const char *name);
 int mylite_table_ddl_validate_alter_table_added_index(mylite_db *database,
                                                       const struct mylite_alter_table_model *model,
                                                       const struct mylite_create_table_index *index,

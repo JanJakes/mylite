@@ -94,6 +94,7 @@ add_library(mylite STATIC
   src/runtime/mylite_select_aggregate.c
   src/runtime/mylite_select_aggregate_bind.c
   src/runtime/mylite_select_catalog.c
+  src/runtime/mylite_select_diagnostics.c
   src/runtime/mylite_select_distinct_validate.c
   src/runtime/mylite_select_eval.c
   src/runtime/mylite_select_from.c

@@ -34,6 +34,7 @@
 #include "runtime/mylite_select.h"
 #include "runtime/mylite_select_aggregate.h"
 #include "runtime/mylite_select_aggregate_bind.h"
+#include "runtime/mylite_select_diagnostics.h"
 #include "runtime/mylite_select_distinct_validate.h"
 #include "runtime/mylite_select_eval.h"
 #include "runtime/mylite_select_from.h"
@@ -179,12 +180,6 @@ static int bind_select_having_clause(mylite_db *database,
 static int bind_select_order_by_clause(mylite_db *database,
                                        const struct mylite_sql_ast_node *order_by_clause,
                                        struct mylite_select_plan *plan);
-static int set_select_invalid_group_function_error(mylite_db *database);
-static int set_select_duplicate_mode_error(mylite_db *database);
-static int set_select_unsupported_projection_error(mylite_db *database);
-static int set_select_unsupported_where_error(mylite_db *database);
-static int set_select_unsupported_order_error(mylite_db *database);
-static int set_select_unsupported_join_grouping_error(mylite_db *database);
 static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind kind,
                                     const struct mylite_sql_ast_node *statement,
                                     mylite_stmt **out_stmt);
@@ -289,13 +284,13 @@ static const struct mylite_select_subquery_eval_callbacks select_subquery_eval_c
 
 static const struct mylite_select_subquery_bind_callbacks select_subquery_bind_callbacks = {
     .prepare_select_subquery = prepare_select_subquery_statement,
-    .set_unsupported_where_error = set_select_unsupported_where_error,
+    .set_unsupported_where_error = mylite_select_set_unsupported_where_error,
 };
 
 static const struct mylite_select_predicate_bind_callbacks select_predicate_bind_callbacks = {
     .subquery_callbacks = &select_subquery_bind_callbacks,
-    .set_invalid_group_function_error = set_select_invalid_group_function_error,
-    .set_unsupported_where_error = set_select_unsupported_where_error,
+    .set_invalid_group_function_error = mylite_select_set_invalid_group_function_error,
+    .set_unsupported_where_error = mylite_select_set_unsupported_where_error,
 };
 
 static const struct mylite_select_aggregate_bind_callbacks select_aggregate_bind_callbacks = {
@@ -303,21 +298,21 @@ static const struct mylite_select_aggregate_bind_callbacks select_aggregate_bind
     .subquery_callbacks = &select_subquery_bind_callbacks,
     .infer_aggregate_expression_descriptor = infer_aggregate_expression_descriptor,
     .infer_expression_descriptor = infer_expression_descriptor,
-    .set_invalid_group_function_error = set_select_invalid_group_function_error,
-    .set_unsupported_projection_error = set_select_unsupported_projection_error,
+    .set_invalid_group_function_error = mylite_select_set_invalid_group_function_error,
+    .set_unsupported_projection_error = mylite_select_set_unsupported_projection_error,
 };
 
 static const struct mylite_select_group_bind_callbacks select_group_bind_callbacks = {
     .aggregate_callbacks = &select_aggregate_bind_callbacks,
     .predicate_callbacks = &select_predicate_bind_callbacks,
-    .set_invalid_group_function_error = set_select_invalid_group_function_error,
-    .set_unsupported_where_error = set_select_unsupported_where_error,
+    .set_invalid_group_function_error = mylite_select_set_invalid_group_function_error,
+    .set_unsupported_where_error = mylite_select_set_unsupported_where_error,
 };
 
 static const struct mylite_select_order_bind_callbacks select_order_bind_callbacks = {
     .aggregate_callbacks = &select_aggregate_bind_callbacks,
     .subquery_callbacks = &select_subquery_bind_callbacks,
-    .set_unsupported_order_error = set_select_unsupported_order_error,
+    .set_unsupported_order_error = mylite_select_set_unsupported_order_error,
 };
 
 static const struct mylite_select_metadata_callbacks select_metadata_callbacks = {
@@ -326,7 +321,7 @@ static const struct mylite_select_metadata_callbacks select_metadata_callbacks =
 
 static const struct mylite_select_projection_callbacks select_projection_callbacks = {
     .bind_expression = bind_select_projection_expression,
-    .set_unsupported_projection_error = set_select_unsupported_projection_error,
+    .set_unsupported_projection_error = mylite_select_set_unsupported_projection_error,
 };
 
 static const struct mylite_select_statement_callbacks select_statement_callbacks = {
@@ -376,7 +371,7 @@ static const struct mylite_select_scalar_eval_callbacks select_scalar_eval_callb
     .eval_in_subquery = evaluate_in_subquery_expression,
     .eval_quantified_subquery = evaluate_quantified_subquery_expression,
     .eval_row_subquery = evaluate_row_subquery_expression,
-    .set_unsupported_order_error = set_select_unsupported_order_error,
+    .set_unsupported_order_error = mylite_select_set_unsupported_order_error,
     .set_ambiguous_order_column_error = mylite_select_set_ambiguous_order_column_error,
 };
 
@@ -384,7 +379,7 @@ static const struct mylite_select_union_prepare_callbacks union_query_prepare_ca
     .prepare_select_subquery = prepare_select_subquery_statement,
     .clone_order_expressions = mylite_select_clone_order_expressions,
     .set_ambiguous_order_column_error = mylite_select_set_ambiguous_order_column_error,
-    .set_unsupported_order_error = set_select_unsupported_order_error,
+    .set_unsupported_order_error = mylite_select_set_unsupported_order_error,
 };
 
 static const struct mylite_select_union_callbacks union_query_callbacks = {
@@ -393,7 +388,7 @@ static const struct mylite_select_union_callbacks union_query_callbacks = {
     .execute_table_select = execute_table_select_statement,
     .copy_operand_row_value = mylite_select_subquery_copy_row_value,
     .append_warnings = mylite_select_subquery_append_warnings,
-    .set_unsupported_order_error = set_select_unsupported_order_error,
+    .set_unsupported_order_error = mylite_select_set_unsupported_order_error,
 };
 
 int mylite_prepare(mylite_db *database, const char *sql, size_t length, mylite_stmt **out_stmt)
@@ -1065,7 +1060,7 @@ static int validate_select_duplicate_mode(mylite_db *database,
         return MYLITE_OK;
     }
     if (statement->select_duplicate_mode_conflict) {
-        return set_select_duplicate_mode_error(database);
+        return mylite_select_set_duplicate_mode_error(database);
     }
     return MYLITE_OK;
 }
@@ -1115,7 +1110,7 @@ static int prepare_table_select_statement(mylite_db *database,
     }
     if (status == MYLITE_OK && mylite_select_plan_table_count(&plan) > 1U &&
         (group_by_clause != NULL || having_clause != NULL)) {
-        status = set_select_unsupported_join_grouping_error(database);
+        status = mylite_select_set_unsupported_join_grouping_error(database);
     }
     if (status == MYLITE_OK) {
         custom_runtime = mylite_select_plan_requires_custom_runtime(&plan, &clauses);
@@ -1491,7 +1486,7 @@ static int bind_select_projection_expression(mylite_db *database,
     int status = bind_select_aggregate_aware_expression(database, expression, plan, "field list");
 
     if (status == MYLITE_UNSUPPORTED) {
-        return set_select_unsupported_projection_error(database);
+        return mylite_select_set_unsupported_projection_error(database);
     }
     return status;
 }
@@ -1531,67 +1526,6 @@ static int bind_select_order_by_clause(mylite_db *database,
 {
     return mylite_select_bind_order_by_clause(database, order_by_clause, plan,
                                               &select_order_bind_callbacks);
-}
-
-static int set_select_invalid_group_function_error(mylite_db *database)
-{
-    int status = mylite_diagnostics_set_error_message(database, "Invalid use of group function");
-
-    if (status == MYLITE_NOMEM) {
-        return MYLITE_NOMEM;
-    }
-    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_INVALID_GROUP_FUNC_USE,
-                                             mylite_error_message(database));
-    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-}
-
-static int set_select_duplicate_mode_error(mylite_db *database)
-{
-    int status =
-        mylite_diagnostics_set_error_message(database, "Incorrect usage of ALL and DISTINCT");
-
-    if (status == MYLITE_NOMEM) {
-        return MYLITE_NOMEM;
-    }
-    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_WRONG_USAGE,
-                                             mylite_error_message(database));
-    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-}
-
-static int set_select_unsupported_projection_error(mylite_db *database)
-{
-    if (mylite_diagnostics_set_error_message(database, "Unsupported SELECT projection") ==
-        MYLITE_NOMEM) {
-        return MYLITE_NOMEM;
-    }
-    return MYLITE_UNSUPPORTED;
-}
-
-static int set_select_unsupported_where_error(mylite_db *database)
-{
-    if (mylite_diagnostics_set_error_message(database, "Unsupported WHERE predicate") ==
-        MYLITE_NOMEM) {
-        return MYLITE_NOMEM;
-    }
-    return MYLITE_UNSUPPORTED;
-}
-
-static int set_select_unsupported_order_error(mylite_db *database)
-{
-    if (mylite_diagnostics_set_error_message(database, "Unsupported ORDER BY expression") ==
-        MYLITE_NOMEM) {
-        return MYLITE_NOMEM;
-    }
-    return MYLITE_UNSUPPORTED;
-}
-
-static int set_select_unsupported_join_grouping_error(mylite_db *database)
-{
-    if (mylite_diagnostics_set_error_message(
-            database, "Unsupported GROUP BY or HAVING over joined tables") == MYLITE_NOMEM) {
-        return MYLITE_NOMEM;
-    }
-    return MYLITE_EXEC_ERROR;
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
@@ -2376,7 +2310,7 @@ static int set_where_predicate_eval_error(mylite_stmt *stmt)
             return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
         }
     }
-    return set_select_unsupported_where_error(database);
+    return mylite_select_set_unsupported_where_error(database);
 }
 
 static int evaluate_select_subquery_expression(mylite_stmt *stmt,

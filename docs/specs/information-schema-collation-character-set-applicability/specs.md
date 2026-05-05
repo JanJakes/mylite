@@ -7,10 +7,11 @@ character-set applicability metadata table:
 
 - `SELECT * FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY`
 
-The first slice follows MyLite's existing narrow `INFORMATION_SCHEMA` policy.
-Only unqualified wildcard selection from the qualified system table is
-supported. These MySQL-supported forms remain deferred until broader
-`INFORMATION_SCHEMA` query support lands:
+This slice defines the row source and wildcard row shape for
+`INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY`. Broader
+MySQL-supported `SELECT` forms are covered by the composable
+`information_schema` system-view path when this table is routed through the
+regular binder:
 
 - explicit projections
 - explicit `ALL` or `DISTINCT` modifiers
@@ -100,12 +101,12 @@ select_statement ::= SELECT STAR FROM information_schema_collation_charset_name.
 information_schema_collation_charset_name ::= identifier DOT identifier.
 ```
 
-The parser may continue accepting broader `SELECT` syntax so runtime prepare can
-return a clean unsupported diagnostic for projections, explicit duplicate
-modifiers, filters, ordering, limits, aliases, joins, aggregates, and qualified
-wildcards. Runtime execution must restrict support to unqualified wildcard
-selection from `INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY`, with
-case-insensitive schema and table name matching after identifier unquoting.
+Wildcard selection remains the baseline row-shape requirement for
+`INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY`. Broader
+projections, filters, aliases, ordering, limits, and aggregates are handled by
+the composable information-schema system-view path where the corresponding
+`SELECT` feature is implemented. Schema and table names match
+case-insensitively after identifier unquoting.
 
 ## Runtime Semantics
 
@@ -179,10 +180,10 @@ resolution, while exact field descriptors for
 `INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY` remain deferred to a
 unified information-schema metadata pass.
 
-## Unsupported Query Forms
+## Composable Query Forms
 
-The following MySQL-supported forms return `MYLITE_UNSUPPORTED` in the first
-slice:
+The following MySQL-supported forms are covered by the shared system-view
+`SELECT` path after the composable information-schema update:
 
 - `SELECT COLLATION_NAME FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY`
 - `SELECT DISTINCT * FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY`
@@ -215,17 +216,17 @@ Parser coverage:
 - `SELECT * FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY`
 - lower-case and mixed-case schema/table names
 - quoted schema/table names
-- explicit projection remains parseable for runtime unsupported handling
-- filter form remains parseable for runtime unsupported handling
+- explicit projection and filter forms remain parseable and are executable
+  through the shared system-view path
 
 Runtime coverage:
 
 - exact uppercase result column names
 - exact row values in collation-name order
 - lower-case, mixed-case, and quoted table references resolve successfully
-- explicit projection, `DISTINCT`, `ALL`, `WHERE`, `ORDER BY`, `LIMIT`, and
-  `COUNT(*)` return `MYLITE_UNSUPPORTED`
-- table aliases, qualified wildcards, and joins return `MYLITE_UNSUPPORTED`
+- explicit projection, `DISTINCT`, `ALL`, `WHERE`, `ORDER BY`, `LIMIT`,
+  `COUNT(*)`, table aliases, and qualified wildcards execute through the shared
+  system-view path
 - `INFORMATION_SCHEMA.TABLES` includes a
   `COLLATION_CHARACTER_SET_APPLICABILITY` system-view row with the same
   system-view values as the existing metadata views
@@ -236,7 +237,5 @@ Runtime coverage:
 
 - MyLite exposes only the collations implemented in its registry instead of
   MySQL's full collation catalog.
-- Query forms beyond unqualified wildcard selection are unsupported for now even
-  though MySQL supports normal query processing over this table.
-- Full MySQL field metadata for information-schema `SELECT` statements is
-  deferred consistently across MyLite's current information-schema surfaces.
+- Full MySQL field metadata for information-schema `SELECT` statements remains
+  deferred.

@@ -7,10 +7,10 @@ metadata table:
 
 - `SELECT * FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS`
 
-The first slice follows MyLite's current narrow `INFORMATION_SCHEMA` policy.
-Only unqualified wildcard selection from the qualified system table is
-supported. These MySQL-supported forms remain deferred until broader
-`INFORMATION_SCHEMA` query support lands:
+This slice defines the row source and wildcard row shape for
+`INFORMATION_SCHEMA.TABLE_CONSTRAINTS`. Broader MySQL-supported `SELECT` forms
+are covered by the composable `information_schema` system-view path when this
+table is routed through the regular binder:
 
 - explicit projections
 - explicit `ALL` or `DISTINCT` modifiers
@@ -118,12 +118,12 @@ select_statement ::= SELECT STAR FROM information_schema_table_constraints_name.
 information_schema_table_constraints_name ::= identifier DOT identifier.
 ```
 
-The parser may continue accepting broader `SELECT` syntax so runtime prepare can
-return a clean unsupported diagnostic for projections, explicit duplicate
-modifiers, filters, ordering, limits, aliases, joins, aggregates, and qualified
-wildcards. Runtime execution must restrict support to unqualified wildcard
-selection from `INFORMATION_SCHEMA.TABLE_CONSTRAINTS`, with case-insensitive
-schema and table name matching after identifier unquoting.
+Wildcard selection remains the baseline row-shape requirement for
+`INFORMATION_SCHEMA.TABLE_CONSTRAINTS`. Broader projections, filters, aliases,
+ordering, limits, and aggregates are handled by the composable
+information-schema system-view path where the corresponding `SELECT` feature is
+implemented. Schema and table names match case-insensitively after identifier
+unquoting.
 
 ## Runtime Semantics
 
@@ -196,10 +196,10 @@ case-insensitive resolution, while exact field descriptors for
 `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` remain deferred to a unified
 information-schema metadata pass.
 
-## Unsupported Query Forms
+## Composable Query Forms
 
-The following MySQL-supported forms return `MYLITE_UNSUPPORTED` in the first
-slice:
+The following MySQL-supported forms are covered by the shared system-view
+`SELECT` path after the composable information-schema update:
 
 - `SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS`
 - `SELECT DISTINCT * FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS`
@@ -235,8 +235,8 @@ Parser coverage:
 - `SELECT * FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS`
 - lower-case and mixed-case schema/table names
 - quoted schema/table names
-- explicit projection remains parseable for runtime unsupported handling
-- filter form remains parseable for runtime unsupported handling
+- explicit projection and filter forms remain parseable and are executable
+  through the shared system-view path
 
 Runtime coverage:
 
@@ -252,9 +252,9 @@ Runtime coverage:
 - `DROP INDEX` removes the unique constraint row
 - `ALTER TABLE ... RENAME INDEX` renames the unique constraint row when that
   DDL is supported by the current runtime
-- unsupported projection, explicit `DISTINCT`/`ALL`, `WHERE`, `ORDER BY`,
-  `LIMIT`, `COUNT(*)`, `AS` alias, bare alias, qualified wildcard, and join
-  forms return `MYLITE_UNSUPPORTED` and no statement handle
+- composable projections, `DISTINCT`/`ALL`, `WHERE`, `ORDER BY`, `LIMIT`,
+  `COUNT(*)`, aliases, and qualified wildcard forms are covered by the shared
+  system-view SELECT path
 
 ## Known Gaps
 
@@ -266,6 +266,6 @@ Runtime coverage:
   `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS` rows.
 - Key-part ordinals for primary and unique constraints are exposed by
   [INFORMATION_SCHEMA.KEY_COLUMN_USAGE](../information-schema-key-column-usage/specs.md).
-- General information-schema projections, filters, ordering, limits, aliases,
-  joins, aggregates, privilege filtering, and exact MySQL field metadata remain
-  deferred.
+- Privilege filtering and exact MySQL field metadata remain deferred. General
+  projection, filtering, ordering, limiting, alias, and aggregate behavior is
+  covered by the composable information-schema SELECT path.

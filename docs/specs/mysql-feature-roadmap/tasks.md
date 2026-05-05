@@ -229,31 +229,30 @@ level application surfaces.
        transactional facade, common unsupported MySQL engines reported as
        `Support=NO` with nullable capability columns, and MySQL-compatible
        syntax rejection for `LIKE`, `WHERE`, and `LIMIT`. The first
-       `INFORMATION_SCHEMA.ENGINES` slice shares that registry for wildcard
-       selection with exact uppercase columns and case-insensitive quoted name
-       resolution; projections, filters, ordering, limits, aliases, joins, and
-       aggregates remain deferred. The first `INFORMATION_SCHEMA.CHARACTER_SETS`
-       slice shares the supported character-set registry used by
-       `SHOW CHARACTER SET`, exposes exact uppercase columns and numeric
-       `MAXLEN`, and preserves the same wildcard-only information-schema query
-       policy. The first `INFORMATION_SCHEMA.COLLATIONS` slice shares the
-       supported collation registry used by `SHOW COLLATION`, exposes exact
-       uppercase columns with numeric `ID` and `SORTLEN`, and preserves the
-       same wildcard-only information-schema query policy. The first
+       `INFORMATION_SCHEMA.ENGINES` slice shares that registry with exact
+       uppercase columns and case-insensitive quoted name resolution. The first
+       `INFORMATION_SCHEMA.CHARACTER_SETS` slice shares the supported
+       character-set registry used by `SHOW CHARACTER SET` and exposes exact
+       uppercase columns and numeric `MAXLEN`. The first
+       `INFORMATION_SCHEMA.COLLATIONS` slice shares the supported collation
+       registry used by `SHOW COLLATION` and exposes exact uppercase columns
+       with numeric `ID` and `SORTLEN`. The first
        `INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY` slice reuses
        that collation registry and exposes the collation-to-character-set
-       mapping with the same wildcard-only policy. The first
-       `INFORMATION_SCHEMA.KEYWORDS` slice exposes MyLite's lexer-supported
-       keyword catalog with `WORD` and numeric `RESERVED` columns under the
-       same wildcard-only policy. The first
+       mapping. The first `INFORMATION_SCHEMA.KEYWORDS` slice exposes MyLite's
+       lexer-supported keyword catalog with `WORD` and numeric `RESERVED`
+       columns. These supported information-schema tables now route through the
+       shared system-view `SELECT` path for ordinary projections, filters,
+       aliases, ordering, limits, duplicate modifiers, aggregates, and grouping
+       where those query features are implemented. The first
        `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` slice exposes primary-key and
        unique constraints from `__mylite_index_catalog`, including the exact
-       seven-column result shape, deterministic row ordering, supported key-DDL
-       side effects, and the same wildcard-only policy. The first
+       seven-column result shape, deterministic row ordering, and supported
+       key-DDL side effects. The first
        `INFORMATION_SCHEMA.KEY_COLUMN_USAGE` slice exposes primary-key and
        unique key-part rows from `__mylite_index_catalog`, including composite
-       key ordinals, supported key-DDL side effects, nonunique/expression-only
-       exclusion, and the same wildcard-only policy. The first
+       key ordinals, supported key-DDL side effects, and nonunique/
+       expression-only exclusion. The first
        `INFORMATION_SCHEMA.CHECK_CONSTRAINTS` slice exposes the exact
        four-column system-view shape and intentionally returns zero rows until
        CHECK DDL/catalog/enforcement support exists. The first
@@ -263,8 +262,8 @@ level application surfaces.
        build-dependent engine catalog breadth, full MySQL character-set
        catalog breadth, full MySQL collation catalog breadth, exact MySQL
        keyword catalog completeness, actual CHECK rows, actual foreign-key
-       constraint rows, and general information-schema query
-       processing remain deferred. Specs:
+       constraint rows, privilege filtering, exact MySQL field metadata, and
+       unknown information-schema tables remain deferred. Specs:
        [SHOW TABLES](../show-tables/specs.md),
        [SHOW TABLE STATUS](../show-table-status/specs.md),
        [SHOW COLUMNS](../show-columns/specs.md),

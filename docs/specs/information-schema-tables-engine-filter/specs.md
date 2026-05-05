@@ -2,9 +2,9 @@
 
 ## Scope
 
-This feature extends MyLite's `INFORMATION_SCHEMA.TABLES` support beyond
-`SELECT *` so applications can run common metadata probes that filter by the
-storage engine:
+This feature originally extended MyLite's `INFORMATION_SCHEMA.TABLES` support
+beyond `SELECT *` so applications can run common metadata probes that filter by
+the storage engine:
 
 - `SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES WHERE ...`
 - `SELECT TABLE_NAME FROM information_schema.TABLES WHERE ...`
@@ -18,9 +18,12 @@ storage engine:
 - optional bare or `AS` table aliases, including qualified column references
   such as `t.ENGINE`
 
-The implementation is intentionally narrow. It does not introduce a general
-information-schema query engine, joins, arbitrary projection expressions,
-`OR`, `LIKE`, aggregates, grouping, limits, subqueries, or privilege filtering.
+The narrow filter path is now superseded by the composable
+`information_schema` system-view path described in
+[Composable `information_schema` SELECTs](../information-schema-composable-select/specs.md).
+The engine-filter probes below remain compatibility examples that must continue
+to work through the general `SELECT` binder and runtime. Privilege filtering
+and exact MySQL field metadata remain deferred.
 
 The motivating MySQL-compatible behavior is metadata introspection for user
 base tables created by MyLite's supported `CREATE TABLE` subset. Since MyLite
@@ -75,37 +78,16 @@ does not change the existing MyLite `SELECT *` column shape or values.
 
 ## MyLite Behavior
 
-MyLite should keep the existing `SELECT * FROM INFORMATION_SCHEMA.TABLES`
-behavior and add a specific prepared-query path for supported projections and
-filters.
+MyLite keeps the existing `SELECT * FROM INFORMATION_SCHEMA.TABLES` behavior and
+also exposes `TABLES` as a read-only system view that composes with ordinary
+projection, aliases, expressions, `WHERE`, `IN`, `OR`, grouping, aggregates,
+ordering, distinct, and limits where those `SELECT` features are otherwise
+implemented.
 
-Supported projection lists:
-
-- `*`
-- `TABLE_NAME`
-- `TABLE_NAME, ENGINE`
-- the same scoped column names qualified by the sole table name or alias
-
-Supported filters:
-
-- equality against string literals for `TABLE_SCHEMA`, `TABLE_NAME`, and
-  `ENGINE`
-- the same equality and null predicates when column identifiers are qualified
-  by the sole table name or alias
-- `TABLE_SCHEMA = DATABASE()` and `DATABASE() = TABLE_SCHEMA`
-- reversed equality where the literal or function appears on the left
-- `ENGINE IS NULL`
-- `ENGINE IS NOT NULL` may remain unsupported until needed
-- `AND` between supported predicates
-
-Identifier matching for projection and predicate column names is
-case-insensitive. String comparisons should use case-insensitive behavior for
-the supported predicate columns in this slice, matching the observed
-`ENGINE='innodb'` result and the existing MyLite case-insensitive system-view
-resolution. MyLite's broader collation engine remains deferred.
-
-Unsupported expression shapes must fall back to the existing unsupported
-information-schema behavior rather than silently returning incorrect rows.
+Identifier matching for `information_schema` schema/table names is
+case-insensitive. Column references, expression semantics, and string
+comparison behavior are delegated to the regular MyLite `SELECT` runtime.
+MyLite's broader collation engine remains deferred.
 
 ## Execution
 
@@ -135,16 +117,14 @@ Implementation tests should cover:
 - case-insensitive engine literal comparison with `ENGINE='innodb'`
 - `TABLE_NAME` equality combined with `ENGINE`
 - `ENGINE IS NULL` for an `information_schema` system view
-- unsupported predicates, such as `OR`, still return `MYLITE_UNSUPPORTED`
 - aliases and qualified references such as `t.ENGINE = 'InnoDB'`
-- unsupported projections beyond the scoped list still return
-  `MYLITE_UNSUPPORTED`
+- `OR`, `IN`, aggregate expressions, grouping, aliases, and ordered projection
+  queries through the general system-view path
 
 ## Compatibility Status
 
 After implementation and tests, the core metadata catalog remains a scoped
-information-schema implementation. Suggested compatibility wording should
-state that `INFORMATION_SCHEMA.TABLES` supports `SELECT *` plus focused
-`TABLE_NAME`/`ENGINE` projections with `TABLE_SCHEMA`, `TABLE_NAME`, and
-`ENGINE` filters for engine-based metadata probes, including aliases and
-qualified references over the sole `TABLES` source.
+information-schema implementation, but supported `information_schema` tables are
+selectable through the regular `SELECT` path. Suggested compatibility wording
+should state that `INFORMATION_SCHEMA.TABLES` supports composable metadata
+queries over its current row set, including the engine-based probes above.

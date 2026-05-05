@@ -7,7 +7,11 @@
 
 #include <stdbool.h>
 
+struct mylite_select_table;
+
 bool mylite_information_schema_has_table(const char *name);
+int mylite_information_schema_prepare_table_view(mylite_db *database, const char *table_name,
+                                                 char **out_physical_name);
 int mylite_information_schema_prepare_select_statement(mylite_db *database,
                                                        const struct mylite_sql_ast_node *statement,
                                                        mylite_stmt **out_stmt);

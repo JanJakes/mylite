@@ -7,10 +7,10 @@ metadata table:
 
 - `SELECT * FROM INFORMATION_SCHEMA.ENGINES`
 
-The first slice is deliberately aligned with MyLite's existing narrow
-`INFORMATION_SCHEMA` architecture. It supports only wildcard selection from the
-qualified table name. These MySQL-supported forms remain deferred until broader
-`INFORMATION_SCHEMA` `SELECT` support lands:
+This slice defines the row source and wildcard row shape for
+`INFORMATION_SCHEMA.ENGINES`. Broader MySQL-supported `SELECT` forms are covered
+by the composable `information_schema` system-view path when this table is
+routed through the regular binder:
 
 - explicit projections
 - `WHERE`
@@ -94,11 +94,11 @@ select_statement ::= SELECT STAR FROM information_schema_engines_name.
 information_schema_engines_name ::= identifier DOT identifier.
 ```
 
-The parser may continue accepting broader `SELECT` syntax so runtime prepare can
-return a clean unsupported diagnostic for projections, filters, and other query
-features. Runtime execution must restrict support to wildcard selection from
-`INFORMATION_SCHEMA.ENGINES`, with case-insensitive schema and table name
-matching after identifier unquoting.
+Wildcard selection remains the baseline row-shape requirement for
+`INFORMATION_SCHEMA.ENGINES`. Broader projections, filters, aliases, ordering,
+limits, and aggregates are handled by the composable information-schema
+system-view path where the corresponding `SELECT` feature is implemented.
+Schema and table names match case-insensitively after identifier unquoting.
 
 ## Runtime Semantics
 
@@ -171,10 +171,10 @@ order, nulls, and case-insensitive resolution, while exact field descriptors for
 `INFORMATION_SCHEMA.ENGINES` remain deferred to a unified information-schema
 metadata pass.
 
-## Unsupported Query Forms
+## Composable Query Forms
 
-The following MySQL-supported forms return `MYLITE_UNSUPPORTED` in the first
-slice:
+The following MySQL-supported forms are covered by the shared system-view
+`SELECT` path after the composable information-schema update:
 
 - `SELECT ENGINE FROM INFORMATION_SCHEMA.ENGINES`
 - `SELECT * FROM INFORMATION_SCHEMA.ENGINES WHERE ENGINE = 'InnoDB'`
@@ -201,8 +201,8 @@ Parser coverage:
 - `SELECT * FROM INFORMATION_SCHEMA.ENGINES`
 - lower-case and mixed-case schema/table names
 - quoted schema/table names
-- explicit projection remains parseable for runtime unsupported handling
-- filter form remains parseable for runtime unsupported handling
+- explicit projection and filter forms remain parseable and are executable
+  through the shared system-view path
 
 Runtime coverage:
 
@@ -210,9 +210,8 @@ Runtime coverage:
 - exact row values in the shared registry order
 - unsupported engines return `NULL` for `TRANSACTIONS`, `XA`, and `SAVEPOINTS`
 - lower-case, mixed-case, and quoted table references resolve successfully
-- explicit projection, `WHERE`, `ORDER BY`, `LIMIT`, and `COUNT(*)` return
-  `MYLITE_UNSUPPORTED`
-- table aliases, qualified wildcards, and joins return `MYLITE_UNSUPPORTED`
+- explicit projection, `WHERE`, `ORDER BY`, `LIMIT`, `COUNT(*)`, table aliases,
+  and qualified wildcards execute through the shared system-view path
 - `INFORMATION_SCHEMA.TABLES` includes an `ENGINES` system-view row with the
   same system-view values as the existing metadata views
 - `SHOW TABLES FROM information_schema` exposes `ENGINES`
@@ -221,7 +220,5 @@ Runtime coverage:
 
 - MyLite exposes a small embedded registry instead of MySQL's full
   build-dependent engine catalog.
-- Query forms beyond wildcard selection are unsupported for now even though
-  MySQL supports normal query processing over this table.
-- Full MySQL field metadata for information-schema `SELECT` statements is
-  deferred consistently across MyLite's current information-schema surfaces.
+- Full MySQL field metadata for information-schema `SELECT` statements remains
+  deferred.

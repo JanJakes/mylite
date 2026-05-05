@@ -15,11 +15,11 @@ database. Rows for actual foreign keys are intentionally deferred until MyLite
 has foreign-key DDL, catalog storage, supporting-index dependency checks,
 referential validation, cascading actions, and DML enforcement.
 
-The supported query shape remains consistent with the current narrow
-`INFORMATION_SCHEMA` runtime policy: only unqualified wildcard selection from
-the qualified system table executes. Projections, explicit duplicate
-modifiers, filters, ordering, limits, aggregates, aliases, joins, qualified
-wildcards, and broader information-schema query processing remain unsupported.
+Wildcard selection remains the baseline row-shape requirement for
+`INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS`. Broader projections, filters,
+aliases, ordering, limits, and aggregates are handled by the composable
+information-schema system-view path where the corresponding `SELECT` feature is
+implemented.
 
 ## Sources
 
@@ -135,10 +135,10 @@ existing `SHOW TABLES FROM information_schema` and
 `REFERENTIAL_CONSTRAINTS`; `SHOW FULL TABLES FROM information_schema LIKE
 'referential_constraints'` returns `REFERENTIAL_CONSTRAINTS`, `SYSTEM VIEW`.
 
-### Unsupported Query Shapes
+### Composable Query Shapes
 
-The following forms parse through the general SELECT grammar but return
-`MYLITE_UNSUPPORTED` and no statement handle for this slice:
+The following forms are covered by the shared system-view `SELECT` path after
+the composable information-schema update:
 
 - `SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS`
 - `SELECT DISTINCT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS`
@@ -215,9 +215,9 @@ Runtime coverage:
   the system view
 - `SHOW FULL TABLES FROM information_schema LIKE 'referential_constraints'`
   returns `REFERENTIAL_CONSTRAINTS`, `SYSTEM VIEW`
-- unsupported projection, explicit `DISTINCT`/`ALL`, `WHERE`, `ORDER BY`,
-  `LIMIT`, `COUNT(*)`, `AS` alias, bare alias, qualified wildcard, and join
-  forms return `MYLITE_UNSUPPORTED` and no statement handle
+- composable projections, `DISTINCT`/`ALL`, `WHERE`, `ORDER BY`, `LIMIT`,
+  `COUNT(*)`, aliases, and qualified wildcard forms are covered by the shared
+  system-view SELECT path
 - if foreign-key DDL parses in the current runtime, unsupported FK DDL must not
   create `REFERENTIAL_CONSTRAINTS` rows
 
@@ -230,6 +230,6 @@ Runtime coverage:
   the same underlying foreign-key catalog exists.
 - `INFORMATION_SCHEMA.KEY_COLUMN_USAGE` still omits foreign-key referenced
   table and column rows until the same underlying foreign-key catalog exists.
-- General information-schema projections, filters, ordering, limits, aliases,
-  joins, aggregates, privilege filtering, and exact MySQL field metadata remain
-  deferred.
+- Privilege filtering and exact MySQL field metadata remain deferred. General
+  projection, filtering, ordering, limiting, alias, and aggregate behavior is
+  covered by the composable information-schema SELECT path.

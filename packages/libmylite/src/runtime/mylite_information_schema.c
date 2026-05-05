@@ -1,5 +1,6 @@
 #include "mylite_information_schema.h"
 
+#include "mylite_catalog.h"
 #include "mylite_diagnostics.h"
 #include "mylite_error_codes.h"
 #include "mylite_information_schema_dynamic.h"
@@ -24,6 +25,8 @@ static int information_schema_dynamic_table_sql(mylite_db *database,
                                                 enum mylite_information_schema_table table,
                                                 char **out_sql);
 static const char *information_schema_table_sql(enum mylite_information_schema_table table);
+static int information_schema_table_query_sql(mylite_db *database, const char *table_name,
+                                              char **out_sql);
 static int information_schema_tables_filtered_select_sql(
     mylite_db *database, const struct mylite_sql_ast_node *statement, char **out_sql);
 static bool information_schema_tables_from_clause(const struct mylite_sql_ast_node *from_clause);
@@ -699,6 +702,50 @@ bool mylite_information_schema_has_table(const char *name)
     return mylite_information_schema_table_from_name(name) != MYLITE_INFORMATION_SCHEMA_NONE;
 }
 
+int mylite_information_schema_prepare_table_view(mylite_db *database, const char *table_name,
+                                                 char **out_physical_name)
+{
+    char *physical_name = NULL;
+    char *select_sql = NULL;
+    char *create_sql = NULL;
+    int status = MYLITE_OK;
+    int rc = SQLITE_OK;
+
+    if (!mylite_information_schema_has_table(table_name)) {
+        return mylite_information_schema_set_unknown_table_error(database, table_name);
+    }
+
+    physical_name = mylite_catalog_physical_table_name("information_schema", table_name);
+    if (physical_name == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    status = information_schema_table_query_sql(database, table_name, &select_sql);
+    if (status != MYLITE_OK) {
+        free(physical_name);
+        return status;
+    }
+
+    create_sql =
+        sqlite3_mprintf("CREATE TEMP VIEW IF NOT EXISTS \"%w\" AS %s", physical_name, select_sql);
+    sqlite3_free(select_sql);
+    if (create_sql == NULL) {
+        free(physical_name);
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    rc = sqlite3_exec(database->sqlite, create_sql, NULL, NULL, NULL);
+    sqlite3_free(create_sql);
+    if (rc != SQLITE_OK) {
+        free(physical_name);
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+
+    *out_physical_name = physical_name;
+    return MYLITE_OK;
+}
+
 int mylite_information_schema_set_unknown_table_error(mylite_db *database, const char *table_name)
 {
     char *display_name = mylite_copy_nonempty_cstring(table_name);
@@ -755,6 +802,30 @@ static int information_schema_dynamic_table_sql(mylite_db *database,
         return MYLITE_UNSUPPORTED;
     }
     return MYLITE_UNSUPPORTED;
+}
+
+static int information_schema_table_query_sql(mylite_db *database, const char *table_name,
+                                              char **out_sql)
+{
+    enum mylite_information_schema_table table =
+        mylite_information_schema_table_from_name(table_name);
+    const char *static_sql = NULL;
+    int status = information_schema_dynamic_table_sql(database, table, out_sql);
+
+    if (status != MYLITE_UNSUPPORTED) {
+        return status;
+    }
+
+    static_sql = information_schema_table_sql(table);
+    if (static_sql == NULL) {
+        return MYLITE_UNSUPPORTED;
+    }
+    *out_sql = sqlite3_mprintf("%s", static_sql);
+    if (*out_sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    return MYLITE_OK;
 }
 
 static const char *information_schema_table_sql(enum mylite_information_schema_table table)

@@ -28,7 +28,7 @@ static int resolve_select_table_targets(mylite_db *database, struct mylite_selec
 
     for (size_t index = 0U; index < table_count; ++index) {
         struct mylite_select_table *table = mylite_select_plan_table(plan, index);
-        int status = mylite_select_resolve_table_target(database, table);
+        int status = mylite_select_resolve_query_table_target(database, table);
 
         if (status != MYLITE_OK) {
             return status;

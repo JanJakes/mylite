@@ -992,29 +992,18 @@ static int test_core_metadata_catalog(void)
     failures += execute_sql(database, "DROP DATABASE mylite_metadata_catalog_empty", MYLITE_DONE);
 
     failures += prepare_sql(database, "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA",
-                            MYLITE_UNSUPPORTED, &stmt);
-    if (stmt != NULL) {
-        fprintf(stderr, "unsupported information_schema projection returned a statement handle\n");
-        failures = 1;
-        mylite_finalize(stmt);
-        stmt = NULL;
-    }
+                            MYLITE_OK, &stmt);
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.SCHEMATA WHERE TRUE",
-                            MYLITE_UNSUPPORTED, &stmt);
-    if (stmt != NULL) {
-        fprintf(stderr, "unsupported information_schema filter returned a statement handle\n");
-        failures = 1;
-        mylite_finalize(stmt);
-    }
+                            MYLITE_OK, &stmt);
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += expect_prepare_error(database, "SELECT * FROM SCHEMATA", MYLITE_EXEC_ERROR,
                                      "No database selected", "unqualified table no database");
-    failures +=
-        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.VIEWS", MYLITE_UNSUPPORTED, &stmt);
-    if (stmt != NULL) {
-        fprintf(stderr, "unsupported information_schema table returned a statement handle\n");
-        failures = 1;
-        mylite_finalize(stmt);
-    }
+    failures += expect_prepare_error(
+        database, "SELECT * FROM INFORMATION_SCHEMA.VIEWS", MYLITE_EXEC_ERROR,
+        "Unknown table 'VIEWS' in information_schema", "unknown information schema table");
 
     mylite_close(database);
     return failures;
@@ -1024,17 +1013,32 @@ static int test_information_schema_tables_engine_filter_execution(void)
 {
     static const char *const table_engine_columns[] = {"TABLE_NAME", "ENGINE"};
     static const char *const table_name_columns[] = {"TABLE_NAME"};
+    static const char *const aliased_table_engine_columns[] = {"n", "ENGINE"};
+    static const char *const schema_count_columns[] = {"TABLE_SCHEMA", "c"};
+    static const char *const count_columns[] = {"c"};
     static const char *const user_table_engine_values[] = {
         "alpha",
         "InnoDB",
         "beta",
         "InnoDB",
     };
+    static const char *const aliased_user_table_engine_values[] = {
+        "alpha",
+        "InnoDB",
+        "beta",
+        "InnoDB",
+    };
+    static const char *const schema_count_values[] = {
+        "information_schema",
+        "13",
+        "mylite_information_schema_filter",
+        "2",
+    };
+    static const char *const count_values[] = {"2"};
     static const char *const alpha_values[] = {"alpha"};
     static const char *const user_table_names[] = {"alpha", "beta"};
     static const char *const system_table_values[] = {"TABLES", NULL};
     mylite_db *database = NULL;
-    mylite_stmt *stmt = NULL;
     int failures = 0;
 
     failures += expect_status(mylite_open_memory(&database), MYLITE_OK,
@@ -1064,6 +1068,24 @@ static int test_information_schema_tables_engine_filter_execution(void)
         "information schema tables reordered engine filter");
     failures += expect_select_rows(
         database,
+        "SELECT t.TABLE_NAME AS n, t.ENGINE FROM information_schema.TABLES AS t "
+        "WHERE t.TABLE_SCHEMA = DATABASE() AND t.TABLE_NAME IN ('alpha', 'beta') ORDER BY n",
+        aliased_table_engine_columns, 2, aliased_user_table_engine_values, 2,
+        "information schema tables alias in filter");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT TABLE_SCHEMA, COUNT(*) AS c FROM information_schema.TABLES "
+                           "WHERE TABLE_SCHEMA IN ('information_schema', DATABASE()) "
+                           "GROUP BY TABLE_SCHEMA ORDER BY c DESC, TABLE_SCHEMA",
+                           schema_count_columns, 2, schema_count_values, 2,
+                           "information schema tables grouped schema counts");
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM information_schema.TABLES AS t "
+        "WHERE t.TABLE_SCHEMA = DATABASE() AND t.TABLE_NAME IN ('alpha', 'beta')",
+        count_columns, 1, count_values, 1, "information schema tables aggregate alias");
+    failures += expect_select_rows(
+        database,
         "SELECT t.TABLE_NAME FROM information_schema.TABLES AS t "
         "WHERE t.ENGINE = 'InnoDB' AND t.TABLE_SCHEMA = DATABASE() ORDER BY t.TABLE_NAME",
         table_name_columns, 1, user_table_names, 2,
@@ -1075,11 +1097,12 @@ static int test_information_schema_tables_engine_filter_execution(void)
                                    table_engine_columns, 2, system_table_values, 1,
                                    "information schema tables null engine filter");
 
-    failures += prepare_sql(database,
-                            "SELECT TABLE_NAME FROM information_schema.TABLES "
-                            "WHERE ENGINE = 'InnoDB' OR TABLE_SCHEMA = DATABASE()",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema tables or unsupported");
+    failures += expect_select_rows(database,
+                                   "SELECT TABLE_NAME FROM information_schema.TABLES "
+                                   "WHERE ENGINE = 'InnoDB' OR TABLE_SCHEMA = DATABASE() "
+                                   "ORDER BY TABLE_NAME",
+                                   table_name_columns, 1, user_table_names, 2,
+                                   "information schema tables or filter");
 
     mylite_close(database);
     return failures;
@@ -1093,6 +1116,8 @@ static int test_information_schema_engines_execution(void)
     static const char *const show_tables_columns[] = {"Tables_in_information_schema (ENGINES)",
                                                       "Table_type"};
     static const char *const show_tables_values[] = {"ENGINES", "SYSTEM VIEW"};
+    static const char *const engine_projection_columns[] = {"e"};
+    static const char *const engine_projection_values[] = {"InnoDB"};
     static const char *const values[] = {
         "InnoDB",     "DEFAULT", "MyLite SQLite-backed transactional engine facade",
         "YES",        "NO",      "YES",
@@ -1112,7 +1137,6 @@ static int test_information_schema_engines_execution(void)
         NULL,         NULL,      NULL,
     };
     mylite_db *database = NULL;
-    mylite_stmt *stmt = NULL;
     int failures = 0;
 
     failures +=
@@ -1126,43 +1150,16 @@ static int test_information_schema_engines_execution(void)
                                    values, 8, "information schema engines mixed-case");
     failures += expect_select_rows(database, "SELECT * FROM `information_schema`.`ENGINES`",
                                    columns, 6, values, 8, "information schema engines quoted");
+    failures += expect_select_rows(database,
+                                   "SELECT e.ENGINE AS e FROM INFORMATION_SCHEMA.ENGINES AS e "
+                                   "WHERE e.SUPPORT IN ('DEFAULT') ORDER BY e.ENGINE",
+                                   engine_projection_columns, 1, engine_projection_values, 1,
+                                   "information schema engines projected filter");
 
     failures += expect_information_schema_tables_views(database);
     failures += expect_select_rows(
         database, "SHOW FULL TABLES FROM information_schema LIKE 'engines'", show_tables_columns, 2,
         show_tables_values, 1, "show tables information schema engines");
-
-    failures += prepare_sql(database, "SELECT ENGINE FROM INFORMATION_SCHEMA.ENGINES",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema engines projection");
-    failures +=
-        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.ENGINES WHERE ENGINE = 'InnoDB'",
-                    MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema engines where");
-    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.ENGINES ORDER BY ENGINE",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema engines order by");
-    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.ENGINES LIMIT 1",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema engines limit");
-    failures += prepare_sql(database, "SELECT COUNT(*) FROM INFORMATION_SCHEMA.ENGINES",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema engines count");
-    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.ENGINES AS e",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema engines AS alias");
-    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.ENGINES e",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema engines bare alias");
-    failures +=
-        prepare_sql(database, "SELECT INFORMATION_SCHEMA.ENGINES.* FROM INFORMATION_SCHEMA.ENGINES",
-                    MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema engines qualified wildcard");
-    failures += prepare_sql(database,
-                            "SELECT * FROM INFORMATION_SCHEMA.ENGINES JOIN "
-                            "INFORMATION_SCHEMA.TABLES",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema engines join");
 
     mylite_close(database);
     // NOLINTEND(readability-function-size,readability-magic-numbers)
@@ -1177,6 +1174,13 @@ static int test_information_schema_character_sets_execution(void)
     static const char *const show_tables_columns[] = {
         "Tables_in_information_schema (CHARACTER_SETS)", "Table_type"};
     static const char *const show_tables_values[] = {"CHARACTER_SETS", "SYSTEM VIEW"};
+    static const char *const charset_projection_columns[] = {"CHARACTER_SET_NAME", "MAXLEN"};
+    static const char *const charset_projection_values[] = {
+        "latin1",
+        "1",
+        "utf8mb4",
+        "4",
+    };
     static const char *const values[] = {
         "binary",
         "binary",
@@ -1214,6 +1218,12 @@ static int test_information_schema_character_sets_execution(void)
     failures +=
         expect_select_rows(database, "SELECT * FROM `information_schema`.`CHARACTER_SETS`", columns,
                            4, values, 4, "information schema character sets quoted");
+    failures += expect_select_rows(
+        database,
+        "SELECT CHARACTER_SET_NAME, MAXLEN FROM INFORMATION_SCHEMA.CHARACTER_SETS "
+        "WHERE CHARACTER_SET_NAME IN ('utf8mb4', 'latin1') ORDER BY CHARACTER_SET_NAME",
+        charset_projection_columns, 2, charset_projection_values, 2,
+        "information schema character sets projected filter");
 
     failures +=
         prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.CHARACTER_SETS", MYLITE_OK, &stmt);
@@ -1233,51 +1243,6 @@ static int test_information_schema_character_sets_execution(void)
                                    show_tables_columns, 2, show_tables_values, 1,
                                    "show tables information schema character sets");
 
-    failures +=
-        prepare_sql(database, "SELECT CHARACTER_SET_NAME FROM INFORMATION_SCHEMA.CHARACTER_SETS",
-                    MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema character sets projection");
-    failures += prepare_sql(database, "SELECT DISTINCT * FROM INFORMATION_SCHEMA.CHARACTER_SETS",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema character sets distinct");
-    failures += prepare_sql(database, "SELECT ALL * FROM INFORMATION_SCHEMA.CHARACTER_SETS",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema character sets explicit all");
-    failures +=
-        prepare_sql(database,
-                    "SELECT * FROM INFORMATION_SCHEMA.CHARACTER_SETS WHERE CHARACTER_SET_NAME = "
-                    "'utf8mb4'",
-                    MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema character sets where");
-    failures += prepare_sql(database,
-                            "SELECT * FROM INFORMATION_SCHEMA.CHARACTER_SETS ORDER BY "
-                            "CHARACTER_SET_NAME",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema character sets order by");
-    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.CHARACTER_SETS LIMIT 1",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema character sets limit");
-    failures += prepare_sql(database, "SELECT COUNT(*) FROM INFORMATION_SCHEMA.CHARACTER_SETS",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema character sets count");
-    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.CHARACTER_SETS AS cs",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema character sets AS alias");
-    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.CHARACTER_SETS cs",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema character sets bare alias");
-    failures += prepare_sql(database,
-                            "SELECT INFORMATION_SCHEMA.CHARACTER_SETS.* FROM "
-                            "INFORMATION_SCHEMA.CHARACTER_SETS",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures +=
-        expect_no_stmt_handle(&stmt, "information schema character sets qualified wildcard");
-    failures += prepare_sql(database,
-                            "SELECT * FROM INFORMATION_SCHEMA.CHARACTER_SETS JOIN "
-                            "INFORMATION_SCHEMA.TABLES",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema character sets join");
-
     mylite_close(database);
     mylite_finalize(stmt);
     // NOLINTEND(readability-function-size,readability-magic-numbers)
@@ -1293,6 +1258,8 @@ static int test_information_schema_collations_execution(void)
     static const char *const show_tables_columns[] = {"Tables_in_information_schema (COLLATIONS)",
                                                       "Table_type"};
     static const char *const show_tables_values[] = {"COLLATIONS", "SYSTEM VIEW"};
+    static const char *const collation_group_columns[] = {"CHARACTER_SET_NAME", "c"};
+    static const char *const collation_group_values[] = {"utf8mb4", "3"};
     static const char *const values[] = {
         "binary",
         "binary",
@@ -1366,6 +1333,13 @@ static int test_information_schema_collations_execution(void)
                                    7, values, 8, "information schema collations mixed-case");
     failures += expect_select_rows(database, "SELECT * FROM `information_schema`.`COLLATIONS`",
                                    columns, 7, values, 8, "information schema collations quoted");
+    failures += expect_select_rows(database,
+                                   "SELECT CHARACTER_SET_NAME, COUNT(*) AS c "
+                                   "FROM INFORMATION_SCHEMA.COLLATIONS "
+                                   "GROUP BY CHARACTER_SET_NAME HAVING COUNT(*) = 3 "
+                                   "ORDER BY CHARACTER_SET_NAME",
+                                   collation_group_columns, 2, collation_group_values, 1,
+                                   "information schema collations grouped projection");
 
     failures +=
         prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.COLLATIONS", MYLITE_OK, &stmt);
@@ -1386,47 +1360,6 @@ static int test_information_schema_collations_execution(void)
         database, "SHOW FULL TABLES FROM information_schema LIKE 'collations'", show_tables_columns,
         2, show_tables_values, 1, "show tables information schema collations");
 
-    failures += prepare_sql(database, "SELECT COLLATION_NAME FROM INFORMATION_SCHEMA.COLLATIONS",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema collations projection");
-    failures += prepare_sql(database, "SELECT DISTINCT * FROM INFORMATION_SCHEMA.COLLATIONS",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema collations distinct");
-    failures += prepare_sql(database, "SELECT ALL * FROM INFORMATION_SCHEMA.COLLATIONS",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema collations explicit all");
-    failures += prepare_sql(database,
-                            "SELECT * FROM INFORMATION_SCHEMA.COLLATIONS WHERE COLLATION_NAME = "
-                            "'utf8mb4_bin'",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema collations where");
-    failures +=
-        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.COLLATIONS ORDER BY COLLATION_NAME",
-                    MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema collations order by");
-    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.COLLATIONS LIMIT 1",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema collations limit");
-    failures += prepare_sql(database, "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLLATIONS",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema collations count");
-    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.COLLATIONS AS c",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema collations AS alias");
-    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.COLLATIONS c",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema collations bare alias");
-    failures += prepare_sql(database,
-                            "SELECT INFORMATION_SCHEMA.COLLATIONS.* FROM "
-                            "INFORMATION_SCHEMA.COLLATIONS",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema collations qualified wildcard");
-    failures += prepare_sql(database,
-                            "SELECT * FROM INFORMATION_SCHEMA.COLLATIONS JOIN "
-                            "INFORMATION_SCHEMA.TABLES",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema collations join");
-
     mylite_close(database);
     mylite_finalize(stmt);
     // NOLINTEND(readability-function-size,readability-magic-numbers)
@@ -1444,6 +1377,12 @@ static int test_information_schema_collation_character_set_applicability_executi
     static const char *const show_tables_name_values[] = {"COLLATION_CHARACTER_SET_APPLICABILITY"};
     static const char *const show_tables_values[] = {"COLLATION_CHARACTER_SET_APPLICABILITY",
                                                      "SYSTEM VIEW"};
+    static const char *const utf8mb4_collation_columns[] = {"collation_name"};
+    static const char *const utf8mb4_collation_values[] = {
+        "utf8mb4_0900_ai_ci",
+        "utf8mb4_bin",
+        "utf8mb4_unicode_520_ci",
+    };
     static const char *const values[] = {
         "binary",
         "binary",
@@ -1481,6 +1420,13 @@ static int test_information_schema_collation_character_set_applicability_executi
     failures += expect_select_rows(
         database, "SELECT * FROM `information_schema`.`COLLATION_CHARACTER_SET_APPLICABILITY`",
         columns, 2, values, 8, "information schema collation charset applicability quoted");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT cca.COLLATION_NAME AS collation_name "
+                           "FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY AS cca "
+                           "WHERE cca.CHARACTER_SET_NAME = 'utf8mb4' ORDER BY collation_name",
+                           utf8mb4_collation_columns, 1, utf8mb4_collation_values, 3,
+                           "information schema collation charset applicability projected filter");
 
     failures += prepare_sql(
         database, "SELECT * FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY",
@@ -1508,71 +1454,6 @@ static int test_information_schema_collation_character_set_applicability_executi
                            show_tables_columns, 2, show_tables_values, 1,
                            "show tables information schema collation charset applicability");
 
-    failures += prepare_sql(
-        database,
-        "SELECT COLLATION_NAME FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY",
-        MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(
-        &stmt, "information schema collation charset applicability projection");
-    failures += prepare_sql(
-        database, "SELECT DISTINCT * FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY",
-        MYLITE_UNSUPPORTED, &stmt);
-    failures +=
-        expect_no_stmt_handle(&stmt, "information schema collation charset applicability distinct");
-    failures += prepare_sql(
-        database, "SELECT ALL * FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY",
-        MYLITE_UNSUPPORTED, &stmt);
-    failures +=
-        expect_no_stmt_handle(&stmt, "information schema collation charset applicability all");
-    failures +=
-        prepare_sql(database,
-                    "SELECT * FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY WHERE "
-                    "CHARACTER_SET_NAME = 'utf8mb4'",
-                    MYLITE_UNSUPPORTED, &stmt);
-    failures +=
-        expect_no_stmt_handle(&stmt, "information schema collation charset applicability where");
-    failures += prepare_sql(
-        database,
-        "SELECT * FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY ORDER BY "
-        "COLLATION_NAME",
-        MYLITE_UNSUPPORTED, &stmt);
-    failures +=
-        expect_no_stmt_handle(&stmt, "information schema collation charset applicability order by");
-    failures += prepare_sql(
-        database, "SELECT * FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY LIMIT 1",
-        MYLITE_UNSUPPORTED, &stmt);
-    failures +=
-        expect_no_stmt_handle(&stmt, "information schema collation charset applicability limit");
-    failures += prepare_sql(
-        database, "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY",
-        MYLITE_UNSUPPORTED, &stmt);
-    failures +=
-        expect_no_stmt_handle(&stmt, "information schema collation charset applicability count");
-    failures += prepare_sql(
-        database, "SELECT * FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY AS ccsa",
-        MYLITE_UNSUPPORTED, &stmt);
-    failures +=
-        expect_no_stmt_handle(&stmt, "information schema collation charset applicability AS alias");
-    failures += prepare_sql(
-        database, "SELECT * FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY ccsa",
-        MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(
-        &stmt, "information schema collation charset applicability bare alias");
-    failures +=
-        prepare_sql(database,
-                    "SELECT INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY.* FROM "
-                    "INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY",
-                    MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(
-        &stmt, "information schema collation charset applicability qualified wildcard");
-    failures +=
-        prepare_sql(database,
-                    "SELECT * FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY JOIN "
-                    "INFORMATION_SCHEMA.TABLES",
-                    MYLITE_UNSUPPORTED, &stmt);
-    failures +=
-        expect_no_stmt_handle(&stmt, "information schema collation charset applicability join");
-
     mylite_close(database);
     mylite_finalize(stmt);
     // NOLINTEND(readability-function-size,readability-magic-numbers)
@@ -1586,6 +1467,8 @@ static int test_information_schema_keywords_execution(void)
     static const char *const show_tables_columns[] = {"Tables_in_information_schema (KEYWORDS)",
                                                       "Table_type"};
     static const char *const show_tables_values[] = {"KEYWORDS", "SYSTEM VIEW"};
+    static const char *const keyword_projection_columns[] = {"WORD"};
+    static const char *const keyword_projection_values[] = {"ADD", "SELECT"};
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -1602,6 +1485,12 @@ static int test_information_schema_keywords_execution(void)
     failures += expect_information_schema_keywords_first_rows(
         database, "SELECT * FROM `information_schema`.`KEYWORDS`");
     failures += expect_information_schema_keywords_matches_catalog(database);
+    failures += expect_select_rows(database,
+                                   "SELECT WORD FROM INFORMATION_SCHEMA.KEYWORDS "
+                                   "WHERE RESERVED = 1 AND WORD IN ('SELECT', 'ADD') "
+                                   "ORDER BY WORD",
+                                   keyword_projection_columns, 1, keyword_projection_values, 2,
+                                   "information schema keywords projected filter");
 
     failures +=
         prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.KEYWORDS", MYLITE_OK, &stmt);
@@ -1627,44 +1516,6 @@ static int test_information_schema_keywords_execution(void)
         database, "SHOW FULL TABLES FROM information_schema LIKE 'keywords'", show_tables_columns,
         2, show_tables_values, 1, "show tables information schema keywords");
 
-    failures += prepare_sql(database, "SELECT WORD FROM INFORMATION_SCHEMA.KEYWORDS",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema keywords projection");
-    failures += prepare_sql(database, "SELECT DISTINCT * FROM INFORMATION_SCHEMA.KEYWORDS",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema keywords distinct");
-    failures += prepare_sql(database, "SELECT ALL * FROM INFORMATION_SCHEMA.KEYWORDS",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema keywords explicit all");
-    failures +=
-        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.KEYWORDS WHERE RESERVED = 1",
-                    MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema keywords where");
-    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.KEYWORDS ORDER BY WORD",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema keywords order by");
-    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.KEYWORDS LIMIT 5",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema keywords limit");
-    failures += prepare_sql(database, "SELECT COUNT(*) FROM INFORMATION_SCHEMA.KEYWORDS",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema keywords count");
-    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.KEYWORDS AS k",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema keywords AS alias");
-    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.KEYWORDS k",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema keywords bare alias");
-    failures += prepare_sql(database,
-                            "SELECT INFORMATION_SCHEMA.KEYWORDS.* FROM INFORMATION_SCHEMA.KEYWORDS",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema keywords qualified wildcard");
-    failures += prepare_sql(database,
-                            "SELECT * FROM INFORMATION_SCHEMA.KEYWORDS JOIN "
-                            "INFORMATION_SCHEMA.TABLES",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema keywords join");
-
     mylite_close(database);
     mylite_finalize(stmt);
     // NOLINTEND(readability-function-size,readability-magic-numbers)
@@ -1684,6 +1535,8 @@ static int test_information_schema_table_constraints_execution(void)
         "Tables_in_information_schema (TABLE_CONSTRAINTS)", "Table_type"};
     static const char *const show_tables_name_values[] = {"TABLE_CONSTRAINTS"};
     static const char *const show_tables_values[] = {"TABLE_CONSTRAINTS", "SYSTEM VIEW"};
+    static const char *const constraint_projection_columns[] = {"n"};
+    static const char *const constraint_projection_values[] = {"code", "PRIMARY"};
     static const char *const values[] = {
         "def",
         "mylite_table_constraints",
@@ -1741,6 +1594,12 @@ static int test_information_schema_table_constraints_execution(void)
     failures += expect_select_rows(
         database, "SELECT * FROM `information_schema`.`TABLE_CONSTRAINTS`", columns,
         table_constraints_column_count, values, 3, "information schema table constraints quoted");
+    failures += expect_select_rows(
+        database,
+        "SELECT tc.CONSTRAINT_NAME AS n FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc "
+        "WHERE tc.CONSTRAINT_NAME IN ('PRIMARY', 'code') ORDER BY n",
+        constraint_projection_columns, 1, constraint_projection_values, 2,
+        "information schema table constraints projected filter");
 
     failures += expect_no_information_schema_table_constraints_row(
         database, "table_constraints_fixture", "idx_name");
@@ -1785,50 +1644,6 @@ static int test_information_schema_table_constraints_execution(void)
     failures += expect_no_information_schema_table_constraints_row(
         database, "table_constraints_fixture", "PRIMARY");
 
-    failures +=
-        prepare_sql(database, "SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS",
-                    MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema table constraints projection");
-    failures += prepare_sql(database, "SELECT DISTINCT * FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema table constraints distinct");
-    failures += prepare_sql(database, "SELECT ALL * FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema table constraints explicit all");
-    failures +=
-        prepare_sql(database,
-                    "SELECT * FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE CONSTRAINT_TYPE = "
-                    "'UNIQUE'",
-                    MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema table constraints where");
-    failures += prepare_sql(
-        database, "SELECT * FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS ORDER BY CONSTRAINT_NAME",
-        MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema table constraints order by");
-    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS LIMIT 1",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema table constraints limit");
-    failures += prepare_sql(database, "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema table constraints count");
-    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema table constraints AS alias");
-    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema table constraints bare alias");
-    failures += prepare_sql(database,
-                            "SELECT INFORMATION_SCHEMA.TABLE_CONSTRAINTS.* FROM "
-                            "INFORMATION_SCHEMA.TABLE_CONSTRAINTS",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures +=
-        expect_no_stmt_handle(&stmt, "information schema table constraints qualified wildcard");
-    failures += prepare_sql(database,
-                            "SELECT * FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS JOIN "
-                            "INFORMATION_SCHEMA.TABLES",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema table constraints join");
-
     mylite_close(database);
     mylite_finalize(stmt);
     // NOLINTEND(readability-function-size,readability-magic-numbers)
@@ -1850,6 +1665,8 @@ static int test_information_schema_check_constraints_execution(void)
         "Tables_in_information_schema (CHECK_CONSTRAINTS)", "Table_type"};
     static const char *const show_tables_name_values[] = {"CHECK_CONSTRAINTS"};
     static const char *const show_tables_values[] = {"CHECK_CONSTRAINTS", "SYSTEM VIEW"};
+    static const char *const count_columns[] = {"c"};
+    static const char *const count_values[] = {"0"};
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -1881,6 +1698,11 @@ static int test_information_schema_check_constraints_execution(void)
     failures += expect_empty_information_schema_table(
         database, "SELECT * FROM `information_schema`.`CHECK_CONSTRAINTS`", columns,
         check_constraints_column_count);
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS AS cc "
+        "WHERE cc.CONSTRAINT_NAME IN ('missing')",
+        count_columns, 1, count_values, 1, "information schema check constraints count filter");
 
     failures += expect_information_schema_tables_views(database);
     failures +=
@@ -1901,50 +1723,6 @@ static int test_information_schema_check_constraints_execution(void)
     failures += expect_empty_information_schema_table(
         database, "SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS", columns,
         check_constraints_column_count);
-
-    failures +=
-        prepare_sql(database, "SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS",
-                    MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema check constraints projection");
-    failures += prepare_sql(database, "SELECT DISTINCT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema check constraints distinct");
-    failures += prepare_sql(database, "SELECT ALL * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema check constraints explicit all");
-    failures +=
-        prepare_sql(database,
-                    "SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS WHERE CONSTRAINT_NAME = "
-                    "'chk'",
-                    MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema check constraints where");
-    failures += prepare_sql(
-        database, "SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS ORDER BY CONSTRAINT_NAME",
-        MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema check constraints order by");
-    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS LIMIT 1",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema check constraints limit");
-    failures += prepare_sql(database, "SELECT COUNT(*) FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema check constraints count");
-    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS AS cc",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema check constraints AS alias");
-    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS cc",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema check constraints bare alias");
-    failures += prepare_sql(database,
-                            "SELECT INFORMATION_SCHEMA.CHECK_CONSTRAINTS.* FROM "
-                            "INFORMATION_SCHEMA.CHECK_CONSTRAINTS",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema check constraints qualified "
-                                             "wildcard");
-    failures += prepare_sql(database,
-                            "SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS JOIN "
-                            "INFORMATION_SCHEMA.TABLES",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema check constraints join");
 
     mylite_close(database);
     mylite_finalize(stmt);
@@ -1974,6 +1752,8 @@ static int test_information_schema_referential_constraints_execution(void)
         "Tables_in_information_schema (REFERENTIAL_CONSTRAINTS)", "Table_type"};
     static const char *const show_tables_name_values[] = {"REFERENTIAL_CONSTRAINTS"};
     static const char *const show_tables_values[] = {"REFERENTIAL_CONSTRAINTS", "SYSTEM VIEW"};
+    static const char *const count_columns[] = {"c"};
+    static const char *const count_values[] = {"0"};
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -2009,6 +1789,12 @@ static int test_information_schema_referential_constraints_execution(void)
     failures += expect_empty_information_schema_table(
         database, "SELECT * FROM `information_schema`.`REFERENTIAL_CONSTRAINTS`", columns,
         referential_constraints_column_count);
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS AS rc "
+        "WHERE rc.CONSTRAINT_NAME IN ('missing')",
+        count_columns, 1, count_values, 1,
+        "information schema referential constraints count filter");
 
     failures += expect_information_schema_tables_views(database);
     failures += expect_select_rows(
@@ -2033,58 +1819,6 @@ static int test_information_schema_referential_constraints_execution(void)
     failures += expect_empty_information_schema_table(
         database, "SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS", columns,
         referential_constraints_column_count);
-
-    failures += prepare_sql(
-        database, "SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS",
-        MYLITE_UNSUPPORTED, &stmt);
-    failures +=
-        expect_no_stmt_handle(&stmt, "information schema referential constraints projection");
-    failures +=
-        prepare_sql(database, "SELECT DISTINCT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS",
-                    MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema referential constraints distinct");
-    failures +=
-        prepare_sql(database, "SELECT ALL * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS",
-                    MYLITE_UNSUPPORTED, &stmt);
-    failures +=
-        expect_no_stmt_handle(&stmt, "information schema referential constraints explicit all");
-    failures += prepare_sql(database,
-                            "SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS WHERE "
-                            "CONSTRAINT_NAME = 'fk_parent'",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema referential constraints where");
-    failures += prepare_sql(database,
-                            "SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS ORDER BY "
-                            "CONSTRAINT_NAME",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema referential constraints order by");
-    failures +=
-        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS LIMIT 1",
-                    MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema referential constraints limit");
-    failures +=
-        prepare_sql(database, "SELECT COUNT(*) FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS",
-                    MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema referential constraints count");
-    failures +=
-        prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS AS rc",
-                    MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema referential constraints AS alias");
-    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures +=
-        expect_no_stmt_handle(&stmt, "information schema referential constraints bare alias");
-    failures += prepare_sql(database,
-                            "SELECT INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS.* FROM "
-                            "INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema referential constraints qualified "
-                                             "wildcard");
-    failures += prepare_sql(database,
-                            "SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS JOIN "
-                            "INFORMATION_SCHEMA.TABLES",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema referential constraints join");
 
     mylite_close(database);
     mylite_finalize(stmt);
@@ -2115,6 +1849,10 @@ static int test_information_schema_key_column_usage_execution(void)
         "Tables_in_information_schema (KEY_COLUMN_USAGE)", "Table_type"};
     static const char *const show_tables_name_values[] = {"KEY_COLUMN_USAGE"};
     static const char *const show_tables_values[] = {"KEY_COLUMN_USAGE", "SYSTEM VIEW"};
+    static const char *const key_group_columns[] = {"n", "c"};
+    static const char *const key_group_values[] = {
+        "PRIMARY", "2", "uq_name_category", "2", "uq_prefix", "2",
+    };
     static const char *const values[] = {
         "def",
         "mylite_key_column_usage",
@@ -2241,6 +1979,12 @@ static int test_information_schema_key_column_usage_execution(void)
     failures += expect_select_rows(
         database, "SELECT * FROM `information_schema`.`KEY_COLUMN_USAGE`", columns,
         key_column_usage_column_count, values, 7, "information schema key column usage quoted");
+    failures += expect_select_rows(database,
+                                   "SELECT CONSTRAINT_NAME AS n, COUNT(*) AS c "
+                                   "FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE "
+                                   "GROUP BY CONSTRAINT_NAME HAVING COUNT(*) = 2 ORDER BY n",
+                                   key_group_columns, 2, key_group_values, 3,
+                                   "information schema key column usage grouped projection");
 
     failures += expect_no_information_schema_key_column_usage_row(
         database, "key_column_usage_fixture", "idx_name");
@@ -2286,49 +2030,6 @@ static int test_information_schema_key_column_usage_execution(void)
         execute_sql(database, "ALTER TABLE key_column_usage_fixture DROP PRIMARY KEY", MYLITE_DONE);
     failures += expect_no_information_schema_key_column_usage_row(
         database, "key_column_usage_fixture", "PRIMARY");
-
-    failures +=
-        prepare_sql(database, "SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE",
-                    MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema key column usage projection");
-    failures += prepare_sql(database, "SELECT DISTINCT * FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema key column usage distinct");
-    failures += prepare_sql(database, "SELECT ALL * FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema key column usage explicit all");
-    failures += prepare_sql(database,
-                            "SELECT * FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE "
-                            "CONSTRAINT_NAME = 'PRIMARY'",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema key column usage where");
-    failures += prepare_sql(
-        database, "SELECT * FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE ORDER BY CONSTRAINT_NAME",
-        MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema key column usage order by");
-    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE LIMIT 1",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema key column usage limit");
-    failures += prepare_sql(database, "SELECT COUNT(*) FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema key column usage count");
-    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema key column usage AS alias");
-    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema key column usage bare alias");
-    failures += prepare_sql(database,
-                            "SELECT INFORMATION_SCHEMA.KEY_COLUMN_USAGE.* FROM "
-                            "INFORMATION_SCHEMA.KEY_COLUMN_USAGE",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures +=
-        expect_no_stmt_handle(&stmt, "information schema key column usage qualified wildcard");
-    failures += prepare_sql(database,
-                            "SELECT * FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE JOIN "
-                            "INFORMATION_SCHEMA.TABLES",
-                            MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "information schema key column usage join");
 
     mylite_close(database);
     mylite_finalize(stmt);

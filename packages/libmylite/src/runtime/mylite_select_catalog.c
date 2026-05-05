@@ -1,6 +1,8 @@
 #include "mylite_select_catalog.h"
 
 #include "mylite_diagnostics.h"
+#include "mylite_field_descriptor.h"
+#include "mylite_metadata_constants.h"
 #include "mylite_runtime.h"
 #include "mylite_select.h"
 #include "mylite_select_catalog_descriptor.h"
@@ -14,6 +16,13 @@
 static int load_select_column_from_catalog_row(mylite_db *database,
                                                struct mylite_select_table *table,
                                                sqlite3_stmt *select);
+static int load_information_schema_table_columns(mylite_db *database,
+                                                 struct mylite_select_table *table);
+static int load_information_schema_column(mylite_db *database, struct mylite_select_table *table,
+                                          const char *name);
+static struct mylite_field_descriptor information_schema_column_descriptor(const char *name);
+static bool information_schema_column_is_integer(const char *name);
+static bool information_schema_column_is_not_null_text(const char *name);
 static int load_select_table_unique_not_null_keys(mylite_db *database,
                                                   struct mylite_select_table *table);
 static int reset_select_table_unique_not_null_key(mylite_db *database,
@@ -48,9 +57,13 @@ int mylite_select_load_table_columns(mylite_db *database, struct mylite_select_t
         "numeric_precision, numeric_scale, datetime_precision, collation_name, column_type, "
         "column_key, column_default FROM __mylite_column_catalog WHERE table_schema = ? "
         "AND table_name = ? ORDER BY ordinal_position";
-    int rc =
-        sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select, NULL);
+    int rc = SQLITE_OK;
 
+    if (mylite_ascii_case_equal(table->schema_name, "information_schema")) {
+        return load_information_schema_table_columns(database, table);
+    }
+
+    rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select, NULL);
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
     }
@@ -77,6 +90,147 @@ int mylite_select_load_table_columns(mylite_db *database, struct mylite_select_t
                                                                table->table_name);
     }
     return load_select_table_unique_not_null_keys(database, table);
+}
+
+static int load_information_schema_table_columns(mylite_db *database,
+                                                 struct mylite_select_table *table)
+{
+    sqlite3_stmt *select = NULL;
+    char *sql = sqlite3_mprintf("SELECT * FROM \"%w\" LIMIT 0", table->physical_name);
+    int rc = SQLITE_OK;
+    int column_count = 0;
+
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select, NULL);
+    sqlite3_free(sql);
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+
+    column_count = sqlite3_column_count(select);
+    for (int index = 0; index < column_count; ++index) {
+        int status =
+            load_information_schema_column(database, table, sqlite3_column_name(select, index));
+
+        if (status != MYLITE_OK) {
+            sqlite3_finalize(select);
+            return status;
+        }
+    }
+
+    sqlite3_finalize(select);
+    if (table->column_count == 0U) {
+        return mylite_diagnostics_set_table_doesnt_exist_error(database, table->schema_name,
+                                                               table->table_name);
+    }
+    return MYLITE_OK;
+}
+
+static int load_information_schema_column(mylite_db *database, struct mylite_select_table *table,
+                                          const char *name)
+{
+    struct mylite_select_column column = {
+        .visible = true,
+    };
+    struct mylite_select_column *columns = NULL;
+    size_t name_length = name == NULL ? 0U : strlen(name);
+
+    column.name = mylite_copy_span_text(name == NULL ? "" : name, name_length);
+    if (column.name == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    column.descriptor = information_schema_column_descriptor(column.name);
+
+    columns = realloc(table->columns, (table->column_count + 1U) * sizeof(*table->columns));
+    if (columns == NULL) {
+        mylite_select_column_deinit(&column);
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    table->columns = columns;
+    table->columns[table->column_count++] = column;
+    return MYLITE_OK;
+}
+
+static struct mylite_field_descriptor information_schema_column_descriptor(const char *name)
+{
+    bool integer = information_schema_column_is_integer(name);
+    bool nullable = !information_schema_column_is_not_null_text(name);
+    struct mylite_field_descriptor descriptor = integer
+                                                    ? (struct mylite_field_descriptor){
+                                                          .type = MYLITE_FIELD_TYPE_LONGLONG,
+                                                          .flags = MYLITE_FIELD_FLAG_BINARY |
+                                                                   MYLITE_FIELD_FLAG_NUM,
+                                                          .length = mylite_mysql_signed_longlong_display_length,
+                                                          .charset_id = mylite_mysql_binary_charset_id,
+                                                          .nullable = nullable,
+                                                      }
+                                                    : (struct mylite_field_descriptor){
+                                                          .type = MYLITE_FIELD_TYPE_VAR_STRING,
+                                                          .length = mylite_mysql_text_length,
+                                                          .decimals = mylite_mysql_not_fixed_decimals,
+                                                          .charset_id = mylite_mysql_utf8mb4_0900_ai_ci_charset_id,
+                                                          .nullable = nullable,
+                                                      };
+
+    mylite_field_descriptor_set_nullable(&descriptor, nullable);
+    return descriptor;
+}
+
+static bool information_schema_column_is_integer(const char *name)
+{
+    static const char *const names[] = {
+        "VERSION",
+        "TABLE_ROWS",
+        "AVG_ROW_LENGTH",
+        "DATA_LENGTH",
+        "MAX_DATA_LENGTH",
+        "INDEX_LENGTH",
+        "DATA_FREE",
+        "AUTO_INCREMENT",
+        "CHECKSUM",
+        "ORDINAL_POSITION",
+        "CHARACTER_MAXIMUM_LENGTH",
+        "CHARACTER_OCTET_LENGTH",
+        "NUMERIC_PRECISION",
+        "NUMERIC_SCALE",
+        "DATETIME_PRECISION",
+        "SRS_ID",
+        "NON_UNIQUE",
+        "SEQ_IN_INDEX",
+        "CARDINALITY",
+        "SUB_PART",
+        "POSITION_IN_UNIQUE_CONSTRAINT",
+    };
+
+    for (size_t index = 0U; index < sizeof(names) / sizeof(names[0]); ++index) {
+        if (mylite_ascii_case_equal(name, names[index])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool information_schema_column_is_not_null_text(const char *name)
+{
+    static const char *const names[] = {
+        "TABLE_CATALOG",      "TABLE_SCHEMA",      "TABLE_NAME",      "TABLE_TYPE",
+        "CATALOG_NAME",       "SCHEMA_NAME",       "COLUMN_NAME",     "ORDINAL_POSITION",
+        "CONSTRAINT_CATALOG", "CONSTRAINT_SCHEMA", "CONSTRAINT_NAME", "INDEX_SCHEMA",
+        "INDEX_NAME",         "SEQ_IN_INDEX",
+    };
+
+    for (size_t index = 0U; index < sizeof(names) / sizeof(names[0]); ++index) {
+        if (mylite_ascii_case_equal(name, names[index])) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static int load_select_column_from_catalog_row(mylite_db *database,

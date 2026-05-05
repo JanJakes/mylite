@@ -13,11 +13,11 @@ and returns zero rows for every current MyLite database. Rows for actual CHECK
 constraints are intentionally deferred until MyLite has CHECK DDL, catalog
 storage, expression validation, enforcement flags, and DML enforcement.
 
-The supported query shape remains consistent with the current narrow
-`INFORMATION_SCHEMA` runtime policy: only unqualified wildcard selection from
-the table executes. Projections, explicit duplicate modifiers, filters,
-ordering, limits, aggregates, aliases, joins, qualified wildcards, and broader
-information-schema query processing remain unsupported.
+Wildcard selection remains the baseline row-shape requirement for
+`INFORMATION_SCHEMA.CHECK_CONSTRAINTS`. Broader projections, filters, aliases,
+ordering, limits, and aggregates are handled by the composable
+information-schema system-view path where the corresponding `SELECT` feature is
+implemented.
 
 ## Sources
 
@@ -105,10 +105,10 @@ and `SHOW FULL TABLES FROM information_schema` inventory also exposes
 `CHECK_CONSTRAINTS`; `SHOW FULL TABLES FROM information_schema LIKE
 'check_constraints'` returns `CHECK_CONSTRAINTS`, `SYSTEM VIEW`.
 
-### Unsupported Query Shapes
+### Composable Query Shapes
 
-The following forms parse through the general SELECT grammar but return
-`MYLITE_UNSUPPORTED` and no statement handle for this slice:
+The following forms are covered by the shared system-view `SELECT` path after
+the composable information-schema update:
 
 - `SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS`
 - `SELECT DISTINCT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS`
@@ -171,9 +171,9 @@ Runtime coverage:
   system view
 - `SHOW FULL TABLES FROM information_schema LIKE 'check_constraints'` returns
   `CHECK_CONSTRAINTS`, `SYSTEM VIEW`
-- unsupported projection, explicit `DISTINCT`/`ALL`, `WHERE`, `ORDER BY`,
-  `LIMIT`, `COUNT(*)`, `AS` alias, bare alias, qualified wildcard, and join
-  forms return `MYLITE_UNSUPPORTED` and no statement handle
+- composable projections, `DISTINCT`/`ALL`, `WHERE`, `ORDER BY`, `LIMIT`,
+  `COUNT(*)`, aliases, and qualified wildcard forms are covered by the shared
+  system-view SELECT path
 - if CHECK DDL parses in the current runtime, unsupported CHECK DDL must not
   create `CHECK_CONSTRAINTS` rows
 
@@ -183,6 +183,6 @@ Runtime coverage:
   expression validation, enforcement state, and DML enforcement.
 - `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` still omits CHECK rows until the same
   underlying CHECK catalog exists.
-- General information-schema projections, filters, ordering, limits, aliases,
-  joins, aggregates, privilege filtering, and exact MySQL field metadata remain
-  deferred.
+- Privilege filtering and exact MySQL field metadata remain deferred. General
+  projection, filtering, ordering, limiting, alias, and aggregate behavior is
+  covered by the composable information-schema SELECT path.

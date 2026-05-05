@@ -2,10 +2,25 @@
 
 #include "mylite_catalog.h"
 #include "mylite_diagnostics.h"
+#include "mylite_information_schema.h"
 #include "mylite_runtime.h"
 #include "mylite_span.h"
 
+static int resolve_select_table_target(mylite_db *database, struct mylite_select_table *table,
+                                       bool information_schema_selectable);
+
 int mylite_select_resolve_table_target(mylite_db *database, struct mylite_select_table *table)
+{
+    return resolve_select_table_target(database, table, false);
+}
+
+int mylite_select_resolve_query_table_target(mylite_db *database, struct mylite_select_table *table)
+{
+    return resolve_select_table_target(database, table, true);
+}
+
+static int resolve_select_table_target(mylite_db *database, struct mylite_select_table *table,
+                                       bool information_schema_selectable)
 {
     struct mylite_schema_presence presence;
     bool exists = false;
@@ -21,6 +36,11 @@ int mylite_select_resolve_table_target(mylite_db *database, struct mylite_select
             (void)mylite_diagnostics_set_error_message(database, "out of memory");
             return MYLITE_NOMEM;
         }
+    }
+    if (information_schema_selectable &&
+        mylite_ascii_case_equal(table->schema_name, "information_schema")) {
+        return mylite_information_schema_prepare_table_view(database, table->table_name,
+                                                            &table->physical_name);
     }
     if (mylite_select_schema_name_is_system(table->schema_name)) {
         return MYLITE_UNSUPPORTED;

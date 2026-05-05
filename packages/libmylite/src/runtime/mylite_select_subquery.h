@@ -4,6 +4,7 @@
 #include <mylite/mylite.h>
 
 #include "mylite_expression.h"
+#include "mylite_select_subquery_diagnostics.h"
 #include "mylite_select_types.h"
 
 #include <stdbool.h>
@@ -73,12 +74,6 @@ int mylite_select_subquery_validate_row_select_columns(mylite_db *database,
 int mylite_select_subquery_validate_row_prepared_columns(mylite_db *database,
                                                          const mylite_stmt *stmt,
                                                          size_t expected_width);
-int mylite_select_subquery_set_operand_columns_error(mylite_db *database);
-int mylite_select_subquery_set_in_limit_error(mylite_db *database);
-int mylite_select_subquery_set_row_quantified_non_alias_error(
-    mylite_db *database, const struct mylite_sql_ast_node *expression);
-int mylite_select_subquery_set_scalar_cardinality_error(mylite_db *database);
-
 int mylite_select_subquery_eval(mylite_stmt *stmt, const struct mylite_sql_ast_node *subquery,
                                 struct mylite_expression_warnings *warnings,
                                 struct mylite_expression_value *out_value,

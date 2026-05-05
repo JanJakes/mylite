@@ -68,6 +68,29 @@ bool mylite_expression_char_function_charset_name_is_supported(const char *name)
     return false;
 }
 
+bool mylite_expression_literal_is_supported(const struct mylite_sql_ast_node *expression)
+{
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_LITERAL) {
+        return false;
+    }
+    switch (expression->literal_kind) {
+    case MYLITE_SQL_AST_LITERAL_NULL:
+    case MYLITE_SQL_AST_LITERAL_TRUE:
+    case MYLITE_SQL_AST_LITERAL_FALSE:
+    case MYLITE_SQL_AST_LITERAL_INTEGER:
+    case MYLITE_SQL_AST_LITERAL_DECIMAL:
+    case MYLITE_SQL_AST_LITERAL_FLOAT:
+    case MYLITE_SQL_AST_LITERAL_STRING:
+    case MYLITE_SQL_AST_LITERAL_NATIONAL_STRING:
+        return true;
+    case MYLITE_SQL_AST_LITERAL_HEX:
+    case MYLITE_SQL_AST_LITERAL_BIT:
+    case MYLITE_SQL_AST_LITERAL_NONE:
+        return false;
+    }
+    return false;
+}
+
 static bool expression_function_name_is_char(const struct mylite_sql_ast_node *name)
 {
     if (name == NULL) {

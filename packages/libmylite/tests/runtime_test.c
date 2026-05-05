@@ -270,6 +270,7 @@ static int test_to_seconds_function_execution(void);
 static int test_from_days_function_execution(void);
 static int test_time_function_execution(void);
 static int test_unix_timestamp_function_execution(void);
+static int test_from_unixtime_function_execution(void);
 static int test_date_format_function_execution(void);
 static int test_rand_function_execution(void);
 static int test_date_add_sub_functions_execution(void);
@@ -495,6 +496,7 @@ int main(void)
     failures += test_from_days_function_execution();
     failures += test_time_function_execution();
     failures += test_unix_timestamp_function_execution();
+    failures += test_from_unixtime_function_execution();
     failures += test_date_format_function_execution();
     failures += test_rand_function_execution();
     failures += test_date_add_sub_functions_execution();
@@ -7943,6 +7945,165 @@ static int test_unix_timestamp_function_execution(void)
     failures +=
         prepare_sql(database, "SELECT UNIX_TIMESTAMP('2024-01-01','x')", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "UNIX_TIMESTAMP extra argument rejected");
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_from_unixtime_function_execution(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const struct expected_result_metadata metadata[] = {
+        {"dt0", NULL, NULL, NULL, NULL, NULL, 19U, MYLITE_FIELD_TYPE_DATETIME, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"dt4", NULL, NULL, NULL, NULL, NULL, 24U, MYLITE_FIELD_TYPE_DATETIME, 4U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"dt6", NULL, NULL, NULL, NULL, NULL, 26U, MYLITE_FIELD_TYPE_DATETIME, 6U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"fmt", NULL, NULL, NULL, NULL, NULL, 16U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+    };
+    static const char *const scalar_columns[] = {
+        "epoch",  "decimal_scale", "string_scale", "fractional", "rounded",   "carry",
+        "max_ts", "after_range",   "negative_ts",  "null_ts",    "formatted", "all_tokens",
+    };
+    static const char *const scalar_values[] = {
+        "1970-01-01 00:00:00",
+        "1970-01-01 00:00:01.1000",
+        "1970-01-01 00:00:01.000000",
+        "2000-01-02 03:04:05.123456",
+        "1970-01-01 00:00:01.123457",
+        "1970-01-01 00:00:02.000000",
+        "3001-01-18 23:59:59.999999",
+        NULL,
+        NULL,
+        NULL,
+        "2000-01-02 03:04:05.123456 Sunday January 2nd",
+        "1 01 1 01 001 0 12 12 12 AM 12:00:00 AM 00:00:00 00 00 00 01 52 01 1969 1970 % q",
+    };
+    static const char *const invalid_columns[] = {"bad_timestamp", "bad_year"};
+    static const char *const invalid_values[] = {"1970-01-01 00:00:00.000000", "1970"};
+    static const char *const projection_columns[] = {"id", "dt"};
+    static const char *const projection_values[] = {
+        "2",
+        "2000-01-02 03:04:05",
+        "1",
+        "1970-01-01 00:00:00",
+    };
+    static const char *const updated_columns[] = {"id", "formatted"};
+    static const char *const updated_values[] = {"2", "2000-01-02"};
+    static const char *const remaining_columns[] = {"id"};
+    static const char *const remaining_values[] = {"1", "2"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open FROM_UNIXTIME database");
+
+    failures += prepare_sql(database,
+                            "SELECT FROM_UNIXTIME(1) AS dt0, "
+                            "FROM_UNIXTIME(1.1000) AS dt4, "
+                            "FROM_UNIXTIME('1') AS dt6, "
+                            "FROM_UNIXTIME(1, '%Y') AS fmt",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "FROM_UNIXTIME metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "FROM_UNIXTIME metadata row");
+    failures += expect_string(mylite_column_text(stmt, 0), "1970-01-01 00:00:01",
+                              "FROM_UNIXTIME metadata integer");
+    failures += expect_string(mylite_column_text(stmt, 1), "1970-01-01 00:00:01.1000",
+                              "FROM_UNIXTIME metadata decimal scale");
+    failures += expect_string(mylite_column_text(stmt, 2), "1970-01-01 00:00:01.000000",
+                              "FROM_UNIXTIME metadata string scale");
+    failures += expect_string(mylite_column_text(stmt, 3), "1970", "FROM_UNIXTIME metadata format");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "FROM_UNIXTIME metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_select_rows(
+        database,
+        "SELECT FROM_UNIXTIME(0) AS epoch, "
+        "FROM_UNIXTIME(1.1000) AS decimal_scale, "
+        "FROM_UNIXTIME('1') AS string_scale, "
+        "FROM_UNIXTIME(946782245.123456) AS fractional, "
+        "FROM_UNIXTIME(1.1234565) AS rounded, "
+        "FROM_UNIXTIME(1.9999995) AS carry, "
+        "FROM_UNIXTIME(32536771199.999999) AS max_ts, "
+        "FROM_UNIXTIME(32536771200) AS after_range, "
+        "FROM_UNIXTIME(-1) AS negative_ts, "
+        "FROM_UNIXTIME(NULL) AS null_ts, "
+        "FROM_UNIXTIME(946782245.123456, '%Y-%m-%d %H:%i:%s.%f %W %M %D') AS formatted, "
+        "FROM_UNIXTIME(0, "
+        "'%c %m %e %d %j %k %h %I %l %p %r %T %S %s %U %u %V %v %X %x %% %q') AS all_tokens",
+        scalar_columns, 12, scalar_values, 1, "FROM_UNIXTIME scalar values");
+
+    failures += expect_select_rows(database,
+                                   "SELECT FROM_UNIXTIME('bad') AS bad_timestamp, "
+                                   "FROM_UNIXTIME('bad', '%Y') AS bad_year",
+                                   invalid_columns, 2, invalid_values, 1,
+                                   "FROM_UNIXTIME invalid string values");
+    failures += expect_int(mylite_warning_count(database), 2, "FROM_UNIXTIME invalid warnings");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_truncated_wrong_value,
+                   "FROM_UNIXTIME invalid warning code 1");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 1), mysql_warning_truncated_wrong_value,
+                   "FROM_UNIXTIME invalid warning code 2");
+    failures += expect_string(mylite_warning_message(database, 0),
+                              "Truncated incorrect DECIMAL value: 'bad'",
+                              "FROM_UNIXTIME invalid warning message 1");
+    failures += expect_string(mylite_warning_message(database, 1),
+                              "Truncated incorrect DECIMAL value: 'bad'",
+                              "FROM_UNIXTIME invalid warning message 2");
+
+    failures += execute_sql(database, "CREATE DATABASE from_unixtime_functions", MYLITE_DONE);
+    failures += execute_sql(database, "USE from_unixtime_functions", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE temporal_from_unixtime ("
+                            "id INT PRIMARY KEY, ts BIGINT, formatted VARCHAR(32))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO temporal_from_unixtime VALUES "
+                            "(1, 0, NULL), "
+                            "(2, 946782245, NULL), "
+                            "(3, 32536771200, NULL), "
+                            "(4, NULL, NULL)",
+                            MYLITE_DONE);
+    failures += expect_select_rows(database,
+                                   "SELECT id, FROM_UNIXTIME(ts) AS dt "
+                                   "FROM temporal_from_unixtime "
+                                   "WHERE FROM_UNIXTIME(ts) IS NOT NULL "
+                                   "ORDER BY FROM_UNIXTIME(ts) DESC",
+                                   projection_columns, 2, projection_values, 2,
+                                   "FROM_UNIXTIME table projection");
+    failures += execute_sql_expect_done_affected(database,
+                                                 "UPDATE temporal_from_unixtime "
+                                                 "SET formatted = FROM_UNIXTIME(ts, '%Y-%m-%d') "
+                                                 "WHERE id = 2",
+                                                 1, "FROM_UNIXTIME update");
+    failures += expect_select_rows(
+        database, "SELECT id, formatted FROM temporal_from_unixtime WHERE id = 2", updated_columns,
+        2, updated_values, 1, "FROM_UNIXTIME updated row");
+    failures += execute_sql_expect_done_affected(database,
+                                                 "DELETE FROM temporal_from_unixtime "
+                                                 "WHERE FROM_UNIXTIME(ts) IS NULL",
+                                                 2, "FROM_UNIXTIME delete");
+    failures += expect_select_rows(database, "SELECT id FROM temporal_from_unixtime ORDER BY id",
+                                   remaining_columns, 1, remaining_values, 2,
+                                   "FROM_UNIXTIME delete result");
+
+    failures += prepare_sql(database, "SELECT FROM_UNIXTIME()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "FROM_UNIXTIME missing argument rejected");
+    failures +=
+        prepare_sql(database, "SELECT FROM_UNIXTIME(1, '%Y', 'x')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "FROM_UNIXTIME extra argument rejected");
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)

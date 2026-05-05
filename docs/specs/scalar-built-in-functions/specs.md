@@ -103,9 +103,10 @@ Out of scope for the initial implementation:
   are grammar-level scalar expressions owned by
   `docs/specs/cast-expression/specs.md` and
   `docs/specs/convert-function/specs.md`
-- `DATE_FORMAT`, `STR_TO_DATE`, week-numbering functions, named time zones,
-  locale-sensitive day/month names, and time-zone table integration
-- `RAND`, `UUID`, `UUID_SHORT`, `SLEEP`, `BENCHMARK`, and other
+- `STR_TO_DATE`, week-numbering functions, named time zones, locale-sensitive
+  temporal behavior beyond the first formatting slice, and time-zone table
+  integration
+- `UUID`, `UUID_SHORT`, `SLEEP`, `BENCHMARK`, and other
   nondeterministic or diagnostic/performance functions not needed for the first
   application batch
 - `DEFAULT(col)`, user variables, system variables, prepared-statement
@@ -186,8 +187,8 @@ by common scalar expressions:
   `SECOND` units, `TIMESTAMPADD` for the simple `DAY`, `WEEK`, `MONTH`,
   `YEAR`, `HOUR`, `MINUTE`, and `SECOND` units, and `TIMESTAMPDIFF` for the
   simple `DAY`, `WEEK`, `MONTH`, `YEAR`, `HOUR`, `MINUTE`, and `SECOND` units,
-  plus `TO_DAYS`, `TO_SECONDS`, `FROM_DAYS`, `TIME`, `UNIX_TIMESTAMP`, and
-  `DATE_FORMAT`;
+  plus `TO_DAYS`, `TO_SECONDS`, `FROM_DAYS`, `TIME`, `UNIX_TIMESTAMP`,
+  `FROM_UNIXTIME`, and `DATE_FORMAT`;
   see
   `docs/specs/current-temporal-functions/specs.md` and
   `docs/specs/date-and-datediff-functions/specs.md` and
@@ -200,6 +201,7 @@ by common scalar expressions:
   `docs/specs/from-days-function/specs.md` and
   `docs/specs/time-function/specs.md` and
   `docs/specs/unix-timestamp-function/specs.md` and
+  `docs/specs/from-unixtime-function/specs.md` and
   `docs/specs/date-format-function/specs.md`
 - random functions: `RAND` and `RAND(seed)`; see
   `docs/specs/rand-function/specs.md`
@@ -251,6 +253,7 @@ warning propagation, TIMESTAMPDIFF calendar and elapsed-time differences over
 supported simple units, TO_DAYS day-number conversion, TO_SECONDS seconds-count
 conversion with time-of-day inclusion, FROM_DAYS day-number-to-date conversion,
 TIME extraction/coercion over typed temporal and untyped inputs,
+FROM_UNIXTIME epoch-to-datetime conversion and formatted output,
 zero and incomplete date warnings, unsupported functions, unsupported arity,
 and selected result metadata.
 
@@ -656,6 +659,7 @@ Verified `mysql --column-type-info -vvv` examples:
 | `TO_SECONDS(...) AS to_seconds_value` | `LONGLONG` | `21` | `0` | `binary` | `BINARY NUM` |
 | `FROM_DAYS(...) AS from_days_value` | `DATE` | `10` | `0` | `binary` | `BINARY` / `NOT_NULL BINARY` |
 | `TIME(...) AS time_value` | `TIME` | `10` or fractional length | argument or literal precision | `binary` | `BINARY` |
+| `FROM_UNIXTIME(...) AS from_unixtime_value` | `DATETIME` or `VAR_STRING` | `19`, fractional datetime length, or formatted string length | timestamp precision or `31` for formatted strings | `binary` or connection collation | `BINARY` for datetime |
 | `DATABASE() AS database_value` | `VAR_STRING` | `256` | `31` | `utf8mb4_0900_ai_ci` | nullable |
 | `VERSION() AS version_value` | `VAR_STRING` | `20` | `31` | `utf8mb4_0900_ai_ci` | `NOT_NULL` |
 | `LAST_INSERT_ID() AS last_insert_id_value` | `LONGLONG` | `21` | `0` | `binary` | `NOT_NULL UNSIGNED BINARY NUM` |

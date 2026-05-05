@@ -417,6 +417,11 @@ struct temporal_date_value {
     bool preserve_fraction_digits;
 };
 
+struct from_unixtime_value {
+    int64_t microseconds;
+    unsigned int fraction_digits;
+};
+
 struct temporal_date_source {
     char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
     char warning_buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
@@ -586,6 +591,7 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_RAND = 119,
     MYLITE_SCALAR_FUNCTION_REGEXP_LIKE = 120,
     MYLITE_SCALAR_FUNCTION_FOUND_ROWS = 121,
+    MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME = 122,
 };
 
 struct angle_conversion_input {
@@ -693,6 +699,24 @@ static int eval_date_format_function(const struct mylite_sql_ast_node *arguments
                                      struct mylite_expression_value *out_value);
 static int date_format_text_value(const struct temporal_date_value *date, const char *format,
                                   size_t format_length, struct mylite_expression_value *out_value);
+static int eval_from_unixtime_function(const struct mylite_sql_ast_node *arguments,
+                                       const struct mylite_expression_eval_context *context,
+                                       struct mylite_expression_warnings *warnings,
+                                       struct mylite_expression_value *out_value);
+static int from_unixtime_value_from_expression(const struct mylite_expression_value *value,
+                                               struct mylite_expression_warnings *warnings,
+                                               struct from_unixtime_value *out_timestamp,
+                                               bool *out_valid);
+static bool from_unixtime_microseconds_from_value(const struct mylite_expression_value *value,
+                                                  double fallback, int64_t *out_microseconds);
+static bool from_unixtime_microseconds_from_text(const char *text, int64_t *out_microseconds);
+static bool from_unixtime_microseconds_from_double(long double timestamp,
+                                                   int64_t *out_microseconds);
+static unsigned int from_unixtime_fraction_digits(const struct mylite_expression_value *value);
+static unsigned int from_unixtime_text_fraction_digits(const char *text);
+static bool from_unixtime_text_uses_exponent(const char *text);
+static bool from_unixtime_date_from_value(const struct from_unixtime_value *timestamp,
+                                          struct temporal_date_value *out_date);
 static int append_date_format_token(char **result, size_t *length,
                                     const struct temporal_date_value *date, char token);
 static int append_formatted_date_part(char **result, size_t *length, const char *format, int value);
@@ -710,8 +734,11 @@ static int date_format_day_of_year(const struct temporal_date_value *date);
 static int date_format_weekday_sunday(const struct temporal_date_value *date);
 static int date_format_weekday_monday(const struct temporal_date_value *date);
 static int date_format_week_zero(const struct temporal_date_value *date, bool monday_first);
+static int date_format_week_monday_zero(const struct temporal_date_value *date);
 static struct temporal_week_year date_format_week_year(const struct temporal_date_value *date,
                                                        bool monday_first);
+static struct temporal_week_year
+date_format_sunday_week_year(const struct temporal_date_value *date);
 static int eval_date_function(const struct mylite_sql_ast_node *arguments,
                               const struct mylite_expression_eval_context *context,
                               struct mylite_expression_warnings *warnings,
@@ -1967,6 +1994,8 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_RAND:
         return arity == 0U || arity == 1U;
+    case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
+        return arity == 1U || arity == 2U;
     case MYLITE_SCALAR_FUNCTION_LENGTH:
     case MYLITE_SCALAR_FUNCTION_CHAR_LENGTH:
     case MYLITE_SCALAR_FUNCTION_LOWER:
@@ -2934,6 +2963,8 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_unix_timestamp_function(node, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
         return eval_date_format_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
+        return eval_from_unixtime_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF:
         return eval_timestampdiff_function(node, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_YEAR:
@@ -3165,6 +3196,290 @@ static int date_format_text_value(const struct temporal_date_value *date, const 
     return status;
 }
 
+static int eval_from_unixtime_function(const struct mylite_sql_ast_node *arguments,
+                                       const struct mylite_expression_eval_context *context,
+                                       struct mylite_expression_warnings *warnings,
+                                       struct mylite_expression_value *out_value)
+{
+    const struct mylite_sql_ast_node *format_argument = child_at(arguments, 1U);
+    struct mylite_expression_value timestamp_value = {0};
+    struct mylite_expression_value format_value = {0};
+    struct from_unixtime_value timestamp = {0};
+    struct temporal_date_value date = {0};
+    char *format = NULL;
+    size_t format_length = 0U;
+    bool valid = false;
+    int status = eval_node(child_at(arguments, 0U), context, warnings, &timestamp_value);
+
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&timestamp_value)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    status = from_unixtime_value_from_expression(&timestamp_value, warnings, &timestamp, &valid);
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (!valid || !from_unixtime_date_from_value(&timestamp, &date)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    if (format_argument == NULL) {
+        status = set_temporal_datetime_text_value(&date, out_value);
+        goto cleanup;
+    }
+
+    status = eval_node(format_argument, context, warnings, &format_value);
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&format_value)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    status = value_to_string_with_length(&format_value, &format, &format_length);
+    if (status == 0) {
+        status = date_format_text_value(&date, format, format_length, out_value);
+    }
+
+cleanup:
+    free(format);
+    mylite_expression_value_deinit(&format_value);
+    mylite_expression_value_deinit(&timestamp_value);
+    return status;
+}
+
+static int from_unixtime_value_from_expression(const struct mylite_expression_value *value,
+                                               struct mylite_expression_warnings *warnings,
+                                               struct from_unixtime_value *out_timestamp,
+                                               bool *out_valid)
+{
+    static const int64_t max_from_unixtime_microseconds =
+        (INT64_C(32536771199) * MYLITE_TEMPORAL_MICROSECOND_LIMIT) +
+        (MYLITE_TEMPORAL_MICROSECOND_LIMIT - 1);
+    int64_t microseconds = 0;
+    double fallback = 0.0;
+    int status = 0;
+
+    if (out_timestamp == NULL || out_valid == NULL) {
+        return -1;
+    }
+    *out_timestamp = (struct from_unixtime_value){0};
+    *out_valid = false;
+
+    status = cast_value_to_decimal_double(value, warnings, &fallback);
+    if (status != 0) {
+        return status;
+    }
+
+    if (!from_unixtime_microseconds_from_value(value, fallback, &microseconds) ||
+        microseconds > max_from_unixtime_microseconds) {
+        return 0;
+    }
+
+    out_timestamp->microseconds = microseconds;
+    out_timestamp->fraction_digits = from_unixtime_fraction_digits(value);
+    *out_valid = true;
+    return 0;
+}
+
+static bool from_unixtime_microseconds_from_value(const struct mylite_expression_value *value,
+                                                  double fallback, int64_t *out_microseconds)
+{
+    const char *text = value == NULL ? NULL : value->text_value;
+    uint64_t seconds = 0U;
+
+    if (value == NULL) {
+        return from_unixtime_microseconds_from_double((long double)fallback, out_microseconds);
+    }
+    switch (value->kind) {
+    case MYLITE_EXPRESSION_VALUE_INT64:
+        if (value->int64_value < 0) {
+            return false;
+        }
+        seconds = (uint64_t)value->int64_value;
+        break;
+    case MYLITE_EXPRESSION_VALUE_UINT64:
+        seconds = value->uint64_value;
+        break;
+    case MYLITE_EXPRESSION_VALUE_REAL:
+    case MYLITE_EXPRESSION_VALUE_TEXT:
+        if (text != NULL && !from_unixtime_text_uses_exponent(text)) {
+            return from_unixtime_microseconds_from_text(text, out_microseconds);
+        }
+        return from_unixtime_microseconds_from_double(
+            text == NULL ? (long double)fallback : strtold(text, NULL), out_microseconds);
+    case MYLITE_EXPRESSION_VALUE_NULL:
+        return false;
+    }
+    if (seconds > INT64_MAX / MYLITE_TEMPORAL_MICROSECOND_LIMIT) {
+        return false;
+    }
+    *out_microseconds = (int64_t)(seconds * MYLITE_TEMPORAL_MICROSECOND_LIMIT);
+    return true;
+}
+
+static bool from_unixtime_microseconds_from_text(const char *text, int64_t *out_microseconds)
+{
+    const unsigned char *cursor = (const unsigned char *)text;
+    uint64_t seconds = 0U;
+    uint64_t microseconds = 0U;
+    unsigned int fraction_digits = 0U;
+    bool negative = false;
+    bool saw_digit = false;
+    bool round_up = false;
+
+    if (cursor == NULL || out_microseconds == NULL) {
+        return false;
+    }
+    while (isspace(*cursor)) {
+        ++cursor;
+    }
+    if (*cursor == '+' || *cursor == '-') {
+        negative = *cursor == '-';
+        ++cursor;
+    }
+    while (isdigit(*cursor)) {
+        saw_digit = true;
+        if (seconds > (UINT64_MAX - (uint64_t)(*cursor - '0')) / 10U) {
+            return false;
+        }
+        seconds = (seconds * 10U) + (uint64_t)(*cursor - '0');
+        ++cursor;
+    }
+    if (*cursor == '.') {
+        ++cursor;
+        while (isdigit(*cursor)) {
+            saw_digit = true;
+            if (fraction_digits < MYLITE_TEMPORAL_MAX_FSP) {
+                microseconds = (microseconds * 10U) + (uint64_t)(*cursor - '0');
+            } else if (fraction_digits == MYLITE_TEMPORAL_MAX_FSP) {
+                round_up = *cursor >= '5';
+            }
+            ++fraction_digits;
+            ++cursor;
+        }
+    }
+    while (fraction_digits < MYLITE_TEMPORAL_MAX_FSP) {
+        microseconds *= 10U;
+        ++fraction_digits;
+    }
+    if (!saw_digit) {
+        *out_microseconds = 0;
+        return true;
+    }
+    if (round_up) {
+        ++microseconds;
+        if (microseconds == MYLITE_TEMPORAL_MICROSECOND_LIMIT) {
+            microseconds = 0U;
+            ++seconds;
+        }
+    }
+    if (negative && (seconds != 0U || microseconds != 0U)) {
+        return false;
+    }
+    if (seconds > INT64_MAX / MYLITE_TEMPORAL_MICROSECOND_LIMIT) {
+        return false;
+    }
+    if (seconds == INT64_MAX / MYLITE_TEMPORAL_MICROSECOND_LIMIT &&
+        microseconds > INT64_MAX % MYLITE_TEMPORAL_MICROSECOND_LIMIT) {
+        return false;
+    }
+    *out_microseconds = (int64_t)((seconds * MYLITE_TEMPORAL_MICROSECOND_LIMIT) + microseconds);
+    return true;
+}
+
+static bool from_unixtime_microseconds_from_double(long double timestamp, int64_t *out_microseconds)
+{
+    long double rounded_microseconds = 0.0L;
+
+    if (out_microseconds == NULL || !isfinite(timestamp) || timestamp < 0.0L) {
+        return false;
+    }
+    rounded_microseconds =
+        floorl((timestamp * (long double)MYLITE_TEMPORAL_MICROSECOND_LIMIT) + 0.5L);
+    if (rounded_microseconds < 0.0L || rounded_microseconds > (long double)INT64_MAX) {
+        return false;
+    }
+    *out_microseconds = (int64_t)rounded_microseconds;
+    return true;
+}
+
+static unsigned int from_unixtime_fraction_digits(const struct mylite_expression_value *value)
+{
+    if (value == NULL) {
+        return 0U;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+        return MYLITE_TEMPORAL_MAX_FSP;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_REAL) {
+        if (value->text_value == NULL || from_unixtime_text_uses_exponent(value->text_value)) {
+            return MYLITE_TEMPORAL_MAX_FSP;
+        }
+        return from_unixtime_text_fraction_digits(value->text_value);
+    }
+    return 0U;
+}
+
+static unsigned int from_unixtime_text_fraction_digits(const char *text)
+{
+    const char *dot = text == NULL ? NULL : strchr(text, '.');
+    unsigned int digits = 0U;
+
+    if (dot == NULL) {
+        return 0U;
+    }
+    for (++dot; *dot >= '0' && *dot <= '9' && digits < MYLITE_TEMPORAL_MAX_FSP; ++dot) {
+        ++digits;
+    }
+    return digits;
+}
+
+static bool from_unixtime_text_uses_exponent(const char *text)
+{
+    return text != NULL && (strchr(text, 'e') != NULL || strchr(text, 'E') != NULL);
+}
+
+static bool from_unixtime_date_from_value(const struct from_unixtime_value *timestamp,
+                                          struct temporal_date_value *out_date)
+{
+    static const struct temporal_date_value unix_epoch = {
+        .year = 1970,
+        .month = 1,
+        .day = 1,
+    };
+    int64_t seconds =
+        timestamp == NULL ? 0 : timestamp->microseconds / MYLITE_TEMPORAL_MICROSECOND_LIMIT;
+    int64_t microseconds =
+        timestamp == NULL ? 0 : timestamp->microseconds % MYLITE_TEMPORAL_MICROSECOND_LIMIT;
+    int64_t day_number =
+        temporal_day_number(&unix_epoch) + (seconds / MYLITE_TEMPORAL_SECONDS_PER_DAY);
+    int64_t day_seconds = seconds % MYLITE_TEMPORAL_SECONDS_PER_DAY;
+
+    if (timestamp == NULL || out_date == NULL || microseconds < 0) {
+        return false;
+    }
+    if (day_seconds < 0) {
+        day_seconds += MYLITE_TEMPORAL_SECONDS_PER_DAY;
+        --day_number;
+    }
+    if (!temporal_date_from_day_number(day_number, out_date)) {
+        return false;
+    }
+    out_date->hour = (int)(day_seconds / MYLITE_TEMPORAL_SECONDS_PER_HOUR);
+    day_seconds %= MYLITE_TEMPORAL_SECONDS_PER_HOUR;
+    out_date->minute = (int)(day_seconds / MYLITE_TEMPORAL_SECONDS_PER_MINUTE);
+    out_date->second = (int)(day_seconds % MYLITE_TEMPORAL_SECONDS_PER_MINUTE);
+    out_date->microsecond = (int)microseconds;
+    out_date->fraction_digits = timestamp->fraction_digits;
+    out_date->has_time = true;
+    out_date->preserve_fraction_digits = true;
+    return true;
+}
+
 static int append_date_format_token(char **result, size_t *length,
                                     const struct temporal_date_value *date, char token)
 {
@@ -3361,7 +3676,30 @@ static int date_format_week_zero(const struct temporal_date_value *date, bool mo
     int weekday =
         monday_first ? date_format_weekday_monday(date) : date_format_weekday_sunday(date);
 
+    if (monday_first) {
+        return date_format_week_monday_zero(date);
+    }
     return (day + 6 - weekday) / MYLITE_TEMPORAL_DAYS_PER_WEEK;
+}
+
+static int date_format_week_monday_zero(const struct temporal_date_value *date)
+{
+    struct temporal_date_value first_day = {
+        .year = date->year,
+        .month = 1,
+        .day = 1,
+    };
+    int first_weekday = date_format_weekday_monday(&first_day);
+    int64_t first_week_start = temporal_day_number(&first_day) - first_weekday;
+    int64_t date_day = temporal_day_number(date);
+
+    if (first_weekday > 3) {
+        first_week_start += MYLITE_TEMPORAL_DAYS_PER_WEEK;
+    }
+    if (date_day < first_week_start) {
+        return 0;
+    }
+    return (int)((date_day - first_week_start) / MYLITE_TEMPORAL_DAYS_PER_WEEK) + 1;
 }
 
 static struct temporal_week_year date_format_week_year(const struct temporal_date_value *date,
@@ -3372,12 +3710,35 @@ static struct temporal_week_year date_format_week_year(const struct temporal_dat
     int64_t anchor_day = temporal_day_number(date) + (3 - weekday);
     struct temporal_date_value anchor = {0};
 
+    if (!monday_first) {
+        return date_format_sunday_week_year(date);
+    }
     if (!temporal_date_from_day_number(anchor_day, &anchor)) {
         return (struct temporal_week_year){.year = date->year, .week = 0};
     }
     return (struct temporal_week_year){
         .year = anchor.year,
         .week = ((date_format_day_of_year(&anchor) - 1) / MYLITE_TEMPORAL_DAYS_PER_WEEK) + 1,
+    };
+}
+
+static struct temporal_week_year
+date_format_sunday_week_year(const struct temporal_date_value *date)
+{
+    struct temporal_date_value previous_year_end = {
+        .year = date->year - 1,
+        .month = 12,
+        .day = 31,
+    };
+    int week = date_format_week_zero(date, false);
+
+    if (week > 0) {
+        return (struct temporal_week_year){.year = date->year, .week = week};
+    }
+
+    return (struct temporal_week_year){
+        .year = previous_year_end.year,
+        .week = date_format_week_zero(&previous_year_end, false),
     };
 }
 
@@ -4224,6 +4585,7 @@ static bool temporal_part_from_function(enum mylite_scalar_function_id function_
     case MYLITE_SCALAR_FUNCTION_TIME:
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
+    case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
     case MYLITE_SCALAR_FUNCTION_RAND:
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
@@ -8578,6 +8940,7 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_TIME:
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
+    case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
     case MYLITE_SCALAR_FUNCTION_RAND:
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
@@ -10440,6 +10803,7 @@ static int trigonometric_function_result(struct trigonometric_input input,
     case MYLITE_SCALAR_FUNCTION_TIME:
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
+    case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
     case MYLITE_SCALAR_FUNCTION_RAND:
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
@@ -10747,6 +11111,7 @@ static int inverse_trigonometric_function_result(struct inverse_trigonometric_in
     case MYLITE_SCALAR_FUNCTION_TIME:
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
+    case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
     case MYLITE_SCALAR_FUNCTION_RAND:
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
@@ -10964,6 +11329,7 @@ static int angle_conversion_result(struct angle_conversion_input conversion, dou
     case MYLITE_SCALAR_FUNCTION_TIME:
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
+    case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
     case MYLITE_SCALAR_FUNCTION_RAND:
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
@@ -14999,6 +15365,7 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"TIME", MYLITE_SCALAR_FUNCTION_TIME},
         {"UNIX_TIMESTAMP", MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP},
         {"DATE_FORMAT", MYLITE_SCALAR_FUNCTION_DATE_FORMAT},
+        {"FROM_UNIXTIME", MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME},
         {"RAND", MYLITE_SCALAR_FUNCTION_RAND},
         {"DATE_ADD", MYLITE_SCALAR_FUNCTION_DATE_ADD},
         {"DATE_SUB", MYLITE_SCALAR_FUNCTION_DATE_SUB},
@@ -15149,6 +15516,7 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_FROM_DAYS:
     case MYLITE_SCALAR_FUNCTION_TIME:
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
+    case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
     case MYLITE_SCALAR_FUNCTION_YEAR:
     case MYLITE_SCALAR_FUNCTION_MONTH:
     case MYLITE_SCALAR_FUNCTION_DAY:

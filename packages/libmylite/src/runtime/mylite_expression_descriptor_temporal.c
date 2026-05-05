@@ -1,5 +1,6 @@
 #include "mylite_expression_descriptor_temporal.h"
 
+#include "mylite_expression.h"
 #include "mylite_expression_descriptor.h"
 #include "mylite_expression_descriptor_temporal_time.h"
 #include "mylite_function_names.h"
@@ -11,6 +12,19 @@
 
 static struct mylite_field_descriptor current_date_function_descriptor(void);
 static struct mylite_field_descriptor current_time_function_descriptor(unsigned int fsp);
+static int infer_from_unixtime_function_descriptor(
+    mylite_db *database, const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression, const struct mylite_expression_value *value,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_temporal_callbacks *callbacks);
+static struct mylite_field_descriptor
+from_unixtime_string_descriptor(mylite_db *database, const struct mylite_expression_value *value);
+static struct mylite_field_descriptor from_unixtime_datetime_descriptor(unsigned int decimals);
+static unsigned int
+from_unixtime_argument_decimals(const struct mylite_sql_ast_node *argument,
+                                const struct mylite_field_descriptor *descriptor);
+static bool from_unixtime_argument_is_approximate(const struct mylite_sql_ast_node *argument,
+                                                  const struct mylite_field_descriptor *descriptor);
 static int infer_date_interval_function_descriptor(
     mylite_db *database, const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *expression, struct mylite_field_descriptor *out_descriptor,
@@ -76,6 +90,11 @@ int mylite_expression_descriptor_infer_temporal_function(
     }
     if (mylite_expression_descriptor_infer_temporal_part_function(expression, out_descriptor)) {
         return MYLITE_OK;
+    }
+    status = infer_from_unixtime_function_descriptor(database, plan, expression, value,
+                                                     out_descriptor, callbacks);
+    if (status != MYLITE_UNSUPPORTED) {
+        return status;
     }
     status = mylite_expression_descriptor_infer_time_function(database, plan, expression, value,
                                                               out_descriptor, callbacks);
@@ -195,6 +214,113 @@ bool mylite_expression_descriptor_interval_unit_has_time_part(
         return true;
     }
     return unit == MYLITE_SQL_AST_INTERVAL_UNIT_SECOND;
+}
+
+static int infer_from_unixtime_function_descriptor(
+    mylite_db *database, const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression, const struct mylite_expression_value *value,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_temporal_callbacks *callbacks)
+{
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
+    const struct mylite_sql_ast_node *timestamp_argument = mylite_ast_child_at(arguments, 0U);
+    struct mylite_field_descriptor argument_descriptor = mylite_expression_descriptor_defaults();
+    unsigned int decimals = 0U;
+    int status = MYLITE_OK;
+
+    if (!mylite_function_name_is_from_unixtime(name)) {
+        return MYLITE_UNSUPPORTED;
+    }
+    if (mylite_sql_ast_node_child_count(arguments) == 2U) {
+        *out_descriptor = from_unixtime_string_descriptor(database, value);
+        return MYLITE_OK;
+    }
+
+    status = callbacks->infer_expression_descriptor(database, plan, timestamp_argument, NULL,
+                                                    &argument_descriptor);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    decimals = from_unixtime_argument_decimals(timestamp_argument, &argument_descriptor);
+    *out_descriptor = from_unixtime_datetime_descriptor(decimals);
+    return MYLITE_OK;
+}
+
+static struct mylite_field_descriptor
+from_unixtime_string_descriptor(mylite_db *database, const struct mylite_expression_value *value)
+{
+    uint64_t length = mylite_mysql_text_length;
+    struct mylite_field_descriptor descriptor = {0};
+
+    if (value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+        length = mylite_expression_descriptor_string_length(database, value, NULL);
+    }
+    descriptor = (struct mylite_field_descriptor){
+        .type = MYLITE_FIELD_TYPE_VAR_STRING,
+        .flags = 0U,
+        .length = length,
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = mylite_expression_descriptor_connection_charset_id(database),
+        .nullable = true,
+    };
+    mylite_field_descriptor_set_nullable(&descriptor, true);
+    return descriptor;
+}
+
+static struct mylite_field_descriptor from_unixtime_datetime_descriptor(unsigned int decimals)
+{
+    struct mylite_field_descriptor descriptor = {
+        .type = MYLITE_FIELD_TYPE_DATETIME,
+        .flags = MYLITE_FIELD_FLAG_BINARY,
+        .length = decimals == 0U ? mylite_mysql_datetime_display_length
+                                 : mylite_mysql_datetime_fraction_display_base + decimals,
+        .decimals = decimals,
+        .charset_id = mylite_mysql_binary_charset_id,
+        .nullable = true,
+    };
+
+    mylite_field_descriptor_set_nullable(&descriptor, true);
+    return descriptor;
+}
+
+static unsigned int
+from_unixtime_argument_decimals(const struct mylite_sql_ast_node *argument,
+                                const struct mylite_field_descriptor *descriptor)
+{
+    if (from_unixtime_argument_is_approximate(argument, descriptor)) {
+        return mylite_mysql_temporal_max_fsp;
+    }
+    if (descriptor == NULL || descriptor->type == MYLITE_FIELD_TYPE_NULL ||
+        mylite_expression_descriptor_has_text_result(descriptor)) {
+        return mylite_mysql_temporal_max_fsp;
+    }
+    if (descriptor->type == MYLITE_FIELD_TYPE_NEWDECIMAL) {
+        return descriptor->decimals > mylite_mysql_temporal_max_fsp ? mylite_mysql_temporal_max_fsp
+                                                                    : descriptor->decimals;
+    }
+    return 0U;
+}
+
+static bool from_unixtime_argument_is_approximate(const struct mylite_sql_ast_node *argument,
+                                                  const struct mylite_field_descriptor *descriptor)
+{
+    argument = mylite_sql_ast_unwrap_parenthesized_expression(argument);
+    if (argument != NULL && argument->kind == MYLITE_SQL_AST_UNARY_EXPRESSION &&
+        (argument->operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ||
+         argument->operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE)) {
+        argument =
+            mylite_sql_ast_unwrap_parenthesized_expression(mylite_ast_child_at(argument, 0U));
+    }
+    if (argument != NULL && argument->kind == MYLITE_SQL_AST_LITERAL &&
+        argument->literal_kind == MYLITE_SQL_AST_LITERAL_FLOAT) {
+        return true;
+    }
+    if (descriptor == NULL) {
+        return false;
+    }
+    return descriptor->type == MYLITE_FIELD_TYPE_FLOAT ||
+           descriptor->type == MYLITE_FIELD_TYPE_DOUBLE;
 }
 
 static int infer_date_interval_function_descriptor(

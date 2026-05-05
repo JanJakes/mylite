@@ -188,6 +188,7 @@ add_library(mylite STATIC
   src/runtime/mylite_select_target.c
   src/runtime/mylite_select_union.c
   src/runtime/mylite_select_union_order.c
+  src/runtime/mylite_select_union_order_eval.c
   src/runtime/mylite_select_union_prepare.c
   src/runtime/mylite_select_using_range.c
   src/runtime/mylite_session_functions.c

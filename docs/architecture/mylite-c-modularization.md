@@ -766,6 +766,8 @@ into focused `*_types.h` headers.
   a focused table DDL alter index validation module.
 - [x] Split UNION global ORDER BY binding into a focused select union order
   module.
+- [x] Split UNION global ORDER BY runtime value evaluation into a focused select
+  union order evaluation module.
 - [x] Split numeric variadic descriptor inference into a focused expression
   descriptor numeric variadic module.
 - [x] Split `FORMAT()` descriptor length inference into a focused expression

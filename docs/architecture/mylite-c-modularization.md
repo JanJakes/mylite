@@ -672,6 +672,8 @@ into focused `*_types.h` headers.
   SQLite bind lifetime helpers out of the mixed table/schema module.
 - [x] Split SHOW CREATE TABLE target resolution, catalog reads, column/index
   rendering, and table options into a dedicated table renderer module.
+- [x] Split dynamic INFORMATION_SCHEMA SQL builders into a focused companion
+  module.
 - [x] Split transaction savepoint parsing, execution, stack management, and
   savepoint diagnostics out of the core transaction module.
 - [ ] Split `mylite_dml_insert_value_resolve.c` into insert column-list,

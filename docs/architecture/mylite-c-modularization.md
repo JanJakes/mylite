@@ -705,6 +705,8 @@ into focused `*_types.h` headers.
   inference into a focused SELECT aggregate companion.
 - [x] Split SELECT aggregate-call registration and aggregate binding collection
   into a focused aggregate bind companion.
+- [x] Split SELECT aggregate numeric conversion and floating-result formatting
+  into a focused aggregate numeric companion.
 - [x] Split SELECT catalog descriptor row-source parsing into a focused
   descriptor source companion.
 - [x] Split SELECT catalog descriptor type inference into a focused descriptor

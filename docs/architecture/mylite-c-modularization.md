@@ -679,6 +679,8 @@ into focused `*_types.h` headers.
   evaluation into a focused SELECT eval companion.
 - [x] Split SELECT wildcard projection expansion and JOIN/USING output ordering
   into a focused SELECT projection wildcard companion.
+- [x] Split SELECT FROM table resolution, alias validation, and column loading
+  into a focused FROM resolve companion.
 - [x] Split joined SELECT row output processing into a focused SELECT join
   output companion.
 - [x] Split COUNT(DISTINCT ...) aggregate argument binding and descriptor

@@ -673,6 +673,8 @@ into focused `*_types.h` headers.
   and alias copying out of the common SELECT utility module.
 - [x] Split SELECT expression-evaluation context callbacks and output-value
   evaluation into a focused SELECT eval companion.
+- [x] Split SELECT wildcard projection expansion and JOIN/USING output ordering
+  into a focused SELECT projection wildcard companion.
 - [x] Split string encoding descriptor inference into a focused expression
   descriptor module.
 - [x] Split shared SHOW CREATE identifier quoting, string literal quoting, and

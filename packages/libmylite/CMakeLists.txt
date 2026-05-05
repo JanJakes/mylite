@@ -137,6 +137,7 @@ add_library(mylite STATIC
   src/runtime/mylite_select_prepare.c
   src/runtime/mylite_select_predicate_bind.c
   src/runtime/mylite_select_projection.c
+  src/runtime/mylite_select_projection_wildcard.c
   src/runtime/mylite_select_reference.c
   src/runtime/mylite_select_resolve.c
   src/runtime/mylite_select_row_loader.c

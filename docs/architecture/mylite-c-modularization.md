@@ -687,6 +687,8 @@ into focused `*_types.h` headers.
   companion module.
 - [x] Split ALTER TABLE refreshed index/column metadata into a focused table
   DDL alter metadata module.
+- [x] Split ALTER TABLE MySQL-compatible diagnostics into a focused table DDL
+  alter diagnostics module.
 - [x] Split transaction savepoint parsing, execution, stack management, and
   savepoint diagnostics out of the core transaction module.
 - [ ] Split `mylite_dml_insert_value_resolve.c` into insert column-list,

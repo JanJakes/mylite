@@ -1,13 +1,11 @@
 #include "mylite_dml.h"
 
 #include "mylite_diagnostics.h"
-#include "mylite_error_codes.h"
+#include "mylite_dml_insert_diagnostics.h"
 #include "mylite_span.h"
-#include "sqlite3.h"
 
 #include <limits.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -153,21 +151,6 @@ static bool insert_row_uses_all_defaults(const struct mylite_insert_values_plan 
 static size_t insert_row_target_column_count(const struct mylite_insert_values_plan *plan,
                                              const struct mylite_insert_table *table,
                                              size_t row_index);
-static int set_insert_wrong_value_count_error(mylite_db *database, size_t row_index);
-static int set_insert_no_default_error(mylite_db *database, const char *column_name);
-static int set_insert_unsupported_generated_default_error(mylite_db *database,
-                                                          const char *column_name);
-static int set_insert_unsupported_expression_error(mylite_db *database);
-static int append_insert_no_default_warning(mylite_db *database, const char *column_name);
-static int append_insert_no_default_warning_once(mylite_db *database,
-                                                 const struct mylite_insert_table_column *column,
-                                                 struct mylite_insert_execution_state *state,
-                                                 size_t column_index);
-static int append_insert_null_warning(mylite_db *database, const char *column_name);
-static int append_insert_null_warning_once(mylite_db *database,
-                                           const struct mylite_insert_table_column *column,
-                                           struct mylite_insert_execution_state *state,
-                                           size_t column_index);
 static char *insert_current_timestamp_text(void);
 
 int mylite_dml_resolve_insert_row_values(mylite_db *database,
@@ -189,7 +172,7 @@ int mylite_dml_resolve_insert_row_values(mylite_db *database,
     row = &plan->rows[row_index];
     expected_count = insert_row_target_column_count(plan, table, row_index);
     if (row->value_count != expected_count) {
-        return set_insert_wrong_value_count_error(database, row_index);
+        return mylite_dml_insert_set_wrong_value_count_error(database, row_index);
     }
     if (plan->has_column_list) {
         return resolve_insert_column_list_row_values(database, plan, table, row, column_indexes,
@@ -255,7 +238,7 @@ int mylite_dml_resolve_insert_default_bound_value(mylite_db *database,
             *out_value = (struct mylite_insert_bound_value){.kind = MYLITE_INSERT_BOUND_NULL};
             return MYLITE_OK;
         }
-        return set_insert_no_default_error(database, column->name);
+        return mylite_dml_insert_set_no_default_error(database, column->name);
     }
     if (mylite_column_default_is_current_timestamp(column->default_text)) {
         char *timestamp = insert_current_timestamp_text();
@@ -271,7 +254,7 @@ int mylite_dml_resolve_insert_default_bound_value(mylite_db *database,
         return MYLITE_OK;
     }
     if (column->generated_default) {
-        return set_insert_unsupported_generated_default_error(database, column->name);
+        return mylite_dml_insert_set_unsupported_generated_default_error(database, column->name);
     }
     return resolve_insert_text_value(database, column, column->default_text, statement_row_count,
                                      state, out_value);
@@ -540,9 +523,9 @@ static int finish_insert_set_required_omission(mylite_db *database,
         return MYLITE_OK;
     }
     if (!plan->ignore) {
-        return set_insert_no_default_error(database, column->name);
+        return mylite_dml_insert_set_no_default_error(database, column->name);
     }
-    return append_insert_no_default_warning_once(database, column, state, column_index);
+    return mylite_dml_insert_append_no_default_warning_once(database, column, state, column_index);
 }
 
 static int finish_insert_set_required_null(mylite_db *database,
@@ -557,7 +540,7 @@ static int finish_insert_set_required_null(mylite_db *database,
         return mylite_dml_set_not_null_column_error(database, column->name);
     }
 
-    int status = append_insert_null_warning(database, column->name);
+    int status = mylite_dml_insert_append_null_warning(database, column->name);
 
     if (status != MYLITE_OK) {
         return status;
@@ -599,11 +582,11 @@ static int evaluate_insert_set_assignment_value(
         }
         if (out_value->kind != MYLITE_INSERT_BOUND_INTEGER || out_value->integer_value < 0) {
             mylite_dml_insert_bound_value_deinit(out_value);
-            return set_insert_unsupported_expression_error(database);
+            return mylite_dml_insert_set_unsupported_expression_error(database);
         }
     } else if (!column->nullable && out_value->kind == MYLITE_INSERT_BOUND_NULL) {
         if (plan->ignore) {
-            int warning_status = append_insert_null_warning(database, column->name);
+            int warning_status = mylite_dml_insert_append_null_warning(database, column->name);
 
             if (warning_status != MYLITE_OK) {
                 mylite_dml_insert_bound_value_deinit(out_value);
@@ -662,7 +645,7 @@ static int evaluate_insert_set_unary_expression(mylite_db *database, const char 
     }
     if (!mylite_dml_insert_bound_value_is_numeric(&operand, &numeric_value, &is_integer)) {
         mylite_dml_insert_bound_value_deinit(&operand);
-        return set_insert_unsupported_expression_error(database);
+        return mylite_dml_insert_set_unsupported_expression_error(database);
     }
 
     if (is_integer) {
@@ -719,7 +702,7 @@ static int evaluate_insert_set_binary_expression(mylite_db *database, const char
         !mylite_dml_insert_bound_value_is_numeric(&right, &right_number, &right_is_integer)) {
         mylite_dml_insert_bound_value_deinit(&left);
         mylite_dml_insert_bound_value_deinit(&right);
-        return set_insert_unsupported_expression_error(database);
+        return mylite_dml_insert_set_unsupported_expression_error(database);
     }
 
     if (left_is_integer && right_is_integer &&
@@ -747,13 +730,13 @@ static int evaluate_insert_set_binary_expression(mylite_db *database, const char
         default:
             mylite_dml_insert_bound_value_deinit(&left);
             mylite_dml_insert_bound_value_deinit(&right);
-            return set_insert_unsupported_expression_error(database);
+            return mylite_dml_insert_set_unsupported_expression_error(database);
         }
     } else {
         if (value->operator_kind == MYLITE_SQL_AST_OPERATOR_DIVIDE && right_number == 0.0) {
             mylite_dml_insert_bound_value_deinit(&left);
             mylite_dml_insert_bound_value_deinit(&right);
-            return set_insert_unsupported_expression_error(database);
+            return mylite_dml_insert_set_unsupported_expression_error(database);
         }
         out_value->kind = MYLITE_INSERT_BOUND_REAL;
         switch (value->operator_kind) {
@@ -775,7 +758,7 @@ static int evaluate_insert_set_binary_expression(mylite_db *database, const char
         default:
             mylite_dml_insert_bound_value_deinit(&left);
             mylite_dml_insert_bound_value_deinit(&right);
-            return set_insert_unsupported_expression_error(database);
+            return mylite_dml_insert_set_unsupported_expression_error(database);
         }
     }
 
@@ -801,7 +784,7 @@ static int evaluate_insert_set_simple_expression(mylite_db *database, const char
         return MYLITE_OK;
     case MYLITE_INSERT_VALUE_INTEGER:
         if (!mylite_dml_parse_insert_integer_text(value->text, &integer_value)) {
-            return set_insert_unsupported_expression_error(database);
+            return mylite_dml_insert_set_unsupported_expression_error(database);
         }
         *out_value = (struct mylite_insert_bound_value){
             .kind = MYLITE_INSERT_BOUND_INTEGER,
@@ -810,7 +793,7 @@ static int evaluate_insert_set_simple_expression(mylite_db *database, const char
         return MYLITE_OK;
     case MYLITE_INSERT_VALUE_REAL:
         if (!mylite_dml_parse_insert_real_text(value->text, &real_value)) {
-            return set_insert_unsupported_expression_error(database);
+            return mylite_dml_insert_set_unsupported_expression_error(database);
         }
         *out_value = (struct mylite_insert_bound_value){
             .kind = MYLITE_INSERT_BOUND_REAL,
@@ -845,10 +828,10 @@ static int evaluate_insert_set_simple_expression(mylite_db *database, const char
     case MYLITE_INSERT_VALUE_VALUES_FUNCTION:
     case MYLITE_INSERT_VALUE_UNARY_EXPRESSION:
     case MYLITE_INSERT_VALUE_BINARY_EXPRESSION:
-        return set_insert_unsupported_expression_error(database);
+        return mylite_dml_insert_set_unsupported_expression_error(database);
     }
 
-    return set_insert_unsupported_expression_error(database);
+    return mylite_dml_insert_set_unsupported_expression_error(database);
 }
 
 static int evaluate_insert_set_column_reference(mylite_db *database, const char *schema_name,
@@ -903,7 +886,8 @@ resolve_insert_explicit_value(mylite_db *database, const struct mylite_insert_va
         }
         if (!column->nullable) {
             if (plan->ignore) {
-                int status = append_insert_null_warning_once(database, column, state, column_index);
+                int status = mylite_dml_insert_append_null_warning_once(database, column, state,
+                                                                        column_index);
 
                 if (status != MYLITE_OK) {
                     return status;
@@ -920,7 +904,7 @@ resolve_insert_explicit_value(mylite_db *database, const struct mylite_insert_va
                                          out_value);
     case MYLITE_INSERT_VALUE_REAL:
         if (column->auto_increment) {
-            return set_insert_unsupported_expression_error(database);
+            return mylite_dml_insert_set_unsupported_expression_error(database);
         }
         return resolve_insert_text_value(database, column, value->text, statement_row_count, state,
                                          out_value);
@@ -929,7 +913,7 @@ resolve_insert_explicit_value(mylite_db *database, const struct mylite_insert_va
                                                 state, out_value);
     case MYLITE_INSERT_VALUE_CURRENT_TIMESTAMP:
         if (column->auto_increment) {
-            return set_insert_unsupported_expression_error(database);
+            return mylite_dml_insert_set_unsupported_expression_error(database);
         }
         timestamp = insert_current_timestamp_text();
         if (timestamp == NULL) {
@@ -946,10 +930,10 @@ resolve_insert_explicit_value(mylite_db *database, const struct mylite_insert_va
     case MYLITE_INSERT_VALUE_VALUES_FUNCTION:
     case MYLITE_INSERT_VALUE_UNARY_EXPRESSION:
     case MYLITE_INSERT_VALUE_BINARY_EXPRESSION:
-        return set_insert_unsupported_expression_error(database);
+        return mylite_dml_insert_set_unsupported_expression_error(database);
     }
 
-    return set_insert_unsupported_expression_error(database);
+    return mylite_dml_insert_set_unsupported_expression_error(database);
 }
 
 static int resolve_insert_explicit_default_value(mylite_db *database,
@@ -961,7 +945,7 @@ static int resolve_insert_explicit_default_value(mylite_db *database,
 {
     if (plan->ignore && !column->auto_increment && !column->nullable &&
         column->default_text == NULL) {
-        int status = append_insert_no_default_warning(database, column->name);
+        int status = mylite_dml_insert_append_no_default_warning(database, column->name);
 
         if (status != MYLITE_OK) {
             return status;
@@ -982,7 +966,8 @@ static int resolve_insert_omitted_default_value(mylite_db *database,
 {
     if (plan->ignore && !column->auto_increment && !column->nullable &&
         column->default_text == NULL) {
-        int status = append_insert_no_default_warning_once(database, column, state, column_index);
+        int status =
+            mylite_dml_insert_append_no_default_warning_once(database, column, state, column_index);
 
         if (status != MYLITE_OK) {
             return status;
@@ -1020,7 +1005,7 @@ static int resolve_insert_text_value(mylite_db *database,
         return MYLITE_OK;
     }
     if (column->auto_increment) {
-        return set_insert_unsupported_expression_error(database);
+        return mylite_dml_insert_set_unsupported_expression_error(database);
     }
     if (mylite_dml_parse_insert_real_text(text, &real_value)) {
         *out_value = (struct mylite_insert_bound_value){
@@ -1199,119 +1184,6 @@ static size_t insert_row_target_column_count(const struct mylite_insert_values_p
         return 0U;
     }
     return table->column_count;
-}
-
-static int set_insert_wrong_value_count_error(mylite_db *database, size_t row_index)
-{
-    enum { row_number_buffer_size = 64 };
-    char buffer[row_number_buffer_size];
-
-    (void)snprintf(buffer, sizeof(buffer), "%zu", row_index + 1U);
-    if (mylite_diagnostics_set_error_message_parts(database,
-                                                   "Column count doesn't match value count at row ",
-                                                   buffer, "") == MYLITE_NOMEM) {
-        return MYLITE_NOMEM;
-    }
-    return MYLITE_EXEC_ERROR;
-}
-
-static int set_insert_no_default_error(mylite_db *database, const char *column_name)
-{
-    int status = mylite_diagnostics_set_error_message_parts(database, "Field '", column_name,
-                                                            "' doesn't have a default value");
-
-    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-}
-
-static int set_insert_unsupported_generated_default_error(mylite_db *database,
-                                                          const char *column_name)
-{
-    int status = mylite_diagnostics_set_error_message_parts(
-        database, "Unsupported generated default expression for '", column_name, "'");
-
-    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-}
-
-static int set_insert_unsupported_expression_error(mylite_db *database)
-{
-    if (mylite_diagnostics_set_error_message(database, "Unsupported INSERT value expression") ==
-        MYLITE_NOMEM) {
-        return MYLITE_NOMEM;
-    }
-    return MYLITE_EXEC_ERROR;
-}
-
-static int append_insert_no_default_warning(mylite_db *database, const char *column_name)
-{
-    char *message = sqlite3_mprintf("Field '%q' doesn't have a default value", column_name);
-    int status = MYLITE_OK;
-
-    if (message == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    status =
-        mylite_diagnostics_append_warning(database, MYLITE_MYSQL_ER_NO_DEFAULT_FOR_FIELD, message);
-    sqlite3_free(message);
-    return status;
-}
-
-static int append_insert_no_default_warning_once(mylite_db *database,
-                                                 const struct mylite_insert_table_column *column,
-                                                 struct mylite_insert_execution_state *state,
-                                                 size_t column_index)
-{
-    if (state != NULL && state->warned_omitted_no_default_columns != NULL &&
-        state->warned_omitted_no_default_columns[column_index]) {
-        return MYLITE_OK;
-    }
-
-    int status = append_insert_no_default_warning(database, column->name);
-
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    if (state != NULL && state->warned_omitted_no_default_columns != NULL) {
-        state->warned_omitted_no_default_columns[column_index] = true;
-    }
-    return MYLITE_OK;
-}
-
-static int append_insert_null_warning(mylite_db *database, const char *column_name)
-{
-    char *message = sqlite3_mprintf("Column '%q' cannot be null", column_name);
-    int status = MYLITE_OK;
-
-    if (message == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    status = mylite_diagnostics_append_warning(database, MYLITE_MYSQL_ER_BAD_NULL_ERROR, message);
-    sqlite3_free(message);
-    return status;
-}
-
-static int append_insert_null_warning_once(mylite_db *database,
-                                           const struct mylite_insert_table_column *column,
-                                           struct mylite_insert_execution_state *state,
-                                           size_t column_index)
-{
-    if (state != NULL && state->warned_null_columns != NULL &&
-        state->warned_null_columns[column_index]) {
-        return MYLITE_OK;
-    }
-
-    int status = append_insert_null_warning(database, column->name);
-
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    if (state != NULL && state->warned_null_columns != NULL) {
-        state->warned_null_columns[column_index] = true;
-    }
-    return MYLITE_OK;
 }
 
 static char *insert_current_timestamp_text(void)

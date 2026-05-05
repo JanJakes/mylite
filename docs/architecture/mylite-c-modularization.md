@@ -406,6 +406,8 @@ into focused `*_types.h` headers.
 - [x] Move insert bound-value conversion into `mylite_dml`.
 - [x] Split insert bound-value binding, copying, and numeric parsing into a
   focused DML companion module.
+- [x] Split insert diagnostics and warning de-duplication into a focused DML
+  companion module.
 - [x] Move shared insert row-write helpers into `mylite_dml`.
 - [x] Move non-ODKU insert row execution into `mylite_dml`.
 - [x] Move insert row execution into `mylite_dml`.

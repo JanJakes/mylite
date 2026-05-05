@@ -1,68 +1,86 @@
 # `mylite.c` Modularization
 
-`packages/libmylite/src/mylite.c` has become the runtime integration point for
-connection state, statement plans, catalog SQL, DDL, DML, SELECT execution,
-metadata, diagnostics, and utility code. The direction is correct for MySQL
-compatibility, but the implementation needs smaller private modules before more
-runtime surface is added.
+`packages/libmylite/src/mylite.c` has been fully removed. It used to be the
+runtime integration point for connection state, statement plans, catalog SQL,
+DDL, DML, SELECT execution, metadata, diagnostics, and utility code. The first
+modularization phase succeeded because it moved behavior behind private
+interfaces while preserving the public ABI and keeping the runtime test suite
+green after each slice.
 
-This refactor must preserve behavior. Move code behind private interfaces first,
-then split statement families one at a time with the existing test suite green
-after every step.
+This document is now the post-removal architecture contract. It should keep the
+new runtime modules from becoming replacement monoliths while the remaining
+large statement-family modules are split by ownership.
 
 ## Architecture Assessment
 
-The current direction is right: the recent commits are extracting runtime
-ownership by concern, preserving the public ABI, and keeping behavior stable.
-That is the correct migration path for a compatibility layer because large
-rewrites would make MySQL behavior regressions hard to isolate.
+The direction remains sound: the recent commits extracted runtime ownership by
+concern, preserved the public ABI, and kept behavior stable. That remains the
+right migration path for a compatibility layer because broad rewrites make MySQL
+behavior regressions hard to isolate.
 
-The main remaining risk is not line count by itself. The main risk is that
-`mylite_runtime.h` is becoming a broad shared object-model header while
-`mylite.c` still owns prepare dispatch, execution dispatch, statement-family
-planning, and most runtime semantics. That is acceptable during extraction, but
-future moves should avoid turning private headers into a second monolith.
+The main monolith is gone. The remaining risk is second-order monolith growth:
 
-The next architecture step should keep this layering:
+- `mylite_statement_prepare.c` should stay a prepare switchboard, not a home for
+  statement-family validation, cloning, or metadata inference.
+- `mylite_statement_execute.c` should stay execution dispatch, not statement
+  execution logic.
+- `mylite_select_context.c` should stay static callback composition and tiny
+  runtime adapters, not SELECT planning or execution logic.
+- `mylite_runtime.h` should stay a private object-layout header, not a shared
+  type dumping ground.
+- The largest remaining modules need follow-up ownership splits:
+  `mylite_table_ddl.c`, `mylite_select_materialize.c`,
+  `mylite_dml_insert_value_resolve.c`, `mylite_table_ddl_alter.c`, and
+  `mylite_select_subquery_eval.c`.
+- The broadest type headers also need follow-up splits once ownership is clear:
+  `mylite_select_types.h`, `mylite_dml.h`, `mylite_dml_types.h`, and
+  `mylite_table_ddl_types.h`.
+
+The next architecture phase should keep this layering:
 
 1. Diagnostics and connection state stay at the bottom.
 2. Catalog owns persisted `__mylite_*` metadata access and physical object
    naming.
-3. Statement owns public statement lifetime, row/result access, and eventually
-   prepare/step dispatch.
-4. Statement-family modules own their plan copy, validation, execution, and
-   cleanup.
-5. SELECT and expression-heavy code move last, after metadata inference and
-   reusable catalog loaders have clear homes.
+3. Statement owns public statement lifetime, row/result access, prepare routing,
+   and execution routing.
+4. Statement-family modules own their plan copy, validation, execution,
+   cleanup, and diagnostics.
+5. SELECT and expression-heavy code stay split by role: planning, descriptor
+   inference, materialization, scalar evaluation, UNION, subquery evaluation,
+   rowsets, grouping, and diagnostics.
 
 Good next extraction order:
 
-1. Split result metadata and descriptor inference into focused metadata and
-   expression-descriptor modules.
-2. Move SELECT output planning, DISTINCT validation, grouping validation, and
-   clause binding into focused SELECT planning modules.
-3. Move UNION preparation and execution into a SELECT/UNION module once result
-   metadata attachment has a narrow API.
-4. Move table SELECT row materialization in slices: row copying, sort/limit,
-   distinct, aggregate state, then join/outer-join execution.
-5. Move scalar SELECT and subquery evaluation after SELECT entry points and
-   expression callbacks are module-owned.
-6. Move `mylite_prepare()` and `mylite_statement_execute_custom()` dispatch into
-   `mylite_statement` once statement-family modules own their prepare and
-   execution entry points.
+1. Split `mylite_table_ddl.c` into statement preparation, create/drop/rename,
+   truncate, shared catalog model, SQL builders, and validation modules.
+2. Split `mylite_select_materialize.c` into base-table scanning, joined-row
+   assembly, outer-join orchestration, and materialization driver modules.
+3. Split `mylite_dml_insert_value_resolve.c` into column-list resolution,
+   positional/default resolution, `INSERT ... SET` resolution, and SQLite bind
+   helpers.
+4. Split `mylite_select_subquery_eval.c` into scalar subquery, quantified
+   subquery, row-value comparison, and diagnostics modules.
+5. Split broad type headers after the implementation owners are narrow enough
+   that the new headers have one clear purpose.
+6. Convert guardrails from this document into build checks whenever they can be
+   expressed mechanically.
 
 ## Runtime Header Guardrails
 
-`mylite_runtime.h` is a transitional shared object-model header. It is already
-large enough that moving code out of `mylite.c` without splitting type ownership
-would only move the monolith from implementation to object model.
+`mylite_runtime.h` is a private object-layout header. It is intentionally small
+after the first extraction phase and should stay that way. Moving feature-owned
+types back into it would recreate the monolith as an object model instead of an
+implementation file.
 
 Keep `mylite_runtime.h` limited to:
 
 - `struct mylite_db`
 - `struct mylite_stmt`
-- `enum mylite_stmt_kind`
+- `struct mylite_statement_timestamp`
 - tiny cross-runtime primitives needed by those objects
+
+`enum mylite_stmt_kind` lives in `mylite_statement_types.h`. Do not move it back
+unless statement dispatch and object layout are deliberately redesigned together.
 
 Move feature-owned structs into focused internal headers as ownership becomes
 clear:
@@ -91,78 +109,64 @@ Rules for future moves:
   value; pointer users can forward declare.
 - If a module needs one field from `mylite_db` or `mylite_stmt`, prefer a narrow
   helper/accessor over exposing another broad struct dependency.
-- If a module starts mutating another module's plan internals, stop and move
-  that plan type to the owning module before moving more behavior.
+- If a module starts mutating another module's plan internals, stop and move that
+  plan type to the owning module before moving more behavior.
 - Headers should form a one-way dependency graph: diagnostics and connection
   stay low, catalog sits above them, statement dispatch depends on
   statement-family modules, and statement-family modules depend on catalog,
   metadata, diagnostics, and span helpers as needed.
 - Track progress by ownership clarity, not only by reducing `mylite.c` line
   count.
-- After every extraction, check whether declarations in `mylite_runtime.h` can
-  move into a narrower type header.
+- After every extraction, check whether declarations in `mylite_runtime.h` or a
+  broad family header can move into a narrower type header.
 
-## Current `mylite.c` Map
+## Completed `mylite.c` Removal Map
 
-`mylite.c` is now about 13.4k lines after the initial type, diagnostics,
-connection, catalog, SHOW/information-schema, DDL, transaction, DML, SELECT
-planning, and ALTER/SELECT helper slices. The remaining major regions are:
+`packages/libmylite/src/mylite.c` no longer exists and should not be
+reintroduced. Its former responsibilities now have these owners:
 
-- Lines 1-53: includes and small process-wide constants. Split only when a
-  concrete owner needs each constant.
-- Lines 54-1189: file-local prototype wall plus the table SELECT/UNION callback
-  table. Treat this as a symptom, not a module. It should shrink naturally as
-  statement families move.
-- Lines 1190-1864: public `mylite_prepare()`, parsed statement dispatch,
-  SQLite fallback translation, and family prepare wrappers. Move to
-  `mylite_statement` after family-owned prepare entry points are stable.
-- Lines 1865-2564: table SELECT, scalar SELECT, and UNION preparation. Move
-  after SELECT planning, scalar-select, and union boundaries are narrower than
-  the current implementation.
-- Lines 2565-6265: result metadata attachment, descriptor inference, function
-  descriptor inference, catalog-column descriptor loading, and scalar/text
-  helper predicates. Extract metadata inference before larger SELECT runtime
-  moves.
-- Lines 6266-9468: SELECT predicate binding,
-  grouping/order validation, reference resolution, and subquery validation.
-  Move into focused SELECT planning modules instead of one broad select
-  runtime.
-- Lines 9469-9672: table SELECT expression clone/remap and aggregate binding
-  collection. Move with SELECT prepared-statement ownership.
-- Lines 9673-9912: custom statement allocation plus `mylite_statement_execute_custom()`
-  dispatch. Move allocation/dispatch to `mylite_statement` after every
-  statement family exposes narrow prepare and execute APIs.
-- Lines 9913-11045: scalar SELECT execution, session functions, `STRCMP()`,
-  charset/collation/coercibility evaluation, and collation inference. Split
-  into session, string, and collation modules before moving larger SELECT
-  execution.
-- Lines 11046-11100: table SELECT execution entry point and current-row
-  stepping. Move when statement execution dispatch is module-owned.
-- Lines 11101-11704: scalar SELECT statement copy/evaluation helpers and
-  scalar aggregate evaluation. Move to a small scalar-select module after
-  metadata inference is split.
-- Lines 11705-13205: subquery preparation/scanning/evaluation, row-value
-  comparison, and subquery diagnostics. Move after SELECT entry points and
-  expression callback APIs are stable.
-- Lines 13206-13416: remaining utility/classifier tail: row-subquery
-  classifiers and parse/translate status mapping. Move each helper with its
-  owning family; do not create a generic catch-all utility module.
+- Public `mylite_prepare()` API:
+  `src/runtime/mylite_statement_prepare.c`.
+- Parsed statement routing, family prepare calls, parser status mapping, and
+  SQLite fallback translation: `src/runtime/mylite_statement_prepare.c`.
+- Custom statement execution dispatch:
+  `src/runtime/mylite_statement_execute.c`.
+- Public statement stepping, finalization, row accessors, and lifecycle cleanup:
+  `src/runtime/mylite_statement.c`.
+- SELECT callback graph and subquery runtime adapters:
+  `src/runtime/mylite_select_context.c`.
+- Expression descriptor dispatch across scalar, aggregate, collation, and
+  SELECT metadata inference:
+  `src/runtime/mylite_expression_descriptor_dispatch.c`.
+- Table SELECT row stepping:
+  `src/runtime/mylite_select_statement.c`.
+- SELECT predicate error mapping:
+  `src/runtime/mylite_select_diagnostics.c`.
+- Scalar SELECT planning and execution:
+  `src/runtime/mylite_select_scalar.c`.
+- UNION operand preparation and runtime:
+  `src/runtime/mylite_select_union_prepare.c` and
+  `src/runtime/mylite_select_union.c`.
+- Subquery preparation, scanning, evaluation, and row-value comparison:
+  `src/runtime/mylite_select_subquery*.{h,c}`.
 
 ## Target Layout
 
 - `src/runtime/mylite_runtime.h`
-  Private runtime object model: `mylite_db`, `mylite_stmt`, statement kind,
-  statement plans, result metadata, row materialization state, and shared runtime
-  constants needed across runtime modules.
+  Private runtime object layout: `mylite_db`, `mylite_stmt`, statement timestamp
+  state, and only the tiny primitives needed by those objects.
 - `src/runtime/mylite_diagnostics.{h,c}`
   Error message ownership, warnings, notes, MySQL condition promotion, and
   public diagnostic accessors.
 - `src/runtime/mylite_connection.{h,c}`
   Connection lifecycle, selected schema, charset/collation session state,
   transaction release state, and public connection accessors.
-- `src/runtime/mylite_statement.{h,c}`
+- `src/runtime/mylite_statement.{h,c}`,
+  `src/runtime/mylite_statement_prepare.{h,c}`, and
+  `src/runtime/mylite_statement_execute.{h,c}`
   Public statement lifecycle, `mylite_prepare()`, `mylite_finalize()`,
-  `mylite_step()`, statement dispatch, and public result accessors.
+  `mylite_step()`, public result accessors, prepare routing, and execution
+  routing.
 - `src/runtime/mylite_catalog.{h,c}`
   `__mylite_*` catalog bootstrap, catalog lookup helpers, metadata loading,
   and physical table naming.
@@ -187,8 +191,11 @@ planning, and ALTER/SELECT helper slices. The remaining major regions are:
 - `src/runtime/mylite_select_union.{h,c}`
   UNION execution, operand scanning, de-duplication, global ordering,
   warning aggregation, and row stepping behind operand/eval callbacks.
-- `src/runtime/mylite_metadata.{h,c}`
-  Field descriptors, result metadata inference, and column accessor helpers.
+- `src/runtime/mylite_expression_descriptor*.{h,c}`,
+  `src/runtime/mylite_select_metadata.{h,c}`, and
+  `src/runtime/mylite_metadata.{h,c}`
+  Field descriptors, expression descriptor inference, SELECT/UNION result
+  metadata attachment, and public column accessor helpers.
 - `src/runtime/mylite_show.{h,c}`
   `SHOW` statements.
 - `src/runtime/mylite_information_schema.{h,c}`
@@ -201,21 +208,8 @@ planning, and ALTER/SELECT helper slices. The remaining major regions are:
 
 ## Remaining Runtime Header Ownership
 
-After the first runtime type split, `src/runtime/mylite_runtime.h` should keep
-only the core object model and transitional shared helpers listed here:
+`src/runtime/mylite_runtime.h` should keep only the core object model:
 
-- `enum mylite_stmt_kind`
-  Core statement dispatch state. Keep with `struct mylite_stmt` until statement
-  family dispatch is split out of `mylite.c`.
-- `enum mylite_information_schema_table`
-  Information-schema routing. Move to an information-schema type header when
-  that module is extracted.
-- `struct mylite_charset_collation_info`
-  Expression/metadata collation coercibility helper. Move with collation-aware
-  metadata inference.
-- `struct mylite_strcmp_compare_options`
-  String-comparison runtime helper. Move with the string comparison or collation
-  evaluation code.
 - `struct mylite_db`
   Core connection object layout. Keep here until a later private
   `mylite_runtime_objects.h` split is justified.
@@ -224,6 +218,10 @@ only the core object model and transitional shared helpers listed here:
 - `struct mylite_stmt`
   Core statement object layout. Keep here until feature-family execution plans
   are no longer embedded directly.
+
+The current 240-line build guard is a ceiling, not a target. New runtime work
+should keep the header close to its current size and move complete type families
+into focused `*_types.h` headers.
 
 ## Task List
 
@@ -255,7 +253,7 @@ only the core object model and transitional shared helpers listed here:
   broad `mylite_runtime.h` dependencies.
 - [x] Add a lightweight CI guard for runtime header line count or forbidden
   feature-owned type prefixes in `mylite_runtime.h`.
-- [ ] Move immutable runtime constants from `mylite.c` into focused private
+- [x] Move immutable runtime constants from `mylite.c` into focused private
   modules without creating unused-header warnings.
 - [x] Move MySQL display-length constants used by metadata inference into
   `mylite_metadata`.
@@ -278,9 +276,8 @@ only the core object model and transitional shared helpers listed here:
 - [x] Extract transaction statements, state, savepoints, pending auto-increment
   tracking, and statement atomicity into `src/runtime/mylite_transactions.{h,c}`.
 - [x] Move savepoint statement cleanup into `src/runtime/mylite_transactions`.
-- [ ] Extract public statement lifecycle and result accessors into
-  `src/runtime/mylite_statement.{h,c}` while keeping statement-family execution
-  in `mylite.c`.
+- [x] Extract public statement lifecycle, result accessors, prepare routing,
+  and execution routing into focused statement modules.
 - [x] Start `src/runtime/mylite_statement.{h,c}` with affected-row access and
   row-count bookkeeping.
 - [x] Move table-select row/current-result cleanup into
@@ -290,8 +287,7 @@ only the core object model and transitional shared helpers listed here:
 - [x] Move UNION plan cleanup into `src/runtime/mylite_statement`.
 - [x] Move statement finalization and public row-value accessors into
   `src/runtime/mylite_statement`.
-- [x] Move public statement stepping into `src/runtime/mylite_statement`,
-  keeping statement-family execution dispatch in `mylite.c`.
+- [x] Move public statement stepping into `src/runtime/mylite_statement`.
 - [x] Move SQLite statement preparation into `src/runtime/mylite_statement`.
 - [x] Move statement write-kind and diagnostics-preservation classifiers into
   `src/runtime/mylite_statement`.
@@ -350,7 +346,8 @@ only the core object model and transitional shared helpers listed here:
   builders into `mylite_information_schema`.
 - [x] Move information-schema SELECT passthrough preparation into
   `mylite_information_schema`.
-- [ ] Split schema lifecycle and table/index DDL plans and execution.
+- [ ] Continue splitting schema lifecycle and table/index DDL plans and
+  execution; `mylite_table_ddl.c` remains the largest runtime module.
 - [x] Start `src/runtime/mylite_schema.{h,c}` with schema option cleanup.
 - [x] Move schema option normalization into `mylite_schema`.
 - [x] Move schema AST copy helpers into `mylite_schema`.
@@ -390,7 +387,8 @@ only the core object model and transitional shared helpers listed here:
   companion module.
 - [x] Move ALTER TABLE warning generation into a focused table DDL warnings
   companion module.
-- [ ] Split DML plans and execution.
+- [ ] Continue splitting DML plans and execution; insert value resolution and
+  broad DML headers remain the next ownership risks.
 - [x] Start `src/runtime/mylite_dml.{h,c}` with DML plan and row cleanup.
 - [x] Move insert/replacement AST copy helpers into `mylite_dml`.
 - [x] Move update/delete AST copy helpers into `mylite_dml`.
@@ -473,7 +471,9 @@ only the core object model and transitional shared helpers listed here:
 - [x] Move UPDATE/DELETE statement execution wrappers into a focused DML
   statement module while keeping expression callbacks local.
 - [ ] Move remaining DML-specific diagnostics into `mylite_dml`.
-- [ ] Split SELECT, UNION, aggregate, and subquery planning/execution.
+- [ ] Continue splitting SELECT, UNION, aggregate, and subquery
+  planning/execution; the old `mylite.c` code is module-owned, but several
+  SELECT modules are still broad.
 - [x] Start `src/runtime/mylite_select.{h,c}` with SELECT plan cleanup.
 - [x] Move SELECT plan accessors and plan container mutation helpers into
   `mylite_select`.
@@ -522,22 +522,22 @@ only the core object model and transitional shared helpers listed here:
   finalized-row construction, and cleanup into a focused SELECT group module.
 - [x] Move aggregate state and count-distinct state into a focused
   `mylite_select_aggregate` module.
-- [ ] Move scalar SELECT planning/execution into `mylite_select` or a small
+- [x] Move scalar SELECT planning/execution into `mylite_select` or a small
   scalar-select module after metadata inference is split.
-- [ ] Move scalar aggregate evaluation into the scalar-select or aggregate
+- [x] Move scalar aggregate evaluation into the scalar-select or aggregate
   module chosen above.
 - [x] Move reusable prepared-statement AST clone/remap helpers out of
   `mylite.c`.
-- [ ] Move UNION operand collection and preparation into `mylite_select`.
+- [x] Move UNION operand collection and preparation into `mylite_select`.
 - [x] Move UNION execution, materialization, deduplication, global ordering,
   operand row copying, and warning aggregation into a focused SELECT UNION
   module.
-- [ ] Move subquery preparation/scanning/evaluation into `mylite_select` after
+- [x] Move subquery preparation/scanning/evaluation into `mylite_select` after
   scalar/table SELECT entry points are module-owned.
-- [ ] Move row-value comparison helpers into `mylite_select` or expression
-  helpers according to final users.
-- [ ] Move reusable field descriptor and metadata inference code into
-  `src/runtime/mylite_metadata`.
+- [x] Move row-value comparison helpers into the focused SELECT subquery
+  evaluation module.
+- [x] Move reusable field descriptor and metadata inference code into
+  focused expression descriptor and metadata modules.
 - [x] Move shared expression descriptor utility helpers into
   `src/runtime/mylite_expression_descriptor`.
 - [x] Move UNION field descriptor merge rules into
@@ -546,18 +546,22 @@ only the core object model and transitional shared helpers listed here:
   into `src/runtime/mylite_expression_descriptor`.
 - [x] Move shared expression charset validation helpers out of `mylite.c`.
 - [x] Move catalog column descriptor source helpers out of `mylite_runtime.h`.
-- [ ] Move reusable catalog-to-field-descriptor inference into `mylite_metadata`
+- [x] Move reusable catalog-to-field-descriptor inference into `mylite_metadata`
   after SELECT owns its table-column loading boundary.
-- [ ] Move field descriptor inference for literals into `mylite_metadata`.
-- [ ] Move field descriptor inference for identifiers into `mylite_metadata`.
-- [ ] Move field descriptor inference for unary/binary/ternary expressions into
-  `mylite_metadata`.
-- [ ] Move field descriptor inference for built-in functions into
-  `mylite_metadata` or function-family helpers.
+- [x] Move field descriptor inference for literals into focused expression
+  descriptor modules.
+- [x] Move field descriptor inference for identifiers into focused expression
+  descriptor modules.
+- [x] Move field descriptor inference for unary/binary/ternary expressions into
+  focused expression descriptor modules.
+- [x] Move field descriptor inference for built-in functions into focused
+  expression descriptor function-family helpers.
 - [x] Move pure SQL function-name classifiers into
   `src/runtime/mylite_function_names`.
-- [ ] Move aggregate metadata inference into `mylite_metadata`.
-- [ ] Move result metadata attachment for SELECT/UNION into `mylite_metadata`.
+- [x] Move aggregate metadata inference into focused expression descriptor
+  modules.
+- [x] Move result metadata attachment for SELECT/UNION into focused SELECT
+  metadata modules.
 - [x] Move reusable result metadata label lookup into `mylite_metadata`.
 - [ ] Move column type descriptor to SQLite affinity mapping into metadata or
   DDL according to final ownership.
@@ -567,13 +571,28 @@ only the core object model and transitional shared helpers listed here:
 - [ ] Move string/number conversion helpers used only by INSERT into
   `mylite_dml`.
 - [x] Move parse/translate status mapping into `mylite_statement`.
-- [ ] Move custom statement execution dispatch into `mylite_statement` after
+- [x] Move custom statement execution dispatch into `mylite_statement` after
   every statement family exposes an execution entry point.
-- [ ] Move parsed statement dispatch into `mylite_statement` after every
+- [x] Move parsed statement dispatch into `mylite_statement` after every
   statement family exposes a prepare entry point.
-- [ ] Delete stale prototype blocks from `mylite.c` as each region moves.
-- [ ] Keep `mylite.c` as a thin integration file only while extraction is in
-  progress; remove it when all statement families have homes.
+- [x] Delete stale prototype blocks from `mylite.c` as each region moves.
+- [x] Remove `mylite.c` when all statement families have homes.
+- [ ] Add a build guard that fails if `packages/libmylite/src/mylite.c` is
+  reintroduced or added back to the libmylite source list.
+- [ ] Split `mylite_table_ddl.c` into narrower create/drop/rename/truncate,
+  catalog-model, SQL-builder, validation, and statement-preparation modules.
+- [ ] Split `mylite_select_materialize.c` into base-table scan, joined-row
+  assembly, outer-join, and materialization-driver modules.
+- [ ] Split `mylite_dml_insert_value_resolve.c` into insert column-list,
+  positional/default, `INSERT ... SET`, and SQLite-bind modules.
+- [ ] Split `mylite_select_subquery_eval.c` into scalar subquery, quantified
+  subquery, row-value comparison, and diagnostics modules.
+- [ ] Shrink broad type headers after the implementation modules above have
+  narrower owners.
+- [ ] Keep `mylite_select_context.c` composition-only; split callback groups if
+  it starts accumulating SELECT behavior.
+- [ ] Keep `mylite_statement_prepare.c` a switchboard; move any new family
+  validation, cloning, or metadata inference into family modules.
 
 ## Rules
 

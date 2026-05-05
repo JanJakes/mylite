@@ -109,6 +109,7 @@ add_library(mylite STATIC
   src/runtime/mylite_select_distinct_validate.c
   src/runtime/mylite_select_eval.c
   src/runtime/mylite_select_from.c
+  src/runtime/mylite_select_from_using.c
   src/runtime/mylite_select_group.c
   src/runtime/mylite_select_group_bind.c
   src/runtime/mylite_select_group_validate.c

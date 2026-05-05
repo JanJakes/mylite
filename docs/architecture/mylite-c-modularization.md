@@ -620,6 +620,8 @@ into focused `*_types.h` headers.
   into a focused SELECT companion module.
 - [x] Split SELECT outer-join range rowset assembly into a focused SELECT
   companion module.
+- [x] Split SELECT JOIN `USING` request capture and resolution into a focused
+  FROM-clause companion module.
 - [x] Split insert column-reference qualifier and table-column lookup helpers
   into a focused DML companion module.
 - [x] Split INSERT value and column-reference AST copy helpers into a focused

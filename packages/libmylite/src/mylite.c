@@ -623,8 +623,6 @@ static bool select_expression_is_grouped(const struct mylite_select_plan *plan,
 static bool select_group_key_matches_column_output(const struct mylite_select_plan *plan,
                                                    const struct mylite_select_group_key *group_key,
                                                    size_t output_index);
-static bool ast_span_text_equal_ci(struct mylite_sql_source_span left,
-                                   struct mylite_sql_source_span right);
 static int append_select_item_outputs(mylite_db *database,
                                       const struct mylite_sql_ast_node *select_item,
                                       bool allow_expression_outputs,
@@ -5208,7 +5206,7 @@ static bool select_statement_has_visible_table_span(const struct mylite_sql_ast_
         if (visible_name == NULL) {
             return false;
         }
-        return ast_span_text_equal_ci(visible_name->span, name);
+        return mylite_source_span_equal_ci(visible_name->span, name);
     }
     for (const struct mylite_sql_ast_node *child = node->first_child; child != NULL;
          child = child->next_sibling) {
@@ -6493,7 +6491,7 @@ select_distinct_order_expression_matches_output(const struct mylite_select_plan 
             mylite_sql_ast_unwrap_parenthesized_expression(output->expression);
 
         if (output->kind == MYLITE_SELECT_OUTPUT_EXPRESSION && output_expression != NULL &&
-            ast_span_text_equal_ci(output_expression->span, unwrapped->span)) {
+            mylite_source_span_equal_ci(output_expression->span, unwrapped->span)) {
             return true;
         }
     }
@@ -6940,7 +6938,7 @@ static bool select_expression_is_grouped(const struct mylite_select_plan *plan,
 
         if (group_key->kind == MYLITE_SELECT_GROUP_KEY_EXPRESSION &&
             group_key->expression != NULL &&
-            ast_span_text_equal_ci(group_key->expression->span, expression->span)) {
+            mylite_source_span_equal_ci(group_key->expression->span, expression->span)) {
             return true;
         }
     }
@@ -6967,29 +6965,6 @@ static bool select_group_key_matches_column_output(const struct mylite_select_pl
         return false;
     }
     return group_column_index == output->column_index;
-}
-
-static bool ast_span_text_equal_ci(struct mylite_sql_source_span left,
-                                   struct mylite_sql_source_span right)
-{
-    if (left.length != right.length || left.text == NULL || right.text == NULL) {
-        return false;
-    }
-    for (size_t index = 0U; index < left.length; ++index) {
-        unsigned char left_byte = (unsigned char)left.text[index];
-        unsigned char right_byte = (unsigned char)right.text[index];
-
-        if (left_byte >= 'A' && left_byte <= 'Z') {
-            left_byte = (unsigned char)(left_byte - 'A' + 'a');
-        }
-        if (right_byte >= 'A' && right_byte <= 'Z') {
-            right_byte = (unsigned char)(right_byte - 'A' + 'a');
-        }
-        if (left_byte != right_byte) {
-            return false;
-        }
-    }
-    return true;
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)

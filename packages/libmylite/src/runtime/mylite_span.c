@@ -31,6 +31,29 @@ bool mylite_span_equal_ci(struct mylite_sql_source_span span, const char *text)
     return true;
 }
 
+bool mylite_source_span_equal_ci(struct mylite_sql_source_span left,
+                                 struct mylite_sql_source_span right)
+{
+    if (left.length != right.length || left.text == NULL || right.text == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < left.length; ++index) {
+        unsigned char left_byte = (unsigned char)left.text[index];
+        unsigned char right_byte = (unsigned char)right.text[index];
+
+        if (left_byte >= 'A' && left_byte <= 'Z') {
+            left_byte = (unsigned char)(left_byte - 'A' + 'a');
+        }
+        if (right_byte >= 'A' && right_byte <= 'Z') {
+            right_byte = (unsigned char)(right_byte - 'A' + 'a');
+        }
+        if (left_byte != right_byte) {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool mylite_ascii_case_equal(const char *left, const char *right)
 {
     size_t index = 0U;

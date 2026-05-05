@@ -7,6 +7,8 @@
 #include <stddef.h>
 
 bool mylite_span_equal_ci(struct mylite_sql_source_span span, const char *text);
+bool mylite_source_span_equal_ci(struct mylite_sql_source_span left,
+                                 struct mylite_sql_source_span right);
 bool mylite_ascii_case_equal(const char *left, const char *right);
 void mylite_uppercase_ascii_text(char *text);
 char *mylite_copy_schema_text_span(const struct mylite_sql_ast_node *node);

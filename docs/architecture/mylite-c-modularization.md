@@ -744,6 +744,8 @@ into focused `*_types.h` headers.
   alter diagnostics module.
 - [x] Split ALTER TABLE column action mutation into a focused table DDL alter
   column module.
+- [x] Split ALTER TABLE column definition-to-model conversion into a focused
+  table DDL alter column definition module.
 - [x] Split ALTER TABLE AST-to-plan copying into a focused table DDL alter copy
   module.
 - [x] Split ALTER TABLE added-index validation and primary-key diagnostics into

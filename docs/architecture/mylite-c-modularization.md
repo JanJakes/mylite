@@ -588,6 +588,8 @@ into focused `*_types.h` headers.
   reintroduced or added back to the libmylite source list.
 - [ ] Split `mylite_table_ddl.c` into narrower create/drop/rename/truncate,
   catalog-model, SQL-builder, validation, and statement-preparation modules.
+- [x] Split SELECT row and join-condition matching into a focused SELECT
+  companion module.
 - [ ] Split `mylite_select_materialize.c` into base-table scan, joined-row
   assembly, outer-join, and materialization-driver modules.
 - [ ] Split `mylite_dml_insert_value_resolve.c` into insert column-list,

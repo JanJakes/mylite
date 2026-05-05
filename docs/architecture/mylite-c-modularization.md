@@ -505,6 +505,8 @@ into focused `*_types.h` headers.
 - [ ] Move SELECT AST copy/bind helpers into `mylite_select`.
 - [x] Move table-column catalog loading behind a focused `mylite_select_catalog`
   helper.
+- [x] Split SELECT catalog column descriptor reconstruction into a focused
+  catalog descriptor module.
 - [ ] Move table target resolution and remaining column loading behind catalog/metadata
   helper APIs.
 - [x] Move wildcard expansion and wildcard output-column planning into a

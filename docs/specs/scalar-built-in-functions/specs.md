@@ -69,7 +69,7 @@ In scope for the initial implementation:
   - `DATEDIFF`
   - `DATE_ADD`, `ADDDATE`
   - `DATE_SUB`, `SUBDATE`
-  - `TIMESTAMPADD`, `TIMESTAMPDIFF`
+  - `TIMESTAMP`, `TIMESTAMPADD`, `TIMESTAMPDIFF`
   - `TO_DAYS`, `TO_SECONDS`, `FROM_DAYS`
   - `TIME`, `TIME_TO_SEC`, `SEC_TO_TIME`, `TIMEDIFF`, `LAST_DAY`
   - `UNIX_TIMESTAMP`, `FROM_UNIXTIME`, `DATE_FORMAT`, `TIME_FORMAT`
@@ -189,18 +189,19 @@ by common scalar expressions:
   `YEAR`, `MONTH`, `DAY`, `DAYOFMONTH`, `DAYOFWEEK`, `DAYOFYEAR`, `QUARTER`,
   `HOUR`, `MINUTE`, `SECOND`, `MICROSECOND`,
   `EXTRACT` for the simple `YEAR`, `MONTH`, `DAY`, `HOUR`, `MINUTE`, and
-  `SECOND` units, `TIMESTAMPADD` for the simple `DAY`, `WEEK`, `MONTH`,
-  `YEAR`, `HOUR`, `MINUTE`, and `SECOND` units, and `TIMESTAMPDIFF` for the
-  simple `DAY`, `WEEK`, `MONTH`, `YEAR`, `HOUR`, `MINUTE`, and `SECOND` units,
-  plus `TO_DAYS`, `TO_SECONDS`, `FROM_DAYS`, `TIME`, `TIME_TO_SEC`,
-  `SEC_TO_TIME`, `TIMEDIFF`, `LAST_DAY`, `UNIX_TIMESTAMP`, `FROM_UNIXTIME`,
-  `DATE_FORMAT`, and `TIME_FORMAT`;
+  `SECOND` units, `TIMESTAMP`, `TIMESTAMPADD` for the simple `DAY`, `WEEK`,
+  `MONTH`, `YEAR`, `HOUR`, `MINUTE`, and `SECOND` units, and `TIMESTAMPDIFF`
+  for the simple `DAY`, `WEEK`, `MONTH`, `YEAR`, `HOUR`, `MINUTE`, and
+  `SECOND` units, plus `TO_DAYS`, `TO_SECONDS`, `FROM_DAYS`, `TIME`,
+  `TIME_TO_SEC`, `SEC_TO_TIME`, `TIMEDIFF`, `LAST_DAY`, `UNIX_TIMESTAMP`,
+  `FROM_UNIXTIME`, `DATE_FORMAT`, and `TIME_FORMAT`;
   see
   `docs/specs/current-temporal-functions/specs.md` and
   `docs/specs/utc-temporal-functions/specs.md` and
   `docs/specs/date-and-datediff-functions/specs.md` and
   `docs/specs/date-add-sub-functions/specs.md` and
   `docs/specs/temporal-part-functions/specs.md` and
+  `docs/specs/timestamp-function/specs.md` and
   `docs/specs/timestampadd-function/specs.md` and
   `docs/specs/timestampdiff-function/specs.md` and
   `docs/specs/to-days-function/specs.md` and
@@ -268,6 +269,7 @@ TIME extraction/coercion over typed temporal and untyped inputs,
 TIME_TO_SEC conversion to signed whole seconds,
 SEC_TO_TIME conversion from seconds to TIME values,
 TIMEDIFF subtraction over typed and untyped time/datetime values,
+TIMESTAMP datetime conversion and date-plus-time addition,
 LAST_DAY month-end conversion,
 UNIX_TIMESTAMP timestamp conversion,
 FROM_UNIXTIME epoch-to-datetime conversion and formatted output,
@@ -1131,7 +1133,7 @@ and `LIMIT 0` queries for:
 - conditional/comparison functions: `IF`, `IFNULL`, `COALESCE`, `GREATEST`,
   `LEAST`, `STRCMP`
 - temporal functions: `NOW(6)`, `CURDATE`, `DATEDIFF`, `DATE_ADD`,
-  `LAST_DAY`, `TIME`, `TIME_TO_SEC`, `SEC_TO_TIME`, `TIMEDIFF`,
+  `LAST_DAY`, `TIME`, `TIME_TO_SEC`, `SEC_TO_TIME`, `TIMEDIFF`, `TIMESTAMP`,
   `FROM_UNIXTIME`, `DATE_FORMAT`, `TIME_FORMAT`, `UTC_TIMESTAMP(6)`,
   `UTC_DATE`, `UTC_TIME`
 - information functions: `DATABASE`, `SCHEMA`, `VERSION`, `LAST_INSERT_ID`,

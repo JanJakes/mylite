@@ -78,6 +78,7 @@ add_library(mylite STATIC
   src/runtime/mylite_expression_descriptor_numeric.c
   src/runtime/mylite_expression_descriptor_scalar.c
   src/runtime/mylite_expression_descriptor_string.c
+  src/runtime/mylite_expression_descriptor_subquery.c
   src/runtime/mylite_expression_descriptor_temporal.c
   src/runtime/mylite_expression_validation.c
   src/runtime/mylite_field_descriptor.c

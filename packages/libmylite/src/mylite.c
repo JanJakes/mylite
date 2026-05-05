@@ -16,6 +16,7 @@
 #include "runtime/mylite_expression_descriptor.h"
 #include "runtime/mylite_expression_descriptor_numeric.h"
 #include "runtime/mylite_expression_descriptor_scalar.h"
+#include "runtime/mylite_expression_descriptor_temporal.h"
 #include "runtime/mylite_expression_validation.h"
 #include "runtime/mylite_field_descriptor.h"
 #include "runtime/mylite_function_names.h"
@@ -175,23 +176,11 @@ static bool function_result_nullable(bool arguments_nullable,
                                      const struct mylite_expression_value *value);
 static uint64_t text_function_result_length(mylite_db *database,
                                             const struct mylite_expression_value *value);
-static bool
-infer_current_temporal_function_descriptor(const struct mylite_sql_ast_node *expression,
-                                           struct mylite_field_descriptor *out_descriptor);
 static int infer_temporal_function_descriptor(mylite_db *database,
                                               const struct mylite_select_plan *plan,
                                               const struct mylite_sql_ast_node *expression,
                                               const struct mylite_expression_value *value,
                                               struct mylite_field_descriptor *out_descriptor);
-static struct mylite_field_descriptor current_datetime_function_descriptor(unsigned int fsp);
-static struct mylite_field_descriptor current_date_function_descriptor(void);
-static struct mylite_field_descriptor current_time_function_descriptor(unsigned int fsp);
-static bool
-infer_temporal_scalar_function_descriptor(const struct mylite_sql_ast_node *name,
-                                          bool arguments_nullable,
-                                          struct mylite_field_descriptor *out_descriptor);
-static bool infer_temporal_part_function_descriptor(const struct mylite_sql_ast_node *expression,
-                                                    struct mylite_field_descriptor *out_descriptor);
 static int infer_time_function_descriptor(mylite_db *database,
                                           const struct mylite_select_plan *plan,
                                           const struct mylite_sql_ast_node *expression,
@@ -212,7 +201,6 @@ static int infer_date_interval_function_descriptor(mylite_db *database,
 static struct mylite_field_descriptor date_interval_string_descriptor(mylite_db *database);
 static struct mylite_field_descriptor date_interval_datetime_descriptor(unsigned int decimals);
 
-static bool interval_unit_has_time_part(enum mylite_sql_ast_interval_unit unit);
 // NOLINTNEXTLINE(misc-no-recursion)
 static int infer_make_set_function_descriptor(mylite_db *database,
                                               const struct mylite_select_plan *plan,
@@ -426,7 +414,6 @@ static void
 truncate_decimal_descriptor_for_constant_scale(struct mylite_field_descriptor *descriptor,
                                                const struct mylite_field_descriptor *source,
                                                int scale);
-static bool extract_interval_unit_supported(enum mylite_sql_ast_interval_unit unit);
 static int build_select_outputs(mylite_db *database, const struct mylite_sql_ast_node *select_list,
                                 bool allow_expression_outputs, struct mylite_select_plan *plan);
 static int prepare_table_select_custom_statement(mylite_db *database,
@@ -1773,7 +1760,7 @@ static int infer_expression_descriptor(mylite_db *database, const struct mylite_
         if (node->has_column_precision) {
             fsp = (unsigned int)node->column_precision;
         }
-        *out_descriptor = current_datetime_function_descriptor(fsp);
+        *out_descriptor = mylite_expression_descriptor_current_datetime_function(fsp);
         return MYLITE_OK;
     }
     case MYLITE_SQL_AST_SUBQUERY_EXPRESSION:
@@ -2373,10 +2360,10 @@ static int infer_temporal_function_descriptor(mylite_db *database,
                                               const struct mylite_expression_value *value,
                                               struct mylite_field_descriptor *out_descriptor)
 {
-    if (infer_current_temporal_function_descriptor(expression, out_descriptor)) {
+    if (mylite_expression_descriptor_infer_current_temporal_function(expression, out_descriptor)) {
         return MYLITE_OK;
     }
-    if (infer_temporal_part_function_descriptor(expression, out_descriptor)) {
+    if (mylite_expression_descriptor_infer_temporal_part_function(expression, out_descriptor)) {
         return MYLITE_OK;
     }
     int status = infer_time_function_descriptor(database, plan, expression, value, out_descriptor);
@@ -2405,7 +2392,8 @@ static bool infer_common_scalar_function_descriptor(mylite_db *database,
     if (mylite_expression_descriptor_infer_math_function(name, result_nullable, out_descriptor)) {
         return true;
     }
-    if (infer_temporal_scalar_function_descriptor(name, arguments_nullable, out_descriptor)) {
+    if (mylite_expression_descriptor_infer_temporal_scalar_function(name, arguments_nullable,
+                                                                    out_descriptor)) {
         return true;
     }
     return infer_base_conversion_function_descriptor(database, name, out_descriptor);
@@ -2893,177 +2881,6 @@ static uint64_t text_function_result_length(mylite_db *database,
     return mylite_mysql_text_length;
 }
 
-static bool
-infer_current_temporal_function_descriptor(const struct mylite_sql_ast_node *expression,
-                                           struct mylite_field_descriptor *out_descriptor)
-{
-    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
-    unsigned int fsp = 0U;
-
-    if (!mylite_temporal_current_function_fsp(expression, &fsp)) {
-        return false;
-    }
-    if (mylite_temporal_function_name_is_current_datetime(name)) {
-        *out_descriptor = current_datetime_function_descriptor(fsp);
-        return true;
-    }
-    if (mylite_temporal_function_name_is_current_date(name)) {
-        *out_descriptor = current_date_function_descriptor();
-        return true;
-    }
-    if (mylite_temporal_function_name_is_current_time(name)) {
-        *out_descriptor = current_time_function_descriptor(fsp);
-        return true;
-    }
-    return false;
-}
-
-static struct mylite_field_descriptor current_datetime_function_descriptor(unsigned int fsp)
-{
-    struct mylite_field_descriptor descriptor = {
-        .type = MYLITE_FIELD_TYPE_DATETIME,
-        .flags = MYLITE_FIELD_FLAG_BINARY,
-        .length = fsp == 0U ? mylite_mysql_datetime_display_length
-                            : mylite_mysql_datetime_fraction_display_base + fsp,
-        .decimals = fsp,
-        .charset_id = mylite_mysql_binary_charset_id,
-        .nullable = false,
-    };
-
-    mylite_field_descriptor_set_nullable(&descriptor, false);
-    return descriptor;
-}
-
-static struct mylite_field_descriptor current_date_function_descriptor(void)
-{
-    struct mylite_field_descriptor descriptor = {
-        .type = MYLITE_FIELD_TYPE_DATE,
-        .flags = MYLITE_FIELD_FLAG_BINARY,
-        .length = mylite_mysql_date_display_length,
-        .charset_id = mylite_mysql_binary_charset_id,
-        .nullable = false,
-    };
-
-    mylite_field_descriptor_set_nullable(&descriptor, false);
-    return descriptor;
-}
-
-static struct mylite_field_descriptor current_time_function_descriptor(unsigned int fsp)
-{
-    struct mylite_field_descriptor descriptor = {
-        .type = MYLITE_FIELD_TYPE_TIME,
-        .flags = MYLITE_FIELD_FLAG_BINARY,
-        .length = fsp == 0U ? mylite_mysql_current_time_display_length
-                            : mylite_mysql_current_time_fraction_display_base + fsp,
-        .decimals = fsp,
-        .charset_id = mylite_mysql_binary_charset_id,
-        .nullable = false,
-    };
-
-    mylite_field_descriptor_set_nullable(&descriptor, false);
-    return descriptor;
-}
-
-static bool
-infer_temporal_scalar_function_descriptor(const struct mylite_sql_ast_node *name,
-                                          bool arguments_nullable,
-                                          struct mylite_field_descriptor *out_descriptor)
-{
-    if (mylite_function_name_is_date_extraction(name)) {
-        struct mylite_field_descriptor descriptor = {
-            .type = MYLITE_FIELD_TYPE_DATE,
-            .flags = MYLITE_FIELD_FLAG_BINARY,
-            .length = mylite_mysql_date_display_length,
-            .charset_id = mylite_mysql_binary_charset_id,
-            .nullable = true,
-        };
-
-        mylite_field_descriptor_set_nullable(&descriptor, true);
-        *out_descriptor = descriptor;
-        return true;
-    }
-    if (mylite_function_name_is_datediff(name)) {
-        *out_descriptor = mylite_expression_descriptor_signed_longlong(true);
-        out_descriptor->length = mylite_mysql_datediff_function_display_length;
-        return true;
-    }
-    if (mylite_function_name_is_timestampdiff(name)) {
-        *out_descriptor = mylite_expression_descriptor_signed_longlong(true);
-        out_descriptor->length = mylite_mysql_signed_longlong_display_length;
-        return true;
-    }
-    if (mylite_function_name_is_to_days(name)) {
-        *out_descriptor = mylite_expression_descriptor_signed_longlong(true);
-        out_descriptor->length = mylite_mysql_to_days_function_display_length;
-        return true;
-    }
-    if (mylite_function_name_is_to_seconds(name)) {
-        *out_descriptor = mylite_expression_descriptor_signed_longlong(true);
-        out_descriptor->length = mylite_mysql_to_seconds_function_display_length;
-        return true;
-    }
-    if (mylite_function_name_is_from_days(name)) {
-        struct mylite_field_descriptor descriptor = {
-            .type = MYLITE_FIELD_TYPE_DATE,
-            .flags = MYLITE_FIELD_FLAG_BINARY,
-            .length = mylite_mysql_date_display_length,
-            .charset_id = mylite_mysql_binary_charset_id,
-            .nullable = arguments_nullable,
-        };
-
-        mylite_field_descriptor_set_nullable(&descriptor, arguments_nullable);
-        *out_descriptor = descriptor;
-        return true;
-    }
-    if (mylite_function_name_is_year_part(name)) {
-        struct mylite_field_descriptor descriptor = {
-            .type = MYLITE_FIELD_TYPE_YEAR,
-            .flags = MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
-            .length = mylite_mysql_year_display_length,
-            .charset_id = mylite_mysql_binary_charset_id,
-            .nullable = true,
-        };
-
-        mylite_field_descriptor_set_nullable(&descriptor, true);
-        *out_descriptor = descriptor;
-        return true;
-    }
-    if (mylite_function_name_is_month_part(name) || mylite_function_name_is_day_part(name) ||
-        mylite_function_name_is_minute_part(name) || mylite_function_name_is_second_part(name)) {
-        *out_descriptor = mylite_expression_descriptor_signed_longlong(true);
-        out_descriptor->length = mylite_mysql_temporal_part_short_display_length;
-        return true;
-    }
-    if (mylite_function_name_is_hour_part(name)) {
-        *out_descriptor = mylite_expression_descriptor_signed_longlong(true);
-        out_descriptor->length = mylite_mysql_temporal_part_hour_display_length;
-        return true;
-    }
-    return false;
-}
-
-static bool infer_temporal_part_function_descriptor(const struct mylite_sql_ast_node *expression,
-                                                    struct mylite_field_descriptor *out_descriptor)
-{
-    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
-
-    if (mylite_function_name_is_extract(name)) {
-        if (!expression->interval_spec ||
-            !extract_interval_unit_supported(expression->interval_unit)) {
-            return false;
-        }
-        *out_descriptor = mylite_expression_descriptor_signed_longlong(true);
-        out_descriptor->length = expression->interval_unit == MYLITE_SQL_AST_INTERVAL_UNIT_YEAR
-                                     ? mylite_mysql_extract_year_display_length
-                                     : mylite_mysql_temporal_part_short_display_length;
-        if (expression->interval_unit == MYLITE_SQL_AST_INTERVAL_UNIT_HOUR) {
-            out_descriptor->length = mylite_mysql_temporal_part_hour_display_length;
-        }
-        return true;
-    }
-    return false;
-}
-
 // NOLINTNEXTLINE(misc-no-recursion)
 static int infer_time_function_descriptor(mylite_db *database,
                                           const struct mylite_select_plan *plan,
@@ -3209,7 +3026,7 @@ static int infer_date_interval_function_descriptor(mylite_db *database,
         return status;
     }
     if (temporal_descriptor.type == MYLITE_FIELD_TYPE_DATE) {
-        if (interval_unit_has_time_part(expression->interval_unit)) {
+        if (mylite_expression_descriptor_interval_unit_has_time_part(expression->interval_unit)) {
             *out_descriptor = date_interval_datetime_descriptor(0U);
         } else {
             *out_descriptor = (struct mylite_field_descriptor){
@@ -4757,34 +4574,6 @@ aggregate_greatest_least_numeric_descriptor(const struct mylite_field_descriptor
     aggregate->charset_id = mylite_mysql_binary_charset_id;
     aggregate->length = mylite_expression_descriptor_max_u64(aggregate->length, argument->length);
     aggregate->decimals = 0U;
-}
-
-static bool extract_interval_unit_supported(enum mylite_sql_ast_interval_unit unit)
-{
-    switch (unit) {
-    case MYLITE_SQL_AST_INTERVAL_UNIT_YEAR:
-    case MYLITE_SQL_AST_INTERVAL_UNIT_MONTH:
-    case MYLITE_SQL_AST_INTERVAL_UNIT_DAY:
-    case MYLITE_SQL_AST_INTERVAL_UNIT_HOUR:
-    case MYLITE_SQL_AST_INTERVAL_UNIT_MINUTE:
-    case MYLITE_SQL_AST_INTERVAL_UNIT_SECOND:
-        return true;
-    case MYLITE_SQL_AST_INTERVAL_UNIT_NONE:
-    case MYLITE_SQL_AST_INTERVAL_UNIT_WEEK:
-        return false;
-    }
-    return false;
-}
-
-static bool interval_unit_has_time_part(enum mylite_sql_ast_interval_unit unit)
-{
-    if (unit == MYLITE_SQL_AST_INTERVAL_UNIT_HOUR) {
-        return true;
-    }
-    if (unit == MYLITE_SQL_AST_INTERVAL_UNIT_MINUTE) {
-        return true;
-    }
-    return unit == MYLITE_SQL_AST_INTERVAL_UNIT_SECOND;
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)

@@ -594,6 +594,8 @@ into focused `*_types.h` headers.
   catalog-model, SQL-builder, validation, and statement-preparation modules.
 - [x] Split DROP TABLE execution, validation, catalog cleanup, and physical
   table removal into a focused table DDL module.
+- [x] Split TRUNCATE TABLE validation, row deletion, and auto-increment reset
+  into a focused table DDL module.
 - [x] Split SELECT row and join-condition matching into a focused SELECT
   companion module.
 - [x] Split SELECT joined-row allocation, copying, and null-extension helpers

@@ -166,6 +166,8 @@ add_library(mylite STATIC
   src/runtime/mylite_show_create.c
   src/runtime/mylite_show_create_common.c
   src/runtime/mylite_show_create_table.c
+  src/runtime/mylite_show_create_table_body.c
+  src/runtime/mylite_show_create_table_columns.c
   src/runtime/mylite_show_create_table_info.c
   src/runtime/mylite_show_create_table_options.c
   src/runtime/mylite_show_create_table_target.c

@@ -110,6 +110,7 @@ add_library(mylite STATIC
   src/runtime/mylite_select.c
   src/runtime/mylite_select_aggregate.c
   src/runtime/mylite_select_aggregate_bind.c
+  src/runtime/mylite_select_aggregate_count_distinct_bind.c
   src/runtime/mylite_select_aggregate_materialize.c
   src/runtime/mylite_select_catalog.c
   src/runtime/mylite_select_catalog_descriptor.c

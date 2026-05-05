@@ -408,8 +408,6 @@ static void
 truncate_decimal_descriptor_for_constant_scale(struct mylite_field_descriptor *descriptor,
                                                const struct mylite_field_descriptor *source,
                                                int scale);
-static int build_select_outputs(mylite_db *database, const struct mylite_sql_ast_node *select_list,
-                                bool allow_expression_outputs, struct mylite_select_plan *plan);
 static int prepare_table_select_custom_statement(mylite_db *database,
                                                  const struct mylite_sql_ast_node *where_clause,
                                                  const char *sql, size_t sql_length,
@@ -551,18 +549,6 @@ static int
 bind_select_order_quantified_subquery_expression(mylite_db *database,
                                                  const struct mylite_sql_ast_node *expression,
                                                  struct mylite_select_plan *plan);
-static int append_select_item_outputs(mylite_db *database,
-                                      const struct mylite_sql_ast_node *select_item,
-                                      bool allow_expression_outputs,
-                                      struct mylite_select_plan *plan);
-static int append_select_column_output(mylite_db *database,
-                                       const struct mylite_sql_ast_node *expression,
-                                       const struct mylite_sql_ast_node *alias,
-                                       struct mylite_select_plan *plan);
-static int append_select_expression_output(mylite_db *database,
-                                           const struct mylite_sql_ast_node *expression,
-                                           const struct mylite_sql_ast_node *alias,
-                                           struct mylite_select_plan *plan);
 static int collect_select_aggregate_bindings(mylite_db *database,
                                              const struct mylite_sql_ast_node *expression,
                                              struct mylite_select_plan *plan);
@@ -572,7 +558,6 @@ static int bind_select_count_distinct_arguments(mylite_db *database,
 static int infer_count_distinct_argument_descriptors(
     mylite_db *database, const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *arguments, struct mylite_select_aggregate_binding *binding);
-static char *copy_select_final_identifier_label(const struct mylite_sql_ast_node *identifier);
 static int set_select_invalid_group_function_error(mylite_db *database);
 static int set_select_duplicate_mode_error(mylite_db *database);
 static int set_select_unsupported_projection_error(mylite_db *database);
@@ -703,6 +688,11 @@ static const struct mylite_select_subquery_eval_callbacks select_subquery_eval_c
 
 static const struct mylite_select_metadata_callbacks select_metadata_callbacks = {
     .infer_expression_descriptor = infer_select_expression_descriptor,
+};
+
+static const struct mylite_select_projection_callbacks select_projection_callbacks = {
+    .bind_expression = bind_select_projection_expression,
+    .set_unsupported_projection_error = set_select_unsupported_projection_error,
 };
 
 static const struct mylite_expression_collation_callbacks expression_collation_callbacks = {
@@ -1450,7 +1440,8 @@ static int prepare_table_select_statement(mylite_db *database,
         status = bind_select_join_predicates(database, &plan);
     }
     if (status == MYLITE_OK) {
-        status = build_select_outputs(database, select_list, true, &plan);
+        status = mylite_select_build_outputs(database, select_list, true, &plan,
+                                             &select_projection_callbacks);
     }
     if (status == MYLITE_OK && mylite_select_plan_table_count(&plan) > 1U &&
         (group_by_clause != NULL || having_clause != NULL)) {
@@ -4361,28 +4352,6 @@ aggregate_greatest_least_numeric_descriptor(const struct mylite_field_descriptor
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int build_select_outputs(mylite_db *database, const struct mylite_sql_ast_node *select_list,
-                                bool allow_expression_outputs, struct mylite_select_plan *plan)
-{
-    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
-        return MYLITE_UNSUPPORTED;
-    }
-
-    for (const struct mylite_sql_ast_node *item = select_list->first_child; item != NULL;
-         item = item->next_sibling) {
-        int status = append_select_item_outputs(database, item, allow_expression_outputs, plan);
-
-        if (status != MYLITE_OK) {
-            return status;
-        }
-    }
-    if (plan->output_count == 0U) {
-        return set_select_unsupported_projection_error(database);
-    }
-    return MYLITE_OK;
-}
-
-// NOLINTNEXTLINE(misc-no-recursion)
 static int prepare_table_select_custom_statement(mylite_db *database,
                                                  const struct mylite_sql_ast_node *where_clause,
                                                  const char *sql, size_t sql_length,
@@ -6132,113 +6101,6 @@ static int bind_select_order_quantified_subquery_expression( // NOLINT(misc-no-r
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int append_select_item_outputs(mylite_db *database,
-                                      const struct mylite_sql_ast_node *select_item,
-                                      bool allow_expression_outputs,
-                                      struct mylite_select_plan *plan)
-{
-    const struct mylite_sql_ast_node *expression = mylite_ast_child_at(select_item, 0U);
-    const struct mylite_sql_ast_node *alias = mylite_ast_child_at(select_item, 1U);
-
-    if (select_item == NULL || select_item->kind != MYLITE_SQL_AST_SELECT_ITEM ||
-        expression == NULL) {
-        return MYLITE_UNSUPPORTED;
-    }
-    if (expression->kind == MYLITE_SQL_AST_WILDCARD) {
-        if (alias != NULL) {
-            return set_select_unsupported_projection_error(database);
-        }
-        return mylite_select_append_wildcard_outputs(database, expression, plan);
-    }
-    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
-        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
-        return append_select_column_output(database, expression, alias, plan);
-    }
-    if (allow_expression_outputs) {
-        return append_select_expression_output(database, expression, alias, plan);
-    }
-    return set_select_unsupported_projection_error(database);
-}
-
-static int append_select_column_output(mylite_db *database,
-                                       const struct mylite_sql_ast_node *expression,
-                                       const struct mylite_sql_ast_node *alias,
-                                       struct mylite_select_plan *plan)
-{
-    size_t column_index = mylite_select_plan_column_count(plan);
-    char *label = NULL;
-    int status = mylite_select_resolve_plan_column_reference(database, plan, expression,
-                                                             "field list", &column_index);
-
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    if (column_index == mylite_select_plan_column_count(plan)) {
-        return MYLITE_UNSUPPORTED;
-    }
-
-    label = alias == NULL ? copy_select_final_identifier_label(expression)
-                          : mylite_select_copy_alias(alias);
-    if (label == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    status = mylite_select_plan_add_output_column(plan, &(const struct mylite_select_output_column){
-                                                            .kind = MYLITE_SELECT_OUTPUT_COLUMN,
-                                                            .column_index = column_index,
-                                                            .label = label,
-                                                        });
-    if (status != MYLITE_OK) {
-        free(label);
-        if (status == MYLITE_NOMEM) {
-            (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        }
-        return status;
-    }
-    return MYLITE_OK;
-}
-
-// NOLINTNEXTLINE(misc-no-recursion)
-static int append_select_expression_output(mylite_db *database,
-                                           const struct mylite_sql_ast_node *expression,
-                                           const struct mylite_sql_ast_node *alias,
-                                           struct mylite_select_plan *plan)
-{
-    char *label = NULL;
-    int status = MYLITE_OK;
-
-    if (expression == NULL || expression->kind == MYLITE_SQL_AST_WILDCARD) {
-        return set_select_unsupported_projection_error(database);
-    }
-    status = bind_select_projection_expression(database, expression, plan);
-    if (status != MYLITE_OK) {
-        return status;
-    }
-
-    label = alias == NULL ? mylite_copy_span_text(expression->span.text, expression->span.length)
-                          : mylite_select_copy_alias(alias);
-    if (label == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    status = mylite_select_plan_add_output_column(plan, &(const struct mylite_select_output_column){
-                                                            .kind = MYLITE_SELECT_OUTPUT_EXPRESSION,
-                                                            .expression = expression,
-                                                            .label = label,
-                                                        });
-    if (status != MYLITE_OK) {
-        free(label);
-        if (status == MYLITE_NOMEM) {
-            (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        }
-        return status;
-    }
-    return MYLITE_OK;
-}
-
-// NOLINTNEXTLINE(misc-no-recursion)
 static int collect_select_aggregate_bindings(mylite_db *database,
                                              const struct mylite_sql_ast_node *expression,
                                              struct mylite_select_plan *plan)
@@ -6285,19 +6147,6 @@ static int collect_select_aggregate_bindings(mylite_db *database,
         }
     }
     return MYLITE_OK;
-}
-
-static char *copy_select_final_identifier_label(const struct mylite_sql_ast_node *identifier)
-{
-    const struct mylite_sql_ast_node *current = identifier;
-
-    while (current != NULL && current->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
-        current = mylite_ast_child_at(current, 1U);
-    }
-    if (current == NULL || current->kind != MYLITE_SQL_AST_IDENTIFIER) {
-        return NULL;
-    }
-    return mylite_copy_identifier_span(current);
 }
 
 static int set_select_invalid_group_function_error(mylite_db *database)

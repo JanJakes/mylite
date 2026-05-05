@@ -2,18 +2,17 @@
 
 #include "mylite_catalog.h"
 #include "mylite_diagnostics.h"
-#include "mylite_error_codes.h"
 #include "mylite_span.h"
 #include "mylite_table_ddl_alter.h"
 #include "mylite_table_ddl_alter_index.h"
 #include "mylite_table_ddl_alter_model.h"
 #include "mylite_table_ddl_index_catalog.h"
+#include "mylite_table_ddl_index_warnings.h"
 #include "sqlite3.h"
 
 #include <mylite/mylite.h>
 
 #include <stdbool.h>
-#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -47,17 +46,6 @@ static int apply_create_index_to_model(mylite_db *database, struct mylite_index_
                                        const struct mylite_alter_table_index **out_index);
 static int apply_drop_index_to_model(mylite_db *database, struct mylite_index_ddl_plan *plan,
                                      struct mylite_alter_table_model *model);
-static int append_create_index_warnings(mylite_db *database,
-                                        const struct mylite_alter_table_model *model,
-                                        const struct mylite_create_table_index *index);
-static int append_index_hash_warning(mylite_db *database);
-static int append_index_duplicate_warning(mylite_db *database, const char *index_name);
-static int maybe_append_duplicate_index_warning(mylite_db *database,
-                                                const struct mylite_alter_table_model *model,
-                                                const struct mylite_create_table_index *index);
-static bool
-alter_table_index_matches_create_index(const struct mylite_alter_table_index *table_index,
-                                       const struct mylite_create_table_index *create_index);
 
 int mylite_table_ddl_execute_create_index_statement(mylite_db *database,
                                                     const char *selected_schema,
@@ -82,7 +70,7 @@ int mylite_table_ddl_execute_create_index_statement(mylite_db *database,
         status = validate_create_unique_index_values(database, &model, &plan->index);
     }
     if (status == MYLITE_OK) {
-        status = append_create_index_warnings(database, &model, &plan->index);
+        status = mylite_table_ddl_append_create_index_warnings(database, &model, &plan->index);
     }
     if (status == MYLITE_OK) {
         status = apply_create_index_to_model(database, plan, &model, &created_index);
@@ -409,86 +397,4 @@ static int apply_drop_index_to_model(mylite_db *database, struct mylite_index_dd
     };
 
     return mylite_table_ddl_apply_alter_table_index_action(database, &action, model, NULL);
-}
-
-static int append_create_index_warnings(mylite_db *database,
-                                        const struct mylite_alter_table_model *model,
-                                        const struct mylite_create_table_index *index)
-{
-    int status = MYLITE_OK;
-
-    if (index->algorithm == MYLITE_SQL_AST_INDEX_ALGORITHM_HASH) {
-        status = append_index_hash_warning(database);
-    }
-    if (status == MYLITE_OK) {
-        status = maybe_append_duplicate_index_warning(database, model, index);
-    }
-    return status;
-}
-
-static int append_index_hash_warning(mylite_db *database)
-{
-    return mylite_diagnostics_append_warning(
-        database, MYLITE_MYSQL_ER_WARN_USING_OTHER_HANDLER,
-        "This storage engine does not support HASH indexes; using BTREE instead");
-}
-
-static int append_index_duplicate_warning(mylite_db *database, const char *index_name)
-{
-    char *message = sqlite3_mprintf(
-        "Duplicate index '%q' defined on the table. This is deprecated and will be disallowed in "
-        "a future release.",
-        index_name);
-    int status = MYLITE_OK;
-
-    if (message == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    status = mylite_diagnostics_append_warning(database, MYLITE_MYSQL_ER_DUP_INDEX, message);
-    sqlite3_free(message);
-    return status;
-}
-
-static int maybe_append_duplicate_index_warning(mylite_db *database,
-                                                const struct mylite_alter_table_model *model,
-                                                const struct mylite_create_table_index *index)
-{
-    for (size_t table_index = 0U; table_index < model->index_count; ++table_index) {
-        if (alter_table_index_matches_create_index(&model->indexes[table_index], index)) {
-            return append_index_duplicate_warning(database, index->name);
-        }
-    }
-    return MYLITE_OK;
-}
-
-static bool
-alter_table_index_matches_create_index(const struct mylite_alter_table_index *table_index,
-                                       const struct mylite_create_table_index *create_index)
-{
-    int expected_non_unique = 1;
-
-    if (create_index->is_unique) {
-        expected_non_unique = 0;
-    }
-    if (table_index->non_unique != expected_non_unique ||
-        table_index->part_count != create_index->part_count ||
-        !mylite_ascii_case_equal(table_index->index_type, "BTREE")) {
-        return false;
-    }
-
-    for (size_t part = 0U; part < create_index->part_count; ++part) {
-        const struct mylite_alter_table_index_part *table_part = &table_index->parts[part];
-        const struct mylite_create_table_key_part *create_part = &create_index->parts[part];
-
-        if (!mylite_ascii_case_equal(table_part->column_name, create_part->column_name) ||
-            strcmp(table_part->collation == NULL ? "" : table_part->collation,
-                   mylite_table_ddl_index_collation_for_order(create_part->order)) != 0 ||
-            table_part->has_sub_part != create_part->has_prefix_length ||
-            (table_part->has_sub_part &&
-             (uint64_t)table_part->sub_part != create_part->prefix_length)) {
-            return false;
-        }
-    }
-    return true;
 }

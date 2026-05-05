@@ -693,6 +693,8 @@ into focused `*_types.h` headers.
   companion module.
 - [x] Split generated CREATE TABLE index-name assignment into a focused table
   DDL index-name module.
+- [x] Split standalone CREATE INDEX warning emission into a focused table DDL
+  index warnings module.
 - [x] Split ALTER TABLE refreshed index/column metadata into a focused table
   DDL alter metadata module.
 - [x] Split ALTER TABLE MySQL-compatible diagnostics into a focused table DDL

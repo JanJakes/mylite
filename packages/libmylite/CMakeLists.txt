@@ -128,6 +128,7 @@ add_library(mylite STATIC
   src/runtime/mylite_sqlite_value.c
   src/runtime/mylite_span.c
   src/runtime/mylite_statement.c
+  src/runtime/mylite_statement_custom.c
   src/runtime/mylite_storage_engine.c
   src/runtime/mylite_table_ddl.c
   src/runtime/mylite_table_ddl_alter.c

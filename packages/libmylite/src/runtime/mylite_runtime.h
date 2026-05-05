@@ -12,6 +12,7 @@
 #include "mylite_schema_types.h"
 #include "mylite_select_types.h"
 #include "mylite_show_types.h"
+#include "mylite_statement_types.h"
 #include "mylite_table_ddl_types.h"
 #include "mylite_transaction_types.h"
 #include "sql/mylite_ast.h"
@@ -22,39 +23,6 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <time.h>
-
-enum mylite_stmt_kind {
-    MYLITE_STMT_SQLITE = 0,
-    MYLITE_STMT_CREATE_SCHEMA = 1,
-    MYLITE_STMT_ALTER_SCHEMA = 2,
-    MYLITE_STMT_DROP_SCHEMA = 3,
-    MYLITE_STMT_USE_SCHEMA = 4,
-    MYLITE_STMT_SET_NAMES = 5,
-    MYLITE_STMT_SET_CHARACTER_SET = 6,
-    MYLITE_STMT_CREATE_TABLE = 7,
-    MYLITE_STMT_DROP_TABLE = 8,
-    MYLITE_STMT_INSERT_VALUES = 9,
-    MYLITE_STMT_INSERT_SET = 10,
-    MYLITE_STMT_REPLACE_VALUES = 11,
-    MYLITE_STMT_REPLACE_SET = 12,
-    MYLITE_STMT_SCALAR_SELECT = 13,
-    MYLITE_STMT_TABLE_SELECT = 14,
-    MYLITE_STMT_UNION_QUERY = 15,
-    MYLITE_STMT_UPDATE = 16,
-    MYLITE_STMT_DELETE = 17,
-    MYLITE_STMT_START_TRANSACTION = 18,
-    MYLITE_STMT_BEGIN_TRANSACTION = 19,
-    MYLITE_STMT_COMMIT = 20,
-    MYLITE_STMT_ROLLBACK = 21,
-    MYLITE_STMT_SAVEPOINT = 22,
-    MYLITE_STMT_ROLLBACK_TO_SAVEPOINT = 23,
-    MYLITE_STMT_RELEASE_SAVEPOINT = 24,
-    MYLITE_STMT_CREATE_INDEX = 25,
-    MYLITE_STMT_DROP_INDEX = 26,
-    MYLITE_STMT_ALTER_TABLE = 27,
-    MYLITE_STMT_RENAME_TABLE = 28,
-    MYLITE_STMT_TRUNCATE_TABLE = 29,
-};
 
 struct mylite_strcmp_compare_options {
     bool ignore_trailing_spaces;

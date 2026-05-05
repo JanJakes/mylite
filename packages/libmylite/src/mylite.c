@@ -17,14 +17,10 @@
 #include "runtime/mylite_expression_descriptor_aggregate.h"
 #include "runtime/mylite_expression_descriptor_case.h"
 #include "runtime/mylite_expression_descriptor_cast.h"
-#include "runtime/mylite_expression_descriptor_compare.h"
-#include "runtime/mylite_expression_descriptor_numeric.h"
+#include "runtime/mylite_expression_descriptor_function.h"
 #include "runtime/mylite_expression_descriptor_operator.h"
-#include "runtime/mylite_expression_descriptor_scalar.h"
-#include "runtime/mylite_expression_descriptor_string.h"
 #include "runtime/mylite_expression_descriptor_subquery.h"
 #include "runtime/mylite_expression_descriptor_temporal.h"
-#include "runtime/mylite_expression_validation.h"
 #include "runtime/mylite_field_descriptor.h"
 #include "runtime/mylite_function_names.h"
 #include "runtime/mylite_information_schema.h"
@@ -162,33 +158,10 @@ static int infer_literal_descriptor(mylite_db *database,
                                     const struct mylite_sql_ast_node *expression,
                                     const struct mylite_expression_value *value,
                                     struct mylite_field_descriptor *out_descriptor);
-static int infer_function_expression_descriptor(mylite_db *database,
-                                                const struct mylite_select_plan *plan,
-                                                const struct mylite_sql_ast_node *expression,
-                                                const struct mylite_expression_value *value,
-                                                struct mylite_field_descriptor *out_descriptor);
-static bool infer_common_scalar_function_descriptor(mylite_db *database,
-                                                    const struct mylite_sql_ast_node *name,
-                                                    bool arguments_nullable, bool result_nullable,
-                                                    struct mylite_field_descriptor *out_descriptor);
-static int infer_temporal_function_descriptor(mylite_db *database,
-                                              const struct mylite_select_plan *plan,
-                                              const struct mylite_sql_ast_node *expression,
-                                              const struct mylite_expression_value *value,
-                                              struct mylite_field_descriptor *out_descriptor);
 static int infer_aggregate_expression_descriptor(mylite_db *database,
                                                  const struct mylite_select_plan *plan,
                                                  const struct mylite_sql_ast_node *expression,
                                                  struct mylite_field_descriptor *out_descriptor);
-static int infer_function_arguments_nullable(mylite_db *database,
-                                             const struct mylite_select_plan *plan,
-                                             const struct mylite_sql_ast_node *arguments,
-                                             bool *out_nullable);
-// NOLINTNEXTLINE(misc-no-recursion)
-static int infer_variadic_scalar_function_descriptor(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *expression, const struct mylite_expression_value *value,
-    bool result_nullable, struct mylite_field_descriptor *out_descriptor);
 static int bind_select_join_predicates(mylite_db *database, const struct mylite_select_plan *plan);
 static int bind_table_select_clauses(mylite_db *database,
                                      const struct mylite_select_clause_nodes *clauses,
@@ -384,10 +357,6 @@ static const struct mylite_expression_descriptor_cast_callbacks cast_descriptor_
     .infer_expression_descriptor = infer_expression_descriptor,
 };
 
-static const struct mylite_expression_descriptor_compare_callbacks compare_descriptor_callbacks = {
-    .infer_expression_descriptor = infer_expression_descriptor,
-};
-
 static const struct mylite_expression_descriptor_subquery_callbacks subquery_descriptor_callbacks =
     {
         .infer_expression_descriptor = infer_expression_descriptor,
@@ -401,17 +370,9 @@ static const struct mylite_expression_descriptor_operator_callbacks operator_des
         .subquery_callbacks = &subquery_descriptor_callbacks,
 };
 
-static const struct mylite_expression_descriptor_temporal_callbacks temporal_descriptor_callbacks =
+static const struct mylite_expression_descriptor_function_callbacks function_descriptor_callbacks =
     {
         .infer_expression_descriptor = infer_expression_descriptor,
-};
-
-static const struct mylite_expression_descriptor_numeric_callbacks numeric_descriptor_callbacks = {
-    .infer_expression_descriptor = infer_expression_descriptor,
-};
-
-static const struct mylite_expression_descriptor_string_callbacks string_descriptor_callbacks = {
-    .infer_expression_descriptor = infer_expression_descriptor,
 };
 
 static const struct mylite_select_scalar_eval_callbacks select_scalar_eval_callbacks = {
@@ -1325,7 +1286,8 @@ static int infer_expression_descriptor(mylite_db *database, const struct mylite_
         return mylite_expression_descriptor_infer_case_expression(
             database, plan, node, out_descriptor, &case_descriptor_callbacks);
     case MYLITE_SQL_AST_FUNCTION_CALL:
-        return infer_function_expression_descriptor(database, plan, node, value, out_descriptor);
+        return mylite_expression_descriptor_infer_function_expression(
+            database, plan, node, value, out_descriptor, &function_descriptor_callbacks);
     case MYLITE_SQL_AST_AGGREGATE_CALL:
         return infer_aggregate_expression_descriptor(database, plan, node, out_descriptor);
     case MYLITE_SQL_AST_CAST_EXPRESSION:
@@ -1545,140 +1507,6 @@ static int infer_literal_descriptor(mylite_db *database,
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int infer_function_expression_descriptor(mylite_db *database,
-                                                const struct mylite_select_plan *plan,
-                                                const struct mylite_sql_ast_node *expression,
-                                                const struct mylite_expression_value *value,
-                                                struct mylite_field_descriptor *out_descriptor)
-{
-    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
-    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
-    bool nullable = false;
-    bool result_nullable = false;
-    bool matched_string_encoding = false;
-    bool matched_slice_string = false;
-    int status = MYLITE_OK;
-
-    if (!mylite_expression_is_supported_function_call(expression)) {
-        return MYLITE_UNSUPPORTED;
-    }
-    status = infer_function_arguments_nullable(database, plan, arguments, &nullable);
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    result_nullable = mylite_expression_descriptor_function_result_nullable(nullable, value);
-
-    if (infer_common_scalar_function_descriptor(database, name, nullable, result_nullable,
-                                                out_descriptor)) {
-        return MYLITE_OK;
-    }
-    status = infer_temporal_function_descriptor(database, plan, expression, value, out_descriptor);
-    if (status != MYLITE_UNSUPPORTED) {
-        return status;
-    }
-    status = infer_variadic_scalar_function_descriptor(database, plan, expression, value,
-                                                       result_nullable, out_descriptor);
-    if (status != MYLITE_UNSUPPORTED) {
-        return status;
-    }
-    status = mylite_expression_descriptor_infer_string_encoding_function(
-        database, plan, expression, out_descriptor, &string_descriptor_callbacks,
-        &matched_string_encoding);
-    if (status != MYLITE_OK || matched_string_encoding) {
-        return status;
-    }
-    status = mylite_expression_descriptor_infer_slice_string_function(
-        database, plan, expression, value, nullable, out_descriptor, &string_descriptor_callbacks,
-        &matched_slice_string);
-    if (status != MYLITE_OK || matched_slice_string) {
-        return status;
-    }
-    if (mylite_expression_descriptor_infer_text_function(database, name, value, result_nullable,
-                                                         out_descriptor)) {
-        return MYLITE_OK;
-    }
-    if (mylite_expression_descriptor_infer_fixed_integer_function(name, result_nullable,
-                                                                  out_descriptor)) {
-        return MYLITE_OK;
-    }
-    if (mylite_expression_descriptor_infer_code_search_function(name, result_nullable,
-                                                                out_descriptor)) {
-        return MYLITE_OK;
-    }
-    if (mylite_expression_descriptor_infer_list_index_function(name, result_nullable,
-                                                               out_descriptor)) {
-        return MYLITE_OK;
-    }
-    if (mylite_expression_descriptor_infer_scalar_numeric_function(name, value, result_nullable,
-                                                                   out_descriptor)) {
-        return MYLITE_OK;
-    }
-
-    *out_descriptor = mylite_expression_descriptor_from_value(value);
-    return MYLITE_OK;
-}
-
-// NOLINTNEXTLINE(misc-no-recursion)
-static int infer_temporal_function_descriptor(mylite_db *database,
-                                              const struct mylite_select_plan *plan,
-                                              const struct mylite_sql_ast_node *expression,
-                                              const struct mylite_expression_value *value,
-                                              struct mylite_field_descriptor *out_descriptor)
-{
-    return mylite_expression_descriptor_infer_temporal_function(
-        database, plan, expression, value, out_descriptor, &temporal_descriptor_callbacks);
-}
-
-static bool infer_common_scalar_function_descriptor(mylite_db *database,
-                                                    const struct mylite_sql_ast_node *name,
-                                                    bool arguments_nullable, bool result_nullable,
-                                                    struct mylite_field_descriptor *out_descriptor)
-{
-    if (mylite_expression_descriptor_infer_session_or_inet_function(database, name,
-                                                                    out_descriptor)) {
-        return true;
-    }
-    if (mylite_expression_descriptor_infer_strcmp_function(name, result_nullable, out_descriptor)) {
-        return true;
-    }
-    if (mylite_expression_descriptor_infer_uuid_function(database, name, out_descriptor)) {
-        return true;
-    }
-    if (mylite_expression_descriptor_infer_math_function(name, result_nullable, out_descriptor)) {
-        return true;
-    }
-    if (mylite_expression_descriptor_infer_temporal_scalar_function(name, arguments_nullable,
-                                                                    out_descriptor)) {
-        return true;
-    }
-    return mylite_expression_descriptor_infer_base_conversion_function(database, name,
-                                                                       out_descriptor);
-}
-
-// NOLINTNEXTLINE(misc-no-recursion)
-static int infer_variadic_scalar_function_descriptor(mylite_db *database,
-                                                     const struct mylite_select_plan *plan,
-                                                     const struct mylite_sql_ast_node *expression,
-                                                     const struct mylite_expression_value *value,
-                                                     bool result_nullable,
-                                                     struct mylite_field_descriptor *out_descriptor)
-{
-    int status = mylite_expression_descriptor_infer_numeric_variadic_function(
-        database, plan, expression, value, result_nullable, out_descriptor,
-        &numeric_descriptor_callbacks);
-
-    if (status != MYLITE_UNSUPPORTED) {
-        return status;
-    }
-    status = mylite_expression_descriptor_infer_greatest_least_function(
-        database, plan, expression, result_nullable, out_descriptor, &compare_descriptor_callbacks);
-    if (status != MYLITE_UNSUPPORTED) {
-        return status;
-    }
-    return mylite_expression_descriptor_infer_char_function(database, expression, out_descriptor);
-}
-
-// NOLINTNEXTLINE(misc-no-recursion)
 static int infer_aggregate_expression_descriptor(mylite_db *database,
                                                  const struct mylite_select_plan *plan,
                                                  const struct mylite_sql_ast_node *expression,
@@ -1686,31 +1514,6 @@ static int infer_aggregate_expression_descriptor(mylite_db *database,
 {
     return mylite_expression_descriptor_infer_aggregate_expression(
         database, plan, expression, out_descriptor, &aggregate_descriptor_callbacks);
-}
-
-// NOLINTNEXTLINE(misc-no-recursion)
-static int infer_function_arguments_nullable(mylite_db *database,
-                                             const struct mylite_select_plan *plan,
-                                             const struct mylite_sql_ast_node *arguments,
-                                             bool *out_nullable)
-{
-    bool nullable = false;
-
-    for (const struct mylite_sql_ast_node *child = arguments == NULL ? NULL
-                                                                     : arguments->first_child;
-         child != NULL; child = child->next_sibling) {
-        struct mylite_field_descriptor child_descriptor = mylite_expression_descriptor_defaults();
-        int status = infer_expression_descriptor(database, plan, child, NULL, &child_descriptor);
-
-        if (status != MYLITE_OK) {
-            return status;
-        }
-        if (mylite_expression_descriptor_is_nullable(&child_descriptor)) {
-            nullable = true;
-        }
-    }
-    *out_nullable = nullable;
-    return MYLITE_OK;
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)

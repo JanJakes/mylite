@@ -429,6 +429,8 @@ into focused `*_types.h` headers.
 - [x] Move `ON DUPLICATE KEY UPDATE` assignment evaluation into `mylite_dml`.
 - [x] Split `ON DUPLICATE KEY UPDATE` assignment validation/evaluation into a
   focused DML companion module.
+- [x] Split `ON DUPLICATE KEY UPDATE` assignment expression evaluation into a
+  focused DML insert update expression module.
 - [x] Move `ON DUPLICATE KEY UPDATE` conflict/update row branch into
   `mylite_dml`.
 - [x] Move `ON DUPLICATE KEY UPDATE` row value resolution into `mylite_dml`.

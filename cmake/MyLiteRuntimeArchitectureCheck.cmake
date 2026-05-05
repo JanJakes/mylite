@@ -2,6 +2,27 @@ if(NOT DEFINED MYLITE_SOURCE_DIR)
   message(FATAL_ERROR "MYLITE_SOURCE_DIR is required")
 endif()
 
+set(mylite_removed_monolith
+  "${MYLITE_SOURCE_DIR}/packages/libmylite/src/mylite.c")
+
+if(EXISTS "${mylite_removed_monolith}")
+  message(FATAL_ERROR
+    "packages/libmylite/src/mylite.c has been removed. Do not reintroduce a "
+    "top-level runtime monolith; add focused runtime modules instead."
+  )
+endif()
+
+set(mylite_libmylite_cmake
+  "${MYLITE_SOURCE_DIR}/packages/libmylite/CMakeLists.txt")
+
+file(READ "${mylite_libmylite_cmake}" mylite_libmylite_cmake_content)
+if(mylite_libmylite_cmake_content MATCHES "(^|\n)[ \t]*src/mylite\\.c([ \t\n]|$)")
+  message(FATAL_ERROR
+    "packages/libmylite/CMakeLists.txt references src/mylite.c. The old "
+    "runtime monolith must stay removed; wire focused runtime modules instead."
+  )
+endif()
+
 set(mylite_runtime_header
   "${MYLITE_SOURCE_DIR}/packages/libmylite/src/runtime/mylite_runtime.h")
 set(mylite_runtime_header_max_lines 240)

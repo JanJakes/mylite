@@ -577,7 +577,7 @@ into focused `*_types.h` headers.
   statement family exposes a prepare entry point.
 - [x] Delete stale prototype blocks from `mylite.c` as each region moves.
 - [x] Remove `mylite.c` when all statement families have homes.
-- [ ] Add a build guard that fails if `packages/libmylite/src/mylite.c` is
+- [x] Add a build guard that fails if `packages/libmylite/src/mylite.c` is
   reintroduced or added back to the libmylite source list.
 - [ ] Split `mylite_table_ddl.c` into narrower create/drop/rename/truncate,
   catalog-model, SQL-builder, validation, and statement-preparation modules.

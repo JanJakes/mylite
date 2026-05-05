@@ -1,6 +1,7 @@
 #ifndef MYLITE_RUNTIME_MYLITE_DML_H
 #define MYLITE_RUNTIME_MYLITE_DML_H
 
+#include "mylite_dml_insert_bound_value.h"
 #include "mylite_dml_types.h"
 
 int mylite_dml_copy_insert_values_statement(
@@ -208,23 +209,6 @@ int mylite_dml_resolve_insert_current_timestamp_bound_value(
     mylite_db *database, struct mylite_insert_bound_value *out_value);
 uint64_t
 mylite_dml_insert_auto_increment_next_value(const struct mylite_insert_execution_state *state);
-int mylite_dml_bind_insert_row_values(mylite_db *database, sqlite3_stmt *insert,
-                                      const struct mylite_insert_bound_value *values,
-                                      size_t value_count);
-int mylite_dml_bind_insert_bound_value(sqlite3_stmt *stmt, int index,
-                                       const struct mylite_insert_bound_value *value);
-int mylite_dml_copy_insert_sqlite_column_value(sqlite3_stmt *scan, int column,
-                                               struct mylite_insert_bound_value *out_value);
-int mylite_dml_copy_insert_bound_value(const struct mylite_insert_bound_value *value,
-                                       struct mylite_insert_bound_value *out_value);
-int mylite_dml_copy_insert_bound_values(mylite_db *database,
-                                        const struct mylite_insert_bound_value *values,
-                                        size_t value_count,
-                                        struct mylite_insert_bound_value **out_values);
-bool mylite_dml_insert_bound_value_is_numeric(const struct mylite_insert_bound_value *value,
-                                              double *out_value, bool *out_is_integer);
-bool mylite_dml_parse_insert_integer_text(const char *text, int64_t *out_value);
-bool mylite_dml_parse_insert_real_text(const char *text, double *out_value);
 int mylite_dml_copy_update_statement(const struct mylite_sql_ast_node *statement,
                                      struct mylite_update_plan *plan);
 int mylite_dml_copy_delete_statement(const struct mylite_sql_ast_node *statement,
@@ -342,8 +326,5 @@ void mylite_dml_insert_row_deinit(struct mylite_insert_row *row);
 void mylite_dml_insert_value_deinit(struct mylite_insert_value *value);
 void mylite_dml_insert_table_deinit(struct mylite_insert_table *table);
 void mylite_dml_insert_table_column_deinit(struct mylite_insert_table_column *column);
-void mylite_dml_insert_bound_values_deinit(struct mylite_insert_bound_value *values,
-                                           size_t value_count);
-void mylite_dml_insert_bound_value_deinit(struct mylite_insert_bound_value *value);
 
 #endif

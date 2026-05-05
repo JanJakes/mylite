@@ -29,10 +29,6 @@ static void append_show_status_integer_row(sqlite3_str *sql, bool *first, const 
                                            uint64_t value);
 static struct mylite_field_descriptor show_engines_field_descriptor(uint64_t length, bool nullable);
 static int show_engines_sql(mylite_db *database, char **out_sql);
-static void append_show_character_set_row(sqlite3_str *sql, bool *first,
-                                          const struct mylite_charset *character_set);
-static void append_show_collation_row(sqlite3_str *sql, bool *first,
-                                      const struct mylite_collation *collation);
 static const unsigned int mylite_show_latin1_swedish_ci_charset_id = 8U;
 static const unsigned int mylite_show_not_fixed_decimals = 31U;
 
@@ -75,33 +71,6 @@ static int show_engines_sql(mylite_db *database, char **out_sql)
     return mylite_storage_engine_show_sql(database, out_sql);
 }
 
-int mylite_show_character_set_sql(mylite_db *database,
-                                  const struct mylite_show_character_set_query *query,
-                                  char **out_sql)
-{
-    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
-    bool first = true;
-
-    *out_sql = NULL;
-    if (sql == NULL) {
-        return MYLITE_NOMEM;
-    }
-
-    sqlite3_str_appendall(sql, "SELECT Charset, Description, \"Default collation\", Maxlen FROM (");
-    for (size_t index = 0U; index < mylite_charset_count(); ++index) {
-        append_show_character_set_row(sql, &first, mylite_charset_at(index));
-    }
-    sqlite3_str_appendall(sql, ")");
-
-    if (query->like_pattern != NULL) {
-        sqlite3_str_appendf(sql, " WHERE Charset LIKE %Q ESCAPE '\\'", query->like_pattern);
-    }
-    sqlite3_str_appendall(sql, " ORDER BY Charset COLLATE NOCASE, Charset COLLATE BINARY");
-
-    *out_sql = sqlite3_str_finish(sql);
-    return *out_sql == NULL ? MYLITE_NOMEM : MYLITE_OK;
-}
-
 char *mylite_show_columns_sql(mylite_db *database, const struct mylite_show_columns_query *query)
 {
     sqlite3_str *sql = sqlite3_str_new(database->sqlite);
@@ -127,33 +96,6 @@ char *mylite_show_columns_sql(mylite_db *database, const struct mylite_show_colu
     }
     sqlite3_str_appendf(sql, " ORDER BY ordinal_position");
     return sqlite3_str_finish(sql);
-}
-
-int mylite_show_collation_sql(mylite_db *database, const struct mylite_show_collation_query *query,
-                              char **out_sql)
-{
-    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
-    bool first = true;
-
-    *out_sql = NULL;
-    if (sql == NULL) {
-        return MYLITE_NOMEM;
-    }
-
-    sqlite3_str_appendall(sql, "SELECT Collation, Charset, Id, \"Default\", Compiled, Sortlen, "
-                               "Pad_attribute FROM (");
-    for (size_t index = 0U; index < mylite_collation_count(); ++index) {
-        append_show_collation_row(sql, &first, mylite_collation_at(index));
-    }
-    sqlite3_str_appendall(sql, ")");
-
-    if (query->like_pattern != NULL) {
-        sqlite3_str_appendf(sql, " WHERE Collation LIKE %Q ESCAPE '\\'", query->like_pattern);
-    }
-    sqlite3_str_appendall(sql, " ORDER BY Collation COLLATE NOCASE, Collation COLLATE BINARY");
-
-    *out_sql = sqlite3_str_finish(sql);
-    return *out_sql == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
 
 char *mylite_show_index_sql(mylite_db *database, const struct mylite_show_index_query *query)
@@ -593,35 +535,4 @@ static struct mylite_field_descriptor show_engines_field_descriptor(uint64_t len
 
     mylite_field_descriptor_set_nullable(&descriptor, nullable);
     return descriptor;
-}
-
-static void append_show_character_set_row(sqlite3_str *sql, bool *first,
-                                          const struct mylite_charset *character_set)
-{
-    if (!*first) {
-        sqlite3_str_appendall(sql, " UNION ALL ");
-    }
-    sqlite3_str_appendf(sql,
-                        "SELECT %Q AS \"Charset\", %Q AS \"Description\", "
-                        "%Q AS \"Default collation\", %d AS \"Maxlen\"",
-                        character_set->name, character_set->description,
-                        character_set->default_collation, character_set->max_length);
-    *first = false;
-}
-
-static void append_show_collation_row(sqlite3_str *sql, bool *first,
-                                      const struct mylite_collation *collation)
-{
-    const char *default_text = (int)collation->is_default != 0 ? "Yes" : "";
-
-    if (!*first) {
-        sqlite3_str_appendall(sql, " UNION ALL ");
-    }
-    sqlite3_str_appendf(sql,
-                        "SELECT %Q AS \"Collation\", %Q AS \"Charset\", %d AS \"Id\", "
-                        "%Q AS \"Default\", 'Yes' AS \"Compiled\", %d AS \"Sortlen\", "
-                        "%Q AS \"Pad_attribute\"",
-                        collation->name, collation->character_set, collation->id, default_text,
-                        collation->sort_length, collation->pad_attribute);
-    *first = false;
 }

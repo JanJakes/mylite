@@ -679,6 +679,8 @@ into focused `*_types.h` headers.
   SQLite bind lifetime helpers out of the mixed table/schema module.
 - [x] Split SHOW CREATE TABLE target resolution, catalog reads, column/index
   rendering, and table options into a dedicated table renderer module.
+- [x] Split SHOW CHARACTER SET and SHOW COLLATION SQL builders into a focused
+  SHOW charset/collation companion.
 - [x] Split dynamic INFORMATION_SCHEMA SQL builders into a focused companion
   module.
 - [x] Split INFORMATION_SCHEMA SELECT target detection into a focused companion

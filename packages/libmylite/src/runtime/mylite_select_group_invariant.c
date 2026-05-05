@@ -5,6 +5,8 @@
 #include "mylite_select_subquery.h"
 #include "mylite_span.h"
 
+#include <stdlib.h>
+
 static bool select_expression_children_are_group_invariant(
     const struct mylite_select_plan *plan, const struct mylite_sql_ast_node *first_child,
     enum mylite_select_grouping_reference_policy reference_policy);
@@ -21,6 +23,9 @@ select_order_identifier_is_group_invariant(const struct mylite_select_plan *plan
 static bool
 select_column_reference_is_group_invariant(const struct mylite_select_plan *plan,
                                            const struct mylite_sql_ast_node *identifier);
+static bool select_resolve_column_reference(const struct mylite_select_plan *plan,
+                                            const struct mylite_sql_ast_node *identifier,
+                                            size_t *out_column_index);
 static bool select_column_index_is_functionally_dependent(const struct mylite_select_plan *plan,
                                                           size_t column_index);
 static bool select_table_is_functionally_determined(const struct mylite_select_plan *plan,
@@ -330,21 +335,42 @@ static bool select_order_identifier_is_group_invariant(const struct mylite_selec
 static bool select_column_reference_is_group_invariant(const struct mylite_select_plan *plan,
                                                        const struct mylite_sql_ast_node *identifier)
 {
-    size_t column_index = plan->table.column_count;
+    size_t column_index = mylite_select_plan_column_count(plan);
 
-    if (identifier == NULL || (identifier->kind != MYLITE_SQL_AST_IDENTIFIER &&
-                               identifier->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
-        return false;
-    }
-    if (mylite_select_resolve_column_reference(&plan->table, identifier, &column_index) !=
-            MYLITE_OK ||
-        column_index == plan->table.column_count) {
+    if (!select_resolve_column_reference(plan, identifier, &column_index)) {
         return false;
     }
     if (mylite_select_column_index_is_grouped(plan, column_index)) {
         return true;
     }
     return select_column_index_is_functionally_dependent(plan, column_index);
+}
+
+static bool select_resolve_column_reference(const struct mylite_select_plan *plan,
+                                            const struct mylite_sql_ast_node *identifier,
+                                            size_t *out_column_index)
+{
+    char *parts[3] = {0};
+    size_t part_count = 0U;
+    size_t match_count = 0U;
+    bool resolved = false;
+
+    *out_column_index = mylite_select_plan_column_count(plan);
+    if (identifier == NULL || (identifier->kind != MYLITE_SQL_AST_IDENTIFIER &&
+                               identifier->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
+        return false;
+    }
+    if (mylite_copy_identifier_parts(identifier, parts, &part_count) != MYLITE_OK) {
+        return false;
+    }
+
+    match_count = mylite_select_count_plan_column_parts_matches(
+        plan, parts, part_count, 0U, mylite_select_plan_table_count(plan), out_column_index);
+    resolved = match_count == 1U;
+    for (size_t index = 0U; index < part_count && index < 3U; ++index) {
+        free(parts[index]);
+    }
+    return resolved;
 }
 
 static bool select_column_index_is_functionally_dependent(const struct mylite_select_plan *plan,
@@ -431,7 +457,7 @@ static bool select_group_key_matches_column_output(const struct mylite_select_pl
                                                    const struct mylite_select_group_key *group_key,
                                                    size_t output_index)
 {
-    size_t group_column_index = plan->table.column_count;
+    size_t group_column_index = mylite_select_plan_column_count(plan);
     const struct mylite_select_output_column *output = &plan->outputs[output_index];
 
     if (output->kind != MYLITE_SELECT_OUTPUT_COLUMN ||
@@ -442,8 +468,7 @@ static bool select_group_key_matches_column_output(const struct mylite_select_pl
         group_key->expression->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
         return false;
     }
-    if (mylite_select_resolve_column_reference(&plan->table, group_key->expression,
-                                               &group_column_index) != MYLITE_OK) {
+    if (!select_resolve_column_reference(plan, group_key->expression, &group_column_index)) {
         return false;
     }
     return group_column_index == output->column_index;

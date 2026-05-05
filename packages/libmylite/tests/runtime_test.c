@@ -21203,6 +21203,8 @@ static int test_inner_join_execution(void)
     static const char *const count_column[] = {"c"};
     static const char *const cartesian_count[] = {"6"};
     static const char *const zero_count[] = {"0"};
+    static const char *const grouped_join_columns[] = {"id", "c"};
+    static const char *const grouped_join_values[] = {"1", "2", "2", "1"};
     static const char *const chained_columns[] = {"left_id", "right_id", "note"};
     static const char *const chained_values[] = {"1", "10", "e1", "1", "10", "e2",
                                                  "1", "11", "e1", "1", "11", "e2"};
@@ -21447,13 +21449,12 @@ static int test_inner_join_execution(void)
         expect_int(mylite_warning_count(database), 1, "inner join ambiguous order warning count");
     failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_ambiguous_column,
                            "inner join ambiguous order warning code");
-    failures +=
-        expect_prepare_error(database,
-                             "SELECT left_t.id, COUNT(*) "
-                             "FROM left_t JOIN right_t ON left_t.id = right_t.left_id "
-                             "GROUP BY left_t.id",
-                             MYLITE_EXEC_ERROR, "Unsupported GROUP BY or HAVING over joined tables",
-                             "inner join grouped query deferred");
+    failures += expect_select_rows(database,
+                                   "SELECT left_t.id, COUNT(*) AS c "
+                                   "FROM left_t JOIN right_t ON left_t.id = right_t.left_id "
+                                   "GROUP BY left_t.id ORDER BY left_t.id",
+                                   grouped_join_columns, 2, grouped_join_values, 2,
+                                   "inner join grouped query");
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)
@@ -21494,6 +21495,10 @@ static int test_outer_join_execution(void)
     static const char *const left_outer_count[] = {"4"};
     static const char *const right_outer_count[] = {"5"};
     static const char *const warning_count[] = {"2"};
+    static const char *const left_group_columns[] = {"id", "c"};
+    static const char *const left_group_values[] = {"1", "1", "2", "2", "3", "0"};
+    static const char *const wp_group_columns[] = {"ID", "post_title", "meta_count"};
+    static const char *const wp_group_values[] = {"3", "c", "0", "2", "b", "1", "1", "a", "2"};
     static const struct expected_result_metadata left_metadata[] = {
         {"lid", "mylite_outer_join", "l", "mylite_outer_join", "left_t", "id", 11U,
          MYLITE_FIELD_TYPE_LONG, 0U, 63U,
@@ -21540,6 +21545,14 @@ static int test_outer_join_execution(void)
     failures += execute_sql(database, "CREATE TABLE warn_l (id INT PRIMARY KEY)", MYLITE_DONE);
     failures += execute_sql(database, "CREATE TABLE warn_r (s VARCHAR(10))", MYLITE_DONE);
     failures += execute_sql(database,
+                            "CREATE TABLE wp_posts ("
+                            "ID INT PRIMARY KEY, post_title VARCHAR(20), post_date VARCHAR(20))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE wp_postmeta ("
+                            "meta_id INT PRIMARY KEY, post_id INT, meta_key VARCHAR(20))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
                             "INSERT INTO left_t VALUES "
                             "(1,100,'left-one',NULL),"
                             "(2,200,'left-two',5),"
@@ -21555,6 +21568,16 @@ static int test_outer_join_execution(void)
                             MYLITE_DONE);
     failures += execute_sql(database, "INSERT INTO warn_l VALUES (1),(2)", MYLITE_DONE);
     failures += execute_sql(database, "INSERT INTO warn_r VALUES ('bad'),('2x')", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO wp_posts VALUES "
+                            "(1,'a','2020-01-01'),"
+                            "(2,'b','2020-01-02'),"
+                            "(3,'c','2020-01-03')",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO wp_postmeta VALUES "
+                            "(10,1,'x'),(11,1,'y'),(12,2,'z')",
+                            MYLITE_DONE);
 
     failures += expect_select_rows(database,
                                    "SELECT l.id AS left_id, r.id AS right_id, r.label "
@@ -21574,6 +21597,21 @@ static int test_outer_join_execution(void)
                                    "SELECT COUNT(*) AS c FROM left_t RIGHT OUTER JOIN right_t "
                                    "ON left_t.id = right_t.left_id",
                                    count_column, 1, right_outer_count, 1, "right outer count");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT left_t.id, COUNT(right_t.id) AS c "
+                           "FROM left_t LEFT JOIN right_t "
+                           "ON left_t.id = right_t.left_id "
+                           "GROUP BY left_t.id ORDER BY left_t.id",
+                           left_group_columns, 2, left_group_values, 3, "left join grouped count");
+    failures += expect_select_rows(database,
+                                   "SELECT wp_posts.ID, wp_posts.post_title, "
+                                   "COUNT(wp_postmeta.meta_id) AS meta_count "
+                                   "FROM wp_posts LEFT JOIN wp_postmeta "
+                                   "ON wp_posts.ID = wp_postmeta.post_id "
+                                   "GROUP BY wp_posts.ID ORDER BY wp_posts.post_date DESC",
+                                   wp_group_columns, 3, wp_group_values, 3,
+                                   "wordpress left join grouped posts");
     failures +=
         expect_select_rows(database,
                            "SELECT l.id AS left_id, r.id AS right_id "
@@ -21704,12 +21742,12 @@ static int test_outer_join_execution(void)
                                      MYLITE_EXEC_ERROR, "Unknown column 'l.id' in 'on clause'",
                                      "left join comma precedence on scope");
     failures +=
-        expect_prepare_error(database,
-                             "SELECT left_t.id, COUNT(*) "
-                             "FROM left_t LEFT JOIN right_t ON left_t.id = right_t.left_id "
-                             "GROUP BY left_t.id",
-                             MYLITE_EXEC_ERROR, "Unsupported GROUP BY or HAVING over joined tables",
-                             "left join grouped query deferred");
+        expect_select_rows(database,
+                           "SELECT left_t.id, COUNT(*) AS c "
+                           "FROM left_t LEFT JOIN right_t ON left_t.id = right_t.left_id "
+                           "GROUP BY left_t.id ORDER BY left_t.id",
+                           left_group_columns, 2, (const char *[]){"1", "1", "2", "2", "3", "1"}, 3,
+                           "left join grouped count star");
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)

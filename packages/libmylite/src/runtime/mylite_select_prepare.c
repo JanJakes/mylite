@@ -157,10 +157,6 @@ static int prepare_table_select_statement(mylite_db *database,
         status = mylite_select_build_outputs(database, select_list, true, &plan,
                                              callbacks->projection_callbacks);
     }
-    if (status == MYLITE_OK && mylite_select_plan_table_count(&plan) > 1U &&
-        (group_by_clause != NULL || having_clause != NULL)) {
-        status = mylite_select_set_unsupported_join_grouping_error(database);
-    }
     if (status == MYLITE_OK) {
         custom_runtime = mylite_select_plan_requires_custom_runtime(&plan, &clauses);
     }

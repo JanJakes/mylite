@@ -50,7 +50,6 @@ Out of scope for the first implementation slice:
 - partitions and index hints
 - optimizer hints and optimizer pushdown
 - join-order optimization beyond preserving MySQL-visible semantics
-- full `GROUP BY` and `HAVING` coverage over joined row sources
 - `DISTINCT`, set operations, windows, locking clauses, and `SELECT ... INTO`
 - multi-table `UPDATE` and `DELETE`
 - broad collation edge cases beyond the currently supported scalar expression
@@ -836,9 +835,9 @@ This preserves MySQL-visible warning counts for staged joins and avoids
 evaluating `ON` predicates against rows from later comma or explicit join
 operands.
 
-Grouped joined queries with `GROUP BY` or `HAVING` return a deterministic
-unsupported diagnostic in this slice. Aggregate calls over joined rows without
-`GROUP BY` or `HAVING`, such as `COUNT(*)`, use the joined row scan.
+Grouped joined queries with `GROUP BY` or `HAVING` use the same joined row scan
+as ungrouped aggregate calls, then apply the shared aggregate/grouping runtime.
+Group reference resolution and `ONLY_FULL_GROUP_BY` validation are plan-wide.
 
 The deferred surfaces listed above remain intentionally outside this task and
 must not be inferred from the implemented base-table inner join slice.

@@ -162,7 +162,10 @@ bool mylite_select_column_index_is_grouped(const struct mylite_select_plan *plan
 {
     for (size_t index = 0U; index < plan->group_key_count; ++index) {
         const struct mylite_select_group_key *group_key = &plan->group_keys[index];
-        size_t group_column_index = plan->table.column_count;
+        size_t group_column_index = mylite_select_plan_column_count(plan);
+        char *parts[3] = {0};
+        size_t part_count = 0U;
+        size_t match_count = 0U;
 
         if (group_key->kind == MYLITE_SELECT_GROUP_KEY_OUTPUT &&
             group_key->output_index < plan->output_count &&
@@ -176,9 +179,18 @@ bool mylite_select_column_index_is_grouped(const struct mylite_select_plan *plan
              group_key->expression->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
             continue;
         }
-        if (mylite_select_resolve_column_reference(&plan->table, group_key->expression,
-                                                   &group_column_index) == MYLITE_OK &&
-            group_column_index == column_index) {
+        if (mylite_copy_identifier_parts(group_key->expression, parts, &part_count) != MYLITE_OK) {
+            for (size_t part = 0U; part < part_count && part < 3U; ++part) {
+                free(parts[part]);
+            }
+            continue;
+        }
+        match_count = mylite_select_count_plan_column_parts_matches(
+            plan, parts, part_count, 0U, mylite_select_plan_table_count(plan), &group_column_index);
+        for (size_t part = 0U; part < part_count && part < 3U; ++part) {
+            free(parts[part]);
+        }
+        if (match_count == 1U && group_column_index == column_index) {
             return true;
         }
     }
@@ -191,17 +203,22 @@ static int maybe_resolve_select_group_table_reference(mylite_db *database,
                                                       enum mylite_select_group_key_kind *out_kind,
                                                       size_t *out_index, bool *out_resolved)
 {
-    size_t column_index = 0U;
+    size_t column_index = mylite_select_plan_column_count(plan);
+    size_t match_count = 0U;
 
     *out_resolved = false;
-    if (part_count < 1U || part_count > 3U ||
-        !mylite_select_reference_qualifiers_match(&plan->table, parts, part_count)) {
+    if (part_count < 1U || part_count > 3U) {
         return MYLITE_OK;
     }
 
-    column_index = mylite_select_column_index(&plan->table, parts[part_count - 1U]);
-    if (column_index == plan->table.column_count) {
+    match_count = mylite_select_count_plan_column_parts_matches(
+        plan, parts, part_count, 0U, mylite_select_plan_table_count(plan), &column_index);
+    if (match_count == 0U) {
         return MYLITE_OK;
+    }
+    if (match_count > 1U) {
+        return mylite_select_set_ambiguous_column_error(database, parts[part_count - 1U],
+                                                        "group statement");
     }
 
     if (part_count == 1U) {
@@ -256,17 +273,22 @@ static int maybe_resolve_select_having_table_reference(mylite_db *database,
                                                        size_t *out_index, bool emit_warnings,
                                                        bool *out_resolved)
 {
-    size_t column_index = 0U;
+    size_t column_index = mylite_select_plan_column_count(plan);
+    size_t match_count = 0U;
 
     *out_resolved = false;
-    if (part_count < 1U || part_count > 3U ||
-        !mylite_select_reference_qualifiers_match(&plan->table, parts, part_count)) {
+    if (part_count < 1U || part_count > 3U) {
         return MYLITE_OK;
     }
 
-    column_index = mylite_select_column_index(&plan->table, parts[part_count - 1U]);
-    if (column_index == plan->table.column_count) {
+    match_count = mylite_select_count_plan_column_parts_matches(
+        plan, parts, part_count, 0U, mylite_select_plan_table_count(plan), &column_index);
+    if (match_count == 0U) {
         return MYLITE_OK;
+    }
+    if (match_count > 1U) {
+        return mylite_select_set_ambiguous_column_error(database, parts[part_count - 1U],
+                                                        "having clause");
     }
     if (!mylite_select_column_index_is_grouped(plan, column_index)) {
         return MYLITE_OK;

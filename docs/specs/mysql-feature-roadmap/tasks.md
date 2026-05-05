@@ -67,8 +67,10 @@ level application surfaces.
        functions with MySQL conversion behavior. Started; spec:
        [scalar built-in functions](../scalar-built-in-functions/specs.md).
 25. [x] Aggregate functions and grouping: `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`,
-       `GROUP BY`, `HAVING`, aliases, ordinals, and `ONLY_FULL_GROUP_BY`.
-       Spec: [aggregate functions and grouping](../aggregate-grouping/specs.md).
+       `GROUP BY`, `HAVING`, aliases, ordinals, `ONLY_FULL_GROUP_BY`, and
+       grouped joined row sources. Specs:
+       [aggregate functions and grouping](../aggregate-grouping/specs.md),
+       [joined GROUP BY](../joined-group-by/specs.md).
 26. [x] Inner joins and comma joins: join precedence, aliases, `ON`, `USING`,
        name resolution, and result metadata. Spec:
        [inner joins](../inner-joins/specs.md).

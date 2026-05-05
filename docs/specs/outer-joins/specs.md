@@ -49,7 +49,6 @@ Out of scope for this slice:
 - information-schema and performance-schema joins
 - partitions and index hints
 - optimizer hints and optimizer pushdown
-- full `GROUP BY` and `HAVING` support over joined row sources
 - `DISTINCT`, set operations, windows, locking clauses, and `SELECT ... INTO`
 - multi-table `UPDATE` and `DELETE`
 - broad collation edge cases beyond the currently supported scalar expression
@@ -644,10 +643,10 @@ away.
 
 ### Aggregates
 
-Task 26 supports aggregate calls over joined row sources for the no-`GROUP BY`
-slice. Task 27 should keep that behavior for outer joins. Full `GROUP BY` and
-`HAVING` over joined row sources remain deferred unless the implementation also
-removes the existing Task 26 grouped-join limitation.
+Task 26 supports aggregate calls over joined row sources. Task 27 keeps that
+behavior for outer joins, including grouped aggregate queries after
+null-extension. Group reference resolution and `ONLY_FULL_GROUP_BY` validation
+are plan-wide.
 
 ### Warnings
 
@@ -693,7 +692,7 @@ behavior for at least the following cases:
 | Warning count | `warn_l LEFT JOIN warn_r ON warn_r.s = 1` | Result count `2`; two 1292 warnings. |
 | ORDER/LIMIT | Outer join with deterministic order and limit | Ordering after `WHERE`; metadata preserved for `LIMIT 0`. |
 | Aggregate | `COUNT(*)` over left/right join | Counts null-extended rows. |
-| Grouping gap | `GROUP BY` or `HAVING` over outer join | Same deterministic unsupported diagnostic as Task 26 grouped joins until fixed. |
+| Grouping | `GROUP BY` or `HAVING` over outer join | Groups the joined row source after null-extension and applies normal aggregate semantics. |
 
 ## Implementation handoff notes
 
@@ -730,5 +729,5 @@ sides, and includes runtime tests for rows, metadata, warnings, diagnostics,
 ordering, limits, and aggregate counts.
 
 Compatibility remains partial for the explicitly deferred surfaces above:
-natural joins, parenthesized table references, derived tables, index hints,
-optimizer behavior, and grouped joined queries.
+natural joins, parenthesized table references, derived tables, index hints, and
+optimizer behavior.

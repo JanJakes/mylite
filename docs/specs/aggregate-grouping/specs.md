@@ -2,10 +2,9 @@
 
 ## Scope
 
-Task 25 adds the first MySQL-compatible aggregate query surface for
-single-table `SELECT`. It builds on the existing table-backed `SELECT`,
-expression, `WHERE`, `ORDER BY`, `LIMIT`, result metadata, scalar-function, and
-`CASE` expression foundations.
+Task 25 adds the first MySQL-compatible aggregate query surface. It builds on
+the existing table-backed `SELECT`, expression, `WHERE`, `ORDER BY`, `LIMIT`,
+result metadata, scalar-function, and `CASE` expression foundations.
 
 In scope for the first implementable slice:
 
@@ -35,16 +34,16 @@ In scope for the first implementable slice:
 
 Out of scope for the first implementable slice:
 
-- joins, comma joins, derived tables, CTEs, views, subqueries, set operations,
-  lateral references, table functions, and information-schema aggregate queries
+- derived tables, CTEs, views, subqueries as row sources, set operations,
+  lateral references, and table functions
 - `DISTINCT`, `DISTINCTROW`, and aggregate-local `DISTINCT` forms other than
   `COUNT(DISTINCT ...)`
 - `GROUP BY ... WITH ROLLUP` and `GROUPING()`
 - window-function execution and aggregate `OVER (...)` clauses
 - aggregate functions beyond `COUNT`, `SUM`, `AVG`, `MIN`, and `MAX`, including
   bit, JSON, string, statistical, spatial, and variance aggregates
-- `ANY_VALUE()` and functional-dependence detection, including
-  primary-key/unique-key proof for non-grouped base columns
+- `ANY_VALUE()` and broader functional-dependence detection beyond
+  primary-key/non-null-unique-key proof for non-grouped base-table columns
 - `HAVING` references to outer query columns
 - `SELECT` modifiers that tune MySQL execution strategy, such as
   `SQL_BIG_RESULT` and `SQL_SMALL_RESULT`

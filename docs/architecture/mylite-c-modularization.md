@@ -772,6 +772,8 @@ into focused `*_types.h` headers.
   statement function module.
 - [x] Split transaction savepoint parsing, execution, stack management, and
   savepoint diagnostics out of the core transaction module.
+- [x] Split transaction auto-increment catalog update and rollback bookkeeping
+  into a focused transaction companion.
 - [x] Split statement prepare custom-kind mapping into a focused prepare
   companion.
 - [ ] Split `mylite_dml_insert_value_resolve.c` into insert column-list,

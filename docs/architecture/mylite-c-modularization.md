@@ -660,6 +660,7 @@ into focused `*_types.h` headers.
   focused SELECT companion module.
 - [x] Split `mylite_select_materialize.c` into single-table, joined-table,
   aggregate, and materialization-driver modules.
+- [x] Split SELECT value comparison into a focused SELECT comparison module.
 - [x] Split scalar SELECT `ORDER BY` validation into a focused SELECT scalar
   companion module.
 - [x] Split scalar SELECT expression evaluation, scalar aggregate handling, and

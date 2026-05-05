@@ -35,6 +35,7 @@
 #include "runtime/mylite_select_row_loader.h"
 #include "runtime/mylite_select_rowset.h"
 #include "runtime/mylite_select_sql.h"
+#include "runtime/mylite_select_subquery.h"
 #include "runtime/mylite_select_types.h"
 #include "runtime/mylite_select_union.h"
 #include "runtime/mylite_session_functions.h"
@@ -1063,10 +1064,6 @@ evaluate_row_constructor_values(const struct mylite_sql_ast_node *row,
                                 const struct mylite_expression_eval_context *expression_context,
                                 struct mylite_expression_warnings *warnings,
                                 struct mylite_row_expression_values *out_values);
-static int copy_subquery_statement_row_values(mylite_stmt *stmt, size_t width,
-                                              struct mylite_row_expression_values *out_values);
-static int copy_subquery_statement_row_value(mylite_stmt *stmt, size_t index,
-                                             struct mylite_expression_value *out_value);
 static int compare_row_values(enum mylite_sql_ast_operator operator_kind,
                               const struct mylite_row_expression_values *left,
                               const struct mylite_row_expression_values *right,
@@ -1087,7 +1084,6 @@ static int compare_row_values_for_order(enum mylite_sql_ast_operator operator_ki
                                         int *out_truth);
 static int row_order_comparison_truth(struct mylite_row_order_comparison comparison,
                                       int *out_truth);
-static void row_expression_values_deinit(struct mylite_row_expression_values *values);
 static int evaluate_scalar_subquery_expression(mylite_stmt *stmt,
                                                const struct mylite_sql_ast_node *subquery,
                                                struct mylite_expression_value *out_value);
@@ -1095,8 +1091,6 @@ static int evaluate_exists_subquery_expression(mylite_stmt *stmt,
                                                const struct mylite_sql_ast_node *subquery,
                                                struct mylite_expression_value *out_value);
 static int subquery_statement_has_row(mylite_stmt *stmt, bool *out_has_row);
-static int copy_subquery_statement_column_value(mylite_stmt *stmt,
-                                                struct mylite_expression_value *out_value);
 static int validate_scalar_subquery_select_list(mylite_db *database,
                                                 const struct mylite_sql_ast_node *statement);
 static int validate_in_subquery_select(mylite_db *database,
@@ -1107,8 +1101,6 @@ static int validate_row_subquery_select_columns(mylite_db *database,
                                                 size_t expected_width);
 static int validate_row_subquery_prepared_columns(mylite_db *database, const mylite_stmt *stmt,
                                                   size_t expected_width);
-static int append_subquery_warnings(struct mylite_expression_warnings *destination,
-                                    const struct mylite_expression_warnings *source);
 static int set_subquery_operand_columns_error(mylite_db *database);
 static int set_subquery_operand_column_count_error(mylite_db *database, size_t expected_width);
 static int set_in_subquery_limit_error(mylite_db *database);
@@ -1140,8 +1132,8 @@ static const struct mylite_select_union_callbacks union_query_callbacks = {
     .select_eval_callbacks = &table_select_eval_callbacks,
     .execute_scalar_select = execute_scalar_select_statement,
     .execute_table_select = execute_table_select_statement,
-    .copy_operand_row_value = copy_subquery_statement_row_value,
-    .append_warnings = append_subquery_warnings,
+    .copy_operand_row_value = mylite_select_subquery_copy_row_value,
+    .append_warnings = mylite_select_subquery_append_warnings,
     .set_unsupported_order_error = set_select_unsupported_order_error,
 };
 
@@ -10749,7 +10741,8 @@ static int append_scalar_select_warnings_to_database(mylite_stmt *stmt)
         return MYLITE_OK;
     }
 
-    status = append_subquery_warnings(&stmt->database->warnings, &stmt->scalar_result.warnings);
+    status = mylite_select_subquery_append_warnings(&stmt->database->warnings,
+                                                    &stmt->scalar_result.warnings);
     if (status != MYLITE_OK) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
     }
@@ -11038,7 +11031,7 @@ static int evaluate_select_subquery_expression(mylite_stmt *stmt,
 
     subquery_warnings = stmt->database->warnings;
     stmt->database->warnings = saved_warnings;
-    if (append_subquery_warnings(warnings, &subquery_warnings) != MYLITE_OK) {
+    if (mylite_select_subquery_append_warnings(warnings, &subquery_warnings) != MYLITE_OK) {
         mylite_expression_value_deinit(out_value);
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         status = MYLITE_NOMEM;
@@ -11068,7 +11061,7 @@ static int evaluate_in_subquery_expression(mylite_stmt *stmt,
 
     subquery_warnings = stmt->database->warnings;
     stmt->database->warnings = saved_warnings;
-    if (append_subquery_warnings(warnings, &subquery_warnings) != MYLITE_OK) {
+    if (mylite_select_subquery_append_warnings(warnings, &subquery_warnings) != MYLITE_OK) {
         mylite_expression_value_deinit(out_value);
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         status = MYLITE_NOMEM;
@@ -11192,7 +11185,7 @@ static int scan_in_subquery_statement_row(const struct mylite_in_subquery_scan_c
         return MYLITE_OK;
     }
 
-    status = copy_subquery_statement_column_value(context->subquery_stmt, &right);
+    status = mylite_select_subquery_copy_column_value(context->subquery_stmt, &right);
     if (status != MYLITE_OK) {
         mylite_expression_value_deinit(&right);
         if (status == MYLITE_NOMEM) {
@@ -11268,7 +11261,7 @@ evaluate_row_subquery_expression(mylite_stmt *stmt, const struct mylite_sql_ast_
 
     subquery_warnings = stmt->database->warnings;
     stmt->database->warnings = saved_warnings;
-    if (append_subquery_warnings(warnings, &subquery_warnings) != MYLITE_OK) {
+    if (mylite_select_subquery_append_warnings(warnings, &subquery_warnings) != MYLITE_OK) {
         mylite_expression_value_deinit(out_value);
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         status = MYLITE_NOMEM;
@@ -11297,13 +11290,13 @@ static int evaluate_row_subquery_expression_inner(
 
     status = evaluate_row_constructor_values(left_expression, expression_context, warnings, &left);
     if (status != MYLITE_OK) {
-        row_expression_values_deinit(&left);
+        mylite_select_subquery_row_values_deinit(&left);
         return status;
     }
     status = prepare_row_subquery_statement(stmt, expression, left.count, &subquery_stmt,
                                             &order_key_count, &restore_order_keys);
     if (status != MYLITE_OK) {
-        row_expression_values_deinit(&left);
+        mylite_select_subquery_row_values_deinit(&left);
         return status;
     }
 
@@ -11318,7 +11311,7 @@ static int evaluate_row_subquery_expression_inner(
         subquery_stmt->select_plan.order_key_count = order_key_count;
     }
     mylite_finalize(subquery_stmt);
-    row_expression_values_deinit(&left);
+    mylite_select_subquery_row_values_deinit(&left);
     if (status == MYLITE_NOMEM) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
     }
@@ -11351,7 +11344,7 @@ static int evaluate_row_in_subquery_statement(mylite_stmt *stmt,
         mylite_expression_warnings_deinit(&comparison_warnings);
         return status;
     }
-    if (append_subquery_warnings(warnings, &comparison_warnings) != MYLITE_OK) {
+    if (mylite_select_subquery_append_warnings(warnings, &comparison_warnings) != MYLITE_OK) {
         mylite_expression_warnings_deinit(&comparison_warnings);
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
@@ -11384,12 +11377,12 @@ static int evaluate_row_scalar_subquery_statement(mylite_stmt *stmt,
         return status;
     }
 
-    status = copy_subquery_statement_row_values(subquery_stmt, left->count, &right);
+    status = mylite_select_subquery_copy_row_values(subquery_stmt, left->count, &right);
     if (status == MYLITE_OK) {
         /* MySQL suppresses tuple element conversion warnings here, unlike row IN. */
         status = compare_row_values(expression->operator_kind, left, &right, NULL, &truth);
     }
-    row_expression_values_deinit(&right);
+    mylite_select_subquery_row_values_deinit(&right);
     if (status != MYLITE_OK) {
         return status;
     }
@@ -11485,14 +11478,14 @@ scan_row_in_subquery_statement_row(const struct mylite_row_in_subquery_scan_cont
 {
     struct mylite_row_expression_values right = {0};
     int truth = -1;
-    int status =
-        copy_subquery_statement_row_values(context->subquery_stmt, context->left->count, &right);
+    int status = mylite_select_subquery_copy_row_values(context->subquery_stmt,
+                                                        context->left->count, &right);
 
     if (status == MYLITE_OK) {
         status = compare_row_values(MYLITE_SQL_AST_OPERATOR_EQUAL, context->left, &right,
                                     context->warnings, &truth);
     }
-    row_expression_values_deinit(&right);
+    mylite_select_subquery_row_values_deinit(&right);
     if (status != MYLITE_OK) {
         if (status == MYLITE_NOMEM) {
             (void)mylite_diagnostics_set_error_message(context->outer_stmt->database,
@@ -11581,7 +11574,7 @@ static int evaluate_quantified_subquery_expression(mylite_stmt *stmt,
 
     subquery_warnings = stmt->database->warnings;
     stmt->database->warnings = saved_warnings;
-    if (append_subquery_warnings(warnings, &subquery_warnings) != MYLITE_OK) {
+    if (mylite_select_subquery_append_warnings(warnings, &subquery_warnings) != MYLITE_OK) {
         mylite_expression_value_deinit(out_value);
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         status = MYLITE_NOMEM;
@@ -11713,7 +11706,7 @@ static int scan_quantified_subquery_statement_row(
         return MYLITE_OK;
     }
 
-    status = copy_subquery_statement_column_value(context->subquery_stmt, &right);
+    status = mylite_select_subquery_copy_column_value(context->subquery_stmt, &right);
     if (status != MYLITE_OK) {
         mylite_expression_value_deinit(&right);
         if (status == MYLITE_NOMEM) {
@@ -11907,57 +11900,6 @@ evaluate_row_constructor_values(const struct mylite_sql_ast_node *row,
         }
     }
     return MYLITE_OK;
-}
-
-static int copy_subquery_statement_row_values(mylite_stmt *stmt, size_t width,
-                                              struct mylite_row_expression_values *out_values)
-{
-    *out_values = (struct mylite_row_expression_values){0};
-    if (stmt == NULL || mylite_column_count(stmt) != (int)width) {
-        return MYLITE_UNSUPPORTED;
-    }
-    if (width == 0U) {
-        return MYLITE_UNSUPPORTED;
-    }
-    out_values->items = calloc(width, sizeof(*out_values->items));
-    if (out_values->items == NULL) {
-        return MYLITE_NOMEM;
-    }
-    out_values->count = width;
-    for (size_t index = 0U; index < width; ++index) {
-        int status = copy_subquery_statement_row_value(stmt, index, &out_values->items[index]);
-
-        if (status != MYLITE_OK) {
-            return status;
-        }
-    }
-    return MYLITE_OK;
-}
-
-static int copy_subquery_statement_row_value(mylite_stmt *stmt, size_t index,
-                                             struct mylite_expression_value *out_value)
-{
-    const struct mylite_expression_value *value = NULL;
-
-    if (stmt->kind == MYLITE_STMT_SCALAR_SELECT) {
-        if (index >= stmt->scalar_result.value_count) {
-            return MYLITE_UNSUPPORTED;
-        }
-        return mylite_expression_value_copy(&stmt->scalar_result.values[index], out_value) == 0
-                   ? MYLITE_OK
-                   : MYLITE_NOMEM;
-    }
-
-    value = mylite_statement_table_select_current_output_value(stmt, (int)index);
-    if (value != NULL) {
-        return mylite_expression_value_copy(value, out_value) == 0 ? MYLITE_OK : MYLITE_NOMEM;
-    }
-    if (stmt->sqlite_stmt != NULL) {
-        return mylite_sqlite_copy_column_value(stmt->sqlite_stmt, index, out_value) == 0
-                   ? MYLITE_OK
-                   : MYLITE_NOMEM;
-    }
-    return MYLITE_UNSUPPORTED;
 }
 
 static int compare_row_values(enum mylite_sql_ast_operator operator_kind,
@@ -12172,18 +12114,6 @@ static int row_order_comparison_truth(struct mylite_row_order_comparison compari
     return MYLITE_OK;
 }
 
-static void row_expression_values_deinit(struct mylite_row_expression_values *values)
-{
-    if (values == NULL) {
-        return;
-    }
-    for (size_t index = 0U; index < values->count; ++index) {
-        mylite_expression_value_deinit(&values->items[index]);
-    }
-    free(values->items);
-    *values = (struct mylite_row_expression_values){0};
-}
-
 static int evaluate_scalar_subquery_expression(mylite_stmt *stmt,
                                                const struct mylite_sql_ast_node *subquery,
                                                struct mylite_expression_value *out_value)
@@ -12212,7 +12142,7 @@ static int evaluate_scalar_subquery_expression(mylite_stmt *stmt,
         return status;
     }
 
-    status = copy_subquery_statement_column_value(subquery_stmt, out_value);
+    status = mylite_select_subquery_copy_column_value(subquery_stmt, out_value);
     if (status != MYLITE_OK) {
         mylite_finalize(subquery_stmt);
         if (status == MYLITE_NOMEM) {
@@ -12323,31 +12253,6 @@ static int subquery_statement_has_row(mylite_stmt *stmt, bool *out_has_row)
     return status;
 }
 
-static int copy_subquery_statement_column_value(mylite_stmt *stmt,
-                                                struct mylite_expression_value *out_value)
-{
-    const struct mylite_expression_value *value = NULL;
-
-    if (stmt == NULL || mylite_column_count(stmt) != 1) {
-        return MYLITE_UNSUPPORTED;
-    }
-    if (stmt->kind == MYLITE_STMT_SCALAR_SELECT) {
-        return mylite_expression_value_copy(&stmt->scalar_result.values[0], out_value) == 0
-                   ? MYLITE_OK
-                   : MYLITE_NOMEM;
-    }
-    value = mylite_statement_table_select_current_output_value(stmt, 0);
-    if (value != NULL) {
-        return mylite_expression_value_copy(value, out_value) == 0 ? MYLITE_OK : MYLITE_NOMEM;
-    }
-    if (stmt->sqlite_stmt != NULL) {
-        return mylite_sqlite_copy_column_value(stmt->sqlite_stmt, 0U, out_value) == 0
-                   ? MYLITE_OK
-                   : MYLITE_NOMEM;
-    }
-    return MYLITE_UNSUPPORTED;
-}
-
 static int validate_scalar_subquery_select_list(mylite_db *database,
                                                 const struct mylite_sql_ast_node *statement)
 {
@@ -12429,22 +12334,6 @@ static int validate_row_subquery_prepared_columns(mylite_db *database, const myl
     }
     if (mylite_column_count(stmt) != (int)expected_width) {
         return set_subquery_operand_column_count_error(database, expected_width);
-    }
-    return MYLITE_OK;
-}
-
-static int append_subquery_warnings(struct mylite_expression_warnings *destination,
-                                    const struct mylite_expression_warnings *source)
-{
-    if (source == NULL) {
-        return MYLITE_OK;
-    }
-    for (size_t index = 0U; index < source->count; ++index) {
-        if (mylite_expression_warnings_append_condition(destination, source->items[index].level,
-                                                        source->items[index].code,
-                                                        source->items[index].message) != 0) {
-            return MYLITE_NOMEM;
-        }
     }
     return MYLITE_OK;
 }

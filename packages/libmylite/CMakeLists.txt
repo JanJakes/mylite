@@ -113,6 +113,7 @@ add_library(mylite STATIC
   src/runtime/mylite_select_join_materialize.c
   src/runtime/mylite_select_join_range_rowset.c
   src/runtime/mylite_select_join_rows.c
+  src/runtime/mylite_select_limit.c
   src/runtime/mylite_select_materialize.c
   src/runtime/mylite_select_materialize_common.c
   src/runtime/mylite_select_metadata.c

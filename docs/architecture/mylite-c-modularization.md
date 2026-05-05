@@ -742,6 +742,8 @@ into focused `*_types.h` headers.
   status companion.
 - [x] Split SHOW VARIABLES SQL builders and session/global variable projection
   into a focused SHOW variables companion.
+- [x] Split SHOW diagnostics SQL builders and warning/error condition rendering
+  into a focused SHOW diagnostics companion.
 - [x] Split dynamic INFORMATION_SCHEMA SQL builders into a focused companion
   module.
 - [x] Split INFORMATION_SCHEMA SELECT target detection into a focused companion

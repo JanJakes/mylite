@@ -13,6 +13,9 @@ static unsigned int
 time_function_argument_decimals(const struct mylite_sql_ast_node *argument,
                                 const struct mylite_field_descriptor *descriptor,
                                 const struct mylite_expression_value *value);
+static unsigned int
+sec_to_time_function_argument_decimals(const struct mylite_sql_ast_node *argument,
+                                       const struct mylite_field_descriptor *descriptor);
 static bool time_function_argument_is_approximate(const struct mylite_sql_ast_node *argument,
                                                   const struct mylite_field_descriptor *descriptor);
 static struct mylite_field_descriptor time_function_descriptor(unsigned int decimals);
@@ -66,6 +69,31 @@ cleanup:
     return status;
 }
 
+int mylite_expression_descriptor_infer_sec_to_time_function(
+    mylite_db *database, const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression, struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_temporal_callbacks *callbacks)
+{
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
+    const struct mylite_sql_ast_node *argument = mylite_ast_child_at(arguments, 0U);
+    struct mylite_field_descriptor argument_descriptor = mylite_expression_descriptor_defaults();
+    unsigned int decimals = 0U;
+    int status = MYLITE_OK;
+
+    if (!mylite_function_name_is_sec_to_time(name)) {
+        return MYLITE_UNSUPPORTED;
+    }
+    status = callbacks->infer_expression_descriptor(database, plan, argument, NULL,
+                                                    &argument_descriptor);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    decimals = sec_to_time_function_argument_decimals(argument, &argument_descriptor);
+    *out_descriptor = time_function_descriptor(decimals);
+    return MYLITE_OK;
+}
+
 static unsigned int
 time_function_argument_decimals(const struct mylite_sql_ast_node *argument,
                                 const struct mylite_field_descriptor *descriptor,
@@ -85,6 +113,23 @@ time_function_argument_decimals(const struct mylite_sql_ast_node *argument,
         if (value == NULL || value->kind == MYLITE_EXPRESSION_VALUE_NULL) {
             return mylite_mysql_temporal_max_fsp;
         }
+    }
+    return 0U;
+}
+
+static unsigned int
+sec_to_time_function_argument_decimals(const struct mylite_sql_ast_node *argument,
+                                       const struct mylite_field_descriptor *descriptor)
+{
+    if (time_function_argument_is_approximate(argument, descriptor)) {
+        return mylite_mysql_temporal_max_fsp;
+    }
+    if (descriptor != NULL && descriptor->type == MYLITE_FIELD_TYPE_NEWDECIMAL) {
+        return descriptor->decimals > mylite_mysql_temporal_max_fsp ? mylite_mysql_temporal_max_fsp
+                                                                    : descriptor->decimals;
+    }
+    if (mylite_expression_descriptor_has_text_result(descriptor)) {
+        return mylite_mysql_temporal_max_fsp;
     }
     return 0U;
 }

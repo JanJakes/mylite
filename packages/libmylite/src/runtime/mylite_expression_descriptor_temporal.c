@@ -101,6 +101,11 @@ int mylite_expression_descriptor_infer_temporal_function(
     if (status != MYLITE_UNSUPPORTED) {
         return status;
     }
+    status = mylite_expression_descriptor_infer_sec_to_time_function(database, plan, expression,
+                                                                     out_descriptor, callbacks);
+    if (status != MYLITE_UNSUPPORTED) {
+        return status;
+    }
     return infer_date_interval_function_descriptor(database, plan, expression, out_descriptor,
                                                    callbacks);
 }

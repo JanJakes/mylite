@@ -603,6 +603,7 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_MICROSECOND = 127,
     MYLITE_SCALAR_FUNCTION_LAST_DAY = 128,
     MYLITE_SCALAR_FUNCTION_TIME_TO_SEC = 129,
+    MYLITE_SCALAR_FUNCTION_SEC_TO_TIME = 130,
 };
 
 struct angle_conversion_input {
@@ -789,6 +790,26 @@ static int eval_time_to_sec_function(const struct mylite_sql_ast_node *arguments
                                      const struct mylite_expression_eval_context *context,
                                      struct mylite_expression_warnings *warnings,
                                      struct mylite_expression_value *out_value);
+static int eval_sec_to_time_function(const struct mylite_sql_ast_node *arguments,
+                                     const struct mylite_expression_eval_context *context,
+                                     struct mylite_expression_warnings *warnings,
+                                     struct mylite_expression_value *out_value);
+static int sec_to_time_value_from_expression(const struct mylite_expression_value *value,
+                                             struct mylite_expression_warnings *warnings,
+                                             struct temporal_time_value *out_time);
+static bool sec_to_time_microseconds_from_value(const struct mylite_expression_value *value,
+                                                double fallback, int64_t *out_microseconds);
+static bool sec_to_time_microseconds_from_text(const char *text, int64_t *out_microseconds);
+static bool sec_to_time_microseconds_from_double(long double value, int64_t *out_microseconds);
+static uint64_t sec_to_time_max_microseconds(void);
+static unsigned int
+sec_to_time_fraction_digits_from_value(const struct mylite_expression_value *value);
+static int append_sec_to_time_range_warning(struct mylite_expression_warnings *warnings,
+                                            const struct mylite_expression_value *value,
+                                            double fallback);
+static size_t sec_to_time_warning_text(const struct mylite_expression_value *value, double fallback,
+                                       char *buffer, size_t buffer_size);
+static size_t sec_to_time_numeric_prefix_length(const char *text);
 static int time_value_from_expression(const struct mylite_expression_value *value,
                                       struct mylite_expression_warnings *warnings,
                                       struct temporal_time_value *out_time, bool *out_valid);
@@ -2082,6 +2103,7 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_FROM_DAYS:
     case MYLITE_SCALAR_FUNCTION_TIME:
     case MYLITE_SCALAR_FUNCTION_TIME_TO_SEC:
+    case MYLITE_SCALAR_FUNCTION_SEC_TO_TIME:
         return arity == 1U;
     case MYLITE_SCALAR_FUNCTION_LOG:
     case MYLITE_SCALAR_FUNCTION_ROUND:
@@ -2997,6 +3019,8 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_time_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_TIME_TO_SEC:
         return eval_time_to_sec_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_SEC_TO_TIME:
+        return eval_sec_to_time_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
         return eval_unix_timestamp_function(node, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
@@ -4143,6 +4167,348 @@ cleanup:
     return status;
 }
 
+static int eval_sec_to_time_function(const struct mylite_sql_ast_node *arguments,
+                                     const struct mylite_expression_eval_context *context,
+                                     struct mylite_expression_warnings *warnings,
+                                     struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value argument = {0};
+    struct temporal_time_value time = {0};
+    int status = eval_node(child_at(arguments, 0U), context, warnings, &argument);
+
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&argument)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    status = sec_to_time_value_from_expression(&argument, warnings, &time);
+    if (status != 0) {
+        goto cleanup;
+    }
+    status = set_temporal_time_text_value(&time, out_value);
+
+cleanup:
+    mylite_expression_value_deinit(&argument);
+    return status;
+}
+
+static int sec_to_time_value_from_expression(const struct mylite_expression_value *value,
+                                             struct mylite_expression_warnings *warnings,
+                                             struct temporal_time_value *out_time)
+{
+    const uint64_t max_microseconds = sec_to_time_max_microseconds();
+    int64_t microseconds = 0;
+    uint64_t magnitude = 0U;
+    double fallback = 0.0;
+    int status = cast_value_to_decimal_double(value, warnings, &fallback);
+
+    if (status != 0) {
+        return status;
+    }
+    if (!sec_to_time_microseconds_from_value(value, fallback, &microseconds)) {
+        microseconds = 0;
+    }
+    magnitude = microseconds < 0 ? (uint64_t)(-(microseconds + 1)) + 1U : (uint64_t)microseconds;
+    if (magnitude > max_microseconds) {
+        status = append_sec_to_time_range_warning(warnings, value, fallback);
+        if (status != 0) {
+            return status;
+        }
+        magnitude = max_microseconds;
+    }
+
+    *out_time = (struct temporal_time_value){
+        .hour = (int)(magnitude / ((uint64_t)MYLITE_TEMPORAL_SECONDS_PER_HOUR *
+                                   MYLITE_TEMPORAL_MICROSECOND_LIMIT)),
+        .fraction_digits = sec_to_time_fraction_digits_from_value(value),
+        .negative = microseconds < 0 && magnitude != 0U,
+    };
+    magnitude %= (uint64_t)MYLITE_TEMPORAL_SECONDS_PER_HOUR * MYLITE_TEMPORAL_MICROSECOND_LIMIT;
+    out_time->minute = (int)(magnitude / ((uint64_t)MYLITE_TEMPORAL_SECONDS_PER_MINUTE *
+                                          MYLITE_TEMPORAL_MICROSECOND_LIMIT));
+    magnitude %= (uint64_t)MYLITE_TEMPORAL_SECONDS_PER_MINUTE * MYLITE_TEMPORAL_MICROSECOND_LIMIT;
+    out_time->second = (int)(magnitude / MYLITE_TEMPORAL_MICROSECOND_LIMIT);
+    out_time->microsecond = (int)(magnitude % MYLITE_TEMPORAL_MICROSECOND_LIMIT);
+    return 0;
+}
+
+static bool sec_to_time_microseconds_from_value(const struct mylite_expression_value *value,
+                                                double fallback, int64_t *out_microseconds)
+{
+    const uint64_t max_seconds =
+        sec_to_time_max_microseconds() / (uint64_t)MYLITE_TEMPORAL_MICROSECOND_LIMIT;
+    uint64_t seconds = 0U;
+    bool negative = false;
+
+    if (value == NULL || out_microseconds == NULL) {
+        return false;
+    }
+    switch (value->kind) {
+    case MYLITE_EXPRESSION_VALUE_INT64:
+        negative = value->int64_value < 0;
+        seconds =
+            negative ? (uint64_t)(-(value->int64_value + 1)) + 1U : (uint64_t)value->int64_value;
+        if (seconds > max_seconds) {
+            *out_microseconds = negative ? -(int64_t)(sec_to_time_max_microseconds() + 1U)
+                                         : (int64_t)(sec_to_time_max_microseconds() + 1U);
+            return true;
+        }
+        *out_microseconds = (int64_t)(seconds * (uint64_t)MYLITE_TEMPORAL_MICROSECOND_LIMIT);
+        if (negative && *out_microseconds != 0) {
+            *out_microseconds = -*out_microseconds;
+        }
+        return true;
+    case MYLITE_EXPRESSION_VALUE_UINT64:
+        if (value->uint64_value > max_seconds) {
+            *out_microseconds = (int64_t)(sec_to_time_max_microseconds() + 1U);
+            return true;
+        }
+        *out_microseconds =
+            (int64_t)(value->uint64_value * (uint64_t)MYLITE_TEMPORAL_MICROSECOND_LIMIT);
+        return true;
+    case MYLITE_EXPRESSION_VALUE_REAL:
+    case MYLITE_EXPRESSION_VALUE_TEXT:
+        if (value->text_value != NULL &&
+            sec_to_time_microseconds_from_text(value->text_value, out_microseconds)) {
+            return true;
+        }
+        return sec_to_time_microseconds_from_double((long double)fallback, out_microseconds);
+    case MYLITE_EXPRESSION_VALUE_NULL:
+        return false;
+    }
+    return false;
+}
+
+static bool sec_to_time_microseconds_from_text(const char *text, int64_t *out_microseconds)
+{
+    const uint64_t max_microseconds = sec_to_time_max_microseconds();
+    const uint64_t max_seconds = max_microseconds / MYLITE_TEMPORAL_MICROSECOND_LIMIT;
+    const unsigned char *cursor = (const unsigned char *)text;
+    uint64_t seconds = 0U;
+    uint64_t microseconds = 0U;
+    unsigned int stored_fraction_digits = 0U;
+    bool negative = false;
+    bool saw_digit = false;
+    bool overflow = false;
+    bool round_up = false;
+    size_t prefix_length = sec_to_time_numeric_prefix_length(text);
+
+    if (text == NULL || out_microseconds == NULL || prefix_length == 0U) {
+        return false;
+    }
+    if (memchr(text, 'e', prefix_length) != NULL || memchr(text, 'E', prefix_length) != NULL) {
+        return sec_to_time_microseconds_from_double(strtold(text, NULL), out_microseconds);
+    }
+    while (isspace(*cursor)) {
+        ++cursor;
+    }
+    if (*cursor == '+' || *cursor == '-') {
+        negative = *cursor == '-';
+        ++cursor;
+    }
+    while (isdigit(*cursor)) {
+        saw_digit = true;
+        if (seconds <= max_seconds + 1U) {
+            seconds = (seconds * MYLITE_EXPRESSION_DECIMAL_BASE) + (uint64_t)(*cursor - '0');
+        } else {
+            overflow = true;
+        }
+        ++cursor;
+    }
+    if (*cursor == '.') {
+        ++cursor;
+        while (isdigit(*cursor)) {
+            saw_digit = true;
+            if (stored_fraction_digits < MYLITE_TEMPORAL_MAX_FSP) {
+                microseconds =
+                    (microseconds * MYLITE_EXPRESSION_DECIMAL_BASE) + (uint64_t)(*cursor - '0');
+                ++stored_fraction_digits;
+            } else if (stored_fraction_digits == MYLITE_TEMPORAL_MAX_FSP) {
+                round_up = *cursor >= '5';
+                ++stored_fraction_digits;
+            }
+            ++cursor;
+        }
+    }
+    if (!saw_digit) {
+        return false;
+    }
+    while (stored_fraction_digits < MYLITE_TEMPORAL_MAX_FSP) {
+        microseconds *= MYLITE_EXPRESSION_DECIMAL_BASE;
+        ++stored_fraction_digits;
+    }
+    if (round_up) {
+        ++microseconds;
+    }
+    if (microseconds >= MYLITE_TEMPORAL_MICROSECOND_LIMIT) {
+        microseconds -= MYLITE_TEMPORAL_MICROSECOND_LIMIT;
+        ++seconds;
+    }
+    if (overflow || seconds > max_seconds || (seconds == max_seconds && microseconds > 0U)) {
+        *out_microseconds =
+            negative ? -(int64_t)(max_microseconds + 1U) : (int64_t)(max_microseconds + 1U);
+        return true;
+    }
+    microseconds += seconds * (uint64_t)MYLITE_TEMPORAL_MICROSECOND_LIMIT;
+    *out_microseconds =
+        negative && microseconds != 0U ? -(int64_t)microseconds : (int64_t)microseconds;
+    return true;
+}
+
+static bool sec_to_time_microseconds_from_double(long double value, int64_t *out_microseconds)
+{
+    const uint64_t max_microseconds = sec_to_time_max_microseconds();
+    long double rounded = 0.0L;
+    bool negative = signbit(value);
+
+    if (out_microseconds == NULL) {
+        return false;
+    }
+    if (!isfinite(value)) {
+        *out_microseconds =
+            negative ? -(int64_t)(max_microseconds + 1U) : (int64_t)(max_microseconds + 1U);
+        return true;
+    }
+    rounded =
+        floorl((negative ? -value : value) * (long double)MYLITE_TEMPORAL_MICROSECOND_LIMIT + 0.5L);
+    if (rounded > (long double)(max_microseconds + 1U)) {
+        *out_microseconds =
+            negative ? -(int64_t)(max_microseconds + 1U) : (int64_t)(max_microseconds + 1U);
+        return true;
+    }
+    *out_microseconds = (int64_t)rounded;
+    if (negative && *out_microseconds != 0) {
+        *out_microseconds = -*out_microseconds;
+    }
+    return true;
+}
+
+static uint64_t sec_to_time_max_microseconds(void)
+{
+    return (((uint64_t)MYLITE_TEMPORAL_MAX_TIME_HOUR * MYLITE_TEMPORAL_SECONDS_PER_HOUR) +
+            ((uint64_t)MYLITE_TEMPORAL_MAX_MINUTE_SECOND * MYLITE_TEMPORAL_SECONDS_PER_MINUTE) +
+            MYLITE_TEMPORAL_MAX_MINUTE_SECOND) *
+           (uint64_t)MYLITE_TEMPORAL_MICROSECOND_LIMIT;
+}
+
+static unsigned int
+sec_to_time_fraction_digits_from_value(const struct mylite_expression_value *value)
+{
+    const char *dot =
+        value == NULL ? NULL : strchr(value->text_value == NULL ? "" : value->text_value, '.');
+    const char *text = value == NULL ? NULL : value->text_value;
+    size_t prefix_length = sec_to_time_numeric_prefix_length(text);
+    unsigned int decimals = 0U;
+
+    if (value == NULL) {
+        return 0U;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+        return MYLITE_TEMPORAL_MAX_FSP;
+    }
+    if (value->kind != MYLITE_EXPRESSION_VALUE_REAL) {
+        return 0U;
+    }
+    if (text == NULL || prefix_length == 0U || memchr(text, 'e', prefix_length) != NULL ||
+        memchr(text, 'E', prefix_length) != NULL) {
+        return MYLITE_TEMPORAL_MAX_FSP;
+    }
+    if (dot == NULL || (size_t)(dot - text) >= prefix_length) {
+        return 0U;
+    }
+    for (++dot; *dot >= '0' && *dot <= '9' && decimals < MYLITE_TEMPORAL_MAX_FSP; ++dot) {
+        ++decimals;
+    }
+    return decimals;
+}
+
+static int append_sec_to_time_range_warning(struct mylite_expression_warnings *warnings,
+                                            const struct mylite_expression_value *value,
+                                            double fallback)
+{
+    char buffer[MYLITE_EXPRESSION_DECIMAL_TEXT_BUFFER_SIZE];
+    size_t length = sec_to_time_warning_text(value, fallback, buffer, sizeof(buffer));
+
+    if (length == 0U) {
+        return -1;
+    }
+    return append_temporal_time_warning(warnings, buffer, length);
+}
+
+static size_t sec_to_time_warning_text(const struct mylite_expression_value *value, double fallback,
+                                       char *buffer, size_t buffer_size)
+{
+    int length = 0;
+    size_t prefix_length =
+        value == NULL ? 0U : sec_to_time_numeric_prefix_length(value->text_value);
+
+    if (buffer == NULL || buffer_size == 0U) {
+        return 0U;
+    }
+    if (value != NULL && value->text_value != NULL && prefix_length != 0U) {
+        if (prefix_length >= buffer_size) {
+            prefix_length = buffer_size - 1U;
+        }
+        memcpy(buffer, value->text_value, prefix_length);
+        buffer[prefix_length] = '\0';
+        return prefix_length;
+    }
+    if (value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_INT64) {
+        length = snprintf(buffer, buffer_size, "%lld", (long long)value->int64_value);
+    } else if (value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_UINT64) {
+        length = snprintf(buffer, buffer_size, "%llu", (unsigned long long)value->uint64_value);
+    } else {
+        length = format_compact_real_text(fallback, buffer, buffer_size);
+    }
+    return length <= 0 || (size_t)length >= buffer_size ? 0U : (size_t)length;
+}
+
+static size_t sec_to_time_numeric_prefix_length(const char *text)
+{
+    const char *cursor = text;
+    bool saw_digit = false;
+
+    if (text == NULL) {
+        return 0U;
+    }
+    while (isspace((unsigned char)*cursor)) {
+        ++cursor;
+    }
+    if (*cursor == '+' || *cursor == '-') {
+        ++cursor;
+    }
+    while (isdigit((unsigned char)*cursor)) {
+        saw_digit = true;
+        ++cursor;
+    }
+    if (*cursor == '.') {
+        ++cursor;
+        while (isdigit((unsigned char)*cursor)) {
+            saw_digit = true;
+            ++cursor;
+        }
+    }
+    if (saw_digit && (*cursor == 'e' || *cursor == 'E')) {
+        const char *exponent = cursor;
+        bool saw_exponent_digit = false;
+
+        ++cursor;
+        if (*cursor == '+' || *cursor == '-') {
+            ++cursor;
+        }
+        while (isdigit((unsigned char)*cursor)) {
+            saw_exponent_digit = true;
+            ++cursor;
+        }
+        if (!saw_exponent_digit) {
+            cursor = exponent;
+        }
+    }
+    return saw_digit ? (size_t)(cursor - text) : 0U;
+}
+
 static int time_value_from_expression(const struct mylite_expression_value *value,
                                       struct mylite_expression_warnings *warnings,
                                       struct temporal_time_value *out_time, bool *out_valid)
@@ -4806,6 +5172,7 @@ static bool temporal_part_from_function(enum mylite_scalar_function_id function_
     case MYLITE_SCALAR_FUNCTION_FROM_DAYS:
     case MYLITE_SCALAR_FUNCTION_TIME:
     case MYLITE_SCALAR_FUNCTION_TIME_TO_SEC:
+    case MYLITE_SCALAR_FUNCTION_SEC_TO_TIME:
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
     case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
@@ -9177,6 +9544,7 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_FROM_DAYS:
     case MYLITE_SCALAR_FUNCTION_TIME:
     case MYLITE_SCALAR_FUNCTION_TIME_TO_SEC:
+    case MYLITE_SCALAR_FUNCTION_SEC_TO_TIME:
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
     case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
@@ -11047,6 +11415,7 @@ static int trigonometric_function_result(struct trigonometric_input input,
     case MYLITE_SCALAR_FUNCTION_FROM_DAYS:
     case MYLITE_SCALAR_FUNCTION_TIME:
     case MYLITE_SCALAR_FUNCTION_TIME_TO_SEC:
+    case MYLITE_SCALAR_FUNCTION_SEC_TO_TIME:
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
     case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
@@ -11362,6 +11731,7 @@ static int inverse_trigonometric_function_result(struct inverse_trigonometric_in
     case MYLITE_SCALAR_FUNCTION_FROM_DAYS:
     case MYLITE_SCALAR_FUNCTION_TIME:
     case MYLITE_SCALAR_FUNCTION_TIME_TO_SEC:
+    case MYLITE_SCALAR_FUNCTION_SEC_TO_TIME:
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
     case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
@@ -11587,6 +11957,7 @@ static int angle_conversion_result(struct angle_conversion_input conversion, dou
     case MYLITE_SCALAR_FUNCTION_FROM_DAYS:
     case MYLITE_SCALAR_FUNCTION_TIME:
     case MYLITE_SCALAR_FUNCTION_TIME_TO_SEC:
+    case MYLITE_SCALAR_FUNCTION_SEC_TO_TIME:
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
     case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
@@ -15630,6 +16001,7 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"FROM_DAYS", MYLITE_SCALAR_FUNCTION_FROM_DAYS},
         {"TIME", MYLITE_SCALAR_FUNCTION_TIME},
         {"TIME_TO_SEC", MYLITE_SCALAR_FUNCTION_TIME_TO_SEC},
+        {"SEC_TO_TIME", MYLITE_SCALAR_FUNCTION_SEC_TO_TIME},
         {"UNIX_TIMESTAMP", MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP},
         {"DATE_FORMAT", MYLITE_SCALAR_FUNCTION_DATE_FORMAT},
         {"FROM_UNIXTIME", MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME},
@@ -15789,6 +16161,7 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_FROM_DAYS:
     case MYLITE_SCALAR_FUNCTION_TIME:
     case MYLITE_SCALAR_FUNCTION_TIME_TO_SEC:
+    case MYLITE_SCALAR_FUNCTION_SEC_TO_TIME:
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
     case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
     case MYLITE_SCALAR_FUNCTION_DEFAULT:

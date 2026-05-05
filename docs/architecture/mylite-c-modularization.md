@@ -412,6 +412,8 @@ into focused `*_types.h` headers.
   into a focused DML companion module.
 - [x] Split insert default, text, current-timestamp, and auto-increment value
   resolution into a focused DML companion module.
+- [x] Split `INSERT ... SET` expression evaluation into a focused DML companion
+  module.
 - [x] Split insert diagnostics and warning de-duplication into a focused DML
   companion module.
 - [x] Move shared insert row-write helpers into `mylite_dml`.
@@ -620,6 +622,8 @@ into focused `*_types.h` headers.
   SELECT companion module.
 - [x] Split insert default, text, current-timestamp, and auto-increment value
   resolution into a focused DML companion module.
+- [x] Split `INSERT ... SET` expression evaluation into a focused DML companion
+  module.
 - [ ] Split `mylite_select_materialize.c` into base-table scan, joined-row
   assembly, outer-join, and materialization-driver modules.
 - [ ] Split `mylite_dml_insert_value_resolve.c` into insert column-list,

@@ -5286,7 +5286,7 @@ static int test_scalar_function_call_syntax(void)
         string_function_item_count = 17,
         padding_function_item_count = 6,
         quote_function_item_count = 2,
-        list_function_item_count = 19,
+        list_function_item_count = 20,
         coalesce_nested_arg_index = 2,
     };
     struct mylite_sql_parse_result result;
@@ -5577,7 +5577,7 @@ static int test_scalar_function_call_syntax(void)
                           "inet_ntoa(2130706433), "
                           "IS_UUID('6ccd780c-baba-1026-9564-5b8c656024db'), "
                           "Uuid_To_Bin('6ccd780c-baba-1026-9564-5b8c656024db', 1), "
-                          "bin_to_uuid(UNHEX('6CCD780CBABA102695645B8C656024DB'));",
+                          "bin_to_uuid(UNHEX('6CCD780CBABA102695645B8C656024DB')), UUID();",
                           MYLITE_SQL_PARSE_OK, &result);
     select_list = child_at(child_at(result.root, 0U), 0U);
     failures +=
@@ -5620,6 +5620,8 @@ static int test_scalar_function_call_syntax(void)
                                      "UUID_TO_BIN case-insensitive call");
     failures += expect_function_call(child_at(child_at(select_list, 18U), 0U), "bin_to_uuid", 1U,
                                      "BIN_TO_UUID case-insensitive call");
+    failures +=
+        expect_function_call(child_at(child_at(select_list, 19U), 0U), "UUID", 0U, "UUID call");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT CHAR(65), CHAR(65,66 USING utf8mb4), "

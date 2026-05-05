@@ -14097,6 +14097,11 @@ static int test_uuid_scalar_functions(mylite_db *database)
 {
     // NOLINTBEGIN(readability-magic-numbers)
     static const struct expected_result_metadata uuid_metadata[] = {
+        {"uuid_value", NULL, NULL, NULL, NULL, NULL, 144U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
         {"is_valid", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
          MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
         {"uuid_bin", NULL, NULL, NULL, NULL, NULL, 16U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
@@ -14109,6 +14114,10 @@ static int test_uuid_scalar_functions(mylite_db *database)
          1},
     };
     static const struct expected_result_metadata uuid_latin1_metadata[] = {
+        {"uuid_value", NULL, NULL, NULL, NULL, NULL, 36U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
         {"is_valid", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
          MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
         {"uuid_bin", NULL, NULL, NULL, NULL, NULL, 16U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
@@ -14170,6 +14179,18 @@ static int test_uuid_scalar_functions(mylite_db *database)
     };
     static const char *const uuid_null_skip_columns[] = {"null_uuid_flag", "null_bin_flag"};
     static const char *const uuid_null_skip_values[] = {NULL, NULL};
+    static const char *const uuid_generation_columns[] = {
+        "valid_uuid",  "len_uuid",     "chars_uuid",     "version_nibble",   "variant_ok",
+        "equal_calls", "uuid_charset", "uuid_collation", "uuid_coercibility"};
+    static const char *const uuid_generation_values[] = {
+        "1", "36", "36", "1", "1", "0", "utf8mb3", "utf8mb3_general_ci", "4",
+    };
+    static const char *const generated_uuid_columns[] = {"id", "valid", "uuid_len", "version", "n"};
+    static const char *const generated_uuid_values[] = {
+        "1", "1", "36", "1", "1", "2", "1", "36", "1", "1", "3", "1", "36", "1", "1",
+    };
+    static const char *const duplicate_uuid_columns[] = {"duplicate_pairs"};
+    static const char *const duplicate_uuid_values[] = {"0"};
     static const char *const uuid_site_projection_columns[] = {"id", "valid", "uuid_hex",
                                                                "uuid_text"};
     static const char *const uuid_site_projection_values[] = {
@@ -14195,7 +14216,7 @@ static int test_uuid_scalar_functions(mylite_db *database)
 
     failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
     failures += prepare_sql(database,
-                            "SELECT IS_UUID(NULL) AS is_valid, "
+                            "SELECT UUID() AS uuid_value, IS_UUID(NULL) AS is_valid, "
                             "UUID_TO_BIN(NULL) AS uuid_bin, "
                             "BIN_TO_UUID(NULL) AS uuid_text",
                             MYLITE_OK, &stmt);
@@ -14210,7 +14231,7 @@ static int test_uuid_scalar_functions(mylite_db *database)
 
     failures += execute_sql(database, "SET NAMES latin1", MYLITE_DONE);
     failures += prepare_sql(database,
-                            "SELECT IS_UUID(NULL) AS is_valid, "
+                            "SELECT UUID() AS uuid_value, IS_UUID(NULL) AS is_valid, "
                             "UUID_TO_BIN(NULL) AS uuid_bin, "
                             "BIN_TO_UUID(NULL) AS uuid_text",
                             MYLITE_OK, &stmt);
@@ -14224,6 +14245,18 @@ static int test_uuid_scalar_functions(mylite_db *database)
     mylite_finalize(stmt);
     stmt = NULL;
     failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
+
+    failures += expect_select_rows(
+        database,
+        "SELECT IS_UUID(UUID()) AS valid_uuid, LENGTH(UUID()) AS len_uuid, "
+        "CHAR_LENGTH(UUID()) AS chars_uuid, SUBSTRING(UUID(), 15, 1) AS version_nibble, "
+        "LOWER(SUBSTRING(UUID(), 20, 1)) IN ('8','9','a','b') AS variant_ok, "
+        "UUID() = UUID() AS equal_calls, CHARSET(UUID()) AS uuid_charset, "
+        "COLLATION(UUID()) AS uuid_collation, COERCIBILITY(UUID()) AS uuid_coercibility",
+        uuid_generation_columns,
+        (int)(sizeof(uuid_generation_columns) / sizeof(uuid_generation_columns[0])),
+        uuid_generation_values, 1, "UUID generated scalar values");
+    failures += expect_int(mylite_warning_count(database), 0, "UUID generated warnings");
 
     failures += expect_select_rows(
         database,
@@ -14368,6 +14401,34 @@ static int test_uuid_scalar_functions(mylite_db *database)
     failures += expect_select_rows(database, "SELECT id FROM uuid_sites ORDER BY id", id_column, 1,
                                    uuid_remaining_values, 1, "delete UUID remaining rows");
 
+    failures += execute_sql(database,
+                            "CREATE TABLE uuid_generated "
+                            "(id INT PRIMARY KEY, u CHAR(36), n INT)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO uuid_generated VALUES "
+                            "(1,NULL,0),(2,NULL,0),(3,NULL,0)",
+                            MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE uuid_generated SET u = UUID(), n = IS_UUID(UUID()) ORDER BY id", 3,
+        "update generated UUID values");
+    failures += expect_select_rows(
+        database,
+        "SELECT id, IS_UUID(u) AS valid, LENGTH(u) AS uuid_len, "
+        "SUBSTRING(u, 15, 1) AS version, n "
+        "FROM uuid_generated ORDER BY id",
+        generated_uuid_columns,
+        (int)(sizeof(generated_uuid_columns) / sizeof(generated_uuid_columns[0])),
+        generated_uuid_values, 3, "generated UUID table values");
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS duplicate_pairs "
+        "FROM uuid_generated AS a JOIN uuid_generated AS b ON a.id < b.id AND a.u = b.u",
+        duplicate_uuid_columns, 1, duplicate_uuid_values, 1, "generated UUID uniqueness");
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM uuid_generated WHERE IS_UUID(u) AND UUID() <> UUID()", 3,
+        "delete generated UUID predicate");
+
     failures += prepare_sql(database, "SELECT IS_UUID()", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported is_uuid zero arity");
     failures += prepare_sql(database, "SELECT IS_UUID('a','b')", MYLITE_UNSUPPORTED, &stmt);
@@ -14380,8 +14441,8 @@ static int test_uuid_scalar_functions(mylite_db *database)
     failures += expect_no_stmt_handle(&stmt, "unsupported bin_to_uuid zero arity");
     failures += prepare_sql(database, "SELECT BIN_TO_UUID('a','b','c')", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported bin_to_uuid three arity");
-    failures += prepare_sql(database, "SELECT UUID()", MYLITE_UNSUPPORTED, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "unsupported uuid generation");
+    failures += prepare_sql(database, "SELECT UUID(1)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported uuid generation argument");
     failures += prepare_sql(database, "SELECT UUID_SHORT()", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported uuid_short generation");
 

@@ -41,6 +41,11 @@ int mylite_expression_infer_function_collation_info( // NOLINT(misc-no-recursion
             database, mylite_mysql_coercibility_coercible);
         return MYLITE_OK;
     }
+    if (mylite_function_name_is_uuid(name)) {
+        *out_info =
+            mylite_expression_utf8mb3_general_collation_info(mylite_mysql_coercibility_coercible);
+        return MYLITE_OK;
+    }
     if (mylite_function_name_is_inet_ntoa(name)) {
         *out_info = mylite_expression_connection_collation_info(
             database, mylite_mysql_coercibility_coercible);

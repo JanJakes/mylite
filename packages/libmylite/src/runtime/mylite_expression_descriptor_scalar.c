@@ -120,7 +120,7 @@ bool mylite_expression_descriptor_infer_uuid_function(
         mylite_field_descriptor_set_nullable(out_descriptor, true);
         return true;
     }
-    if (mylite_function_name_is_bin_to_uuid(name)) {
+    if (mylite_function_name_is_uuid(name) || mylite_function_name_is_bin_to_uuid(name)) {
         uint64_t max_bytes_per_character =
             mylite_expression_descriptor_connection_character_max_length(database);
         uint64_t length = max_bytes_per_character > UINT64_MAX / mylite_mysql_uuid_text_result_chars

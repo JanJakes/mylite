@@ -10,9 +10,10 @@ This feature implements the deterministic UUID scalar functions:
 - `BIN_TO_UUID(binary_uuid)`
 - `BIN_TO_UUID(binary_uuid, swap_flag)`
 
-`UUID()` and `UUID_SHORT()` generation are out of scope for this slice because
-they are nondeterministic and need separate statement/session-state and
-replication-safety decisions.
+`UUID()` generation is specified separately in
+`docs/specs/uuid-function/specs.md`. `UUID_SHORT()` generation remains out of
+scope for this slice because it needs separate server-id, monotonicity, and
+process-state decisions.
 
 The functions are available wherever MyLite currently evaluates supported
 scalar built-ins: no-table `SELECT`, one-table `SELECT` projection, `WHERE`,
@@ -232,7 +233,8 @@ names for all three functions.
 
 ## Compatibility notes
 
-This slice intentionally does not implement `UUID()` or `UUID_SHORT()`. It also
-does not change the current unsupported arity diagnostic path for scalar
-functions. Insert expression paths remain deferred until the broader scalar
-function execution surface is expanded.
+This slice intentionally does not implement `UUID_SHORT()`. It also does not
+change the current unsupported arity diagnostic path for scalar functions.
+Insert expression paths remain deferred until the broader scalar function
+execution surface is expanded. `UUID()` generation is specified separately in
+`docs/specs/uuid-function/specs.md`.

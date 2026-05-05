@@ -24,6 +24,13 @@
 #include <stdint.h>
 #include <time.h>
 
+struct mylite_uuid_state {
+    uint64_t last_timestamp;
+    uint16_t clock_sequence;
+    unsigned char node[6];
+    bool initialized;
+};
+
 struct mylite_db {
     sqlite3 *sqlite;
     char *error_message;
@@ -46,6 +53,7 @@ struct mylite_db {
     const char *character_set_results;
     const char *collation_connection;
     char *sql_mode;
+    struct mylite_uuid_state uuid_state;
 };
 
 struct mylite_statement_timestamp {

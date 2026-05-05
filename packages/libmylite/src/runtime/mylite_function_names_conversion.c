@@ -95,3 +95,10 @@ bool mylite_function_name_is_bin_to_uuid(const struct mylite_sql_ast_node *name)
 
     return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }
+
+bool mylite_function_name_is_uuid(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"UUID"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}

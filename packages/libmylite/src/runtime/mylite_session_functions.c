@@ -11,10 +11,33 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 static const char mylite_embedded_identity[] = "mylite@localhost";
 static const int mylite_session_decimal_conversion_base = 10;
 static const uint32_t mylite_rand_max_value = 0x3fffffffU;
+static const uint64_t mylite_uuid_epoch_offset_100ns = UINT64_C(122192928000000000);
+static const uint64_t mylite_uuid_100ns_per_second = UINT64_C(10000000);
+
+enum mylite_uuid_constants {
+    MYLITE_UUID_BINARY_LENGTH = 16,
+    MYLITE_UUID_NODE_LENGTH = 6,
+    MYLITE_UUID_TEXT_LENGTH = 36,
+    MYLITE_UUID_RANDOM_BYTES = 8,
+    MYLITE_UUID_TIME_LOW_TEXT_END = 8,
+    MYLITE_UUID_TIME_MID_TEXT_END = 13,
+    MYLITE_UUID_TIME_HIGH_TEXT_END = 18,
+    MYLITE_UUID_CLOCK_SEQ_TEXT_END = 23,
+    MYLITE_UUID_RANDOM_NODE_OFFSET = 2,
+    MYLITE_UUID_NODE_OFFSET = 10,
+    MYLITE_UUID_VERSION_1_MASK = 0x1000U,
+    MYLITE_UUID_TIME_HIGH_MASK = 0x0fffU,
+    MYLITE_UUID_CLOCK_SEQ_MASK = 0x3fffU,
+    MYLITE_UUID_VARIANT_MASK = 0x80U,
+    MYLITE_UUID_VARIANT_VALUE_MASK = 0x3fU,
+    MYLITE_UUID_HEX_LOW_NIBBLE_MASK = 0x0fU,
+    MYLITE_UUID_MULTICAST_NODE_MASK = 0x01U,
+};
 
 static int
 evaluate_last_insert_id_function(mylite_stmt *stmt, const struct mylite_sql_ast_node *function_call,
@@ -28,6 +51,7 @@ static int evaluate_rand_function(mylite_stmt *stmt,
                                   const struct mylite_expression_eval_context *expression_context,
                                   struct mylite_expression_warnings *warnings,
                                   struct mylite_expression_value *out_value);
+static int evaluate_uuid_function(mylite_stmt *stmt, struct mylite_expression_value *out_value);
 static const struct mylite_sql_ast_node *
 rand_seed_argument(const struct mylite_sql_ast_node *function_call);
 static int
@@ -48,6 +72,11 @@ static uint64_t unseeded_rand_seed(mylite_stmt *stmt,
                                    const struct mylite_sql_ast_node *function_call);
 static void initialize_rand_seed(struct mylite_rand_state *state, uint64_t seed);
 static double next_rand_value(struct mylite_rand_state *state);
+static void next_uuid_bytes(mylite_db *database, unsigned char bytes[MYLITE_UUID_BINARY_LENGTH]);
+static void initialize_uuid_state(struct mylite_uuid_state *state);
+static uint64_t uuid_current_timestamp_100ns(void);
+static void format_uuid_text(const unsigned char bytes[MYLITE_UUID_BINARY_LENGTH],
+                             char text[MYLITE_UUID_TEXT_LENGTH + 1U]);
 static uint64_t session_function_value_to_uint64(const struct mylite_expression_value *value);
 
 int mylite_session_evaluate_core_function(
@@ -93,6 +122,9 @@ int mylite_session_evaluate_core_function(
     }
     if (mylite_span_equal_ci(name->span, "RAND")) {
         return evaluate_rand_function(stmt, function_call, expression_context, warnings, out_value);
+    }
+    if (mylite_span_equal_ci(name->span, "UUID")) {
+        return evaluate_uuid_function(stmt, out_value);
     }
     if (mylite_span_equal_ci(name->span, "ROW_COUNT")) {
         *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
@@ -360,6 +392,111 @@ static double next_rand_value(struct mylite_rand_state *state)
     state->seed2 =
         (uint32_t)(((uint64_t)state->seed1 + state->seed2 + 33U) % (uint64_t)mylite_rand_max_value);
     return (double)state->seed1 / (double)mylite_rand_max_value;
+}
+
+static int evaluate_uuid_function(mylite_stmt *stmt, struct mylite_expression_value *out_value)
+{
+    unsigned char bytes[MYLITE_UUID_BINARY_LENGTH] = {0};
+    char text[MYLITE_UUID_TEXT_LENGTH + 1U] = {0};
+
+    if (stmt == NULL || stmt->database == NULL) {
+        return -1;
+    }
+    next_uuid_bytes(stmt->database, bytes);
+    format_uuid_text(bytes, text);
+    return mylite_session_set_text_function_value(stmt->database, text, out_value);
+}
+
+static void next_uuid_bytes(mylite_db *database, unsigned char bytes[MYLITE_UUID_BINARY_LENGTH])
+{
+    struct mylite_uuid_state *state = &database->uuid_state;
+    uint64_t timestamp = uuid_current_timestamp_100ns();
+    uint32_t time_low = 0U;
+    uint16_t time_mid = 0U;
+    uint16_t time_high = 0U;
+    uint16_t clock_sequence = 0U;
+
+    if (!state->initialized) {
+        initialize_uuid_state(state);
+    }
+    if (timestamp <= state->last_timestamp) {
+        state->clock_sequence =
+            (uint16_t)((state->clock_sequence + 1U) & (uint16_t)MYLITE_UUID_CLOCK_SEQ_MASK);
+        if (state->last_timestamp < UINT64_MAX) {
+            timestamp = state->last_timestamp + 1U;
+        }
+    }
+    state->last_timestamp = timestamp;
+
+    time_low = (uint32_t)(timestamp & UINT64_C(0xffffffff));
+    time_mid = (uint16_t)((timestamp >> 32U) & UINT64_C(0xffff));
+    time_high =
+        (uint16_t)(((timestamp >> 48U) & MYLITE_UUID_TIME_HIGH_MASK) | MYLITE_UUID_VERSION_1_MASK);
+    clock_sequence = (uint16_t)(state->clock_sequence & MYLITE_UUID_CLOCK_SEQ_MASK);
+
+    bytes[0] = (unsigned char)(time_low >> 24U);
+    bytes[1] = (unsigned char)(time_low >> 16U);
+    bytes[2] = (unsigned char)(time_low >> 8U);
+    bytes[3] = (unsigned char)time_low;
+    bytes[4] = (unsigned char)(time_mid >> 8U);
+    bytes[5] = (unsigned char)time_mid;
+    bytes[6] = (unsigned char)(time_high >> 8U);
+    bytes[7] = (unsigned char)time_high;
+    bytes[8] = (unsigned char)(((clock_sequence >> 8U) & MYLITE_UUID_VARIANT_VALUE_MASK) |
+                               MYLITE_UUID_VARIANT_MASK);
+    bytes[9] = (unsigned char)clock_sequence;
+    memcpy(bytes + MYLITE_UUID_NODE_OFFSET, state->node, MYLITE_UUID_NODE_LENGTH);
+}
+
+static void initialize_uuid_state(struct mylite_uuid_state *state)
+{
+    unsigned char random[MYLITE_UUID_RANDOM_BYTES] = {0};
+
+    sqlite3_randomness((int)sizeof(random), random);
+    state->clock_sequence = (uint16_t)((((uint16_t)random[0] << 8U) | (uint16_t)random[1]) &
+                                       (uint16_t)MYLITE_UUID_CLOCK_SEQ_MASK);
+    memcpy(state->node, random + MYLITE_UUID_RANDOM_NODE_OFFSET, MYLITE_UUID_NODE_LENGTH);
+    state->node[0] = (unsigned char)(state->node[0] | MYLITE_UUID_MULTICAST_NODE_MASK);
+    state->initialized = true;
+}
+
+static uint64_t uuid_current_timestamp_100ns(void)
+{
+#ifdef TIME_UTC
+    struct timespec timestamp;
+
+    if (timespec_get(&timestamp, TIME_UTC) == TIME_UTC && timestamp.tv_sec >= (time_t)0 &&
+        timestamp.tv_nsec >= 0L) {
+        return mylite_uuid_epoch_offset_100ns +
+               ((uint64_t)timestamp.tv_sec * mylite_uuid_100ns_per_second) +
+               ((uint64_t)timestamp.tv_nsec / 100U);
+    }
+#endif
+    {
+        time_t seconds = time(NULL);
+
+        if (seconds == (time_t)-1 || seconds < (time_t)0) {
+            seconds = 0;
+        }
+        return mylite_uuid_epoch_offset_100ns + ((uint64_t)seconds * mylite_uuid_100ns_per_second);
+    }
+}
+
+static void format_uuid_text(const unsigned char bytes[MYLITE_UUID_BINARY_LENGTH],
+                             char text[MYLITE_UUID_TEXT_LENGTH + 1U])
+{
+    static const char digits[] = "0123456789abcdef";
+    size_t output = 0U;
+
+    for (size_t index = 0U; index < MYLITE_UUID_BINARY_LENGTH; ++index) {
+        if (output == MYLITE_UUID_TIME_LOW_TEXT_END || output == MYLITE_UUID_TIME_MID_TEXT_END ||
+            output == MYLITE_UUID_TIME_HIGH_TEXT_END || output == MYLITE_UUID_CLOCK_SEQ_TEXT_END) {
+            text[output++] = '-';
+        }
+        text[output++] = digits[bytes[index] >> 4U];
+        text[output++] = digits[bytes[index] & MYLITE_UUID_HEX_LOW_NIBBLE_MASK];
+    }
+    text[output] = '\0';
 }
 
 static uint64_t session_function_value_to_uint64(const struct mylite_expression_value *value)

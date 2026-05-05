@@ -80,6 +80,7 @@ add_library(mylite STATIC
   src/runtime/mylite_dml_update_value.c
   src/runtime/mylite_dml_value_diagnostics.c
   src/runtime/mylite_expression_collation.c
+  src/runtime/mylite_expression_collation_function.c
   src/runtime/mylite_expression_descriptor.c
   src/runtime/mylite_expression_descriptor_aggregate.c
   src/runtime/mylite_expression_descriptor_basic.c

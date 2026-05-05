@@ -520,6 +520,8 @@ into focused `*_types.h` headers.
 - [x] Move shared SELECT plan predicate helpers into `mylite_select`.
 - [ ] Move `ORDER BY`, `GROUP BY`, `HAVING`, and `LIMIT` binding into
   `mylite_select`.
+- [x] Split recursive `ORDER BY` expression binding into a focused SELECT
+  order companion module.
 - [x] Move SELECT LIMIT binding and row-keeping helpers into `mylite_select`.
 - [x] Move SELECT duplicate-mode and custom-runtime policy helpers into
   `mylite_select`.

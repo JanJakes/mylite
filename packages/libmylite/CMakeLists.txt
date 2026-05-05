@@ -48,6 +48,7 @@ add_library(mylite STATIC
   src/runtime/mylite_dml_delete_execute.c
   src/runtime/mylite_dml_expression.c
   src/runtime/mylite_dml_insert_bound_value.c
+  src/runtime/mylite_dml_insert_column_reference.c
   src/runtime/mylite_dml_insert_conflict.c
   src/runtime/mylite_dml_insert_execute.c
   src/runtime/mylite_dml_insert_diagnostics.c

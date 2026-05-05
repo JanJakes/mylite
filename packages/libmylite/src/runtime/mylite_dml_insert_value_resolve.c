@@ -1,6 +1,7 @@
 #include "mylite_dml.h"
 
 #include "mylite_diagnostics.h"
+#include "mylite_dml_insert_column_reference.h"
 #include "mylite_dml_insert_diagnostics.h"
 #include "mylite_span.h"
 
@@ -135,15 +136,6 @@ static int allocate_insert_auto_increment(mylite_db *database, uint64_t statemen
 static int reserve_insert_auto_increment(mylite_db *database, uint64_t statement_row_count,
                                          struct mylite_insert_execution_state *state,
                                          uint64_t first_value);
-static size_t insert_table_column_index(const struct mylite_insert_table *table,
-                                        const char *column_name);
-static size_t
-insert_table_column_reference_index(const struct mylite_insert_table *table,
-                                    const char *schema_name, const char *table_name,
-                                    const struct mylite_insert_column_reference *reference);
-static bool
-insert_column_reference_qualifiers_match(const struct mylite_insert_column_reference *reference,
-                                         const char *schema_name, const char *table_name);
 static bool
 insert_column_uses_numeric_implicit_default(const struct mylite_insert_table_column *column);
 static bool insert_row_uses_all_defaults(const struct mylite_insert_values_plan *plan,
@@ -842,7 +834,7 @@ static int evaluate_insert_set_column_reference(mylite_db *database, const char 
                                                 struct mylite_insert_bound_value *out_value)
 {
     size_t column_index =
-        insert_table_column_reference_index(table, schema_name, plan->table_name, ref);
+        mylite_dml_insert_table_column_reference_index(table, schema_name, plan->table_name, ref);
 
     if (column_index == table->column_count) {
         int status = mylite_diagnostics_set_error_message_parts(
@@ -1109,43 +1101,6 @@ static int reserve_insert_auto_increment(mylite_db *database, uint64_t statement
     }
     state->reserved_auto_increment_end = first_value + statement_row_count;
     return MYLITE_OK;
-}
-
-static size_t insert_table_column_index(const struct mylite_insert_table *table,
-                                        const char *column_name)
-{
-    for (size_t index = 0U; index < table->column_count; ++index) {
-        if (mylite_ascii_case_equal(table->columns[index].name, column_name)) {
-            return index;
-        }
-    }
-    return table->column_count;
-}
-
-static size_t
-insert_table_column_reference_index(const struct mylite_insert_table *table,
-                                    const char *schema_name, const char *table_name,
-                                    const struct mylite_insert_column_reference *reference)
-{
-    if (!insert_column_reference_qualifiers_match(reference, schema_name, table_name)) {
-        return table->column_count;
-    }
-    return insert_table_column_index(table, reference->column_name);
-}
-
-static bool
-insert_column_reference_qualifiers_match(const struct mylite_insert_column_reference *reference,
-                                         const char *schema_name, const char *table_name)
-{
-    if (reference->schema_name != NULL &&
-        !mylite_ascii_case_equal(reference->schema_name, schema_name)) {
-        return false;
-    }
-    if (reference->table_name != NULL &&
-        !mylite_ascii_case_equal(reference->table_name, table_name)) {
-        return false;
-    }
-    return true;
 }
 
 static bool

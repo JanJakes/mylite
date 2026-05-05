@@ -74,6 +74,7 @@ add_library(mylite STATIC
   src/runtime/mylite_expression_descriptor_aggregate.c
   src/runtime/mylite_expression_descriptor_cast.c
   src/runtime/mylite_expression_descriptor_case.c
+  src/runtime/mylite_expression_descriptor_compare.c
   src/runtime/mylite_expression_descriptor_numeric.c
   src/runtime/mylite_expression_descriptor_scalar.c
   src/runtime/mylite_expression_descriptor_string.c

@@ -690,6 +690,8 @@ into focused `*_types.h` headers.
 - [x] Split SELECT table target resolution into a focused target companion.
 - [x] Split SELECT JOIN/USING range lookup into a focused USING range
   companion.
+- [x] Split SELECT ONLY_FULL_GROUP_BY invariance checks into a focused group
+  invariant companion.
 - [x] Split string encoding descriptor inference into a focused expression
   descriptor module.
 - [x] Split shared SHOW CREATE identifier quoting, string literal quoting, and

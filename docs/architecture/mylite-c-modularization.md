@@ -800,6 +800,8 @@ into focused `*_types.h` headers.
   focused expression collation leaf companion.
 - [x] Split `STRCMP()` evaluation and collation-aware comparison into a focused
   statement function module.
+- [x] Split `STRCMP()` collation comparison options and byte comparison into a
+  focused helper so the statement function module stays evaluation-only.
 - [x] Split transaction savepoint parsing, execution, stack management, and
   savepoint diagnostics out of the core transaction module.
 - [x] Split transaction auto-increment catalog update and rollback bookkeeping

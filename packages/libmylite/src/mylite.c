@@ -14,6 +14,7 @@
 #include "runtime/mylite_error_codes.h"
 #include "runtime/mylite_expression_collation.h"
 #include "runtime/mylite_expression_descriptor.h"
+#include "runtime/mylite_expression_descriptor_numeric.h"
 #include "runtime/mylite_expression_validation.h"
 #include "runtime/mylite_field_descriptor.h"
 #include "runtime/mylite_function_names.h"
@@ -214,24 +215,6 @@ static struct mylite_field_descriptor date_interval_string_descriptor(mylite_db 
 static struct mylite_field_descriptor date_interval_datetime_descriptor(unsigned int decimals);
 
 static bool interval_unit_has_time_part(enum mylite_sql_ast_interval_unit unit);
-static bool infer_fixed_integer_function_descriptor(const struct mylite_sql_ast_node *name,
-                                                    bool result_nullable,
-                                                    struct mylite_field_descriptor *out_descriptor);
-static bool infer_exp_function_descriptor(const struct mylite_sql_ast_node *name,
-                                          struct mylite_field_descriptor *out_descriptor);
-static bool infer_power_function_descriptor(const struct mylite_sql_ast_node *name,
-                                            struct mylite_field_descriptor *out_descriptor);
-static bool infer_sqrt_function_descriptor(const struct mylite_sql_ast_node *name,
-                                           struct mylite_field_descriptor *out_descriptor);
-static bool infer_trigonometric_function_descriptor(const struct mylite_sql_ast_node *name,
-                                                    struct mylite_field_descriptor *out_descriptor);
-static bool
-infer_inverse_trigonometric_function_descriptor(const struct mylite_sql_ast_node *name,
-                                                struct mylite_field_descriptor *out_descriptor);
-static bool
-infer_angle_conversion_function_descriptor(const struct mylite_sql_ast_node *name,
-                                           bool result_nullable,
-                                           struct mylite_field_descriptor *out_descriptor);
 static bool infer_list_index_function_descriptor(const struct mylite_sql_ast_node *name,
                                                  bool nullable,
                                                  struct mylite_field_descriptor *out_descriptor);
@@ -452,8 +435,6 @@ static int infer_truncate_function_descriptor(mylite_db *database,
                                               const struct mylite_expression_value *value,
                                               bool result_nullable,
                                               struct mylite_field_descriptor *out_descriptor);
-static bool infer_logarithm_function_descriptor(const struct mylite_sql_ast_node *name,
-                                                struct mylite_field_descriptor *out_descriptor);
 static bool
 round_function_argument_is_approximate_literal(const struct mylite_sql_ast_node *argument);
 static bool round_function_constant_scale(const struct mylite_sql_ast_node *argument,
@@ -2355,7 +2336,8 @@ static int infer_function_expression_descriptor(mylite_db *database,
         mylite_field_descriptor_set_nullable(out_descriptor, result_nullable);
         return MYLITE_OK;
     }
-    if (infer_fixed_integer_function_descriptor(name, result_nullable, out_descriptor)) {
+    if (mylite_expression_descriptor_infer_fixed_integer_function(name, result_nullable,
+                                                                  out_descriptor)) {
         return MYLITE_OK;
     }
     if (infer_code_search_function_descriptor(name, result_nullable, out_descriptor)) {
@@ -2438,25 +2420,7 @@ static bool infer_common_scalar_function_descriptor(mylite_db *database,
     if (infer_uuid_function_descriptor(database, name, out_descriptor)) {
         return true;
     }
-    if (infer_exp_function_descriptor(name, out_descriptor)) {
-        return true;
-    }
-    if (infer_logarithm_function_descriptor(name, out_descriptor)) {
-        return true;
-    }
-    if (infer_power_function_descriptor(name, out_descriptor)) {
-        return true;
-    }
-    if (infer_sqrt_function_descriptor(name, out_descriptor)) {
-        return true;
-    }
-    if (infer_trigonometric_function_descriptor(name, out_descriptor)) {
-        return true;
-    }
-    if (infer_inverse_trigonometric_function_descriptor(name, out_descriptor)) {
-        return true;
-    }
-    if (infer_angle_conversion_function_descriptor(name, result_nullable, out_descriptor)) {
+    if (mylite_expression_descriptor_infer_math_function(name, result_nullable, out_descriptor)) {
         return true;
     }
     if (infer_temporal_scalar_function_descriptor(name, arguments_nullable, out_descriptor)) {
@@ -2494,142 +2458,6 @@ static int infer_variadic_scalar_function_descriptor(mylite_db *database,
         return status;
     }
     return infer_char_function_descriptor(database, expression, out_descriptor);
-}
-
-static bool infer_exp_function_descriptor(const struct mylite_sql_ast_node *name,
-                                          struct mylite_field_descriptor *out_descriptor)
-{
-    if (!mylite_function_name_is_exp(name)) {
-        return false;
-    }
-
-    *out_descriptor = (struct mylite_field_descriptor){
-        .type = MYLITE_FIELD_TYPE_DOUBLE,
-        .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
-        .length = mylite_mysql_double_display_length + 1U,
-        .decimals = mylite_mysql_not_fixed_decimals,
-        .charset_id = mylite_mysql_binary_charset_id,
-        .nullable = true,
-    };
-    mylite_field_descriptor_set_nullable(out_descriptor, true);
-    return true;
-}
-
-static bool infer_logarithm_function_descriptor(const struct mylite_sql_ast_node *name,
-                                                struct mylite_field_descriptor *out_descriptor)
-{
-    if (!mylite_function_name_is_logarithm(name)) {
-        return false;
-    }
-
-    *out_descriptor = (struct mylite_field_descriptor){
-        .type = MYLITE_FIELD_TYPE_DOUBLE,
-        .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
-        .length = mylite_mysql_double_display_length + 1U,
-        .decimals = mylite_mysql_not_fixed_decimals,
-        .charset_id = mylite_mysql_binary_charset_id,
-        .nullable = true,
-    };
-    mylite_field_descriptor_set_nullable(out_descriptor, true);
-    return true;
-}
-
-static bool infer_power_function_descriptor(const struct mylite_sql_ast_node *name,
-                                            struct mylite_field_descriptor *out_descriptor)
-{
-    if (!mylite_function_name_is_power(name)) {
-        return false;
-    }
-
-    *out_descriptor = (struct mylite_field_descriptor){
-        .type = MYLITE_FIELD_TYPE_DOUBLE,
-        .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
-        .length = mylite_mysql_double_display_length + 1U,
-        .decimals = mylite_mysql_not_fixed_decimals,
-        .charset_id = mylite_mysql_binary_charset_id,
-        .nullable = true,
-    };
-    mylite_field_descriptor_set_nullable(out_descriptor, true);
-    return true;
-}
-
-static bool infer_sqrt_function_descriptor(const struct mylite_sql_ast_node *name,
-                                           struct mylite_field_descriptor *out_descriptor)
-{
-    if (!mylite_function_name_is_sqrt(name)) {
-        return false;
-    }
-
-    *out_descriptor = (struct mylite_field_descriptor){
-        .type = MYLITE_FIELD_TYPE_DOUBLE,
-        .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
-        .length = mylite_mysql_double_display_length + 1U,
-        .decimals = mylite_mysql_not_fixed_decimals,
-        .charset_id = mylite_mysql_binary_charset_id,
-        .nullable = true,
-    };
-    mylite_field_descriptor_set_nullable(out_descriptor, true);
-    return true;
-}
-
-static bool infer_trigonometric_function_descriptor(const struct mylite_sql_ast_node *name,
-                                                    struct mylite_field_descriptor *out_descriptor)
-{
-    if (!mylite_function_name_is_trigonometric(name)) {
-        return false;
-    }
-
-    *out_descriptor = (struct mylite_field_descriptor){
-        .type = MYLITE_FIELD_TYPE_DOUBLE,
-        .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
-        .length = mylite_mysql_double_display_length + 1U,
-        .decimals = mylite_mysql_not_fixed_decimals,
-        .charset_id = mylite_mysql_binary_charset_id,
-        .nullable = true,
-    };
-    mylite_field_descriptor_set_nullable(out_descriptor, true);
-    return true;
-}
-
-static bool
-infer_inverse_trigonometric_function_descriptor(const struct mylite_sql_ast_node *name,
-                                                struct mylite_field_descriptor *out_descriptor)
-{
-    if (!mylite_function_name_is_inverse_trigonometric(name)) {
-        return false;
-    }
-
-    *out_descriptor = (struct mylite_field_descriptor){
-        .type = MYLITE_FIELD_TYPE_DOUBLE,
-        .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
-        .length = mylite_mysql_double_display_length + 1U,
-        .decimals = mylite_mysql_not_fixed_decimals,
-        .charset_id = mylite_mysql_binary_charset_id,
-        .nullable = true,
-    };
-    mylite_field_descriptor_set_nullable(out_descriptor, true);
-    return true;
-}
-
-static bool
-infer_angle_conversion_function_descriptor(const struct mylite_sql_ast_node *name,
-                                           bool result_nullable,
-                                           struct mylite_field_descriptor *out_descriptor)
-{
-    if (!mylite_function_name_is_angle_conversion(name)) {
-        return false;
-    }
-
-    *out_descriptor = (struct mylite_field_descriptor){
-        .type = MYLITE_FIELD_TYPE_DOUBLE,
-        .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
-        .length = mylite_mysql_double_display_length + 1U,
-        .decimals = mylite_mysql_not_fixed_decimals,
-        .charset_id = mylite_mysql_binary_charset_id,
-        .nullable = result_nullable,
-    };
-    mylite_field_descriptor_set_nullable(out_descriptor, result_nullable);
-    return true;
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
@@ -3177,28 +3005,6 @@ static uint64_t text_function_result_length(mylite_db *database,
         return mylite_expression_descriptor_string_length(database, value, NULL);
     }
     return mylite_mysql_text_length;
-}
-
-static bool infer_fixed_integer_function_descriptor(const struct mylite_sql_ast_node *name,
-                                                    bool result_nullable,
-                                                    struct mylite_field_descriptor *out_descriptor)
-{
-    if (mylite_function_name_has_length_result(name)) {
-        *out_descriptor = mylite_expression_descriptor_signed_longlong(result_nullable);
-        out_descriptor->length = mylite_mysql_length_function_display_length;
-        return true;
-    }
-    if (mylite_function_name_is_bit_count(name)) {
-        *out_descriptor = mylite_expression_descriptor_signed_longlong(result_nullable);
-        out_descriptor->length = mylite_mysql_bit_count_function_display_length;
-        return true;
-    }
-    if (mylite_function_name_is_crc32(name)) {
-        *out_descriptor = mylite_expression_descriptor_unsigned_longlong(result_nullable);
-        out_descriptor->length = mylite_mysql_crc32_function_display_length;
-        return true;
-    }
-    return false;
 }
 
 static bool infer_session_function_descriptor(mylite_db *database,

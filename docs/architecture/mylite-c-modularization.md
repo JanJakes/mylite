@@ -683,6 +683,8 @@ into focused `*_types.h` headers.
   into a focused FROM resolve companion.
 - [x] Split joined SELECT row output processing into a focused SELECT join
   output companion.
+- [x] Split SELECT materialized row ORDER BY sorting into a focused rowset sort
+  companion.
 - [x] Split COUNT(DISTINCT ...) aggregate argument binding and descriptor
   inference into a focused SELECT aggregate companion.
 - [x] Split SELECT catalog descriptor row-source parsing into a focused

@@ -3,6 +3,7 @@
 
 #include <mylite/mylite.h>
 
+#include "mylite_select_rowset_sort.h"
 #include "mylite_select_types.h"
 
 #include <stdbool.h>
@@ -23,8 +24,6 @@ int mylite_select_result_append_row_copy(mylite_db *database,
                                          const struct mylite_table_select_row *row);
 int mylite_select_result_apply_limit(struct mylite_table_select_result *result,
                                      const struct mylite_select_limit *limit);
-int mylite_select_result_sort_rows(mylite_db *database, struct mylite_table_select_result *result,
-                                   const struct mylite_select_plan *plan);
 bool mylite_select_result_distinct_row_exists(const struct mylite_table_select_result *result,
                                               const struct mylite_select_plan *plan,
                                               const struct mylite_result_metadata *metadata,

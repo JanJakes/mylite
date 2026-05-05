@@ -671,6 +671,8 @@ into focused `*_types.h` headers.
   SELECT utility module.
 - [x] Split SELECT column-reference resolution, reference display-name copying,
   and alias copying out of the common SELECT utility module.
+- [x] Split SELECT expression-evaluation context callbacks and output-value
+  evaluation into a focused SELECT eval companion.
 - [x] Split string encoding descriptor inference into a focused expression
   descriptor module.
 - [x] Split shared SHOW CREATE identifier quoting, string literal quoting, and

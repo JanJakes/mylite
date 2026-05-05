@@ -236,6 +236,7 @@ add_library(mylite STATIC
   src/runtime/mylite_table_ddl_alter_index_validate.c
   src/runtime/mylite_table_ddl_alter_metadata.c
   src/runtime/mylite_table_ddl_alter_model.c
+  src/runtime/mylite_table_ddl_alter_model_load.c
   src/runtime/mylite_table_ddl_alter_rebuild.c
   src/runtime/mylite_table_ddl_alter_validate.c
   src/runtime/mylite_table_ddl_alter_warnings.c

@@ -766,6 +766,8 @@ into focused `*_types.h` headers.
   DDL alter metadata module.
 - [x] Split ALTER TABLE MySQL-compatible diagnostics into a focused table DDL
   alter diagnostics module.
+- [x] Split ALTER TABLE catalog-backed model loading into a focused loader so
+  the model module owns only in-memory vector mutation helpers.
 - [x] Split ALTER TABLE column action mutation into a focused table DDL alter
   column module.
 - [x] Split ALTER TABLE column definition-to-model conversion into a focused

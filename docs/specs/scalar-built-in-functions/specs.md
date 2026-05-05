@@ -186,7 +186,8 @@ by common scalar expressions:
   `SECOND` units, `TIMESTAMPADD` for the simple `DAY`, `WEEK`, `MONTH`,
   `YEAR`, `HOUR`, `MINUTE`, and `SECOND` units, and `TIMESTAMPDIFF` for the
   simple `DAY`, `WEEK`, `MONTH`, `YEAR`, `HOUR`, `MINUTE`, and `SECOND` units,
-  plus `TO_DAYS`, `TO_SECONDS`, `FROM_DAYS`, and `TIME`;
+  plus `TO_DAYS`, `TO_SECONDS`, `FROM_DAYS`, `TIME`, `UNIX_TIMESTAMP`, and
+  `DATE_FORMAT`;
   see
   `docs/specs/current-temporal-functions/specs.md` and
   `docs/specs/date-and-datediff-functions/specs.md` and
@@ -197,7 +198,11 @@ by common scalar expressions:
   `docs/specs/to-days-function/specs.md` and
   `docs/specs/to-seconds-function/specs.md` and
   `docs/specs/from-days-function/specs.md` and
-  `docs/specs/time-function/specs.md`
+  `docs/specs/time-function/specs.md` and
+  `docs/specs/unix-timestamp-function/specs.md` and
+  `docs/specs/date-format-function/specs.md`
+- random functions: `RAND` and `RAND(seed)`; see
+  `docs/specs/rand-function/specs.md`
 - grammar-level cast expressions: `CAST(expr AS type)`, `CONVERT(expr, type)`,
   and `CONVERT(expr USING charset_name)` for the supported CAST target and
   charset-registry subsets; see `docs/specs/cast-expression/specs.md` and

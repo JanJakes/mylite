@@ -6,11 +6,14 @@
 #include <stdbool.h>
 
 struct mylite_expression_value;
+struct mylite_statement_timestamp;
 struct mylite_sql_ast_node;
 
 int mylite_temporal_evaluate_current_function(mylite_stmt *stmt,
                                               const struct mylite_sql_ast_node *function_call,
                                               struct mylite_expression_value *out_value);
+int mylite_temporal_statement_timestamp(mylite_stmt *stmt,
+                                        const struct mylite_statement_timestamp **out_timestamp);
 bool mylite_temporal_current_function_fsp(const struct mylite_sql_ast_node *function_call,
                                           unsigned int *out_fsp);
 bool mylite_temporal_function_name_is_current(const struct mylite_sql_ast_node *name);

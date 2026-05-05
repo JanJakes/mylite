@@ -17,8 +17,8 @@ Out of scope:
 
 - `DATE_ADD()`, `DATE_SUB()`, `ADDDATE()`, and `SUBDATE()` interval arithmetic
   and interval grammar
-- `DATE_FORMAT()`, `STR_TO_DATE()`, `UNIX_TIMESTAMP()`, week functions, named
-  time zones, and locale-sensitive temporal names
+- `STR_TO_DATE()`, week functions, named time zones, and broader
+  locale-sensitive temporal names beyond the first `DATE_FORMAT()` slice
 - broad temporal type storage/conversion beyond parsing the scalar inputs used
   by this feature
 - exact relaxed temporal delimiter deprecation warnings for every accepted

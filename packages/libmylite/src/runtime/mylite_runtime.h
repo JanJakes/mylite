@@ -53,6 +53,13 @@ struct mylite_statement_timestamp {
     long microseconds;
 };
 
+struct mylite_rand_state {
+    const struct mylite_sql_ast_node *function_call;
+    uint32_t seed1;
+    uint32_t seed2;
+    bool initialized;
+};
+
 struct mylite_stmt {
     mylite_db *database;
     enum mylite_stmt_kind kind;
@@ -98,6 +105,8 @@ struct mylite_stmt {
     char *delete_sql_text;
     struct mylite_cached_expression_value *select_constant_values;
     size_t select_constant_value_count;
+    struct mylite_rand_state *rand_states;
+    size_t rand_state_count;
     bool select_constant_predicate_evaluated;
     bool select_constant_predicate_matches;
     int64_t affected_rows;

@@ -223,6 +223,7 @@ void mylite_finalize(mylite_stmt *stmt)
     free(stmt->update_sql_text);
     free(stmt->delete_sql_text);
     mylite_statement_select_constant_values_deinit(stmt);
+    free(stmt->rand_states);
     free(stmt);
 }
 

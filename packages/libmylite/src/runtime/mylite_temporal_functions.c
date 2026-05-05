@@ -52,6 +52,22 @@ int mylite_temporal_evaluate_current_function(mylite_stmt *stmt,
     return -1;
 }
 
+int mylite_temporal_statement_timestamp(mylite_stmt *stmt,
+                                        const struct mylite_statement_timestamp **out_timestamp)
+{
+    int status = 0;
+
+    if (out_timestamp == NULL) {
+        return -1;
+    }
+    status = ensure_statement_timestamp(stmt);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    *out_timestamp = &stmt->statement_timestamp;
+    return MYLITE_OK;
+}
+
 bool mylite_temporal_current_function_fsp(const struct mylite_sql_ast_node *function_call,
                                           unsigned int *out_fsp)
 {

@@ -7,18 +7,47 @@
 #include "mylite_span.h"
 #include "mylite_temporal_functions.h"
 
+#include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
 static const char mylite_embedded_identity[] = "mylite@localhost";
 static const int mylite_session_decimal_conversion_base = 10;
+static const uint32_t mylite_rand_max_value = 0x3fffffffU;
 
 static int
 evaluate_last_insert_id_function(mylite_stmt *stmt, const struct mylite_sql_ast_node *function_call,
                                  const struct mylite_expression_eval_context *expression_context,
                                  struct mylite_expression_warnings *warnings,
                                  struct mylite_expression_value *out_value);
+static int evaluate_unix_timestamp_function(mylite_stmt *stmt,
+                                            struct mylite_expression_value *out_value);
+static int evaluate_rand_function(mylite_stmt *stmt,
+                                  const struct mylite_sql_ast_node *function_call,
+                                  const struct mylite_expression_eval_context *expression_context,
+                                  struct mylite_expression_warnings *warnings,
+                                  struct mylite_expression_value *out_value);
+static const struct mylite_sql_ast_node *
+rand_seed_argument(const struct mylite_sql_ast_node *function_call);
+static int
+evaluate_rand_dynamic_seed(const struct mylite_sql_ast_node *argument,
+                           const struct mylite_expression_eval_context *expression_context,
+                           struct mylite_expression_warnings *warnings,
+                           struct mylite_expression_value *out_value);
+static void set_rand_output_value(struct mylite_rand_state *state,
+                                  struct mylite_expression_value *out_value);
+static int rand_state_for_function(mylite_stmt *stmt,
+                                   const struct mylite_sql_ast_node *function_call,
+                                   struct mylite_rand_state **out_state);
+static int initialize_rand_state(mylite_stmt *stmt, const struct mylite_sql_ast_node *function_call,
+                                 const struct mylite_expression_eval_context *expression_context,
+                                 struct mylite_expression_warnings *warnings,
+                                 struct mylite_rand_state *state);
+static uint64_t unseeded_rand_seed(mylite_stmt *stmt,
+                                   const struct mylite_sql_ast_node *function_call);
+static void initialize_rand_seed(struct mylite_rand_state *state, uint64_t seed);
+static double next_rand_value(struct mylite_rand_state *state);
 static uint64_t session_function_value_to_uint64(const struct mylite_expression_value *value);
 
 int mylite_session_evaluate_core_function(
@@ -58,6 +87,12 @@ int mylite_session_evaluate_core_function(
     if (mylite_span_equal_ci(name->span, "LAST_INSERT_ID")) {
         return evaluate_last_insert_id_function(stmt, function_call, expression_context, warnings,
                                                 out_value);
+    }
+    if (mylite_span_equal_ci(name->span, "UNIX_TIMESTAMP")) {
+        return evaluate_unix_timestamp_function(stmt, out_value);
+    }
+    if (mylite_span_equal_ci(name->span, "RAND")) {
+        return evaluate_rand_function(stmt, function_call, expression_context, warnings, out_value);
     }
     if (mylite_span_equal_ci(name->span, "ROW_COUNT")) {
         *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
@@ -144,6 +179,187 @@ evaluate_last_insert_id_function(mylite_stmt *stmt, const struct mylite_sql_ast_
     *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_UINT64,
                                                   .uint64_value = stmt->database->last_insert_id};
     return 0;
+}
+
+static int evaluate_unix_timestamp_function(mylite_stmt *stmt,
+                                            struct mylite_expression_value *out_value)
+{
+    const struct mylite_statement_timestamp *timestamp = NULL;
+    int status = mylite_temporal_statement_timestamp(stmt, &timestamp);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
+                                                  .int64_value = (int64_t)timestamp->seconds};
+    return MYLITE_OK;
+}
+
+static int evaluate_rand_function(mylite_stmt *stmt,
+                                  const struct mylite_sql_ast_node *function_call,
+                                  const struct mylite_expression_eval_context *expression_context,
+                                  struct mylite_expression_warnings *warnings,
+                                  struct mylite_expression_value *out_value)
+{
+    const struct mylite_sql_ast_node *argument = rand_seed_argument(function_call);
+    struct mylite_rand_state *state = NULL;
+    int status = MYLITE_OK;
+
+    if (argument != NULL && !mylite_expression_is_cacheable_no_table(argument)) {
+        return evaluate_rand_dynamic_seed(argument, expression_context, warnings, out_value);
+    }
+
+    status = rand_state_for_function(stmt, function_call, &state);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (!state->initialized) {
+        status = initialize_rand_state(stmt, function_call, expression_context, warnings, state);
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+
+    set_rand_output_value(state, out_value);
+    return MYLITE_OK;
+}
+
+static const struct mylite_sql_ast_node *
+rand_seed_argument(const struct mylite_sql_ast_node *function_call)
+{
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(function_call, 1U);
+
+    return mylite_ast_child_at(arguments, 0U);
+}
+
+static int
+evaluate_rand_dynamic_seed(const struct mylite_sql_ast_node *argument,
+                           const struct mylite_expression_eval_context *expression_context,
+                           struct mylite_expression_warnings *warnings,
+                           struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value seed_value = {0};
+    struct mylite_rand_state state = {0};
+    int status =
+        mylite_expression_eval_with_context(argument, expression_context, warnings, &seed_value);
+
+    if (status != MYLITE_OK) {
+        mylite_expression_value_deinit(&seed_value);
+        return status;
+    }
+    initialize_rand_seed(&state, session_function_value_to_uint64(&seed_value));
+    mylite_expression_value_deinit(&seed_value);
+    set_rand_output_value(&state, out_value);
+    return MYLITE_OK;
+}
+
+static void set_rand_output_value(struct mylite_rand_state *state,
+                                  struct mylite_expression_value *out_value)
+{
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_REAL,
+        .real_value = next_rand_value(state),
+        .compact_real_text = true,
+    };
+}
+
+static int rand_state_for_function(mylite_stmt *stmt,
+                                   const struct mylite_sql_ast_node *function_call,
+                                   struct mylite_rand_state **out_state)
+{
+    struct mylite_rand_state *states = NULL;
+    size_t next_count = 0U;
+
+    if (stmt == NULL || out_state == NULL) {
+        return -1;
+    }
+    for (size_t index = 0U; index < stmt->rand_state_count; ++index) {
+        if (stmt->rand_states[index].function_call == function_call) {
+            *out_state = &stmt->rand_states[index];
+            return MYLITE_OK;
+        }
+    }
+    if (stmt->rand_state_count >= SIZE_MAX / sizeof(*stmt->rand_states)) {
+        return -1;
+    }
+    next_count = stmt->rand_state_count + 1U;
+    states = realloc(stmt->rand_states, next_count * sizeof(*stmt->rand_states));
+    if (states == NULL) {
+        if (stmt->database != NULL) {
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
+        }
+        return MYLITE_NOMEM;
+    }
+    stmt->rand_states = states;
+    stmt->rand_states[stmt->rand_state_count] = (struct mylite_rand_state){
+        .function_call = function_call,
+    };
+    *out_state = &stmt->rand_states[stmt->rand_state_count];
+    stmt->rand_state_count = next_count;
+    return MYLITE_OK;
+}
+
+static int initialize_rand_state(mylite_stmt *stmt, const struct mylite_sql_ast_node *function_call,
+                                 const struct mylite_expression_eval_context *expression_context,
+                                 struct mylite_expression_warnings *warnings,
+                                 struct mylite_rand_state *state)
+{
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(function_call, 1U);
+    const struct mylite_sql_ast_node *argument = mylite_ast_child_at(arguments, 0U);
+    struct mylite_expression_value seed_value = {0};
+    uint64_t seed = 0U;
+    int status = 0;
+
+    if (argument == NULL) {
+        initialize_rand_seed(state, unseeded_rand_seed(stmt, function_call));
+        return MYLITE_OK;
+    }
+
+    status =
+        mylite_expression_eval_with_context(argument, expression_context, warnings, &seed_value);
+    if (status != 0) {
+        mylite_expression_value_deinit(&seed_value);
+        return status;
+    }
+    seed = session_function_value_to_uint64(&seed_value);
+    mylite_expression_value_deinit(&seed_value);
+    initialize_rand_seed(state, seed);
+    return MYLITE_OK;
+}
+
+static uint64_t unseeded_rand_seed(mylite_stmt *stmt,
+                                   const struct mylite_sql_ast_node *function_call)
+{
+    const struct mylite_statement_timestamp *timestamp = NULL;
+    uint64_t seed = (uint64_t)(uintptr_t)function_call ^ (uint64_t)(uintptr_t)stmt;
+
+    if (stmt != NULL && stmt->database != NULL) {
+        seed ^= stmt->database->connection_id;
+    }
+    if (mylite_temporal_statement_timestamp(stmt, &timestamp) == MYLITE_OK && timestamp != NULL) {
+        seed ^= (uint64_t)timestamp->seconds;
+        seed ^= ((uint64_t)timestamp->microseconds << 24U);
+    }
+    return seed;
+}
+
+static void initialize_rand_seed(struct mylite_rand_state *state, uint64_t seed)
+{
+    uint64_t reduced = seed % (uint64_t)mylite_rand_max_value;
+
+    state->seed1 = (uint32_t)(((reduced * UINT64_C(0x10001)) + UINT64_C(55555555)) %
+                              (uint64_t)mylite_rand_max_value);
+    state->seed2 = (uint32_t)((reduced * UINT64_C(0x10000001)) % (uint64_t)mylite_rand_max_value);
+    state->initialized = true;
+}
+
+static double next_rand_value(struct mylite_rand_state *state)
+{
+    state->seed1 = (uint32_t)((((uint64_t)state->seed1 * 3U) + state->seed2) %
+                              (uint64_t)mylite_rand_max_value);
+    state->seed2 =
+        (uint32_t)(((uint64_t)state->seed1 + state->seed2 + 33U) % (uint64_t)mylite_rand_max_value);
+    return (double)state->seed1 / (double)mylite_rand_max_value;
 }
 
 static uint64_t session_function_value_to_uint64(const struct mylite_expression_value *value)

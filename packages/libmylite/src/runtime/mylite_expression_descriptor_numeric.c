@@ -108,6 +108,14 @@ bool mylite_expression_descriptor_infer_scalar_numeric_function(
         };
         return true;
     }
+    if (name != NULL && mylite_span_equal_ci(name->span, "UNIX_TIMESTAMP")) {
+        *out_descriptor = mylite_expression_descriptor_numeric_double_function(result_nullable);
+        return true;
+    }
+    if (name != NULL && mylite_span_equal_ci(name->span, "RAND")) {
+        *out_descriptor = mylite_expression_descriptor_numeric_double_function(false);
+        return true;
+    }
     return false;
 }
 

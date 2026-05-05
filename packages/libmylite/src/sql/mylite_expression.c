@@ -458,6 +458,11 @@ struct temporal_year_parts {
     size_t digit_count;
 };
 
+struct temporal_week_year {
+    int year;
+    int week;
+};
+
 enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_UNKNOWN = 0,
     MYLITE_SCALAR_FUNCTION_CONCAT = 1,
@@ -576,8 +581,11 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_TO_SECONDS = 114,
     MYLITE_SCALAR_FUNCTION_FROM_DAYS = 115,
     MYLITE_SCALAR_FUNCTION_TIME = 116,
-    MYLITE_SCALAR_FUNCTION_REGEXP_LIKE = 117,
-    MYLITE_SCALAR_FUNCTION_FOUND_ROWS = 118,
+    MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP = 117,
+    MYLITE_SCALAR_FUNCTION_DATE_FORMAT = 118,
+    MYLITE_SCALAR_FUNCTION_RAND = 119,
+    MYLITE_SCALAR_FUNCTION_REGEXP_LIKE = 120,
+    MYLITE_SCALAR_FUNCTION_FOUND_ROWS = 121,
 };
 
 struct angle_conversion_input {
@@ -673,6 +681,37 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
                               const struct mylite_expression_eval_context *context,
                               struct mylite_expression_warnings *warnings,
                               struct mylite_expression_value *out_value);
+static int eval_unix_timestamp_function(const struct mylite_sql_ast_node *node,
+                                        const struct mylite_expression_eval_context *context,
+                                        struct mylite_expression_warnings *warnings,
+                                        struct mylite_expression_value *out_value);
+static int set_unix_timestamp_value(const struct temporal_date_value *date,
+                                    struct mylite_expression_value *out_value);
+static int eval_date_format_function(const struct mylite_sql_ast_node *arguments,
+                                     const struct mylite_expression_eval_context *context,
+                                     struct mylite_expression_warnings *warnings,
+                                     struct mylite_expression_value *out_value);
+static int date_format_text_value(const struct temporal_date_value *date, const char *format,
+                                  size_t format_length, struct mylite_expression_value *out_value);
+static int append_date_format_token(char **result, size_t *length,
+                                    const struct temporal_date_value *date, char token);
+static int append_formatted_date_part(char **result, size_t *length, const char *format, int value);
+static int append_date_format_day_ordinal(char **result, size_t *length, int day);
+static const char *date_format_day_ordinal_suffix(int day);
+static int append_date_format_time_12(char **result, size_t *length,
+                                      const struct temporal_date_value *date);
+static int append_date_format_time_24(char **result, size_t *length,
+                                      const struct temporal_date_value *date);
+static int append_date_format_week_year(char **result, size_t *length,
+                                        const struct temporal_date_value *date, bool monday_first,
+                                        bool year);
+static int date_format_hour_12(int hour);
+static int date_format_day_of_year(const struct temporal_date_value *date);
+static int date_format_weekday_sunday(const struct temporal_date_value *date);
+static int date_format_weekday_monday(const struct temporal_date_value *date);
+static int date_format_week_zero(const struct temporal_date_value *date, bool monday_first);
+static struct temporal_week_year date_format_week_year(const struct temporal_date_value *date,
+                                                       bool monday_first);
 static int eval_date_function(const struct mylite_sql_ast_node *arguments,
                               const struct mylite_expression_eval_context *context,
                               struct mylite_expression_warnings *warnings,
@@ -1925,6 +1964,9 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
         return arity == 2U;
     case MYLITE_SCALAR_FUNCTION_REGEXP_LIKE:
         return arity == 2U || arity == 3U;
+    case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
+    case MYLITE_SCALAR_FUNCTION_RAND:
+        return arity == 0U || arity == 1U;
     case MYLITE_SCALAR_FUNCTION_LENGTH:
     case MYLITE_SCALAR_FUNCTION_CHAR_LENGTH:
     case MYLITE_SCALAR_FUNCTION_LOWER:
@@ -1995,6 +2037,7 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_INSTR:
     case MYLITE_SCALAR_FUNCTION_FIND_IN_SET:
     case MYLITE_SCALAR_FUNCTION_DATEDIFF:
+    case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
         return arity == 2U;
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPADD:
@@ -2887,6 +2930,10 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_from_days_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_TIME:
         return eval_time_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
+        return eval_unix_timestamp_function(node, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
+        return eval_date_format_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF:
         return eval_timestampdiff_function(node, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_YEAR:
@@ -2940,6 +2987,7 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
     case MYLITE_SCALAR_FUNCTION_CURRENT_TIME:
     case MYLITE_SCALAR_FUNCTION_LOCALTIME:
     case MYLITE_SCALAR_FUNCTION_LOCALTIMESTAMP:
+    case MYLITE_SCALAR_FUNCTION_RAND:
         return context == NULL || context->eval_session_function == NULL
                    ? -1
                    : context->eval_session_function(context->user_data, node, context, warnings,
@@ -2948,6 +2996,389 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         break;
     }
     return -1;
+}
+
+static int eval_unix_timestamp_function(const struct mylite_sql_ast_node *node,
+                                        const struct mylite_expression_eval_context *context,
+                                        struct mylite_expression_warnings *warnings,
+                                        struct mylite_expression_value *out_value)
+{
+    const struct mylite_sql_ast_node *arguments = child_at(node, 1U);
+    const struct mylite_sql_ast_node *argument_node = child_at(arguments, 0U);
+    struct mylite_expression_value argument = {0};
+    struct temporal_date_value date = {0};
+    bool valid = false;
+    int status = 0;
+
+    if (argument_node == NULL) {
+        return context == NULL || context->eval_session_function == NULL
+                   ? -1
+                   : context->eval_session_function(context->user_data, node, context, warnings,
+                                                    out_value);
+    }
+
+    status = eval_node(argument_node, context, warnings, &argument);
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&argument)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    status = temporal_date_from_value(&argument, true, warnings, &date, &valid);
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (!valid) {
+        status = set_text_value("0.000000", strlen("0.000000"), out_value);
+        goto cleanup;
+    }
+    status = set_unix_timestamp_value(&date, out_value);
+
+cleanup:
+    mylite_expression_value_deinit(&argument);
+    return status;
+}
+
+static int set_unix_timestamp_value(const struct temporal_date_value *date,
+                                    struct mylite_expression_value *out_value)
+{
+    static const struct temporal_date_value unix_epoch = {
+        .year = 1970,
+        .month = 1,
+        .day = 1,
+    };
+    static const struct temporal_date_value unix_timestamp_max = {
+        .year = 3001,
+        .month = 1,
+        .day = 18,
+        .hour = 23,
+        .minute = 59,
+        .second = 59,
+        .has_time = true,
+    };
+    char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
+    int64_t seconds = ((temporal_day_number(date) - temporal_day_number(&unix_epoch)) *
+                       MYLITE_TEMPORAL_SECONDS_PER_DAY) +
+                      ((int64_t)date->hour * MYLITE_TEMPORAL_SECONDS_PER_HOUR) +
+                      ((int64_t)date->minute * MYLITE_TEMPORAL_SECONDS_PER_MINUTE) +
+                      (int64_t)date->second;
+    int64_t max_seconds =
+        ((temporal_day_number(&unix_timestamp_max) - temporal_day_number(&unix_epoch)) *
+         MYLITE_TEMPORAL_SECONDS_PER_DAY) +
+        ((int64_t)unix_timestamp_max.hour * MYLITE_TEMPORAL_SECONDS_PER_HOUR) +
+        ((int64_t)unix_timestamp_max.minute * MYLITE_TEMPORAL_SECONDS_PER_MINUTE) +
+        (int64_t)unix_timestamp_max.second;
+    int length = 0;
+
+    if (seconds < 0 || seconds > max_seconds) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
+                                                      .int64_value = 0};
+        return 0;
+    }
+    if (date->microsecond == 0) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
+                                                      .int64_value = seconds};
+        return 0;
+    }
+
+    length = snprintf(buffer, sizeof(buffer), "%lld.%06d", (long long)seconds, date->microsecond);
+    if (length <= 0 || (size_t)length >= sizeof(buffer)) {
+        return -1;
+    }
+    return set_text_value(buffer, (size_t)length, out_value);
+}
+
+static int eval_date_format_function(const struct mylite_sql_ast_node *arguments,
+                                     const struct mylite_expression_eval_context *context,
+                                     struct mylite_expression_warnings *warnings,
+                                     struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value date_value = {0};
+    struct mylite_expression_value format_value = {0};
+    struct temporal_date_value date = {0};
+    char *format = NULL;
+    size_t format_length = 0U;
+    bool valid = false;
+    int status = eval_node(child_at(arguments, 0U), context, warnings, &date_value);
+
+    if (status != 0) {
+        goto cleanup;
+    }
+    status = eval_node(child_at(arguments, 1U), context, warnings, &format_value);
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&date_value) || is_null(&format_value)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    status = temporal_date_from_value(&date_value, true, warnings, &date, &valid);
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (!valid) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    status = value_to_string_with_length(&format_value, &format, &format_length);
+    if (status != 0) {
+        goto cleanup;
+    }
+    status = date_format_text_value(&date, format, format_length, out_value);
+
+cleanup:
+    free(format);
+    mylite_expression_value_deinit(&date_value);
+    mylite_expression_value_deinit(&format_value);
+    return status;
+}
+
+static int date_format_text_value(const struct temporal_date_value *date, const char *format,
+                                  size_t format_length, struct mylite_expression_value *out_value)
+{
+    char *result = copy_span_text("", 0U);
+    size_t result_length = 0U;
+    int status = 0;
+
+    if (result == NULL) {
+        return -1;
+    }
+    for (size_t offset = 0U; offset < format_length; ++offset) {
+        char character = format[offset];
+
+        if (character != '%') {
+            status = append_text(&result, &result_length, &character, 1U);
+        } else if (offset + 1U >= format_length) {
+            status = append_text(&result, &result_length, "%", 1U);
+        } else {
+            status = append_date_format_token(&result, &result_length, date, format[++offset]);
+        }
+        if (status != 0) {
+            free(result);
+            return status;
+        }
+    }
+
+    status = set_text_value(result, result_length, out_value);
+    free(result);
+    return status;
+}
+
+static int append_date_format_token(char **result, size_t *length,
+                                    const struct temporal_date_value *date, char token)
+{
+    static const char *const weekday_names[] = {"Sunday",   "Monday", "Tuesday", "Wednesday",
+                                                "Thursday", "Friday", "Saturday"};
+    static const char *const weekday_abbreviations[] = {"Sun", "Mon", "Tue", "Wed",
+                                                        "Thu", "Fri", "Sat"};
+    static const char *const month_names[] = {
+        "",     "January", "February",  "March",   "April",    "May",      "June",
+        "July", "August",  "September", "October", "November", "December",
+    };
+    static const char *const month_abbreviations[] = {
+        "", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    };
+    int weekday = date_format_weekday_sunday(date);
+
+    switch (token) {
+    case 'a':
+        return append_text(result, length, weekday_abbreviations[weekday],
+                           strlen(weekday_abbreviations[weekday]));
+    case 'b':
+        return append_text(result, length, month_abbreviations[date->month],
+                           strlen(month_abbreviations[date->month]));
+    case 'c':
+        return append_formatted_date_part(result, length, "%d", date->month);
+    case 'D':
+        return append_date_format_day_ordinal(result, length, date->day);
+    case 'd':
+        return append_formatted_date_part(result, length, "%02d", date->day);
+    case 'e':
+        return append_formatted_date_part(result, length, "%d", date->day);
+    case 'f':
+        return append_formatted_date_part(result, length, "%06d", date->microsecond);
+    case 'H':
+        return append_formatted_date_part(result, length, "%02d", date->hour);
+    case 'h':
+    case 'I':
+        return append_formatted_date_part(result, length, "%02d", date_format_hour_12(date->hour));
+    case 'i':
+        return append_formatted_date_part(result, length, "%02d", date->minute);
+    case 'j':
+        return append_formatted_date_part(result, length, "%03d", date_format_day_of_year(date));
+    case 'k':
+        return append_formatted_date_part(result, length, "%d", date->hour);
+    case 'l':
+        return append_formatted_date_part(result, length, "%d", date_format_hour_12(date->hour));
+    case 'M':
+        return append_text(result, length, month_names[date->month],
+                           strlen(month_names[date->month]));
+    case 'm':
+        return append_formatted_date_part(result, length, "%02d", date->month);
+    case 'p':
+        return append_text(result, length, date->hour < 12 ? "AM" : "PM", 2U);
+    case 'r':
+        return append_date_format_time_12(result, length, date);
+    case 'S':
+    case 's':
+        return append_formatted_date_part(result, length, "%02d", date->second);
+    case 'T':
+        return append_date_format_time_24(result, length, date);
+    case 'U':
+        return append_formatted_date_part(result, length, "%02d",
+                                          date_format_week_zero(date, false));
+    case 'u':
+        return append_formatted_date_part(result, length, "%02d",
+                                          date_format_week_zero(date, true));
+    case 'V':
+        return append_date_format_week_year(result, length, date, false, false);
+    case 'v':
+        return append_date_format_week_year(result, length, date, true, false);
+    case 'W':
+        return append_text(result, length, weekday_names[weekday], strlen(weekday_names[weekday]));
+    case 'w':
+        return append_formatted_date_part(result, length, "%d", weekday);
+    case 'X':
+        return append_date_format_week_year(result, length, date, false, true);
+    case 'x':
+        return append_date_format_week_year(result, length, date, true, true);
+    case 'Y':
+        return append_formatted_date_part(result, length, "%04d", date->year);
+    case 'y':
+        return append_formatted_date_part(result, length, "%02d", date->year % 100);
+    case '%':
+        return append_text(result, length, "%", 1U);
+    default:
+        return append_text(result, length, &token, 1U);
+    }
+}
+
+static int append_formatted_date_part(char **result, size_t *length, const char *format, int value)
+{
+    char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
+    int formatted = snprintf(buffer, sizeof(buffer), format, value);
+
+    if (formatted <= 0 || (size_t)formatted >= sizeof(buffer)) {
+        return -1;
+    }
+    return append_text(result, length, buffer, (size_t)formatted);
+}
+
+static int append_date_format_day_ordinal(char **result, size_t *length, int day)
+{
+    char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
+    const char *suffix = date_format_day_ordinal_suffix(day);
+    int formatted = snprintf(buffer, sizeof(buffer), "%d%s", day, suffix);
+
+    if (formatted <= 0 || (size_t)formatted >= sizeof(buffer)) {
+        return -1;
+    }
+    return append_text(result, length, buffer, (size_t)formatted);
+}
+
+static const char *date_format_day_ordinal_suffix(int day)
+{
+    if (day % 100 >= 11 && day % 100 <= 13) {
+        return "th";
+    }
+    switch (day % 10) {
+    case 1:
+        return "st";
+    case 2:
+        return "nd";
+    case 3:
+        return "rd";
+    default:
+        return "th";
+    }
+}
+
+static int append_date_format_time_12(char **result, size_t *length,
+                                      const struct temporal_date_value *date)
+{
+    char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
+    int formatted =
+        snprintf(buffer, sizeof(buffer), "%02d:%02d:%02d %s", date_format_hour_12(date->hour),
+                 date->minute, date->second, date->hour < 12 ? "AM" : "PM");
+
+    if (formatted <= 0 || (size_t)formatted >= sizeof(buffer)) {
+        return -1;
+    }
+    return append_text(result, length, buffer, (size_t)formatted);
+}
+
+static int append_date_format_time_24(char **result, size_t *length,
+                                      const struct temporal_date_value *date)
+{
+    char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
+    int formatted =
+        snprintf(buffer, sizeof(buffer), "%02d:%02d:%02d", date->hour, date->minute, date->second);
+
+    if (formatted <= 0 || (size_t)formatted >= sizeof(buffer)) {
+        return -1;
+    }
+    return append_text(result, length, buffer, (size_t)formatted);
+}
+
+static int append_date_format_week_year(char **result, size_t *length,
+                                        const struct temporal_date_value *date, bool monday_first,
+                                        bool year)
+{
+    struct temporal_week_year week_year = date_format_week_year(date, monday_first);
+
+    return append_formatted_date_part(result, length, year ? "%04d" : "%02d",
+                                      year ? week_year.year : week_year.week);
+}
+
+static int date_format_hour_12(int hour)
+{
+    int hour12 = hour % 12;
+
+    return hour12 == 0 ? 12 : hour12;
+}
+
+static int date_format_day_of_year(const struct temporal_date_value *date)
+{
+    return temporal_days_before_month(date->year, date->month) + date->day;
+}
+
+static int date_format_weekday_sunday(const struct temporal_date_value *date)
+{
+    int weekday = (int)(temporal_day_number(date) % MYLITE_TEMPORAL_DAYS_PER_WEEK);
+
+    return weekday < 0 ? weekday + MYLITE_TEMPORAL_DAYS_PER_WEEK : weekday;
+}
+
+static int date_format_weekday_monday(const struct temporal_date_value *date)
+{
+    return (date_format_weekday_sunday(date) + 6) % MYLITE_TEMPORAL_DAYS_PER_WEEK;
+}
+
+static int date_format_week_zero(const struct temporal_date_value *date, bool monday_first)
+{
+    int day = date_format_day_of_year(date);
+    int weekday =
+        monday_first ? date_format_weekday_monday(date) : date_format_weekday_sunday(date);
+
+    return (day + 6 - weekday) / MYLITE_TEMPORAL_DAYS_PER_WEEK;
+}
+
+static struct temporal_week_year date_format_week_year(const struct temporal_date_value *date,
+                                                       bool monday_first)
+{
+    int weekday =
+        monday_first ? date_format_weekday_monday(date) : date_format_weekday_sunday(date);
+    int64_t anchor_day = temporal_day_number(date) + (3 - weekday);
+    struct temporal_date_value anchor = {0};
+
+    if (!temporal_date_from_day_number(anchor_day, &anchor)) {
+        return (struct temporal_week_year){.year = date->year, .week = 0};
+    }
+    return (struct temporal_week_year){
+        .year = anchor.year,
+        .week = ((date_format_day_of_year(&anchor) - 1) / MYLITE_TEMPORAL_DAYS_PER_WEEK) + 1,
+    };
 }
 
 static int eval_date_function(const struct mylite_sql_ast_node *arguments,
@@ -3791,6 +4222,9 @@ static bool temporal_part_from_function(enum mylite_scalar_function_id function_
     case MYLITE_SCALAR_FUNCTION_TO_SECONDS:
     case MYLITE_SCALAR_FUNCTION_FROM_DAYS:
     case MYLITE_SCALAR_FUNCTION_TIME:
+    case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
+    case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
+    case MYLITE_SCALAR_FUNCTION_RAND:
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
     case MYLITE_SCALAR_FUNCTION_ADDDATE:
@@ -8142,6 +8576,9 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_TO_SECONDS:
     case MYLITE_SCALAR_FUNCTION_FROM_DAYS:
     case MYLITE_SCALAR_FUNCTION_TIME:
+    case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
+    case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
+    case MYLITE_SCALAR_FUNCTION_RAND:
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
     case MYLITE_SCALAR_FUNCTION_ADDDATE:
@@ -10001,6 +10438,9 @@ static int trigonometric_function_result(struct trigonometric_input input,
     case MYLITE_SCALAR_FUNCTION_TO_SECONDS:
     case MYLITE_SCALAR_FUNCTION_FROM_DAYS:
     case MYLITE_SCALAR_FUNCTION_TIME:
+    case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
+    case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
+    case MYLITE_SCALAR_FUNCTION_RAND:
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
     case MYLITE_SCALAR_FUNCTION_ADDDATE:
@@ -10305,6 +10745,9 @@ static int inverse_trigonometric_function_result(struct inverse_trigonometric_in
     case MYLITE_SCALAR_FUNCTION_TO_SECONDS:
     case MYLITE_SCALAR_FUNCTION_FROM_DAYS:
     case MYLITE_SCALAR_FUNCTION_TIME:
+    case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
+    case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
+    case MYLITE_SCALAR_FUNCTION_RAND:
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
     case MYLITE_SCALAR_FUNCTION_ADDDATE:
@@ -10519,6 +10962,9 @@ static int angle_conversion_result(struct angle_conversion_input conversion, dou
     case MYLITE_SCALAR_FUNCTION_TO_SECONDS:
     case MYLITE_SCALAR_FUNCTION_FROM_DAYS:
     case MYLITE_SCALAR_FUNCTION_TIME:
+    case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
+    case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
+    case MYLITE_SCALAR_FUNCTION_RAND:
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
     case MYLITE_SCALAR_FUNCTION_ADDDATE:
@@ -14551,6 +14997,9 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"TO_SECONDS", MYLITE_SCALAR_FUNCTION_TO_SECONDS},
         {"FROM_DAYS", MYLITE_SCALAR_FUNCTION_FROM_DAYS},
         {"TIME", MYLITE_SCALAR_FUNCTION_TIME},
+        {"UNIX_TIMESTAMP", MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP},
+        {"DATE_FORMAT", MYLITE_SCALAR_FUNCTION_DATE_FORMAT},
+        {"RAND", MYLITE_SCALAR_FUNCTION_RAND},
         {"DATE_ADD", MYLITE_SCALAR_FUNCTION_DATE_ADD},
         {"DATE_SUB", MYLITE_SCALAR_FUNCTION_DATE_SUB},
         {"ADDDATE", MYLITE_SCALAR_FUNCTION_ADDDATE},
@@ -14604,6 +15053,8 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_CURRENT_TIME:
     case MYLITE_SCALAR_FUNCTION_LOCALTIME:
     case MYLITE_SCALAR_FUNCTION_LOCALTIMESTAMP:
+    case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
+    case MYLITE_SCALAR_FUNCTION_RAND:
         return true;
     case MYLITE_SCALAR_FUNCTION_UNKNOWN:
     case MYLITE_SCALAR_FUNCTION_CONCAT:
@@ -14697,6 +15148,7 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_TO_SECONDS:
     case MYLITE_SCALAR_FUNCTION_FROM_DAYS:
     case MYLITE_SCALAR_FUNCTION_TIME:
+    case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
     case MYLITE_SCALAR_FUNCTION_YEAR:
     case MYLITE_SCALAR_FUNCTION_MONTH:
     case MYLITE_SCALAR_FUNCTION_DAY:

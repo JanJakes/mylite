@@ -269,6 +269,9 @@ static int test_to_days_function_execution(void);
 static int test_to_seconds_function_execution(void);
 static int test_from_days_function_execution(void);
 static int test_time_function_execution(void);
+static int test_unix_timestamp_function_execution(void);
+static int test_date_format_function_execution(void);
+static int test_rand_function_execution(void);
 static int test_date_add_sub_functions_execution(void);
 static int test_round_scalar_function_execution(mylite_db *database);
 static int test_format_scalar_function_execution(mylite_db *database);
@@ -491,6 +494,9 @@ int main(void)
     failures += test_to_seconds_function_execution();
     failures += test_from_days_function_execution();
     failures += test_time_function_execution();
+    failures += test_unix_timestamp_function_execution();
+    failures += test_date_format_function_execution();
+    failures += test_rand_function_execution();
     failures += test_date_add_sub_functions_execution();
     failures += test_inet_ipv4_functions_execution();
     failures += test_charset_collation_functions_execution();
@@ -7832,6 +7838,280 @@ static int test_time_function_execution(void)
     failures += expect_no_stmt_handle(&stmt, "TIME missing argument rejected");
     failures += prepare_sql(database, "SELECT TIME('12:34:56','x')", MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "TIME extra argument rejected");
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_unix_timestamp_function_execution(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const char *const scalar_columns[] = {"epoch",     "next_second", "fractional",
+                                                 "max_value", "pre_epoch",   "after_range",
+                                                 "null_value"};
+    static const char *const scalar_values[] = {
+        "0", "1", "946782245.123456", "32536771199.999999", "0", "0", NULL,
+    };
+    static const char *const projection_columns[] = {"id", "ts"};
+    static const char *const projection_values[] = {
+        "1",
+        "0",
+        "2",
+        "946782245.123456",
+    };
+    static const char *const remaining_columns[] = {"id"};
+    static const char *const remaining_values[] = {"2", "3"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK,
+                              "open UNIX_TIMESTAMP function database");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT UNIX_TIMESTAMP('1970-01-01 00:00:00') AS epoch, "
+                           "UNIX_TIMESTAMP('1970-01-01 00:00:01') AS next_second, "
+                           "UNIX_TIMESTAMP('2000-01-02 03:04:05.123456') AS fractional, "
+                           "UNIX_TIMESTAMP('3001-01-18 23:59:59.999999') AS max_value, "
+                           "UNIX_TIMESTAMP('1969-12-31 23:59:59') AS pre_epoch, "
+                           "UNIX_TIMESTAMP('3001-01-19 00:00:00') AS after_range, "
+                           "UNIX_TIMESTAMP(NULL) AS null_value",
+                           scalar_columns, 7, scalar_values, 1, "UNIX_TIMESTAMP scalar values");
+
+    failures += prepare_sql(database,
+                            "SELECT UNIX_TIMESTAMP() AS statement_ts, "
+                            "UNIX_TIMESTAMP() = UNIX_TIMESTAMP() AS statement_stable",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "UNIX_TIMESTAMP current row");
+    failures +=
+        expect_unsigned_decimal_text(mylite_column_text(stmt, 0), "UNIX_TIMESTAMP current value");
+    failures += expect_string(mylite_column_text(stmt, 1), "1",
+                              "UNIX_TIMESTAMP current statement stability");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "UNIX_TIMESTAMP current done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "SELECT UNIX_TIMESTAMP('bad') AS bad_timestamp", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "UNIX_TIMESTAMP invalid row");
+    failures +=
+        expect_string(mylite_column_text(stmt, 0), "0.000000", "UNIX_TIMESTAMP invalid value");
+    failures += expect_int(mylite_warning_count(database), 1, "UNIX_TIMESTAMP invalid warnings");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_truncated_wrong_value,
+                   "UNIX_TIMESTAMP invalid warning code");
+    failures +=
+        expect_string(mylite_warning_message(database, 0), "Incorrect datetime value: 'bad'",
+                      "UNIX_TIMESTAMP invalid warning message");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "UNIX_TIMESTAMP invalid done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE DATABASE unix_timestamp_functions", MYLITE_DONE);
+    failures += execute_sql(database, "USE unix_timestamp_functions", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE temporal_unix_timestamp ("
+                            "id INT PRIMARY KEY, dt DATETIME(6), n BIGINT)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO temporal_unix_timestamp VALUES "
+                            "(1, '1970-01-01 00:00:00', 0), "
+                            "(2, '2000-01-02 03:04:05.123456', 0), "
+                            "(3, NULL, 0)",
+                            MYLITE_DONE);
+    failures += expect_select_rows(database,
+                                   "SELECT id, UNIX_TIMESTAMP(dt) AS ts "
+                                   "FROM temporal_unix_timestamp "
+                                   "WHERE UNIX_TIMESTAMP(dt) >= 0 "
+                                   "ORDER BY UNIX_TIMESTAMP(dt), id",
+                                   projection_columns, 2, projection_values, 2,
+                                   "UNIX_TIMESTAMP table projection");
+    failures += execute_sql_expect_done_affected(database,
+                                                 "UPDATE temporal_unix_timestamp "
+                                                 "SET n = UNIX_TIMESTAMP(dt) "
+                                                 "WHERE id = 2",
+                                                 1, "UNIX_TIMESTAMP update");
+    failures += execute_sql_expect_done_affected(database,
+                                                 "DELETE FROM temporal_unix_timestamp "
+                                                 "WHERE UNIX_TIMESTAMP(dt) = 0",
+                                                 1, "UNIX_TIMESTAMP delete");
+    failures += expect_select_rows(database, "SELECT id FROM temporal_unix_timestamp ORDER BY id",
+                                   remaining_columns, 1, remaining_values, 2,
+                                   "UNIX_TIMESTAMP delete result");
+
+    failures +=
+        prepare_sql(database, "SELECT UNIX_TIMESTAMP('2024-01-01','x')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "UNIX_TIMESTAMP extra argument rejected");
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_date_format_function_execution(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const char *const scalar_columns[] = {"full_text", "week_text", "null_date",
+                                                 "null_format"};
+    static const char *const scalar_values[] = {
+        "2000-01-02 03:04:05.123456 Sunday January Sun Jan 2nd",
+        "1 01 2 02 002 0 12 12 12 AM 12:00:00 AM 00:00:00 00 00 01 00 01 52 2000 1999 % q",
+        NULL,
+        NULL,
+    };
+    static const char *const projection_columns[] = {"id", "formatted"};
+    static const char *const projection_values[] = {
+        "2",
+        "2000-01-02",
+        "1",
+        "1970-01-01",
+    };
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open DATE_FORMAT database");
+    failures += expect_select_rows(
+        database,
+        "SELECT "
+        "DATE_FORMAT('2000-01-02 03:04:05.123456', "
+        "'%Y-%m-%d %H:%i:%s.%f %W %M %a %b %D') AS full_text, "
+        "DATE_FORMAT('2000-01-02', "
+        "'%c %m %e %d %j %k %h %I %l %p %r %T %S %s %U %u %V %v %X %x %% %q') AS week_text, "
+        "DATE_FORMAT(NULL, '%Y') AS null_date, "
+        "DATE_FORMAT('2000-01-02', NULL) AS null_format",
+        scalar_columns, 4, scalar_values, 1, "DATE_FORMAT scalar values");
+
+    failures +=
+        prepare_sql(database, "SELECT DATE_FORMAT('bad', '%Y') AS bad_date", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "DATE_FORMAT invalid row");
+    failures += expect_null_text(mylite_column_text(stmt, 0), "DATE_FORMAT invalid null");
+    failures += expect_int(mylite_warning_count(database), 1, "DATE_FORMAT invalid warnings");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "DATE_FORMAT invalid warning code");
+    failures +=
+        expect_string(mylite_warning_message(database, 0), "Incorrect datetime value: 'bad'",
+                      "DATE_FORMAT invalid warning message");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "DATE_FORMAT invalid done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE DATABASE date_format_functions", MYLITE_DONE);
+    failures += execute_sql(database, "USE date_format_functions", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE temporal_date_format ("
+                            "id INT PRIMARY KEY, dt DATETIME(6), formatted VARCHAR(32))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO temporal_date_format VALUES "
+                            "(1, '1970-01-01 00:00:00', NULL), "
+                            "(2, '2000-01-02 03:04:05.123456', NULL), "
+                            "(3, NULL, NULL)",
+                            MYLITE_DONE);
+    failures += expect_select_rows(database,
+                                   "SELECT id, DATE_FORMAT(dt, '%Y-%m-%d') AS formatted "
+                                   "FROM temporal_date_format "
+                                   "WHERE DATE_FORMAT(dt, '%Y') IN ('1970', '2000') "
+                                   "ORDER BY DATE_FORMAT(dt, '%Y-%m-%d') DESC",
+                                   projection_columns, 2, projection_values, 2,
+                                   "DATE_FORMAT table projection");
+    failures += execute_sql_expect_done_affected(database,
+                                                 "UPDATE temporal_date_format "
+                                                 "SET formatted = DATE_FORMAT(dt, '%Y-%m-%d') "
+                                                 "WHERE id = 2",
+                                                 1, "DATE_FORMAT update");
+    failures +=
+        expect_select_rows(database, "SELECT id, formatted FROM temporal_date_format WHERE id = 2",
+                           projection_columns, 2, projection_values, 1, "DATE_FORMAT updated row");
+
+    failures +=
+        prepare_sql(database, "SELECT DATE_FORMAT('2024-01-01')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "DATE_FORMAT missing format rejected");
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_rand_function_execution(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const char *const scalar_columns[] = {"r1", "r2", "r7", "r8"};
+    static const char *const scalar_values[] = {
+        "0.40540353712197724",
+        "0.6555866465490187",
+        "0.9065021936842261",
+        "0.15668530311126755",
+    };
+    static const char *const repeat_columns[] = {"first_seed", "second_seed", "null_seed",
+                                                 "zero_seed", "in_range"};
+    static const char *const repeat_values[] = {
+        "0.9065021936842261",
+        "0.9065021936842261",
+        "0.15522042769493574",
+        "0.15522042769493574",
+        "1",
+    };
+    static const char *const projection_columns[] = {"id", "r"};
+    static const char *const projection_values[] = {
+        "1", "0.9065021936842261", "2", "0.37600881361962185", "3", "0.16053751777907602",
+    };
+    static const char *const dynamic_seed_values[] = {
+        "1", "0.40540353712197724", "2", "0.6555866465490187",
+        "3", "0.40540353712197724", "4", "0.15522042769493574",
+    };
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open RAND database");
+    failures += expect_select_rows(database,
+                                   "SELECT RAND(1) AS r1, RAND(2) AS r2, "
+                                   "RAND(7) AS r7, RAND(8) AS r8",
+                                   scalar_columns, 4, scalar_values, 1, "RAND scalar values");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT RAND(7) AS first_seed, RAND(7) AS second_seed, "
+                           "RAND(NULL) AS null_seed, RAND(0) AS zero_seed, "
+                           "RAND() >= 0 AND RAND() < 1 AS in_range",
+                           repeat_columns, 5, repeat_values, 1, "RAND repeatable scalar values");
+
+    failures += execute_sql(database, "CREATE DATABASE rand_functions", MYLITE_DONE);
+    failures += execute_sql(database, "USE rand_functions", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE rand_source (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO rand_source VALUES (1), (2), (3)", MYLITE_DONE);
+    failures += expect_select_rows(database, "SELECT id, RAND(7) AS r FROM rand_source ORDER BY id",
+                                   projection_columns, 2, projection_values, 3,
+                                   "RAND seeded table sequence");
+    failures += expect_select_rows(database,
+                                   "SELECT id, RAND(7) AS r FROM rand_source "
+                                   "WHERE RAND(0) < 1 ORDER BY id",
+                                   projection_columns, 2, projection_values, 3,
+                                   "RAND table predicate sequence isolation");
+    failures += execute_sql(database,
+                            "CREATE TABLE rand_seed_source ("
+                            "id INT PRIMARY KEY, seed INT, txt VARCHAR(8))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO rand_seed_source VALUES "
+                            "(1, 1, '1'), (2, 2, '2'), (3, 1, '1'), (4, NULL, NULL)",
+                            MYLITE_DONE);
+    failures += expect_select_rows(database,
+                                   "SELECT id, RAND(seed) AS r "
+                                   "FROM rand_seed_source ORDER BY id",
+                                   projection_columns, 2, dynamic_seed_values, 4,
+                                   "RAND dynamic integer seed");
+    failures += expect_select_rows(database,
+                                   "SELECT id, RAND(seed + 0) AS r "
+                                   "FROM rand_seed_source ORDER BY id",
+                                   projection_columns, 2, dynamic_seed_values, 4,
+                                   "RAND dynamic expression seed");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT id, RAND(txt) AS r "
+                           "FROM rand_seed_source ORDER BY id",
+                           projection_columns, 2, dynamic_seed_values, 4, "RAND dynamic text seed");
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)

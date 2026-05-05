@@ -1,6 +1,7 @@
 #include "mylite_dml.h"
 
 #include "mylite_diagnostics.h"
+#include "mylite_dml_insert_conflict.h"
 #include "mylite_dml_insert_set_row_resolve.h"
 #include "mylite_error_codes.h"
 

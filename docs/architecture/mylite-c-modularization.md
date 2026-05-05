@@ -824,6 +824,8 @@ into focused `*_types.h` headers.
   probing.
 - [x] Split INSERT SQLite value binding into a focused DML bind companion while
   leaving bound-value copying and numeric parsing in the bound-value module.
+- [x] Move INSERT unique-conflict policy entry points into a narrow DML insert
+  conflict header.
 - [x] Split INSERT/REPLACE transaction finish bookkeeping into a focused DML
   insert transaction finish module.
 - [x] Split expression function collation inference into a focused expression

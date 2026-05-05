@@ -129,28 +129,10 @@ int mylite_dml_append_insert_update_deprecated_warnings(
 int mylite_dml_advance_insert_row_auto_increment(const struct mylite_insert_table *table,
                                                  const struct mylite_insert_bound_value *values,
                                                  struct mylite_insert_execution_state *state);
-int mylite_dml_validate_insert_unique_indexes(mylite_db *database, const char *table_name,
-                                              bool ignore, const struct mylite_insert_table *table,
-                                              const struct mylite_insert_bound_value *values,
-                                              struct mylite_insert_execution_state *state,
-                                              bool *out_ignored);
-int mylite_dml_find_insert_unique_conflict(mylite_db *database,
-                                           const struct mylite_insert_table *table,
-                                           const struct mylite_insert_bound_value *values,
-                                           struct mylite_insert_unique_conflict *out_conflict);
-int mylite_dml_validate_insert_update_unique_indexes(mylite_db *database, const char *table_name,
-                                                     bool ignore,
-                                                     const struct mylite_insert_table *table,
-                                                     const struct mylite_insert_bound_value *values,
-                                                     sqlite3_int64 rowid, bool *out_conflicts);
 int mylite_dml_validate_update_unique_indexes(mylite_db *database,
                                               const struct mylite_select_table *table,
                                               const struct mylite_insert_table *write_table,
                                               const struct mylite_update_row *candidate);
-int mylite_dml_load_insert_conflict_row(mylite_db *database,
-                                        const struct mylite_insert_table *table,
-                                        sqlite3_int64 rowid,
-                                        struct mylite_insert_bound_value *values);
 int mylite_dml_resolve_insert_row_values(mylite_db *database,
                                          const struct mylite_insert_values_plan *plan,
                                          const struct mylite_insert_table *table,

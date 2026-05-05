@@ -1,6 +1,7 @@
 #include "mylite_select_scalar.h"
 
 #include "mylite_diagnostics.h"
+#include "mylite_error_codes.h"
 #include "mylite_select_aggregate.h"
 #include "mylite_select_subquery.h"
 #include "mylite_span.h"
@@ -8,6 +9,7 @@
 #include "sql/mylite_ast.h"
 
 #include <stdint.h>
+#include <stdlib.h>
 
 struct mylite_select_scalar_expression_context {
     mylite_stmt *stmt;
@@ -33,6 +35,9 @@ static int scalar_context_eval_session_function(
     void *user_data, const struct mylite_sql_ast_node *function_call,
     const struct mylite_expression_eval_context *expression_context,
     struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value);
+static int scalar_context_eval_default_function(void *user_data,
+                                                const struct mylite_sql_ast_node *function_call,
+                                                struct mylite_expression_value *out_value);
 static int scalar_context_eval_subquery(void *user_data, const struct mylite_sql_ast_node *subquery,
                                         struct mylite_expression_warnings *warnings,
                                         struct mylite_expression_value *out_value);
@@ -302,6 +307,7 @@ scalar_expression_eval_context(struct mylite_select_scalar_expression_context *c
         .eval_quantified_subquery = scalar_context_eval_quantified_subquery,
         .eval_row_subquery = scalar_context_eval_row_subquery,
         .eval_session_function = scalar_context_eval_session_function,
+        .eval_default_function = scalar_context_eval_default_function,
     };
 }
 
@@ -318,6 +324,39 @@ static int scalar_context_eval_session_function(
     }
     return context->callbacks->eval_session_function(context->stmt, function_call,
                                                      expression_context, warnings, out_value);
+}
+
+static int scalar_context_eval_default_function(void *user_data,
+                                                const struct mylite_sql_ast_node *function_call,
+                                                struct mylite_expression_value *out_value)
+{
+    struct mylite_select_scalar_expression_context *context = user_data;
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(function_call, 1U);
+    const struct mylite_sql_ast_node *identifier =
+        arguments == NULL ? NULL : mylite_ast_child_at(arguments, 0U);
+    char *reference = NULL;
+    int status = MYLITE_OK;
+
+    (void)out_value;
+    if (context == NULL || context->stmt == NULL || context->stmt->database == NULL ||
+        identifier == NULL) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    reference = mylite_copy_span_text(identifier->span.text, identifier->span.length);
+    if (reference == NULL) {
+        (void)mylite_diagnostics_set_error_message(context->stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    status = mylite_diagnostics_set_error_message_parts(context->stmt->database, "Unknown column '",
+                                                        reference, "' in 'field list'");
+    free(reference);
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(context->stmt->database,
+                                                 MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
+                                                 mylite_error_message(context->stmt->database));
+    }
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int scalar_context_eval_subquery(void *user_data, const struct mylite_sql_ast_node *subquery,

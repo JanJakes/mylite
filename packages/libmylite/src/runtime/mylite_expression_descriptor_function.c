@@ -1,5 +1,7 @@
 #include "mylite_expression_descriptor_function.h"
 
+#include "mylite_diagnostics.h"
+#include "mylite_error_codes.h"
 #include "mylite_expression.h"
 #include "mylite_expression_descriptor.h"
 #include "mylite_expression_descriptor_compare.h"
@@ -12,12 +14,20 @@
 #include "sql/mylite_ast.h"
 
 #include <stdbool.h>
+#include <stdlib.h>
 
 static int infer_temporal_function_descriptor(
     mylite_db *database, const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *expression, const struct mylite_expression_value *value,
     struct mylite_field_descriptor *out_descriptor,
     const struct mylite_expression_descriptor_function_callbacks *callbacks);
+static int infer_default_function_descriptor(
+    mylite_db *database, const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression, struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_function_callbacks *callbacks);
+static bool function_name_is_default(const struct mylite_sql_ast_node *name);
+static int set_default_function_unknown_column_error(mylite_db *database,
+                                                     const struct mylite_sql_ast_node *identifier);
 static bool infer_common_scalar_function_descriptor(mylite_db *database,
                                                     const struct mylite_sql_ast_node *name,
                                                     bool arguments_nullable, bool result_nullable,
@@ -56,6 +66,11 @@ int mylite_expression_descriptor_infer_function_expression(
     string_callbacks.infer_expression_descriptor = callbacks->infer_expression_descriptor;
     if (!mylite_expression_is_supported_function_call(expression)) {
         return MYLITE_UNSUPPORTED;
+    }
+    status =
+        infer_default_function_descriptor(database, plan, expression, out_descriptor, callbacks);
+    if (status != MYLITE_UNSUPPORTED) {
+        return status;
     }
     status = infer_function_arguments_nullable(database, plan, arguments, &nullable, callbacks);
     if (status != MYLITE_OK) {
@@ -126,6 +141,60 @@ static int infer_temporal_function_descriptor(
 
     return mylite_expression_descriptor_infer_temporal_function(
         database, plan, expression, value, out_descriptor, &temporal_callbacks);
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int infer_default_function_descriptor(
+    mylite_db *database, const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression, struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_function_callbacks *callbacks)
+{
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
+    const struct mylite_sql_ast_node *identifier =
+        arguments == NULL ? NULL : mylite_ast_child_at(arguments, 0U);
+
+    if (!function_name_is_default(name)) {
+        return MYLITE_UNSUPPORTED;
+    }
+    if (identifier == NULL || (identifier->kind != MYLITE_SQL_AST_IDENTIFIER &&
+                               identifier->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
+        return MYLITE_UNSUPPORTED;
+    }
+    if (plan == NULL) {
+        return set_default_function_unknown_column_error(database, identifier);
+    }
+    return callbacks->infer_expression_descriptor(database, plan, identifier, NULL, out_descriptor);
+}
+
+static bool function_name_is_default(const struct mylite_sql_ast_node *name)
+{
+    return name != NULL && mylite_span_equal_ci(name->span, "DEFAULT");
+}
+
+static int set_default_function_unknown_column_error(mylite_db *database,
+                                                     const struct mylite_sql_ast_node *identifier)
+{
+    char *reference = NULL;
+    int status = MYLITE_OK;
+
+    if (database == NULL || identifier == NULL) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    reference = mylite_copy_span_text(identifier->span.text, identifier->span.length);
+    if (reference == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    status = mylite_diagnostics_set_error_message_parts(database, "Unknown column '", reference,
+                                                        "' in 'field list'");
+    free(reference);
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
+                                                 mylite_error_message(database));
+    }
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static bool infer_common_scalar_function_descriptor(mylite_db *database,

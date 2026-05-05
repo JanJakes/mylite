@@ -592,6 +592,7 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_REGEXP_LIKE = 120,
     MYLITE_SCALAR_FUNCTION_FOUND_ROWS = 121,
     MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME = 122,
+    MYLITE_SCALAR_FUNCTION_DEFAULT = 123,
 };
 
 struct angle_conversion_input {
@@ -1994,6 +1995,8 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_RAND:
         return arity == 0U || arity == 1U;
+    case MYLITE_SCALAR_FUNCTION_DEFAULT:
+        return arity == 1U;
     case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
         return arity == 1U || arity == 2U;
     case MYLITE_SCALAR_FUNCTION_LENGTH:
@@ -2965,6 +2968,10 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_date_format_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
         return eval_from_unixtime_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_DEFAULT:
+        return context == NULL || context->eval_default_function == NULL
+                   ? -1
+                   : context->eval_default_function(context->user_data, node, out_value);
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF:
         return eval_timestampdiff_function(node, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_YEAR:
@@ -4586,6 +4593,7 @@ static bool temporal_part_from_function(enum mylite_scalar_function_id function_
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
     case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
+    case MYLITE_SCALAR_FUNCTION_DEFAULT:
     case MYLITE_SCALAR_FUNCTION_RAND:
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
@@ -8941,6 +8949,7 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
     case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
+    case MYLITE_SCALAR_FUNCTION_DEFAULT:
     case MYLITE_SCALAR_FUNCTION_RAND:
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
@@ -10804,6 +10813,7 @@ static int trigonometric_function_result(struct trigonometric_input input,
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
     case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
+    case MYLITE_SCALAR_FUNCTION_DEFAULT:
     case MYLITE_SCALAR_FUNCTION_RAND:
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
@@ -11112,6 +11122,7 @@ static int inverse_trigonometric_function_result(struct inverse_trigonometric_in
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
     case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
+    case MYLITE_SCALAR_FUNCTION_DEFAULT:
     case MYLITE_SCALAR_FUNCTION_RAND:
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
@@ -11330,6 +11341,7 @@ static int angle_conversion_result(struct angle_conversion_input conversion, dou
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
     case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
+    case MYLITE_SCALAR_FUNCTION_DEFAULT:
     case MYLITE_SCALAR_FUNCTION_RAND:
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
@@ -15366,6 +15378,7 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"UNIX_TIMESTAMP", MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP},
         {"DATE_FORMAT", MYLITE_SCALAR_FUNCTION_DATE_FORMAT},
         {"FROM_UNIXTIME", MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME},
+        {"DEFAULT", MYLITE_SCALAR_FUNCTION_DEFAULT},
         {"RAND", MYLITE_SCALAR_FUNCTION_RAND},
         {"DATE_ADD", MYLITE_SCALAR_FUNCTION_DATE_ADD},
         {"DATE_SUB", MYLITE_SCALAR_FUNCTION_DATE_SUB},
@@ -15517,6 +15530,7 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_TIME:
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
     case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
+    case MYLITE_SCALAR_FUNCTION_DEFAULT:
     case MYLITE_SCALAR_FUNCTION_YEAR:
     case MYLITE_SCALAR_FUNCTION_MONTH:
     case MYLITE_SCALAR_FUNCTION_DAY:

@@ -2,6 +2,7 @@
 
 #include "mylite_diagnostics.h"
 #include "mylite_dml_insert_default.h"
+#include "mylite_dml_insert_diagnostics.h"
 #include "mylite_span.h"
 #include "sql/mylite_expression.h"
 
@@ -45,6 +46,44 @@ int mylite_dml_resolve_update_default_value(mylite_db *database,
     struct mylite_insert_bound_value value = {0};
     int status = mylite_dml_resolve_insert_default_bound_value(database, column, 0U, NULL, &value);
 
+    if (status == MYLITE_OK) {
+        status = mylite_dml_copy_insert_bound_value_to_expression(&value, out_value);
+        if (status == MYLITE_NOMEM) {
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        }
+    }
+    mylite_dml_insert_bound_value_deinit(&value);
+    return status;
+}
+
+int mylite_dml_resolve_default_function_value(mylite_db *database,
+                                              const struct mylite_insert_table_column *column,
+                                              struct mylite_expression_value *out_value)
+{
+    struct mylite_insert_bound_value value = {0};
+    int status = MYLITE_OK;
+
+    if (database == NULL || column == NULL || out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    if (column->default_text == NULL) {
+        if (column->nullable) {
+            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+            return MYLITE_OK;
+        }
+        return mylite_dml_insert_set_no_default_error(database, column->name);
+    }
+    if (mylite_column_default_is_current_timestamp(column->default_text)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        return MYLITE_OK;
+    }
+    if (column->generated_default) {
+        return mylite_dml_insert_set_default_function_generated_error(database);
+    }
+
+    status = mylite_dml_resolve_insert_text_value(database, column, column->default_text, 0U, NULL,
+                                                  &value);
     if (status == MYLITE_OK) {
         status = mylite_dml_copy_insert_bound_value_to_expression(&value, out_value);
         if (status == MYLITE_NOMEM) {

@@ -100,6 +100,7 @@ static int evaluate_update_row_matches(mylite_db *database, const struct mylite_
                                        bool *out_matches)
 {
     struct mylite_update_expression_context user_context = {
+        .database = database,
         .table = table,
         .row = row,
         .callbacks = callbacks,
@@ -108,6 +109,7 @@ static int evaluate_update_row_matches(mylite_db *database, const struct mylite_
         .user_data = &user_context,
         .resolve_identifier = mylite_dml_resolve_update_expression_identifier,
         .eval_session_function = mylite_dml_evaluate_session_function,
+        .eval_default_function = mylite_dml_evaluate_default_function,
     };
     struct mylite_expression_value value = {0};
     size_t warning_start = database->warnings.count;
@@ -175,6 +177,7 @@ static int evaluate_update_order_key(mylite_db *database, const struct mylite_se
                                      struct mylite_expression_value *out_value)
 {
     struct mylite_update_expression_context user_context = {
+        .database = database,
         .table = table,
         .row = row,
         .callbacks = callbacks,
@@ -183,6 +186,7 @@ static int evaluate_update_order_key(mylite_db *database, const struct mylite_se
         .user_data = &user_context,
         .resolve_identifier = mylite_dml_resolve_update_expression_identifier,
         .eval_session_function = mylite_dml_evaluate_session_function,
+        .eval_default_function = mylite_dml_evaluate_default_function,
     };
     size_t warning_start = database->warnings.count;
     int status = mylite_expression_eval_with_context(order_key->expression, &context,
@@ -257,6 +261,7 @@ static int evaluate_delete_row_matches(mylite_db *database, const struct mylite_
                                        bool *out_matches)
 {
     struct mylite_update_expression_context user_context = {
+        .database = database,
         .table = table,
         .row = row,
         .callbacks = callbacks,
@@ -265,6 +270,7 @@ static int evaluate_delete_row_matches(mylite_db *database, const struct mylite_
         .user_data = &user_context,
         .resolve_identifier = mylite_dml_resolve_update_expression_identifier,
         .eval_session_function = mylite_dml_evaluate_session_function,
+        .eval_default_function = mylite_dml_evaluate_default_function,
     };
     struct mylite_expression_value value = {0};
     size_t warning_start = database->warnings.count;
@@ -332,6 +338,7 @@ static int evaluate_delete_order_key(mylite_db *database, const struct mylite_se
                                      struct mylite_expression_value *out_value)
 {
     struct mylite_update_expression_context user_context = {
+        .database = database,
         .table = table,
         .row = row,
         .callbacks = callbacks,
@@ -340,6 +347,7 @@ static int evaluate_delete_order_key(mylite_db *database, const struct mylite_se
         .user_data = &user_context,
         .resolve_identifier = mylite_dml_resolve_update_expression_identifier,
         .eval_session_function = mylite_dml_evaluate_session_function,
+        .eval_default_function = mylite_dml_evaluate_default_function,
     };
     size_t warning_start = database->warnings.count;
     int status = mylite_expression_eval_with_context(order_key->expression, &context,

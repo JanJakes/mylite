@@ -135,6 +135,7 @@ enum {
     mysql_warning_field_in_order_not_select = 3065,
     mysql_warning_using_other_handler = 3502,
     mysql_warning_primary_invisible = 3522,
+    mysql_warning_default_value_generated = 3773,
     mysql_warning_illegal_regexp_argument = 3685,
     mysql_warning_regexp_error = 3691,
 };
@@ -273,6 +274,7 @@ static int test_unix_timestamp_function_execution(void);
 static int test_from_unixtime_function_execution(void);
 static int test_date_format_function_execution(void);
 static int test_rand_function_execution(void);
+static int test_default_function_execution(void);
 static int test_date_add_sub_functions_execution(void);
 static int test_round_scalar_function_execution(mylite_db *database);
 static int test_format_scalar_function_execution(mylite_db *database);
@@ -499,6 +501,7 @@ int main(void)
     failures += test_from_unixtime_function_execution();
     failures += test_date_format_function_execution();
     failures += test_rand_function_execution();
+    failures += test_default_function_execution();
     failures += test_date_add_sub_functions_execution();
     failures += test_inet_ipv4_functions_execution();
     failures += test_charset_collation_functions_execution();
@@ -8273,6 +8276,120 @@ static int test_rand_function_execution(void)
                            "SELECT id, RAND(txt) AS r "
                            "FROM rand_seed_source ORDER BY id",
                            projection_columns, 2, dynamic_seed_values, 4, "RAND dynamic text seed");
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_default_function_execution(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const char *const default_columns[] = {"da", "db", "dc", "dd", "de"};
+    static const char *const default_values[] = {"7", "x", NULL, "9", NULL};
+    static const char *const qualified_columns[] = {"qa", "qb"};
+    static const char *const qualified_values[] = {"7", "x"};
+    static const char *const id_columns[] = {"id"};
+    static const char *const id_values[] = {"1", "2"};
+    static const char *const remaining_id_values[] = {"1"};
+    static const char *const updated_columns[] = {"a", "b", "c", "d"};
+    static const char *const updated_values[] = {"8", "x", NULL, "9"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open DEFAULT database");
+    failures += execute_sql(database, "CREATE DATABASE mylite_default_function", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_default_function", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE default_func_sites ("
+                            "id INT PRIMARY KEY, "
+                            "a INT DEFAULT 7, "
+                            "b VARCHAR(10) DEFAULT 'x', "
+                            "c INT NULL, "
+                            "d INT NOT NULL DEFAULT 9, "
+                            "e TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
+                            "f INT DEFAULT (1 + 2), "
+                            "n INT NOT NULL)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO default_func_sites "
+                            "(id, a, b, c, d, f, n) VALUES "
+                            "(1, 1, 'y', 5, 4, 8, 10), "
+                            "(2, 2, 'z', NULL, 5, 8, 11)",
+                            MYLITE_DONE);
+
+    failures += expect_select_rows(database,
+                                   "SELECT DEFAULT(a) AS da, DEFAULT(b) AS db, DEFAULT(c) AS dc, "
+                                   "DEFAULT(d) AS dd, DEFAULT(e) AS de "
+                                   "FROM default_func_sites WHERE id = 1",
+                                   default_columns, 5, default_values, 1, "DEFAULT scalar values");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT DEFAULT(default_func_sites.a) AS qa, "
+                           "DEFAULT(mylite_default_function.default_func_sites.b) AS qb "
+                           "FROM default_func_sites WHERE id = 1",
+                           qualified_columns, 2, qualified_values, 1, "DEFAULT qualified values");
+    failures += expect_select_rows(database,
+                                   "SELECT id FROM default_func_sites "
+                                   "WHERE DEFAULT(a) = 7 ORDER BY DEFAULT(b), id",
+                                   id_columns, 1, id_values, 2, "DEFAULT where order");
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE default_func_sites "
+        "SET a = DEFAULT(a) + 1, b = DEFAULT(b), c = DEFAULT(c), d = DEFAULT(d) "
+        "WHERE id = 1",
+        1, "DEFAULT update assignment expression");
+    failures +=
+        expect_select_rows(database, "SELECT a, b, c, d FROM default_func_sites WHERE id = 1",
+                           updated_columns, 4, updated_values, 1, "DEFAULT updated row");
+
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM default_func_sites WHERE id = 2 AND DEFAULT(a) = 7", 1,
+        "DEFAULT delete predicate");
+    failures +=
+        expect_select_rows(database, "SELECT id FROM default_func_sites ORDER BY id", id_columns, 1,
+                           remaining_id_values, 1, "DEFAULT delete remaining rows");
+
+    failures +=
+        prepare_sql(database, "SELECT DEFAULT(n) FROM default_func_sites", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "DEFAULT no default error");
+    failures += expect_contains(mylite_error_message(database), "doesn't have a default value",
+                                "DEFAULT no default message");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "SELECT DEFAULT(f) FROM default_func_sites", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "DEFAULT expression default error");
+    failures += expect_contains(mylite_error_message(database),
+                                "DEFAULT function cannot be used with default value expressions",
+                                "DEFAULT expression default message");
+    failures += expect_int(mylite_warning_count(database), 1,
+                           "DEFAULT expression default error condition count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_default_value_generated,
+                   "DEFAULT expression default error code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        expect_prepare_error(database, "SELECT DEFAULT(a)", MYLITE_EXEC_ERROR,
+                             "Unknown column 'a' in 'field list'", "DEFAULT no table error");
+    failures += expect_prepare_error(database, "SELECT DEFAULT(missing) FROM default_func_sites",
+                                     MYLITE_EXEC_ERROR, "Unknown column 'missing' in 'field list'",
+                                     "DEFAULT unknown column error");
+    failures += prepare_sql(database, "SELECT DEFAULT(1) FROM default_func_sites",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "DEFAULT literal parse error");
+    failures += prepare_sql(database, "SELECT DEFAULT() FROM default_func_sites",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "DEFAULT empty parse error");
+    failures += prepare_sql(database, "SELECT DEFAULT(a, b) FROM default_func_sites",
+                            MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "DEFAULT multi-argument parse error");
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)

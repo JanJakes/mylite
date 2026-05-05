@@ -91,6 +91,7 @@ In scope for the initial implementation:
   - `LAST_INSERT_ID`
   - `ROW_COUNT`
   - `CHARSET`, `COLLATION`
+  - `DEFAULT`
 
 Out of scope for the initial implementation:
 
@@ -109,9 +110,9 @@ Out of scope for the initial implementation:
 - `UUID`, `UUID_SHORT`, `SLEEP`, `BENCHMARK`, and other
   nondeterministic or diagnostic/performance functions not needed for the first
   application batch
-- `DEFAULT(col)`, user variables, system variables, prepared-statement
-  parameters, subqueries, row constructors, stored-program local variables, and
-  stored or loadable function resolution
+- user variables, system variables, prepared-statement parameters, subqueries,
+  row constructors, stored-program local variables, and stored or loadable
+  function resolution
 - SQL-mode variants such as `IGNORE_SPACE`, `PIPES_AS_CONCAT`, and
   `NO_BACKSLASH_ESCAPES`, except where existing Task 16 behavior already has a
   documented decision
@@ -179,6 +180,8 @@ by common scalar expressions:
 - session identity functions: `CONNECTION_ID`, `USER`, `SESSION_USER`,
   `SYSTEM_USER`, and `CURRENT_USER` / bare `CURRENT_USER`; see
   `docs/specs/session-identity-functions/specs.md`
+- column default introspection: `DEFAULT(col_name)` for table-backed scalar
+  expression contexts; see `docs/specs/default-function/specs.md`
 - temporal functions: `NOW`, `CURRENT_TIMESTAMP`, `LOCALTIME`,
   `LOCALTIMESTAMP`, `CURDATE`/`CURRENT_DATE`, `CURTIME`/`CURRENT_TIME`,
   `DATE`, `DATEDIFF`, `DATE_ADD`, `DATE_SUB`, `ADDDATE`, `SUBDATE`,

@@ -4,6 +4,7 @@
 #include "mylite_select.h"
 #include "mylite_select_aggregate_bind_registration.h"
 #include "mylite_select_predicate_bind.h"
+#include "mylite_select_predicate_expression_bind.h"
 #include "mylite_select_resolve.h"
 #include "mylite_select_subquery.h"
 #include "mylite_span.h"
@@ -72,8 +73,9 @@ static int bind_aggregate_aware_expression( // NOLINT(misc-no-recursion)
             return mylite_select_resolve_having_reference(database, plan, expression, &kind,
                                                           &index);
         }
-        return mylite_select_bind_predicate_expression(database, expression, plan,
-                                                       callbacks->predicate_callbacks);
+        return mylite_select_bind_predicate_expression_in_clause(
+            database, expression, plan, clause_context == NULL ? "where clause" : clause_context,
+            0U, mylite_select_plan_table_count(plan), callbacks->predicate_callbacks);
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
     case MYLITE_SQL_AST_TERNARY_EXPRESSION:
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:

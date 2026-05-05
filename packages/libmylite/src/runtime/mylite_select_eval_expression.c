@@ -1,11 +1,13 @@
 #include "mylite_select_eval_expression.h"
 
 #include "mylite_diagnostics.h"
+#include "mylite_dml.h"
 #include "mylite_expression.h"
 #include "mylite_field_descriptor.h"
 #include "mylite_runtime.h"
 #include "mylite_select.h"
 #include "mylite_select_resolve.h"
+#include "mylite_span.h"
 
 #include <stdlib.h>
 
@@ -19,6 +21,9 @@ static int evaluate_table_select_session_function(
     void *user_data, const struct mylite_sql_ast_node *function_call,
     const struct mylite_expression_eval_context *expression_context,
     struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value);
+static int evaluate_table_select_default_function(void *user_data,
+                                                  const struct mylite_sql_ast_node *function_call,
+                                                  struct mylite_expression_value *out_value);
 static int evaluate_table_select_aggregate_call(void *user_data,
                                                 const struct mylite_sql_ast_node *aggregate,
                                                 struct mylite_expression_value *out_value);
@@ -73,6 +78,7 @@ void mylite_select_eval_expression_context_init(
         .eval_quantified_subquery = evaluate_table_select_quantified_subquery_expression,
         .eval_row_subquery = evaluate_table_select_row_subquery_expression,
         .eval_session_function = evaluate_table_select_session_function,
+        .eval_default_function = evaluate_table_select_default_function,
     };
 }
 
@@ -208,6 +214,50 @@ static int evaluate_table_select_session_function(
                ? MYLITE_UNSUPPORTED
                : context->callbacks->eval_session_function(
                      context->stmt, function_call, expression_context, warnings, NULL, out_value);
+}
+
+static int evaluate_table_select_default_function(void *user_data,
+                                                  const struct mylite_sql_ast_node *function_call,
+                                                  struct mylite_expression_value *out_value)
+{
+    struct mylite_table_select_eval_context *context = user_data;
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(function_call, 1U);
+    const struct mylite_sql_ast_node *identifier =
+        arguments == NULL ? NULL : mylite_ast_child_at(arguments, 0U);
+    const struct mylite_select_table *table = NULL;
+    const struct mylite_select_column *column = NULL;
+    struct mylite_insert_table write_table = {0};
+    size_t column_index = 0U;
+    size_t table_column_index = 0U;
+    int status = MYLITE_OK;
+
+    if (context == NULL || context->stmt == NULL || identifier == NULL) {
+        return -1;
+    }
+
+    status = mylite_select_resolve_plan_column_reference(context->stmt->database,
+                                                         &context->stmt->select_plan, identifier,
+                                                         "field list", &column_index);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    column = mylite_select_plan_column_const(&context->stmt->select_plan, column_index, &table);
+    if (column == NULL || table == NULL || column_index < table->first_column_index) {
+        return -1;
+    }
+
+    table_column_index = column_index - table->first_column_index;
+    status = mylite_dml_load_write_table(context->stmt->database, table->schema_name,
+                                         table->table_name, &write_table);
+    if (status == MYLITE_OK && table_column_index >= write_table.column_count) {
+        status = -1;
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_dml_resolve_default_function_value(
+            context->stmt->database, &write_table.columns[table_column_index], out_value);
+    }
+    mylite_dml_insert_table_deinit(&write_table);
+    return status;
 }
 
 static int evaluate_table_select_aggregate_call(void *user_data,

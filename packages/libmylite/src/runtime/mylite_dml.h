@@ -44,6 +44,9 @@ int mylite_dml_evaluate_session_function(
     void *user_data, const struct mylite_sql_ast_node *function_call,
     const struct mylite_expression_eval_context *expression_context,
     struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value);
+int mylite_dml_evaluate_default_function(void *user_data,
+                                         const struct mylite_sql_ast_node *function_call,
+                                         struct mylite_expression_value *out_value);
 char *mylite_dml_build_insert_physical_sql(mylite_db *database,
                                            const struct mylite_insert_table *table);
 char *mylite_dml_build_replace_delete_sql(mylite_db *database,
@@ -196,6 +199,9 @@ int mylite_dml_copy_update_candidate_values(mylite_db *database,
 int mylite_dml_resolve_update_default_value(mylite_db *database,
                                             const struct mylite_insert_table_column *column,
                                             struct mylite_expression_value *out_value);
+int mylite_dml_resolve_default_function_value(mylite_db *database,
+                                              const struct mylite_insert_table_column *column,
+                                              struct mylite_expression_value *out_value);
 int mylite_dml_copy_insert_bound_value_to_expression(const struct mylite_insert_bound_value *value,
                                                      struct mylite_expression_value *out_value);
 int mylite_dml_validate_update_assignment_value(mylite_db *database,

@@ -32,6 +32,18 @@ int mylite_dml_insert_set_no_default_error(mylite_db *database, const char *colu
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
+int mylite_dml_insert_set_default_function_generated_error(mylite_db *database)
+{
+    static const char message[] = "DEFAULT function cannot be used with default value expressions";
+    int status = mylite_diagnostics_set_error_message(database, message);
+
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_DEFAULT_VAL_GENERATED,
+                                                 message);
+    }
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
 int mylite_dml_insert_set_unsupported_generated_default_error(mylite_db *database,
                                                               const char *column_name)
 {

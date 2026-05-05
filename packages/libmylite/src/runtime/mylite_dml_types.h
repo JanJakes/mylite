@@ -258,7 +258,9 @@ struct mylite_dml_expression_callbacks {
 };
 
 struct mylite_update_expression_context {
+    mylite_db *database;
     const struct mylite_select_table *table;
+    const struct mylite_insert_table *write_table;
     const struct mylite_update_row *row;
     const struct mylite_dml_expression_callbacks *callbacks;
 };

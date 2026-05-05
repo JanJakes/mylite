@@ -5,6 +5,7 @@
 
 int mylite_dml_insert_set_wrong_value_count_error(mylite_db *database, size_t row_index);
 int mylite_dml_insert_set_no_default_error(mylite_db *database, const char *column_name);
+int mylite_dml_insert_set_default_function_generated_error(mylite_db *database);
 int mylite_dml_insert_set_unsupported_generated_default_error(mylite_db *database,
                                                               const char *column_name);
 int mylite_dml_insert_set_unsupported_expression_error(mylite_db *database);

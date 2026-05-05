@@ -209,7 +209,9 @@ static int evaluate_update_assignment_value(mylite_db *database,
 {
     const struct mylite_insert_table_column *column = &write_table->columns[target_column];
     struct mylite_update_expression_context user_context = {
+        .database = database,
         .table = table,
+        .write_table = write_table,
         .row = candidate,
         .callbacks = callbacks,
     };
@@ -217,6 +219,7 @@ static int evaluate_update_assignment_value(mylite_db *database,
         .user_data = &user_context,
         .resolve_identifier = mylite_dml_resolve_update_expression_identifier,
         .eval_session_function = mylite_dml_evaluate_session_function,
+        .eval_default_function = mylite_dml_evaluate_default_function,
     };
     int status = MYLITE_OK;
 

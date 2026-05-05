@@ -3439,6 +3439,11 @@ scalar_function_call(A) ::= function_name(B) LPAREN(L) RPAREN(R). {
 scalar_function_call(A) ::= function_name(B) LPAREN(L) function_argument_list(C) RPAREN(R). {
     A = mylite_sql_parser_make_function_call(state, B, L, C, R);
 }
+scalar_function_call(A) ::= DEFAULT(T) LPAREN(L) qualified_identifier(B) RPAREN(R). {
+    A = mylite_sql_parser_make_function_call(
+        state, mylite_sql_parser_make_identifier(state, T), L,
+        mylite_sql_parser_make_function_argument_list(state, B), R);
+}
 scalar_function_call(A) ::= date_interval_function_name(B) LPAREN(L) expression(C) COMMA INTERVAL expression(D) interval_unit(U) RPAREN(R). {
     A = mylite_sql_parser_make_interval_function_call(
         state, B, (struct mylite_sql_parser_interval_function_call_parts){

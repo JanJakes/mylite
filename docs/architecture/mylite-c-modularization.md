@@ -689,6 +689,8 @@ into focused `*_types.h` headers.
   focused rowset distinct companion.
 - [x] Split COUNT(DISTINCT ...) aggregate argument binding and descriptor
   inference into a focused SELECT aggregate companion.
+- [x] Split SELECT aggregate-call registration and aggregate binding collection
+  into a focused aggregate bind companion.
 - [x] Split SELECT catalog descriptor row-source parsing into a focused
   descriptor source companion.
 - [x] Split SELECT plan lifetime and vector mutation into a focused plan

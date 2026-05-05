@@ -7,6 +7,7 @@
 #include "mylite_select_scalar_order_validate.h"
 #include "mylite_span.h"
 #include "mylite_statement.h"
+#include "mylite_statement_ast.h"
 
 #include <stdlib.h>
 
@@ -171,9 +172,9 @@ static int copy_scalar_select_item_expression(mylite_stmt *stmt,
                                               size_t source_sql_length)
 {
     struct mylite_sql_ast_node *clone = NULL;
-    int status = mylite_statement_clone_sql_ast_subtree(&stmt->scalar_select_ast, expression,
-                                                        source_sql, stmt->scalar_select_sql_text,
-                                                        source_sql_length, &clone);
+    int status =
+        mylite_statement_ast_clone_subtree(&stmt->scalar_select_ast, expression, source_sql,
+                                           stmt->scalar_select_sql_text, source_sql_length, &clone);
 
     if (status == MYLITE_NOMEM) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");

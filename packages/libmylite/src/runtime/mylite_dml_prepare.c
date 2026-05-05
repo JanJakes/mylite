@@ -3,6 +3,7 @@
 #include "mylite_diagnostics.h"
 #include "mylite_span.h"
 #include "mylite_statement.h"
+#include "mylite_statement_ast.h"
 
 #include <stdlib.h>
 
@@ -139,8 +140,8 @@ static int clone_update_ast_node(mylite_stmt *stmt, const struct mylite_sql_ast_
                                  const struct mylite_sql_ast_node **out_node)
 {
     struct mylite_sql_ast_node *clone = NULL;
-    int status = mylite_statement_clone_sql_ast_subtree(&stmt->update_ast, node, source_sql,
-                                                        stmt->update_sql_text, sql_length, &clone);
+    int status = mylite_statement_ast_clone_subtree(&stmt->update_ast, node, source_sql,
+                                                    stmt->update_sql_text, sql_length, &clone);
 
     if (status == MYLITE_NOMEM) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
@@ -182,8 +183,8 @@ static int clone_delete_ast_node(mylite_stmt *stmt, const struct mylite_sql_ast_
                                  const struct mylite_sql_ast_node **out_node)
 {
     struct mylite_sql_ast_node *clone = NULL;
-    int status = mylite_statement_clone_sql_ast_subtree(&stmt->delete_ast, node, source_sql,
-                                                        stmt->delete_sql_text, sql_length, &clone);
+    int status = mylite_statement_ast_clone_subtree(&stmt->delete_ast, node, source_sql,
+                                                    stmt->delete_sql_text, sql_length, &clone);
 
     if (status == MYLITE_NOMEM) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");

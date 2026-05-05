@@ -10,6 +10,7 @@
 #include "mylite_select_sql.h"
 #include "mylite_span.h"
 #include "mylite_statement.h"
+#include "mylite_statement_ast.h"
 #include "sqlite3.h"
 
 #include <stdlib.h>
@@ -335,8 +336,8 @@ static int clone_table_select_expression_node(mylite_stmt *stmt,
                                               struct mylite_sql_ast_node **out_node)
 {
     int status =
-        mylite_statement_clone_sql_ast_subtree(&stmt->select_predicate_ast, expression, source_sql,
-                                               stmt->select_sql_text, sql_length, out_node);
+        mylite_statement_ast_clone_subtree(&stmt->select_predicate_ast, expression, source_sql,
+                                           stmt->select_sql_text, sql_length, out_node);
 
     if (status == MYLITE_NOMEM) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");

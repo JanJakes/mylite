@@ -133,6 +133,8 @@ reintroduced. Its former responsibilities now have these owners:
   `src/runtime/mylite_statement_execute.c`.
 - Public statement stepping, finalization, row accessors, and lifecycle cleanup:
   `src/runtime/mylite_statement.c`.
+- Statement-owned AST subtree cloning and source-span remapping:
+  `src/runtime/mylite_statement_ast.c`.
 - SELECT callback graph and subquery runtime adapters:
   `src/runtime/mylite_select_context.c`.
 - Expression descriptor dispatch across scalar, aggregate, collation, and
@@ -685,6 +687,8 @@ into focused `*_types.h` headers.
   companion module.
 - [x] Split scalar SELECT expression evaluation, scalar aggregate handling, and
   scalar expression callback adapters out of the statement-copy module.
+- [x] Split statement AST subtree cloning and source-span remapping into a
+  focused statement AST helper.
 - [x] Split SELECT `LIMIT` parsing and row-retention helpers out of the common
   SELECT utility module.
 - [x] Split SELECT column-reference resolution, reference display-name copying,

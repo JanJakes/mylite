@@ -364,6 +364,8 @@ into focused `*_types.h` headers.
   a focused table DDL copy module.
 - [x] Move create-table normalization and validation into `mylite_table_ddl`.
 - [x] Move create-table catalog writes behind a narrow table DDL/catalog API.
+- [x] Split create-table index catalog writes into a focused DDL catalog
+  companion.
 - [x] Move create-table physical SQL construction into `mylite_table_ddl`.
 - [x] Move `CREATE TABLE` execution into `mylite_table_ddl`.
 - [x] Move drop-table AST copy helpers into `mylite_table_ddl`.

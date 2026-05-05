@@ -129,6 +129,7 @@ add_library(mylite STATIC
   src/runtime/mylite_select_subquery_classify.c
   src/runtime/mylite_select_subquery_eval.c
   src/runtime/mylite_select_subquery_quantified.c
+  src/runtime/mylite_select_subquery_row.c
   src/runtime/mylite_select_subquery_scalar.c
   src/runtime/mylite_select_subquery_validate.c
   src/runtime/mylite_select_union.c

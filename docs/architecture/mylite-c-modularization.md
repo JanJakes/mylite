@@ -628,6 +628,8 @@ into focused `*_types.h` headers.
   subquery companion module.
 - [x] Split quantified subquery evaluation into a focused SELECT subquery
   companion module.
+- [x] Split row subquery evaluation into a focused SELECT subquery companion
+  module.
 - [x] Split insert default, text, current-timestamp, and auto-increment value
   resolution into a focused DML companion module.
 - [x] Split `INSERT ... SET` expression evaluation into a focused DML companion

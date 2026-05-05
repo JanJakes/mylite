@@ -705,6 +705,8 @@ into focused `*_types.h` headers.
   collation companion.
 - [x] Split transaction savepoint parsing, execution, stack management, and
   savepoint diagnostics out of the core transaction module.
+- [x] Split statement prepare custom-kind mapping into a focused prepare
+  companion.
 - [ ] Split `mylite_dml_insert_value_resolve.c` into insert column-list,
   positional/default, `INSERT ... SET`, and SQLite-bind modules.
 - [ ] Split `mylite_select_subquery_eval.c` into scalar subquery, quantified

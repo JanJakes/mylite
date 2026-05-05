@@ -826,6 +826,8 @@ into focused `*_types.h` headers.
   leaving bound-value copying and numeric parsing in the bound-value module.
 - [x] Move INSERT unique-conflict policy entry points into a narrow DML insert
   conflict header.
+- [x] Split INSERT unique-index SQLite probes into a focused DML insert unique
+  probe module.
 - [x] Split INSERT/REPLACE transaction finish bookkeeping into a focused DML
   insert transaction finish module.
 - [x] Split expression function collation inference into a focused expression

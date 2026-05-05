@@ -112,6 +112,7 @@ add_library(mylite STATIC
   src/runtime/mylite_select_from_using.c
   src/runtime/mylite_select_group.c
   src/runtime/mylite_select_group_bind.c
+  src/runtime/mylite_select_group_resolve.c
   src/runtime/mylite_select_group_validate.c
   src/runtime/mylite_select_join_cache.c
   src/runtime/mylite_select_join_materialize.c

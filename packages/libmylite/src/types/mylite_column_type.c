@@ -680,9 +680,13 @@ static const struct mylite_charset_info *lookup_charset(const char *name, size_t
 static const struct mylite_collation_info *lookup_collation(const char *name, size_t name_length)
 {
     static const struct mylite_collation_info collations[] = {
-        {"binary", "binary"},       {"utf8mb4_0900_ai_ci", "utf8mb4"},
-        {"utf8mb4_bin", "utf8mb4"}, {"utf8mb3_general_ci", "utf8mb3"},
-        {"utf8mb3_bin", "utf8mb3"}, {"latin1_swedish_ci", "latin1"},
+        {"binary", "binary"},
+        {"utf8mb4_0900_ai_ci", "utf8mb4"},
+        {"utf8mb4_unicode_520_ci", "utf8mb4"},
+        {"utf8mb4_bin", "utf8mb4"},
+        {"utf8mb3_general_ci", "utf8mb3"},
+        {"utf8mb3_bin", "utf8mb3"},
+        {"latin1_swedish_ci", "latin1"},
         {"latin1_bin", "latin1"},
     };
 

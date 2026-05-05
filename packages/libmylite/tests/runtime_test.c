@@ -692,6 +692,11 @@ static int test_character_set_collation_foundation(void)
     failures += execute_sql(database, "SET NAMES UTF8MB4 COLLATE UTF8MB4_BIN", MYLITE_DONE);
     failures += expect_connection_state(database, "utf8mb4", "utf8mb4", "utf8mb4", "utf8mb4_bin",
                                         "set names uppercase normalized");
+    failures +=
+        execute_sql(database, "SET NAMES UTF8MB4 COLLATE UTF8MB4_UNICODE_520_CI", MYLITE_DONE);
+    failures +=
+        expect_connection_state(database, "utf8mb4", "utf8mb4", "utf8mb4", "utf8mb4_unicode_520_ci",
+                                "set names utf8mb4 unicode 520 normalized");
     failures += execute_sql(database, "SET NAMES 'utf8mb3' COLLATE 'utf8mb3_bin'", MYLITE_DONE);
     failures += expect_connection_state(database, "utf8mb3", "utf8mb3", "utf8mb3", "utf8mb3_bin",
                                         "set names quoted utf8mb3");
@@ -752,6 +757,15 @@ static int test_character_set_collation_foundation(void)
     mylite_finalize(stmt);
     stmt = NULL;
 
+    failures +=
+        prepare_sql(database, "SET NAMES utf8mb3 COLLATE utf8mb4_unicode_520_ci", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR,
+                              "set names unicode 520 incompatible collation");
+    failures += expect_contains(mylite_error_message(database), "not valid for CHARACTER SET",
+                                "set names unicode 520 incompatible collation error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
     failures += prepare_sql(database, "SET CHARACTER SET nosuchcharset", MYLITE_OK, &stmt);
     failures +=
         expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "set character set unknown charset");
@@ -772,6 +786,19 @@ static int test_character_set_collation_foundation(void)
                                                              .encryption = "NO",
                                                          });
     failures += execute_sql(database, "DROP DATABASE mylite_charset_upper", MYLITE_DONE);
+
+    failures += execute_sql(database,
+                            "CREATE DATABASE mylite_charset_unicode_520 DEFAULT CHARACTER SET "
+                            "utf8mb4 COLLATE utf8mb4_unicode_520_ci",
+                            MYLITE_DONE);
+    failures += expect_information_schema_schemata_row(
+        database, &(const struct expected_schemata_row){
+                      .schema_name = "mylite_charset_unicode_520",
+                      .character_set = "utf8mb4",
+                      .collation = "utf8mb4_unicode_520_ci",
+                      .encryption = "NO",
+                  });
+    failures += execute_sql(database, "DROP DATABASE mylite_charset_unicode_520", MYLITE_DONE);
 
     failures += execute_sql(database, "CREATE DATABASE mylite_charset_collate COLLATE latin1_bin",
                             MYLITE_DONE);
@@ -1240,6 +1267,13 @@ static int test_information_schema_collations_execution(void)
         "Yes",
         "1",
         "PAD SPACE",
+        "utf8mb4_unicode_520_ci",
+        "utf8mb4",
+        "246",
+        "",
+        "Yes",
+        "8",
+        "PAD SPACE",
     };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
@@ -1249,13 +1283,13 @@ static int test_information_schema_collations_execution(void)
                               "open information schema collations");
 
     failures += expect_select_rows(database, "SELECT * FROM INFORMATION_SCHEMA.COLLATIONS", columns,
-                                   7, values, 7, "information schema collations registry");
+                                   7, values, 8, "information schema collations registry");
     failures += expect_select_rows(database, "SELECT * FROM information_schema.collations", columns,
-                                   7, values, 7, "information schema collations lower-case");
+                                   7, values, 8, "information schema collations lower-case");
     failures += expect_select_rows(database, "SELECT * FROM Information_Schema.Collations", columns,
-                                   7, values, 7, "information schema collations mixed-case");
+                                   7, values, 8, "information schema collations mixed-case");
     failures += expect_select_rows(database, "SELECT * FROM `information_schema`.`COLLATIONS`",
-                                   columns, 7, values, 7, "information schema collations quoted");
+                                   columns, 7, values, 8, "information schema collations quoted");
 
     failures +=
         prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.COLLATIONS", MYLITE_OK, &stmt);
@@ -1335,9 +1369,22 @@ static int test_information_schema_collation_character_set_applicability_executi
     static const char *const show_tables_values[] = {"COLLATION_CHARACTER_SET_APPLICABILITY",
                                                      "SYSTEM VIEW"};
     static const char *const values[] = {
-        "binary",      "binary",  "latin1_bin",         "latin1",  "latin1_swedish_ci",  "latin1",
-        "utf8mb3_bin", "utf8mb3", "utf8mb3_general_ci", "utf8mb3", "utf8mb4_0900_ai_ci", "utf8mb4",
-        "utf8mb4_bin", "utf8mb4",
+        "binary",
+        "binary",
+        "latin1_bin",
+        "latin1",
+        "latin1_swedish_ci",
+        "latin1",
+        "utf8mb3_bin",
+        "utf8mb3",
+        "utf8mb3_general_ci",
+        "utf8mb3",
+        "utf8mb4_0900_ai_ci",
+        "utf8mb4",
+        "utf8mb4_bin",
+        "utf8mb4",
+        "utf8mb4_unicode_520_ci",
+        "utf8mb4",
     };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
@@ -1348,16 +1395,16 @@ static int test_information_schema_collation_character_set_applicability_executi
 
     failures += expect_select_rows(
         database, "SELECT * FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY", columns,
-        2, values, 7, "information schema collation charset applicability registry");
+        2, values, 8, "information schema collation charset applicability registry");
     failures += expect_select_rows(
         database, "SELECT * FROM information_schema.collation_character_set_applicability", columns,
-        2, values, 7, "information schema collation charset applicability lower-case");
+        2, values, 8, "information schema collation charset applicability lower-case");
     failures += expect_select_rows(
         database, "SELECT * FROM Information_Schema.Collation_Character_Set_Applicability", columns,
-        2, values, 7, "information schema collation charset applicability mixed-case");
+        2, values, 8, "information schema collation charset applicability mixed-case");
     failures += expect_select_rows(
         database, "SELECT * FROM `information_schema`.`COLLATION_CHARACTER_SET_APPLICABILITY`",
-        columns, 2, values, 7, "information schema collation charset applicability quoted");
+        columns, 2, values, 8, "information schema collation charset applicability quoted");
 
     failures += prepare_sql(
         database, "SELECT * FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY",
@@ -12044,6 +12091,8 @@ static int test_strcmp_scalar_function_execution(mylite_db *database)
     };
     static const char *const latin1_columns[] = {"pad_right", "pad_left"};
     static const char *const latin1_values[] = {"0", "0"};
+    static const char *const unicode_520_columns[] = {"case_equal", "pad_right", "pad_left"};
+    static const char *const unicode_520_values[] = {"0", "0", "0"};
     static const char *const cmp_columns[] = {"id", "cmp"};
     static const char *const ordered_values[] = {
         "4", NULL, "1", "-1", "2", "0", "3", "1",
@@ -12106,6 +12155,17 @@ static int test_strcmp_scalar_function_execution(mylite_db *database)
                            "STRCMP('a ','a') AS pad_left",
                            latin1_columns, 2, latin1_values, 1, "STRCMP latin1 PAD SPACE values");
     failures += expect_int(mylite_warning_count(database), 0, "STRCMP latin1 warning count");
+
+    failures +=
+        execute_sql(database, "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_520_ci", MYLITE_DONE);
+    failures += expect_select_rows(database,
+                                   "SELECT STRCMP('a','A') AS case_equal, "
+                                   "STRCMP('a','a ') AS pad_right, "
+                                   "STRCMP('a ','a') AS pad_left",
+                                   unicode_520_columns, 3, unicode_520_values, 1,
+                                   "STRCMP utf8mb4 unicode 520 PAD SPACE values");
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "STRCMP utf8mb4 unicode 520 warning count");
     failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
 
     failures += execute_sql(database,
@@ -12776,6 +12836,10 @@ static int test_charset_collation_functions_execution(void)
                                                 "latin1_swedish_ci"};
     static const char *const explicit_collation_columns[] = {"co_lit", "co_hex"};
     static const char *const explicit_collation_values[] = {"utf8mb4_bin", "utf8mb4_bin"};
+    static const char *const unicode_520_collation_values[] = {
+        "utf8mb4_unicode_520_ci",
+        "utf8mb4_unicode_520_ci",
+    };
     static const struct expected_result_metadata utf8mb4_metadata[] = {
         {"cs", NULL, NULL, NULL, NULL, NULL, 256U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
@@ -12795,6 +12859,19 @@ static int test_charset_collation_functions_execution(void)
              MYLITE_FIELD_FLAG_UNSIGNED,
          1},
         {"co", NULL, NULL, NULL, NULL, NULL, 256U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 46U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"ce", NULL, NULL, NULL, NULL, NULL, 10U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_UNSIGNED, 0},
+    };
+    static const struct expected_result_metadata utf8mb4_unicode_520_metadata[] = {
+        {"cs", NULL, NULL, NULL, NULL, NULL, 256U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 246U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"co", NULL, NULL, NULL, NULL, NULL, 256U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 246U, 0U,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
              MYLITE_FIELD_FLAG_UNSIGNED,
          1},
@@ -12841,6 +12918,9 @@ static int test_charset_collation_functions_execution(void)
     };
     static const char *const null_column_columns[] = {"cs_vc", "co_vc", "ce_vc"};
     static const char *const null_column_values[] = {"utf8mb4", "utf8mb4_bin", "2"};
+    static const char *const unicode_520_column_columns[] = {"cs_u", "co_u", "ce_u"};
+    static const char *const unicode_520_column_values[] = {"utf8mb4", "utf8mb4_unicode_520_ci",
+                                                            "2"};
     static const char *const id_column[] = {"id"};
     static const char *const matching_ids[] = {"1", "2"};
     static const char *const update_columns[] = {"n", "tx"};
@@ -12916,6 +12996,27 @@ static int test_charset_collation_functions_execution(void)
     mylite_finalize(stmt);
     stmt = NULL;
 
+    failures +=
+        execute_sql(database, "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_520_ci", MYLITE_DONE);
+    failures += expect_select_rows(
+        database, "SELECT COLLATION('abc') AS co_lit, COLLATION(HEX('Az')) AS co_hex",
+        explicit_collation_columns,
+        (int)(sizeof(explicit_collation_columns) / sizeof(explicit_collation_columns[0])),
+        unicode_520_collation_values, 1, "charset collation explicit utf8mb4 unicode 520 values");
+    failures += prepare_sql(
+        database, "SELECT CHARSET('a') AS cs, COLLATION('a') AS co, COERCIBILITY('a') AS ce",
+        MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, utf8mb4_unicode_520_metadata,
+        (int)(sizeof(utf8mb4_unicode_520_metadata) / sizeof(utf8mb4_unicode_520_metadata[0])),
+        "charset collation explicit utf8mb4 unicode 520 metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW,
+                              "charset explicit utf8mb4 unicode 520 metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE,
+                              "charset explicit utf8mb4 unicode 520 metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
     failures += execute_sql(database, "SET NAMES latin1", MYLITE_DONE);
     failures += expect_select_rows(
         database,
@@ -12935,6 +13036,21 @@ static int test_charset_collation_functions_execution(void)
     stmt = NULL;
 
     failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE cc_unicode_520 ("
+                            "id INT PRIMARY KEY, "
+                            "u VARCHAR(20) CHARACTER SET utf8mb4 COLLATE "
+                            "utf8mb4_unicode_520_ci)",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO cc_unicode_520 VALUES (1,'u')", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT CHARSET(u) AS cs_u, COLLATION(u) AS co_u, COERCIBILITY(u) AS ce_u "
+        "FROM cc_unicode_520 WHERE id=1",
+        unicode_520_column_columns,
+        (int)(sizeof(unicode_520_column_columns) / sizeof(unicode_520_column_columns[0])),
+        unicode_520_column_values, 1, "charset collation unicode 520 column values");
+
     failures += execute_sql(database,
                             "CREATE TABLE cc_values ("
                             "id INT PRIMARY KEY, "
@@ -18064,10 +18180,36 @@ static int test_show_collation_execution(void)
         "Yes",
         "1",
         "PAD SPACE",
+        "utf8mb4_unicode_520_ci",
+        "utf8mb4",
+        "246",
+        "",
+        "Yes",
+        "8",
+        "PAD SPACE",
     };
     static const char *const utf8mb4_values[] = {
-        "utf8mb4_0900_ai_ci", "utf8mb4", "255", "Yes", "Yes", "0", "NO PAD",
-        "utf8mb4_bin",        "utf8mb4", "46",  "",    "Yes", "1", "PAD SPACE",
+        "utf8mb4_0900_ai_ci",
+        "utf8mb4",
+        "255",
+        "Yes",
+        "Yes",
+        "0",
+        "NO PAD",
+        "utf8mb4_bin",
+        "utf8mb4",
+        "46",
+        "",
+        "Yes",
+        "1",
+        "PAD SPACE",
+        "utf8mb4_unicode_520_ci",
+        "utf8mb4",
+        "246",
+        "",
+        "Yes",
+        "8",
+        "PAD SPACE",
     };
     static const char *const binary_values[] = {"binary", "binary", "63",    "Yes",
                                                 "Yes",    "1",      "NO PAD"};
@@ -18080,14 +18222,14 @@ static int test_show_collation_execution(void)
 
     failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open show collation");
 
-    failures += expect_select_rows(database, "SHOW COLLATION", columns, 7, all_values, 7,
+    failures += expect_select_rows(database, "SHOW COLLATION", columns, 7, all_values, 8,
                                    "show collation supported catalog");
     failures += expect_select_rows(database, "SHOW COLLATION LIKE 'utf8mb4%'", columns, 7,
-                                   utf8mb4_values, 2, "show collation utf8mb4 wildcard");
+                                   utf8mb4_values, 3, "show collation utf8mb4 wildcard");
     failures += expect_select_rows(database, "SHOW COLLATION LIKE 'UTF8MB4%'", columns, 7,
-                                   utf8mb4_values, 2, "show collation like is case-insensitive");
+                                   utf8mb4_values, 3, "show collation like is case-insensitive");
     failures += expect_select_rows(database, "SHOW COLLATION LIKE 'utf8mb4\\_%'", columns, 7,
-                                   utf8mb4_values, 2, "show collation escaped underscore wildcard");
+                                   utf8mb4_values, 3, "show collation escaped underscore wildcard");
     failures += expect_select_rows(
         database, "SHOW COLLATION LIKE 'UTF8MB4\\_BIN'", columns, 7,
         (const char *const[]){"utf8mb4_bin", "utf8mb4", "46", "", "Yes", "1", "PAD SPACE"}, 1,
@@ -18103,6 +18245,9 @@ static int test_show_collation_execution(void)
     failures += expect_show_collation_numeric_columns(
         database, "SHOW COLLATION LIKE 'utf8mb4\\_0900\\_ai\\_ci'", 255, 0,
         "show collation id and sortlen are integers");
+    failures += expect_show_collation_numeric_columns(
+        database, "SHOW COLLATION LIKE 'utf8mb4\\_unicode\\_520\\_ci'", 246, 8,
+        "show collation unicode 520 id and sortlen are integers");
 
     failures += expect_prepare_error(database, "SHOW COLLATION WHERE Charset = 'latin1'",
                                      MYLITE_UNSUPPORTED, "SHOW COLLATION WHERE is not supported",

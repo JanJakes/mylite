@@ -323,6 +323,13 @@ static int test_string_binary_aliases_and_charsets(void)
                                             MYLITE_COLUMN_TYPE_OK, &descriptor);
     failures += expect_string(descriptor.character_set_name, "latin1", "collation implied charset");
 
+    failures += describe_string_binary_type("CHAR", collation_attribute("utf8mb4_unicode_520_ci"),
+                                            MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures +=
+        expect_string(descriptor.character_set_name, "utf8mb4", "unicode 520 implied charset");
+    failures +=
+        expect_string(descriptor.collation_name, "utf8mb4_unicode_520_ci", "unicode 520 collation");
+
     failures += describe_string_binary_type("CHAR", collation_attribute("binary"),
                                             MYLITE_COLUMN_TYPE_OK, &descriptor);
     failures += expect_string(descriptor.data_type, "binary", "binary collation char data type");

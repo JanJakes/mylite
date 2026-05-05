@@ -72,7 +72,7 @@ In scope for the initial implementation:
   - `TIMESTAMP`, `TIMESTAMPADD`, `TIMESTAMPDIFF`
   - `TO_DAYS`, `TO_SECONDS`, `FROM_DAYS`
   - `TIME`, `TIME_TO_SEC`, `SEC_TO_TIME`, `TIMEDIFF`, `LAST_DAY`
-  - `UNIX_TIMESTAMP`, `FROM_UNIXTIME`, `DATE_FORMAT`, `TIME_FORMAT`
+  - `UNIX_TIMESTAMP`, `FROM_UNIXTIME`, `DATE_FORMAT`, `STR_TO_DATE`, `TIME_FORMAT`
   - `EXTRACT`
 - conditional and comparison functions:
   - `IF`
@@ -108,9 +108,9 @@ Out of scope for the initial implementation:
   are grammar-level scalar expressions owned by
   `docs/specs/cast-expression/specs.md` and
   `docs/specs/convert-function/specs.md`
-- `STR_TO_DATE`, week-numbering functions, named time zones, locale-sensitive
-  temporal behavior beyond the first formatting slice, and time-zone table
-  integration
+- week-numbering functions, named time zones, SQL-mode-specific zero-date
+  `STR_TO_DATE` variants, locale-sensitive temporal behavior beyond the first
+  formatting/parsing slice, and time-zone table integration
 - `SLEEP`, `BENCHMARK`, and other nondeterministic or diagnostic/performance
   functions not needed for the first application batch
 - user variables, system variables, prepared-statement parameters, subqueries,
@@ -196,7 +196,7 @@ by common scalar expressions:
   for the simple `DAY`, `WEEK`, `MONTH`, `YEAR`, `HOUR`, `MINUTE`, and
   `SECOND` units, plus `TO_DAYS`, `TO_SECONDS`, `FROM_DAYS`, `TIME`,
   `TIME_TO_SEC`, `SEC_TO_TIME`, `TIMEDIFF`, `LAST_DAY`, `UNIX_TIMESTAMP`,
-  `FROM_UNIXTIME`, `DATE_FORMAT`, and `TIME_FORMAT`;
+  `FROM_UNIXTIME`, `DATE_FORMAT`, `STR_TO_DATE`, and `TIME_FORMAT`;
   see
   `docs/specs/current-temporal-functions/specs.md` and
   `docs/specs/utc-temporal-functions/specs.md` and
@@ -280,6 +280,7 @@ TIMESTAMP datetime conversion and date-plus-time addition,
 LAST_DAY month-end conversion,
 UNIX_TIMESTAMP timestamp conversion,
 FROM_UNIXTIME epoch-to-datetime conversion and formatted output,
+STR_TO_DATE temporal string parsing,
 TIME_FORMAT token rendering,
 UTC current temporal functions,
 zero and incomplete date warnings, unsupported functions, unsupported arity,
@@ -1141,7 +1142,7 @@ and `LIMIT 0` queries for:
   `LEAST`, `STRCMP`
 - temporal functions: `NOW(6)`, `CURDATE`, `DATEDIFF`, `DATE_ADD`,
   `LAST_DAY`, `TIME`, `TIME_TO_SEC`, `SEC_TO_TIME`, `TIMEDIFF`, `TIMESTAMP`,
-  `FROM_UNIXTIME`, `DATE_FORMAT`, `TIME_FORMAT`, `UTC_TIMESTAMP(6)`,
+  `FROM_UNIXTIME`, `DATE_FORMAT`, `STR_TO_DATE`, `TIME_FORMAT`, `UTC_TIMESTAMP(6)`,
   `UTC_DATE`, `UTC_TIME`
 - information functions: `DATABASE`, `SCHEMA`, `VERSION`, `LAST_INSERT_ID`,
   `ROW_COUNT`, `CONNECTION_ID`

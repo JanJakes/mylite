@@ -58,6 +58,13 @@ bool mylite_function_name_is_from_unixtime(const struct mylite_sql_ast_node *nam
     return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }
 
+bool mylite_function_name_is_str_to_date(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"STR_TO_DATE"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
 bool mylite_function_name_is_time_extraction(const struct mylite_sql_ast_node *name)
 {
     static const char *const names[] = {"TIME"};

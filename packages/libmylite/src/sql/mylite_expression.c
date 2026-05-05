@@ -453,6 +453,32 @@ struct temporal_time_value {
     bool negative;
 };
 
+enum str_to_date_result_kind {
+    STR_TO_DATE_RESULT_DATE = 0,
+    STR_TO_DATE_RESULT_TIME,
+    STR_TO_DATE_RESULT_DATETIME,
+};
+
+struct str_to_date_numeric_token {
+    int value;
+    size_t digit_count;
+};
+
+struct str_to_date_parts {
+    struct temporal_date_value date;
+    struct temporal_time_value time;
+    enum str_to_date_result_kind result_kind;
+    int day_of_year;
+    bool has_date_part;
+    bool has_time_part;
+    bool has_day_of_year;
+    bool has_hour;
+    bool hour_is_12_hour;
+    bool has_meridiem;
+    bool meridiem_pm;
+    bool truncated;
+};
+
 struct timediff_operand {
     enum timediff_operand_kind kind;
     struct temporal_time_value time;
@@ -622,6 +648,7 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_TIMESTAMP = 133,
     MYLITE_SCALAR_FUNCTION_UUID = 134,
     MYLITE_SCALAR_FUNCTION_UUID_SHORT = 135,
+    MYLITE_SCALAR_FUNCTION_STR_TO_DATE = 136,
 };
 
 struct angle_conversion_input {
@@ -729,6 +756,51 @@ static int eval_date_format_function(const struct mylite_sql_ast_node *arguments
                                      struct mylite_expression_value *out_value);
 static int date_format_text_value(const struct temporal_date_value *date, const char *format,
                                   size_t format_length, struct mylite_expression_value *out_value);
+static int eval_str_to_date_function(const struct mylite_sql_ast_node *node,
+                                     const struct mylite_expression_eval_context *context,
+                                     struct mylite_expression_warnings *warnings,
+                                     struct mylite_expression_value *out_value);
+static int str_to_date_text_value(const char *text, size_t text_length, const char *format,
+                                  size_t format_length, bool dynamic_format,
+                                  struct mylite_expression_warnings *warnings,
+                                  struct mylite_expression_value *out_value);
+static bool str_to_date_format_argument_is_literal(const struct mylite_sql_ast_node *argument);
+static bool parse_str_to_date_text(const char *text, size_t text_length, const char *format,
+                                   size_t format_length, struct str_to_date_parts *out_parts);
+static bool parse_str_to_date_token(const char *text, size_t text_length, size_t *offset,
+                                    char token, struct str_to_date_parts *parts);
+static bool parse_str_to_date_time_sequence(const char *text, size_t text_length, size_t *offset,
+                                            bool hour_is_12_hour, struct str_to_date_parts *parts);
+static bool parse_str_to_date_number(const char *text, size_t text_length, size_t *offset,
+                                     size_t minimum_digits, size_t maximum_digits,
+                                     struct str_to_date_numeric_token *out_token);
+static bool parse_str_to_date_fraction(const char *text, size_t text_length, size_t *offset,
+                                       struct str_to_date_parts *parts);
+static bool parse_str_to_date_month_name(const char *text, size_t text_length, size_t *offset,
+                                         bool abbreviated, int *out_month);
+static bool parse_str_to_date_weekday_name(const char *text, size_t text_length, size_t *offset,
+                                           bool abbreviated);
+static bool match_str_to_date_literal(const char *text, size_t text_length, size_t *offset,
+                                      char literal);
+static bool match_str_to_date_name(const char *text, size_t text_length, size_t *offset,
+                                   const char *name);
+static bool match_str_to_date_meridiem(const char *text, size_t text_length, size_t *offset,
+                                       bool *out_pm);
+static bool match_str_to_date_ordinal_suffix(const char *text, size_t text_length, size_t *offset,
+                                             int day);
+static int str_to_date_normalized_year(int year, size_t digit_count);
+static bool finalize_str_to_date_parts(struct str_to_date_parts *parts);
+static bool apply_str_to_date_dynamic_format_result(struct str_to_date_parts *parts);
+static bool apply_str_to_date_day_of_year(struct str_to_date_parts *parts);
+static bool apply_str_to_date_time(struct str_to_date_parts *parts);
+static bool str_to_date_complete_date_is_valid(const struct temporal_date_value *date);
+static int set_str_to_date_result_value(const struct str_to_date_parts *parts,
+                                        struct mylite_expression_value *out_value);
+static int append_str_to_date_incorrect_warning(struct mylite_expression_warnings *warnings,
+                                                const char *text, size_t text_length);
+static int append_str_to_date_truncated_warning(struct mylite_expression_warnings *warnings,
+                                                enum str_to_date_result_kind kind, const char *text,
+                                                size_t text_length);
 static int eval_time_format_function(const struct mylite_sql_ast_node *arguments,
                                      const struct mylite_expression_eval_context *context,
                                      struct mylite_expression_warnings *warnings,
@@ -2202,6 +2274,7 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_FIND_IN_SET:
     case MYLITE_SCALAR_FUNCTION_DATEDIFF:
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
+    case MYLITE_SCALAR_FUNCTION_STR_TO_DATE:
     case MYLITE_SCALAR_FUNCTION_TIME_FORMAT:
     case MYLITE_SCALAR_FUNCTION_TIMEDIFF:
         return arity == 2U;
@@ -3150,6 +3223,8 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_unix_timestamp_function(node, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
         return eval_date_format_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_STR_TO_DATE:
+        return eval_str_to_date_function(node, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_TIME_FORMAT:
         return eval_time_format_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
@@ -3393,6 +3468,613 @@ static int date_format_text_value(const struct temporal_date_value *date, const 
     status = set_text_value(result, result_length, out_value);
     free(result);
     return status;
+}
+
+static int eval_str_to_date_function(const struct mylite_sql_ast_node *node,
+                                     const struct mylite_expression_eval_context *context,
+                                     struct mylite_expression_warnings *warnings,
+                                     struct mylite_expression_value *out_value)
+{
+    const struct mylite_sql_ast_node *arguments = child_at(node, 1U);
+    const struct mylite_sql_ast_node *format_argument = child_at(arguments, 1U);
+    struct mylite_expression_value text_value = {0};
+    struct mylite_expression_value format_value = {0};
+    char *text = NULL;
+    char *format = NULL;
+    size_t text_length = 0U;
+    size_t format_length = 0U;
+    bool dynamic_format = !str_to_date_format_argument_is_literal(format_argument);
+    int status = eval_node(child_at(arguments, 0U), context, warnings, &text_value);
+
+    if (status != 0) {
+        goto cleanup;
+    }
+    status = eval_node(child_at(arguments, 1U), context, warnings, &format_value);
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&text_value) || is_null(&format_value)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    status = value_to_string_with_length(&text_value, &text, &text_length);
+    if (status != 0) {
+        goto cleanup;
+    }
+    status = value_to_string_with_length(&format_value, &format, &format_length);
+    if (status != 0) {
+        goto cleanup;
+    }
+    status = str_to_date_text_value(text, text_length, format, format_length, dynamic_format,
+                                    warnings, out_value);
+
+cleanup:
+    free(format);
+    free(text);
+    mylite_expression_value_deinit(&format_value);
+    mylite_expression_value_deinit(&text_value);
+    return status;
+}
+
+static int str_to_date_text_value(const char *text, size_t text_length, const char *format,
+                                  size_t format_length, bool dynamic_format,
+                                  struct mylite_expression_warnings *warnings,
+                                  struct mylite_expression_value *out_value)
+{
+    struct str_to_date_parts parts = {0};
+    int status = 0;
+
+    if (!parse_str_to_date_text(text, text_length, format, format_length, &parts) ||
+        !finalize_str_to_date_parts(&parts) ||
+        (dynamic_format && !apply_str_to_date_dynamic_format_result(&parts))) {
+        status = append_str_to_date_incorrect_warning(warnings, text, text_length);
+        if (status == 0) {
+            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        }
+        return status;
+    }
+    if (parts.truncated) {
+        status =
+            append_str_to_date_truncated_warning(warnings, parts.result_kind, text, text_length);
+        if (status != 0) {
+            return status;
+        }
+    }
+    return set_str_to_date_result_value(&parts, out_value);
+}
+
+static bool str_to_date_format_argument_is_literal(const struct mylite_sql_ast_node *argument)
+{
+    argument = unwrap_parenthesized_node(argument);
+    return argument != NULL && argument->kind == MYLITE_SQL_AST_LITERAL &&
+           (argument->literal_kind == MYLITE_SQL_AST_LITERAL_STRING ||
+            argument->literal_kind == MYLITE_SQL_AST_LITERAL_NATIONAL_STRING);
+}
+
+static bool parse_str_to_date_text(const char *text, size_t text_length, const char *format,
+                                   size_t format_length, struct str_to_date_parts *out_parts)
+{
+    struct str_to_date_parts parts = {0};
+    size_t text_offset = 0U;
+
+    if (text == NULL || format == NULL || out_parts == NULL) {
+        return false;
+    }
+
+    for (size_t format_offset = 0U; format_offset < format_length; ++format_offset) {
+        char character = format[format_offset];
+
+        if (character != '%') {
+            if (!match_str_to_date_literal(text, text_length, &text_offset, character)) {
+                return false;
+            }
+            continue;
+        }
+        if (format_offset + 1U >= format_length) {
+            if (!match_str_to_date_literal(text, text_length, &text_offset, '%')) {
+                return false;
+            }
+            continue;
+        }
+        if (!parse_str_to_date_token(text, text_length, &text_offset, format[++format_offset],
+                                     &parts)) {
+            return false;
+        }
+    }
+
+    parts.truncated = text_offset < text_length;
+    *out_parts = parts;
+    return true;
+}
+
+static bool parse_str_to_date_token(const char *text, size_t text_length, size_t *offset,
+                                    char token, struct str_to_date_parts *parts)
+{
+    struct str_to_date_numeric_token number = {0};
+
+    switch (token) {
+    case '%':
+        return match_str_to_date_literal(text, text_length, offset, '%');
+    case 'Y':
+        if (!parse_str_to_date_number(text, text_length, offset, 1U, 4U, &number)) {
+            return false;
+        }
+        parts->date.year = str_to_date_normalized_year(number.value, number.digit_count);
+        parts->has_date_part = true;
+        return true;
+    case 'y':
+        if (!parse_str_to_date_number(text, text_length, offset, 1U, 2U, &number)) {
+            return false;
+        }
+        parts->date.year = str_to_date_normalized_year(number.value, number.digit_count);
+        parts->has_date_part = true;
+        return true;
+    case 'm':
+    case 'c':
+        if (!parse_str_to_date_number(text, text_length, offset, 1U, 2U, &number)) {
+            return false;
+        }
+        parts->date.month = number.value;
+        parts->has_date_part = true;
+        return true;
+    case 'M':
+        if (!parse_str_to_date_month_name(text, text_length, offset, false, &parts->date.month)) {
+            return false;
+        }
+        parts->has_date_part = true;
+        return true;
+    case 'b':
+        if (!parse_str_to_date_month_name(text, text_length, offset, true, &parts->date.month)) {
+            return false;
+        }
+        parts->has_date_part = true;
+        return true;
+    case 'd':
+    case 'e':
+        if (!parse_str_to_date_number(text, text_length, offset, 1U, 2U, &number)) {
+            return false;
+        }
+        parts->date.day = number.value;
+        parts->has_date_part = true;
+        return true;
+    case 'D':
+        if (!parse_str_to_date_number(text, text_length, offset, 1U, 2U, &number) ||
+            !match_str_to_date_ordinal_suffix(text, text_length, offset, number.value)) {
+            return false;
+        }
+        parts->date.day = number.value;
+        parts->has_date_part = true;
+        return true;
+    case 'j':
+        if (!parse_str_to_date_number(text, text_length, offset, 1U, 3U, &number)) {
+            return false;
+        }
+        parts->day_of_year = number.value;
+        parts->has_day_of_year = true;
+        parts->has_date_part = true;
+        return true;
+    case 'a':
+        return parse_str_to_date_weekday_name(text, text_length, offset, true);
+    case 'W':
+        return parse_str_to_date_weekday_name(text, text_length, offset, false);
+    case 'H':
+    case 'k':
+        if (!parse_str_to_date_number(text, text_length, offset, 1U, 2U, &number)) {
+            return false;
+        }
+        parts->time.hour = number.value;
+        parts->has_hour = true;
+        parts->hour_is_12_hour = false;
+        parts->has_time_part = true;
+        return true;
+    case 'h':
+    case 'I':
+    case 'l':
+        if (!parse_str_to_date_number(text, text_length, offset, 1U, 2U, &number)) {
+            return false;
+        }
+        parts->time.hour = number.value;
+        parts->has_hour = true;
+        parts->hour_is_12_hour = true;
+        parts->has_time_part = true;
+        return true;
+    case 'i':
+        if (!parse_str_to_date_number(text, text_length, offset, 1U, 2U, &number)) {
+            return false;
+        }
+        parts->time.minute = number.value;
+        parts->has_time_part = true;
+        return true;
+    case 's':
+    case 'S':
+        if (!parse_str_to_date_number(text, text_length, offset, 1U, 2U, &number)) {
+            return false;
+        }
+        parts->time.second = number.value;
+        parts->has_time_part = true;
+        return true;
+    case 'f':
+        return parse_str_to_date_fraction(text, text_length, offset, parts);
+    case 'p':
+        return match_str_to_date_meridiem(text, text_length, offset, &parts->meridiem_pm)
+                   ? (parts->has_meridiem = true, true)
+                   : false;
+    case 'r':
+        return parse_str_to_date_time_sequence(text, text_length, offset, true, parts);
+    case 'T':
+        return parse_str_to_date_time_sequence(text, text_length, offset, false, parts);
+    default:
+        return match_str_to_date_literal(text, text_length, offset, token);
+    }
+}
+
+static bool parse_str_to_date_time_sequence(const char *text, size_t text_length, size_t *offset,
+                                            bool hour_is_12_hour, struct str_to_date_parts *parts)
+{
+    struct str_to_date_numeric_token number = {0};
+
+    if (!parse_str_to_date_number(text, text_length, offset, 1U, 2U, &number)) {
+        return false;
+    }
+    parts->time.hour = number.value;
+    parts->has_hour = true;
+    parts->hour_is_12_hour = hour_is_12_hour;
+    if (!match_str_to_date_literal(text, text_length, offset, ':') ||
+        !parse_str_to_date_number(text, text_length, offset, 1U, 2U, &number)) {
+        return false;
+    }
+    parts->time.minute = number.value;
+    if (!match_str_to_date_literal(text, text_length, offset, ':') ||
+        !parse_str_to_date_number(text, text_length, offset, 1U, 2U, &number)) {
+        return false;
+    }
+    parts->time.second = number.value;
+    parts->has_time_part = true;
+    if (!hour_is_12_hour) {
+        return true;
+    }
+    if (!match_str_to_date_literal(text, text_length, offset, ' ')) {
+        return false;
+    }
+    return match_str_to_date_meridiem(text, text_length, offset, &parts->meridiem_pm)
+               ? (parts->has_meridiem = true, true)
+               : false;
+}
+
+static bool parse_str_to_date_number(const char *text, size_t text_length, size_t *offset,
+                                     size_t minimum_digits, size_t maximum_digits,
+                                     struct str_to_date_numeric_token *out_token)
+{
+    size_t cursor = offset == NULL ? 0U : *offset;
+    size_t digits = 0U;
+    int value = 0;
+
+    if (text == NULL || offset == NULL || out_token == NULL || minimum_digits > maximum_digits) {
+        return false;
+    }
+    while (cursor < text_length && digits < maximum_digits && text[cursor] >= '0' &&
+           text[cursor] <= '9') {
+        value = (value * MYLITE_EXPRESSION_DECIMAL_BASE) + (text[cursor] - '0');
+        ++cursor;
+        ++digits;
+    }
+    if (digits < minimum_digits) {
+        return false;
+    }
+    *offset = cursor;
+    *out_token = (struct str_to_date_numeric_token){
+        .value = value,
+        .digit_count = digits,
+    };
+    return true;
+}
+
+static bool parse_str_to_date_fraction(const char *text, size_t text_length, size_t *offset,
+                                       struct str_to_date_parts *parts)
+{
+    size_t cursor = offset == NULL ? 0U : *offset;
+    size_t digits = 0U;
+    int microsecond = 0;
+
+    if (text == NULL || offset == NULL || parts == NULL) {
+        return false;
+    }
+    while (cursor < text_length && digits < MYLITE_TEMPORAL_MAX_FSP && text[cursor] >= '0' &&
+           text[cursor] <= '9') {
+        microsecond = (microsecond * MYLITE_EXPRESSION_DECIMAL_BASE) + (text[cursor] - '0');
+        ++cursor;
+        ++digits;
+    }
+    if (digits == 0U) {
+        return false;
+    }
+    for (size_t index = digits; index < MYLITE_TEMPORAL_MAX_FSP; ++index) {
+        microsecond *= MYLITE_EXPRESSION_DECIMAL_BASE;
+    }
+    parts->time.microsecond = microsecond;
+    parts->time.fraction_digits = MYLITE_TEMPORAL_MAX_FSP;
+    parts->has_time_part = true;
+    *offset = cursor;
+    return true;
+}
+
+static bool parse_str_to_date_month_name(const char *text, size_t text_length, size_t *offset,
+                                         bool abbreviated, int *out_month)
+{
+    static const char *const month_names[] = {
+        "",     "January", "February",  "March",   "April",    "May",      "June",
+        "July", "August",  "September", "October", "November", "December",
+    };
+    static const char *const month_abbreviations[] = {
+        "", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    };
+
+    for (int month = 1; month <= MYLITE_TEMPORAL_MONTHS_PER_YEAR; ++month) {
+        const char *name = abbreviated ? month_abbreviations[month] : month_names[month];
+        size_t cursor = offset == NULL ? 0U : *offset;
+
+        if (match_str_to_date_name(text, text_length, &cursor, name)) {
+            *offset = cursor;
+            *out_month = month;
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool parse_str_to_date_weekday_name(const char *text, size_t text_length, size_t *offset,
+                                           bool abbreviated)
+{
+    static const char *const weekday_names[] = {"Sunday",   "Monday", "Tuesday", "Wednesday",
+                                                "Thursday", "Friday", "Saturday"};
+    static const char *const weekday_abbreviations[] = {"Sun", "Mon", "Tue", "Wed",
+                                                        "Thu", "Fri", "Sat"};
+
+    for (size_t index = 0U; index < MYLITE_TEMPORAL_DAYS_PER_WEEK; ++index) {
+        const char *name = abbreviated ? weekday_abbreviations[index] : weekday_names[index];
+        size_t cursor = offset == NULL ? 0U : *offset;
+
+        if (match_str_to_date_name(text, text_length, &cursor, name)) {
+            *offset = cursor;
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool match_str_to_date_literal(const char *text, size_t text_length, size_t *offset,
+                                      char literal)
+{
+    if (text == NULL || offset == NULL || *offset >= text_length || text[*offset] != literal) {
+        return false;
+    }
+    ++(*offset);
+    return true;
+}
+
+static bool match_str_to_date_name(const char *text, size_t text_length, size_t *offset,
+                                   const char *name)
+{
+    size_t cursor = offset == NULL ? 0U : *offset;
+    size_t name_length = name == NULL ? 0U : strlen(name);
+
+    if (text == NULL || offset == NULL || name == NULL || cursor > text_length ||
+        name_length > text_length - cursor) {
+        return false;
+    }
+    for (size_t index = 0U; index < name_length; ++index) {
+        if (ascii_case_fold((unsigned char)text[cursor + index]) !=
+            ascii_case_fold((unsigned char)name[index])) {
+            return false;
+        }
+    }
+    *offset = cursor + name_length;
+    return true;
+}
+
+static bool match_str_to_date_meridiem(const char *text, size_t text_length, size_t *offset,
+                                       bool *out_pm)
+{
+    size_t cursor = offset == NULL ? 0U : *offset;
+
+    if (match_str_to_date_name(text, text_length, &cursor, "AM")) {
+        *offset = cursor;
+        *out_pm = false;
+        return true;
+    }
+    cursor = offset == NULL ? 0U : *offset;
+    if (match_str_to_date_name(text, text_length, &cursor, "PM")) {
+        *offset = cursor;
+        *out_pm = true;
+        return true;
+    }
+    return false;
+}
+
+static bool match_str_to_date_ordinal_suffix(const char *text, size_t text_length, size_t *offset,
+                                             int day)
+{
+    const char *suffix = date_format_day_ordinal_suffix(day);
+
+    return match_str_to_date_name(text, text_length, offset, suffix);
+}
+
+static int str_to_date_normalized_year(int year, size_t digit_count)
+{
+    if (digit_count <= 2U) {
+        return temporal_normalized_year((struct temporal_year_parts){
+            .year = year,
+            .digit_count = 2U,
+        });
+    }
+    return year;
+}
+
+static bool finalize_str_to_date_parts(struct str_to_date_parts *parts)
+{
+    if (parts == NULL) {
+        return false;
+    }
+    if (parts->has_time_part && parts->has_date_part) {
+        parts->result_kind = STR_TO_DATE_RESULT_DATETIME;
+    } else if (parts->has_time_part) {
+        parts->result_kind = STR_TO_DATE_RESULT_TIME;
+    } else {
+        parts->result_kind = STR_TO_DATE_RESULT_DATE;
+    }
+    if (!apply_str_to_date_day_of_year(parts) || !apply_str_to_date_time(parts)) {
+        return false;
+    }
+    if (parts->result_kind == STR_TO_DATE_RESULT_TIME) {
+        return temporal_time_parts_are_valid(parts->time.hour, parts->time.minute,
+                                             parts->time.second);
+    }
+    if (!str_to_date_complete_date_is_valid(&parts->date)) {
+        return false;
+    }
+    if (parts->result_kind == STR_TO_DATE_RESULT_DATETIME) {
+        parts->date.hour = parts->time.hour;
+        parts->date.minute = parts->time.minute;
+        parts->date.second = parts->time.second;
+        parts->date.microsecond = parts->time.microsecond;
+        parts->date.fraction_digits = parts->time.fraction_digits;
+        parts->date.preserve_fraction_digits = parts->time.fraction_digits != 0U;
+        parts->date.has_time = true;
+    }
+    return true;
+}
+
+static bool apply_str_to_date_dynamic_format_result(struct str_to_date_parts *parts)
+{
+    if (parts == NULL) {
+        return false;
+    }
+    if (parts->result_kind == STR_TO_DATE_RESULT_TIME) {
+        return false;
+    }
+    if (parts->result_kind == STR_TO_DATE_RESULT_DATE) {
+        parts->result_kind = STR_TO_DATE_RESULT_DATETIME;
+        parts->date.has_time = true;
+    }
+    parts->date.fraction_digits = MYLITE_TEMPORAL_MAX_FSP;
+    parts->date.preserve_fraction_digits = true;
+    return true;
+}
+
+static bool apply_str_to_date_day_of_year(struct str_to_date_parts *parts)
+{
+    struct temporal_date_value first_day = {0};
+    struct temporal_date_value day_date = {0};
+    int64_t day_number = 0;
+
+    if (parts == NULL || !parts->has_day_of_year) {
+        return true;
+    }
+    if (parts->day_of_year < 1 ||
+        parts->day_of_year > (temporal_year_is_leap(parts->date.year)
+                                  ? MYLITE_TEMPORAL_DAYS_PER_COMMON_YEAR + 1
+                                  : MYLITE_TEMPORAL_DAYS_PER_COMMON_YEAR)) {
+        return false;
+    }
+    first_day = (struct temporal_date_value){
+        .year = parts->date.year,
+        .month = 1,
+        .day = 1,
+    };
+    day_number = temporal_day_number(&first_day) + (int64_t)parts->day_of_year - 1;
+    if (!temporal_date_from_day_number(day_number, &day_date) ||
+        day_date.year != parts->date.year) {
+        return false;
+    }
+    if (parts->date.month != 0 && parts->date.month != day_date.month) {
+        return false;
+    }
+    if (parts->date.day != 0 && parts->date.day != day_date.day) {
+        return false;
+    }
+    parts->date.month = day_date.month;
+    parts->date.day = day_date.day;
+    return true;
+}
+
+static bool apply_str_to_date_time(struct str_to_date_parts *parts)
+{
+    if (parts == NULL) {
+        return false;
+    }
+    if (parts->has_hour && parts->hour_is_12_hour) {
+        if (parts->time.hour < 1 || parts->time.hour > 12) {
+            return false;
+        }
+        if (parts->time.hour == 12) {
+            parts->time.hour = 0;
+        }
+        if (parts->has_meridiem && parts->meridiem_pm) {
+            parts->time.hour += 12;
+        }
+    }
+    return temporal_time_parts_are_valid(parts->time.hour, parts->time.minute, parts->time.second);
+}
+
+static bool str_to_date_complete_date_is_valid(const struct temporal_date_value *date)
+{
+    return date != NULL && date->year > 0 &&
+           temporal_date_parts_are_valid(date->year, date->month, date->day);
+}
+
+static int set_str_to_date_result_value(const struct str_to_date_parts *parts,
+                                        struct mylite_expression_value *out_value)
+{
+    switch (parts->result_kind) {
+    case STR_TO_DATE_RESULT_DATE:
+        return set_temporal_date_text_value(&parts->date, out_value);
+    case STR_TO_DATE_RESULT_TIME:
+        return set_temporal_time_text_value(&parts->time, out_value);
+    case STR_TO_DATE_RESULT_DATETIME:
+        return set_temporal_datetime_text_value(&parts->date, out_value);
+    }
+    return -1;
+}
+
+static int append_str_to_date_incorrect_warning(struct mylite_expression_warnings *warnings,
+                                                const char *text, size_t text_length)
+{
+    char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
+    int preview_length = text_length > MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
+                             ? MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
+                             : (int)text_length;
+    int length = snprintf(message, sizeof(message),
+                          "Incorrect datetime value: '%.*s' for function str_to_date",
+                          preview_length, text == NULL ? "" : text);
+
+    if (length < 0) {
+        return -1;
+    }
+    return append_warning(warnings, MYLITE_WARNING_INCORRECT_STRING_VALUE, message);
+}
+
+static int append_str_to_date_truncated_warning(struct mylite_expression_warnings *warnings,
+                                                enum str_to_date_result_kind kind, const char *text,
+                                                size_t text_length)
+{
+    char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
+    const char *value_kind = "date";
+    int preview_length = text_length > MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
+                             ? MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
+                             : (int)text_length;
+    int length = 0;
+
+    if (kind == STR_TO_DATE_RESULT_TIME) {
+        value_kind = "time";
+    } else if (kind == STR_TO_DATE_RESULT_DATETIME) {
+        value_kind = "datetime";
+    }
+    length = snprintf(message, sizeof(message), "Truncated incorrect %s value: '%.*s'", value_kind,
+                      preview_length, text == NULL ? "" : text);
+    if (length < 0) {
+        return -1;
+    }
+    return append_warning(warnings, MYLITE_WARNING_TRUNCATED_WRONG_VALUE, message);
 }
 
 static int eval_time_format_function(const struct mylite_sql_ast_node *arguments,
@@ -6003,6 +6685,7 @@ static bool temporal_part_from_function(enum mylite_scalar_function_id function_
     case MYLITE_SCALAR_FUNCTION_SEC_TO_TIME:
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
+    case MYLITE_SCALAR_FUNCTION_STR_TO_DATE:
     case MYLITE_SCALAR_FUNCTION_TIME_FORMAT:
     case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
     case MYLITE_SCALAR_FUNCTION_DEFAULT:
@@ -10380,6 +11063,7 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_SEC_TO_TIME:
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
+    case MYLITE_SCALAR_FUNCTION_STR_TO_DATE:
     case MYLITE_SCALAR_FUNCTION_TIME_FORMAT:
     case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
     case MYLITE_SCALAR_FUNCTION_DEFAULT:
@@ -12256,6 +12940,7 @@ static int trigonometric_function_result(struct trigonometric_input input,
     case MYLITE_SCALAR_FUNCTION_SEC_TO_TIME:
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
+    case MYLITE_SCALAR_FUNCTION_STR_TO_DATE:
     case MYLITE_SCALAR_FUNCTION_TIME_FORMAT:
     case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
     case MYLITE_SCALAR_FUNCTION_DEFAULT:
@@ -12577,6 +13262,7 @@ static int inverse_trigonometric_function_result(struct inverse_trigonometric_in
     case MYLITE_SCALAR_FUNCTION_SEC_TO_TIME:
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
+    case MYLITE_SCALAR_FUNCTION_STR_TO_DATE:
     case MYLITE_SCALAR_FUNCTION_TIME_FORMAT:
     case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
     case MYLITE_SCALAR_FUNCTION_DEFAULT:
@@ -12808,6 +13494,7 @@ static int angle_conversion_result(struct angle_conversion_input conversion, dou
     case MYLITE_SCALAR_FUNCTION_SEC_TO_TIME:
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
+    case MYLITE_SCALAR_FUNCTION_STR_TO_DATE:
     case MYLITE_SCALAR_FUNCTION_TIME_FORMAT:
     case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
     case MYLITE_SCALAR_FUNCTION_DEFAULT:
@@ -16884,6 +17571,7 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"SEC_TO_TIME", MYLITE_SCALAR_FUNCTION_SEC_TO_TIME},
         {"UNIX_TIMESTAMP", MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP},
         {"DATE_FORMAT", MYLITE_SCALAR_FUNCTION_DATE_FORMAT},
+        {"STR_TO_DATE", MYLITE_SCALAR_FUNCTION_STR_TO_DATE},
         {"TIME_FORMAT", MYLITE_SCALAR_FUNCTION_TIME_FORMAT},
         {"TIMEDIFF", MYLITE_SCALAR_FUNCTION_TIMEDIFF},
         {"TIMESTAMP", MYLITE_SCALAR_FUNCTION_TIMESTAMP},
@@ -17052,6 +17740,7 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_TIME_TO_SEC:
     case MYLITE_SCALAR_FUNCTION_SEC_TO_TIME:
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
+    case MYLITE_SCALAR_FUNCTION_STR_TO_DATE:
     case MYLITE_SCALAR_FUNCTION_TIME_FORMAT:
     case MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME:
     case MYLITE_SCALAR_FUNCTION_DEFAULT:

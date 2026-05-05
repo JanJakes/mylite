@@ -46,6 +46,7 @@ the already-supported `DATE_FORMAT()`/`TIME_FORMAT()` slice:
 | `%D` | day of month with English ordinal suffix |
 | `%M`, `%b` | full or abbreviated English month name, case-insensitive |
 | `%j` | day of year, resolved with the parsed or default zero year |
+| `%W`, `%a` | full or abbreviated English weekday name, parsed and ignored |
 | `%H`, `%k` | 24-hour hour |
 | `%h`, `%I`, `%l` | 12-hour hour |
 | `%i` | minute |
@@ -73,6 +74,11 @@ The result type is determined from the format:
 - dynamic or otherwise nonliteral formats are described as nullable
   `DATETIME(6)`, matching MySQL's conservative metadata behavior for dynamic
   format expressions.
+
+For nonliteral format expressions, MyLite also materializes date and datetime
+results as `DATETIME(6)`. A dynamic time-only format returns `NULL` in the
+current default-mode slice because the conservative dynamic result kind is
+datetime and no valid date parts were parsed.
 
 Missing parts default to zero during parsing. MySQL's runtime behavior then
 depends on SQL mode. MyLite does not yet expose SQL-mode-aware expression

@@ -278,6 +278,7 @@ static int test_timestamp_function_execution(void);
 static int test_unix_timestamp_function_execution(void);
 static int test_from_unixtime_function_execution(void);
 static int test_date_format_function_execution(void);
+static int test_str_to_date_function_execution(void);
 static int test_time_format_function_execution(void);
 static int test_rand_function_execution(void);
 static int test_default_function_execution(void);
@@ -511,6 +512,7 @@ int main(void)
     failures += test_unix_timestamp_function_execution();
     failures += test_from_unixtime_function_execution();
     failures += test_date_format_function_execution();
+    failures += test_str_to_date_function_execution();
     failures += test_time_format_function_execution();
     failures += test_rand_function_execution();
     failures += test_default_function_execution();
@@ -9399,6 +9401,195 @@ static int test_date_format_function_execution(void)
     failures +=
         prepare_sql(database, "SELECT DATE_FORMAT('2024-01-01')", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "DATE_FORMAT missing format rejected");
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_str_to_date_function_execution(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const struct expected_result_metadata metadata[] = {
+        {"parsed_date", NULL, NULL, NULL, NULL, NULL, 10U, MYLITE_FIELD_TYPE_DATE, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"parsed_datetime", NULL, NULL, NULL, NULL, NULL, 26U, MYLITE_FIELD_TYPE_DATETIME, 6U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"parsed_time", NULL, NULL, NULL, NULL, NULL, 17U, MYLITE_FIELD_TYPE_TIME, 6U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"dynamic_date", NULL, NULL, NULL, NULL, NULL, 26U, MYLITE_FIELD_TYPE_DATETIME, 6U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+    };
+    static const char *const scalar_columns[] = {
+        "numeric_date",       "month_name",  "short_year",   "day_of_year",
+        "literal_time",       "pm_time",     "second_only",  "hour_12",
+        "null_str",           "null_format", "charset_name", "collation_name",
+        "coercibility_value",
+    };
+    static const char *const scalar_values[] = {
+        "2013-05-01", "2013-05-01", "2024-02-29", "2024-02-29", "09:30:17", "23:12:13", "00:00:09",
+        "00:00:00",   NULL,         NULL,         "binary",     "binary",   "5",
+    };
+    static const char *const warning_values[] = {"09:30:17", "2024-02-29", "2024-02-29 12:34:56",
+                                                 NULL,       NULL,         NULL};
+    static const char *const projection_columns[] = {"id", "parsed"};
+    static const char *const projection_values[] = {
+        "1",
+        "2024-02-29",
+        "2",
+        "2024-03-01",
+    };
+    static const char *const updated_columns[] = {"id", "parsed"};
+    static const char *const updated_values[] = {"1", "2024-02-29 00:00:00.000000"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open STR_TO_DATE database");
+
+    failures += prepare_sql(database,
+                            "SELECT "
+                            "STR_TO_DATE('2024-02-29','%Y-%m-%d') AS parsed_date, "
+                            "STR_TO_DATE('2024-02-29 12:34:56.123456', "
+                            "'%Y-%m-%d %H:%i:%s.%f') AS parsed_datetime, "
+                            "STR_TO_DATE('12:34:56.123456','%H:%i:%s.%f') AS parsed_time, "
+                            "STR_TO_DATE('2024-02-29', CONCAT('%Y','-%m-%d')) AS dynamic_date",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "STR_TO_DATE metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "STR_TO_DATE metadata row");
+    failures +=
+        expect_string(mylite_column_text(stmt, 0), "2024-02-29", "STR_TO_DATE metadata date");
+    failures += expect_string(mylite_column_text(stmt, 1), "2024-02-29 12:34:56.123456",
+                              "STR_TO_DATE metadata datetime");
+    failures +=
+        expect_string(mylite_column_text(stmt, 2), "12:34:56.123456", "STR_TO_DATE metadata time");
+    failures += expect_string(mylite_column_text(stmt, 3), "2024-02-29 00:00:00.000000",
+                              "STR_TO_DATE metadata dynamic date");
+    failures += expect_int(mylite_warning_count(database), 0, "STR_TO_DATE metadata warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "STR_TO_DATE metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_select_rows(
+        database,
+        "SELECT "
+        "STR_TO_DATE('01,5,2013','%d,%m,%Y') AS numeric_date, "
+        "STR_TO_DATE('May 1, 2013','%M %d, %Y') AS month_name, "
+        "STR_TO_DATE('24-02-29','%y-%m-%d') AS short_year, "
+        "STR_TO_DATE('2024 060','%Y %j') AS day_of_year, "
+        "STR_TO_DATE('a09:30:17','a%h:%i:%s') AS literal_time, "
+        "STR_TO_DATE('11:12:13 PM','%h:%i:%s %p') AS pm_time, "
+        "STR_TO_DATE('9','%s') AS second_only, "
+        "STR_TO_DATE('12:00:00','%h:%i:%s') AS hour_12, "
+        "STR_TO_DATE(NULL,'%Y') AS null_str, "
+        "STR_TO_DATE('2024',NULL) AS null_format, "
+        "CHARSET(STR_TO_DATE('2024-02-29','%Y-%m-%d')) AS charset_name, "
+        "COLLATION(STR_TO_DATE('2024-02-29','%Y-%m-%d')) AS collation_name, "
+        "COERCIBILITY(STR_TO_DATE('2024-02-29','%Y-%m-%d')) AS coercibility_value",
+        scalar_columns, 13, scalar_values, 1, "STR_TO_DATE scalar values");
+    failures += expect_int(mylite_warning_count(database), 0, "STR_TO_DATE scalar warnings");
+
+    failures += prepare_sql(database,
+                            "SELECT "
+                            "STR_TO_DATE('09:30:17a','%h:%i:%s') AS trailing_time, "
+                            "STR_TO_DATE('2024-02-29x','%Y-%m-%d') AS trailing_date, "
+                            "STR_TO_DATE('2024-02-29 12:34:56x', "
+                            "'%Y-%m-%d %H:%i:%s') AS trailing_datetime, "
+                            "STR_TO_DATE('abc','abc') AS literal_only, "
+                            "STR_TO_DATE('2024-13-01','%Y-%m-%d') AS bad_month, "
+                            "STR_TO_DATE('0000-01-01','%Y-%m-%d') AS zero_year",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "STR_TO_DATE warning row");
+    for (int index = 0; index < 6; ++index) {
+        if (warning_values[index] == NULL) {
+            failures +=
+                expect_null_text(mylite_column_text(stmt, index), "STR_TO_DATE warning null");
+        } else {
+            failures += expect_string(mylite_column_text(stmt, index), warning_values[index],
+                                      "STR_TO_DATE warning value");
+        }
+    }
+    failures += expect_int(mylite_warning_count(database), 6, "STR_TO_DATE warning count");
+    for (int index = 0; index < 3; ++index) {
+        failures +=
+            expect_int((int)mylite_warning_code(database, index),
+                       mysql_warning_truncated_wrong_value, "STR_TO_DATE truncation warning code");
+    }
+    for (int index = 3; index < 6; ++index) {
+        failures +=
+            expect_int((int)mylite_warning_code(database, index),
+                       mysql_warning_incorrect_string_value, "STR_TO_DATE incorrect warning code");
+    }
+    failures += expect_string(mylite_warning_message(database, 0),
+                              "Truncated incorrect time value: '09:30:17a'",
+                              "STR_TO_DATE trailing time warning");
+    failures += expect_string(mylite_warning_message(database, 1),
+                              "Truncated incorrect date value: '2024-02-29x'",
+                              "STR_TO_DATE trailing date warning");
+    failures += expect_string(mylite_warning_message(database, 2),
+                              "Truncated incorrect datetime value: "
+                              "'2024-02-29 12:34:56x'",
+                              "STR_TO_DATE trailing datetime warning");
+    failures += expect_string(mylite_warning_message(database, 3),
+                              "Incorrect datetime value: 'abc' for function str_to_date",
+                              "STR_TO_DATE literal-only warning");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "STR_TO_DATE warning done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE DATABASE str_to_date_functions", MYLITE_DONE);
+    failures += execute_sql(database, "USE str_to_date_functions", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE temporal_str_to_date ("
+                            "id INT PRIMARY KEY, raw VARCHAR(64), fmt VARCHAR(32), "
+                            "parsed DATETIME(6))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO temporal_str_to_date VALUES "
+                            "(1, '2024-02-29', '%Y-%m-%d', NULL), "
+                            "(2, '2024-03-01', '%Y-%m-%d', NULL), "
+                            "(3, NULL, '%Y-%m-%d', NULL)",
+                            MYLITE_DONE);
+    failures += expect_select_rows(database,
+                                   "SELECT id, STR_TO_DATE(raw, '%Y-%m-%d') AS parsed "
+                                   "FROM temporal_str_to_date "
+                                   "WHERE STR_TO_DATE(raw, '%Y-%m-%d') IS NOT NULL "
+                                   "ORDER BY STR_TO_DATE(raw, '%Y-%m-%d')",
+                                   projection_columns, 2, projection_values, 2,
+                                   "STR_TO_DATE table projection");
+    failures += execute_sql_expect_done_affected(database,
+                                                 "UPDATE temporal_str_to_date "
+                                                 "SET parsed = STR_TO_DATE(raw, fmt) WHERE id = 1",
+                                                 1, "STR_TO_DATE update");
+    failures +=
+        expect_select_rows(database, "SELECT id, parsed FROM temporal_str_to_date WHERE id = 1",
+                           updated_columns, 2, updated_values, 1, "STR_TO_DATE updated row");
+    failures += prepare_sql(database,
+                            "UPDATE temporal_str_to_date "
+                            "SET parsed = STR_TO_DATE('bad','%Y') WHERE id = 1",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "STR_TO_DATE invalid update promoted");
+    failures += expect_contains(mylite_error_message(database),
+                                "Incorrect datetime value: 'bad' for function str_to_date",
+                                "STR_TO_DATE invalid update error");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "STR_TO_DATE invalid update warnings");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "SELECT STR_TO_DATE('2024-01-01')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "STR_TO_DATE missing format rejected");
+    failures += prepare_sql(database, "SELECT STR_TO_DATE('2024-01-01','%Y','x')",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "STR_TO_DATE extra argument rejected");
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)

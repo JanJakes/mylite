@@ -12,6 +12,18 @@
 
 static struct mylite_field_descriptor current_date_function_descriptor(void);
 static struct mylite_field_descriptor current_time_function_descriptor(unsigned int fsp);
+static int infer_str_to_date_function_descriptor(const struct mylite_sql_ast_node *expression,
+                                                 struct mylite_field_descriptor *out_descriptor);
+static struct mylite_field_descriptor
+str_to_date_descriptor_from_format(const struct mylite_sql_ast_node *format);
+static struct mylite_field_descriptor str_to_date_date_descriptor(void);
+static struct mylite_field_descriptor str_to_date_time_descriptor(unsigned int decimals);
+static struct mylite_field_descriptor str_to_date_datetime_descriptor(unsigned int decimals);
+static void str_to_date_format_parts(const struct mylite_sql_ast_node *format, bool *out_literal,
+                                     bool *out_has_date_part, bool *out_has_time_part,
+                                     bool *out_has_fraction);
+static void str_to_date_format_token_parts(char token, bool *has_date_part, bool *has_time_part,
+                                           bool *has_fraction);
 static int infer_from_unixtime_function_descriptor(
     mylite_db *database, const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *expression, const struct mylite_expression_value *value,
@@ -90,6 +102,10 @@ int mylite_expression_descriptor_infer_temporal_function(
     }
     if (mylite_expression_descriptor_infer_temporal_part_function(expression, out_descriptor)) {
         return MYLITE_OK;
+    }
+    status = infer_str_to_date_function_descriptor(expression, out_descriptor);
+    if (status != MYLITE_UNSUPPORTED) {
+        return status;
     }
     status = infer_from_unixtime_function_descriptor(database, plan, expression, value,
                                                      out_descriptor, callbacks);
@@ -263,6 +279,162 @@ bool mylite_expression_descriptor_interval_unit_has_time_part(
         return true;
     }
     return unit == MYLITE_SQL_AST_INTERVAL_UNIT_SECOND;
+}
+
+static int infer_str_to_date_function_descriptor(const struct mylite_sql_ast_node *expression,
+                                                 struct mylite_field_descriptor *out_descriptor)
+{
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
+    const struct mylite_sql_ast_node *format = mylite_ast_child_at(arguments, 1U);
+
+    if (!mylite_function_name_is_str_to_date(name)) {
+        return MYLITE_UNSUPPORTED;
+    }
+    if (mylite_sql_ast_node_child_count(arguments) != 2U) {
+        return MYLITE_UNSUPPORTED;
+    }
+    *out_descriptor = str_to_date_descriptor_from_format(format);
+    return MYLITE_OK;
+}
+
+static struct mylite_field_descriptor
+str_to_date_descriptor_from_format(const struct mylite_sql_ast_node *format)
+{
+    bool literal = false;
+    bool has_date_part = false;
+    bool has_time_part = false;
+    bool has_fraction = false;
+    unsigned int decimals = 0U;
+
+    str_to_date_format_parts(format, &literal, &has_date_part, &has_time_part, &has_fraction);
+    if (!literal) {
+        return str_to_date_datetime_descriptor(mylite_mysql_temporal_max_fsp);
+    }
+
+    decimals = has_fraction ? mylite_mysql_temporal_max_fsp : 0U;
+    if (has_date_part && has_time_part) {
+        return str_to_date_datetime_descriptor(decimals);
+    }
+    if (has_time_part) {
+        return str_to_date_time_descriptor(decimals);
+    }
+    return str_to_date_date_descriptor();
+}
+
+static struct mylite_field_descriptor str_to_date_date_descriptor(void)
+{
+    struct mylite_field_descriptor descriptor = {
+        .type = MYLITE_FIELD_TYPE_DATE,
+        .flags = MYLITE_FIELD_FLAG_BINARY,
+        .length = mylite_mysql_date_display_length,
+        .charset_id = mylite_mysql_binary_charset_id,
+        .nullable = true,
+    };
+
+    mylite_field_descriptor_set_nullable(&descriptor, true);
+    return descriptor;
+}
+
+static struct mylite_field_descriptor str_to_date_time_descriptor(unsigned int decimals)
+{
+    struct mylite_field_descriptor descriptor = {
+        .type = MYLITE_FIELD_TYPE_TIME,
+        .flags = MYLITE_FIELD_FLAG_BINARY,
+        .length = decimals == 0U ? mylite_mysql_time_display_length
+                                 : mylite_mysql_time_fraction_display_base + decimals,
+        .decimals = decimals,
+        .charset_id = mylite_mysql_binary_charset_id,
+        .nullable = true,
+    };
+
+    mylite_field_descriptor_set_nullable(&descriptor, true);
+    return descriptor;
+}
+
+static struct mylite_field_descriptor str_to_date_datetime_descriptor(unsigned int decimals)
+{
+    struct mylite_field_descriptor descriptor = {
+        .type = MYLITE_FIELD_TYPE_DATETIME,
+        .flags = MYLITE_FIELD_FLAG_BINARY,
+        .length = decimals == 0U ? mylite_mysql_datetime_display_length
+                                 : mylite_mysql_datetime_fraction_display_base + decimals,
+        .decimals = decimals,
+        .charset_id = mylite_mysql_binary_charset_id,
+        .nullable = true,
+    };
+
+    mylite_field_descriptor_set_nullable(&descriptor, true);
+    return descriptor;
+}
+
+static void str_to_date_format_parts(const struct mylite_sql_ast_node *format, bool *out_literal,
+                                     bool *out_has_date_part, bool *out_has_time_part,
+                                     bool *out_has_fraction)
+{
+    bool has_date_part = false;
+    bool has_time_part = false;
+    bool has_fraction = false;
+
+    format = mylite_sql_ast_unwrap_parenthesized_expression(format);
+    if (format == NULL || format->kind != MYLITE_SQL_AST_LITERAL ||
+        (format->literal_kind != MYLITE_SQL_AST_LITERAL_STRING &&
+         format->literal_kind != MYLITE_SQL_AST_LITERAL_NATIONAL_STRING)) {
+        *out_literal = false;
+        *out_has_date_part = false;
+        *out_has_time_part = false;
+        *out_has_fraction = false;
+        return;
+    }
+
+    for (size_t offset = 0U; offset < format->span.length; ++offset) {
+        if (format->span.text[offset] != '%' || offset + 1U >= format->span.length) {
+            continue;
+        }
+        str_to_date_format_token_parts(format->span.text[++offset], &has_date_part, &has_time_part,
+                                       &has_fraction);
+    }
+    *out_literal = true;
+    *out_has_date_part = has_date_part;
+    *out_has_time_part = has_time_part;
+    *out_has_fraction = has_fraction;
+}
+
+static void str_to_date_format_token_parts(char token, bool *has_date_part, bool *has_time_part,
+                                           bool *has_fraction)
+{
+    switch (token) {
+    case 'Y':
+    case 'y':
+    case 'm':
+    case 'c':
+    case 'M':
+    case 'b':
+    case 'd':
+    case 'e':
+    case 'D':
+    case 'j':
+        *has_date_part = true;
+        break;
+    case 'H':
+    case 'k':
+    case 'h':
+    case 'I':
+    case 'l':
+    case 'i':
+    case 's':
+    case 'S':
+    case 'r':
+    case 'T':
+        *has_time_part = true;
+        break;
+    case 'f':
+        *has_time_part = true;
+        *has_fraction = true;
+        break;
+    default:
+        break;
+    }
 }
 
 static int infer_from_unixtime_function_descriptor(

@@ -1,0 +1,110 @@
+#include "mylite_function_names.h"
+
+#include "mylite_function_name_match.h"
+
+bool mylite_function_name_is_date_extraction(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"DATE"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+bool mylite_function_name_is_datediff(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"DATEDIFF"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+bool mylite_function_name_is_timestampdiff(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"TIMESTAMPDIFF"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+bool mylite_function_name_is_to_days(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"TO_DAYS"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+bool mylite_function_name_is_to_seconds(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"TO_SECONDS"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+bool mylite_function_name_is_from_days(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"FROM_DAYS"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+bool mylite_function_name_is_time_extraction(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"TIME"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+bool mylite_function_name_is_year_part(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"YEAR"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+bool mylite_function_name_is_month_part(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"MONTH"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+bool mylite_function_name_is_day_part(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"DAY", "DAYOFMONTH"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+bool mylite_function_name_is_hour_part(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"HOUR"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+bool mylite_function_name_is_minute_part(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"MINUTE"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+bool mylite_function_name_is_second_part(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"SECOND"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+bool mylite_function_name_is_extract(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"EXTRACT"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+bool mylite_function_name_is_date_interval_arithmetic(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {
+        "TIMESTAMPADD", "DATE_ADD", "DATE_SUB", "ADDDATE", "SUBDATE",
+    };
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}

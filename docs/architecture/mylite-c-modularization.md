@@ -585,6 +585,8 @@ into focused `*_types.h` headers.
   expression descriptor function-family helpers.
 - [x] Move pure SQL function-name classifiers into
   `src/runtime/mylite_function_names`.
+- [x] Split SQL function-name classifiers into focused family modules while
+  keeping one internal caller-facing header.
 - [x] Move aggregate metadata inference into focused expression descriptor
   modules.
 - [x] Move result metadata attachment for SELECT/UNION into focused SELECT

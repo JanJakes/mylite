@@ -34,6 +34,7 @@
 #include "runtime/mylite_select_eval.h"
 #include "runtime/mylite_select_from.h"
 #include "runtime/mylite_select_group.h"
+#include "runtime/mylite_select_group_bind.h"
 #include "runtime/mylite_select_group_validate.h"
 #include "runtime/mylite_select_join_cache.h"
 #include "runtime/mylite_select_materialize.h"
@@ -422,9 +423,6 @@ static int bind_table_select_clauses(mylite_db *database,
 static int bind_select_where_clause(mylite_db *database,
                                     const struct mylite_sql_ast_node *where_clause,
                                     const struct mylite_select_plan *plan);
-static int bind_select_predicate_expression(mylite_db *database,
-                                            const struct mylite_sql_ast_node *expression,
-                                            const struct mylite_select_plan *plan);
 static int bind_select_subquery_expression(mylite_db *database,
                                            const struct mylite_sql_ast_node *expression,
                                            bool scalar_context);
@@ -450,11 +448,6 @@ static int bind_select_aggregate_aware_expression(mylite_db *database,
 static int bind_select_group_by_clause(mylite_db *database,
                                        const struct mylite_sql_ast_node *group_by_clause,
                                        struct mylite_select_plan *plan);
-static int bind_select_group_item(mylite_db *database, const struct mylite_sql_ast_node *group_item,
-                                  struct mylite_select_plan *plan);
-static int bind_select_group_expression(mylite_db *database,
-                                        const struct mylite_sql_ast_node *expression,
-                                        struct mylite_select_plan *plan);
 static int bind_select_having_clause(mylite_db *database,
                                      const struct mylite_sql_ast_node *having_clause,
                                      struct mylite_select_plan *plan);
@@ -625,6 +618,13 @@ static const struct mylite_select_aggregate_bind_callbacks select_aggregate_bind
     .infer_expression_descriptor = infer_expression_descriptor,
     .set_invalid_group_function_error = set_select_invalid_group_function_error,
     .set_unsupported_projection_error = set_select_unsupported_projection_error,
+};
+
+static const struct mylite_select_group_bind_callbacks select_group_bind_callbacks = {
+    .aggregate_callbacks = &select_aggregate_bind_callbacks,
+    .predicate_callbacks = &select_predicate_bind_callbacks,
+    .set_invalid_group_function_error = set_select_invalid_group_function_error,
+    .set_unsupported_where_error = set_select_unsupported_where_error,
 };
 
 static const struct mylite_select_metadata_callbacks select_metadata_callbacks = {
@@ -4397,15 +4397,6 @@ static int bind_select_join_predicates(mylite_db *database, const struct mylite_
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int bind_select_predicate_expression(mylite_db *database,
-                                            const struct mylite_sql_ast_node *expression,
-                                            const struct mylite_select_plan *plan)
-{
-    return mylite_select_bind_predicate_expression(database, expression, plan,
-                                                   &select_predicate_bind_callbacks);
-}
-
-// NOLINTNEXTLINE(misc-no-recursion)
 static int bind_select_subquery_expression(mylite_db *database,
                                            const struct mylite_sql_ast_node *expression,
                                            bool scalar_context)
@@ -4488,110 +4479,8 @@ static int bind_select_group_by_clause(mylite_db *database,
                                        const struct mylite_sql_ast_node *group_by_clause,
                                        struct mylite_select_plan *plan)
 {
-    const struct mylite_sql_ast_node *items = mylite_ast_child_at(group_by_clause, 0U);
-
-    if (group_by_clause == NULL || group_by_clause->kind != MYLITE_SQL_AST_GROUP_BY_CLAUSE ||
-        items == NULL || items->kind != MYLITE_SQL_AST_GROUP_ITEM_LIST) {
-        return mylite_select_set_unknown_group_column_error(database, "");
-    }
-
-    plan->has_group_by = true;
-    for (const struct mylite_sql_ast_node *item = items->first_child; item != NULL;
-         item = item->next_sibling) {
-        int status = bind_select_group_item(database, item, plan);
-
-        if (status != MYLITE_OK) {
-            return status;
-        }
-    }
-    return MYLITE_OK;
-}
-
-// NOLINTNEXTLINE(misc-no-recursion)
-static int bind_select_group_item(mylite_db *database, const struct mylite_sql_ast_node *group_item,
-                                  struct mylite_select_plan *plan)
-{
-    const struct mylite_sql_ast_node *expression = mylite_ast_child_at(group_item, 0U);
-    struct mylite_select_group_key group_key = {
-        .kind = MYLITE_SELECT_GROUP_KEY_EXPRESSION,
-        .direction = MYLITE_SQL_AST_KEY_PART_ORDER_ASC,
-        .expression = expression,
-    };
-
-    if (group_item == NULL || group_item->kind != MYLITE_SQL_AST_GROUP_ITEM || expression == NULL) {
-        return mylite_select_set_unknown_group_column_error(database, "");
-    }
-    if (group_item->key_part_order == MYLITE_SQL_AST_KEY_PART_ORDER_DESC) {
-        group_key.direction = MYLITE_SQL_AST_KEY_PART_ORDER_DESC;
-    }
-
-    if (expression->kind == MYLITE_SQL_AST_LITERAL &&
-        expression->literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER) {
-        uint64_t ordinal = 0U;
-
-        if (!mylite_select_parse_uint64_span(expression->span, &ordinal) || ordinal == 0U ||
-            ordinal > plan->output_count) {
-            char *reference = mylite_copy_span_text(expression->span.text, expression->span.length);
-            int status = MYLITE_OK;
-
-            if (reference == NULL) {
-                (void)mylite_diagnostics_set_error_message(database, "out of memory");
-                return MYLITE_NOMEM;
-            }
-            status = mylite_select_set_unknown_group_column_error(database, reference);
-            free(reference);
-            return status;
-        }
-        if (mylite_select_output_contains_aggregate(plan, (size_t)(ordinal - 1U))) {
-            return set_select_invalid_group_function_error(database);
-        }
-        group_key.kind = MYLITE_SELECT_GROUP_KEY_OUTPUT;
-        group_key.output_index = (size_t)(ordinal - 1U);
-        group_key.expression = NULL;
-        return mylite_select_plan_add_group_key(plan, &group_key);
-    }
-
-    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER) {
-        enum mylite_select_group_key_kind kind = MYLITE_SELECT_GROUP_KEY_EXPRESSION;
-        size_t index = 0U;
-        int status =
-            mylite_select_resolve_group_reference(database, plan, expression, &kind, &index);
-
-        if (status != MYLITE_OK) {
-            return status;
-        }
-        if (kind == MYLITE_SELECT_GROUP_KEY_OUTPUT) {
-            if (mylite_select_output_contains_aggregate(plan, index)) {
-                return set_select_invalid_group_function_error(database);
-            }
-            group_key.kind = kind;
-            group_key.output_index = index;
-            group_key.expression = NULL;
-            return mylite_select_plan_add_group_key(plan, &group_key);
-        }
-    }
-
-    {
-        int status = bind_select_group_expression(database, expression, plan);
-
-        if (status != MYLITE_OK) {
-            return status;
-        }
-    }
-    return mylite_select_plan_add_group_key(plan, &group_key);
-}
-
-// NOLINTNEXTLINE(misc-no-recursion)
-static int bind_select_group_expression(mylite_db *database,
-                                        const struct mylite_sql_ast_node *expression,
-                                        struct mylite_select_plan *plan)
-{
-    int status = bind_select_predicate_expression(database, expression, plan);
-
-    if (status == MYLITE_UNSUPPORTED) {
-        return mylite_select_set_unknown_group_column_error(database, "");
-    }
-    return status;
+    return mylite_select_bind_group_by_clause(database, group_by_clause, plan,
+                                              &select_group_bind_callbacks);
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
@@ -4599,16 +4488,8 @@ static int bind_select_having_clause(mylite_db *database,
                                      const struct mylite_sql_ast_node *having_clause,
                                      struct mylite_select_plan *plan)
 {
-    const struct mylite_sql_ast_node *expression = mylite_ast_child_at(having_clause, 0U);
-
-    if (having_clause == NULL || having_clause->kind != MYLITE_SQL_AST_HAVING_CLAUSE ||
-        expression == NULL) {
-        return set_select_unsupported_where_error(database);
-    }
-
-    plan->has_having = true;
-    plan->having_expression = expression;
-    return bind_select_aggregate_aware_expression(database, expression, plan, "having clause");
+    return mylite_select_bind_having_clause(database, having_clause, plan,
+                                            &select_group_bind_callbacks);
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)

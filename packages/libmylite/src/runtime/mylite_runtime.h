@@ -6,6 +6,7 @@
 #include "mylite_connection_statement_types.h"
 #include "mylite_dml_types.h"
 #include "mylite_expression.h"
+#include "mylite_expression_collation_types.h"
 #include "mylite_field_descriptor.h"
 #include "mylite_metadata_types.h"
 #include "mylite_schema_types.h"
@@ -53,12 +54,6 @@ enum mylite_stmt_kind {
     MYLITE_STMT_ALTER_TABLE = 27,
     MYLITE_STMT_RENAME_TABLE = 28,
     MYLITE_STMT_TRUNCATE_TABLE = 29,
-};
-
-struct mylite_charset_collation_info {
-    const char *character_set;
-    const char *collation;
-    int coercibility;
 };
 
 struct mylite_strcmp_compare_options {

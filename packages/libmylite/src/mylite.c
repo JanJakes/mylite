@@ -616,8 +616,6 @@ select_order_identifier_is_group_invariant(const struct mylite_select_plan *plan
                                            const struct mylite_sql_ast_node *identifier);
 static bool select_column_reference_is_grouped(const struct mylite_select_plan *plan,
                                                const struct mylite_sql_ast_node *identifier);
-static bool select_column_index_is_grouped(const struct mylite_select_plan *plan,
-                                           size_t column_index);
 static bool select_output_is_grouped_by_key(const struct mylite_select_plan *plan,
                                             size_t output_index);
 static bool select_expression_is_grouped(const struct mylite_select_plan *plan,
@@ -648,52 +646,7 @@ static int bind_select_count_distinct_arguments(mylite_db *database,
 static int infer_count_distinct_argument_descriptors(
     mylite_db *database, const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *arguments, struct mylite_select_aggregate_binding *binding);
-static int resolve_select_order_reference(mylite_db *database,
-                                          const struct mylite_select_plan *plan,
-                                          const struct mylite_sql_ast_node *expression,
-                                          enum mylite_select_order_key_kind *out_kind,
-                                          size_t *out_index);
-static int resolve_select_group_reference(mylite_db *database,
-                                          const struct mylite_select_plan *plan,
-                                          const struct mylite_sql_ast_node *expression,
-                                          enum mylite_select_group_key_kind *out_kind,
-                                          size_t *out_index);
-static int maybe_resolve_select_group_table_reference(mylite_db *database,
-                                                      const struct mylite_select_plan *plan,
-                                                      char **parts, size_t part_count,
-                                                      enum mylite_select_group_key_kind *out_kind,
-                                                      size_t *out_index, bool *out_resolved);
-static int maybe_resolve_select_group_output_reference(mylite_db *database,
-                                                       const struct mylite_select_plan *plan,
-                                                       char **parts, size_t part_count,
-                                                       enum mylite_select_group_key_kind *out_kind,
-                                                       size_t *out_index, bool *out_resolved);
-static int resolve_select_having_reference(mylite_db *database,
-                                           const struct mylite_select_plan *plan,
-                                           const struct mylite_sql_ast_node *expression,
-                                           enum mylite_select_order_key_kind *out_kind,
-                                           size_t *out_index);
-static int resolve_select_having_reference_internal(mylite_db *database,
-                                                    const struct mylite_select_plan *plan,
-                                                    const struct mylite_sql_ast_node *expression,
-                                                    enum mylite_select_order_key_kind *out_kind,
-                                                    size_t *out_index, bool emit_warnings);
-static int maybe_resolve_select_having_table_reference(mylite_db *database,
-                                                       const struct mylite_select_plan *plan,
-                                                       char **parts, size_t part_count,
-                                                       enum mylite_select_order_key_kind *out_kind,
-                                                       size_t *out_index, bool emit_warnings,
-                                                       bool *out_resolved);
-static int maybe_resolve_select_having_output_reference(mylite_db *database,
-                                                        const struct mylite_select_plan *plan,
-                                                        char **parts, size_t part_count,
-                                                        enum mylite_select_order_key_kind *out_kind,
-                                                        size_t *out_index, bool *out_resolved);
 static char *copy_select_final_identifier_label(const struct mylite_sql_ast_node *identifier);
-static int set_select_ambiguous_order_column_error(mylite_db *database, const char *column_name);
-static int set_select_unknown_group_column_error(mylite_db *database, const char *column_name);
-static int set_select_ambiguous_group_column_warning(mylite_db *database, const char *column_name,
-                                                     const char *clause_context);
 static int set_select_invalid_group_function_error(mylite_db *database);
 static int set_select_duplicate_mode_error(mylite_db *database);
 static int set_select_only_full_group_by_error(mylite_db *database, const char *expression_text,
@@ -811,8 +764,8 @@ evaluate_row_subquery_expression(mylite_stmt *stmt, const struct mylite_sql_ast_
                                  struct mylite_expression_value *out_value);
 
 static const struct mylite_select_eval_callbacks table_select_eval_callbacks = {
-    .resolve_order_reference = resolve_select_order_reference,
-    .resolve_having_reference = resolve_select_having_reference_internal,
+    .resolve_order_reference = mylite_select_resolve_order_reference,
+    .resolve_having_reference = mylite_select_resolve_having_reference_internal,
     .eval_session_function = evaluate_statement_session_function,
     .eval_subquery = evaluate_select_subquery_expression,
     .eval_in_subquery = evaluate_in_subquery_expression,
@@ -843,13 +796,13 @@ static const struct mylite_select_scalar_eval_callbacks select_scalar_eval_callb
     .eval_quantified_subquery = evaluate_quantified_subquery_expression,
     .eval_row_subquery = evaluate_row_subquery_expression,
     .set_unsupported_order_error = set_select_unsupported_order_error,
-    .set_ambiguous_order_column_error = set_select_ambiguous_order_column_error,
+    .set_ambiguous_order_column_error = mylite_select_set_ambiguous_order_column_error,
 };
 
 static const struct mylite_select_union_prepare_callbacks union_query_prepare_callbacks = {
     .prepare_select_subquery = prepare_select_subquery_statement,
     .clone_order_expressions = clone_table_select_order_expressions,
-    .set_ambiguous_order_column_error = set_select_ambiguous_order_column_error,
+    .set_ambiguous_order_column_error = mylite_select_set_ambiguous_order_column_error,
     .set_unsupported_order_error = set_select_unsupported_order_error,
 };
 
@@ -5357,7 +5310,8 @@ static int bind_select_aggregate_aware_expression(mylite_db *database,
             enum mylite_select_order_key_kind kind = MYLITE_SELECT_ORDER_KEY_EXPRESSION;
             size_t index = 0U;
 
-            return resolve_select_having_reference(database, plan, expression, &kind, &index);
+            return mylite_select_resolve_having_reference(database, plan, expression, &kind,
+                                                          &index);
         }
         return bind_select_predicate_expression(database, expression, plan);
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
@@ -5733,7 +5687,7 @@ static int bind_select_group_by_clause(mylite_db *database,
 
     if (group_by_clause == NULL || group_by_clause->kind != MYLITE_SQL_AST_GROUP_BY_CLAUSE ||
         items == NULL || items->kind != MYLITE_SQL_AST_GROUP_ITEM_LIST) {
-        return set_select_unknown_group_column_error(database, "");
+        return mylite_select_set_unknown_group_column_error(database, "");
     }
 
     plan->has_group_by = true;
@@ -5760,7 +5714,7 @@ static int bind_select_group_item(mylite_db *database, const struct mylite_sql_a
     };
 
     if (group_item == NULL || group_item->kind != MYLITE_SQL_AST_GROUP_ITEM || expression == NULL) {
-        return set_select_unknown_group_column_error(database, "");
+        return mylite_select_set_unknown_group_column_error(database, "");
     }
     if (group_item->key_part_order == MYLITE_SQL_AST_KEY_PART_ORDER_DESC) {
         group_key.direction = MYLITE_SQL_AST_KEY_PART_ORDER_DESC;
@@ -5779,7 +5733,7 @@ static int bind_select_group_item(mylite_db *database, const struct mylite_sql_a
                 (void)mylite_diagnostics_set_error_message(database, "out of memory");
                 return MYLITE_NOMEM;
             }
-            status = set_select_unknown_group_column_error(database, reference);
+            status = mylite_select_set_unknown_group_column_error(database, reference);
             free(reference);
             return status;
         }
@@ -5795,7 +5749,8 @@ static int bind_select_group_item(mylite_db *database, const struct mylite_sql_a
     if (expression->kind == MYLITE_SQL_AST_IDENTIFIER) {
         enum mylite_select_group_key_kind kind = MYLITE_SELECT_GROUP_KEY_EXPRESSION;
         size_t index = 0U;
-        int status = resolve_select_group_reference(database, plan, expression, &kind, &index);
+        int status =
+            mylite_select_resolve_group_reference(database, plan, expression, &kind, &index);
 
         if (status != MYLITE_OK) {
             return status;
@@ -5829,7 +5784,7 @@ static int bind_select_group_expression(mylite_db *database,
     int status = bind_select_predicate_expression(database, expression, plan);
 
     if (status == MYLITE_UNSUPPORTED) {
-        return set_select_unknown_group_column_error(database, "");
+        return mylite_select_set_unknown_group_column_error(database, "");
     }
     return status;
 }
@@ -5942,7 +5897,8 @@ static int bind_select_order_item(mylite_db *database, const struct mylite_sql_a
     if (expression->kind == MYLITE_SQL_AST_IDENTIFIER) {
         enum mylite_select_order_key_kind kind = MYLITE_SELECT_ORDER_KEY_EXPRESSION;
         size_t index = 0U;
-        int status = resolve_select_order_reference(database, plan, expression, &kind, &index);
+        int status =
+            mylite_select_resolve_order_reference(database, plan, expression, &kind, &index);
 
         if (status != MYLITE_OK) {
             return status;
@@ -5983,7 +5939,8 @@ static int bind_select_order_expression(mylite_db *database,
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER: {
         enum mylite_select_order_key_kind kind = MYLITE_SELECT_ORDER_KEY_EXPRESSION;
         size_t index = 0U;
-        int status = resolve_select_order_reference(database, plan, expression, &kind, &index);
+        int status =
+            mylite_select_resolve_order_reference(database, plan, expression, &kind, &index);
 
         if (status == MYLITE_OK && kind == MYLITE_SELECT_ORDER_KEY_OUTPUT) {
             mylite_select_plan_mark_output_order_reference(plan, index);
@@ -6457,7 +6414,7 @@ static int validate_select_distinct_order_identifier(mylite_db *database,
         return status;
     }
 
-    status = resolve_select_order_reference(database, plan, identifier, &kind, &index);
+    status = mylite_select_resolve_order_reference(database, plan, identifier, &kind, &index);
 
     if (status != MYLITE_OK) {
         return status;
@@ -6495,7 +6452,7 @@ static int validate_select_distinct_order_identifier_column_first(
             plan, parts, part_count, 0U, mylite_select_plan_table_count(plan), &column_index);
 
         if (column_matches > 1U) {
-            status = set_select_ambiguous_order_column_error(database, parts[0]);
+            status = mylite_select_set_ambiguous_order_column_error(database, parts[0]);
             *out_resolved = true;
             goto cleanup;
         }
@@ -6687,7 +6644,7 @@ static bool select_output_is_group_invariant(const struct mylite_select_plan *pl
     }
     output = &plan->outputs[output_index];
     if (output->kind == MYLITE_SELECT_OUTPUT_COLUMN) {
-        return select_column_index_is_grouped(plan, output->column_index);
+        return mylite_select_column_index_is_grouped(plan, output->column_index);
     }
     return select_expression_is_group_invariant(plan, output->expression,
                                                 MYLITE_SELECT_GROUPING_REFERENCE_SELECT);
@@ -6952,35 +6909,7 @@ static bool select_column_reference_is_grouped(const struct mylite_select_plan *
         column_index == plan->table.column_count) {
         return false;
     }
-    return select_column_index_is_grouped(plan, column_index);
-}
-
-static bool select_column_index_is_grouped(const struct mylite_select_plan *plan,
-                                           size_t column_index)
-{
-    for (size_t index = 0U; index < plan->group_key_count; ++index) {
-        const struct mylite_select_group_key *group_key = &plan->group_keys[index];
-        size_t group_column_index = plan->table.column_count;
-
-        if (group_key->kind == MYLITE_SELECT_GROUP_KEY_OUTPUT &&
-            group_key->output_index < plan->output_count &&
-            plan->outputs[group_key->output_index].kind == MYLITE_SELECT_OUTPUT_COLUMN &&
-            plan->outputs[group_key->output_index].column_index == column_index) {
-            return true;
-        }
-        if (group_key->kind != MYLITE_SELECT_GROUP_KEY_EXPRESSION ||
-            group_key->expression == NULL ||
-            (group_key->expression->kind != MYLITE_SQL_AST_IDENTIFIER &&
-             group_key->expression->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
-            continue;
-        }
-        if (mylite_select_resolve_column_reference(&plan->table, group_key->expression,
-                                                   &group_column_index) == MYLITE_OK &&
-            group_column_index == column_index) {
-            return true;
-        }
-    }
-    return false;
+    return mylite_select_column_index_is_grouped(plan, column_index);
 }
 
 static bool select_output_is_grouped_by_key(const struct mylite_select_plan *plan,
@@ -7219,301 +7148,6 @@ static int collect_select_aggregate_bindings(mylite_db *database,
     return MYLITE_OK;
 }
 
-static int resolve_select_order_reference(mylite_db *database,
-                                          const struct mylite_select_plan *plan,
-                                          const struct mylite_sql_ast_node *expression,
-                                          enum mylite_select_order_key_kind *out_kind,
-                                          size_t *out_index)
-{
-    char *parts[3] = {0};
-    size_t part_count = 0U;
-    int status = mylite_copy_identifier_parts(expression, parts, &part_count);
-
-    *out_kind = MYLITE_SELECT_ORDER_KEY_EXPRESSION;
-    *out_index = 0U;
-    if (status != MYLITE_OK) {
-        if (status == MYLITE_NOMEM) {
-            (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        }
-        return status;
-    }
-
-    if (part_count == 1U) {
-        size_t output_index = 0U;
-        size_t output_matches = mylite_select_output_label_count(plan, parts[0], &output_index);
-
-        if (output_matches > 1U) {
-            status = set_select_ambiguous_order_column_error(database, parts[0]);
-            goto cleanup;
-        }
-        if (output_matches == 1U) {
-            *out_kind = MYLITE_SELECT_ORDER_KEY_OUTPUT;
-            *out_index = output_index;
-            goto cleanup;
-        }
-    }
-
-    status = mylite_select_resolve_plan_column_parts(database, plan, parts, part_count,
-                                                     "order clause", out_index);
-    if (status == MYLITE_OK) {
-        *out_kind = MYLITE_SELECT_ORDER_KEY_EXPRESSION;
-    }
-
-cleanup:
-    for (size_t index = 0U; index < part_count && index < 3U; ++index) {
-        free(parts[index]);
-    }
-    return status;
-}
-
-static int resolve_select_group_reference(mylite_db *database,
-                                          const struct mylite_select_plan *plan,
-                                          const struct mylite_sql_ast_node *expression,
-                                          enum mylite_select_group_key_kind *out_kind,
-                                          size_t *out_index)
-{
-    char *parts[3] = {0};
-    size_t part_count = 0U;
-    bool resolved = false;
-    int status = mylite_copy_identifier_parts(expression, parts, &part_count);
-
-    *out_kind = MYLITE_SELECT_GROUP_KEY_EXPRESSION;
-    *out_index = 0U;
-    if (status != MYLITE_OK) {
-        if (status == MYLITE_NOMEM) {
-            (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        }
-        return status;
-    }
-
-    status = maybe_resolve_select_group_table_reference(database, plan, parts, part_count, out_kind,
-                                                        out_index, &resolved);
-    if (status != MYLITE_OK || resolved) {
-        goto cleanup;
-    }
-    status = maybe_resolve_select_group_output_reference(database, plan, parts, part_count,
-                                                         out_kind, out_index, &resolved);
-    if (status != MYLITE_OK || resolved) {
-        goto cleanup;
-    }
-
-    {
-        char *reference = mylite_select_copy_reference_name(expression);
-
-        if (reference == NULL) {
-            (void)mylite_diagnostics_set_error_message(database, "out of memory");
-            status = MYLITE_NOMEM;
-            goto cleanup;
-        }
-        status = set_select_unknown_group_column_error(database, reference);
-        free(reference);
-    }
-
-cleanup:
-    for (size_t index = 0U; index < part_count && index < 3U; ++index) {
-        free(parts[index]);
-    }
-    return status;
-}
-
-static int maybe_resolve_select_group_table_reference(mylite_db *database,
-                                                      const struct mylite_select_plan *plan,
-                                                      char **parts, size_t part_count,
-                                                      enum mylite_select_group_key_kind *out_kind,
-                                                      size_t *out_index, bool *out_resolved)
-{
-    size_t column_index = 0U;
-
-    *out_resolved = false;
-    if (part_count < 1U || part_count > 3U ||
-        !mylite_select_reference_qualifiers_match(&plan->table, parts, part_count)) {
-        return MYLITE_OK;
-    }
-
-    column_index = mylite_select_column_index(&plan->table, parts[part_count - 1U]);
-    if (column_index == plan->table.column_count) {
-        return MYLITE_OK;
-    }
-
-    if (part_count == 1U) {
-        size_t output_index = 0U;
-        size_t output_matches = mylite_select_output_label_count(plan, parts[0], &output_index);
-
-        if (output_matches != 0U) {
-            int status =
-                set_select_ambiguous_group_column_warning(database, parts[0], "group statement");
-
-            if (status != MYLITE_OK) {
-                return status;
-            }
-        }
-    }
-    *out_kind = MYLITE_SELECT_GROUP_KEY_EXPRESSION;
-    *out_index = column_index;
-    *out_resolved = true;
-    return MYLITE_OK;
-}
-
-static int maybe_resolve_select_group_output_reference(mylite_db *database,
-                                                       const struct mylite_select_plan *plan,
-                                                       char **parts, size_t part_count,
-                                                       enum mylite_select_group_key_kind *out_kind,
-                                                       size_t *out_index, bool *out_resolved)
-{
-    size_t output_index = 0U;
-    size_t output_matches = 0U;
-
-    *out_resolved = false;
-    if (part_count != 1U) {
-        return MYLITE_OK;
-    }
-
-    output_matches = mylite_select_output_label_count(plan, parts[0], &output_index);
-    if (output_matches > 1U) {
-        return set_select_ambiguous_order_column_error(database, parts[0]);
-    }
-    if (output_matches == 1U) {
-        *out_kind = MYLITE_SELECT_GROUP_KEY_OUTPUT;
-        *out_index = output_index;
-        *out_resolved = true;
-    }
-    return MYLITE_OK;
-}
-
-static int resolve_select_having_reference(mylite_db *database,
-                                           const struct mylite_select_plan *plan,
-                                           const struct mylite_sql_ast_node *expression,
-                                           enum mylite_select_order_key_kind *out_kind,
-                                           size_t *out_index)
-{
-    return resolve_select_having_reference_internal(database, plan, expression, out_kind, out_index,
-                                                    true);
-}
-
-static int resolve_select_having_reference_internal(mylite_db *database,
-                                                    const struct mylite_select_plan *plan,
-                                                    const struct mylite_sql_ast_node *expression,
-                                                    enum mylite_select_order_key_kind *out_kind,
-                                                    size_t *out_index, bool emit_warnings)
-{
-    char *parts[3] = {0};
-    size_t part_count = 0U;
-    bool resolved = false;
-    int status = mylite_copy_identifier_parts(expression, parts, &part_count);
-
-    *out_kind = MYLITE_SELECT_ORDER_KEY_EXPRESSION;
-    *out_index = 0U;
-    if (status != MYLITE_OK) {
-        if (status == MYLITE_NOMEM) {
-            (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        }
-        return status;
-    }
-
-    status = maybe_resolve_select_having_table_reference(
-        database, plan, parts, part_count, out_kind, out_index, emit_warnings, &resolved);
-    if (status != MYLITE_OK || resolved) {
-        goto cleanup;
-    }
-    status = maybe_resolve_select_having_output_reference(database, plan, parts, part_count,
-                                                          out_kind, out_index, &resolved);
-    if (status != MYLITE_OK || resolved) {
-        goto cleanup;
-    }
-
-    {
-        char *reference = mylite_select_copy_reference_name(expression);
-
-        if (reference == NULL) {
-            (void)mylite_diagnostics_set_error_message(database, "out of memory");
-            status = MYLITE_NOMEM;
-            goto cleanup;
-        }
-        status = mylite_diagnostics_set_error_message_parts(database, "Unknown column '", reference,
-                                                            "' in 'having clause'");
-        if (status == MYLITE_OK) {
-            status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
-                                                     mylite_error_message(database));
-            status = status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-        }
-        free(reference);
-    }
-
-cleanup:
-    for (size_t index = 0U; index < part_count && index < 3U; ++index) {
-        free(parts[index]);
-    }
-    return status;
-}
-
-static int maybe_resolve_select_having_table_reference(mylite_db *database,
-                                                       const struct mylite_select_plan *plan,
-                                                       char **parts, size_t part_count,
-                                                       enum mylite_select_order_key_kind *out_kind,
-                                                       size_t *out_index, bool emit_warnings,
-                                                       bool *out_resolved)
-{
-    size_t column_index = 0U;
-
-    *out_resolved = false;
-    if (part_count < 1U || part_count > 3U ||
-        !mylite_select_reference_qualifiers_match(&plan->table, parts, part_count)) {
-        return MYLITE_OK;
-    }
-
-    column_index = mylite_select_column_index(&plan->table, parts[part_count - 1U]);
-    if (column_index == plan->table.column_count) {
-        return MYLITE_OK;
-    }
-    if (!select_column_index_is_grouped(plan, column_index)) {
-        return MYLITE_OK;
-    }
-
-    if (part_count == 1U) {
-        size_t output_index = 0U;
-        size_t output_matches = mylite_select_output_label_count(plan, parts[0], &output_index);
-
-        if (emit_warnings && output_matches != 0U) {
-            int status =
-                set_select_ambiguous_group_column_warning(database, parts[0], "having clause");
-
-            if (status != MYLITE_OK) {
-                return status;
-            }
-        }
-    }
-    *out_kind = MYLITE_SELECT_ORDER_KEY_EXPRESSION;
-    *out_index = column_index;
-    *out_resolved = true;
-    return MYLITE_OK;
-}
-
-static int maybe_resolve_select_having_output_reference(mylite_db *database,
-                                                        const struct mylite_select_plan *plan,
-                                                        char **parts, size_t part_count,
-                                                        enum mylite_select_order_key_kind *out_kind,
-                                                        size_t *out_index, bool *out_resolved)
-{
-    size_t output_index = 0U;
-    size_t output_matches = 0U;
-
-    *out_resolved = false;
-    if (part_count != 1U) {
-        return MYLITE_OK;
-    }
-
-    output_matches = mylite_select_output_label_count(plan, parts[0], &output_index);
-    if (output_matches > 1U) {
-        return set_select_ambiguous_order_column_error(database, parts[0]);
-    }
-    if (output_matches == 1U) {
-        *out_kind = MYLITE_SELECT_ORDER_KEY_OUTPUT;
-        *out_index = output_index;
-        *out_resolved = true;
-    }
-    return MYLITE_OK;
-}
-
 static char *copy_select_final_identifier_label(const struct mylite_sql_ast_node *identifier)
 {
     const struct mylite_sql_ast_node *current = identifier;
@@ -7525,49 +7159,6 @@ static char *copy_select_final_identifier_label(const struct mylite_sql_ast_node
         return NULL;
     }
     return mylite_copy_identifier_span(current);
-}
-
-static int set_select_ambiguous_order_column_error(mylite_db *database, const char *column_name)
-{
-    int status = mylite_diagnostics_set_error_message_parts(database, "Column '", column_name,
-                                                            "' in order clause is ambiguous");
-
-    if (status == MYLITE_NOMEM) {
-        return MYLITE_NOMEM;
-    }
-    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_NON_UNIQ_ERROR,
-                                             mylite_error_message(database));
-    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-}
-
-static int set_select_unknown_group_column_error(mylite_db *database, const char *column_name)
-{
-    int status = mylite_diagnostics_set_error_message_parts(database, "Unknown column '",
-                                                            column_name, "' in 'group statement'");
-
-    if (status == MYLITE_NOMEM) {
-        return MYLITE_NOMEM;
-    }
-    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
-                                             mylite_error_message(database));
-    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-}
-
-static int set_select_ambiguous_group_column_warning(mylite_db *database, const char *column_name,
-                                                     const char *clause_context)
-{
-    char *message = sqlite3_mprintf("Column '%q' in %s is ambiguous", column_name,
-                                    clause_context == NULL ? "group statement" : clause_context);
-    int status = MYLITE_OK;
-
-    if (message == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    status = mylite_diagnostics_append_warning(database, MYLITE_MYSQL_ER_NON_UNIQ_ERROR, message);
-    sqlite3_free(message);
-    return status;
 }
 
 static int set_select_invalid_group_function_error(mylite_db *database)

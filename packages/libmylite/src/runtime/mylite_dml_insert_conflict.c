@@ -2,6 +2,7 @@
 
 #include "mylite_diagnostics.h"
 #include "mylite_dml_insert_diagnostics.h"
+#include "mylite_dml_insert_sqlite_bind.h"
 #include "sqlite3.h"
 
 #include <string.h>

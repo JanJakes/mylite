@@ -798,6 +798,8 @@ into focused `*_types.h` headers.
   duplicate-update copy module.
 - [x] Split INSERT duplicate-entry diagnostics out of unique-index conflict
   probing.
+- [x] Split INSERT SQLite value binding into a focused DML bind companion while
+  leaving bound-value copying and numeric parsing in the bound-value module.
 - [x] Split INSERT/REPLACE transaction finish bookkeeping into a focused DML
   insert transaction finish module.
 - [x] Split expression function collation inference into a focused expression
@@ -815,7 +817,7 @@ into focused `*_types.h` headers.
 - [x] Split statement prepare custom-kind mapping into a focused prepare
   companion.
 - [ ] Split `mylite_dml_insert_value_resolve.c` into insert column-list,
-  positional/default, `INSERT ... SET`, and SQLite-bind modules.
+  positional/default, and `INSERT ... SET` modules.
 - [ ] Split `mylite_select_subquery_eval.c` into scalar subquery, quantified
   subquery, row-value comparison, and diagnostics modules.
 - [ ] Shrink broad type headers after the implementation modules above have

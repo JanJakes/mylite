@@ -2,6 +2,7 @@
 
 #include "mylite_diagnostics.h"
 #include "mylite_dml.h"
+#include "mylite_dml_insert_sqlite_bind.h"
 #include "mylite_runtime.h"
 #include "mylite_span.h"
 #include "mylite_table_ddl_alter.h"

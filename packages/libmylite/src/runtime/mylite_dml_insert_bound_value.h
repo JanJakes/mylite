@@ -3,11 +3,6 @@
 
 #include "mylite_dml_types.h"
 
-int mylite_dml_bind_insert_row_values(mylite_db *database, sqlite3_stmt *insert,
-                                      const struct mylite_insert_bound_value *values,
-                                      size_t value_count);
-int mylite_dml_bind_insert_bound_value(sqlite3_stmt *stmt, int index,
-                                       const struct mylite_insert_bound_value *value);
 int mylite_dml_copy_insert_sqlite_column_value(sqlite3_stmt *scan, int column,
                                                struct mylite_insert_bound_value *out_value);
 int mylite_dml_copy_insert_bound_value(const struct mylite_insert_bound_value *value,

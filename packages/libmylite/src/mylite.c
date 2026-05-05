@@ -457,15 +457,6 @@ static int bind_select_quantified_subquery_expression(mylite_db *database,
 static int bind_select_row_subquery_expression(mylite_db *database,
                                                const struct mylite_sql_ast_node *expression,
                                                const struct mylite_select_plan *outer_plan);
-static int validate_in_subquery_expression(mylite_db *database,
-                                           const struct mylite_sql_ast_node *expression,
-                                           const struct mylite_select_plan *outer_plan);
-static int validate_row_subquery_expression(mylite_db *database,
-                                            const struct mylite_sql_ast_node *expression,
-                                            const struct mylite_select_plan *outer_plan);
-static int validate_quantified_subquery_expression(mylite_db *database,
-                                                   const struct mylite_sql_ast_node *expression,
-                                                   const struct mylite_select_plan *outer_plan);
 static int bind_select_predicate_row_constructor(mylite_db *database,
                                                  const struct mylite_sql_ast_node *row,
                                                  const struct mylite_select_plan *plan,
@@ -478,18 +469,6 @@ static int bind_select_aggregate_aware_row_constructor(mylite_db *database,
 static int bind_select_order_row_constructor(mylite_db *database,
                                              const struct mylite_sql_ast_node *row,
                                              struct mylite_select_plan *plan);
-static bool in_subquery_references_outer_plan(const struct mylite_sql_ast_node *node,
-                                              const struct mylite_select_plan *outer_plan,
-                                              const struct mylite_sql_ast_node *select_statement);
-static bool
-in_subquery_has_unqualified_outer_column_reference(const struct mylite_sql_ast_node *node,
-                                                   const struct mylite_select_plan *outer_plan);
-static bool select_statement_has_visible_table_span(const struct mylite_sql_ast_node *node,
-                                                    struct mylite_sql_source_span name);
-static const struct mylite_sql_ast_node *
-qualified_identifier_first_part(const struct mylite_sql_ast_node *identifier);
-static const struct mylite_sql_ast_node *
-qualified_identifier_last_part(const struct mylite_sql_ast_node *identifier);
 static int bind_select_function_arguments(mylite_db *database,
                                           const struct mylite_sql_ast_node *expression,
                                           const struct mylite_select_plan *plan,
@@ -684,6 +663,11 @@ static const struct mylite_select_eval_callbacks table_select_eval_callbacks = {
 static const struct mylite_select_subquery_eval_callbacks select_subquery_eval_callbacks = {
     .prepare_select_subquery = prepare_select_subquery_statement,
     .table_select_eval_callbacks = &table_select_eval_callbacks,
+};
+
+static const struct mylite_select_subquery_bind_callbacks select_subquery_bind_callbacks = {
+    .prepare_select_subquery = prepare_select_subquery_statement,
+    .set_unsupported_where_error = set_select_unsupported_where_error,
 };
 
 static const struct mylite_select_metadata_callbacks select_metadata_callbacks = {
@@ -3890,7 +3874,8 @@ static int infer_in_subquery_expression_descriptor( // NOLINT(misc-no-recursion)
         *out_descriptor = mylite_expression_descriptor_defaults();
         return status;
     }
-    status = validate_in_subquery_expression(database, expression, plan);
+    status = mylite_select_subquery_bind_in_expression(database, expression, plan,
+                                                       &select_subquery_bind_callbacks);
     if (status != MYLITE_OK) {
         *out_descriptor = mylite_expression_descriptor_defaults();
         return status;
@@ -3911,7 +3896,8 @@ static int infer_row_subquery_expression_descriptor( // NOLINT(misc-no-recursion
         return MYLITE_UNSUPPORTED;
     }
 
-    status = validate_row_subquery_expression(database, expression, plan);
+    status = mylite_select_subquery_bind_row_expression(database, expression, plan,
+                                                        &select_subquery_bind_callbacks);
     if (status != MYLITE_OK) {
         *out_descriptor = mylite_expression_descriptor_defaults();
         return status;
@@ -3933,7 +3919,8 @@ static int infer_quantified_subquery_expression_descriptor( // NOLINT(misc-no-re
     int status = MYLITE_OK;
 
     if (mylite_select_subquery_quantified_comparison_is_row_alias(expression)) {
-        status = validate_row_subquery_expression(database, expression, plan);
+        status = mylite_select_subquery_bind_row_expression(database, expression, plan,
+                                                            &select_subquery_bind_callbacks);
         if (status != MYLITE_OK) {
             *out_descriptor = mylite_expression_descriptor_defaults();
             return status;
@@ -3962,7 +3949,8 @@ static int infer_quantified_subquery_expression_descriptor( // NOLINT(misc-no-re
         *out_descriptor = mylite_expression_descriptor_defaults();
         return status;
     }
-    status = validate_quantified_subquery_expression(database, expression, plan);
+    status = mylite_select_subquery_bind_quantified_expression(database, expression, plan,
+                                                               &select_subquery_bind_callbacks);
     if (status != MYLITE_OK) {
         *out_descriptor = mylite_expression_descriptor_defaults();
         return status;
@@ -4777,34 +4765,8 @@ static int bind_select_subquery_expression(mylite_db *database,
                                            const struct mylite_sql_ast_node *expression,
                                            bool scalar_context)
 {
-    const struct mylite_sql_ast_node *select_statement = mylite_ast_child_at(expression, 0U);
-    const struct mylite_sql_ast_node *from_clause = mylite_ast_child_at(select_statement, 1U);
-    mylite_stmt *subquery_stmt = NULL;
-    int status = MYLITE_OK;
-
-    if (expression == NULL ||
-        (expression->kind != MYLITE_SQL_AST_SUBQUERY_EXPRESSION &&
-         expression->kind != MYLITE_SQL_AST_EXISTS_EXPRESSION) ||
-        select_statement == NULL || select_statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
-        return MYLITE_UNSUPPORTED;
-    }
-
-    if (scalar_context) {
-        status = mylite_select_subquery_validate_scalar_select_list(database, select_statement);
-        if (status != MYLITE_OK) {
-            return status;
-        }
-    }
-    if (expression->kind == MYLITE_SQL_AST_EXISTS_EXPRESSION &&
-        (from_clause == NULL || from_clause->kind == MYLITE_SQL_AST_FROM_DUAL)) {
-        return MYLITE_OK;
-    }
-
-    status = prepare_select_subquery_statement(database, select_statement, &subquery_stmt);
-    if (subquery_stmt != NULL) {
-        mylite_finalize(subquery_stmt);
-    }
-    return status;
+    return mylite_select_subquery_bind_select_expression(database, expression, scalar_context,
+                                                         &select_subquery_bind_callbacks);
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
@@ -4812,7 +4774,8 @@ static int bind_select_in_subquery_expression(mylite_db *database,
                                               const struct mylite_sql_ast_node *expression,
                                               const struct mylite_select_plan *outer_plan)
 {
-    return validate_in_subquery_expression(database, expression, outer_plan);
+    return mylite_select_subquery_bind_in_expression(database, expression, outer_plan,
+                                                     &select_subquery_bind_callbacks);
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
@@ -4820,7 +4783,8 @@ static int bind_select_quantified_subquery_expression(mylite_db *database,
                                                       const struct mylite_sql_ast_node *expression,
                                                       const struct mylite_select_plan *outer_plan)
 {
-    return validate_quantified_subquery_expression(database, expression, outer_plan);
+    return mylite_select_subquery_bind_quantified_expression(database, expression, outer_plan,
+                                                             &select_subquery_bind_callbacks);
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
@@ -4828,142 +4792,8 @@ static int bind_select_row_subquery_expression(mylite_db *database,
                                                const struct mylite_sql_ast_node *expression,
                                                const struct mylite_select_plan *outer_plan)
 {
-    return validate_row_subquery_expression(database, expression, outer_plan);
-}
-
-// NOLINTNEXTLINE(misc-no-recursion)
-static int validate_in_subquery_expression(mylite_db *database,
-                                           const struct mylite_sql_ast_node *expression,
-                                           const struct mylite_select_plan *outer_plan)
-{
-    const struct mylite_sql_ast_node *select_statement = mylite_ast_child_at(expression, 1U);
-    const struct mylite_sql_ast_node *from_clause = mylite_ast_child_at(select_statement, 1U);
-    mylite_stmt *subquery_stmt = NULL;
-    int status = MYLITE_OK;
-
-    if (!mylite_select_subquery_binary_expression_is_in(expression)) {
-        return MYLITE_UNSUPPORTED;
-    }
-    if (in_subquery_references_outer_plan(select_statement, outer_plan, select_statement)) {
-        return set_select_unsupported_where_error(database);
-    }
-
-    status = mylite_select_subquery_validate_in_select(database, select_statement);
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    if (from_clause == NULL || from_clause->kind == MYLITE_SQL_AST_FROM_DUAL) {
-        return MYLITE_OK;
-    }
-
-    status = prepare_select_subquery_statement(database, select_statement, &subquery_stmt);
-    if (status != MYLITE_OK) {
-        mylite_finalize(subquery_stmt);
-        if (in_subquery_has_unqualified_outer_column_reference(select_statement, outer_plan)) {
-            return set_select_unsupported_where_error(database);
-        }
-        return status;
-    }
-    if (subquery_stmt != NULL) {
-        status = mylite_select_subquery_validate_in_prepared_columns(database, subquery_stmt);
-        mylite_finalize(subquery_stmt);
-    }
-    return status;
-}
-
-// NOLINTNEXTLINE(misc-no-recursion)
-static int validate_row_subquery_expression(mylite_db *database,
-                                            const struct mylite_sql_ast_node *expression,
-                                            const struct mylite_select_plan *outer_plan)
-{
-    const struct mylite_sql_ast_node *left =
-        mylite_sql_ast_unwrap_parenthesized_expression(mylite_ast_child_at(expression, 0U));
-    const struct mylite_sql_ast_node *select_statement =
-        mylite_select_subquery_row_select_statement(expression);
-    const struct mylite_sql_ast_node *from_clause = mylite_ast_child_at(select_statement, 1U);
-    mylite_stmt *subquery_stmt = NULL;
-    size_t expected_width = mylite_select_subquery_row_constructor_width(left);
-    int status = MYLITE_OK;
-
-    if (!mylite_select_subquery_row_expression_is_supported(expression) || expected_width < 2U) {
-        return MYLITE_UNSUPPORTED;
-    }
-    if (in_subquery_references_outer_plan(select_statement, outer_plan, select_statement)) {
-        return set_select_unsupported_where_error(database);
-    }
-    if (mylite_select_subquery_row_expression_is_membership(expression) &&
-        mylite_ast_find_child_kind(select_statement, MYLITE_SQL_AST_LIMIT_CLAUSE) != NULL) {
-        return mylite_select_subquery_set_in_limit_error(database);
-    }
-
-    status = mylite_select_subquery_validate_row_select_columns(database, select_statement,
-                                                                expected_width);
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    if (from_clause == NULL || from_clause->kind == MYLITE_SQL_AST_FROM_DUAL) {
-        return MYLITE_OK;
-    }
-
-    status = prepare_select_subquery_statement(database, select_statement, &subquery_stmt);
-    if (status != MYLITE_OK) {
-        mylite_finalize(subquery_stmt);
-        if (in_subquery_has_unqualified_outer_column_reference(select_statement, outer_plan)) {
-            return set_select_unsupported_where_error(database);
-        }
-        return status;
-    }
-    if (subquery_stmt != NULL) {
-        status = mylite_select_subquery_validate_row_prepared_columns(database, subquery_stmt,
-                                                                      expected_width);
-        mylite_finalize(subquery_stmt);
-    }
-    return status;
-}
-
-// NOLINTNEXTLINE(misc-no-recursion)
-static int validate_quantified_subquery_expression(mylite_db *database,
-                                                   const struct mylite_sql_ast_node *expression,
-                                                   const struct mylite_select_plan *outer_plan)
-{
-    const struct mylite_sql_ast_node *select_statement = mylite_ast_child_at(expression, 1U);
-    const struct mylite_sql_ast_node *from_clause = mylite_ast_child_at(select_statement, 1U);
-    mylite_stmt *subquery_stmt = NULL;
-    int status = MYLITE_OK;
-
-    if (expression == NULL || expression->kind != MYLITE_SQL_AST_QUANTIFIED_COMPARISON ||
-        !mylite_select_subquery_quantified_operator_is_supported(expression->operator_kind) ||
-        expression->subquery_quantifier == MYLITE_SQL_AST_SUBQUERY_QUANTIFIER_NONE) {
-        return MYLITE_UNSUPPORTED;
-    }
-    if (mylite_select_subquery_quantified_comparison_has_row_left(expression)) {
-        return mylite_select_subquery_set_row_quantified_non_alias_error(database, expression);
-    }
-    if (in_subquery_references_outer_plan(select_statement, outer_plan, select_statement)) {
-        return set_select_unsupported_where_error(database);
-    }
-
-    status = mylite_select_subquery_validate_in_select(database, select_statement);
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    if (from_clause == NULL || from_clause->kind == MYLITE_SQL_AST_FROM_DUAL) {
-        return MYLITE_OK;
-    }
-
-    status = prepare_select_subquery_statement(database, select_statement, &subquery_stmt);
-    if (status != MYLITE_OK) {
-        mylite_finalize(subquery_stmt);
-        if (in_subquery_has_unqualified_outer_column_reference(select_statement, outer_plan)) {
-            return set_select_unsupported_where_error(database);
-        }
-        return status;
-    }
-    if (subquery_stmt != NULL) {
-        status = mylite_select_subquery_validate_in_prepared_columns(database, subquery_stmt);
-        mylite_finalize(subquery_stmt);
-    }
-    return status;
+    return mylite_select_subquery_bind_row_expression(database, expression, outer_plan,
+                                                      &select_subquery_bind_callbacks);
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
@@ -5025,110 +4855,6 @@ static int bind_select_order_row_constructor(mylite_db *database,
         }
     }
     return MYLITE_OK;
-}
-
-// NOLINTNEXTLINE(misc-no-recursion)
-static bool in_subquery_references_outer_plan(const struct mylite_sql_ast_node *node,
-                                              const struct mylite_select_plan *outer_plan,
-                                              const struct mylite_sql_ast_node *select_statement)
-{
-    const struct mylite_sql_ast_node *first = NULL;
-
-    if (node == NULL || outer_plan == NULL) {
-        return false;
-    }
-    if (node->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
-        first = qualified_identifier_first_part(node);
-        if (first != NULL && mylite_select_plan_has_visible_table_span(outer_plan, first->span) &&
-            !select_statement_has_visible_table_span(select_statement, first->span)) {
-            return true;
-        }
-    }
-    for (const struct mylite_sql_ast_node *child = node->first_child; child != NULL;
-         child = child->next_sibling) {
-        if (in_subquery_references_outer_plan(child, outer_plan, select_statement)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-static bool in_subquery_has_unqualified_outer_column_reference( // NOLINT(misc-no-recursion)
-    const struct mylite_sql_ast_node *node, const struct mylite_select_plan *outer_plan)
-{
-    if (node == NULL || outer_plan == NULL) {
-        return false;
-    }
-    if (node->kind == MYLITE_SQL_AST_FROM_TABLE) {
-        return false;
-    }
-    if (node->kind == MYLITE_SQL_AST_SELECT_ITEM) {
-        return in_subquery_has_unqualified_outer_column_reference(mylite_ast_child_at(node, 0U),
-                                                                  outer_plan);
-    }
-    if (node->kind == MYLITE_SQL_AST_IDENTIFIER &&
-        mylite_select_plan_has_column_span(outer_plan, node->span)) {
-        return true;
-    }
-    if (node->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
-        return false;
-    }
-    for (const struct mylite_sql_ast_node *child = node->first_child; child != NULL;
-         child = child->next_sibling) {
-        if (in_subquery_has_unqualified_outer_column_reference(child, outer_plan)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-// NOLINTNEXTLINE(misc-no-recursion)
-static bool select_statement_has_visible_table_span(const struct mylite_sql_ast_node *node,
-                                                    struct mylite_sql_source_span name)
-{
-    if (node == NULL) {
-        return false;
-    }
-    if (node->kind == MYLITE_SQL_AST_FROM_TABLE) {
-        const struct mylite_sql_ast_node *table_name = mylite_ast_child_at(node, 0U);
-        const struct mylite_sql_ast_node *alias = mylite_ast_child_at(node, 1U);
-        const struct mylite_sql_ast_node *visible_name =
-            alias == NULL ? qualified_identifier_last_part(table_name) : alias;
-
-        if (visible_name == NULL) {
-            return false;
-        }
-        return mylite_source_span_equal_ci(visible_name->span, name);
-    }
-    for (const struct mylite_sql_ast_node *child = node->first_child; child != NULL;
-         child = child->next_sibling) {
-        if (select_statement_has_visible_table_span(child, name)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-static const struct mylite_sql_ast_node *
-qualified_identifier_first_part(const struct mylite_sql_ast_node *identifier)
-{
-    const struct mylite_sql_ast_node *current = identifier;
-
-    while (current != NULL && current->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
-        current = mylite_ast_child_at(current, 0U);
-    }
-    return current != NULL && current->kind == MYLITE_SQL_AST_IDENTIFIER ? current : NULL;
-}
-
-static const struct mylite_sql_ast_node *
-qualified_identifier_last_part(const struct mylite_sql_ast_node *identifier)
-{
-    const struct mylite_sql_ast_node *current = identifier;
-
-    while (current != NULL && current->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
-        current = mylite_ast_child_at(current, 1U);
-    }
-    return current != NULL && current->kind == MYLITE_SQL_AST_IDENTIFIER ? current : NULL;
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)

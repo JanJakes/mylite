@@ -18,6 +18,12 @@ struct mylite_select_subquery_eval_callbacks {
     const struct mylite_select_eval_callbacks *table_select_eval_callbacks;
 };
 
+struct mylite_select_subquery_bind_callbacks {
+    int (*prepare_select_subquery)(mylite_db *database, const struct mylite_sql_ast_node *statement,
+                                   mylite_stmt **out_stmt);
+    int (*set_unsupported_where_error)(mylite_db *database);
+};
+
 bool mylite_select_subquery_row_expression_is_supported(
     const struct mylite_sql_ast_node *expression);
 bool mylite_select_subquery_row_expression_is_membership(
@@ -40,6 +46,21 @@ bool mylite_select_subquery_quantified_operator_is_supported(
 size_t mylite_select_subquery_row_constructor_width(const struct mylite_sql_ast_node *row);
 bool mylite_select_subquery_binary_expression_is_in(const struct mylite_sql_ast_node *expression);
 
+int mylite_select_subquery_bind_select_expression(
+    mylite_db *database, const struct mylite_sql_ast_node *expression, bool scalar_context,
+    const struct mylite_select_subquery_bind_callbacks *callbacks);
+int mylite_select_subquery_bind_in_expression(
+    mylite_db *database, const struct mylite_sql_ast_node *expression,
+    const struct mylite_select_plan *outer_plan,
+    const struct mylite_select_subquery_bind_callbacks *callbacks);
+int mylite_select_subquery_bind_row_expression(
+    mylite_db *database, const struct mylite_sql_ast_node *expression,
+    const struct mylite_select_plan *outer_plan,
+    const struct mylite_select_subquery_bind_callbacks *callbacks);
+int mylite_select_subquery_bind_quantified_expression(
+    mylite_db *database, const struct mylite_sql_ast_node *expression,
+    const struct mylite_select_plan *outer_plan,
+    const struct mylite_select_subquery_bind_callbacks *callbacks);
 int mylite_select_subquery_validate_scalar_select_list(mylite_db *database,
                                                        const struct mylite_sql_ast_node *statement);
 int mylite_select_subquery_validate_in_select(mylite_db *database,

@@ -4,7 +4,7 @@
 #include "mylite_select.h"
 #include "mylite_select_distinct_validate.h"
 #include "mylite_select_order_expression_bind.h"
-#include "mylite_select_resolve.h"
+#include "mylite_select_order_resolve.h"
 #include "mylite_span.h"
 
 #include <stdlib.h>

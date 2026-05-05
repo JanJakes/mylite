@@ -30,14 +30,7 @@ size_t mylite_select_count_plan_column_parts_matches(const struct mylite_select_
 char *mylite_select_copy_wildcard_qualifier_name(const struct mylite_sql_ast_node *wildcard);
 int mylite_select_set_unknown_table_error(mylite_db *database, const char *table_name);
 int mylite_select_set_unknown_where_column_error(mylite_db *database, const char *column_name);
-int mylite_select_set_unknown_order_column_error(mylite_db *database, const char *column_name);
-int mylite_select_set_ambiguous_order_column_error(mylite_db *database, const char *column_name);
 int mylite_select_set_unknown_group_column_error(mylite_db *database, const char *column_name);
-int mylite_select_resolve_order_reference(mylite_db *database,
-                                          const struct mylite_select_plan *plan,
-                                          const struct mylite_sql_ast_node *expression,
-                                          enum mylite_select_order_key_kind *out_kind,
-                                          size_t *out_index);
 int mylite_select_resolve_group_reference(mylite_db *database,
                                           const struct mylite_select_plan *plan,
                                           const struct mylite_sql_ast_node *expression,

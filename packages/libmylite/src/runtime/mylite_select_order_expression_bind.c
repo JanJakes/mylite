@@ -4,7 +4,7 @@
 #include "mylite_select.h"
 #include "mylite_select_aggregate_bind.h"
 #include "mylite_select_order_bind.h"
-#include "mylite_select_resolve.h"
+#include "mylite_select_order_resolve.h"
 #include "mylite_select_subquery.h"
 #include "mylite_span.h"
 #include "sql/mylite_ast.h"

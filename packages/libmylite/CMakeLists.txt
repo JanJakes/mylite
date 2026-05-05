@@ -165,6 +165,7 @@ add_library(mylite STATIC
   src/runtime/mylite_select_metadata.c
   src/runtime/mylite_select_order_bind.c
   src/runtime/mylite_select_order_expression_bind.c
+  src/runtime/mylite_select_order_resolve.c
   src/runtime/mylite_select_plan.c
   src/runtime/mylite_select_prepare.c
   src/runtime/mylite_select_predicate_bind.c

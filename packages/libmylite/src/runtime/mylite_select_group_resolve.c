@@ -3,6 +3,7 @@
 #include "mylite_diagnostics.h"
 #include "mylite_error_codes.h"
 #include "mylite_select.h"
+#include "mylite_select_order_resolve.h"
 #include "mylite_span.h"
 #include "sqlite3.h"
 

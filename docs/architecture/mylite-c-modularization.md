@@ -848,6 +848,8 @@ into focused `*_types.h` headers.
   companion.
 - [x] Split standalone table-index DDL validation out of the CREATE/DROP INDEX
   executor.
+- [x] Split SELECT ORDER BY reference resolution and diagnostics out of generic
+  SELECT column resolution.
 - [ ] Split `mylite_dml_insert_value_resolve.c` into insert column-list,
   positional/default, and `INSERT ... SET` modules.
 - [ ] Split `mylite_select_subquery_eval.c` into scalar subquery, quantified

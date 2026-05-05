@@ -8,6 +8,7 @@
 #include "mylite_select_group_bind.h"
 #include "mylite_select_metadata.h"
 #include "mylite_select_order_bind.h"
+#include "mylite_select_order_resolve.h"
 #include "mylite_select_predicate_bind.h"
 #include "mylite_select_prepare.h"
 #include "mylite_select_projection.h"

@@ -4,6 +4,7 @@
 #include "mylite_error_codes.h"
 #include "mylite_expression_validation.h"
 #include "mylite_select.h"
+#include "mylite_select_order_resolve.h"
 #include "mylite_select_resolve.h"
 #include "mylite_span.h"
 #include "sqlite3.h"

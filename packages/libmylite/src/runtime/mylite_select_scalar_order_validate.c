@@ -4,6 +4,7 @@
 #include "mylite_expression_validation.h"
 #include "mylite_metadata.h"
 #include "mylite_select.h"
+#include "mylite_select_order_resolve.h"
 #include "mylite_select_resolve.h"
 #include "mylite_select_scalar.h"
 #include "mylite_span.h"

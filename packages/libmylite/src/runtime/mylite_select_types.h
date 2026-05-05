@@ -352,11 +352,6 @@ struct mylite_row_in_subquery_scan_state {
     bool saw_unknown;
 };
 
-struct mylite_row_order_comparison {
-    enum mylite_sql_ast_operator operator_kind;
-    int comparison;
-};
-
 struct mylite_quantified_subquery_scan_context {
     mylite_stmt *outer_stmt;
     mylite_stmt *subquery_stmt;

@@ -60,6 +60,7 @@
 #include "runtime/mylite_sqlite_value.h"
 #include "runtime/mylite_statement.h"
 #include "runtime/mylite_statement_custom.h"
+#include "runtime/mylite_statement_execute.h"
 #include "runtime/mylite_statement_functions.h"
 #include "runtime/mylite_statement_prepare.h"
 #include "runtime/mylite_table_ddl.h"
@@ -320,6 +321,15 @@ static const struct mylite_select_union_callbacks union_query_callbacks = {
     .copy_operand_row_value = mylite_select_subquery_copy_row_value,
     .append_warnings = mylite_select_subquery_append_warnings,
     .set_unsupported_order_error = mylite_select_set_unsupported_order_error,
+};
+
+static const struct mylite_statement_execute_callbacks statement_execute_callbacks = {
+    .execute_scalar_select = execute_scalar_select_statement,
+    .execute_table_select = execute_table_select_statement,
+    .union_callbacks = &union_query_callbacks,
+    .eval_dml_materialize_session_function = evaluate_dml_materialize_session_function,
+    .set_dml_materialize_where_predicate_eval_error =
+        set_dml_materialize_where_predicate_eval_error,
 };
 
 int mylite_prepare(mylite_db *database, const char *sql, size_t length, mylite_stmt **out_stmt)
@@ -1241,121 +1251,7 @@ static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind k
 
 int mylite_statement_execute_custom(mylite_stmt *stmt)
 {
-    const struct mylite_dml_expression_callbacks dml_expression_callbacks = {
-        .user_data = stmt,
-        .eval_session_function = evaluate_dml_materialize_session_function,
-        .set_where_predicate_eval_error = set_dml_materialize_where_predicate_eval_error,
-    };
-    int status = MYLITE_OK;
-
-    if (stmt->kind == MYLITE_STMT_SCALAR_SELECT) {
-        return execute_scalar_select_statement(stmt);
-    }
-    if (stmt->kind == MYLITE_STMT_TABLE_SELECT) {
-        return execute_table_select_statement(stmt);
-    }
-    if (stmt->kind == MYLITE_STMT_UNION_QUERY) {
-        return mylite_select_union_execute_query(stmt, &union_query_callbacks);
-    }
-    if (stmt->executed) {
-        return MYLITE_DONE;
-    }
-    if (stmt->kind == MYLITE_STMT_REPLACE_VALUES || stmt->kind == MYLITE_STMT_REPLACE_SET) {
-        status = mylite_dml_append_replace_delayed_warning(stmt);
-        if (status != MYLITE_OK) {
-            stmt->affected_rows = -1;
-            return status;
-        }
-    }
-    if (mylite_statement_kind_writes(stmt->kind) && stmt->database->transaction_active &&
-        stmt->database->transaction_access_mode == MYLITE_TRANSACTION_ACCESS_READ_ONLY) {
-        stmt->affected_rows = -1;
-        return mylite_transaction_set_read_only_error(stmt->database);
-    }
-    stmt->executed = true;
-
-    switch (stmt->kind) {
-    case MYLITE_STMT_CREATE_SCHEMA:
-        status = mylite_schema_execute_create_statement(stmt);
-        break;
-    case MYLITE_STMT_ALTER_SCHEMA:
-        status = mylite_schema_execute_alter_statement(stmt);
-        break;
-    case MYLITE_STMT_DROP_SCHEMA:
-        status = mylite_schema_execute_drop_statement(stmt);
-        break;
-    case MYLITE_STMT_USE_SCHEMA:
-        status = mylite_schema_execute_use_statement(stmt);
-        break;
-    case MYLITE_STMT_SET_NAMES:
-        status = mylite_connection_execute_set_names_statement(stmt);
-        break;
-    case MYLITE_STMT_SET_CHARACTER_SET:
-        status = mylite_connection_execute_set_character_set_statement(stmt);
-        break;
-    case MYLITE_STMT_CREATE_TABLE:
-        status = mylite_table_ddl_execute_create_table_statement(
-            stmt->database, stmt->database->selected_schema, &stmt->create_table,
-            stmt->if_not_exists);
-        break;
-    case MYLITE_STMT_DROP_TABLE:
-        status = mylite_table_ddl_execute_drop_table_statement(
-            stmt->database, stmt->database->selected_schema, &stmt->drop_table, stmt->if_exists);
-        break;
-    case MYLITE_STMT_RENAME_TABLE:
-        status = mylite_table_ddl_execute_rename_table_prepared_statement(stmt);
-        break;
-    case MYLITE_STMT_TRUNCATE_TABLE:
-        status = mylite_table_ddl_execute_truncate_table_prepared_statement(stmt);
-        break;
-    case MYLITE_STMT_ALTER_TABLE:
-        status = mylite_table_ddl_execute_alter_table_prepared_statement(stmt);
-        break;
-    case MYLITE_STMT_CREATE_INDEX:
-        status = mylite_table_ddl_execute_create_index_prepared_statement(stmt);
-        break;
-    case MYLITE_STMT_DROP_INDEX:
-        status = mylite_table_ddl_execute_drop_index_prepared_statement(stmt);
-        break;
-    case MYLITE_STMT_INSERT_VALUES:
-        status = mylite_dml_execute_insert_values_statement(stmt);
-        break;
-    case MYLITE_STMT_INSERT_SET:
-        status = mylite_dml_execute_insert_set_statement(stmt);
-        break;
-    case MYLITE_STMT_REPLACE_VALUES:
-        status = mylite_dml_execute_replace_values_statement(stmt);
-        break;
-    case MYLITE_STMT_REPLACE_SET:
-        status = mylite_dml_execute_replace_set_statement(stmt);
-        break;
-    case MYLITE_STMT_UPDATE:
-        status = mylite_dml_execute_update_statement(stmt, &dml_expression_callbacks);
-        break;
-    case MYLITE_STMT_DELETE:
-        status = mylite_dml_execute_delete_statement(stmt, &dml_expression_callbacks);
-        break;
-    case MYLITE_STMT_START_TRANSACTION:
-    case MYLITE_STMT_BEGIN_TRANSACTION:
-    case MYLITE_STMT_COMMIT:
-    case MYLITE_STMT_ROLLBACK:
-    case MYLITE_STMT_SAVEPOINT:
-    case MYLITE_STMT_ROLLBACK_TO_SAVEPOINT:
-    case MYLITE_STMT_RELEASE_SAVEPOINT:
-        status = mylite_transaction_execute_statement(stmt);
-        break;
-    case MYLITE_STMT_SCALAR_SELECT:
-        return execute_scalar_select_statement(stmt);
-    case MYLITE_STMT_TABLE_SELECT:
-        return execute_table_select_statement(stmt);
-    case MYLITE_STMT_UNION_QUERY:
-        return mylite_select_union_execute_query(stmt, &union_query_callbacks);
-    case MYLITE_STMT_SQLITE:
-        status = MYLITE_MISUSE;
-        break;
-    }
-
-    return status == MYLITE_OK ? MYLITE_DONE : status;
+    return mylite_statement_execute_custom_with_callbacks(stmt, &statement_execute_callbacks);
 }
 
 static int execute_scalar_select_statement(mylite_stmt *stmt)

@@ -800,6 +800,8 @@ into focused `*_types.h` headers.
   descriptor union companion.
 - [x] Split UPDATE expression binding into a focused DML update expression bind
   module.
+- [x] Split shared UPDATE/DELETE expression binding into a focused DML
+  mutation-expression companion.
 - [x] Split INSERT duplicate-key update assignment validation into a focused
   DML insert update validation module.
 - [x] Split INSERT duplicate-key update AST copying into a focused DML insert

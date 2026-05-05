@@ -1,10 +1,9 @@
 #include "mylite_dml.h"
 
 #include "mylite_diagnostics.h"
-#include "mylite_error_codes.h"
+#include "mylite_dml_insert_diagnostics.h"
 #include "sqlite3.h"
 
-#include <stdlib.h>
 #include <string.h>
 
 static int insert_unique_index_conflicts(mylite_db *database,
@@ -35,14 +34,6 @@ static int bind_insert_unique_check_values(mylite_db *database, sqlite3_stmt *ch
                                            const struct mylite_insert_bound_value *values);
 static char *build_insert_conflict_row_sql(mylite_db *database,
                                            const struct mylite_insert_table *table);
-static int set_insert_duplicate_entry_error(mylite_db *database, const char *table_name,
-                                            const struct mylite_insert_unique_index *index,
-                                            const struct mylite_insert_bound_value *values);
-static int append_insert_duplicate_entry_warning(mylite_db *database, const char *table_name,
-                                                 const struct mylite_insert_unique_index *index,
-                                                 const struct mylite_insert_bound_value *values);
-static char *copy_insert_duplicate_entry_value(const struct mylite_insert_unique_index *index,
-                                               const struct mylite_insert_bound_value *values);
 
 int mylite_dml_validate_insert_unique_indexes(mylite_db *database, const char *table_name,
                                               bool ignore, const struct mylite_insert_table *table,
@@ -68,11 +59,11 @@ int mylite_dml_validate_insert_unique_indexes(mylite_db *database, const char *t
             if (ignore) {
                 ++state->duplicate_count;
                 *out_ignored = true;
-                return append_insert_duplicate_entry_warning(database, table_name,
-                                                             &table->unique_indexes[index], values);
+                return mylite_dml_insert_append_duplicate_entry_warning(
+                    database, table_name, &table->unique_indexes[index], values);
             }
-            return set_insert_duplicate_entry_error(database, table_name,
-                                                    &table->unique_indexes[index], values);
+            return mylite_dml_insert_set_duplicate_entry_error(
+                database, table_name, &table->unique_indexes[index], values);
         }
     }
     return MYLITE_OK;
@@ -135,11 +126,11 @@ int mylite_dml_validate_insert_update_unique_indexes(mylite_db *database, const 
         if (conflicts) {
             *out_conflicts = true;
             if (ignore) {
-                return append_insert_duplicate_entry_warning(database, table_name,
-                                                             &table->unique_indexes[index], values);
+                return mylite_dml_insert_append_duplicate_entry_warning(
+                    database, table_name, &table->unique_indexes[index], values);
             }
-            return set_insert_duplicate_entry_error(database, table_name,
-                                                    &table->unique_indexes[index], values);
+            return mylite_dml_insert_set_duplicate_entry_error(
+                database, table_name, &table->unique_indexes[index], values);
         }
     }
     return MYLITE_OK;
@@ -195,68 +186,6 @@ int mylite_dml_load_insert_conflict_row(mylite_db *database,
     }
 
     sqlite3_finalize(select);
-    return status;
-}
-
-static int set_insert_duplicate_entry_error(mylite_db *database, const char *table_name,
-                                            const struct mylite_insert_unique_index *index,
-                                            const struct mylite_insert_bound_value *values)
-{
-    char *entry = NULL;
-    char *message = NULL;
-    int status = MYLITE_OK;
-
-    if (database == NULL || table_name == NULL || index == NULL || values == NULL) {
-        return MYLITE_MISUSE;
-    }
-
-    entry = copy_insert_duplicate_entry_value(index, values);
-    if (entry == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    message =
-        sqlite3_mprintf("Duplicate entry '%q' for key '%q.%q'", entry, table_name, index->name);
-    free(entry);
-    if (message == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    status = mylite_diagnostics_set_error_message(database, message);
-    sqlite3_free(message);
-    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-}
-
-static int append_insert_duplicate_entry_warning(mylite_db *database, const char *table_name,
-                                                 const struct mylite_insert_unique_index *index,
-                                                 const struct mylite_insert_bound_value *values)
-{
-    char *entry = NULL;
-    char *message = NULL;
-    int status = MYLITE_OK;
-
-    if (database == NULL || table_name == NULL || index == NULL || values == NULL) {
-        return MYLITE_MISUSE;
-    }
-
-    entry = copy_insert_duplicate_entry_value(index, values);
-    if (entry == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    message =
-        sqlite3_mprintf("Duplicate entry '%q' for key '%q.%q'", entry, table_name, index->name);
-    free(entry);
-    if (message == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    status = mylite_diagnostics_append_warning(database, MYLITE_MYSQL_ER_DUP_ENTRY, message);
-    sqlite3_free(message);
     return status;
 }
 
@@ -470,38 +399,4 @@ static char *build_insert_conflict_row_sql(mylite_db *database,
     }
     sqlite3_str_appendf(sql, " FROM \"%w\" WHERE rowid = ?", table->physical_name);
     return sqlite3_str_finish(sql);
-}
-
-static char *copy_insert_duplicate_entry_value(const struct mylite_insert_unique_index *index,
-                                               const struct mylite_insert_bound_value *values)
-{
-    sqlite3_str *text = sqlite3_str_new(NULL);
-
-    if (text == NULL) {
-        return NULL;
-    }
-
-    for (size_t part = 0U; part < index->column_count; ++part) {
-        const struct mylite_insert_bound_value *value = &values[index->column_indexes[part]];
-
-        if (part != 0U) {
-            sqlite3_str_append(text, "-", 1);
-        }
-        switch (value->kind) {
-        case MYLITE_INSERT_BOUND_NULL:
-            sqlite3_str_append(text, "NULL", (int)strlen("NULL"));
-            break;
-        case MYLITE_INSERT_BOUND_INTEGER:
-            sqlite3_str_appendf(text, "%lld", (long long)value->integer_value);
-            break;
-        case MYLITE_INSERT_BOUND_REAL:
-            sqlite3_str_appendf(text, "%.15g", value->real_value);
-            break;
-        case MYLITE_INSERT_BOUND_TEXT:
-            sqlite3_str_append(text, value->text_value == NULL ? "" : value->text_value,
-                               value->text_value == NULL ? 0 : (int)strlen(value->text_value));
-            break;
-        }
-    }
-    return sqlite3_str_finish(text);
 }

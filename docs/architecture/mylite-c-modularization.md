@@ -742,6 +742,8 @@ into focused `*_types.h` headers.
   module.
 - [x] Split INSERT duplicate-key update assignment validation into a focused
   DML insert update validation module.
+- [x] Split INSERT duplicate-entry diagnostics out of unique-index conflict
+  probing.
 - [x] Split expression function collation inference into a focused expression
   collation companion.
 - [x] Split `STRCMP()` evaluation and collation-aware comparison into a focused

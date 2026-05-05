@@ -17,5 +17,11 @@ int mylite_dml_insert_append_null_warning_once(mylite_db *database,
                                                const struct mylite_insert_table_column *column,
                                                struct mylite_insert_execution_state *state,
                                                size_t column_index);
+int mylite_dml_insert_set_duplicate_entry_error(mylite_db *database, const char *table_name,
+                                                const struct mylite_insert_unique_index *index,
+                                                const struct mylite_insert_bound_value *values);
+int mylite_dml_insert_append_duplicate_entry_warning(
+    mylite_db *database, const char *table_name, const struct mylite_insert_unique_index *index,
+    const struct mylite_insert_bound_value *values);
 
 #endif

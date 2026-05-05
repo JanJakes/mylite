@@ -276,6 +276,7 @@ static int test_sec_to_time_function_execution(void);
 static int test_unix_timestamp_function_execution(void);
 static int test_from_unixtime_function_execution(void);
 static int test_date_format_function_execution(void);
+static int test_time_format_function_execution(void);
 static int test_rand_function_execution(void);
 static int test_default_function_execution(void);
 static int test_date_add_sub_functions_execution(void);
@@ -506,6 +507,7 @@ int main(void)
     failures += test_unix_timestamp_function_execution();
     failures += test_from_unixtime_function_execution();
     failures += test_date_format_function_execution();
+    failures += test_time_format_function_execution();
     failures += test_rand_function_execution();
     failures += test_default_function_execution();
     failures += test_date_add_sub_functions_execution();
@@ -8948,6 +8950,140 @@ static int test_date_format_function_execution(void)
     failures +=
         prepare_sql(database, "SELECT DATE_FORMAT('2024-01-01')", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "DATE_FORMAT missing format rejected");
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_time_format_function_execution(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const struct expected_result_metadata metadata[] = {
+        {"basic", NULL, NULL, NULL, NULL, NULL, 32U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         MYLITE_FIELD_FLAG_NOT_NULL, MYLITE_FIELD_FLAG_UNSIGNED, 0},
+    };
+    static const char *const scalar_columns[] = {
+        "over_hour", "basic", "negative", "zero_date", "null_token", "null_time", "null_format"};
+    static const char *const scalar_values[] = {
+        "100 100 04 04 4 AM 04:00:00 AM",
+        "12:34:56.123456 12:34:56 PM 12:34:56 PM",
+        "-12 12 12 12 12 PM 12:34:56 PM 12:34:56",
+        "0000 00 00 0 00 0 % q",
+        NULL,
+        NULL,
+        NULL,
+    };
+    static const char *const projection_columns[] = {"id", "formatted"};
+    static const char *const projection_values[] = {
+        "2",
+        "25:01:02",
+        "1",
+        "12:34:56",
+    };
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open TIME_FORMAT database");
+
+    failures += prepare_sql(database, "SELECT TIME_FORMAT('12:34:56', '%H:%i:%s') AS basic",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "TIME_FORMAT metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TIME_FORMAT metadata row");
+    failures += expect_string(mylite_column_text(stmt, 0), "12:34:56", "TIME_FORMAT metadata text");
+    failures += expect_int(mylite_warning_count(database), 0, "TIME_FORMAT metadata warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TIME_FORMAT metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        expect_select_rows(database,
+                           "SELECT "
+                           "TIME_FORMAT('100:00:00', '%H %k %h %I %l %p %r') AS over_hour, "
+                           "TIME_FORMAT('12:34:56.123456', '%H:%i:%s.%f %r %T %p') AS basic, "
+                           "TIME_FORMAT('-12:34:56', '%H %k %h %I %l %p %r %T') AS negative, "
+                           "TIME_FORMAT('12:34:56', '%Y %y %m %c %d %e %% %q') AS zero_date, "
+                           "TIME_FORMAT('12:34:56', '%W') AS null_token, "
+                           "TIME_FORMAT(NULL, '%H') AS null_time, "
+                           "TIME_FORMAT('12:34:56', NULL) AS null_format",
+                           scalar_columns, 7, scalar_values, 1, "TIME_FORMAT scalar values");
+    failures += expect_int(mylite_warning_count(database), 0, "TIME_FORMAT scalar warnings");
+
+    failures += prepare_sql(database,
+                            "SELECT TIME_FORMAT('bad', '%H') AS bad_time, "
+                            "TIME_FORMAT('', '%H') AS empty_time, "
+                            "TIME_FORMAT('839:00:00', '%H') AS high_clip, "
+                            "TIME_FORMAT('2024-02-29 12:34:56', '%H:%i:%s') AS datetime_text, "
+                            "TIME_FORMAT(20240229123456, '%H:%i:%s') AS numeric_datetime",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TIME_FORMAT warning row");
+    failures += expect_null_text(mylite_column_text(stmt, 0), "TIME_FORMAT bad text");
+    failures += expect_null_text(mylite_column_text(stmt, 1), "TIME_FORMAT empty text");
+    failures += expect_string(mylite_column_text(stmt, 2), "838", "TIME_FORMAT high clip");
+    failures += expect_string(mylite_column_text(stmt, 3), "12:34:56", "TIME_FORMAT datetime");
+    failures +=
+        expect_string(mylite_column_text(stmt, 4), "12:34:56", "TIME_FORMAT numeric datetime");
+    failures += expect_int(mylite_warning_count(database), 3, "TIME_FORMAT warning count");
+    failures += expect_string(mylite_warning_message(database, 0),
+                              "Truncated incorrect time value: 'bad'", "TIME_FORMAT bad warning");
+    failures += expect_string(mylite_warning_message(database, 1),
+                              "Truncated incorrect time value: ''", "TIME_FORMAT empty warning");
+    failures += expect_string(mylite_warning_message(database, 2),
+                              "Truncated incorrect time value: '839:00:00'",
+                              "TIME_FORMAT high clip warning");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TIME_FORMAT warning done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE DATABASE time_format_functions", MYLITE_DONE);
+    failures += execute_sql(database, "USE time_format_functions", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE temporal_time_format ("
+                            "id INT PRIMARY KEY, t TIME(6), formatted VARCHAR(32))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO temporal_time_format VALUES "
+                            "(1, '12:34:56.123456', NULL), "
+                            "(2, '25:01:02', NULL), "
+                            "(3, NULL, NULL)",
+                            MYLITE_DONE);
+    failures += expect_select_rows(database,
+                                   "SELECT id, TIME_FORMAT(t, '%H:%i:%s') AS formatted "
+                                   "FROM temporal_time_format "
+                                   "WHERE TIME_FORMAT(t, '%H') IN ('12', '25') "
+                                   "ORDER BY TIME_FORMAT(t, '%H:%i:%s') DESC",
+                                   projection_columns, 2, projection_values, 2,
+                                   "TIME_FORMAT table projection");
+    failures += execute_sql_expect_done_affected(database,
+                                                 "UPDATE temporal_time_format "
+                                                 "SET formatted = TIME_FORMAT(t, '%H:%i:%s') "
+                                                 "WHERE id = 1",
+                                                 1, "TIME_FORMAT update");
+    failures += expect_select_rows(
+        database, "SELECT id, formatted FROM temporal_time_format WHERE id = 1", projection_columns,
+        2, projection_values + 2, 1, "TIME_FORMAT updated row");
+    failures += prepare_sql(database,
+                            "UPDATE temporal_time_format "
+                            "SET formatted = TIME_FORMAT('bad', '%H') WHERE id = 1",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "TIME_FORMAT invalid update promoted");
+    failures +=
+        expect_contains(mylite_error_message(database), "Truncated incorrect time value: 'bad'",
+                        "TIME_FORMAT invalid update error");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "TIME_FORMAT invalid update warnings");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT TIME_FORMAT('12:34:56')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "TIME_FORMAT missing format rejected");
+    failures +=
+        prepare_sql(database, "SELECT TIME_FORMAT('12:34:56','%H','x')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "TIME_FORMAT extra argument rejected");
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)

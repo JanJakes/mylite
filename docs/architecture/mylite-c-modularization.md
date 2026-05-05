@@ -622,6 +622,8 @@ into focused `*_types.h` headers.
   companion module.
 - [x] Split insert column-reference qualifier and table-column lookup helpers
   into a focused DML companion module.
+- [x] Split INSERT value and column-reference AST copy helpers into a focused
+  DML companion module.
 - [x] Split SELECT row-constructor comparison and null detection into a focused
   SELECT companion module.
 - [x] Split scalar subquery and `EXISTS` evaluation into a focused SELECT

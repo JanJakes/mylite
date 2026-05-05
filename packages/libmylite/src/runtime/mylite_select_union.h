@@ -20,6 +20,18 @@ struct mylite_select_union_callbacks {
     int (*set_unsupported_order_error)(mylite_db *database);
 };
 
+struct mylite_select_union_prepare_callbacks {
+    int (*prepare_select_subquery)(mylite_db *database, const struct mylite_sql_ast_node *statement,
+                                   mylite_stmt **out_stmt);
+    int (*clone_order_expressions)(mylite_stmt *stmt, const char *sql, size_t sql_length);
+    int (*set_ambiguous_order_column_error)(mylite_db *database, const char *column_name);
+    int (*set_unsupported_order_error)(mylite_db *database);
+};
+
+int mylite_select_union_prepare_query_expression(
+    mylite_db *database, const struct mylite_sql_ast_node *statement, const char *sql,
+    size_t sql_length, mylite_stmt **out_stmt,
+    const struct mylite_select_union_prepare_callbacks *callbacks);
 int mylite_select_union_execute_query(mylite_stmt *stmt,
                                       const struct mylite_select_union_callbacks *callbacks);
 

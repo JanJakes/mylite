@@ -779,6 +779,21 @@ int mylite_select_compare_binary_text_values(const char *left, size_t left_lengt
     return (comparison > 0) - (comparison < 0);
 }
 
+char *mylite_select_copy_alias(const struct mylite_sql_ast_node *alias)
+{
+    if (alias == NULL) {
+        return NULL;
+    }
+    if (alias->kind == MYLITE_SQL_AST_LITERAL &&
+        alias->literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+        return mylite_copy_string_literal_span(alias);
+    }
+    if (alias->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        return mylite_copy_identifier_span(alias);
+    }
+    return NULL;
+}
+
 static bool
 select_using_column_range_is_in_range(const struct mylite_select_join_using_column *column,
                                       struct mylite_select_table_range range)

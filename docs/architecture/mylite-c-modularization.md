@@ -794,6 +794,8 @@ into focused `*_types.h` headers.
   alter column value module.
 - [x] Split ALTER TABLE unique-index duplicate validation into a focused table
   DDL alter unique validation module.
+- [x] Split RENAME TABLE default-schema resolution and validation into a
+  focused table DDL rename validation module.
 - [x] Split UNION global ORDER BY binding into a focused select union order
   module.
 - [x] Split UNION global ORDER BY runtime value evaluation into a focused select

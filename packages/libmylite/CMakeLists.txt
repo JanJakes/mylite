@@ -268,6 +268,7 @@ add_library(mylite STATIC
   src/runtime/mylite_table_ddl_plan.c
   src/runtime/mylite_table_ddl_plan_lookup.c
   src/runtime/mylite_table_ddl_rename.c
+  src/runtime/mylite_table_ddl_rename_validate.c
   src/runtime/mylite_table_ddl_statement.c
   src/runtime/mylite_table_ddl_truncate.c
   src/runtime/mylite_temporal_functions.c

@@ -190,13 +190,6 @@ int mylite_dml_resolve_insert_row_values(mylite_db *database,
                                          struct mylite_insert_execution_state *state,
                                          size_t row_index,
                                          struct mylite_insert_bound_value *out_values);
-int mylite_dml_resolve_insert_set_row_values(
-    mylite_db *database, const char *schema_name,
-    const struct mylite_insert_values_plan *values_plan,
-    const struct mylite_insert_set_plan *set_plan, const struct mylite_insert_table *table,
-    const size_t *column_indexes, size_t column_index_count, uint64_t statement_row_count,
-    struct mylite_insert_execution_state *state, struct mylite_insert_bound_value *values,
-    struct mylite_insert_set_row_state *row_state);
 int mylite_dml_copy_update_statement(const struct mylite_sql_ast_node *statement,
                                      struct mylite_update_plan *plan);
 int mylite_dml_copy_delete_statement(const struct mylite_sql_ast_node *statement,

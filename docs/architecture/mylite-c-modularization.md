@@ -414,6 +414,8 @@ into focused `*_types.h` headers.
   resolution into a focused DML companion module.
 - [x] Split `INSERT ... SET` expression evaluation into a focused DML companion
   module.
+- [x] Split `INSERT ... SET` row resolution into a focused DML companion
+  module.
 - [x] Split insert diagnostics and warning de-duplication into a focused DML
   companion module.
 - [x] Move shared insert row-write helpers into `mylite_dml`.
@@ -625,6 +627,8 @@ into focused `*_types.h` headers.
 - [x] Split insert default, text, current-timestamp, and auto-increment value
   resolution into a focused DML companion module.
 - [x] Split `INSERT ... SET` expression evaluation into a focused DML companion
+  module.
+- [x] Split `INSERT ... SET` row resolution into a focused DML companion
   module.
 - [x] Split CREATE TABLE physical SQL generation and backing-table creation into
   a focused table DDL module.

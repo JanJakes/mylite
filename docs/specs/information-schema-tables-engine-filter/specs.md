@@ -15,11 +15,12 @@ storage engine:
 - `WHERE ENGINE IS NULL`
 - conjunctions of the supported predicates using `AND`
 - optional `ORDER BY TABLE_NAME`
+- optional bare or `AS` table aliases, including qualified column references
+  such as `t.ENGINE`
 
 The implementation is intentionally narrow. It does not introduce a general
 information-schema query engine, joins, arbitrary projection expressions,
-`OR`, `LIKE`, aggregates, aliases, grouping, limits, subqueries, or privilege
-filtering.
+`OR`, `LIKE`, aggregates, grouping, limits, subqueries, or privilege filtering.
 
 The motivating MySQL-compatible behavior is metadata introspection for user
 base tables created by MyLite's supported `CREATE TABLE` subset. Since MyLite
@@ -83,11 +84,14 @@ Supported projection lists:
 - `*`
 - `TABLE_NAME`
 - `TABLE_NAME, ENGINE`
+- the same scoped column names qualified by the sole table name or alias
 
 Supported filters:
 
 - equality against string literals for `TABLE_SCHEMA`, `TABLE_NAME`, and
   `ENGINE`
+- the same equality and null predicates when column identifiers are qualified
+  by the sole table name or alias
 - `TABLE_SCHEMA = DATABASE()` and `DATABASE() = TABLE_SCHEMA`
 - reversed equality where the literal or function appears on the left
 - `ENGINE IS NULL`
@@ -132,6 +136,7 @@ Implementation tests should cover:
 - `TABLE_NAME` equality combined with `ENGINE`
 - `ENGINE IS NULL` for an `information_schema` system view
 - unsupported predicates, such as `OR`, still return `MYLITE_UNSUPPORTED`
+- aliases and qualified references such as `t.ENGINE = 'InnoDB'`
 - unsupported projections beyond the scoped list still return
   `MYLITE_UNSUPPORTED`
 
@@ -141,4 +146,5 @@ After implementation and tests, the core metadata catalog remains a scoped
 information-schema implementation. Suggested compatibility wording should
 state that `INFORMATION_SCHEMA.TABLES` supports `SELECT *` plus focused
 `TABLE_NAME`/`ENGINE` projections with `TABLE_SCHEMA`, `TABLE_NAME`, and
-`ENGINE` filters for engine-based metadata probes.
+`ENGINE` filters for engine-based metadata probes, including aliases and
+qualified references over the sole `TABLES` source.

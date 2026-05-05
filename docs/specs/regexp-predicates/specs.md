@@ -61,9 +61,15 @@ Additional observations:
 - `REGEXP_LIKE('abc','a','ic')` returns `1`; `REGEXP_LIKE('abc','A','ic')`
   returns `0`; `REGEXP_LIKE('abc','A','ci')` returns `1`. The rightmost `c`
   or `i` flag wins.
+- POSIX case classes honor case-insensitive matching. `REGEXP_LIKE('A',
+  '[[:lower:]]')` and `REGEXP_LIKE('a','[[:upper:]]')` returned `1`; adding
+  match type `c` returned `0`.
 - Invalid regular-expression syntax is an execution error. A mismatched
   parenthesis returned error `3691 (HY000)` with message
   `Mismatched parenthesis in regular expression.`
+- An empty pattern is an execution error. `REGEXP_LIKE('abc','')` and
+  `'abc' REGEXP ''` returned error `3685 (HY000)` with message
+  `Illegal argument to a regular expression.`
 - Invalid `match_type` text is an execution error. An unknown flag returned
   error `1210 (HY000)` with message `Incorrect arguments to regexp_like`.
 - Projection metadata for non-nullable predicate/function results is
@@ -159,7 +165,8 @@ Predicate and `REGEXP_LIKE()` results use the existing boolean descriptor:
 
 ## Errors And Warnings
 
-- Invalid pattern syntax returns execution error `3691`.
+- Empty patterns return execution error `3685`.
+- Invalid non-empty pattern syntax returns execution error `3691`.
 - Invalid `REGEXP_LIKE()` `match_type` text returns execution error `1210`.
 - The predicates do not produce warnings for ordinary no-match results.
 
@@ -174,6 +181,5 @@ cover:
 - WHERE predicate behavior over table rows
 - nullable operands
 - case flags, multi-line anchors, dot-newline mode
-- invalid pattern and invalid match-type diagnostics
+- empty-pattern, invalid-pattern, and invalid-match-type diagnostics
 - result metadata for nullable and non-nullable predicate/function results
-

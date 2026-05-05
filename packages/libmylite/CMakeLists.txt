@@ -126,6 +126,7 @@ add_library(mylite STATIC
   src/runtime/mylite_select_row_compare.c
   src/runtime/mylite_select_rowset.c
   src/runtime/mylite_select_scalar.c
+  src/runtime/mylite_select_scalar_eval.c
   src/runtime/mylite_select_scalar_order_validate.c
   src/runtime/mylite_select_statement.c
   src/runtime/mylite_select_sql.c

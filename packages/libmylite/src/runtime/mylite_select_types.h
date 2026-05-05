@@ -320,11 +320,6 @@ struct mylite_union_plan {
     size_t operand_count;
 };
 
-struct mylite_union_expression_context {
-    mylite_stmt *stmt;
-    const struct mylite_table_select_row *row;
-};
-
 struct mylite_in_subquery_scan_context {
     mylite_stmt *outer_stmt;
     mylite_stmt *subquery_stmt;

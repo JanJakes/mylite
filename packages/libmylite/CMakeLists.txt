@@ -90,6 +90,7 @@ add_library(mylite STATIC
   src/runtime/mylite_select_row_loader.c
   src/runtime/mylite_select_rowset.c
   src/runtime/mylite_select_sql.c
+  src/runtime/mylite_select_union.c
   src/runtime/mylite_session_functions.c
   src/runtime/mylite_show.c
   src/runtime/mylite_show_create.c

@@ -94,6 +94,55 @@ int mylite_expression_descriptor_infer_sec_to_time_function(
     return MYLITE_OK;
 }
 
+int mylite_expression_descriptor_infer_timediff_function(
+    mylite_db *database, const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression, const struct mylite_expression_value *value,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_temporal_callbacks *callbacks)
+{
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
+    const struct mylite_sql_ast_node *left = mylite_ast_child_at(arguments, 0U);
+    const struct mylite_sql_ast_node *right = mylite_ast_child_at(arguments, 1U);
+    struct mylite_field_descriptor left_descriptor = mylite_expression_descriptor_defaults();
+    struct mylite_field_descriptor right_descriptor = mylite_expression_descriptor_defaults();
+    struct mylite_expression_value evaluated_value = {0};
+    struct mylite_expression_warnings warnings = {0};
+    const struct mylite_expression_value *descriptor_value = value;
+    unsigned int left_decimals = 0U;
+    unsigned int right_decimals = 0U;
+    int status = MYLITE_OK;
+
+    if (!mylite_function_name_is_timediff(name)) {
+        return MYLITE_UNSUPPORTED;
+    }
+    if (descriptor_value == NULL && mylite_expression_is_cacheable_no_table(expression) &&
+        mylite_expression_eval(expression, &warnings, &evaluated_value) == 0) {
+        descriptor_value = &evaluated_value;
+    }
+    if (descriptor_value != NULL && descriptor_value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+        *out_descriptor = time_function_descriptor(time_function_value_decimals(descriptor_value));
+        goto cleanup;
+    }
+    status = callbacks->infer_expression_descriptor(database, plan, left, NULL, &left_descriptor);
+    if (status != MYLITE_OK) {
+        goto cleanup;
+    }
+    status = callbacks->infer_expression_descriptor(database, plan, right, NULL, &right_descriptor);
+    if (status != MYLITE_OK) {
+        goto cleanup;
+    }
+    left_decimals = time_function_argument_decimals(left, &left_descriptor, NULL);
+    right_decimals = time_function_argument_decimals(right, &right_descriptor, NULL);
+    *out_descriptor =
+        time_function_descriptor(left_decimals > right_decimals ? left_decimals : right_decimals);
+
+cleanup:
+    mylite_expression_value_deinit(&evaluated_value);
+    mylite_expression_warnings_deinit(&warnings);
+    return status;
+}
+
 static unsigned int
 time_function_argument_decimals(const struct mylite_sql_ast_node *argument,
                                 const struct mylite_field_descriptor *descriptor,

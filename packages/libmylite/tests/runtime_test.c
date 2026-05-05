@@ -273,6 +273,7 @@ static int test_from_days_function_execution(void);
 static int test_time_function_execution(void);
 static int test_time_to_sec_function_execution(void);
 static int test_sec_to_time_function_execution(void);
+static int test_timediff_function_execution(void);
 static int test_unix_timestamp_function_execution(void);
 static int test_from_unixtime_function_execution(void);
 static int test_date_format_function_execution(void);
@@ -504,6 +505,7 @@ int main(void)
     failures += test_time_function_execution();
     failures += test_time_to_sec_function_execution();
     failures += test_sec_to_time_function_execution();
+    failures += test_timediff_function_execution();
     failures += test_unix_timestamp_function_execution();
     failures += test_from_unixtime_function_execution();
     failures += test_date_format_function_execution();
@@ -8667,6 +8669,180 @@ static int test_sec_to_time_function_execution(void)
     failures += expect_no_stmt_handle(&stmt, "SEC_TO_TIME missing argument rejected");
     failures += prepare_sql(database, "SELECT SEC_TO_TIME(1,'x')", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "SEC_TO_TIME extra argument rejected");
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_timediff_function_execution(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const struct expected_result_metadata metadata[] = {
+        {"plain", NULL, NULL, NULL, NULL, NULL, 10U, MYLITE_FIELD_TYPE_TIME, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY, MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"frac", NULL, NULL, NULL, NULL, NULL, 17U, MYLITE_FIELD_TYPE_TIME, 6U, 63U,
+         MYLITE_FIELD_FLAG_BINARY, MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"null_value", NULL, NULL, NULL, NULL, NULL, 17U, MYLITE_FIELD_TYPE_TIME, 6U, 63U,
+         MYLITE_FIELD_FLAG_BINARY, MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+    };
+    static const char *const projection_columns[] = {"id", "delta"};
+    static const char *const projection_values[] = {
+        "2",
+        "00:30:00.469135",
+        "1",
+        "00:30:00.000000",
+    };
+    static const char *const updated_columns[] = {"id", "out_t", "note"};
+    static const char *const updated_values[] = {"1", "00:30:00.000000", "first"};
+    static const char *const remaining_columns[] = {"id"};
+    static const char *const remaining_values[] = {"1", "3"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open TIMEDIFF database");
+
+    failures += prepare_sql(database,
+                            "SELECT TIMEDIFF('12:00:00','11:30:00') AS plain, "
+                            "TIMEDIFF('12:00:00.123456','11:59:59.654321') AS frac, "
+                            "TIMEDIFF(NULL,'11:30:00') AS null_value",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "TIMEDIFF metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TIMEDIFF metadata row");
+    failures += expect_string(mylite_column_text(stmt, 0), "00:30:00", "TIMEDIFF plain value");
+    failures +=
+        expect_string(mylite_column_text(stmt, 1), "00:00:00.469135", "TIMEDIFF fractional value");
+    failures += expect_null_text(mylite_column_text(stmt, 2), "TIMEDIFF null value");
+    failures += expect_int(mylite_warning_count(database), 0, "TIMEDIFF metadata warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TIMEDIFF metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT TIMEDIFF('12:00:00','11:30:00') AS basic, "
+                            "TIMEDIFF('11:30:00','12:00:00') AS negative_value, "
+                            "TIMEDIFF('100:00:00','01:00:00') AS over_time, "
+                            "TIMEDIFF('-12:00:00','01:00:00') AS negative_arg, "
+                            "TIMEDIFF('2024-01-02 03:04:05.123456',"
+                            "'2024-01-01 01:02:03.654321') AS datetime_value, "
+                            "TIMEDIFF('2024-01-01 00:00:00',"
+                            "'2024-01-02 00:00:00') AS datetime_negative, "
+                            "TIMEDIFF('2024-01-02 00:00:00','12:00:00') AS mixed_value",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TIMEDIFF scalar row");
+    failures += expect_string(mylite_column_text(stmt, 0), "00:30:00", "TIMEDIFF basic");
+    failures += expect_string(mylite_column_text(stmt, 1), "-00:30:00", "TIMEDIFF negative");
+    failures += expect_string(mylite_column_text(stmt, 2), "99:00:00", "TIMEDIFF over time");
+    failures += expect_string(mylite_column_text(stmt, 3), "-13:00:00", "TIMEDIFF negative arg");
+    failures += expect_string(mylite_column_text(stmt, 4), "26:02:01.469135", "TIMEDIFF datetime");
+    failures +=
+        expect_string(mylite_column_text(stmt, 5), "-24:00:00", "TIMEDIFF datetime negative");
+    failures += expect_null_text(mylite_column_text(stmt, 6), "TIMEDIFF mixed type");
+    failures += expect_int(mylite_warning_count(database), 0, "TIMEDIFF scalar warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TIMEDIFF scalar done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT TIMEDIFF('2024-01-02','2024-01-01') AS date_strings, "
+                            "TIMEDIFF('bad','12:00:00') AS bad_left, "
+                            "TIMEDIFF('838:00:00','-838:00:00') AS overflow_time, "
+                            "TIMEDIFF('2024-02-10 00:00:00.123456',"
+                            "'2024-01-01 00:00:00') AS overflow_datetime",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TIMEDIFF warning row");
+    failures += expect_string(mylite_column_text(stmt, 0), "00:00:00", "TIMEDIFF date strings");
+    failures += expect_null_text(mylite_column_text(stmt, 1), "TIMEDIFF bad left");
+    failures += expect_string(mylite_column_text(stmt, 2), "838:59:59", "TIMEDIFF overflow time");
+    failures += expect_string(mylite_column_text(stmt, 3), "838:59:59.000000",
+                              "TIMEDIFF overflow datetime");
+    failures += expect_int(mylite_warning_count(database), 5, "TIMEDIFF warning count");
+    failures += expect_string(mylite_warning_message(database, 0),
+                              "Truncated incorrect time value: '2024-01-02'",
+                              "TIMEDIFF date string left warning");
+    failures += expect_string(mylite_warning_message(database, 1),
+                              "Truncated incorrect time value: '2024-01-01'",
+                              "TIMEDIFF date string right warning");
+    failures += expect_string(mylite_warning_message(database, 2),
+                              "Truncated incorrect time value: 'bad'", "TIMEDIFF bad warning");
+    failures +=
+        expect_string(mylite_warning_message(database, 3),
+                      "Truncated incorrect time value: '1676:00:00'", "TIMEDIFF overflow warning");
+    failures += expect_string(mylite_warning_message(database, 4),
+                              "Truncated incorrect time value: '960:00:00.123456'",
+                              "TIMEDIFF datetime overflow warning");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TIMEDIFF warning done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE DATABASE timediff_functions", MYLITE_DONE);
+    failures += execute_sql(database, "USE timediff_functions", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE temporal_timediff ("
+                            "id INT PRIMARY KEY, base_t TIME(6), other_t TIME(6), "
+                            "base_dt DATETIME(6), other_dt DATETIME(6), out_t TIME(6), "
+                            "note VARCHAR(16))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO temporal_timediff VALUES "
+                            "(1, '12:00:00.000000', '11:30:00.000000', "
+                            "'2024-01-02 00:00:00.000000', "
+                            "'2024-01-01 00:00:00.000000', NULL, 'first'), "
+                            "(2, '12:00:00.123456', '11:29:59.654321', "
+                            "'2024-01-02 03:04:05.123456', "
+                            "'2024-01-01 01:02:03.654321', NULL, 'second'), "
+                            "(3, NULL, '01:00:00.000000', NULL, "
+                            "'2024-01-01 00:00:00.000000', NULL, 'null')",
+                            MYLITE_DONE);
+    failures += expect_select_rows(database,
+                                   "SELECT id, TIMEDIFF(base_t, other_t) AS delta "
+                                   "FROM temporal_timediff "
+                                   "WHERE TIMEDIFF(base_t, other_t) >= '00:30:00' "
+                                   "ORDER BY TIMEDIFF(base_t, other_t) DESC, id",
+                                   projection_columns, 2, projection_values, 2,
+                                   "TIMEDIFF table projection");
+    failures += expect_int(mylite_warning_count(database), 0, "TIMEDIFF table warnings");
+    failures += execute_sql_expect_done_affected(database,
+                                                 "UPDATE temporal_timediff "
+                                                 "SET out_t = TIMEDIFF(base_t, other_t) "
+                                                 "WHERE id = 1",
+                                                 1, "TIMEDIFF update");
+    failures += expect_select_rows(database,
+                                   "SELECT id, out_t, note "
+                                   "FROM temporal_timediff WHERE id = 1",
+                                   updated_columns, 3, updated_values, 1, "TIMEDIFF updated row");
+    failures += execute_sql_expect_done_affected(
+        database,
+        "DELETE FROM temporal_timediff WHERE TIMEDIFF(base_dt, other_dt) = '26:02:01.469135'", 1,
+        "TIMEDIFF delete");
+    failures +=
+        expect_select_rows(database, "SELECT id FROM temporal_timediff ORDER BY id",
+                           remaining_columns, 1, remaining_values, 2, "TIMEDIFF delete result");
+    failures += prepare_sql(database,
+                            "UPDATE temporal_timediff "
+                            "SET out_t = TIMEDIFF('bad', other_t) WHERE id = 1",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "TIMEDIFF invalid update promoted");
+    failures +=
+        expect_contains(mylite_error_message(database), "Truncated incorrect time value: 'bad'",
+                        "TIMEDIFF invalid update error");
+    failures += expect_int(mylite_warning_count(database), 1, "TIMEDIFF invalid update warnings");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database,
+                                   "SELECT id, out_t, note "
+                                   "FROM temporal_timediff WHERE id = 1",
+                                   updated_columns, 3, updated_values, 1,
+                                   "TIMEDIFF invalid update unchanged");
+
+    failures += prepare_sql(database, "SELECT TIMEDIFF('12:00:00')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "TIMEDIFF missing argument rejected");
+    failures += prepare_sql(database, "SELECT TIMEDIFF('12:00:00','11:00:00','x')",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "TIMEDIFF extra argument rejected");
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)

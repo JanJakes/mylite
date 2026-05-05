@@ -407,6 +407,12 @@ enum temporal_part_kind {
     TEMPORAL_PART_MICROSECOND,
 };
 
+enum timediff_operand_kind {
+    TIMEDIFF_OPERAND_NONE = 0,
+    TIMEDIFF_OPERAND_TIME,
+    TIMEDIFF_OPERAND_DATETIME,
+};
+
 struct temporal_date_value {
     int year;
     int month;
@@ -444,6 +450,12 @@ struct temporal_time_value {
     int microsecond;
     unsigned int fraction_digits;
     bool negative;
+};
+
+struct timediff_operand {
+    enum timediff_operand_kind kind;
+    struct temporal_time_value time;
+    struct temporal_date_value date;
 };
 
 struct temporal_time_parse_result {
@@ -605,6 +617,7 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_TIME_TO_SEC = 129,
     MYLITE_SCALAR_FUNCTION_SEC_TO_TIME = 130,
     MYLITE_SCALAR_FUNCTION_TIME_FORMAT = 131,
+    MYLITE_SCALAR_FUNCTION_TIMEDIFF = 132,
 };
 
 struct angle_conversion_input {
@@ -811,6 +824,25 @@ static int eval_sec_to_time_function(const struct mylite_sql_ast_node *arguments
                                      const struct mylite_expression_eval_context *context,
                                      struct mylite_expression_warnings *warnings,
                                      struct mylite_expression_value *out_value);
+static int eval_timediff_function(const struct mylite_sql_ast_node *arguments,
+                                  const struct mylite_expression_eval_context *context,
+                                  struct mylite_expression_warnings *warnings,
+                                  struct mylite_expression_value *out_value);
+static int timediff_operand_from_expression(const struct mylite_expression_value *value,
+                                            struct mylite_expression_warnings *warnings,
+                                            struct timediff_operand *out_operand, bool *out_valid);
+static bool timediff_untyped_datetime_operand(const struct mylite_expression_value *value,
+                                              struct mylite_expression_warnings *warnings,
+                                              struct timediff_operand *out_operand);
+static int64_t timediff_time_microseconds(const struct temporal_time_value *time);
+static int64_t timediff_datetime_microseconds(const struct temporal_date_value *date);
+static int timediff_result_from_microseconds(int64_t microseconds, unsigned int fraction_digits,
+                                             struct mylite_expression_warnings *warnings,
+                                             struct mylite_expression_value *out_value);
+static int append_timediff_range_warning(struct mylite_expression_warnings *warnings,
+                                         int64_t microseconds, unsigned int fraction_digits);
+static size_t timediff_format_microseconds(char *buffer, size_t buffer_size, int64_t microseconds,
+                                           unsigned int fraction_digits);
 static int sec_to_time_value_from_expression(const struct mylite_expression_value *value,
                                              struct mylite_expression_warnings *warnings,
                                              struct temporal_time_value *out_time);
@@ -2144,6 +2176,7 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_DATEDIFF:
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
     case MYLITE_SCALAR_FUNCTION_TIME_FORMAT:
+    case MYLITE_SCALAR_FUNCTION_TIMEDIFF:
         return arity == 2U;
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPADD:
@@ -3078,6 +3111,8 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_time_to_sec_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_SEC_TO_TIME:
         return eval_sec_to_time_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_TIMEDIFF:
+        return eval_timediff_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
         return eval_unix_timestamp_function(node, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
@@ -4446,6 +4481,239 @@ cleanup:
     return status;
 }
 
+static int eval_timediff_function(const struct mylite_sql_ast_node *arguments,
+                                  const struct mylite_expression_eval_context *context,
+                                  struct mylite_expression_warnings *warnings,
+                                  struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value left_value = {0};
+    struct mylite_expression_value right_value = {0};
+    struct timediff_operand left = {0};
+    struct timediff_operand right = {0};
+    unsigned int fraction_digits = 0U;
+    int64_t microseconds = 0;
+    bool left_valid = false;
+    bool right_valid = false;
+    int status = eval_node(child_at(arguments, 0U), context, warnings, &left_value);
+
+    if (status != 0) {
+        goto cleanup;
+    }
+    status = eval_node(child_at(arguments, 1U), context, warnings, &right_value);
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&left_value) || is_null(&right_value)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    status = timediff_operand_from_expression(&left_value, warnings, &left, &left_valid);
+    if (status != 0) {
+        goto cleanup;
+    }
+    status = timediff_operand_from_expression(&right_value, warnings, &right, &right_valid);
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (!left_valid || !right_valid || left.kind != right.kind) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+
+    if (left.kind == TIMEDIFF_OPERAND_DATETIME) {
+        microseconds = timediff_datetime_microseconds(&left.date) -
+                       timediff_datetime_microseconds(&right.date);
+        fraction_digits = left.date.fraction_digits > right.date.fraction_digits
+                              ? left.date.fraction_digits
+                              : right.date.fraction_digits;
+    } else {
+        microseconds =
+            timediff_time_microseconds(&left.time) - timediff_time_microseconds(&right.time);
+        fraction_digits = left.time.fraction_digits > right.time.fraction_digits
+                              ? left.time.fraction_digits
+                              : right.time.fraction_digits;
+    }
+    status = timediff_result_from_microseconds(microseconds, fraction_digits, warnings, out_value);
+
+cleanup:
+    mylite_expression_value_deinit(&right_value);
+    mylite_expression_value_deinit(&left_value);
+    return status;
+}
+
+static int timediff_operand_from_expression(const struct mylite_expression_value *value,
+                                            struct mylite_expression_warnings *warnings,
+                                            struct timediff_operand *out_operand, bool *out_valid)
+{
+    bool valid = false;
+    int status = 0;
+
+    if (value == NULL || out_operand == NULL || out_valid == NULL) {
+        return -1;
+    }
+    *out_operand = (struct timediff_operand){0};
+    *out_valid = false;
+    if (value->temporal_type == MYLITE_EXPRESSION_TEMPORAL_DATE ||
+        value->temporal_type == MYLITE_EXPRESSION_TEMPORAL_DATETIME ||
+        value->temporal_type == MYLITE_EXPRESSION_TEMPORAL_TIMESTAMP) {
+        status = temporal_date_from_value(value, true, warnings, &out_operand->date, &valid);
+        if (status != 0 || !valid) {
+            return status;
+        }
+        out_operand->kind = TIMEDIFF_OPERAND_DATETIME;
+        *out_valid = true;
+        return 0;
+    }
+    if (value->temporal_type == MYLITE_EXPRESSION_TEMPORAL_NONE &&
+        timediff_untyped_datetime_operand(value, warnings, out_operand)) {
+        *out_valid = true;
+        return 0;
+    }
+
+    status = time_value_from_expression(value, warnings, &out_operand->time, &valid);
+    if (status != 0 || !valid) {
+        return status;
+    }
+    out_operand->kind = TIMEDIFF_OPERAND_TIME;
+    *out_valid = true;
+    return 0;
+}
+
+static bool timediff_untyped_datetime_operand(const struct mylite_expression_value *value,
+                                              struct mylite_expression_warnings *warnings,
+                                              struct timediff_operand *out_operand)
+{
+    struct temporal_date_source source = {0};
+    struct temporal_date_value date = {0};
+
+    if (temporal_date_source_from_value(value, &source) != 0 ||
+        !parse_temporal_date_source(&source, true, false, &date) || !date.has_time) {
+        return false;
+    }
+    if (date.warning_kind != TEMPORAL_DATE_WARNING_NONE &&
+        append_temporal_time_warning(warnings, source.warning_text, source.warning_length) != 0) {
+        return false;
+    }
+    out_operand->kind = TIMEDIFF_OPERAND_DATETIME;
+    out_operand->date = date;
+    return true;
+}
+
+static int64_t timediff_time_microseconds(const struct temporal_time_value *time)
+{
+    int64_t microseconds =
+        (((int64_t)time->hour * MYLITE_TEMPORAL_SECONDS_PER_HOUR) +
+         ((int64_t)time->minute * MYLITE_TEMPORAL_SECONDS_PER_MINUTE) + (int64_t)time->second) *
+            MYLITE_TEMPORAL_MICROSECOND_LIMIT +
+        (int64_t)time->microsecond;
+
+    return time->negative ? -microseconds : microseconds;
+}
+
+static int64_t timediff_datetime_microseconds(const struct temporal_date_value *date)
+{
+    int64_t seconds = (temporal_day_number(date) * MYLITE_TEMPORAL_SECONDS_PER_DAY) +
+                      ((int64_t)date->hour * MYLITE_TEMPORAL_SECONDS_PER_HOUR) +
+                      ((int64_t)date->minute * MYLITE_TEMPORAL_SECONDS_PER_MINUTE) +
+                      (int64_t)date->second;
+
+    return (seconds * MYLITE_TEMPORAL_MICROSECOND_LIMIT) + (int64_t)date->microsecond;
+}
+
+static int timediff_result_from_microseconds(int64_t microseconds, unsigned int fraction_digits,
+                                             struct mylite_expression_warnings *warnings,
+                                             struct mylite_expression_value *out_value)
+{
+    uint64_t max_microseconds = sec_to_time_max_microseconds();
+    bool negative = microseconds < 0;
+    uint64_t magnitude = negative ? (uint64_t)(-(microseconds + 1)) + 1U : (uint64_t)microseconds;
+    struct temporal_time_value time = {0};
+    int status = 0;
+
+    if (fraction_digits > MYLITE_TEMPORAL_MAX_FSP) {
+        fraction_digits = MYLITE_TEMPORAL_MAX_FSP;
+    }
+    if (magnitude > max_microseconds) {
+        status = append_timediff_range_warning(warnings, microseconds, fraction_digits);
+        if (status != 0) {
+            return status;
+        }
+        magnitude = max_microseconds;
+    }
+    time.negative = negative && magnitude != 0U;
+    time.hour = (int)(magnitude / ((uint64_t)MYLITE_TEMPORAL_SECONDS_PER_HOUR *
+                                   (uint64_t)MYLITE_TEMPORAL_MICROSECOND_LIMIT));
+    magnitude %=
+        (uint64_t)MYLITE_TEMPORAL_SECONDS_PER_HOUR * (uint64_t)MYLITE_TEMPORAL_MICROSECOND_LIMIT;
+    time.minute = (int)(magnitude / ((uint64_t)MYLITE_TEMPORAL_SECONDS_PER_MINUTE *
+                                     (uint64_t)MYLITE_TEMPORAL_MICROSECOND_LIMIT));
+    magnitude %=
+        (uint64_t)MYLITE_TEMPORAL_SECONDS_PER_MINUTE * (uint64_t)MYLITE_TEMPORAL_MICROSECOND_LIMIT;
+    time.second = (int)(magnitude / (uint64_t)MYLITE_TEMPORAL_MICROSECOND_LIMIT);
+    time.microsecond = (int)(magnitude % (uint64_t)MYLITE_TEMPORAL_MICROSECOND_LIMIT);
+    time.fraction_digits = fraction_digits;
+    return set_temporal_time_text_value(&time, out_value);
+}
+
+static int append_timediff_range_warning(struct mylite_expression_warnings *warnings,
+                                         int64_t microseconds, unsigned int fraction_digits)
+{
+    char text[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
+    size_t length = timediff_format_microseconds(text, sizeof(text), microseconds, fraction_digits);
+
+    if (length == 0U) {
+        return -1;
+    }
+    return append_temporal_time_warning(warnings, text, length);
+}
+
+static size_t timediff_format_microseconds(char *buffer, size_t buffer_size, int64_t microseconds,
+                                           unsigned int fraction_digits)
+{
+    enum { temporal_time_fraction_text_length = 6U };
+    bool negative = microseconds < 0;
+    uint64_t magnitude = negative ? (uint64_t)(-(microseconds + 1)) + 1U : (uint64_t)microseconds;
+    uint64_t hour = magnitude / ((uint64_t)MYLITE_TEMPORAL_SECONDS_PER_HOUR *
+                                 (uint64_t)MYLITE_TEMPORAL_MICROSECOND_LIMIT);
+    uint64_t remainder = magnitude % ((uint64_t)MYLITE_TEMPORAL_SECONDS_PER_HOUR *
+                                      (uint64_t)MYLITE_TEMPORAL_MICROSECOND_LIMIT);
+    uint64_t minute = remainder / ((uint64_t)MYLITE_TEMPORAL_SECONDS_PER_MINUTE *
+                                   (uint64_t)MYLITE_TEMPORAL_MICROSECOND_LIMIT);
+    uint64_t second = 0U;
+    uint64_t microsecond = 0U;
+    int length = 0;
+
+    remainder %=
+        (uint64_t)MYLITE_TEMPORAL_SECONDS_PER_MINUTE * (uint64_t)MYLITE_TEMPORAL_MICROSECOND_LIMIT;
+    second = remainder / (uint64_t)MYLITE_TEMPORAL_MICROSECOND_LIMIT;
+    microsecond = remainder % (uint64_t)MYLITE_TEMPORAL_MICROSECOND_LIMIT;
+    if (fraction_digits > MYLITE_TEMPORAL_MAX_FSP) {
+        fraction_digits = MYLITE_TEMPORAL_MAX_FSP;
+    }
+    length =
+        snprintf(buffer, buffer_size, "%s%llu:%02llu:%02llu", negative ? "-" : "",
+                 (unsigned long long)hour, (unsigned long long)minute, (unsigned long long)second);
+    if (length < 0 || (size_t)length >= buffer_size) {
+        return 0U;
+    }
+    if (fraction_digits != 0U) {
+        char fraction[temporal_time_fraction_text_length + 1U];
+        int fraction_length =
+            snprintf(fraction, sizeof(fraction), "%06llu", (unsigned long long)microsecond);
+
+        if (fraction_length != temporal_time_fraction_text_length ||
+            length + 1 + (int)fraction_digits >= (int)buffer_size) {
+            return 0U;
+        }
+        buffer[length] = '.';
+        ++length;
+        memcpy(buffer + length, fraction, fraction_digits);
+        length += (int)fraction_digits;
+        buffer[length] = '\0';
+    }
+    return (size_t)length;
+}
+
 static int sec_to_time_value_from_expression(const struct mylite_expression_value *value,
                                              struct mylite_expression_warnings *warnings,
                                              struct temporal_time_value *out_time)
@@ -5416,6 +5684,7 @@ static bool temporal_part_from_function(enum mylite_scalar_function_id function_
     case MYLITE_SCALAR_FUNCTION_LOCALTIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE:
     case MYLITE_SCALAR_FUNCTION_DATEDIFF:
+    case MYLITE_SCALAR_FUNCTION_TIMEDIFF:
     case MYLITE_SCALAR_FUNCTION_LAST_DAY:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPADD:
@@ -9789,6 +10058,7 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_LOCALTIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE:
     case MYLITE_SCALAR_FUNCTION_DATEDIFF:
+    case MYLITE_SCALAR_FUNCTION_TIMEDIFF:
     case MYLITE_SCALAR_FUNCTION_LAST_DAY:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPADD:
@@ -11661,6 +11931,7 @@ static int trigonometric_function_result(struct trigonometric_input input,
     case MYLITE_SCALAR_FUNCTION_LOCALTIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE:
     case MYLITE_SCALAR_FUNCTION_DATEDIFF:
+    case MYLITE_SCALAR_FUNCTION_TIMEDIFF:
     case MYLITE_SCALAR_FUNCTION_LAST_DAY:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPADD:
@@ -11978,6 +12249,7 @@ static int inverse_trigonometric_function_result(struct inverse_trigonometric_in
     case MYLITE_SCALAR_FUNCTION_LOCALTIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE:
     case MYLITE_SCALAR_FUNCTION_DATEDIFF:
+    case MYLITE_SCALAR_FUNCTION_TIMEDIFF:
     case MYLITE_SCALAR_FUNCTION_LAST_DAY:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPADD:
@@ -12205,6 +12477,7 @@ static int angle_conversion_result(struct angle_conversion_input conversion, dou
     case MYLITE_SCALAR_FUNCTION_LOCALTIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_DATE:
     case MYLITE_SCALAR_FUNCTION_DATEDIFF:
+    case MYLITE_SCALAR_FUNCTION_TIMEDIFF:
     case MYLITE_SCALAR_FUNCTION_LAST_DAY:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPADD:
@@ -16265,6 +16538,7 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"UNIX_TIMESTAMP", MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP},
         {"DATE_FORMAT", MYLITE_SCALAR_FUNCTION_DATE_FORMAT},
         {"TIME_FORMAT", MYLITE_SCALAR_FUNCTION_TIME_FORMAT},
+        {"TIMEDIFF", MYLITE_SCALAR_FUNCTION_TIMEDIFF},
         {"FROM_UNIXTIME", MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME},
         {"DEFAULT", MYLITE_SCALAR_FUNCTION_DEFAULT},
         {"RAND", MYLITE_SCALAR_FUNCTION_RAND},
@@ -16410,6 +16684,7 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_ISNULL:
     case MYLITE_SCALAR_FUNCTION_DATE:
     case MYLITE_SCALAR_FUNCTION_DATEDIFF:
+    case MYLITE_SCALAR_FUNCTION_TIMEDIFF:
     case MYLITE_SCALAR_FUNCTION_LAST_DAY:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPADD:

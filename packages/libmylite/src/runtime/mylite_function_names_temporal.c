@@ -79,6 +79,13 @@ bool mylite_function_name_is_sec_to_time(const struct mylite_sql_ast_node *name)
     return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }
 
+bool mylite_function_name_is_timediff(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"TIMEDIFF"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
 bool mylite_function_name_is_year_part(const struct mylite_sql_ast_node *name)
 {
     static const char *const names[] = {"YEAR"};

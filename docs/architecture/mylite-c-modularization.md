@@ -662,6 +662,8 @@ into focused `*_types.h` headers.
   focused materialization helper.
 - [x] Split joined SELECT materialization into a focused SELECT companion
   module.
+- [x] Split outer JOIN materialization range-rowset processing into a focused
+  SELECT join companion.
 - [x] Split single-table ordered and unordered SELECT materialization into a
   focused SELECT companion module.
 - [x] Split `mylite_select_materialize.c` into single-table, joined-table,

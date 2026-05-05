@@ -596,6 +596,8 @@ into focused `*_types.h` headers.
   table removal into a focused table DDL module.
 - [x] Split TRUNCATE TABLE validation, row deletion, and auto-increment reset
   into a focused table DDL module.
+- [x] Split RENAME TABLE validation, physical table rename, and catalog rewrite
+  into a focused table DDL module.
 - [x] Split SELECT row and join-condition matching into a focused SELECT
   companion module.
 - [x] Split SELECT joined-row allocation, copying, and null-extension helpers

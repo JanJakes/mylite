@@ -151,6 +151,7 @@ add_library(mylite STATIC
   src/runtime/mylite_table_ddl_drop.c
   src/runtime/mylite_table_ddl_index.c
   src/runtime/mylite_table_ddl_plan.c
+  src/runtime/mylite_table_ddl_rename.c
   src/runtime/mylite_table_ddl_statement.c
   src/runtime/mylite_table_ddl_truncate.c
   src/runtime/mylite_temporal_functions.c

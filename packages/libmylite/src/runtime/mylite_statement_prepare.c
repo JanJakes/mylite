@@ -6,6 +6,7 @@
 #include "mylite_dml.h"
 #include "mylite_error_codes.h"
 #include "mylite_runtime.h"
+#include "mylite_select_context.h"
 #include "mylite_select_prepare.h"
 #include "mylite_select_union.h"
 #include "mylite_show.h"
@@ -28,6 +29,12 @@ static int prepare_custom_statement(mylite_db *database, enum mylite_stmt_kind k
                                     const struct mylite_sql_ast_node *statement,
                                     mylite_stmt **out_stmt,
                                     const struct mylite_statement_prepare_callbacks *callbacks);
+
+int mylite_prepare(mylite_db *database, const char *sql, size_t length, mylite_stmt **out_stmt)
+{
+    return mylite_statement_prepare_with_callbacks(
+        database, sql, length, out_stmt, mylite_select_context_statement_prepare_callbacks());
+}
 
 int mylite_statement_prepare_with_callbacks(
     mylite_db *database, const char *sql, size_t length, mylite_stmt **out_stmt,

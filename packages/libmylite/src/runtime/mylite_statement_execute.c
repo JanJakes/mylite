@@ -5,11 +5,18 @@
 #include "mylite_dml_statement.h"
 #include "mylite_runtime.h"
 #include "mylite_schema.h"
+#include "mylite_select_context.h"
 #include "mylite_select_union.h"
 #include "mylite_statement.h"
 #include "mylite_table_ddl.h"
 #include "mylite_table_ddl_statement.h"
 #include "mylite_transactions.h"
+
+int mylite_statement_execute_custom(mylite_stmt *stmt)
+{
+    return mylite_statement_execute_custom_with_callbacks(
+        stmt, mylite_select_context_statement_execute_callbacks());
+}
 
 int mylite_statement_execute_custom_with_callbacks(
     mylite_stmt *stmt, const struct mylite_statement_execute_callbacks *callbacks)

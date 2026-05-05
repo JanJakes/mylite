@@ -766,6 +766,8 @@ into focused `*_types.h` headers.
   probing.
 - [x] Split expression function collation inference into a focused expression
   collation companion.
+- [x] Split expression literal, identifier, and CAST collation inference into a
+  focused expression collation leaf companion.
 - [x] Split `STRCMP()` evaluation and collation-aware comparison into a focused
   statement function module.
 - [x] Split transaction savepoint parsing, execution, stack management, and

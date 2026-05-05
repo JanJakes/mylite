@@ -31,6 +31,13 @@ struct mylite_uuid_state {
     bool initialized;
 };
 
+struct mylite_uuid_short_state {
+    uint64_t startup_seconds;
+    uint32_t counter;
+    uint8_t server_id;
+    bool initialized;
+};
+
 struct mylite_db {
     sqlite3 *sqlite;
     char *error_message;
@@ -54,6 +61,7 @@ struct mylite_db {
     const char *collation_connection;
     char *sql_mode;
     struct mylite_uuid_state uuid_state;
+    struct mylite_uuid_short_state uuid_short_state;
 };
 
 struct mylite_statement_timestamp {

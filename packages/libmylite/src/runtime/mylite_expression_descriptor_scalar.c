@@ -282,6 +282,17 @@ static bool infer_session_function_descriptor(mylite_db *database,
         };
         return true;
     }
+    if (mylite_function_name_is_uuid_short(name)) {
+        *out_descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_LONGLONG,
+            .flags = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED |
+                     MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+            .length = mylite_mysql_session_integer_function_display_length,
+            .charset_id = mylite_mysql_binary_charset_id,
+            .nullable = false,
+        };
+        return true;
+    }
     if (mylite_span_equal_ci(name->span, "ROW_COUNT")) {
         *out_descriptor = (struct mylite_field_descriptor){
             .type = MYLITE_FIELD_TYPE_LONGLONG,

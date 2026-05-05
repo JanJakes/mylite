@@ -95,6 +95,7 @@ In scope for the initial implementation:
   - `DEFAULT`
 - miscellaneous functions:
   - `UUID`
+  - `UUID_SHORT`
 
 Out of scope for the initial implementation:
 
@@ -110,9 +111,8 @@ Out of scope for the initial implementation:
 - `STR_TO_DATE`, week-numbering functions, named time zones, locale-sensitive
   temporal behavior beyond the first formatting slice, and time-zone table
   integration
-- `UUID_SHORT`, `SLEEP`, `BENCHMARK`, and other
-  nondeterministic or diagnostic/performance functions not needed for the first
-  application batch
+- `SLEEP`, `BENCHMARK`, and other nondeterministic or diagnostic/performance
+  functions not needed for the first application batch
 - user variables, system variables, prepared-statement parameters, subqueries,
   row constructors, stored-program local variables, and stored or loadable
   function resolution
@@ -218,9 +218,11 @@ by common scalar expressions:
   `docs/specs/from-unixtime-function/specs.md` and
   `docs/specs/date-format-function/specs.md` and
   `docs/specs/time-format-function/specs.md`;
-- random and generated identifier functions: `RAND`, `RAND(seed)`, and `UUID`;
+- random and generated identifier functions: `RAND`, `RAND(seed)`, `UUID`,
+  and `UUID_SHORT`;
   see `docs/specs/rand-function/specs.md` and
-  `docs/specs/uuid-function/specs.md`;
+  `docs/specs/uuid-function/specs.md` and
+  `docs/specs/uuid-short-function/specs.md`;
 - grammar-level cast expressions: `CAST(expr AS type)`, `CONVERT(expr, type)`,
   and `CONVERT(expr USING charset_name)` for the supported CAST target and
   charset-registry subsets; see `docs/specs/cast-expression/specs.md` and
@@ -251,7 +253,8 @@ IPv4 network-address conversion, short IPv4 forms, invalid IPv4 warnings,
 `INET_NTOA()` bounds and string-integer truncation warnings,
 UUID text validation, UUID string-to-binary and binary-to-string conversion,
 optional UUID time-part swap flags, `UUID()` generated identifier shape,
-per-call dynamic behavior, metadata, and charset/collation introspection,
+`UUID_SHORT()` unsigned generated identifier shape, per-call dynamic behavior,
+metadata, and charset/collation introspection,
 `MOD(..., 0)` warnings, `EXP()` overflow behavior, logarithm invalid-domain
 warnings, `SQRT()` domain behavior, `SIN()` / `COS()` / `TAN()` radian
 semantics and text conversion, `COT()` radian semantics and range errors,

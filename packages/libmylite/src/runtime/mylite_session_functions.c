@@ -18,6 +18,10 @@ static const int mylite_session_decimal_conversion_base = 10;
 static const uint32_t mylite_rand_max_value = 0x3fffffffU;
 static const uint64_t mylite_uuid_epoch_offset_100ns = UINT64_C(122192928000000000);
 static const uint64_t mylite_uuid_100ns_per_second = UINT64_C(10000000);
+static const uint64_t mylite_uuid_short_startup_mask = UINT64_C(0xffffffff);
+static const uint32_t mylite_uuid_short_counter_mask = 0x00ffffffU;
+static const unsigned int mylite_uuid_short_server_shift = 56U;
+static const unsigned int mylite_uuid_short_startup_shift = 24U;
 
 enum mylite_uuid_constants {
     MYLITE_UUID_BINARY_LENGTH = 16,
@@ -37,6 +41,9 @@ enum mylite_uuid_constants {
     MYLITE_UUID_VARIANT_VALUE_MASK = 0x3fU,
     MYLITE_UUID_HEX_LOW_NIBBLE_MASK = 0x0fU,
     MYLITE_UUID_MULTICAST_NODE_MASK = 0x01U,
+    MYLITE_UUID_SHORT_RANDOM_BYTES = 4,
+    MYLITE_UUID_SHORT_SERVER_ID_MASK = 0x7fU,
+    MYLITE_UUID_SHORT_SERVER_ID_FALLBACK = 1,
 };
 
 static int
@@ -52,6 +59,8 @@ static int evaluate_rand_function(mylite_stmt *stmt,
                                   struct mylite_expression_warnings *warnings,
                                   struct mylite_expression_value *out_value);
 static int evaluate_uuid_function(mylite_stmt *stmt, struct mylite_expression_value *out_value);
+static int evaluate_uuid_short_function(mylite_stmt *stmt,
+                                        struct mylite_expression_value *out_value);
 static const struct mylite_sql_ast_node *
 rand_seed_argument(const struct mylite_sql_ast_node *function_call);
 static int
@@ -77,6 +86,9 @@ static void initialize_uuid_state(struct mylite_uuid_state *state);
 static uint64_t uuid_current_timestamp_100ns(void);
 static void format_uuid_text(const unsigned char bytes[MYLITE_UUID_BINARY_LENGTH],
                              char text[MYLITE_UUID_TEXT_LENGTH + 1U]);
+static uint64_t next_uuid_short_value(mylite_db *database);
+static void initialize_uuid_short_state(struct mylite_uuid_short_state *state);
+static uint64_t current_unix_seconds(void);
 static uint64_t session_function_value_to_uint64(const struct mylite_expression_value *value);
 
 int mylite_session_evaluate_core_function(
@@ -125,6 +137,9 @@ int mylite_session_evaluate_core_function(
     }
     if (mylite_span_equal_ci(name->span, "UUID")) {
         return evaluate_uuid_function(stmt, out_value);
+    }
+    if (mylite_span_equal_ci(name->span, "UUID_SHORT")) {
+        return evaluate_uuid_short_function(stmt, out_value);
     }
     if (mylite_span_equal_ci(name->span, "ROW_COUNT")) {
         *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
@@ -407,6 +422,19 @@ static int evaluate_uuid_function(mylite_stmt *stmt, struct mylite_expression_va
     return mylite_session_set_text_function_value(stmt->database, text, out_value);
 }
 
+static int evaluate_uuid_short_function(mylite_stmt *stmt,
+                                        struct mylite_expression_value *out_value)
+{
+    if (stmt == NULL || stmt->database == NULL) {
+        return -1;
+    }
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_UINT64,
+        .uint64_value = next_uuid_short_value(stmt->database),
+    };
+    return 0;
+}
+
 static void next_uuid_bytes(mylite_db *database, unsigned char bytes[MYLITE_UUID_BINARY_LENGTH])
 {
     struct mylite_uuid_state *state = &database->uuid_state;
@@ -497,6 +525,59 @@ static void format_uuid_text(const unsigned char bytes[MYLITE_UUID_BINARY_LENGTH
         text[output++] = digits[bytes[index] & MYLITE_UUID_HEX_LOW_NIBBLE_MASK];
     }
     text[output] = '\0';
+}
+
+static uint64_t next_uuid_short_value(mylite_db *database)
+{
+    struct mylite_uuid_short_state *state = &database->uuid_short_state;
+    uint32_t counter = 0U;
+    uint64_t startup_seconds = 0U;
+    uint64_t value = 0U;
+
+    if (!state->initialized) {
+        initialize_uuid_short_state(state);
+    }
+
+    counter = state->counter & mylite_uuid_short_counter_mask;
+    startup_seconds = state->startup_seconds & mylite_uuid_short_startup_mask;
+    value = ((uint64_t)state->server_id << mylite_uuid_short_server_shift) |
+            (startup_seconds << mylite_uuid_short_startup_shift) | (uint64_t)counter;
+
+    if (counter == mylite_uuid_short_counter_mask) {
+        state->counter = 0U;
+        if (state->startup_seconds < mylite_uuid_short_startup_mask) {
+            ++state->startup_seconds;
+        }
+    } else {
+        state->counter = counter + 1U;
+    }
+    return value;
+}
+
+static void initialize_uuid_short_state(struct mylite_uuid_short_state *state)
+{
+    unsigned char random[MYLITE_UUID_SHORT_RANDOM_BYTES] = {0};
+
+    sqlite3_randomness((int)sizeof(random), random);
+    state->server_id = (uint8_t)(random[0] & MYLITE_UUID_SHORT_SERVER_ID_MASK);
+    if (state->server_id == 0U) {
+        state->server_id = MYLITE_UUID_SHORT_SERVER_ID_FALLBACK;
+    }
+    state->startup_seconds = current_unix_seconds();
+    state->counter =
+        (((uint32_t)random[1] << 16U) | ((uint32_t)random[2] << 8U) | (uint32_t)random[3]) &
+        mylite_uuid_short_counter_mask;
+    state->initialized = true;
+}
+
+static uint64_t current_unix_seconds(void)
+{
+    time_t seconds = time(NULL);
+
+    if (seconds == (time_t)-1 || seconds < (time_t)0) {
+        return 0U;
+    }
+    return (uint64_t)seconds;
 }
 
 static uint64_t session_function_value_to_uint64(const struct mylite_expression_value *value)

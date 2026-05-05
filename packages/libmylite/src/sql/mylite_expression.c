@@ -621,6 +621,7 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_TIMEDIFF = 132,
     MYLITE_SCALAR_FUNCTION_TIMESTAMP = 133,
     MYLITE_SCALAR_FUNCTION_UUID = 134,
+    MYLITE_SCALAR_FUNCTION_UUID_SHORT = 135,
 };
 
 struct angle_conversion_input {
@@ -2251,6 +2252,7 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_USER:
     case MYLITE_SCALAR_FUNCTION_CURRENT_USER:
     case MYLITE_SCALAR_FUNCTION_UUID:
+    case MYLITE_SCALAR_FUNCTION_UUID_SHORT:
         return arity == 0U;
     case MYLITE_SCALAR_FUNCTION_CURDATE:
     case MYLITE_SCALAR_FUNCTION_CURRENT_DATE:
@@ -3215,6 +3217,7 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
     case MYLITE_SCALAR_FUNCTION_LOCALTIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_RAND:
     case MYLITE_SCALAR_FUNCTION_UUID:
+    case MYLITE_SCALAR_FUNCTION_UUID_SHORT:
         return context == NULL || context->eval_session_function == NULL
                    ? -1
                    : context->eval_session_function(context->user_data, node, context, warnings,
@@ -6005,6 +6008,7 @@ static bool temporal_part_from_function(enum mylite_scalar_function_id function_
     case MYLITE_SCALAR_FUNCTION_DEFAULT:
     case MYLITE_SCALAR_FUNCTION_RAND:
     case MYLITE_SCALAR_FUNCTION_UUID:
+    case MYLITE_SCALAR_FUNCTION_UUID_SHORT:
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
     case MYLITE_SCALAR_FUNCTION_ADDDATE:
@@ -10381,6 +10385,7 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_DEFAULT:
     case MYLITE_SCALAR_FUNCTION_RAND:
     case MYLITE_SCALAR_FUNCTION_UUID:
+    case MYLITE_SCALAR_FUNCTION_UUID_SHORT:
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
     case MYLITE_SCALAR_FUNCTION_ADDDATE:
@@ -12256,6 +12261,7 @@ static int trigonometric_function_result(struct trigonometric_input input,
     case MYLITE_SCALAR_FUNCTION_DEFAULT:
     case MYLITE_SCALAR_FUNCTION_RAND:
     case MYLITE_SCALAR_FUNCTION_UUID:
+    case MYLITE_SCALAR_FUNCTION_UUID_SHORT:
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
     case MYLITE_SCALAR_FUNCTION_ADDDATE:
@@ -12576,6 +12582,7 @@ static int inverse_trigonometric_function_result(struct inverse_trigonometric_in
     case MYLITE_SCALAR_FUNCTION_DEFAULT:
     case MYLITE_SCALAR_FUNCTION_RAND:
     case MYLITE_SCALAR_FUNCTION_UUID:
+    case MYLITE_SCALAR_FUNCTION_UUID_SHORT:
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
     case MYLITE_SCALAR_FUNCTION_ADDDATE:
@@ -12806,6 +12813,7 @@ static int angle_conversion_result(struct angle_conversion_input conversion, dou
     case MYLITE_SCALAR_FUNCTION_DEFAULT:
     case MYLITE_SCALAR_FUNCTION_RAND:
     case MYLITE_SCALAR_FUNCTION_UUID:
+    case MYLITE_SCALAR_FUNCTION_UUID_SHORT:
     case MYLITE_SCALAR_FUNCTION_DATE_ADD:
     case MYLITE_SCALAR_FUNCTION_DATE_SUB:
     case MYLITE_SCALAR_FUNCTION_ADDDATE:
@@ -15715,6 +15723,32 @@ static int compare_values(const struct mylite_expression_value *left,
         if (status != 0) {
             return status;
         }
+        if (left_number.is_integer && right_number.is_integer) {
+            if (!left_number.is_unsigned && !right_number.is_unsigned) {
+                *out_compare = (left_number.int64_value > right_number.int64_value) -
+                               (left_number.int64_value < right_number.int64_value);
+                return 0;
+            }
+            if (left_number.is_unsigned && right_number.is_unsigned) {
+                *out_compare = (left_number.uint64_value > right_number.uint64_value) -
+                               (left_number.uint64_value < right_number.uint64_value);
+                return 0;
+            }
+            if (!left_number.is_unsigned) {
+                *out_compare =
+                    left_number.int64_value < 0
+                        ? -1
+                        : ((uint64_t)left_number.int64_value > right_number.uint64_value) -
+                              ((uint64_t)left_number.int64_value < right_number.uint64_value);
+                return 0;
+            }
+            *out_compare =
+                right_number.int64_value < 0
+                    ? 1
+                    : (left_number.uint64_value > (uint64_t)right_number.int64_value) -
+                          (left_number.uint64_value < (uint64_t)right_number.int64_value);
+            return 0;
+        }
         *out_compare = (left_number.real_value > right_number.real_value) -
                        (left_number.real_value < right_number.real_value);
         return 0;
@@ -16881,6 +16915,7 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"UUID_TO_BIN", MYLITE_SCALAR_FUNCTION_UUID_TO_BIN},
         {"BIN_TO_UUID", MYLITE_SCALAR_FUNCTION_BIN_TO_UUID},
         {"UUID", MYLITE_SCALAR_FUNCTION_UUID},
+        {"UUID_SHORT", MYLITE_SCALAR_FUNCTION_UUID_SHORT},
     };
 
     for (size_t index = 0U; index < sizeof(functions) / sizeof(functions[0]); ++index) {
@@ -16917,6 +16952,7 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_RAND:
     case MYLITE_SCALAR_FUNCTION_UUID:
+    case MYLITE_SCALAR_FUNCTION_UUID_SHORT:
         return true;
     case MYLITE_SCALAR_FUNCTION_UNKNOWN:
     case MYLITE_SCALAR_FUNCTION_CONCAT:

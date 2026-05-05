@@ -10,7 +10,8 @@ built-ins: no-table `SELECT`, table-backed `SELECT` projection, `WHERE`,
 It remains out of scope for default expressions, generated columns, replication
 metadata, and wire-protocol statement-based replication warnings.
 
-`UUID_SHORT()` remains out of scope.
+`UUID_SHORT()` generation is specified separately in
+`docs/specs/uuid-short-function/specs.md`.
 
 ## Sources
 
@@ -22,6 +23,8 @@ metadata, and wire-protocol statement-based replication warnings.
   `docs/specs/scalar-built-in-functions/specs.md`
 - Existing related MyLite UUID conversion slice:
   `docs/specs/uuid-conversion-functions/specs.md`
+- Existing related MyLite UUID_SHORT slice:
+  `docs/specs/uuid-short-function/specs.md`
 
 Observed behavior was verified against MySQL 8.4.9 in Docker container
 `mylite-mysql-849`, using:
@@ -126,6 +129,5 @@ Parser tests cover ordinary zero-argument function-call parsing.
 
 ## Compatibility Notes
 
-This slice does not implement `UUID_SHORT()`. It also does not emit
-statement-based replication warnings because MyLite does not yet implement
-binary logging or replication mode state.
+This slice does not emit statement-based replication warnings because MyLite
+does not yet implement binary logging or replication mode state.

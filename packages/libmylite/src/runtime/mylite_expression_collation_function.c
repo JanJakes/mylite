@@ -180,5 +180,8 @@ function_name_has_binary_numeric_collation_result(const struct mylite_sql_ast_no
         mylite_span_equal_ci(name->span, "CONNECTION_ID")) {
         return true;
     }
+    if (mylite_function_name_is_uuid_short(name)) {
+        return true;
+    }
     return mylite_span_equal_ci(name->span, "ROW_COUNT");
 }

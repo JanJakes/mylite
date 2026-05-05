@@ -66,6 +66,7 @@ bool mylite_function_name_is_is_uuid(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_uuid_to_bin(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_bin_to_uuid(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_uuid(const struct mylite_sql_ast_node *name);
+bool mylite_function_name_is_uuid_short(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_ascii(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_ord(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_has_search_result(const struct mylite_sql_ast_node *name);

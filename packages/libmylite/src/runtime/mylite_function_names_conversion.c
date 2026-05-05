@@ -102,3 +102,10 @@ bool mylite_function_name_is_uuid(const struct mylite_sql_ast_node *name)
 
     return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }
+
+bool mylite_function_name_is_uuid_short(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"UUID_SHORT"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}

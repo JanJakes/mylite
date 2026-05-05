@@ -656,6 +656,8 @@ into focused `*_types.h` headers.
   SELECT utility module.
 - [x] Split SELECT column-reference resolution, reference display-name copying,
   and alias copying out of the common SELECT utility module.
+- [x] Split string encoding descriptor inference into a focused expression
+  descriptor module.
 - [x] Split shared SHOW CREATE identifier quoting, string literal quoting, and
   SQLite bind lifetime helpers out of the mixed table/schema module.
 - [x] Split SHOW CREATE TABLE target resolution, catalog reads, column/index

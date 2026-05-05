@@ -142,6 +142,7 @@ add_library(mylite STATIC
   src/runtime/mylite_table_ddl_alter_validate.c
   src/runtime/mylite_table_ddl_alter_warnings.c
   src/runtime/mylite_table_ddl_index.c
+  src/runtime/mylite_table_ddl_plan.c
   src/runtime/mylite_table_ddl_statement.c
   src/runtime/mylite_temporal_functions.c
   src/runtime/mylite_transactions.c

@@ -381,6 +381,7 @@ into focused `*_types.h` headers.
 - [x] Move generated index-name logic into `mylite_table_ddl`.
 - [x] Move table DDL prepared-statement wrappers for rename, truncate, and
   standalone index statements into a focused table DDL statement module.
+- [x] Move table DDL plan/model cleanup into a focused table DDL plan module.
 - [x] Move ALTER TABLE prepared execution, rebuild transactions, shadow-table
   SQL, and diagnostics into a focused table DDL alter execution module.
 - [x] Move ALTER TABLE catalog rewrite helpers into a focused table DDL catalog

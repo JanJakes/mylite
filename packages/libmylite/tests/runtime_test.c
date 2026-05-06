@@ -146,6 +146,7 @@ enum {
     mysql_warning_division_by_zero = 1365,
     mysql_warning_incorrect_string_value = 1411,
     mysql_warning_datetime_function_overflow = 1441,
+    mysql_warning_no_referenced_row = 1452,
     mysql_warning_wrong_paramcount_to_native_fct = 1582,
     mysql_warning_wrong_parameters_to_native_fct = 1583,
     mysql_warning_unknown_locale = 1649,
@@ -509,6 +510,8 @@ static int test_replace_execution(void);
 static int test_insert_ignore_execution(void);
 
 static int test_insert_on_duplicate_key_update_execution(void);
+
+static int test_foreign_key_insert_execution(void);
 
 static int test_select_table_core_execution(void);
 
@@ -965,6 +968,7 @@ int main(void) {
     failures += test_replace_execution();
     failures += test_insert_ignore_execution();
     failures += test_insert_on_duplicate_key_update_execution();
+    failures += test_foreign_key_insert_execution();
     failures += test_select_table_core_execution();
     failures += test_inner_join_execution();
     failures += test_outer_join_execution();
@@ -48125,6 +48129,226 @@ static int test_insert_on_duplicate_key_update_execution(void) {
 
     mylite_close(database);
     // NOLINTEND(readability-function-cognitive-complexity,readability-magic-numbers)
+    return failures;
+}
+
+static int test_foreign_key_insert_execution(void) {
+    static const char *const child_columns[] = {"id", "parent_id"};
+    static const char *const child_values[] = {
+        "1",
+        "1",
+        "2",
+        NULL,
+    };
+    static const char *const child_after_checks_off_values[] = {
+        "1",
+        "1",
+        "2",
+        NULL,
+        "3",
+        "99",
+    };
+    static const char *const child_final_values[] = {
+        "1",
+        "1",
+        "2",
+        NULL,
+        "3",
+        "99",
+        "5",
+        "1",
+        "6",
+        "2",
+        "7",
+        "2",
+    };
+    static const char *const pair_columns[] = {"id", "a", "b"};
+    static const char *const pair_values[] = {
+        "1",
+        NULL,
+        "99",
+        "2",
+        "1",
+        "1",
+    };
+    static const char *const self_columns[] = {"id", "parent_id"};
+    static const char *const self_values[] = {"1", "1"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open foreign key insert database");
+    failures += execute_sql(database, "CREATE DATABASE fk_insert_runtime", MYLITE_DONE);
+    failures += execute_sql(database, "USE fk_insert_runtime", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE parent_fk (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE child_fk ("
+        "id INT PRIMARY KEY, parent_id INT, "
+        "FOREIGN KEY (parent_id) REFERENCES parent_fk(id))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "INSERT INTO parent_fk VALUES (1),(2)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO child_fk VALUES (1,1),(2,NULL)", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id, parent_id FROM child_fk ORDER BY id",
+        child_columns,
+        2,
+        child_values,
+        2,
+        "foreign key insert accepts matching and null rows"
+    );
+
+    failures += prepare_sql(database, "INSERT INTO child_fk VALUES (3,99)", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "foreign key insert rejects");
+    failures += expect_contains(
+        mylite_error_message(database),
+        "foreign key constraint fails",
+        "foreign key insert error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id, parent_id FROM child_fk ORDER BY id",
+        child_columns,
+        2,
+        child_values,
+        2,
+        "foreign key failed insert rolled back"
+    );
+
+    failures += execute_sql(database, "SET foreign_key_checks = 0", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO child_fk VALUES (3,99)", MYLITE_DONE);
+    failures += execute_sql(database, "SET foreign_key_checks = 1", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id, parent_id FROM child_fk ORDER BY id",
+        child_columns,
+        2,
+        child_after_checks_off_values,
+        3,
+        "foreign key checks off permits unmatched row"
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT IGNORE INTO child_fk VALUES (4,99)",
+        0,
+        "foreign key insert ignore affected rows"
+    );
+    failures += expect_int(mylite_warning_count(database), 1, "foreign key insert ignore warning");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_no_referenced_row,
+        "foreign key insert ignore warning code"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, parent_id FROM child_fk ORDER BY id",
+        child_columns,
+        2,
+        child_after_checks_off_values,
+        3,
+        "foreign key insert ignore skips unmatched row"
+    );
+
+    failures +=
+        execute_sql(database, "INSERT INTO child_fk SET id = 5, parent_id = 1", MYLITE_DONE);
+    failures +=
+        prepare_sql(database, "INSERT INTO child_fk SET id = 8, parent_id = 99", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "foreign key insert set rejects");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "REPLACE INTO child_fk VALUES (6,2)", MYLITE_DONE);
+    failures += prepare_sql(database, "REPLACE INTO child_fk VALUES (9,99)", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "foreign key replace rejects");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "INSERT INTO child_fk VALUES (7,1)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO child_fk VALUES (7,2) "
+        "ON DUPLICATE KEY UPDATE parent_id = VALUES(parent_id)",
+        2,
+        "foreign key ODKU accepts matching parent"
+    );
+    failures += prepare_sql(
+        database,
+        "INSERT INTO child_fk VALUES (7,99) "
+        "ON DUPLICATE KEY UPDATE parent_id = VALUES(parent_id)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "foreign key ODKU rejects");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id, parent_id FROM child_fk ORDER BY id",
+        child_columns,
+        2,
+        child_final_values,
+        6,
+        "foreign key write forms leave expected rows"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE parent_pair_fk (a INT, b INT, PRIMARY KEY(a,b))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE child_pair_fk ("
+        "id INT PRIMARY KEY, a INT, b INT, "
+        "FOREIGN KEY (a,b) REFERENCES parent_pair_fk(a,b))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "INSERT INTO parent_pair_fk VALUES (1,1)", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO child_pair_fk VALUES (1,NULL,99),(2,1,1)", MYLITE_DONE);
+    failures += prepare_sql(database, "INSERT INTO child_pair_fk VALUES (3,1,2)", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "composite foreign key rejects");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id, a, b FROM child_pair_fk ORDER BY id",
+        pair_columns,
+        3,
+        pair_values,
+        2,
+        "composite foreign key rows"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE self_fk ("
+        "id INT PRIMARY KEY, parent_id INT, "
+        "FOREIGN KEY (parent_id) REFERENCES self_fk(id))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "INSERT INTO self_fk VALUES (1,1)", MYLITE_DONE);
+    failures += prepare_sql(database, "INSERT INTO self_fk VALUES (2,3)", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "self foreign key rejects");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id, parent_id FROM self_fk",
+        self_columns,
+        2,
+        self_values,
+        1,
+        "self foreign key rows"
+    );
+
+    mylite_close(database);
     return failures;
 }
 

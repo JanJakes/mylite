@@ -41,9 +41,10 @@ commit.
 
 ## DML Enforcement
 
-- [ ] Enforce child-row insert checks for `INSERT ... VALUES`, `INSERT ... SET`,
-      `INSERT ... SELECT FROM DUAL`, `ON DUPLICATE KEY UPDATE`, `INSERT IGNORE`,
-      and `REPLACE`.
+- [x] Enforce child-row insert checks for `INSERT ... VALUES`, `INSERT ... SET`,
+      `ON DUPLICATE KEY UPDATE`, `INSERT IGNORE`, and `REPLACE`.
+- [ ] Enforce child-row insert checks for `INSERT ... SELECT FROM DUAL` after
+      query-source insert support lands.
 - [ ] Enforce child-row update checks for single-table and joined `UPDATE`.
 - [ ] Enforce parent-row `ON UPDATE RESTRICT` and `NO ACTION`.
 - [ ] Enforce parent-row `ON DELETE RESTRICT` and `NO ACTION`.
@@ -51,8 +52,10 @@ commit.
 - [ ] Implement `ON UPDATE SET NULL` and `ON DELETE SET NULL`.
 - [ ] Verify and document `SET DEFAULT` behavior before enabling or rejecting
       it with a MySQL-compatible diagnostic.
-- [ ] Apply `foreign_key_checks` consistently without retroactive validation on
-      re-enable.
+- [x] Apply `foreign_key_checks` to implemented child-row insert checks without
+      retroactive validation on re-enable.
+- [ ] Apply `foreign_key_checks` to update/delete enforcement and referential
+      actions.
 
 ## DDL Dependencies
 

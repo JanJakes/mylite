@@ -273,9 +273,10 @@ level application surfaces.
        table-level `CREATE TABLE ... FOREIGN KEY` definitions. Full
        build-dependent engine catalog breadth, full MySQL character-set
        catalog breadth, full MySQL collation catalog breadth, exact MySQL
-       keyword catalog completeness, ALTER foreign-key rows, DML foreign-key
-       enforcement, privilege filtering, exact MySQL field metadata, and
-       unknown information-schema tables remain deferred. Specs:
+       keyword catalog completeness, ALTER foreign-key rows, parent-side and
+       standalone-update/delete foreign-key enforcement, privilege filtering,
+       exact MySQL field metadata, and unknown information-schema tables remain
+       deferred. Specs:
        [SHOW TABLES](../show-tables/specs.md),
        [SHOW TABLE STATUS](../show-table-status/specs.md),
        [SHOW COLUMNS](../show-columns/specs.md),

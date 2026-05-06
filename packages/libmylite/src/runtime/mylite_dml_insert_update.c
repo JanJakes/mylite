@@ -155,7 +155,11 @@ static int execute_insert_update_bound_row(
     struct mylite_insert_bound_value *stored_values = NULL;
     struct mylite_insert_bound_value *updated_values = NULL;
     bool update_conflicts = false;
+    bool row_changed = false;
+    bool ignored = false;
     int status = MYLITE_OK;
+    const char *schema_name =
+        values_plan->schema_name == NULL ? selected_schema : values_plan->schema_name;
 
     if (database == NULL || values_plan == NULL || update_plan == NULL || insert == NULL ||
         table == NULL || column_indexes == NULL || column_indexes->update_columns == NULL ||
@@ -169,6 +173,18 @@ static int execute_insert_update_bound_row(
         return status;
     }
     if (!conflict.conflicts) {
+        status = mylite_dml_validate_insert_child_foreign_keys(
+            database,
+            schema_name,
+            values_plan->table_name,
+            values_plan->ignore,
+            table,
+            values,
+            &ignored
+        );
+        if (status != MYLITE_OK || ignored) {
+            return status;
+        }
         return mylite_dml_write_insert_candidate_row(database, insert, table, values, state);
     }
 
@@ -211,8 +227,25 @@ static int execute_insert_update_bound_row(
             &update_conflicts
         );
     }
-    if (status == MYLITE_OK && !update_conflicts &&
-        mylite_dml_insert_update_row_changed(stored_values, updated_values, table->column_count)) {
+    if (status == MYLITE_OK && !update_conflicts) {
+        row_changed = mylite_dml_insert_update_row_changed(
+            stored_values,
+            updated_values,
+            table->column_count
+        );
+    }
+    if (status == MYLITE_OK && row_changed) {
+        status = mylite_dml_validate_insert_child_foreign_keys(
+            database,
+            schema_name,
+            values_plan->table_name,
+            values_plan->ignore,
+            table,
+            updated_values,
+            &ignored
+        );
+    }
+    if (status == MYLITE_OK && !ignored && row_changed) {
         status = mylite_dml_write_insert_update_candidate(
             database,
             table,

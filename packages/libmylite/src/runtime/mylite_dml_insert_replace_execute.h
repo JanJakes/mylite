@@ -9,6 +9,8 @@ int mylite_dml_write_replace_candidate_row(
     mylite_db *database,
     sqlite3_stmt *insert,
     sqlite3_stmt *delete_stmt,
+    const char *schema_name,
+    const char *table_name,
     const struct mylite_insert_table *table,
     struct mylite_insert_execution_state *state,
     const struct mylite_insert_bound_value *values

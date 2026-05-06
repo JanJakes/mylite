@@ -116,17 +116,24 @@ runtime slices. Temporary table behavior must be verified separately and
 implemented with explicit MySQL-compatible diagnostics before it is marked
 supported.
 
-The first implemented runtime slice records table-level `CREATE TABLE`
-foreign-key definitions for persistent base tables. It copies the constraint
+The first implemented runtime slices record table-level `CREATE TABLE`
+foreign-key definitions for persistent base tables and enforce child-row
+checks for supported insert-like DML. Definition support copies the constraint
 shape into the create-table plan, generates MySQL-style unnamed constraint
 names, creates or reuses supporting child indexes, validates the referenced
 unique or primary key when the parent table exists, allows missing referenced
 tables only while `foreign_key_checks=0`, and writes catalog-backed
 `TABLE_CONSTRAINTS`, `KEY_COLUMN_USAGE`, `REFERENTIAL_CONSTRAINTS`, and
-`SHOW CREATE TABLE` output. Temporary-table foreign-key definitions are
-rejected with a deterministic `Cannot add foreign key constraint` diagnostic.
-DML enforcement, referential actions, ALTER ADD/DROP FOREIGN KEY, and
-dependency restrictions remain follow-up slices.
+`SHOW CREATE TABLE` output. Insert enforcement covers `INSERT ... VALUES`,
+`INSERT ... SET`, insert and update branches of `ON DUPLICATE KEY UPDATE`,
+`INSERT IGNORE`, and `REPLACE`. It skips checks when `foreign_key_checks=0`,
+does not retroactively validate old rows when checks are re-enabled, accepts
+rows where any child foreign-key column is `NULL`, treats simple self-references
+to the candidate row as satisfied, and demotes unmatched child rows to warning
+1452 for `INSERT IGNORE`. Temporary-table foreign-key definitions are rejected
+with a deterministic `Cannot add foreign key constraint` diagnostic.
+Referential actions, ALTER ADD/DROP FOREIGN KEY, standalone UPDATE/DELETE
+enforcement, and dependency restrictions remain follow-up slices.
 
 ## DDL Semantics
 

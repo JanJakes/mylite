@@ -197,6 +197,17 @@ int mylite_dml_execute_insert_row(
         );
     }
     if (status == MYLITE_OK && !ignored) {
+        status = mylite_dml_validate_insert_child_foreign_keys(
+            database,
+            schema_name,
+            plan->table_name,
+            plan->ignore,
+            table,
+            values,
+            &ignored
+        );
+    }
+    if (status == MYLITE_OK && !ignored) {
         status = mylite_dml_write_insert_candidate_row(database, insert, table, values, state);
     }
 
@@ -248,6 +259,17 @@ int mylite_dml_execute_insert_set_row(
             table,
             values,
             state,
+            &ignored
+        );
+    }
+    if (status == MYLITE_OK && !ignored) {
+        status = mylite_dml_validate_insert_child_foreign_keys(
+            database,
+            schema_name,
+            values_plan->table_name,
+            values_plan->ignore,
+            table,
+            values,
             &ignored
         );
     }

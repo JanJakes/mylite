@@ -20,19 +20,37 @@ int mylite_dml_write_replace_candidate_row(
     mylite_db *database,
     sqlite3_stmt *insert,
     sqlite3_stmt *delete_stmt,
+    const char *schema_name,
+    const char *table_name,
     const struct mylite_insert_table *table,
     struct mylite_insert_execution_state *state,
     const struct mylite_insert_bound_value *values
 ) {
+    bool ignored = false;
+    int status = MYLITE_OK;
+
     if (database == NULL || insert == NULL || delete_stmt == NULL || table == NULL ||
-        state == NULL || values == NULL) {
+        state == NULL || values == NULL || schema_name == NULL || table_name == NULL) {
         return MYLITE_MISUSE;
+    }
+
+    status = mylite_dml_validate_insert_child_foreign_keys(
+        database,
+        schema_name,
+        table_name,
+        false,
+        table,
+        values,
+        &ignored
+    );
+    if (status != MYLITE_OK) {
+        return status;
     }
 
     for (;;) {
         struct mylite_insert_unique_conflict conflict = {0};
-        int status = mylite_dml_find_insert_unique_conflict(database, table, values, &conflict);
 
+        status = mylite_dml_find_insert_unique_conflict(database, table, values, &conflict);
         if (status != MYLITE_OK) {
             return status;
         }
@@ -95,6 +113,8 @@ int mylite_dml_execute_replace_row(
             database,
             insert,
             delete_stmt,
+            schema_name,
+            plan->table_name,
             table,
             state,
             values
@@ -150,6 +170,8 @@ int mylite_dml_execute_replace_set_row(
         database,
         insert,
         delete_stmt,
+        schema_name,
+        values_plan->table_name,
         table,
         state,
         values

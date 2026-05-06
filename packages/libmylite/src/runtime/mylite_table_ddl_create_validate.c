@@ -50,6 +50,13 @@ static bool create_table_foreign_key_columns_exist(
     const struct mylite_create_table_foreign_key *foreign_key
 );
 
+static int resolve_self_referenced_unique_constraint(
+    const struct mylite_create_table_plan *plan,
+    const struct mylite_create_table_foreign_key *foreign_key,
+    char **out_constraint_name,
+    bool *out_found
+);
+
 static int resolve_referenced_unique_constraint(
     mylite_db *database,
     const struct mylite_create_table_foreign_key *foreign_key,
@@ -295,6 +302,28 @@ static bool validate_create_table_foreign_key(
     if (!create_table_foreign_key_columns_exist(database, plan, foreign_key)) {
         return false;
     }
+    if (mylite_ascii_case_equal(foreign_key->referenced_schema_name, schema_name) &&
+        mylite_ascii_case_equal(foreign_key->referenced_table_name, plan->table_name)) {
+        status = resolve_self_referenced_unique_constraint(
+            plan,
+            foreign_key,
+            &unique_constraint_name,
+            &found_unique_constraint
+        );
+        if (status != MYLITE_OK) {
+            if (status == MYLITE_NOMEM) {
+                (void)mylite_diagnostics_set_error_message(database, "out of memory");
+            }
+            return false;
+        }
+        if (!found_unique_constraint) {
+            (void)
+                mylite_diagnostics_set_error_message(database, "Cannot add foreign key constraint");
+            return false;
+        }
+        foreign_key->unique_constraint_name = unique_constraint_name;
+        return true;
+    }
     status = mylite_catalog_persistent_table_exists(
         database,
         foreign_key->referenced_schema_name,
@@ -367,6 +396,42 @@ static bool create_table_foreign_key_columns_exist(
         }
     }
     return true;
+}
+
+static int resolve_self_referenced_unique_constraint(
+    const struct mylite_create_table_plan *plan,
+    const struct mylite_create_table_foreign_key *foreign_key,
+    char **out_constraint_name,
+    bool *out_found
+) {
+    *out_constraint_name = NULL;
+    *out_found = false;
+    for (size_t index = 0U; index < plan->index_count; ++index) {
+        const struct mylite_create_table_index *candidate = &plan->indexes[index];
+        bool matches = candidate->part_count == foreign_key->referenced_column_count;
+
+        if (!candidate->is_primary && !candidate->is_unique) {
+            continue;
+        }
+        for (size_t part = 0U; matches && part < candidate->part_count; ++part) {
+            matches = mylite_ascii_case_equal(
+                candidate->parts[part].column_name,
+                foreign_key->referenced_column_names[part]
+            );
+        }
+        if (matches) {
+            *out_constraint_name = mylite_copy_span_text(
+                candidate->name,
+                candidate->name == NULL ? 0U : strlen(candidate->name)
+            );
+            if (*out_constraint_name == NULL) {
+                return MYLITE_NOMEM;
+            }
+            *out_found = true;
+            return MYLITE_OK;
+        }
+    }
+    return MYLITE_OK;
 }
 
 static int resolve_referenced_unique_constraint(

@@ -87,6 +87,15 @@ int mylite_dml_initialize_insert_ignore_warning_state(
     struct mylite_insert_execution_state *state
 );
 void mylite_dml_insert_execution_state_deinit(struct mylite_insert_execution_state *state);
+int mylite_dml_validate_insert_child_foreign_keys(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    bool ignore,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_bound_value *values,
+    bool *out_ignored
+);
 int mylite_dml_promote_expression_warnings(mylite_db *database, size_t warning_start);
 int mylite_dml_set_expression_condition_error(mylite_db *database, size_t warning_start);
 int mylite_dml_resolve_update_expression_identifier(

@@ -1613,6 +1613,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_references_attribute(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *reference
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_check_attribute(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token start_token,
+    struct mylite_sql_ast_node *constraint_name,
+    struct mylite_sql_ast_node *expression,
+    struct mylite_sql_parser_constraint_enforcement enforcement
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_generated_attribute(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token start_token,

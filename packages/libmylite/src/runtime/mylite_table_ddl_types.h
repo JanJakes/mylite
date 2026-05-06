@@ -37,6 +37,7 @@ struct mylite_create_table_column {
     bool visible;
     bool has_generated_default;
     bool has_on_update_current_timestamp;
+    bool has_unsupported_check;
     enum mylite_sql_ast_generated_column_storage generated_column_storage;
 };
 
@@ -71,6 +72,7 @@ struct mylite_create_table_plan {
     struct mylite_create_table_index *indexes;
     size_t index_count;
     bool temporary;
+    bool has_unsupported_check;
     bool has_unsupported_foreign_key;
 };
 

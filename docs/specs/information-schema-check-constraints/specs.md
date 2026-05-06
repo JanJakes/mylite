@@ -174,8 +174,8 @@ Runtime coverage:
 - composable projections, `DISTINCT`/`ALL`, `WHERE`, `ORDER BY`, `LIMIT`,
   `COUNT(*)`, aliases, and qualified wildcard forms are covered by the shared
   system-view SELECT path
-- if CHECK DDL parses in the current runtime, unsupported CHECK DDL must not
-  create `CHECK_CONSTRAINTS` rows
+- unsupported `ALTER TABLE ... ADD CHECK ...` and
+  `CREATE TABLE ... CHECK ...` DDL must not create `CHECK_CONSTRAINTS` rows
 
 ## Known Gaps
 

@@ -1278,6 +1278,8 @@ const char *mylite_sql_ast_column_attribute_name(
         return "generated";
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_REFERENCES:
         return "references";
+    case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_CHECK:
+        return "check";
     }
 
     return "unknown";

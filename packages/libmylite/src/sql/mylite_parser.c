@@ -5728,6 +5728,38 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_references_attribute(
     return attribute;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_check_attribute(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token start_token,
+    struct mylite_sql_ast_node *constraint_name,
+    struct mylite_sql_ast_node *expression,
+    struct mylite_sql_parser_constraint_enforcement enforcement
+) {
+    struct mylite_sql_source_span span = span_from_token(&start_token);
+    struct mylite_sql_ast_node *attribute = NULL;
+
+    if (constraint_name != NULL) {
+        span = span_join(span, constraint_name->span);
+    }
+    if (expression != NULL) {
+        span = span_join(span, expression->span);
+    }
+    if (enforcement.start.text != NULL) {
+        span = span_join(span, span_from_token(&enforcement.end));
+    }
+
+    attribute = make_node(state, MYLITE_SQL_AST_COLUMN_ATTRIBUTE, span);
+    if (attribute == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_column_attribute(attribute, MYLITE_SQL_AST_COLUMN_ATTRIBUTE_CHECK);
+    mylite_sql_ast_node_set_constraint_enforcement(attribute, enforcement.enforcement);
+    mylite_sql_ast_node_append_child(attribute, constraint_name);
+    mylite_sql_ast_node_append_child(attribute, expression);
+    return attribute;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_generated_attribute(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token start_token,

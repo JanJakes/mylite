@@ -658,7 +658,7 @@ check_or_constraint(A) ::= CONSTRAINT(T). {
     };
 }
 
-opt_check_enforcement(A) ::= . {
+opt_check_enforcement(A) ::= . [LOWEST] {
     A = (struct mylite_sql_parser_constraint_enforcement){
         .enforcement = MYLITE_SQL_AST_CONSTRAINT_ENFORCEMENT_DEFAULT,
     };
@@ -2791,6 +2791,9 @@ table_element(A) ::= table_secondary_index(B). {
 table_element(A) ::= table_unique_index(B). {
     A = B;
 }
+table_element(A) ::= table_check_constraint(B). {
+    A = B;
+}
 table_element(A) ::= table_foreign_key_constraint(B). {
     A = B;
 }
@@ -3343,6 +3346,12 @@ column_attribute(A) ::= UNIQUE(U) KEY(K). {
 column_attribute(A) ::= reference_definition(B). {
     A = mylite_sql_parser_make_column_references_attribute(state, B);
 }
+column_attribute(A) ::= CHECK(T) LPAREN expression(E) RPAREN opt_check_enforcement(N). {
+    A = mylite_sql_parser_make_column_check_attribute(state, T, NULL, E, N);
+}
+column_attribute(A) ::= CONSTRAINT(C) opt_constraint_name(N) CHECK LPAREN expression(E) RPAREN opt_check_enforcement(F). {
+    A = mylite_sql_parser_make_column_check_attribute(state, C, N, E, F);
+}
 column_attribute(A) ::= opt_generated_always(G) AS(AK) LPAREN expression(E) RPAREN opt_generated_column_storage(S). {
     A = mylite_sql_parser_make_column_generated_attribute(state, G, AK, E, S);
 }
@@ -3394,6 +3403,13 @@ table_unique_index(A) ::= UNIQUE(T) opt_unique_index_keyword opt_index_name(B) o
 }
 table_unique_index(A) ::= CONSTRAINT(C) opt_constraint_name(B) UNIQUE opt_unique_index_keyword opt_index_name(D) opt_index_type(E) LPAREN key_part_list(F) RPAREN index_option_list(G). {
     A = mylite_sql_parser_make_unique_index(state, C, B, D, E, F, G);
+}
+
+table_check_constraint(A) ::= CHECK(T) LPAREN expression(E) RPAREN opt_check_enforcement(N). {
+    A = mylite_sql_parser_make_alter_table_add_check_action(state, T, NULL, E, N);
+}
+table_check_constraint(A) ::= CONSTRAINT(C) opt_constraint_name(N) CHECK LPAREN expression(E) RPAREN opt_check_enforcement(F). {
+    A = mylite_sql_parser_make_alter_table_add_check_action(state, C, N, E, F);
 }
 
 table_foreign_key_constraint(A) ::= FOREIGN(F) KEY opt_index_name(B) LPAREN identifier_list(C) RPAREN reference_definition(D). {

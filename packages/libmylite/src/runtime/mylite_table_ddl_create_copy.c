@@ -239,6 +239,9 @@ static int copy_create_table_elements(
 
             status = mylite_table_ddl_copy_create_table_column(element, plan);
             if (status == MYLITE_OK) {
+                if (plan->columns[column_index].has_unsupported_check) {
+                    plan->has_unsupported_check = true;
+                }
                 status = add_inline_create_table_column_indexes(plan, &plan->columns[column_index]);
             }
         } else if (
@@ -247,6 +250,11 @@ static int copy_create_table_elements(
             element->kind == MYLITE_SQL_AST_SECONDARY_INDEX
         ) {
             status = mylite_table_ddl_copy_create_table_index(element, plan);
+        } else if (
+            element->kind == MYLITE_SQL_AST_ALTER_TABLE_ACTION &&
+            element->alter_table_action == MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_CHECK
+        ) {
+            plan->has_unsupported_check = true;
         } else if (
             element->kind == MYLITE_SQL_AST_ALTER_TABLE_ACTION &&
             element->alter_table_action == MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_FOREIGN_KEY

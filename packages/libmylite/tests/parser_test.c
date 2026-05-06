@@ -26,6 +26,8 @@ static int test_create_table_primary_keys_auto_increment(void);
 
 static int test_create_table_unique_secondary_indexes(void);
 
+static int test_create_table_check_syntax(void);
+
 static int test_create_table_foreign_key_syntax(void);
 
 static int test_create_table_base_execution_syntax(void);
@@ -393,6 +395,7 @@ int main(void) {
     failures += test_create_table_column_attributes();
     failures += test_create_table_primary_keys_auto_increment();
     failures += test_create_table_unique_secondary_indexes();
+    failures += test_create_table_check_syntax();
     failures += test_create_table_foreign_key_syntax();
     failures += test_create_table_base_execution_syntax();
     failures += test_create_drop_index_syntax();
@@ -3298,6 +3301,137 @@ static int test_create_table_unique_secondary_indexes(void) {
     failures += parse_sql(
         "CREATE TABLE bad_unique_engine_attribute_number "
         "(a INT, UNIQUE KEY uq (a) ENGINE_ATTRIBUTE 123);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_create_table_check_syntax(void) {
+    enum {
+        expected_element_count = 6,
+        inline_check_column = 0,
+        named_inline_check_column = 1,
+        unnamed_check = 3,
+        generated_name_check = 4,
+        named_check = 5,
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *elements = NULL;
+    const struct mylite_sql_ast_node *attributes = NULL;
+    const struct mylite_sql_ast_node *attribute = NULL;
+    const struct mylite_sql_ast_node *action = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "CREATE TABLE checks_valid ("
+        "a INT CHECK (a > 0) NOT ENFORCED, "
+        "b INT CONSTRAINT chk_b CHECK (b < 10) ENFORCED, "
+        "c INT, "
+        "CHECK (c <> 0), "
+        "CONSTRAINT CHECK (a <> b), "
+        "CONSTRAINT chk_table CHECK (a + b > 0) NOT ENFORCED);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    elements = child_at(child_at(result.root, 0U), 1U);
+    failures += expect_node(elements, MYLITE_SQL_AST_COLUMN_DEFINITION_LIST, "check element list");
+    failures += expect_child_count(elements, expected_element_count, "check element count");
+
+    attributes = child_at(child_at(elements, inline_check_column), 2U);
+    attribute = child_at(attributes, 0U);
+    failures += expect_column_attribute(
+        attribute,
+        MYLITE_SQL_AST_COLUMN_ATTRIBUTE_CHECK,
+        "inline check attribute"
+    );
+    failures += expect_node(
+        child_at(attribute, 0U),
+        MYLITE_SQL_AST_BINARY_EXPRESSION,
+        "inline check expression"
+    );
+    if (attribute != NULL &&
+        attribute->constraint_enforcement != MYLITE_SQL_AST_CONSTRAINT_ENFORCEMENT_NOT_ENFORCED) {
+        fprintf(stderr, "inline check NOT ENFORCED was not recorded\n");
+        failures = 1;
+    }
+
+    attributes = child_at(child_at(elements, named_inline_check_column), 2U);
+    attribute = child_at(attributes, 0U);
+    failures += expect_column_attribute(
+        attribute,
+        MYLITE_SQL_AST_COLUMN_ATTRIBUTE_CHECK,
+        "named inline check attribute"
+    );
+    failures += expect_span_text(child_at(attribute, 0U), "chk_b", "named inline check name");
+    failures += expect_node(
+        child_at(attribute, 1U),
+        MYLITE_SQL_AST_BINARY_EXPRESSION,
+        "named inline check expression"
+    );
+    if (attribute != NULL &&
+        attribute->constraint_enforcement != MYLITE_SQL_AST_CONSTRAINT_ENFORCEMENT_ENFORCED) {
+        fprintf(stderr, "named inline check ENFORCED was not recorded\n");
+        failures = 1;
+    }
+
+    action = child_at(elements, unnamed_check);
+    failures += expect_alter_table_action(
+        action,
+        MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_CHECK,
+        false,
+        "create table unnamed check action"
+    );
+    failures += expect_node(
+        child_at(action, 0U),
+        MYLITE_SQL_AST_BINARY_EXPRESSION,
+        "unnamed check expression"
+    );
+
+    action = child_at(elements, generated_name_check);
+    failures += expect_alter_table_action(
+        action,
+        MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_CHECK,
+        false,
+        "create table generated-name check action"
+    );
+    failures += expect_node(
+        child_at(action, 0U),
+        MYLITE_SQL_AST_BINARY_EXPRESSION,
+        "generated-name check expression"
+    );
+
+    action = child_at(elements, named_check);
+    failures += expect_alter_table_action(
+        action,
+        MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_CHECK,
+        false,
+        "create table named check action"
+    );
+    failures += expect_span_text(child_at(action, 0U), "chk_table", "named table check name");
+    failures += expect_node(
+        child_at(action, 1U),
+        MYLITE_SQL_AST_BINARY_EXPRESSION,
+        "named table check expression"
+    );
+    if (action != NULL &&
+        action->constraint_enforcement != MYLITE_SQL_AST_CONSTRAINT_ENFORCEMENT_NOT_ENFORCED) {
+        fprintf(stderr, "named table check NOT ENFORCED was not recorded\n");
+        failures = 1;
+    }
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE bad_check_empty (a INT, CHECK ());",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE bad_check_enforcement (a INT, CHECK (a > 0) NOT);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

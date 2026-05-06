@@ -65,7 +65,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
 - [ ] Complete complex `ALTER TABLE ... MODIFY/CHANGE COLUMN` forms,
       preservation behavior, and affected rows.
 - [x] Support or intentionally diagnose `ALTER TABLE ... ADD/DROP CHECK`.
-- [ ] Complete `CREATE TABLE ... CHECK (...)` syntax forms.
+- [x] Complete `CREATE TABLE ... CHECK (...)` syntax forms. Inline and
+      table-level CHECK clauses parse and return a deterministic unsupported
+      diagnostic before catalog mutation until CHECK catalog/enforcement support
+      lands.
 - [x] Complete inline and table-level foreign-key DDL syntax coverage. Inline
       `REFERENCES` is parsed and ignored like the verified MySQL 8.4.9 shape;
       table-level `FOREIGN KEY` clauses parse and return a deterministic

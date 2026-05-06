@@ -38,8 +38,8 @@ Out of scope:
   `CREATE TABLE ... SELECT`
 - temporary-table transaction exceptions
 - full engine-specific validation, prefix-length suitability, functional key
-  parts, generated-column runtime evaluation, references, checks, partitions,
-  and unsupported table options
+  parts, generated-column runtime evaluation, executable references,
+  executable checks, partitions, and unsupported table options
 - warning records for `IF NOT EXISTS` and storage-engine normalization
 - `SHOW CREATE TABLE`, `SHOW COLUMNS`, `SHOW INDEX`, and result-set protocol
   metadata beyond the current public API

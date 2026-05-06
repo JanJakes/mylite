@@ -2929,6 +2929,29 @@ static int test_information_schema_check_constraints_execution(void) {
         "information schema check constraints count filter"
     );
 
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE check_constraints_create ("
+        "id INT CHECK (id > 0) NOT ENFORCED,"
+        "body VARCHAR(20),"
+        "CONSTRAINT chk_body CHECK (body <> '') ENFORCED)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_UNSUPPORTED,
+        "create check does not create check constraints rows"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_empty_information_schema_table(
+        database,
+        "SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS",
+        columns,
+        check_constraints_column_count
+    );
+
     failures += expect_information_schema_tables_views(database);
     failures += expect_select_rows(
         database,
@@ -33827,6 +33850,34 @@ static int test_create_table_base_execution(void) {
     failures += expect_simple_create_table_row(database);
     failures += expect_simple_create_column_rows(database);
     failures += expect_simple_create_statistics_rows(database);
+
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE check_constraints ("
+        "id INT CHECK (id > 0) NOT ENFORCED, "
+        "body VARCHAR(20), "
+        "CONSTRAINT chk_body CHECK (body <> '') ENFORCED)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_UNSUPPORTED,
+        "create table check placeholder rejected"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "CHECK",
+        "create table check unsupported error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_table_name_row(database, "check_constraints");
+    failures += expect_no_information_schema_table_constraints_row(
+        database,
+        "check_constraints",
+        "chk_body"
+    );
 
     failures += execute_sql(
         database,

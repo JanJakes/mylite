@@ -135,6 +135,10 @@ static int validate_insert_update_assignment_result(
     if (status != MYLITE_OK) {
         return status;
     }
+    status = mylite_dml_coerce_insert_numeric_value(database, column, 1U, value);
+    if (status != MYLITE_OK) {
+        return status;
+    }
     if (!column->auto_increment) {
         return MYLITE_OK;
     }

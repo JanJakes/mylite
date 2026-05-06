@@ -6,8 +6,33 @@
 #include "mylite_select.h"
 #include "mylite_select_eval_expression.h"
 #include "mylite_select_rowset.h"
+#include "mylite_span.h"
 
+#include <stdio.h>
 #include <stdlib.h>
+
+static char *select_output_value_to_text(
+    const mylite_stmt *stmt,
+    size_t output_index,
+    const struct mylite_expression_value *value
+);
+
+static const struct mylite_field_descriptor *select_output_descriptor(
+    const mylite_stmt *stmt,
+    size_t output_index
+);
+
+static char *select_decimal_output_value_to_text(
+    const struct mylite_expression_value *value,
+    unsigned int decimals
+);
+
+static bool select_output_value_as_double(
+    const struct mylite_expression_value *value,
+    double *out_number
+);
+
+static char *format_decimal_output_value(double value, unsigned int decimals);
 
 int mylite_select_eval_group_key(
     mylite_stmt *stmt,
@@ -220,8 +245,11 @@ int mylite_select_eval_set_current_row(
             return status;
         }
         if (stmt->select_result.current_values[index].kind != MYLITE_EXPRESSION_VALUE_NULL) {
-            stmt->select_result.current_texts[index] =
-                mylite_expression_value_to_text(&stmt->select_result.current_values[index]);
+            stmt->select_result.current_texts[index] = select_output_value_to_text(
+                stmt,
+                index,
+                &stmt->select_result.current_values[index]
+            );
             if (stmt->select_result.current_texts[index] == NULL) {
                 (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
                 return MYLITE_NOMEM;
@@ -303,4 +331,106 @@ int mylite_select_eval_row_predicate(
         callbacks,
         out_matches
     );
+}
+
+static char *select_output_value_to_text(
+    const mylite_stmt *stmt,
+    size_t output_index,
+    const struct mylite_expression_value *value
+) {
+    const struct mylite_field_descriptor *descriptor = select_output_descriptor(stmt, output_index);
+
+    if (descriptor != NULL && descriptor->type == MYLITE_FIELD_TYPE_NEWDECIMAL) {
+        char *decimal_text = select_decimal_output_value_to_text(value, descriptor->decimals);
+
+        if (decimal_text != NULL) {
+            return decimal_text;
+        }
+    }
+    return mylite_expression_value_to_text(value);
+}
+
+static const struct mylite_field_descriptor *select_output_descriptor(
+    const mylite_stmt *stmt,
+    size_t output_index
+) {
+    if (stmt == NULL || output_index >= stmt->result_metadata.column_count ||
+        stmt->result_metadata.columns == NULL) {
+        return NULL;
+    }
+    return &stmt->result_metadata.columns[output_index].descriptor;
+}
+
+static char *select_decimal_output_value_to_text(
+    const struct mylite_expression_value *value,
+    unsigned int decimals
+) {
+    double number = 0.0;
+
+    if (!select_output_value_as_double(value, &number)) {
+        return NULL;
+    }
+    return format_decimal_output_value(number, decimals);
+}
+
+static bool select_output_value_as_double(
+    const struct mylite_expression_value *value,
+    double *out_number
+) {
+    if (value == NULL || out_number == NULL || value->kind == MYLITE_EXPRESSION_VALUE_NULL) {
+        return false;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_INT64) {
+        *out_number = (double)value->int64_value;
+        return true;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_UINT64) {
+        *out_number = (double)value->uint64_value;
+        return true;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_REAL) {
+        *out_number = value->real_value;
+        return true;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+        char *copy = mylite_copy_span_text(
+            value->text_value == NULL ? "" : value->text_value,
+            value->text_value == NULL ? 0U : value->text_length
+        );
+        char *end = NULL;
+        double number = 0.0;
+
+        if (copy == NULL) {
+            return false;
+        }
+        number = strtod(copy, &end);
+        if (end == copy) {
+            free(copy);
+            return false;
+        }
+        free(copy);
+        *out_number = number;
+        return true;
+    }
+    return false;
+}
+
+static char *format_decimal_output_value(double value, unsigned int decimals) {
+    int length = snprintf(NULL, 0U, "%.*f", (int)decimals, value);
+    char *text = NULL;
+    int written = 0;
+
+    if (length < 0) {
+        return NULL;
+    }
+    text = malloc((size_t)length + 1U);
+    if (text == NULL) {
+        return NULL;
+    }
+    written = snprintf(text, (size_t)length + 1U, "%.*f", (int)decimals, value);
+    if (written != length) {
+        free(text);
+        return NULL;
+    }
+    return text;
 }

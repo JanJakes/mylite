@@ -258,6 +258,8 @@ int mylite_dml_resolve_insert_text_value(
                    : status;
     }
     if (mylite_dml_parse_insert_integer_text(text, &integer_value)) {
+        int status = MYLITE_OK;
+
         if (integer_value == 0 &&
             mylite_dml_insert_auto_increment_zero_generates(database, column)) {
             return mylite_dml_allocate_insert_auto_increment(
@@ -271,20 +273,28 @@ int mylite_dml_resolve_insert_text_value(
             .kind = MYLITE_INSERT_BOUND_INTEGER,
             .integer_value = integer_value,
         };
-        return MYLITE_OK;
+        status = mylite_dml_coerce_insert_numeric_value(database, column, 1U, out_value);
+        return status;
     }
     if (column->auto_increment) {
         return mylite_dml_insert_set_unsupported_expression_error(database);
     }
     if (mylite_dml_parse_insert_real_text(text, &real_value)) {
+        int status = MYLITE_OK;
+
         *out_value = (struct mylite_insert_bound_value){
             .kind = MYLITE_INSERT_BOUND_REAL,
             .real_value = real_value,
         };
-        return MYLITE_OK;
+        status = mylite_dml_coerce_insert_numeric_value(database, column, 1U, out_value);
+        return status;
     }
 
-    return set_insert_bound_text_value(database, text, text_length, out_value);
+    int status = set_insert_bound_text_value(database, text, text_length, out_value);
+
+    return status == MYLITE_OK
+               ? mylite_dml_coerce_insert_numeric_value(database, column, 1U, out_value)
+               : status;
 }
 
 int mylite_dml_resolve_insert_quoted_text_value(

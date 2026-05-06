@@ -26,7 +26,10 @@ struct mylite_catalog_column_row {
     const char *default_text;
     const char *is_nullable;
     const char *data_type;
+    const char *column_type;
     const char *extra;
+    uint64_t numeric_scale;
+    bool has_numeric_scale;
 };
 
 struct mylite_catalog_unique_index_part_row {

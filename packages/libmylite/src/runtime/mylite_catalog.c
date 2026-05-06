@@ -798,7 +798,8 @@ int mylite_catalog_load_table_columns(
         return MYLITE_OK;
     }
     sql = sqlite3_mprintf(
-        "SELECT column_name, column_default, is_nullable, data_type, extra "
+        "SELECT column_name, column_default, is_nullable, data_type, column_type, extra, "
+        "numeric_scale "
         "FROM %s WHERE table_schema = ? AND table_name = ? "
         "ORDER BY ordinal_position",
         mylite_catalog_column_catalog_name(temporary)
@@ -821,7 +822,10 @@ int mylite_catalog_load_table_columns(
             .default_text = (const char *)sqlite3_column_text(stmt, 1),
             .is_nullable = (const char *)sqlite3_column_text(stmt, 2),
             .data_type = (const char *)sqlite3_column_text(stmt, 3),
-            .extra = (const char *)sqlite3_column_text(stmt, 4),
+            .column_type = (const char *)sqlite3_column_text(stmt, 4),
+            .extra = (const char *)sqlite3_column_text(stmt, 5),
+            .numeric_scale = (uint64_t)sqlite3_column_int64(stmt, 6),
+            .has_numeric_scale = sqlite3_column_type(stmt, 6) != SQLITE_NULL,
         };
         int callback_status = callback(context, &row);
 

@@ -142,7 +142,17 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `INSERT ... VALUES` `NULL` warning 1048 coercion, single-row insert `NULL`
       error preservation, update `NULL`/`DEFAULT` coercion, changed-row affected
       counts, and numeric/text/date/datetime/time implicit defaults.
-- [ ] Align numeric/string casts in strict and non-strict modes.
+- [x] Align integer and decimal DML coercion in strict and non-strict modes for
+      currently supported `INSERT ... VALUES`, `INSERT ... SET`, `REPLACE`,
+      ODKU update assignments, single-table `UPDATE`, and joined `UPDATE`
+      paths. Covered behavior includes integer half-away rounding, numeric
+      string prefixes, strict truncation/incorrect-value rejection, non-strict
+      warning coercion, decimal scale rounding notes, and DECIMAL result text
+      shape.
+- [ ] Align remaining numeric/string casts and coercions in strict and
+      non-strict modes, including CHAR/VARCHAR length truncation, unsigned and
+      width-specific numeric range clipping, floating-point column edge cases,
+      scalar `CAST`/`CONVERT` value semantics, and `IGNORE` demotion.
 - [x] Complete `CAST(...)` and `CONVERT(...)` syntax, including
       `CONVERT ... USING utf8`.
 - [x] Complete `SELECT DATE(...)` and date-function predicates.

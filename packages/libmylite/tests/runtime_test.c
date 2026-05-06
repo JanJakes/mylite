@@ -147,6 +147,7 @@ enum {
     mysql_warning_savepoint_does_not_exist = 1305,
     mysql_warning_no_default = 1364,
     mysql_warning_division_by_zero = 1365,
+    mysql_warning_truncated_wrong_value_for_field = 1366,
     mysql_warning_incorrect_string_value = 1411,
     mysql_warning_datetime_function_overflow = 1441,
     mysql_warning_row_is_referenced = 1451,
@@ -522,6 +523,8 @@ static int test_insert_ignore_execution(void);
 static int test_non_strict_not_null_coercion_execution(void);
 
 static int test_temporal_dml_coercion_execution(void);
+
+static int test_numeric_dml_coercion_execution(void);
 
 static int test_insert_on_duplicate_key_update_execution(void);
 
@@ -1003,6 +1006,7 @@ int main(void) {
     failures += test_insert_ignore_execution();
     failures += test_non_strict_not_null_coercion_execution();
     failures += test_temporal_dml_coercion_execution();
+    failures += test_numeric_dml_coercion_execution();
     failures += test_insert_on_duplicate_key_update_execution();
     failures += test_foreign_key_insert_execution();
     failures += test_foreign_key_parent_restrict_execution();
@@ -48235,6 +48239,242 @@ static int test_temporal_dml_coercion_execution(void) {
         zero_temporal_values,
         1,
         "temporal odku update stored values"
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_numeric_dml_coercion_execution(void) {
+    static const char *const numeric_columns[] = {"id", "i", "bi", "d"};
+    static const char *const strict_insert_values[] = {"1", "5", "-5", "4.57"};
+    static const char *const non_strict_insert_values[] = {
+        "1",
+        "5",
+        "-5",
+        "4.57",
+        "2",
+        "5",
+        "0",
+        "0.00",
+    };
+    static const char *const final_numeric_values[] = {
+        "1",  "5",    "0", "0.00", "2",  "5",    "-5", "4.57", "3", "7",
+        "-5", "4.57", "4", "5",    "-5", "4.57", "5",  "1",    "1", "4.57",
+    };
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open numeric coercion db");
+    failures += execute_sql(database, "CREATE DATABASE mylite_numeric_dml", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_numeric_dml", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE numeric_values ("
+        "id INT PRIMARY KEY, i INT, bi BIGINT, d DECIMAL(5,2))",
+        MYLITE_DONE
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO numeric_values VALUES (1, 4.5, -4.5, 4.567)",
+        1,
+        "strict numeric rounded insert"
+    );
+    failures += expect_int(mylite_warning_count(database), 1, "strict decimal note count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_truncated,
+        "strict decimal note code"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id,i,bi,d FROM numeric_values ORDER BY id",
+        numeric_columns,
+        4,
+        strict_insert_values,
+        1,
+        "strict numeric rounded values"
+    );
+
+    failures += prepare_sql(
+        database,
+        "INSERT INTO numeric_values VALUES (2, '4.5x', 1, 1)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Data truncated for column 'i' at row 1",
+        "strict truncated integer insert error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_truncated,
+        "strict truncated integer insert code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO numeric_values VALUES (2, '4.5x', 'abc', 'abc')",
+        1,
+        "non-strict numeric string insert"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 3, "non-strict numeric string warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_truncated,
+        "non-strict truncated integer warning code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_truncated_wrong_value_for_field,
+        "non-strict incorrect integer warning code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 2),
+        mysql_warning_truncated_wrong_value_for_field,
+        "non-strict incorrect decimal warning code"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id,i,bi,d FROM numeric_values ORDER BY id",
+        numeric_columns,
+        4,
+        non_strict_insert_values,
+        2,
+        "non-strict numeric coerced values"
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO numeric_values SET id = 3, i = '4.5', bi = '-4.5', d = '4.567'",
+        1,
+        "numeric insert set coercion"
+    );
+    failures += expect_int(mylite_warning_count(database), 1, "numeric insert set warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_truncated,
+        "numeric insert set decimal note code"
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "REPLACE INTO numeric_values VALUES (4, 4.5, -4.5, 4.567)",
+        1,
+        "numeric replace coercion"
+    );
+    failures += expect_int(mylite_warning_count(database), 1, "numeric replace warning count");
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO numeric_values VALUES (1, 0, 0, 0) "
+        "ON DUPLICATE KEY UPDATE i = '4.5x', bi = 'abc', d = 'abc'",
+        2,
+        "numeric odku update coercion"
+    );
+    failures += expect_int(mylite_warning_count(database), 3, "numeric odku warning count");
+
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "UPDATE numeric_values SET i = '4.5x' WHERE id = 2",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Data truncated for column 'i' at row 1",
+        "strict numeric update truncation error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_truncated,
+        "strict numeric update truncation code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "INSERT INTO numeric_values VALUES (5, 1, 1, '4.567x')",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Incorrect decimal value for column 'd' at row 1",
+        "strict decimal truncation error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value_for_field,
+        "strict decimal truncation code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE numeric_values SET i = 4.5, bi = '-4.5', d = 4.567 WHERE id = 2",
+        1,
+        "non-strict numeric update coercion"
+    );
+    failures += expect_int(mylite_warning_count(database), 1, "numeric update decimal note count");
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO numeric_values VALUES (5, 1, 1, '4.567x')",
+        1,
+        "non-strict decimal trailing insert"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 2, "non-strict decimal trailing note count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_truncated,
+        "non-strict decimal trailing prefix note code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_data_truncated,
+        "non-strict decimal trailing scale note code"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE numeric_source (id INT PRIMARY KEY, v DOUBLE)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "INSERT INTO numeric_source VALUES (3, 6.5)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE numeric_values JOIN numeric_source "
+        "ON numeric_values.id = numeric_source.id "
+        "SET numeric_values.i = numeric_source.v",
+        1,
+        "joined numeric update coercion"
+    );
+    failures += expect_int(mylite_warning_count(database), 0, "joined numeric update warnings");
+
+    failures += expect_select_rows(
+        database,
+        "SELECT id,i,bi,d FROM numeric_values ORDER BY id",
+        numeric_columns,
+        4,
+        final_numeric_values,
+        5,
+        "numeric final coerced values"
     );
 
     mylite_close(database);

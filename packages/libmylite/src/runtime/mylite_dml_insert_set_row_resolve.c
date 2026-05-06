@@ -367,6 +367,10 @@ static int evaluate_insert_set_assignment_value(
     if (status != MYLITE_OK) {
         return status;
     }
+    status = mylite_dml_coerce_insert_numeric_value(database, column, 1U, out_value);
+    if (status != MYLITE_OK) {
+        return status;
+    }
 
     if (column->auto_increment) {
         bool zero_generates = mylite_dml_insert_auto_increment_zero_generates(database, column);

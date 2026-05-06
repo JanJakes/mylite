@@ -60,6 +60,8 @@ Deferred scope:
   `docs/specs/sqlite-fork-temporal-type-descriptors/specs.md`
 - SQLite fork time type descriptors:
   `docs/specs/sqlite-fork-time-type-descriptors/specs.md`
+- SQLite fork text/blob family descriptors:
+  `docs/specs/sqlite-fork-text-blob-family-descriptors/specs.md`
 
 This specification is independently authored from official SQLite source-tree
 layout, observed MyLite build behavior, and the current MyLite codebase.

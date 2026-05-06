@@ -307,8 +307,11 @@ Implementation tests should cover these MySQL 8.4.9 expectations:
 
 ## Compatibility gaps
 
-- Table DDL execution, catalog writes, storage, row-size diagnostics, and
-  value conversion are deferred.
+- Full row-size diagnostics, non-strict truncation warnings, direct SQLite
+  parser descriptor reload, and complete value conversion are deferred. Basic
+  executable DDL/catalog storage exists, and the SQLite fork descriptor path now
+  enforces strict write-time `VARCHAR`, `BINARY`, `VARBINARY`, text-family, and
+  blob-family length rules for the covered CRUD paths.
 - Warning records for deprecated `BINARY` attributes and `NVARCHAR` are
   deferred until diagnostics/warning storage exists.
 - Parser-time validation uses the current default `utf8mb4` boundary for

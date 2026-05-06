@@ -15,12 +15,14 @@ binary string assignment types:
 
 Deferred scope:
 
-- `TINYBLOB`, `BLOB`, `MEDIUMBLOB`, and `LONGBLOB` capacity checks
 - complete binary-string comparison and collation behavior in all SQLite
   planner paths
 - exact MySQL message text with schema, table, and row interpolation
 - non-strict and `IGNORE` truncation warnings
 - parser/catalog reload inside SQLite without MyLite's current catalog bridge
+
+`TINYBLOB`, `BLOB`, `MEDIUMBLOB`, and `LONGBLOB` capacity checks are covered by
+the separate SQLite fork text/blob family descriptor slice.
 
 ## Sources
 
@@ -135,5 +137,4 @@ Executable coverage must include:
 
 This feature is `🟡`: the native write-path primitive is implemented for
 `BINARY` and `VARBINARY`, but full binary-string semantics across comparisons,
-blob families, non-strict modes, and direct SQLite parser cataloging remain
-future work.
+non-strict modes, and direct SQLite parser cataloging remain future work.

@@ -448,6 +448,8 @@ static int myliteMemToFiniteReal(Mem *pMem, double *pValue);
 static int myliteCoerceDouble(Mem *pMem, const char **pzErr);
 static int myliteCoerceVarchar(Mem *pMem, u64 nChar, const char **pzErr);
 static int myliteCoerceBinary(Mem *pMem, u64 nByte, int bFixed, const char **pzErr);
+static int myliteCoerceTextFamily(Mem *pMem, u64 nByte, const char **pzErr);
+static int myliteCoerceBlobFamily(Mem *pMem, u64 nByte, const char **pzErr);
 static int myliteCoerceDecimal(
   Mem *pMem,
   u8 nPrecision,
@@ -730,6 +732,20 @@ static int myliteApplyColumnType(
         *pzSqlState = "22001";
       }
       return rc;
+    case MYLITE_COLTYPE_TEXT:
+      rc = myliteCoerceTextFamily(pMem, pCol->myliteType.nByte, pzErr);
+      if( rc!=SQLITE_OK ){
+        *pMyErrno = 1406;
+        *pzSqlState = "22001";
+      }
+      return rc;
+    case MYLITE_COLTYPE_BLOB:
+      rc = myliteCoerceBlobFamily(pMem, pCol->myliteType.nByte, pzErr);
+      if( rc!=SQLITE_OK ){
+        *pMyErrno = 1406;
+        *pzSqlState = "22001";
+      }
+      return rc;
     case MYLITE_COLTYPE_DECIMAL:
       return myliteCoerceDecimal(
           pMem, pCol->myliteType.nPrecision, pCol->myliteType.nScale,
@@ -881,6 +897,36 @@ static int myliteCoerceBinary(Mem *pMem, u64 nByte, int bFixed, const char **pzE
     }
     memset(&pMem->z[nOld], 0, (size_t)nByte - (size_t)nOld);
     pMem->n = (int)nByte;
+  }
+  pMem->flags &= ~(MEM_Int|MEM_Real|MEM_IntReal|MEM_Str|MEM_Term|MEM_Zero);
+  pMem->flags |= MEM_Blob;
+  pMem->enc = SQLITE_UTF8;
+  return SQLITE_OK;
+}
+
+static int myliteCoerceTextFamily(Mem *pMem, u64 nByte, const char **pzErr){
+  if( sqlite3VdbeMemCast(pMem, SQLITE_AFF_TEXT, SQLITE_UTF8)!=SQLITE_OK ){
+    return SQLITE_NOMEM;
+  }
+  if( pMem->n<0 || (u64)pMem->n>nByte ){
+    *pzErr = "text value is too long";
+    return SQLITE_MISMATCH;
+  }
+  return SQLITE_OK;
+}
+
+static int myliteCoerceBlobFamily(Mem *pMem, u64 nByte, const char **pzErr){
+  if( (pMem->flags & (MEM_Str|MEM_Blob))==0 ){
+    if( sqlite3VdbeMemStringify(pMem, SQLITE_UTF8, 1)!=SQLITE_OK ){
+      return SQLITE_NOMEM;
+    }
+  }
+  if( ExpandBlob(pMem)!=SQLITE_OK ){
+    return SQLITE_NOMEM;
+  }
+  if( pMem->n<0 || (u64)pMem->n>nByte ){
+    *pzErr = "blob value is too long";
+    return SQLITE_MISMATCH;
   }
   pMem->flags &= ~(MEM_Int|MEM_Real|MEM_IntReal|MEM_Str|MEM_Term|MEM_Zero);
   pMem->flags |= MEM_Blob;

@@ -221,6 +221,16 @@ static int myliteMakeColumnType(
       pOut->eType = MYLITE_COLTYPE_TIME;
       pOut->nFsp = (u8)pType->datetime_precision;
       return SQLITE_OK;
+    case MYLITE_SQLITE_FORK_COLUMN_TYPE_TEXT:
+      if( pType->flags!=0 ) return SQLITE_MISUSE;
+      pOut->eType = MYLITE_COLTYPE_TEXT;
+      pOut->nByte = pType->byte_maximum_length;
+      return SQLITE_OK;
+    case MYLITE_SQLITE_FORK_COLUMN_TYPE_BLOB:
+      if( pType->flags!=0 ) return SQLITE_MISUSE;
+      pOut->eType = MYLITE_COLTYPE_BLOB;
+      pOut->nByte = pType->byte_maximum_length;
+      return SQLITE_OK;
   }
 
   return SQLITE_MISUSE;

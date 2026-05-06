@@ -41,6 +41,8 @@ static int test_native_type_coercion(void);
 
 static int test_native_binary_type_coercion(void);
 
+static int test_native_text_blob_family_coercion(void);
+
 static int test_native_decimal_type_coercion(void);
 
 static int test_native_temporal_type_coercion(void);
@@ -54,6 +56,8 @@ static int test_mylite_wordpress_like_crud(void);
 static int test_mylite_basic_type_coercion(void);
 
 static int test_mylite_binary_type_coercion(void);
+
+static int test_mylite_text_blob_family_coercion(void);
 
 static int test_mylite_decimal_type_coercion(void);
 
@@ -119,6 +123,7 @@ int main(void) {
     failures += test_mysql_collations();
     failures += test_native_type_coercion();
     failures += test_native_binary_type_coercion();
+    failures += test_native_text_blob_family_coercion();
     failures += test_native_decimal_type_coercion();
     failures += test_native_temporal_type_coercion();
     failures += test_native_time_type_coercion();
@@ -126,6 +131,7 @@ int main(void) {
     failures += test_mylite_wordpress_like_crud();
     failures += test_mylite_basic_type_coercion();
     failures += test_mylite_binary_type_coercion();
+    failures += test_mylite_text_blob_family_coercion();
     failures += test_mylite_decimal_type_coercion();
     failures += test_mylite_temporal_type_coercion();
     failures += test_mylite_time_type_coercion();
@@ -593,6 +599,128 @@ static int test_native_binary_type_coercion(void) {
             .mysql_errno = binary_string_too_long_error,
             .sqlstate = "22001",
             .context = "over-length varbinary exposes MySQL condition",
+        }
+    );
+
+    sqlite3_close(database);
+    return failures;
+}
+
+static int test_native_text_blob_family_coercion(void) {
+    enum {
+        text_byte_length = 5,
+        blob_byte_length = 4,
+        text_blob_too_long_error = 1406,
+    };
+
+    sqlite3 *database = NULL;
+    int failures = 0;
+
+    failures += open_configured_database(&database);
+    if (failures != 0) {
+        return failures;
+    }
+
+    failures += exec_sql(
+        database,
+        "CREATE TABLE text_blob_direct(id INTEGER PRIMARY KEY, short_text TEXT, short_blob BLOB)",
+        "create direct text/blob descriptor fixture"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_column_type(
+            database,
+            NULL,
+            "text_blob_direct",
+            "short_text",
+            &(const struct mylite_sqlite_fork_column_type){
+                .kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_TEXT,
+                .byte_maximum_length = text_byte_length,
+            }
+        ),
+        database,
+        "set direct text-family descriptor"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_column_type(
+            database,
+            NULL,
+            "text_blob_direct",
+            "short_blob",
+            &(const struct mylite_sqlite_fork_column_type){
+                .kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_BLOB,
+                .byte_maximum_length = blob_byte_length,
+            }
+        ),
+        database,
+        "set direct blob-family descriptor"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO text_blob_direct VALUES (1, 'éa', X'00FF'), (2, 65, 1234)",
+        "insert direct text/blob descriptor values"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT group_concat(id || ':' || hex(CAST(short_text AS BLOB)) || ':' || "
+                   "length(CAST(short_text AS BLOB)) || ':' || char_length(short_text) || ':' || "
+                   "hex(short_blob) || ':' || length(short_blob), '|') FROM ("
+                   "SELECT id, short_text, short_blob FROM text_blob_direct ORDER BY id)",
+            .expected = "1:C3A961:3:2:00FF:2|2:3635:2:2:31323334:4",
+            .context = "direct text/blob descriptors coerce stored values",
+        }
+    );
+    failures += exec_sql(
+        database,
+        "UPDATE text_blob_direct SET short_text = 'éé', short_blob = 'xy' WHERE id = 2",
+        "update direct text/blob descriptor values"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT hex(CAST(short_text AS BLOB)) || ':' || "
+                   "length(CAST(short_text AS BLOB)) || ':' || char_length(short_text) || ':' || "
+                   "hex(short_blob) || ':' || length(short_blob) "
+                   "FROM text_blob_direct WHERE id = 2",
+            .expected = "C3A9C3A9:4:2:7879:2",
+            .context = "direct text/blob update coerces assigned values",
+        }
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO text_blob_direct VALUES (3, 'ééé', X'6F6B')",
+            .message_fragment = "text value is too long",
+            .context = "direct text-family descriptor rejects over-byte-length value",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = text_blob_too_long_error,
+            .sqlstate = "22001",
+            .context = "over-length text family exposes MySQL condition",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear text-family fork condition"
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO text_blob_direct VALUES (3, 'ok', X'0102030405')",
+            .message_fragment = "blob value is too long",
+            .context = "direct blob-family descriptor rejects over-length value",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = text_blob_too_long_error,
+            .sqlstate = "22001",
+            .context = "over-length blob family exposes MySQL condition",
         }
     );
 
@@ -1906,6 +2034,190 @@ static int test_mylite_binary_type_coercion(void) {
         database,
         binary_string_too_long_error,
         "MyLite over-length varbinary condition"
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_mylite_text_blob_family_coercion(void) {
+    enum {
+        text_blob_column_count = 9,
+        text_blob_initial_row_count = 3,
+        text_blob_after_replace_row_count = 4,
+        text_blob_too_long_error = 1406,
+    };
+
+    static const char *const after_insert[] = {
+        "1", "255", "255", "5",   "5",   "255", "62626262", "4",   "62657461",
+        "2", "254", "127", "200", "100", "254", "C3A9C3A9", "200", "C3A9C3A9",
+        "3", "2",   "2",   "6",   "6",   "2",   "3635",     "6",   "31323334",
+    };
+    static const char *const after_update[] = {
+        "1", "254", "254", "300", "300", "254", "71717171", "300", "72727272",
+        "2", "254", "127", "200", "100", "254", "C3A9C3A9", "200", "C3A9C3A9",
+        "3", "2",   "2",   "6",   "6",   "2",   "3635",     "6",   "31323334",
+    };
+    static const char *const after_duplicate_update[] = {
+        "1", "254", "254", "300", "300", "254", "71717171", "300", "72727272",
+        "2", "3",   "3",   "7",   "7",   "2",   "7576",     "2",   "7778",
+        "3", "2",   "2",   "6",   "6",   "2",   "3635",     "6",   "31323334",
+    };
+    static const char *const after_replace[] = {
+        "1", "254", "254", "300", "300", "254", "71717171", "300", "72727272",
+        "2", "3",   "3",   "7",   "7",   "2",   "7576",     "2",   "7778",
+        "3", "2",   "2",   "6",   "6",   "2",   "3635",     "6",   "31323334",
+        "4", "255", "255", "512", "512", "255", "75757575", "512", "76767676",
+    };
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += expect_mylite_ok(
+        mylite_open_memory(&database),
+        database,
+        "open MyLite text/blob family coercion"
+    );
+    if (failures != 0) {
+        return failures;
+    }
+
+    failures += exec_mylite_sql(
+        database,
+        "CREATE DATABASE mylite_text_blob_family CHARACTER SET utf8mb4 "
+        "COLLATE utf8mb4_unicode_ci",
+        "create MyLite text/blob family schema"
+    );
+    failures +=
+        exec_mylite_sql(database, "USE mylite_text_blob_family", "use text/blob family schema");
+    failures += exec_mylite_sql(
+        database,
+        "CREATE TABLE text_blob_basic ("
+        "id INT PRIMARY KEY,"
+        "tiny_text TINYTEXT NOT NULL,"
+        "text_value TEXT NOT NULL,"
+        "tiny_blob TINYBLOB NOT NULL,"
+        "blob_value BLOB NOT NULL"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "create MyLite text/blob family table"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT INTO text_blob_basic VALUES "
+        "(1, REPEAT('a', 255), 'alpha', REPEAT('b', 255), 'beta'),"
+        "(2, REPEAT('é', 127), REPEAT('é', 100), REPEAT('é', 127), REPEAT('é', 100)),"
+        "(3, 65, 123456, 65, 123456)",
+        "insert MyLite text/blob family rows"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT id, LENGTH(tiny_text), CHAR_LENGTH(tiny_text), "
+                   "LENGTH(text_value), CHAR_LENGTH(text_value), "
+                   "LENGTH(tiny_blob), LEFT(HEX(tiny_blob), 8), "
+                   "LENGTH(blob_value), LEFT(HEX(blob_value), 8) "
+                   "FROM text_blob_basic ORDER BY id",
+            .values = after_insert,
+            .column_count = text_blob_column_count,
+            .row_count = text_blob_initial_row_count,
+            .context = "MyLite text/blob family insert coercion matches MySQL fixture",
+        }
+    );
+    failures += exec_mylite_sql(
+        database,
+        "UPDATE text_blob_basic SET tiny_text = REPEAT('z', 254), "
+        "text_value = REPEAT('w', 300), tiny_blob = REPEAT('q', 254), "
+        "blob_value = REPEAT('r', 300) WHERE id = 1",
+        "update MyLite text/blob family row"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT id, LENGTH(tiny_text), CHAR_LENGTH(tiny_text), "
+                   "LENGTH(text_value), CHAR_LENGTH(text_value), "
+                   "LENGTH(tiny_blob), LEFT(HEX(tiny_blob), 8), "
+                   "LENGTH(blob_value), LEFT(HEX(blob_value), 8) "
+                   "FROM text_blob_basic ORDER BY id",
+            .values = after_update,
+            .column_count = text_blob_column_count,
+            .row_count = text_blob_initial_row_count,
+            .context = "MyLite text/blob family update coercion matches MySQL fixture",
+        }
+    );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT INTO text_blob_basic VALUES (2, 'dup', 'duptext', 'uv', 'wx') "
+        "ON DUPLICATE KEY UPDATE tiny_text = VALUES(tiny_text), "
+        "text_value = VALUES(text_value), tiny_blob = VALUES(tiny_blob), "
+        "blob_value = VALUES(blob_value)",
+        "insert duplicate update MyLite text/blob family row"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT id, LENGTH(tiny_text), CHAR_LENGTH(tiny_text), "
+                   "LENGTH(text_value), CHAR_LENGTH(text_value), "
+                   "LENGTH(tiny_blob), LEFT(HEX(tiny_blob), 8), "
+                   "LENGTH(blob_value), LEFT(HEX(blob_value), 8) "
+                   "FROM text_blob_basic ORDER BY id",
+            .values = after_duplicate_update,
+            .column_count = text_blob_column_count,
+            .row_count = text_blob_initial_row_count,
+            .context = "MyLite text/blob family duplicate update coercion matches MySQL fixture",
+        }
+    );
+    failures += exec_mylite_sql(
+        database,
+        "REPLACE INTO text_blob_basic VALUES "
+        "(4, REPEAT('s', 255), REPEAT('t', 512), REPEAT('u', 255), REPEAT('v', 512))",
+        "replace MyLite text/blob family row"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT id, LENGTH(tiny_text), CHAR_LENGTH(tiny_text), "
+                   "LENGTH(text_value), CHAR_LENGTH(text_value), "
+                   "LENGTH(tiny_blob), LEFT(HEX(tiny_blob), 8), "
+                   "LENGTH(blob_value), LEFT(HEX(blob_value), 8) "
+                   "FROM text_blob_basic ORDER BY id",
+            .values = after_replace,
+            .column_count = text_blob_column_count,
+            .row_count = text_blob_after_replace_row_count,
+            .context = "MyLite text/blob family replace coercion matches MySQL fixture",
+        }
+    );
+
+    failures += expect_mylite_sql_status(
+        database,
+        "INSERT INTO text_blob_basic VALUES (5, REPEAT('a', 256), 'ok', 'ok', 'ok')",
+        MYLITE_SQLITE_ERROR,
+        "MyLite text family rejects over-byte-length ASCII values"
+    );
+    failures += expect_mylite_error_condition(
+        database,
+        text_blob_too_long_error,
+        "MyLite over-length text family condition"
+    );
+    failures += expect_mylite_sql_status(
+        database,
+        "INSERT INTO text_blob_basic VALUES (5, REPEAT('é', 128), 'ok', 'ok', 'ok')",
+        MYLITE_SQLITE_ERROR,
+        "MyLite text family rejects over-byte-length multibyte values"
+    );
+    failures += expect_mylite_error_condition(
+        database,
+        text_blob_too_long_error,
+        "MyLite over-length multibyte text family condition"
+    );
+    failures += expect_mylite_sql_status(
+        database,
+        "INSERT INTO text_blob_basic VALUES (5, 'ok', 'ok', REPEAT('b', 256), 'ok')",
+        MYLITE_SQLITE_ERROR,
+        "MyLite blob family rejects over-length values"
+    );
+    failures += expect_mylite_error_condition(
+        database,
+        text_blob_too_long_error,
+        "MyLite over-length blob family condition"
     );
 
     mylite_close(database);

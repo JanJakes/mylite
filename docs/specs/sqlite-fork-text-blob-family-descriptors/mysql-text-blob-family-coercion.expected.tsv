@@ -1,0 +1,20 @@
+after-insert	1	255	255	5	5	255	62626262	4	62657461
+after-insert	2	254	127	200	100	254	C3A9C3A9	200	C3A9C3A9
+after-insert	3	2	2	6	6	2	3635	6	31323334
+after-insert	4	5	5	6	6	2	00FF	3	414243
+after-update	1	254	254	300	300	254	71717171	300	72727272
+after-update	2	254	127	200	100	254	C3A9C3A9	200	C3A9C3A9
+after-update	3	2	2	6	6	2	3635	6	31323334
+after-update	4	5	5	6	6	2	00FF	3	414243
+after-duplicate-update	1	254	254	300	300	254	71717171	300	72727272
+after-duplicate-update	2	3	3	7	7	2	7576	2	7778
+after-duplicate-update	3	2	2	6	6	2	3635	6	31323334
+after-duplicate-update	4	5	5	6	6	2	00FF	3	414243
+after-replace	1	254	254	300	300	254	71717171	300	72727272
+after-replace	2	3	3	7	7	2	7576	2	7778
+after-replace	3	2	2	6	6	2	3635	6	31323334
+after-replace	4	5	5	6	6	2	00FF	3	414243
+after-replace	5	255	255	512	512	255	75757575	512	76767676
+after-too-long-tinytext	5
+after-too-long-tinytext-multibyte	5
+after-too-long-tinyblob	5

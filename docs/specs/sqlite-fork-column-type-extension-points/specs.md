@@ -18,7 +18,8 @@ Implemented scope:
   a target table has MyLite descriptors
 - support strict assignment coercion for signed integer ranges, supported
   unsigned integer ranges, `DOUBLE`, `VARCHAR(n)`, `BINARY(n)`,
-  `VARBINARY(n)`, `DECIMAL(p,s)`, `DATE`, `DATETIME(fsp)`, and `TIME(fsp)`
+  `VARBINARY(n)`, text families, blob families, `DECIMAL(p,s)`, `DATE`,
+  `DATETIME(fsp)`, and `TIME(fsp)`
 - preserve ordinary SQLite affinity for columns without a MyLite descriptor
 - cover direct SQLite `INSERT` and `UPDATE` statements that write through the
   new descriptor path without SQL wrapper functions
@@ -40,8 +41,8 @@ Deferred scope:
 - exact MySQL diagnostic messages, row interpolation, complete warning records,
   and `IGNORE` demotion
 - non-strict SQL mode clipping and string truncation behavior
-- `TIMESTAMP`, `YEAR`, JSON, `ENUM`, `SET`, bit, blob-family, and spatial
-  assignment conversion
+- `TIMESTAMP`, `YEAR`, JSON, `ENUM`, `SET`, bit, and spatial assignment
+  conversion
 - preserving MyLite descriptors through SQLite-native schema rebuilds that are
   not coordinated by MyLite
 
@@ -67,6 +68,8 @@ Deferred scope:
   `docs/specs/sqlite-fork-temporal-type-descriptors/specs.md`
 - SQLite fork time type descriptors:
   `docs/specs/sqlite-fork-time-type-descriptors/specs.md`
+- SQLite fork text/blob family descriptors:
+  `docs/specs/sqlite-fork-text-blob-family-descriptors/specs.md`
 - Existing SQLite source-tree fork package:
   `docs/specs/sqlite-source-tree-fork/specs.md`
 
@@ -124,6 +127,11 @@ SQLite already uses for table affinity. For each target column:
 - `VARBINARY(n)` descriptors convert non-binary values through SQLite's UTF-8
   text representation, reject values above the declared byte length, and store
   the value as a BLOB without padding.
+- Text-family descriptors convert values to UTF-8 text, reject values above
+  the cataloged byte capacity, and keep SQLite TEXT storage.
+- Blob-family descriptors convert numeric values through SQLite's UTF-8 text
+  representation, reject values above the cataloged byte capacity, and store
+  the value as a BLOB without padding.
 - `DECIMAL(p,s)` descriptors parse exact decimal text when available, round
   half away from zero to the declared scale, reject post-round range overflow,
   reject negative values for unsigned decimal columns, and store canonical
@@ -172,8 +180,8 @@ The executable tests must cover:
 - source-tree SQLite still builds and reports the pinned version
 - MyLite fork primitives still register on a SQLite connection
 - a table can be annotated with signed integer, unsigned integer, `DOUBLE`,
-  `VARCHAR`, `BINARY`, `VARBINARY`, `DECIMAL`, `DATE`, `DATETIME`, and `TIME`
-  descriptors
+  `VARCHAR`, `BINARY`, `VARBINARY`, text-family, blob-family, `DECIMAL`,
+  `DATE`, `DATETIME`, and `TIME` descriptors
 - direct SQLite `INSERT` coerces numeric strings, numeric-to-text values, and
   approximate values through native descriptors
 - direct SQLite `UPDATE` uses the same native descriptor path
@@ -187,6 +195,8 @@ The executable tests must cover:
 - invalid date text, invalid datetime text, and post-round datetime overflow
   fail through the native opcode
 - invalid and out-of-range time text fails through the native opcode
+- over-length text-family and blob-family assignments fail through the native
+  opcode
 - zero temporal sentinels are accepted only when the descriptor explicitly
   enables `ALLOW_ZERO_TEMPORAL`
 
@@ -206,6 +216,10 @@ behavior.
 The MySQL 8.4.9 fixture in
 `docs/specs/sqlite-fork-time-type-descriptors/mysql-time-coercion.sql` is the
 runtime baseline for the first supported `TIME(fsp)` assignment behavior.
+The MySQL 8.4.9 fixture in
+`docs/specs/sqlite-fork-text-blob-family-descriptors/mysql-text-blob-family-coercion.sql`
+is the runtime baseline for the first supported text/blob family assignment
+behavior.
 
 ## Compatibility Status
 

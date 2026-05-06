@@ -17,6 +17,8 @@ Implemented fork points:
 - MyLite column descriptors stored on SQLite `Column` objects
 - VDBE write-time type checking through `OP_MyliteTypeCheck`
 - binary string byte-length and fixed-length padding through column descriptors
+- text/blob family byte-capacity checks and storage-class canonicalization
+  through column descriptors
 - decimal precision/scale rounding and range checks through column descriptors
 - date, datetime, and time parsing, fractional rounding, and range checks through
   column descriptors
@@ -49,6 +51,8 @@ Implemented fork points:
   `docs/specs/sqlite-fork-diagnostics-bridge/specs.md`
 - SQLite fork binary string type descriptors:
   `docs/specs/sqlite-fork-binary-string-types/specs.md`
+- SQLite fork text/blob family descriptors:
+  `docs/specs/sqlite-fork-text-blob-family-descriptors/specs.md`
 - SQLite fork decimal type descriptors:
   `docs/specs/sqlite-fork-decimal-type-descriptors/specs.md`
 - SQLite fork temporal type descriptors:
@@ -127,7 +131,6 @@ Implemented first slice:
 Next likely descriptor families:
 
 - `TIMESTAMP` and `YEAR` temporal values with SQL-mode behavior
-- blob-family capacity checks
 - `ENUM`, `SET`, `JSON`, and bit values
 
 The next temporal-specific fork points are accepted-assignment warnings,

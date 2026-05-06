@@ -2261,7 +2261,7 @@ struct MyliteColumnType {
   i64 iMin;              /* Signed or supported unsigned lower bound */
   i64 iMax;              /* Signed or supported unsigned upper bound */
   u64 nChar;             /* Character-count limit for VARCHAR */
-  u64 nByte;             /* Byte-count limit for binary strings */
+  u64 nByte;             /* Byte-count limit for binary/text families */
   u8 nPrecision;         /* DECIMAL precision */
   u8 nScale;             /* DECIMAL scale */
   u8 nFsp;               /* Temporal fractional seconds precision */
@@ -2278,6 +2278,8 @@ struct MyliteColumnType {
 # define MYLITE_COLTYPE_DATE             8
 # define MYLITE_COLTYPE_DATETIME         9
 # define MYLITE_COLTYPE_TIME             10
+# define MYLITE_COLTYPE_TEXT             11
+# define MYLITE_COLTYPE_BLOB             12
 
 # define MYLITE_COLTYPE_FLAG_UNSIGNED    0x0001
 # define MYLITE_COLTYPE_FLAG_ALLOW_ZERO  0x0002

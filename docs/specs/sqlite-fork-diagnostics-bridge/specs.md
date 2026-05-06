@@ -96,7 +96,7 @@ multiple warnings without aborting execution.
 | signed or supported unsigned integer out of range | 1264 | `22003` |
 | `VARCHAR(n)` value too long | 1406 | `22001` |
 | invalid `DOUBLE` assignment text | 1265 | `01000` |
-| over-length `BINARY(n)` or `VARBINARY(n)` | 1406 | `22001` |
+| over-length `BINARY(n)`, `VARBINARY(n)`, text family, or blob family | 1406 | `22001` |
 | invalid `DECIMAL(p,s)` assignment text | 1366 | `HY000` |
 | out-of-range `DECIMAL(p,s)` assignment | 1264 | `22003` |
 | invalid `DATE`, `DATETIME(fsp)`, or `TIME(fsp)` assignment | 1292 | `22007` |

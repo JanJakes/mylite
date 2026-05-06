@@ -12,7 +12,8 @@ Implemented scope:
   supported unsigned integer, `DOUBLE`, and `VARCHAR`
 - native SQLite column descriptor hooks that emit VDBE write-time coercion for
   signed integer, supported unsigned integer, `DOUBLE`, `VARCHAR`, `BINARY`,
-  `VARBINARY`, `DECIMAL`, `DATE`, `DATETIME`, and `TIME`
+  `VARBINARY`, text families, blob families, `DECIMAL`, `DATE`, `DATETIME`,
+  and `TIME`
 - MyLite public write-table loading attaches catalog-derived descriptors before
   preparing physical SQLite writes
 - MyLite `INSERT`, `UPDATE`, `REPLACE`, and duplicate-key update lowering uses
@@ -31,8 +32,8 @@ Deferred scope:
 - exact MySQL error messages, row interpolation, complete warning records, and
   `IGNORE` demotion for every conversion failure
 - full unsigned `BIGINT` above `INT64_MAX`
-- `TIMESTAMP`, `YEAR`, JSON, `ENUM`, `SET`, bit, blob-family, and spatial
-  assignment conversion
+- `TIMESTAMP`, `YEAR`, JSON, `ENUM`, `SET`, bit, and spatial assignment
+  conversion
 - decimal-aware comparison/index ordering, compact decimal storage, and direct
   SQLite parser numeric-literal preservation
 - direct SQLite parser/catalog reload into descriptors for SQL executed without
@@ -64,6 +65,8 @@ Deferred scope:
   `docs/specs/sqlite-fork-temporal-type-descriptors/specs.md`
 - SQLite fork time type descriptors:
   `docs/specs/sqlite-fork-time-type-descriptors/specs.md`
+- SQLite fork text/blob family descriptors:
+  `docs/specs/sqlite-fork-text-blob-family-descriptors/specs.md`
 
 This specification is independently authored from official documentation,
 observed MySQL 8.4.9 runtime behavior, and the current MyLite codebase. It does
@@ -128,6 +131,13 @@ establishes the first supported `TIME(fsp)` assignment behavior: elapsed-time
 hours, negative values, day-plus-time strings, colon abbreviations, compact
 numeric forms, fractional rounding, strict range checks, and canonical text
 storage.
+
+The fixture in
+`docs/specs/sqlite-fork-text-blob-family-descriptors/mysql-text-blob-family-coercion.sql`
+establishes the first supported text/blob family assignment behavior: text
+byte-capacity checks, multibyte UTF-8 boundary failures, blob byte-capacity
+checks, numeric-to-string assignment, SQLite TEXT/BLOB storage class
+canonicalization, and 1406/22001 diagnostics.
 
 ## Runtime Design
 
@@ -224,6 +234,18 @@ It rounds fractional seconds to the declared precision, rejects values outside
 MySQL's `-838:59:59.000000` through `838:59:59.000000` range, canonicalizes
 negative zero to positive zero, and stores canonical text.
 
+### Text and blob family assignment
+
+The text-family descriptor carries a byte-capacity limit for `TINYTEXT`,
+`TEXT`, `MEDIUMTEXT`, and `LONGTEXT`. The VDBE hook converts non-`NULL` inputs
+to UTF-8 text, enforces byte length rather than character count, and keeps
+SQLite TEXT storage.
+
+The blob-family descriptor carries a byte-capacity limit for `TINYBLOB`,
+`BLOB`, `MEDIUMBLOB`, and `LONGBLOB`. The VDBE hook preserves text/blob bytes,
+stringifies numeric inputs, enforces byte length, and stores SQLite BLOB values
+without fixed-length padding.
+
 ## Lemon Grammar Direction
 
 No new MyLite grammar is introduced in this slice. The long-term fork grammar
@@ -252,6 +274,8 @@ The executable tests must cover:
   post-round datetime overflow through the temporal descriptor slice
 - native SQLite failure behavior for invalid and out-of-range `TIME` values
   through the time descriptor slice
+- native SQLite failure behavior for over-length text/blob family values
+  through the text/blob family descriptor slice
 - direct SQLite `INSERT` and `UPDATE` behavior through MyLite column descriptors
   without SQL wrapper functions
 - direct SQLite `UPDATE` behavior that coerces assigned descriptor columns
@@ -259,7 +283,8 @@ The executable tests must cover:
 - MySQL fixture diffs against `mysql-basic-type-coercion.expected.tsv`,
   `mysql-decimal-coercion.expected.tsv`, and
   `mysql-temporal-coercion.expected.tsv`, and
-  `mysql-time-coercion.expected.tsv`
+  `mysql-time-coercion.expected.tsv`, and
+  `mysql-text-blob-family-coercion.expected.tsv`
 
 ## Compatibility Status
 
@@ -267,5 +292,5 @@ This feature is `🟡` because it establishes the first native assignment
 coercion primitive and now uses direct VDBE write-time coercion through MyLite
 column descriptors for the common public write paths. Full MySQL assignment
 conversion, temporal SQL-mode/warning coverage, decimal-aware comparison/index
-ordering, blob-family coverage, direct SQLite parser/catalog descriptor reload,
-and exact diagnostics remain deferred.
+ordering, direct SQLite parser/catalog descriptor reload, and exact diagnostics
+remain deferred.

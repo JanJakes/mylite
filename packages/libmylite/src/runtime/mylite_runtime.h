@@ -26,10 +26,12 @@
 #include <stdint.h>
 #include <time.h>
 
+enum { mylite_uuid_node_size = 6 };
+
 struct mylite_uuid_state {
     uint64_t last_timestamp;
     uint16_t clock_sequence;
-    unsigned char node[6];
+    unsigned char node[mylite_uuid_node_size];
     bool initialized;
 };
 
@@ -62,7 +64,12 @@ struct mylite_db {
     const char *character_set_results;
     const char *collation_connection;
     char *sql_mode;
+    char *default_storage_engine;
+    char *time_zone;
     uint64_t group_concat_max_len;
+    uint64_t wait_timeout;
+    bool foreign_key_checks;
+    bool unique_checks;
     struct mylite_uuid_state uuid_state;
     struct mylite_uuid_short_state uuid_short_state;
     struct mylite_user_variable_store user_variables;

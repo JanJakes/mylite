@@ -27,19 +27,28 @@ enum mylite_system_variable_id {
     MYLITE_SYSTEM_VARIABLE_COLLATION_CONNECTION = 9,
     MYLITE_SYSTEM_VARIABLE_COLLATION_DATABASE = 10,
     MYLITE_SYSTEM_VARIABLE_COLLATION_SERVER = 11,
-    MYLITE_SYSTEM_VARIABLE_ERROR_COUNT = 12,
-    MYLITE_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN = 13,
-    MYLITE_SYSTEM_VARIABLE_MAX_ERROR_COUNT = 14,
-    MYLITE_SYSTEM_VARIABLE_SQL_MODE = 15,
-    MYLITE_SYSTEM_VARIABLE_SQL_NOTES = 16,
-    MYLITE_SYSTEM_VARIABLE_TRANSACTION_ISOLATION = 17,
-    MYLITE_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY = 18,
-    MYLITE_SYSTEM_VARIABLE_VERSION = 19,
-    MYLITE_SYSTEM_VARIABLE_VERSION_COMMENT = 20,
-    MYLITE_SYSTEM_VARIABLE_VERSION_COMPILE_MACHINE = 21,
-    MYLITE_SYSTEM_VARIABLE_VERSION_COMPILE_OS = 22,
-    MYLITE_SYSTEM_VARIABLE_VERSION_COMPILE_ZLIB = 23,
-    MYLITE_SYSTEM_VARIABLE_WARNING_COUNT = 24,
+    MYLITE_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE = 12,
+    MYLITE_SYSTEM_VARIABLE_ERROR_COUNT = 13,
+    MYLITE_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS = 14,
+    MYLITE_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN = 15,
+    MYLITE_SYSTEM_VARIABLE_LAST_INSERT_ID = 16,
+    MYLITE_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES = 17,
+    MYLITE_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET = 18,
+    MYLITE_SYSTEM_VARIABLE_MAX_CONNECTIONS = 19,
+    MYLITE_SYSTEM_VARIABLE_MAX_ERROR_COUNT = 20,
+    MYLITE_SYSTEM_VARIABLE_SQL_MODE = 21,
+    MYLITE_SYSTEM_VARIABLE_SQL_NOTES = 22,
+    MYLITE_SYSTEM_VARIABLE_TIME_ZONE = 23,
+    MYLITE_SYSTEM_VARIABLE_TRANSACTION_ISOLATION = 24,
+    MYLITE_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY = 25,
+    MYLITE_SYSTEM_VARIABLE_UNIQUE_CHECKS = 26,
+    MYLITE_SYSTEM_VARIABLE_VERSION = 27,
+    MYLITE_SYSTEM_VARIABLE_VERSION_COMMENT = 28,
+    MYLITE_SYSTEM_VARIABLE_VERSION_COMPILE_MACHINE = 29,
+    MYLITE_SYSTEM_VARIABLE_VERSION_COMPILE_OS = 30,
+    MYLITE_SYSTEM_VARIABLE_VERSION_COMPILE_ZLIB = 31,
+    MYLITE_SYSTEM_VARIABLE_WAIT_TIMEOUT = 32,
+    MYLITE_SYSTEM_VARIABLE_WARNING_COUNT = 33,
 };
 
 enum mylite_system_variable_requested_scope {
@@ -103,7 +112,9 @@ static int copy_system_variable_string_value(mylite_db *database, enum mylite_sy
 static uint64_t system_variable_unsigned_value(const mylite_db *database,
                                                enum mylite_system_variable_id id,
                                                enum mylite_system_variable_requested_scope scope);
-static int64_t system_variable_boolean_value(enum mylite_system_variable_id id);
+static int64_t system_variable_boolean_value(const mylite_db *database,
+                                             enum mylite_system_variable_id id,
+                                             enum mylite_system_variable_requested_scope scope);
 static const char *system_variable_string_value(mylite_db *database,
                                                 enum mylite_system_variable_id id,
                                                 enum mylite_system_variable_requested_scope scope,
@@ -203,7 +214,7 @@ static int eval_system_variable_entry(mylite_db *database,
     case MYLITE_SYSTEM_VARIABLE_VALUE_BOOLEAN:
         *out_value = (struct mylite_expression_value){
             .kind = MYLITE_EXPRESSION_VALUE_INT64,
-            .int64_value = system_variable_boolean_value(entry->id),
+            .int64_value = system_variable_boolean_value(database, entry->id, scope),
         };
         return MYLITE_OK;
     }
@@ -292,20 +303,36 @@ find_system_variable_entry(const struct mylite_system_variable_reference *refere
          MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH, MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
         {"collation_server", MYLITE_SYSTEM_VARIABLE_COLLATION_SERVER,
          MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH, MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
+        {"default_storage_engine", MYLITE_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH, MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
         {"error_count", MYLITE_SYSTEM_VARIABLE_ERROR_COUNT, MYLITE_SYSTEM_VARIABLE_SUPPORT_SESSION,
          MYLITE_SYSTEM_VARIABLE_VALUE_UNSIGNED},
+        {"foreign_key_checks", MYLITE_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH, MYLITE_SYSTEM_VARIABLE_VALUE_BOOLEAN},
         {"group_concat_max_len", MYLITE_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN,
          MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH, MYLITE_SYSTEM_VARIABLE_VALUE_UNSIGNED},
+        {"last_insert_id", MYLITE_SYSTEM_VARIABLE_LAST_INSERT_ID,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_SESSION, MYLITE_SYSTEM_VARIABLE_VALUE_UNSIGNED},
+        {"lower_case_table_names", MYLITE_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_GLOBAL, MYLITE_SYSTEM_VARIABLE_VALUE_UNSIGNED},
+        {"max_allowed_packet", MYLITE_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH, MYLITE_SYSTEM_VARIABLE_VALUE_UNSIGNED},
+        {"max_connections", MYLITE_SYSTEM_VARIABLE_MAX_CONNECTIONS,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_GLOBAL, MYLITE_SYSTEM_VARIABLE_VALUE_UNSIGNED},
         {"max_error_count", MYLITE_SYSTEM_VARIABLE_MAX_ERROR_COUNT,
          MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH, MYLITE_SYSTEM_VARIABLE_VALUE_UNSIGNED},
         {"sql_mode", MYLITE_SYSTEM_VARIABLE_SQL_MODE, MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
          MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
         {"sql_notes", MYLITE_SYSTEM_VARIABLE_SQL_NOTES, MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
          MYLITE_SYSTEM_VARIABLE_VALUE_BOOLEAN},
+        {"time_zone", MYLITE_SYSTEM_VARIABLE_TIME_ZONE, MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
+         MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
         {"transaction_isolation", MYLITE_SYSTEM_VARIABLE_TRANSACTION_ISOLATION,
          MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH, MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
         {"transaction_read_only", MYLITE_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY,
          MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH, MYLITE_SYSTEM_VARIABLE_VALUE_BOOLEAN},
+        {"unique_checks", MYLITE_SYSTEM_VARIABLE_UNIQUE_CHECKS, MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
+         MYLITE_SYSTEM_VARIABLE_VALUE_BOOLEAN},
         {"version", MYLITE_SYSTEM_VARIABLE_VERSION, MYLITE_SYSTEM_VARIABLE_SUPPORT_GLOBAL,
          MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
         {"version_comment", MYLITE_SYSTEM_VARIABLE_VERSION_COMMENT,
@@ -316,6 +343,8 @@ find_system_variable_entry(const struct mylite_system_variable_reference *refere
          MYLITE_SYSTEM_VARIABLE_SUPPORT_GLOBAL, MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
         {"version_compile_zlib", MYLITE_SYSTEM_VARIABLE_VERSION_COMPILE_ZLIB,
          MYLITE_SYSTEM_VARIABLE_SUPPORT_GLOBAL, MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
+        {"wait_timeout", MYLITE_SYSTEM_VARIABLE_WAIT_TIMEOUT, MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
+         MYLITE_SYSTEM_VARIABLE_VALUE_UNSIGNED},
         {"warning_count", MYLITE_SYSTEM_VARIABLE_WARNING_COUNT,
          MYLITE_SYSTEM_VARIABLE_SUPPORT_SESSION, MYLITE_SYSTEM_VARIABLE_VALUE_UNSIGNED},
     };
@@ -426,8 +455,20 @@ static uint64_t system_variable_unsigned_value(const mylite_db *database,
         return scope == MYLITE_SYSTEM_VARIABLE_SCOPE_GLOBAL
                    ? mylite_connection_default_group_concat_max_len()
                    : mylite_connection_group_concat_max_len(database);
+    case MYLITE_SYSTEM_VARIABLE_LAST_INSERT_ID:
+        return database == NULL ? 0U : database->last_insert_id;
+    case MYLITE_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES:
+        return 0U;
+    case MYLITE_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET:
+        return mylite_connection_default_max_allowed_packet();
+    case MYLITE_SYSTEM_VARIABLE_MAX_CONNECTIONS:
+        return mylite_connection_default_max_connections();
     case MYLITE_SYSTEM_VARIABLE_MAX_ERROR_COUNT:
         return mylite_system_variable_default_max_error_count;
+    case MYLITE_SYSTEM_VARIABLE_WAIT_TIMEOUT:
+        return scope == MYLITE_SYSTEM_VARIABLE_SCOPE_GLOBAL
+                   ? mylite_connection_default_wait_timeout()
+                   : mylite_connection_wait_timeout(database);
     case MYLITE_SYSTEM_VARIABLE_WARNING_COUNT:
     case MYLITE_SYSTEM_VARIABLE_ERROR_COUNT:
         return 0U;
@@ -443,10 +484,14 @@ static uint64_t system_variable_unsigned_value(const mylite_db *database,
     case MYLITE_SYSTEM_VARIABLE_COLLATION_CONNECTION:
     case MYLITE_SYSTEM_VARIABLE_COLLATION_DATABASE:
     case MYLITE_SYSTEM_VARIABLE_COLLATION_SERVER:
+    case MYLITE_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE:
+    case MYLITE_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
     case MYLITE_SYSTEM_VARIABLE_SQL_MODE:
     case MYLITE_SYSTEM_VARIABLE_SQL_NOTES:
+    case MYLITE_SYSTEM_VARIABLE_TIME_ZONE:
     case MYLITE_SYSTEM_VARIABLE_TRANSACTION_ISOLATION:
     case MYLITE_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY:
+    case MYLITE_SYSTEM_VARIABLE_UNIQUE_CHECKS:
     case MYLITE_SYSTEM_VARIABLE_VERSION:
     case MYLITE_SYSTEM_VARIABLE_VERSION_COMMENT:
     case MYLITE_SYSTEM_VARIABLE_VERSION_COMPILE_MACHINE:
@@ -457,13 +502,37 @@ static uint64_t system_variable_unsigned_value(const mylite_db *database,
     return 0U;
 }
 
-static int64_t system_variable_boolean_value(enum mylite_system_variable_id id)
+static int64_t system_variable_boolean_value(const mylite_db *database,
+                                             enum mylite_system_variable_id id,
+                                             enum mylite_system_variable_requested_scope scope)
 {
     switch (id) {
     case MYLITE_SYSTEM_VARIABLE_AUTOCOMMIT:
     case MYLITE_SYSTEM_VARIABLE_SQL_NOTES:
         return 1;
+    case MYLITE_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
+        if (scope == MYLITE_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+            if (mylite_connection_default_foreign_key_checks()) {
+                return 1;
+            }
+            return 0;
+        }
+        if (mylite_connection_foreign_key_checks(database)) {
+            return 1;
+        }
+        return 0;
     case MYLITE_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY:
+        return 0;
+    case MYLITE_SYSTEM_VARIABLE_UNIQUE_CHECKS:
+        if (scope == MYLITE_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+            if (mylite_connection_default_unique_checks()) {
+                return 1;
+            }
+            return 0;
+        }
+        if (mylite_connection_unique_checks(database)) {
+            return 1;
+        }
         return 0;
     case MYLITE_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT:
     case MYLITE_SYSTEM_VARIABLE_CHARACTER_SET_CONNECTION:
@@ -476,16 +545,23 @@ static int64_t system_variable_boolean_value(enum mylite_system_variable_id id)
     case MYLITE_SYSTEM_VARIABLE_COLLATION_CONNECTION:
     case MYLITE_SYSTEM_VARIABLE_COLLATION_DATABASE:
     case MYLITE_SYSTEM_VARIABLE_COLLATION_SERVER:
+    case MYLITE_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE:
     case MYLITE_SYSTEM_VARIABLE_ERROR_COUNT:
     case MYLITE_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN:
+    case MYLITE_SYSTEM_VARIABLE_LAST_INSERT_ID:
+    case MYLITE_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES:
+    case MYLITE_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET:
+    case MYLITE_SYSTEM_VARIABLE_MAX_CONNECTIONS:
     case MYLITE_SYSTEM_VARIABLE_MAX_ERROR_COUNT:
     case MYLITE_SYSTEM_VARIABLE_SQL_MODE:
+    case MYLITE_SYSTEM_VARIABLE_TIME_ZONE:
     case MYLITE_SYSTEM_VARIABLE_TRANSACTION_ISOLATION:
     case MYLITE_SYSTEM_VARIABLE_VERSION:
     case MYLITE_SYSTEM_VARIABLE_VERSION_COMMENT:
     case MYLITE_SYSTEM_VARIABLE_VERSION_COMPILE_MACHINE:
     case MYLITE_SYSTEM_VARIABLE_VERSION_COMPILE_OS:
     case MYLITE_SYSTEM_VARIABLE_VERSION_COMPILE_ZLIB:
+    case MYLITE_SYSTEM_VARIABLE_WAIT_TIMEOUT:
     case MYLITE_SYSTEM_VARIABLE_WARNING_COUNT:
         break;
     }
@@ -528,11 +604,21 @@ static const char *system_variable_string_value(mylite_db *database,
                                                 : schema_default->collation;
     case MYLITE_SYSTEM_VARIABLE_COLLATION_SERVER:
         return mylite_charset_default_collation_name();
+    case MYLITE_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE:
+        if (global) {
+            return mylite_connection_default_storage_engine();
+        }
+        return mylite_connection_storage_engine(database);
     case MYLITE_SYSTEM_VARIABLE_SQL_MODE:
         if (global) {
             return mylite_connection_default_sql_mode();
         }
         return mylite_connection_sql_mode(database);
+    case MYLITE_SYSTEM_VARIABLE_TIME_ZONE:
+        if (global) {
+            return mylite_connection_default_time_zone();
+        }
+        return mylite_connection_time_zone(database);
     case MYLITE_SYSTEM_VARIABLE_TRANSACTION_ISOLATION:
         return "REPEATABLE-READ";
     case MYLITE_SYSTEM_VARIABLE_VERSION:
@@ -545,10 +631,17 @@ static const char *system_variable_string_value(mylite_db *database,
         return "";
     case MYLITE_SYSTEM_VARIABLE_AUTOCOMMIT:
     case MYLITE_SYSTEM_VARIABLE_ERROR_COUNT:
+    case MYLITE_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
     case MYLITE_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN:
+    case MYLITE_SYSTEM_VARIABLE_LAST_INSERT_ID:
+    case MYLITE_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES:
+    case MYLITE_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET:
+    case MYLITE_SYSTEM_VARIABLE_MAX_CONNECTIONS:
     case MYLITE_SYSTEM_VARIABLE_MAX_ERROR_COUNT:
     case MYLITE_SYSTEM_VARIABLE_SQL_NOTES:
     case MYLITE_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY:
+    case MYLITE_SYSTEM_VARIABLE_UNIQUE_CHECKS:
+    case MYLITE_SYSTEM_VARIABLE_WAIT_TIMEOUT:
     case MYLITE_SYSTEM_VARIABLE_WARNING_COUNT:
         break;
     }

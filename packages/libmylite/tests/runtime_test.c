@@ -22360,7 +22360,9 @@ static int test_show_variables_execution(void)
     // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
     static const char *const columns[] = {"Variable_name", "Value"};
     static const char *const autocommit_values[] = {"autocommit", "ON"};
-    static const char *const on_variable_values[] = {"autocommit", "ON", "sql_notes", "ON"};
+    static const char *const on_variable_values[] = {
+        "autocommit", "ON", "foreign_key_checks", "ON", "sql_notes", "ON", "unique_checks", "ON",
+    };
     static const char *const initial_charset_values[] = {
         "character_set_client",   "utf8mb4", "character_set_connection", "utf8mb4",
         "character_set_database", "utf8mb4", "character_set_filesystem", "binary",
@@ -22411,6 +22413,21 @@ static int test_show_variables_execution(void)
     };
     static const char *const default_group_concat_max_len_values[] = {"group_concat_max_len",
                                                                       "1024"};
+    static const char *const default_storage_engine_values[] = {"default_storage_engine", "InnoDB"};
+    static const char *const memory_storage_engine_values[] = {"default_storage_engine", "MEMORY"};
+    static const char *const foreign_key_checks_values[] = {"foreign_key_checks", "ON"};
+    static const char *const foreign_key_checks_off_values[] = {"foreign_key_checks", "OFF"};
+    static const char *const last_insert_id_values[] = {"last_insert_id", "0"};
+    static const char *const lower_case_table_names_values[] = {"lower_case_table_names", "0"};
+    static const char *const max_allowed_packet_values[] = {"max_allowed_packet", "67108864"};
+    static const char *const max_connections_values[] = {"max_connections", "151"};
+    static const char *const time_zone_values[] = {"time_zone", "SYSTEM"};
+    static const char *const utc_time_zone_values[] = {"time_zone", "+00:00"};
+    static const char *const unique_checks_values[] = {"unique_checks", "ON"};
+    static const char *const unique_checks_off_values[] = {"unique_checks", "OFF"};
+    static const char *const wait_timeout_values[] = {"wait_timeout", "28800"};
+    static const char *const short_wait_timeout_values[] = {"wait_timeout", "123"};
+    static const char *const minimum_wait_timeout_values[] = {"wait_timeout", "1"};
     static const char *const short_group_concat_max_len_values[] = {"group_concat_max_len", "4"};
     static const char *const six_group_concat_max_len_values[] = {"group_concat_max_len", "6"};
     static const char *const selected_database_collation_values[] = {"collation_database",
@@ -22428,6 +22445,21 @@ static int test_show_variables_execution(void)
     };
     static const char *const system_variable_changed_columns[] = {"sm", "lsm", "gsm", "gcm",
                                                                   "lgcm"};
+    static const char *const wp_system_variable_columns[] = {
+        "dse", "fk", "gfk", "li", "lctn", "map", "mc", "tz", "gtz", "uc", "wt",
+    };
+    static const char *const wp_system_variable_values[] = {
+        "InnoDB", "1", "1", "0", "0", "67108864", "151", "SYSTEM", "SYSTEM", "1", "28800",
+    };
+    static const char *const wp_system_variable_changed_columns[] = {
+        "dse", "fk", "tz", "uc", "wt",
+    };
+    static const char *const wp_system_variable_changed_values[] = {
+        "MEMORY", "0", "+00:00", "0", "123",
+    };
+    static const char *const wp_system_variable_restored_values[] = {
+        "InnoDB", "1", "SYSTEM", "1", "28800",
+    };
     static const char *const system_variable_charset_columns[] = {
         "client", "global_client", "connection", "global_connection"};
     static const char *const system_variable_charset_values[] = {
@@ -22539,6 +22571,16 @@ static int test_show_variables_execution(void)
         system_variable_columns,
         (int)(sizeof(system_variable_columns) / sizeof(system_variable_columns[0])),
         system_variable_values, 1, "system variable expression defaults");
+    failures += expect_select_rows(
+        database,
+        "SELECT @@default_storage_engine AS dse, @@foreign_key_checks AS fk, "
+        "@@GLOBAL.foreign_key_checks AS gfk, @@last_insert_id AS li, "
+        "@@lower_case_table_names AS lctn, @@max_allowed_packet AS map, "
+        "@@max_connections AS mc, @@time_zone AS tz, @@GLOBAL.time_zone AS gtz, "
+        "@@unique_checks AS uc, @@wait_timeout AS wt",
+        wp_system_variable_columns,
+        (int)(sizeof(wp_system_variable_columns) / sizeof(wp_system_variable_columns[0])),
+        wp_system_variable_values, 1, "wp priority system variable expression defaults");
     failures += prepare_sql(database,
                             "SELECT @@sql_mode AS sm, @@group_concat_max_len AS gcm, "
                             "@@autocommit AS ac",
@@ -22556,9 +22598,33 @@ static int test_show_variables_execution(void)
     failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'group_concat_max_len'", columns,
                                    2, default_group_concat_max_len_values, 1,
                                    "show variables group concat max len default");
+    failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'default_storage_engine'",
+                                   columns, 2, default_storage_engine_values, 1,
+                                   "show variables default storage engine");
+    failures +=
+        expect_select_rows(database, "SHOW VARIABLES LIKE 'foreign_key_checks'", columns, 2,
+                           foreign_key_checks_values, 1, "show variables foreign key checks");
+    failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'last_insert_id'", columns, 2,
+                                   last_insert_id_values, 1, "show variables last insert id");
+    failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'lower_case_table_names'",
+                                   columns, 2, lower_case_table_names_values, 1,
+                                   "show variables lower case table names");
+    failures +=
+        expect_select_rows(database, "SHOW VARIABLES LIKE 'max_allowed_packet'", columns, 2,
+                           max_allowed_packet_values, 1, "show variables max allowed packet");
+    failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'max_connections'", columns, 2,
+                                   max_connections_values, 1, "show variables max connections");
+    failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'time_zone'", columns, 2,
+                                   time_zone_values, 1, "show variables time zone");
+    failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'unique_checks'", columns, 2,
+                                   unique_checks_values, 1, "show variables unique checks");
+    failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'wait_timeout'", columns, 2,
+                                   wait_timeout_values, 1, "show variables wait timeout");
     failures += expect_select_rows(database, "SHOW GLOBAL VARIABLES LIKE 'group_concat_max_len'",
                                    columns, 2, default_group_concat_max_len_values, 1,
                                    "show global variables group concat max len default");
+    failures += expect_select_rows(database, "SHOW GLOBAL VARIABLES LIKE 'last_insert_id'", columns,
+                                   2, NULL, 0, "show global variables omits last insert id");
     failures += expect_show_variables_contains(
         database, &(const struct show_variable_expectation){
                       .sql = "SHOW VARIABLES",
@@ -22679,6 +22745,63 @@ static int test_show_variables_execution(void)
         expect_prepare_error(database, "SET GLOBAL group_concat_max_len = 8", MYLITE_UNSUPPORTED,
                              "SET GLOBAL group_concat_max_len is not supported",
                              "set global group concat max len unsupported");
+    failures += execute_sql(database, "SET default_storage_engine = 'MEMORY'", MYLITE_DONE);
+    failures += execute_sql(database, "SET foreign_key_checks = 0", MYLITE_DONE);
+    failures += execute_sql(database, "SET time_zone = '+00:00'", MYLITE_DONE);
+    failures += execute_sql(database, "SET unique_checks = 0", MYLITE_DONE);
+    failures += execute_sql(database, "SET wait_timeout = 123", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT @@default_storage_engine AS dse, @@foreign_key_checks AS fk, "
+        "@@time_zone AS tz, @@unique_checks AS uc, @@wait_timeout AS wt",
+        wp_system_variable_changed_columns,
+        (int)(sizeof(wp_system_variable_changed_columns) /
+              sizeof(wp_system_variable_changed_columns[0])),
+        wp_system_variable_changed_values, 1, "wp priority system variable session changes");
+    failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'default_storage_engine'",
+                                   columns, 2, memory_storage_engine_values, 1,
+                                   "show variables storage engine session set");
+    failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'foreign_key_checks'", columns, 2,
+                                   foreign_key_checks_off_values, 1,
+                                   "show variables foreign key checks off");
+    failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'time_zone'", columns, 2,
+                                   utc_time_zone_values, 1, "show variables time zone set");
+    failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'unique_checks'", columns, 2,
+                                   unique_checks_off_values, 1, "show variables unique checks off");
+    failures +=
+        expect_select_rows(database, "SHOW VARIABLES LIKE 'wait_timeout'", columns, 2,
+                           short_wait_timeout_values, 1, "show variables wait timeout session set");
+    failures += execute_sql(database, "SET wait_timeout = 0", MYLITE_DONE);
+    failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'wait_timeout'", columns, 2,
+                                   minimum_wait_timeout_values, 1,
+                                   "show variables wait timeout clamps zero");
+    failures += execute_sql(database, "SET default_storage_engine = DEFAULT", MYLITE_DONE);
+    failures += execute_sql(database, "SET foreign_key_checks = DEFAULT", MYLITE_DONE);
+    failures += execute_sql(database, "SET time_zone = DEFAULT", MYLITE_DONE);
+    failures += execute_sql(database, "SET unique_checks = DEFAULT", MYLITE_DONE);
+    failures += execute_sql(database, "SET wait_timeout = DEFAULT", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT @@default_storage_engine AS dse, @@foreign_key_checks AS fk, "
+        "@@time_zone AS tz, @@unique_checks AS uc, @@wait_timeout AS wt",
+        wp_system_variable_changed_columns,
+        (int)(sizeof(wp_system_variable_changed_columns) /
+              sizeof(wp_system_variable_changed_columns[0])),
+        wp_system_variable_restored_values, 1, "wp priority system variables default restore");
+    failures += expect_prepare_error(database, "SET foreign_key_checks = 2", MYLITE_EXEC_ERROR,
+                                     "Variable 'foreign_key_checks' can't be set to the value of "
+                                     "'2'",
+                                     "set foreign key checks invalid value");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_wrong_value_for_var,
+                           "set foreign key checks invalid value code");
+    failures += expect_prepare_error(database, "SET unique_checks = NULL", MYLITE_EXEC_ERROR,
+                                     "Incorrect argument type to variable 'unique_checks'",
+                                     "set unique checks null type error");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_wrong_type_for_var,
+                           "set unique checks null type error code");
+    failures += expect_prepare_error(database, "SET GLOBAL time_zone = '+00:00'",
+                                     MYLITE_UNSUPPORTED, "SET GLOBAL time_zone is not supported",
+                                     "set global time zone unsupported");
     failures += expect_prepare_error(database, "SELECT @@no_such_variable", MYLITE_EXEC_ERROR,
                                      "Unknown system variable 'no_such_variable'",
                                      "unknown system variable expression error");
@@ -22698,10 +22821,29 @@ static int test_show_variables_execution(void)
         expect_int((int)mylite_warning_code(database, 0), mysql_warning_incorrect_global_local_var,
                    "session global-only system variable error code");
     failures +=
+        expect_prepare_error(database, "SELECT @@SESSION.lower_case_table_names", MYLITE_EXEC_ERROR,
+                             "Variable 'lower_case_table_names' is a GLOBAL variable",
+                             "session lower case table names scope error");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_incorrect_global_local_var,
+                   "session lower case table names scope error code");
+    failures += expect_prepare_error(
+        database, "SELECT @@SESSION.max_connections", MYLITE_EXEC_ERROR,
+        "Variable 'max_connections' is a GLOBAL variable", "session max connections scope error");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_incorrect_global_local_var,
+                   "session max connections scope error code");
+    failures += expect_prepare_error(database, "SELECT @@GLOBAL.last_insert_id", MYLITE_EXEC_ERROR,
+                                     "Variable 'last_insert_id' is a SESSION variable",
+                                     "global last insert id scope error");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_incorrect_global_local_var,
+                   "global last insert id scope error code");
+    failures +=
         expect_select_rows(database, "SHOW VARIABLES WHERE Variable_name = 'autocommit'", columns,
                            2, autocommit_values, 1, "show variables where variable name");
     failures += expect_select_rows(database, "SHOW VARIABLES WHERE Value = 'ON'", columns, 2,
-                                   on_variable_values, 2, "show variables where value column");
+                                   on_variable_values, 4, "show variables where value column");
     failures += expect_prepare_error(database, "SHOW VARIABLES WHERE No_such_column = 1",
                                      MYLITE_EXEC_ERROR, "Unknown column 'No_such_column'",
                                      "show variables where unknown column");
@@ -22853,6 +22995,21 @@ static int test_show_status_execution(void)
         "Threads_created", "1", "Threads_running",   "1",
     };
     static const char *const questions_values[] = {"Questions", "0"};
+    static const char *const queries_values[] = {"Queries", "0"};
+    static const char *const byte_status_values[] = {
+        "Bytes_received",
+        "0",
+        "Bytes_sent",
+        "0",
+    };
+    static const char *const tmp_status_values[] = {
+        "Created_tmp_disk_tables",
+        "0",
+        "Created_tmp_tables",
+        "0",
+    };
+    static const char *const slow_queries_values[] = {"Slow_queries", "0"};
+    static const char *const last_query_cost_values[] = {"Last_query_cost", "0.000000"};
     static const char *const com_select_values[] = {"Com_select", "0"};
     static const char *const com_show_values[] = {
         "Com_show_errors",   "0", "Com_show_fields", "0", "Com_show_keys",      "0",
@@ -22860,6 +23017,8 @@ static int test_show_status_execution(void)
         "Com_show_warnings", "0",
     };
     static const struct show_status_row_expectation catalog_rows[] = {
+        {"Bytes_received", "0"},
+        {"Bytes_sent", "0"},
         {"Com_begin", "0"},
         {"Com_commit", "0"},
         {"Com_create_db", "0"},
@@ -22888,7 +23047,12 @@ static int test_show_status_execution(void)
         {"Com_truncate", "0"},
         {"Com_update", "0"},
         {"Connections", "1"},
+        {"Created_tmp_disk_tables", "0"},
+        {"Created_tmp_tables", "0"},
+        {"Last_query_cost", "0.000000"},
+        {"Queries", "0"},
         {"Questions", "0"},
+        {"Slow_queries", "0"},
         {"Threads_cached", "0"},
         {"Threads_connected", "1"},
         {"Threads_created", "1"},
@@ -22932,6 +23096,17 @@ static int test_show_status_execution(void)
                                    connections_values, 1, "show status connections");
     failures += expect_select_rows(database, "SHOW STATUS LIKE 'Questions'", columns, 2,
                                    questions_values, 1, "show status questions placeholder");
+    failures += expect_select_rows(database, "SHOW STATUS LIKE 'Queries'", columns, 2,
+                                   queries_values, 1, "show status queries placeholder");
+    failures += expect_select_rows(database, "SHOW STATUS LIKE 'Bytes%'", columns, 2,
+                                   byte_status_values, 2, "show status byte placeholders");
+    failures += expect_select_rows(database, "SHOW STATUS LIKE 'Created\\_tmp\\_%'", columns, 2,
+                                   tmp_status_values, 2, "show status temp table placeholders");
+    failures +=
+        expect_select_rows(database, "SHOW STATUS LIKE 'Last_query_cost'", columns, 2,
+                           last_query_cost_values, 1, "show status last query cost placeholder");
+    failures += expect_select_rows(database, "SHOW STATUS LIKE 'Slow_queries'", columns, 2,
+                                   slow_queries_values, 1, "show status slow queries placeholder");
     failures += expect_select_rows(database, "SHOW STATUS LIKE 'Com_select'", columns, 2,
                                    com_select_values, 1, "show status com select placeholder");
     failures += expect_select_rows(database, "SHOW STATUS LIKE 'Com\\_show\\_%'", columns, 2,

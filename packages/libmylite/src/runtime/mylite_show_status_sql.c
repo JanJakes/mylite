@@ -31,6 +31,8 @@ int mylite_show_status_sql(mylite_db *database, const struct mylite_show_status_
     }
 
     sqlite3_str_appendall(sql, "SELECT Variable_name, Value FROM (");
+    append_show_status_row(sql, &first, "Bytes_received", "0");
+    append_show_status_row(sql, &first, "Bytes_sent", "0");
     append_show_status_row(sql, &first, "Com_begin", "0");
     append_show_status_row(sql, &first, "Com_commit", "0");
     append_show_status_row(sql, &first, "Com_create_db", "0");
@@ -59,7 +61,12 @@ int mylite_show_status_sql(mylite_db *database, const struct mylite_show_status_
     append_show_status_row(sql, &first, "Com_truncate", "0");
     append_show_status_row(sql, &first, "Com_update", "0");
     append_show_status_row(sql, &first, "Connections", "1");
+    append_show_status_row(sql, &first, "Created_tmp_disk_tables", "0");
+    append_show_status_row(sql, &first, "Created_tmp_tables", "0");
+    append_show_status_row(sql, &first, "Last_query_cost", "0.000000");
+    append_show_status_row(sql, &first, "Queries", "0");
     append_show_status_row(sql, &first, "Questions", "0");
+    append_show_status_row(sql, &first, "Slow_queries", "0");
     append_show_status_row(sql, &first, "Threads_cached", "0");
     append_show_status_row(sql, &first, "Threads_connected", "1");
     append_show_status_row(sql, &first, "Threads_created", "1");

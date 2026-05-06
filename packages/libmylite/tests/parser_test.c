@@ -367,6 +367,16 @@ static int test_schema_lifecycle_statements(void)
 
 static int test_connection_charset_statements(void)
 {
+    enum {
+        group_concat_statement_count = 7U,
+        group_concat_decimal_statement = 5U,
+        group_concat_null_statement = 6U,
+        wp_priority_variable_statement_count = 5U,
+        wp_priority_time_zone_statement = 1U,
+        wp_priority_unique_checks_statement = 2U,
+        wp_priority_wait_timeout_statement = 3U,
+        wp_priority_storage_engine_statement = 4U,
+    };
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
     int failures = 0;
@@ -462,7 +472,8 @@ static int test_connection_charset_statements(void)
                           "SET group_concat_max_len = 4.9; "
                           "SET group_concat_max_len = NULL;",
                           MYLITE_SQL_PARSE_OK, &result);
-    failures += expect_child_count(result.root, 7U, "set group concat max len script");
+    failures += expect_child_count(result.root, group_concat_statement_count,
+                                   "set group concat max len script");
     statement = child_at(result.root, 0U);
     failures += expect_node(statement, MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT,
                             "set group concat max len");
@@ -481,12 +492,39 @@ static int test_connection_charset_statements(void)
                                  "set group concat max len local variable");
     failures += expect_node(child_at(statement, 1U), MYLITE_SQL_AST_UNARY_EXPRESSION,
                             "set group concat max len positive value");
-    statement = child_at(result.root, 5U);
+    statement = child_at(result.root, group_concat_decimal_statement);
     failures += expect_literal(child_at(statement, 1U), MYLITE_SQL_AST_LITERAL_DECIMAL,
                                "set group concat max len decimal value");
-    statement = child_at(result.root, 6U);
+    statement = child_at(result.root, group_concat_null_statement);
     failures += expect_literal(child_at(statement, 1U), MYLITE_SQL_AST_LITERAL_NULL,
                                "set group concat max len null value");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SET foreign_key_checks = 0; "
+                          "SET time_zone = '+00:00'; "
+                          "SET unique_checks = DEFAULT; "
+                          "SET wait_timeout = 123; "
+                          "SET default_storage_engine = 'MEMORY';",
+                          MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_child_count(result.root, wp_priority_variable_statement_count,
+                                   "set wp priority variables script");
+    statement = child_at(result.root, 0U);
+    failures += expect_span_text(child_at(statement, 0U), "foreign_key_checks",
+                                 "set foreign key checks variable");
+    failures += expect_literal(child_at(statement, 1U), MYLITE_SQL_AST_LITERAL_INTEGER,
+                               "set foreign key checks value");
+    statement = child_at(result.root, wp_priority_time_zone_statement);
+    failures += expect_literal(child_at(statement, 1U), MYLITE_SQL_AST_LITERAL_STRING,
+                               "set time zone value");
+    statement = child_at(result.root, wp_priority_unique_checks_statement);
+    failures += expect_node(child_at(statement, 1U), MYLITE_SQL_AST_DEFAULT,
+                            "set unique checks default value");
+    statement = child_at(result.root, wp_priority_wait_timeout_statement);
+    failures += expect_literal(child_at(statement, 1U), MYLITE_SQL_AST_LITERAL_INTEGER,
+                               "set wait timeout value");
+    statement = child_at(result.root, wp_priority_storage_engine_statement);
+    failures += expect_literal(child_at(statement, 1U), MYLITE_SQL_AST_LITERAL_STRING,
+                               "set default storage engine value");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

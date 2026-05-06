@@ -21,6 +21,11 @@
 static const uint64_t mylite_embedded_connection_id = 1U;
 static const uint64_t mylite_min_group_concat_max_len = 4U;
 static const uint64_t mylite_default_group_concat_max_len = 1024U;
+static const uint64_t mylite_default_max_allowed_packet = 67108864U;
+static const uint64_t mylite_default_max_connections = 151U;
+static const uint64_t mylite_default_wait_timeout = 28800U;
+static const char mylite_default_storage_engine[] = "InnoDB";
+static const char mylite_default_time_zone[] = "SYSTEM";
 static const char mylite_default_sql_mode[] =
     "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,"
     "ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION";
@@ -59,6 +64,7 @@ struct mylite_sql_mode_token_search {
 
 static int open_sqlite_database(const char *filename, int flags, const char *vfs_name,
                                 mylite_db **out_db);
+static int set_connection_text_value(mylite_db *database, const char *value, char **out_value);
 static int copy_canonical_sql_mode(mylite_db *database, const char *sql_mode, char **out_value);
 static int append_sql_mode_token(mylite_db *database, char **out_value, size_t *out_length,
                                  const char *name);
@@ -111,6 +117,8 @@ void mylite_close(mylite_db *database)
     mylite_expression_warnings_deinit(&database->warnings);
     free(database->selected_schema);
     free(database->sql_mode);
+    free(database->default_storage_engine);
+    free(database->time_zone);
     mylite_user_variable_store_deinit(&database->user_variables);
     mylite_prepared_statement_store_deinit(&database->prepared_statements);
     mylite_transaction_savepoint_state_deinit(&database->savepoints);
@@ -264,6 +272,26 @@ int mylite_connection_set_sql_mode(mylite_db *database, const char *sql_mode)
     return MYLITE_OK;
 }
 
+int mylite_connection_set_default_storage_engine(mylite_db *database)
+{
+    return mylite_connection_set_storage_engine(database, mylite_default_storage_engine);
+}
+
+int mylite_connection_set_storage_engine(mylite_db *database, const char *storage_engine)
+{
+    return set_connection_text_value(database, storage_engine, &database->default_storage_engine);
+}
+
+int mylite_connection_set_default_time_zone(mylite_db *database)
+{
+    return mylite_connection_set_time_zone(database, mylite_default_time_zone);
+}
+
+int mylite_connection_set_time_zone(mylite_db *database, const char *time_zone)
+{
+    return set_connection_text_value(database, time_zone, &database->time_zone);
+}
+
 int mylite_connection_set_default_group_concat_max_len(mylite_db *database)
 {
     return mylite_connection_set_group_concat_max_len(database,
@@ -278,6 +306,51 @@ int mylite_connection_set_group_concat_max_len(mylite_db *database, uint64_t val
 
     database->group_concat_max_len =
         value < mylite_min_group_concat_max_len ? mylite_min_group_concat_max_len : value;
+    return MYLITE_OK;
+}
+
+int mylite_connection_set_default_wait_timeout(mylite_db *database)
+{
+    return mylite_connection_set_wait_timeout(database, mylite_default_wait_timeout);
+}
+
+int mylite_connection_set_wait_timeout(mylite_db *database, uint64_t value)
+{
+    if (database == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    database->wait_timeout = value == 0U ? 1U : value;
+    return MYLITE_OK;
+}
+
+int mylite_connection_set_default_foreign_key_checks(mylite_db *database)
+{
+    return mylite_connection_set_foreign_key_checks(database, true);
+}
+
+int mylite_connection_set_foreign_key_checks(mylite_db *database, bool enabled)
+{
+    if (database == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    database->foreign_key_checks = enabled;
+    return MYLITE_OK;
+}
+
+int mylite_connection_set_default_unique_checks(mylite_db *database)
+{
+    return mylite_connection_set_unique_checks(database, true);
+}
+
+int mylite_connection_set_unique_checks(mylite_db *database, bool enabled)
+{
+    if (database == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    database->unique_checks = enabled;
     return MYLITE_OK;
 }
 
@@ -300,6 +373,29 @@ bool mylite_connection_sql_mode_has_only_full_group_by(const mylite_db *database
     });
 }
 
+const char *mylite_connection_default_storage_engine(void)
+{
+    return mylite_default_storage_engine;
+}
+
+const char *mylite_connection_storage_engine(const mylite_db *database)
+{
+    return database == NULL || database->default_storage_engine == NULL
+               ? mylite_default_storage_engine
+               : database->default_storage_engine;
+}
+
+const char *mylite_connection_default_time_zone(void)
+{
+    return mylite_default_time_zone;
+}
+
+const char *mylite_connection_time_zone(const mylite_db *database)
+{
+    return database == NULL || database->time_zone == NULL ? mylite_default_time_zone
+                                                           : database->time_zone;
+}
+
 uint64_t mylite_connection_default_group_concat_max_len(void)
 {
     return mylite_default_group_concat_max_len;
@@ -317,6 +413,53 @@ size_t mylite_connection_group_concat_max_len_size(const mylite_db *database)
     uint64_t value = mylite_connection_group_concat_max_len(database);
 
     return value > (uint64_t)SIZE_MAX ? SIZE_MAX : (size_t)value;
+}
+
+uint64_t mylite_connection_default_max_allowed_packet(void)
+{
+    return mylite_default_max_allowed_packet;
+}
+
+uint64_t mylite_connection_default_max_connections(void)
+{
+    return mylite_default_max_connections;
+}
+
+uint64_t mylite_connection_default_wait_timeout(void)
+{
+    return mylite_default_wait_timeout;
+}
+
+uint64_t mylite_connection_wait_timeout(const mylite_db *database)
+{
+    return database == NULL || database->wait_timeout == 0U ? mylite_default_wait_timeout
+                                                            : database->wait_timeout;
+}
+
+bool mylite_connection_default_foreign_key_checks(void)
+{
+    return true;
+}
+
+bool mylite_connection_foreign_key_checks(const mylite_db *database)
+{
+    if (database == NULL) {
+        return mylite_connection_default_foreign_key_checks();
+    }
+    return database->foreign_key_checks;
+}
+
+bool mylite_connection_default_unique_checks(void)
+{
+    return true;
+}
+
+bool mylite_connection_unique_checks(const mylite_db *database)
+{
+    if (database == NULL) {
+        return mylite_connection_default_unique_checks();
+    }
+    return database->unique_checks;
 }
 
 static int open_sqlite_database(const char *filename, int flags, const char *vfs_name,
@@ -349,17 +492,47 @@ static int open_sqlite_database(const char *filename, int flags, const char *vfs
 
     (void)mylite_connection_set_default_state(database);
     (void)mylite_connection_set_default_group_concat_max_len(database);
+    (void)mylite_connection_set_default_wait_timeout(database);
+    (void)mylite_connection_set_default_foreign_key_checks(database);
+    (void)mylite_connection_set_default_unique_checks(database);
     rc = mylite_connection_set_default_sql_mode(database);
+    if (rc == MYLITE_OK) {
+        rc = mylite_connection_set_default_storage_engine(database);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_connection_set_default_time_zone(database);
+    }
     if (rc != MYLITE_OK) {
         sqlite3_close(database->sqlite);
         free(database->error_message);
         mylite_expression_warnings_deinit(&database->warnings);
         free(database->selected_schema);
         free(database->sql_mode);
+        free(database->default_storage_engine);
+        free(database->time_zone);
         free(database);
         return rc;
     }
     *out_db = database;
+    return MYLITE_OK;
+}
+
+static int set_connection_text_value(mylite_db *database, const char *value, char **out_value)
+{
+    const char *safe_value = value == NULL ? "" : value;
+    char *copy = NULL;
+
+    if (database == NULL || out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    copy = mylite_copy_span_text(safe_value, strlen(safe_value));
+    if (copy == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    free(*out_value);
+    *out_value = copy;
     return MYLITE_OK;
 }
 

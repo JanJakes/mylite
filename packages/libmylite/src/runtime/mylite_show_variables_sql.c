@@ -13,10 +13,12 @@
 
 static void append_show_variable_row(sqlite3_str *sql, bool *first, const char *name,
                                      const char *value);
+static const char *show_variable_bool(bool value);
 
 int mylite_show_variables_sql(mylite_db *database, const struct mylite_show_variables_query *query,
                               char **out_sql)
 {
+    enum { integer_buffer_size = 32 };
     static const char *const columns[] = {"Variable_name", "Value"};
     struct mylite_schema_default schema_default = {
         .character_set = mylite_charset_default_name(),
@@ -29,10 +31,18 @@ int mylite_show_variables_sql(mylite_db *database, const struct mylite_show_vari
     const char *character_set_results = mylite_charset_default_name();
     const char *collation_connection = mylite_charset_default_collation_name();
     const char *collation_database = mylite_charset_default_collation_name();
-    char group_concat_max_len[32] = {0};
+    const char *default_storage_engine = mylite_connection_default_storage_engine();
+    const char *time_zone = mylite_connection_default_time_zone();
+    char group_concat_max_len[integer_buffer_size] = {0};
+    char last_insert_id[integer_buffer_size] = {0};
+    char max_allowed_packet[integer_buffer_size] = {0};
+    char max_connections[integer_buffer_size] = {0};
+    char wait_timeout[integer_buffer_size] = {0};
     bool first = true;
     bool global = query->scope == MYLITE_SQL_AST_SHOW_VARIABLES_GLOBAL;
+    bool foreign_key_checks = mylite_connection_default_foreign_key_checks();
     const char *sql_mode = mylite_connection_default_sql_mode();
+    bool unique_checks = mylite_connection_default_unique_checks();
     int status = MYLITE_OK;
 
     *out_sql = NULL;
@@ -47,11 +57,24 @@ int mylite_show_variables_sql(mylite_db *database, const struct mylite_show_vari
         character_set_results = database->character_set_results;
         collation_connection = database->collation_connection;
         collation_database = schema_default.collation;
+        default_storage_engine = mylite_connection_storage_engine(database);
+        foreign_key_checks = mylite_connection_foreign_key_checks(database);
         sql_mode = mylite_connection_sql_mode(database);
+        time_zone = mylite_connection_time_zone(database);
+        unique_checks = mylite_connection_unique_checks(database);
     }
     snprintf(group_concat_max_len, sizeof(group_concat_max_len), "%llu",
              (unsigned long long)(global ? mylite_connection_default_group_concat_max_len()
                                          : mylite_connection_group_concat_max_len(database)));
+    snprintf(last_insert_id, sizeof(last_insert_id), "%llu",
+             (unsigned long long)(database == NULL ? 0U : database->last_insert_id));
+    snprintf(max_allowed_packet, sizeof(max_allowed_packet), "%llu",
+             (unsigned long long)mylite_connection_default_max_allowed_packet());
+    snprintf(max_connections, sizeof(max_connections), "%llu",
+             (unsigned long long)mylite_connection_default_max_connections());
+    snprintf(wait_timeout, sizeof(wait_timeout), "%llu",
+             (unsigned long long)(global ? mylite_connection_default_wait_timeout()
+                                         : mylite_connection_wait_timeout(database)));
 
     sql = sqlite3_str_new(database->sqlite);
     if (sql == NULL) {
@@ -72,15 +95,26 @@ int mylite_show_variables_sql(mylite_db *database, const struct mylite_show_vari
     append_show_variable_row(sql, &first, "collation_database", collation_database);
     append_show_variable_row(sql, &first, "collation_server",
                              mylite_charset_default_collation_name());
+    append_show_variable_row(sql, &first, "default_storage_engine", default_storage_engine);
     if (!global) {
         append_show_variable_row(sql, &first, "error_count", "0");
     }
+    append_show_variable_row(sql, &first, "foreign_key_checks",
+                             show_variable_bool(foreign_key_checks));
     append_show_variable_row(sql, &first, "group_concat_max_len", group_concat_max_len);
+    if (!global) {
+        append_show_variable_row(sql, &first, "last_insert_id", last_insert_id);
+    }
+    append_show_variable_row(sql, &first, "lower_case_table_names", "0");
+    append_show_variable_row(sql, &first, "max_allowed_packet", max_allowed_packet);
+    append_show_variable_row(sql, &first, "max_connections", max_connections);
     append_show_variable_row(sql, &first, "max_error_count", "1024");
     append_show_variable_row(sql, &first, "sql_mode", sql_mode);
     append_show_variable_row(sql, &first, "sql_notes", "ON");
+    append_show_variable_row(sql, &first, "time_zone", time_zone);
     append_show_variable_row(sql, &first, "transaction_isolation", "REPEATABLE-READ");
     append_show_variable_row(sql, &first, "transaction_read_only", "OFF");
+    append_show_variable_row(sql, &first, "unique_checks", show_variable_bool(unique_checks));
     append_show_variable_row(sql, &first, "version", mylite_version());
     append_show_variable_row(sql, &first, "version_comment", "MyLite");
     append_show_variable_row(sql, &first, "version_compile_machine", "");
@@ -89,6 +123,7 @@ int mylite_show_variables_sql(mylite_db *database, const struct mylite_show_vari
     if (!global) {
         append_show_variable_row(sql, &first, "warning_count", "0");
     }
+    append_show_variable_row(sql, &first, "wait_timeout", wait_timeout);
     sqlite3_str_appendall(sql, ")");
 
     if (query->like_pattern != NULL) {
@@ -124,4 +159,12 @@ static void append_show_variable_row(sqlite3_str *sql, bool *first, const char *
     sqlite3_str_appendf(sql, "SELECT %Q AS \"Variable_name\", %Q AS \"Value\"", name,
                         value == NULL ? "" : value);
     *first = false;
+}
+
+static const char *show_variable_bool(bool value)
+{
+    if (value) {
+        return "ON";
+    }
+    return "OFF";
 }

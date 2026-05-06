@@ -168,7 +168,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
 - [ ] Align ambiguous-name handling in `GROUP BY`, `HAVING`, and `ORDER BY`.
 - [x] Align literal expression column labels, such as `SELECT 'abc'`.
 - [ ] Complete result column metadata for expressions that currently report no
-      metadata.
+      metadata. FK information-schema result metadata is now covered for
+      `TABLE_CONSTRAINTS`, `KEY_COLUMN_USAGE`, and `REFERENTIAL_CONSTRAINTS`;
+      remaining expression metadata gaps are still tracked here.
 
 ## Test harness classification
 

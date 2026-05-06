@@ -80,8 +80,11 @@ commit.
       explicit diagnostics or support. MyLite rejects temporary child foreign
       keys with `Cannot add foreign key constraint` and treats temporary parent
       tables as unavailable to persistent child foreign keys.
-- [ ] Add field-metadata coverage for FK information-schema rows when the
-      unified information-schema metadata pass lands.
+- [x] Add field-metadata coverage for FK information-schema rows when the
+      unified information-schema metadata pass lands. Direct wildcard and
+      catalog-backed selected-system-view paths now attach MySQL 8.4.9-derived
+      descriptors for `TABLE_CONSTRAINTS`, `KEY_COLUMN_USAGE`, and
+      `REFERENTIAL_CONSTRAINTS`.
 - [x] Revisit `REPLACE` after FK enforcement to align delete-plus-insert
       behavior. Conflict deletes now apply covered `ON DELETE CASCADE` and
       `ON DELETE SET NULL` actions without adding child side effects to

@@ -130,6 +130,7 @@ add_library(mylite STATIC
   src/runtime/mylite_function_names_temporal.c
   src/runtime/mylite_information_schema.c
   src/runtime/mylite_information_schema_dynamic.c
+  src/runtime/mylite_information_schema_metadata.c
   src/runtime/mylite_information_schema_target.c
   src/runtime/mylite_metadata.c
   src/runtime/mylite_metadata_constants.c

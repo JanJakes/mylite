@@ -2,8 +2,8 @@
 
 #include "mylite_catalog.h"
 #include "mylite_diagnostics.h"
-#include "mylite_field_descriptor.h"
-#include "mylite_metadata_constants.h"
+#include "mylite_information_schema_metadata.h"
+#include "mylite_information_schema_target.h"
 #include "mylite_runtime.h"
 #include "mylite_select.h"
 #include "mylite_select_catalog_descriptor.h"
@@ -30,12 +30,6 @@ static int load_information_schema_column(
     struct mylite_select_table *table,
     const char *name
 );
-
-static struct mylite_field_descriptor information_schema_column_descriptor(const char *name);
-
-static bool information_schema_column_is_integer(const char *name);
-
-static bool information_schema_column_is_not_null_text(const char *name);
 
 static int load_select_table_unique_not_null_keys(
     mylite_db *database,
@@ -209,7 +203,10 @@ static int load_information_schema_column(
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
-    column.descriptor = information_schema_column_descriptor(column.name);
+    column.descriptor = mylite_information_schema_column_descriptor(
+        mylite_information_schema_table_from_name(table->table_name),
+        column.name
+    );
 
     columns = realloc(table->columns, (table->column_count + 1U) * sizeof(*table->columns));
     if (columns == NULL) {
@@ -221,89 +218,6 @@ static int load_information_schema_column(
     table->columns = columns;
     table->columns[table->column_count++] = column;
     return MYLITE_OK;
-}
-
-static struct mylite_field_descriptor information_schema_column_descriptor(const char *name) {
-    bool integer = information_schema_column_is_integer(name);
-    bool nullable = !information_schema_column_is_not_null_text(name);
-    struct mylite_field_descriptor descriptor = integer
-                                                    ? (struct mylite_field_descriptor){
-                                                          .type = MYLITE_FIELD_TYPE_LONGLONG,
-                                                          .flags = MYLITE_FIELD_FLAG_BINARY |
-                                                                   MYLITE_FIELD_FLAG_NUM,
-                                                          .length = mylite_mysql_signed_longlong_display_length,
-                                                          .charset_id = mylite_mysql_binary_charset_id,
-                                                          .nullable = nullable,
-                                                      }
-                                                    : (struct mylite_field_descriptor){
-                                                          .type = MYLITE_FIELD_TYPE_VAR_STRING,
-                                                          .length = mylite_mysql_text_length,
-                                                          .decimals = mylite_mysql_not_fixed_decimals,
-                                                          .charset_id = mylite_mysql_utf8mb4_0900_ai_ci_charset_id,
-                                                          .nullable = nullable,
-                                                      };
-
-    mylite_field_descriptor_set_nullable(&descriptor, nullable);
-    return descriptor;
-}
-
-static bool information_schema_column_is_integer(const char *name) {
-    static const char *const names[] = {
-        "VERSION",
-        "TABLE_ROWS",
-        "AVG_ROW_LENGTH",
-        "DATA_LENGTH",
-        "MAX_DATA_LENGTH",
-        "INDEX_LENGTH",
-        "DATA_FREE",
-        "AUTO_INCREMENT",
-        "CHECKSUM",
-        "ORDINAL_POSITION",
-        "CHARACTER_MAXIMUM_LENGTH",
-        "CHARACTER_OCTET_LENGTH",
-        "NUMERIC_PRECISION",
-        "NUMERIC_SCALE",
-        "DATETIME_PRECISION",
-        "SRS_ID",
-        "NON_UNIQUE",
-        "SEQ_IN_INDEX",
-        "CARDINALITY",
-        "SUB_PART",
-        "POSITION_IN_UNIQUE_CONSTRAINT",
-    };
-
-    for (size_t index = 0U; index < sizeof(names) / sizeof(names[0]); ++index) {
-        if (mylite_ascii_case_equal(name, names[index])) {
-            return true;
-        }
-    }
-    return false;
-}
-
-static bool information_schema_column_is_not_null_text(const char *name) {
-    static const char *const names[] = {
-        "TABLE_CATALOG",
-        "TABLE_SCHEMA",
-        "TABLE_NAME",
-        "TABLE_TYPE",
-        "CATALOG_NAME",
-        "SCHEMA_NAME",
-        "COLUMN_NAME",
-        "ORDINAL_POSITION",
-        "CONSTRAINT_CATALOG",
-        "CONSTRAINT_SCHEMA",
-        "CONSTRAINT_NAME",
-        "INDEX_SCHEMA",
-        "INDEX_NAME",
-        "SEQ_IN_INDEX",
-    };
-
-    for (size_t index = 0U; index < sizeof(names) / sizeof(names[0]); ++index) {
-        if (mylite_ascii_case_equal(name, names[index])) {
-            return true;
-        }
-    }
-    return false;
 }
 
 static int load_select_column_from_catalog_row(

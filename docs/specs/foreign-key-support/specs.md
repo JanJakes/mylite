@@ -285,6 +285,11 @@ The foreign-key catalog backs:
 
 Ordering must follow observed MySQL behavior for each metadata surface. Existing
 primary-key, unique-key, and CHECK rows must retain their ordering.
+Direct wildcard selects and catalog-backed system-view SELECT analysis attach
+MySQL 8.4.9-derived result-column descriptors for `TABLE_CONSTRAINTS`,
+`KEY_COLUMN_USAGE`, and `REFERENTIAL_CONSTRAINTS`, including origin schema,
+origin table, origin column, field type, length, charset, flags, decimals, and
+nullability.
 
 ## Diagnostics
 

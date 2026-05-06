@@ -2732,6 +2732,84 @@ static int test_information_schema_table_constraints_execution(void) {
     static const char *const show_tables_values[] = {"TABLE_CONSTRAINTS", "SYSTEM VIEW"};
     static const char *const constraint_projection_columns[] = {"n"};
     static const char *const constraint_projection_values[] = {"code", "PRIMARY"};
+    static const struct expected_result_metadata metadata[] = {
+        {.name = "CONSTRAINT_CATALOG",
+         .schema_name = "information_schema",
+         .table_name = "TABLE_CONSTRAINTS",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "TABLE_CONSTRAINTS",
+         .origin_column_name = "CONSTRAINT_CATALOG",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNIQUE_KEY |
+                      MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE |
+                      MYLITE_FIELD_FLAG_PART_KEY},
+        {.name = "CONSTRAINT_SCHEMA",
+         .schema_name = "information_schema",
+         .table_name = "TABLE_CONSTRAINTS",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "TABLE_CONSTRAINTS",
+         .origin_column_name = "CONSTRAINT_SCHEMA",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                      MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_PART_KEY},
+        {.name = "CONSTRAINT_NAME",
+         .schema_name = "information_schema",
+         .table_name = "TABLE_CONSTRAINTS",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "TABLE_CONSTRAINTS",
+         .origin_column_name = "CONSTRAINT_NAME",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
+         .nullable = 1},
+        {.name = "TABLE_SCHEMA",
+         .schema_name = "information_schema",
+         .table_name = "TABLE_CONSTRAINTS",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "TABLE_CONSTRAINTS",
+         .origin_column_name = "TABLE_SCHEMA",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                      MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_PART_KEY},
+        {.name = "TABLE_NAME",
+         .schema_name = "information_schema",
+         .table_name = "TABLE_CONSTRAINTS",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "TABLE_CONSTRAINTS",
+         .origin_column_name = "TABLE_NAME",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                      MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_PART_KEY},
+        {.name = "CONSTRAINT_TYPE",
+         .schema_name = "information_schema",
+         .table_name = "TABLE_CONSTRAINTS",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "TABLE_CONSTRAINTS",
+         .origin_column_name = "CONSTRAINT_TYPE",
+         .declared_length = 11U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY},
+        {.name = "ENFORCED",
+         .schema_name = "information_schema",
+         .table_name = "TABLE_CONSTRAINTS",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "TABLE_CONSTRAINTS",
+         .origin_column_name = "ENFORCED",
+         .declared_length = 3U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY},
+    };
     static const char *const values[] = {
         "def",
         "mylite_table_constraints",
@@ -2771,6 +2849,20 @@ static int test_information_schema_table_constraints_execution(void) {
         columns,
         table_constraints_column_count
     );
+    failures += prepare_sql(
+        database,
+        "SELECT * FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        metadata,
+        table_constraints_column_count,
+        "table constraints direct metadata"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
 
     failures += execute_sql(database, "CREATE DATABASE mylite_table_constraints", MYLITE_DONE);
     failures += execute_sql(database, "USE mylite_table_constraints", MYLITE_DONE);
@@ -3140,6 +3232,132 @@ static int test_information_schema_referential_constraints_execution(void) {
     static const char *const show_tables_values[] = {"REFERENTIAL_CONSTRAINTS", "SYSTEM VIEW"};
     static const char *const count_columns[] = {"c"};
     static const char *const count_values[] = {"0"};
+    static const struct expected_result_metadata metadata[] = {
+        {.name = "CONSTRAINT_CATALOG",
+         .schema_name = "information_schema",
+         .table_name = "REFERENTIAL_CONSTRAINTS",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "REFERENTIAL_CONSTRAINTS",
+         .origin_column_name = "CONSTRAINT_CATALOG",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNIQUE_KEY |
+                      MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE |
+                      MYLITE_FIELD_FLAG_PART_KEY},
+        {.name = "CONSTRAINT_SCHEMA",
+         .schema_name = "information_schema",
+         .table_name = "REFERENTIAL_CONSTRAINTS",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "REFERENTIAL_CONSTRAINTS",
+         .origin_column_name = "CONSTRAINT_SCHEMA",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                      MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_PART_KEY},
+        {.name = "CONSTRAINT_NAME",
+         .schema_name = "",
+         .table_name = "REFERENTIAL_CONSTRAINTS",
+         .origin_schema_name = "",
+         .origin_table_name = "REFERENTIAL_CONSTRAINTS",
+         .origin_column_name = "CONSTRAINT_NAME",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .decimals = 31U,
+         .charset_id = 8U,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
+         .nullable = 1},
+        {.name = "UNIQUE_CONSTRAINT_CATALOG",
+         .schema_name = "information_schema",
+         .table_name = "REFERENTIAL_CONSTRAINTS",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "REFERENTIAL_CONSTRAINTS",
+         .origin_column_name = "UNIQUE_CONSTRAINT_CATALOG",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_MULTIPLE_KEY |
+                      MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE |
+                      MYLITE_FIELD_FLAG_PART_KEY},
+        {.name = "UNIQUE_CONSTRAINT_SCHEMA",
+         .schema_name = "information_schema",
+         .table_name = "REFERENTIAL_CONSTRAINTS",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "REFERENTIAL_CONSTRAINTS",
+         .origin_column_name = "UNIQUE_CONSTRAINT_SCHEMA",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                      MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_PART_KEY},
+        {.name = "UNIQUE_CONSTRAINT_NAME",
+         .schema_name = "information_schema",
+         .table_name = "REFERENTIAL_CONSTRAINTS",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "REFERENTIAL_CONSTRAINTS",
+         .origin_column_name = "UNIQUE_CONSTRAINT_NAME",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
+         .nullable = 1},
+        {.name = "MATCH_OPTION",
+         .schema_name = "information_schema",
+         .table_name = "REFERENTIAL_CONSTRAINTS",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "REFERENTIAL_CONSTRAINTS",
+         .origin_column_name = "MATCH_OPTION",
+         .declared_length = 7U,
+         .field_type = MYLITE_FIELD_TYPE_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                      MYLITE_FIELD_FLAG_ENUM | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE},
+        {.name = "UPDATE_RULE",
+         .schema_name = "information_schema",
+         .table_name = "REFERENTIAL_CONSTRAINTS",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "REFERENTIAL_CONSTRAINTS",
+         .origin_column_name = "UPDATE_RULE",
+         .declared_length = 11U,
+         .field_type = MYLITE_FIELD_TYPE_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                      MYLITE_FIELD_FLAG_ENUM | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE},
+        {.name = "DELETE_RULE",
+         .schema_name = "information_schema",
+         .table_name = "REFERENTIAL_CONSTRAINTS",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "REFERENTIAL_CONSTRAINTS",
+         .origin_column_name = "DELETE_RULE",
+         .declared_length = 11U,
+         .field_type = MYLITE_FIELD_TYPE_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                      MYLITE_FIELD_FLAG_ENUM | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE},
+        {.name = "TABLE_NAME",
+         .schema_name = "information_schema",
+         .table_name = "REFERENTIAL_CONSTRAINTS",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "REFERENTIAL_CONSTRAINTS",
+         .origin_column_name = "TABLE_NAME",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                      MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_PART_KEY},
+        {.name = "REFERENCED_TABLE_NAME",
+         .schema_name = "information_schema",
+         .table_name = "REFERENTIAL_CONSTRAINTS",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "REFERENTIAL_CONSTRAINTS",
+         .origin_column_name = "REFERENCED_TABLE_NAME",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                      MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_PART_KEY},
+    };
     static const char *const create_fk_values[] = {
         "def",
         "mylite_referential_constraints",
@@ -3193,6 +3411,20 @@ static int test_information_schema_referential_constraints_execution(void) {
         columns,
         referential_constraints_column_count
     );
+    failures += prepare_sql(
+        database,
+        "SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        metadata,
+        referential_constraints_column_count,
+        "referential constraints direct metadata"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
 
     failures +=
         execute_sql(database, "CREATE DATABASE mylite_referential_constraints", MYLITE_DONE);
@@ -3376,6 +3608,146 @@ static int test_information_schema_key_column_usage_execution(void) {
         "uq_prefix",
         "2",
     };
+    static const struct expected_result_metadata metadata[] = {
+        {.name = "CONSTRAINT_CATALOG",
+         .schema_name = "information_schema",
+         .table_name = "KEY_COLUMN_USAGE",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "KEY_COLUMN_USAGE",
+         .origin_column_name = "CONSTRAINT_CATALOG",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNIQUE_KEY |
+                      MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE |
+                      MYLITE_FIELD_FLAG_PART_KEY},
+        {.name = "CONSTRAINT_SCHEMA",
+         .schema_name = "information_schema",
+         .table_name = "KEY_COLUMN_USAGE",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "KEY_COLUMN_USAGE",
+         .origin_column_name = "CONSTRAINT_SCHEMA",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                      MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_PART_KEY},
+        {.name = "CONSTRAINT_NAME",
+         .schema_name = "information_schema",
+         .table_name = "KEY_COLUMN_USAGE",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "KEY_COLUMN_USAGE",
+         .origin_column_name = "CONSTRAINT_NAME",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
+         .nullable = 1},
+        {.name = "TABLE_CATALOG",
+         .schema_name = "information_schema",
+         .table_name = "KEY_COLUMN_USAGE",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "KEY_COLUMN_USAGE",
+         .origin_column_name = "TABLE_CATALOG",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNIQUE_KEY |
+                      MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE |
+                      MYLITE_FIELD_FLAG_PART_KEY},
+        {.name = "TABLE_SCHEMA",
+         .schema_name = "information_schema",
+         .table_name = "KEY_COLUMN_USAGE",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "KEY_COLUMN_USAGE",
+         .origin_column_name = "TABLE_SCHEMA",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                      MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_PART_KEY},
+        {.name = "TABLE_NAME",
+         .schema_name = "information_schema",
+         .table_name = "KEY_COLUMN_USAGE",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "KEY_COLUMN_USAGE",
+         .origin_column_name = "TABLE_NAME",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                      MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_PART_KEY},
+        {.name = "COLUMN_NAME",
+         .schema_name = "",
+         .table_name = "KEY_COLUMN_USAGE",
+         .origin_schema_name = "",
+         .origin_table_name = "KEY_COLUMN_USAGE",
+         .origin_column_name = "COLUMN_NAME",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .decimals = 31U,
+         .charset_id = 8U,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
+         .nullable = 1},
+        {.name = "ORDINAL_POSITION",
+         .schema_name = "information_schema",
+         .table_name = "KEY_COLUMN_USAGE",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "KEY_COLUMN_USAGE",
+         .origin_column_name = "ORDINAL_POSITION",
+         .declared_length = 10U,
+         .field_type = MYLITE_FIELD_TYPE_LONG,
+         .charset_id = 63U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED |
+                      MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM},
+        {.name = "POSITION_IN_UNIQUE_CONSTRAINT",
+         .schema_name = "information_schema",
+         .table_name = "KEY_COLUMN_USAGE",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "KEY_COLUMN_USAGE",
+         .origin_column_name = "POSITION_IN_UNIQUE_CONSTRAINT",
+         .declared_length = 10U,
+         .field_type = MYLITE_FIELD_TYPE_LONG,
+         .charset_id = 63U,
+         .flags_set = MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "REFERENCED_TABLE_SCHEMA",
+         .schema_name = "information_schema",
+         .table_name = "KEY_COLUMN_USAGE",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "KEY_COLUMN_USAGE",
+         .origin_column_name = "REFERENCED_TABLE_SCHEMA",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_BINARY,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "REFERENCED_TABLE_NAME",
+         .schema_name = "information_schema",
+         .table_name = "KEY_COLUMN_USAGE",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "KEY_COLUMN_USAGE",
+         .origin_column_name = "REFERENCED_TABLE_NAME",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_BINARY,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "REFERENCED_COLUMN_NAME",
+         .schema_name = "information_schema",
+         .table_name = "KEY_COLUMN_USAGE",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "KEY_COLUMN_USAGE",
+         .origin_column_name = "REFERENCED_COLUMN_NAME",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
+         .nullable = 1},
+    };
     static const char *const values[] = {
         "def",
         "mylite_key_column_usage",
@@ -3478,6 +3850,20 @@ static int test_information_schema_key_column_usage_execution(void) {
         columns,
         key_column_usage_column_count
     );
+    failures += prepare_sql(
+        database,
+        "SELECT * FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        metadata,
+        key_column_usage_column_count,
+        "key column usage direct metadata"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
 
     failures += execute_sql(database, "CREATE DATABASE mylite_key_column_usage", MYLITE_DONE);
     failures += execute_sql(database, "USE mylite_key_column_usage", MYLITE_DONE);

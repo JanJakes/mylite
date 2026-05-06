@@ -4,6 +4,7 @@
 #include "mylite_diagnostics.h"
 #include "mylite_error_codes.h"
 #include "mylite_information_schema_dynamic.h"
+#include "mylite_information_schema_metadata.h"
 #include "mylite_information_schema_target.h"
 #include "mylite_show.h"
 #include "mylite_span.h"
@@ -28,6 +29,13 @@ static int information_schema_dynamic_table_sql(
 );
 
 static const char *information_schema_table_sql(enum mylite_information_schema_table table);
+
+static int prepare_information_schema_sqlite_statement(
+    mylite_db *database,
+    enum mylite_information_schema_table table,
+    const char *sqlite_sql,
+    mylite_stmt **out_stmt
+);
 
 static int information_schema_table_query_sql(
     mylite_db *database,
@@ -372,7 +380,12 @@ int mylite_information_schema_prepare_select_statement(
     *out_stmt = NULL;
     if (status != MYLITE_UNSUPPORTED) {
         if (status == MYLITE_OK) {
-            status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
+            status = prepare_information_schema_sqlite_statement(
+                database,
+                MYLITE_INFORMATION_SCHEMA_TABLES,
+                sqlite_sql,
+                out_stmt
+            );
         }
         sqlite3_free(sqlite_sql);
         if (status == MYLITE_NOMEM) {
@@ -392,7 +405,8 @@ int mylite_information_schema_prepare_select_statement(
     status = information_schema_dynamic_table_sql(database, table, &sqlite_sql);
     if (status != MYLITE_UNSUPPORTED) {
         if (status == MYLITE_OK) {
-            status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
+            status =
+                prepare_information_schema_sqlite_statement(database, table, sqlite_sql, out_stmt);
         }
         sqlite3_free(sqlite_sql);
         if (status == MYLITE_NOMEM) {
@@ -405,7 +419,25 @@ int mylite_information_schema_prepare_select_statement(
     if (sql == NULL) {
         return MYLITE_UNSUPPORTED;
     }
-    return mylite_statement_prepare_sqlite(database, sql, out_stmt);
+    return prepare_information_schema_sqlite_statement(database, table, sql, out_stmt);
+}
+
+static int prepare_information_schema_sqlite_statement(
+    mylite_db *database,
+    enum mylite_information_schema_table table,
+    const char *sqlite_sql,
+    mylite_stmt **out_stmt
+) {
+    int status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
+
+    if (status == MYLITE_OK) {
+        status = mylite_information_schema_attach_result_metadata(database, table, *out_stmt);
+        if (status != MYLITE_OK) {
+            mylite_finalize(*out_stmt);
+            *out_stmt = NULL;
+        }
+    }
+    return status;
 }
 
 static int information_schema_tables_filtered_select_sql(

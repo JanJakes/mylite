@@ -527,6 +527,8 @@ static int test_foreign_key_parent_restrict_execution(void);
 
 static int test_foreign_key_child_update_execution(void);
 
+static int test_foreign_key_update_actions_execution(void);
+
 static int test_foreign_key_delete_actions_execution(void);
 
 static int test_alter_table_foreign_key_execution(void);
@@ -1000,6 +1002,7 @@ int main(void) {
     failures += test_foreign_key_insert_execution();
     failures += test_foreign_key_parent_restrict_execution();
     failures += test_foreign_key_child_update_execution();
+    failures += test_foreign_key_update_actions_execution();
     failures += test_foreign_key_delete_actions_execution();
     failures += test_alter_table_foreign_key_execution();
     failures += test_foreign_key_index_dependency_execution();
@@ -49232,6 +49235,283 @@ static int test_foreign_key_child_update_execution(void) {
         joined_values,
         1,
         "foreign key joined child rows"
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_foreign_key_update_actions_execution(void) {
+    static const char *const parent_columns[] = {"id"};
+    static const char *const parent_after_update_values[] = {"2", "3", "10"};
+    static const char *const parent_after_checks_off_values[] = {"3", "10", "20"};
+    static const char *const child_columns[] = {"id", "parent_id"};
+    static const char *const cascade_after_update_values[] = {
+        "1",
+        "10",
+        "2",
+        "2",
+        "3",
+        NULL,
+    };
+    static const char *const set_null_after_update_values[] = {
+        "1",
+        NULL,
+        "2",
+        "2",
+        "3",
+        NULL,
+    };
+    static const char *const pair_parent_columns[] = {"a", "b"};
+    static const char *const pair_parent_values[] = {"2", "2", "10", "11"};
+    static const char *const pair_child_columns[] = {"id", "a", "b"};
+    static const char *const pair_cascade_values[] = {"1", "10", "11", "2", "2", "2"};
+    static const char *const pair_null_values[] = {"1", NULL, NULL, "2", "2", "2"};
+    static const char *const joined_parent_values[] = {"10"};
+    static const char *const joined_child_values[] = {"1", "10"};
+    static const char *const self_values[] = {"1", "1", "2", NULL};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(
+        mylite_open_memory(&database),
+        MYLITE_OK,
+        "open foreign key update actions database"
+    );
+    failures += execute_sql(database, "CREATE DATABASE fk_update_actions_runtime", MYLITE_DONE);
+    failures += execute_sql(database, "USE fk_update_actions_runtime", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE parent_fk (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE child_cascade_fk ("
+        "id INT PRIMARY KEY, parent_id INT, "
+        "FOREIGN KEY (parent_id) REFERENCES parent_fk(id) ON UPDATE CASCADE)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE child_null_fk ("
+        "id INT PRIMARY KEY, parent_id INT, "
+        "FOREIGN KEY (parent_id) REFERENCES parent_fk(id) ON UPDATE SET NULL)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "INSERT INTO parent_fk VALUES (1),(2),(3)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "INSERT INTO child_cascade_fk VALUES (1,1),(2,2),(3,NULL)",
+        MYLITE_DONE
+    );
+    failures +=
+        execute_sql(database, "INSERT INTO child_null_fk VALUES (1,1),(2,2),(3,NULL)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE parent_fk SET id = 10 WHERE id = 1",
+        1,
+        "foreign key update action parent affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM parent_fk ORDER BY id",
+        parent_columns,
+        1,
+        parent_after_update_values,
+        3,
+        "foreign key update action parent rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, parent_id FROM child_cascade_fk ORDER BY id",
+        child_columns,
+        2,
+        cascade_after_update_values,
+        3,
+        "foreign key update cascade rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, parent_id FROM child_null_fk ORDER BY id",
+        child_columns,
+        2,
+        set_null_after_update_values,
+        3,
+        "foreign key update set null rows"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE parent_fk SET id = id WHERE id = 2",
+        0,
+        "foreign key update action unchanged parent affected rows"
+    );
+    failures += execute_sql(database, "SET foreign_key_checks = 0", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE parent_fk SET id = 20 WHERE id = 2",
+        1,
+        "foreign key checks off update action affected rows"
+    );
+    failures += execute_sql(database, "SET foreign_key_checks = 1", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM parent_fk ORDER BY id",
+        parent_columns,
+        1,
+        parent_after_checks_off_values,
+        3,
+        "foreign key checks off update action parent rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, parent_id FROM child_cascade_fk ORDER BY id",
+        child_columns,
+        2,
+        cascade_after_update_values,
+        3,
+        "foreign key checks off skips update cascade"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, parent_id FROM child_null_fk ORDER BY id",
+        child_columns,
+        2,
+        set_null_after_update_values,
+        3,
+        "foreign key checks off skips update set null"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE parent_pair_fk (a INT, b INT, PRIMARY KEY(a,b))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE child_pair_cascade_fk ("
+        "id INT PRIMARY KEY, a INT, b INT, "
+        "FOREIGN KEY (a,b) REFERENCES parent_pair_fk(a,b) ON UPDATE CASCADE)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE child_pair_null_fk ("
+        "id INT PRIMARY KEY, a INT, b INT, "
+        "FOREIGN KEY (a,b) REFERENCES parent_pair_fk(a,b) ON UPDATE SET NULL)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "INSERT INTO parent_pair_fk VALUES (1,1),(2,2)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "INSERT INTO child_pair_cascade_fk VALUES (1,1,1),(2,2,2)",
+        MYLITE_DONE
+    );
+    failures +=
+        execute_sql(database, "INSERT INTO child_pair_null_fk VALUES (1,1,1),(2,2,2)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE parent_pair_fk SET a = 10, b = 11 WHERE a = 1 AND b = 1",
+        1,
+        "foreign key composite update action affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT a, b FROM parent_pair_fk ORDER BY a, b",
+        pair_parent_columns,
+        2,
+        pair_parent_values,
+        2,
+        "foreign key composite update action parent rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, a, b FROM child_pair_cascade_fk ORDER BY id",
+        pair_child_columns,
+        3,
+        pair_cascade_values,
+        2,
+        "foreign key composite update cascade rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, a, b FROM child_pair_null_fk ORDER BY id",
+        pair_child_columns,
+        3,
+        pair_null_values,
+        2,
+        "foreign key composite update set null rows"
+    );
+
+    failures +=
+        execute_sql(database, "CREATE TABLE joined_parent_fk (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "CREATE TABLE joined_guard_fk (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE joined_child_fk ("
+        "id INT PRIMARY KEY, parent_id INT, "
+        "FOREIGN KEY (parent_id) REFERENCES joined_parent_fk(id) ON UPDATE CASCADE)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "INSERT INTO joined_parent_fk VALUES (1)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO joined_guard_fk VALUES (1)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO joined_child_fk VALUES (1,1)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE joined_parent_fk JOIN joined_guard_fk "
+        "ON joined_guard_fk.id = joined_parent_fk.id "
+        "SET joined_parent_fk.id = 10 WHERE joined_parent_fk.id = 1",
+        1,
+        "foreign key joined update action affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM joined_parent_fk",
+        parent_columns,
+        1,
+        joined_parent_values,
+        1,
+        "foreign key joined update action parent row"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, parent_id FROM joined_child_fk",
+        child_columns,
+        2,
+        joined_child_values,
+        1,
+        "foreign key joined update action child row"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE self_cascade_fk ("
+        "id INT PRIMARY KEY, parent_id INT, "
+        "FOREIGN KEY (parent_id) REFERENCES self_cascade_fk(id) ON UPDATE CASCADE)",
+        MYLITE_DONE
+    );
+    failures +=
+        execute_sql(database, "INSERT INTO self_cascade_fk VALUES (1,1),(2,NULL)", MYLITE_DONE);
+    failures +=
+        prepare_sql(database, "UPDATE self_cascade_fk SET id = 10 WHERE id = 1", MYLITE_OK, &stmt);
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "foreign key self update cascade rejects"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_row_is_referenced,
+        "foreign key self update cascade error code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id, parent_id FROM self_cascade_fk ORDER BY id",
+        child_columns,
+        2,
+        self_values,
+        2,
+        "foreign key self update cascade rows"
     );
 
     mylite_close(database);

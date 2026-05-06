@@ -107,6 +107,12 @@ int mylite_dml_validate_parent_delete_foreign_keys(
     const struct mylite_select_table *table,
     const struct mylite_update_row *stored
 );
+int mylite_dml_apply_parent_update_foreign_key_actions(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_update_row *stored,
+    const struct mylite_update_row *candidate
+);
 int mylite_dml_apply_parent_delete_foreign_key_actions(
     mylite_db *database,
     const struct mylite_select_table *table,

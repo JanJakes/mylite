@@ -715,6 +715,14 @@ static int execute_joined_update_target_row(
         );
     }
     if (status == MYLITE_OK && row_changed) {
+        status = mylite_dml_apply_parent_update_foreign_key_actions(
+            database,
+            target->table,
+            &stored,
+            &candidate
+        );
+    }
+    if (status == MYLITE_OK && row_changed) {
         status = write_joined_update_candidate(database, target, &candidate);
     }
 

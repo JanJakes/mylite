@@ -148,11 +148,14 @@ columns changed, and allows unrelated updates to orphaned child rows that were
 created while `foreign_key_checks=0`. Parent-side `RESTRICT` and `NO ACTION`
 enforcement rejects supported parent key updates, parent deletes, multi-table
 deletes, self-referential parent mutations, and `REPLACE` conflict deletes with
-error 1451 while `foreign_key_checks` is enabled. Direct parent deletes also
-apply `ON DELETE CASCADE` and `ON DELETE SET NULL` to matching child rows for
-supported single-table and multi-table `DELETE` paths, and skip those actions
-while `foreign_key_checks=0`. Temporary-table foreign-key definitions are
-rejected with a deterministic `Cannot add foreign key constraint` diagnostic.
+error 1451 while `foreign_key_checks` is enabled. Direct parent updates apply
+`ON UPDATE CASCADE` and `ON UPDATE SET NULL` to matching child rows for
+supported single-table and joined `UPDATE` paths. Direct parent deletes apply
+`ON DELETE CASCADE` and `ON DELETE SET NULL` to matching child rows for
+supported single-table and multi-table `DELETE` paths. Covered parent update
+and delete actions are skipped while `foreign_key_checks=0`. Temporary-table
+foreign-key definitions are rejected with a deterministic `Cannot add foreign
+key constraint` diagnostic.
 FK-only `ALTER TABLE ... ADD FOREIGN KEY` persists catalog metadata, creates or
 reuses the supporting child index, validates existing child rows while
 `foreign_key_checks=1`, skips existing-row validation while
@@ -164,8 +167,8 @@ child supporting indexes and parent primary/unique indexes required by foreign
 keys with error 1553, even while `foreign_key_checks=0`. `RENAME TABLE` and
 `ALTER TABLE ... RENAME` rewrite foreign-key catalog metadata for child and
 parent tables, including cross-schema moves and MySQL-style regenerated
-`old_table_ibfk_N` child constraint names. `ON UPDATE CASCADE`, `ON UPDATE SET
-NULL`, mixed-action ALTER FK operations, and recursive referential actions
+`old_table_ibfk_N` child constraint names. Recursive referential actions,
+mixed-action ALTER FK operations, and exact parent-update optimizer ordering
 remain follow-up slices. `DROP TABLE`
 rejects parent tables referenced by surviving child tables while
 `foreign_key_checks=1`, permits multi-table drops that remove the parent and
@@ -243,6 +246,9 @@ When `foreign_key_checks` is enabled:
   rows exist
 - `CASCADE` updates or deletes matching child rows
 - `SET NULL` sets all child FK columns to `NULL`
+- self-referential `ON UPDATE CASCADE` and `ON UPDATE SET NULL` parent key
+  mutations reject with 1451 in the covered MySQL 8.4.9-observed shape rather
+  than recursively applying the action
 - `SET DEFAULT` remains unsupported until MySQL-observed behavior is designed
   against MyLite default-expression support
 

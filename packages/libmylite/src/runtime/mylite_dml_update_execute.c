@@ -192,6 +192,10 @@ static int execute_update_row(
             mylite_dml_validate_parent_update_foreign_keys(database, table, stored, &candidate);
     }
     if (status == MYLITE_OK && row_changed) {
+        status =
+            mylite_dml_apply_parent_update_foreign_key_actions(database, table, stored, &candidate);
+    }
+    if (status == MYLITE_OK && row_changed) {
         status = write_update_candidate(
             database,
             update,

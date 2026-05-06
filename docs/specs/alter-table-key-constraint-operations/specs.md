@@ -746,7 +746,7 @@ deferred surfaces:
 | no selected schema for unqualified target | 1046 / `3D000` |
 | missing schema | 1049 / `42000` |
 | missing table | 1146 / `42S02` |
-| system schema target | deterministic MyLite system-schema rejection |
+| system schema target | 1044 / `42000` |
 | duplicate index name | 1061 / `42000` |
 | duplicate key values for primary/unique addition | 1062 / `23000` |
 | second primary key | 1068 / `42000` |
@@ -868,7 +868,7 @@ fixtures should create and drop isolated schemas.
     enforcement keywords, and invalid standalone `DROP KEY`
 - Analyzer tests:
   - selected-schema and schema-qualified resolution
-  - system-schema rejection
+  - system-schema access-denied diagnostics
   - duplicate and generated index names
   - missing key columns
   - duplicate and `NULL` primary-key validation

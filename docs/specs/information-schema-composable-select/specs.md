@@ -22,8 +22,8 @@ same route where their backing SQL exists.
   aliases, expression projection, `WHERE`, `IN`, grouping, aggregate
   expressions, `HAVING`, `ORDER BY`, `DISTINCT`, and `LIMIT` are delegated to
   the regular `SELECT` binder and custom runtime.
-- System-view columns are read-only. DDL and DML against system schemas remain
-  rejected by existing system-schema guards.
+- System-view columns are read-only. DDL and DML against system schemas return
+  MySQL-style access-denied diagnostics before mutation.
 - Metadata should be stable and good enough for normal client use. Exact MySQL
   metadata width and charset parity can continue to improve independently.
 

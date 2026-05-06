@@ -136,13 +136,7 @@ static int validate_drop_table_temporary_target(
         return status;
     }
     if (presence.is_system) {
-        (void)mylite_diagnostics_set_error_message_parts(
-            database,
-            "Access to system schema '",
-            target->schema_name,
-            "' is rejected."
-        );
-        return MYLITE_EXEC_ERROR;
+        return mylite_diagnostics_set_schema_access_denied_error(database, target->schema_name);
     }
     if (!presence.exists) {
         if (if_exists) {
@@ -184,13 +178,7 @@ static int validate_drop_table_target(
         return status;
     }
     if (presence.is_system) {
-        (void)mylite_diagnostics_set_error_message_parts(
-            database,
-            "Access to system schema '",
-            target->schema_name,
-            "' is rejected."
-        );
-        return MYLITE_EXEC_ERROR;
+        return mylite_diagnostics_set_schema_access_denied_error(database, target->schema_name);
     }
     if (!presence.exists) {
         if (if_exists) {

@@ -161,13 +161,7 @@ int mylite_schema_execute_alter_statement(mylite_stmt *stmt) {
         return MYLITE_EXEC_ERROR;
     }
     if (presence.is_system) {
-        (void)mylite_diagnostics_set_error_message_parts(
-            stmt->database,
-            "Access to system schema '",
-            schema_name,
-            "' is rejected."
-        );
-        return MYLITE_EXEC_ERROR;
+        return mylite_diagnostics_set_schema_access_denied_error(stmt->database, schema_name);
     }
 
     return mylite_catalog_update_schema(stmt->database, schema_name, &stmt->options);
@@ -193,13 +187,7 @@ int mylite_schema_execute_drop_statement(mylite_stmt *stmt) {
         return MYLITE_EXEC_ERROR;
     }
     if (presence.is_system) {
-        (void)mylite_diagnostics_set_error_message_parts(
-            stmt->database,
-            "Access to system schema '",
-            stmt->schema_name,
-            "' is rejected."
-        );
-        return MYLITE_EXEC_ERROR;
+        return mylite_diagnostics_set_schema_access_denied_error(stmt->database, stmt->schema_name);
     }
 
     status = mylite_catalog_delete_schema(stmt->database, stmt->schema_name);

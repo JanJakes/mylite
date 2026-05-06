@@ -257,13 +257,10 @@ static int validate_alter_table_target(mylite_stmt *stmt, bool *out_temporary) {
         return MYLITE_EXEC_ERROR;
     }
     if (presence.is_system) {
-        (void)mylite_diagnostics_set_error_message_parts(
+        return mylite_diagnostics_set_schema_access_denied_error(
             stmt->database,
-            "Access to system schema '",
-            stmt->alter_table.schema_name,
-            "' is rejected."
+            stmt->alter_table.schema_name
         );
-        return MYLITE_EXEC_ERROR;
     }
 
     status = mylite_catalog_temporary_table_exists(

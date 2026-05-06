@@ -135,13 +135,10 @@ static int validate_rename_table_target_schemas(
         return MYLITE_EXEC_ERROR;
     }
     if (source_presence.is_system) {
-        (void)mylite_diagnostics_set_error_message_parts(
+        return mylite_diagnostics_set_schema_access_denied_error(
             database,
-            "Access to system schema '",
-            target->source_schema_name,
-            "' is rejected."
+            target->source_schema_name
         );
-        return MYLITE_EXEC_ERROR;
     }
 
     status = mylite_catalog_schema_exists(database, target->target_schema_name, &target_presence);
@@ -158,13 +155,10 @@ static int validate_rename_table_target_schemas(
         return MYLITE_EXEC_ERROR;
     }
     if (target_presence.is_system) {
-        (void)mylite_diagnostics_set_error_message_parts(
+        return mylite_diagnostics_set_schema_access_denied_error(
             database,
-            "Access to system schema '",
-            target->target_schema_name,
-            "' is rejected."
+            target->target_schema_name
         );
-        return MYLITE_EXEC_ERROR;
     }
     return MYLITE_OK;
 }

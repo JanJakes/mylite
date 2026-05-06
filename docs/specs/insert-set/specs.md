@@ -95,8 +95,7 @@ Target resolution matches the existing `INSERT ... VALUES` behavior:
 - no selected schema for an unqualified table: 1046 / `3D000`
 - missing explicit schema: 1049 / `42000`
 - missing table in an existing schema: 1146 / `42S02`
-- system schema target: MySQL reports access denied; MyLite should use its
-  existing system-schema rejection diagnostic
+- system schema target: 1044 / `42000`, access denied before mutation
 
 Assignment names are resolved case-insensitively against target-table columns.
 Quoted identifiers do not create case-distinct assignment targets. Duplicate

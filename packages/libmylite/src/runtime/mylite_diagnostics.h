@@ -25,6 +25,7 @@ int mylite_diagnostics_set_table_doesnt_exist_error(
     const char *schema_name,
     const char *table_name
 );
+int mylite_diagnostics_set_schema_access_denied_error(mylite_db *database, const char *schema_name);
 int mylite_diagnostics_set_collation_charset_error(
     mylite_db *database,
     const char *collation,

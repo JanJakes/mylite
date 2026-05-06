@@ -58,13 +58,7 @@ int mylite_table_ddl_validate_create_table_plan(
         return MYLITE_EXEC_ERROR;
     }
     if (presence.is_system) {
-        (void)mylite_diagnostics_set_error_message_parts(
-            database,
-            "Access to system schema '",
-            schema_name,
-            "' is rejected."
-        );
-        return MYLITE_EXEC_ERROR;
+        return mylite_diagnostics_set_schema_access_denied_error(database, schema_name);
     }
 
     if (plan->temporary) {

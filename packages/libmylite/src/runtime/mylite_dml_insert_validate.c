@@ -62,13 +62,7 @@ int mylite_dml_validate_insert_target(
         return MYLITE_EXEC_ERROR;
     }
     if (presence.is_system) {
-        (void)mylite_diagnostics_set_error_message_parts(
-            database,
-            "Access to system schema '",
-            schema_name,
-            "' is rejected."
-        );
-        return MYLITE_EXEC_ERROR;
+        return mylite_diagnostics_set_schema_access_denied_error(database, schema_name);
     }
 
     status = mylite_catalog_table_exists(database, schema_name, plan->table_name, &exists);

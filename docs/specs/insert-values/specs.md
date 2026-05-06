@@ -182,8 +182,7 @@ Verified MySQL 8.4.9 diagnostics for the scoped behavior:
 - qualified missing schema: 1049, `Unknown database 'schema'`
 - target table missing in an existing schema: 1146,
   `Table 'schema.table' doesn't exist`
-- system schema target: access denied; MyLite uses its existing system-schema
-  rejection diagnostic
+- system schema target: 1044 / `42000`, access denied before mutation
 - duplicate target column list, case-insensitive: 1110,
   `Column 'a' specified twice`
 - unknown target column: 1054,
@@ -272,7 +271,7 @@ Target resolution:
 - Unqualified table names use the selected default schema.
 - A missing selected schema fails with `No database selected`.
 - A missing explicit schema fails with `Unknown database 'schema'`.
-- A system schema target is rejected with the existing system-schema diagnostic.
+- A system schema target is rejected with an access-denied diagnostic.
 - A missing table in an existing schema fails with
   `Table 'schema.table' doesn't exist`.
 

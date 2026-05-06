@@ -142,7 +142,7 @@ Runtime tests cover:
 - qualified target without a selected database;
 - missing selected-schema table;
 - missing qualified schema/table;
-- system-schema rejection;
+- system-schema access-denied diagnostics;
 - row removal with affected rows `0`;
 - preservation of `INFORMATION_SCHEMA.TABLES`, `COLUMNS`, and `STATISTICS`;
 - preservation of the physical SQLite table object;

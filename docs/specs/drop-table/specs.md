@@ -143,7 +143,7 @@ Normal base-table drops:
   execution fails with `MYLITE_EXEC_ERROR` and diagnostic `No database
   selected`.
 - Qualified targets use their explicit schema.
-- System schemas are rejected with the existing system-schema access diagnostic.
+- System schemas are rejected with MySQL-compatible access-denied diagnostics.
 - Duplicate targets are detected before existence handling. Duplicates are
   compared by effective schema and table name using bytewise comparison.
 - Missing targets fail the statement unless `IF EXISTS` is present. With
@@ -181,7 +181,7 @@ public API. Diagnostics should still include stable MySQL-like text:
 - `No database selected`
 - `Unknown table '<schema>.<table>'`
 - `Not unique table/alias: '<table>'`
-- `Access to system schema '<schema>' is rejected.`
+- `Access denied for user 'root'@'localhost' to database '<schema>'`
 
 ## Lemon grammar snippets
 
@@ -246,6 +246,6 @@ Implementation tests should cover these MySQL 8.4.9 expectations:
   - missing table without `IF EXISTS` fails and preserves existing tables
   - multi-table non-`IF EXISTS` failure is all-or-nothing
   - duplicate listed names fail and preserve the table
-  - system schema rejection, including `TEMPORARY IF EXISTS`
+  - system schema access denied, including `TEMPORARY IF EXISTS`
   - `DROP TEMPORARY TABLE` never drops base tables
   - `RESTRICT` and `CASCADE` are no-op accepted modifiers

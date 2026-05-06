@@ -1119,7 +1119,7 @@ static int test_schema_lifecycle(void) {
     failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "drop system schema");
     failures += expect_contains(
         mylite_error_message(database),
-        "system schema",
+        "Access denied",
         "drop system schema error"
     );
     mylite_finalize(stmt);
@@ -33725,7 +33725,7 @@ static int test_create_table_base_execution(void) {
     failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "create table system schema");
     failures += expect_contains(
         mylite_error_message(database),
-        "system schema",
+        "Access denied",
         "create table system schema error"
     );
     mylite_finalize(stmt);
@@ -34780,7 +34780,7 @@ static int test_drop_table_base_execution(void) {
     failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "drop system schema table");
     failures += expect_contains(
         mylite_error_message(database),
-        "system schema",
+        "Access denied",
         "drop system schema table error"
     );
     mylite_finalize(stmt);
@@ -34792,7 +34792,7 @@ static int test_drop_table_base_execution(void) {
         expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "drop temporary system schema table");
     failures += expect_contains(
         mylite_error_message(database),
-        "system schema",
+        "Access denied",
         "drop temporary system schema table error"
     );
     mylite_finalize(stmt);
@@ -34811,7 +34811,7 @@ static int test_drop_table_base_execution(void) {
     );
     failures += expect_contains(
         mylite_error_message(database),
-        "system schema",
+        "Access denied",
         "drop temporary if exists system schema table error"
     );
     mylite_finalize(stmt);
@@ -35790,7 +35790,7 @@ static int test_create_drop_index_execution(void) {
         &stmt
     );
     failures +=
-        expect_exec_error(stmt, database, "system schema", "create index rejects system schema");
+        expect_exec_error(stmt, database, "Access denied", "create index rejects system schema");
     mylite_finalize(stmt);
     stmt = NULL;
     failures += prepare_sql(
@@ -36041,7 +36041,7 @@ static int test_alter_table_column_operations_execution(void) {
         MYLITE_OK,
         &stmt
     );
-    failures += expect_exec_error(stmt, database, "system schema", "alter rejects system schema");
+    failures += expect_exec_error(stmt, database, "Access denied", "alter rejects system schema");
     mylite_finalize(stmt);
     stmt = NULL;
 
@@ -38050,7 +38050,7 @@ static int test_truncate_table_execution(void) {
     stmt = NULL;
     failures += prepare_sql(database, "TRUNCATE TABLE information_schema.tables", MYLITE_OK, &stmt);
     failures +=
-        expect_exec_error(stmt, database, "system schema", "truncate rejects system schema");
+        expect_exec_error(stmt, database, "Access denied", "truncate rejects system schema");
     mylite_finalize(stmt);
     stmt = NULL;
 
@@ -43894,7 +43894,7 @@ static int test_insert_values_execution(void) {
         prepare_sql(database, "INSERT INTO information_schema.tables VALUES ()", MYLITE_OK, &stmt);
     failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "insert system schema");
     failures +=
-        expect_contains(mylite_error_message(database), "system schema", "insert system error");
+        expect_contains(mylite_error_message(database), "Access denied", "insert system error");
     mylite_finalize(stmt);
     stmt = NULL;
 
@@ -45031,7 +45031,7 @@ static int test_insert_set_execution(void) {
     failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "insert set system schema");
     failures += expect_contains(
         mylite_error_message(database),
-        "system schema",
+        "Access denied",
         "insert set system schema error"
     );
     mylite_finalize(stmt);
@@ -54525,7 +54525,7 @@ static int test_delete_single_table_execution(void) {
     failures += prepare_sql(database, "DELETE FROM information_schema.tables", MYLITE_OK, &stmt);
     failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "delete system schema");
     failures +=
-        expect_contains(mylite_error_message(database), "system schema", "delete system error");
+        expect_contains(mylite_error_message(database), "Access denied", "delete system error");
     mylite_finalize(stmt);
     stmt = NULL;
     failures += prepare_sql(database, "DELETE FROM t LIMIT 1 OFFSET 1", MYLITE_PARSE_ERROR, &stmt);

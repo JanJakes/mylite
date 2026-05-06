@@ -172,6 +172,31 @@ int mylite_diagnostics_set_table_doesnt_exist_error(
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
+int mylite_diagnostics_set_schema_access_denied_error(
+    mylite_db *database,
+    const char *schema_name
+) {
+    char *message =
+        sqlite3_mprintf("Access denied for user 'root'@'localhost' to database '%q'", schema_name);
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    status = mylite_diagnostics_set_error_message(database, message);
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(
+            database,
+            MYLITE_MYSQL_ER_DBACCESS_DENIED_ERROR,
+            message
+        );
+    }
+    sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
 int mylite_diagnostics_set_collation_charset_error(
     mylite_db *database,
     const char *collation,

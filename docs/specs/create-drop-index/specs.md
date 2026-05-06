@@ -281,16 +281,15 @@ Observed diagnostics:
 | unqualified table with no selected schema | 1046 | `3D000` | error before mutation |
 | qualified missing schema | 1049 | `42000` | error before mutation |
 | missing table in selected or explicit existing schema | 1146 | `42S02` | error before mutation |
-| system schema target, such as `information_schema.TABLES` | 1044 | `42000` in MySQL privilege model | MyLite should reject system schemas deterministically |
+| system schema target, such as `information_schema.TABLES` | 1044 | `42000` | access denied before mutation |
 | missing key part column | 1072 | `42000` | error before mutation |
 | duplicate index name | 1061 | `42000` | error before mutation |
 | adding unique index over duplicate existing values | 1062 | `23000` | error before mutation |
 | missing index on drop | 1091 | `42000` | error before mutation |
 | dropping primary key needed by auto-increment | 1075 | `42000` | error before mutation |
 
-MyLite does not implement privileges, so system schema writes should use the
-existing deterministic system-schema rejection rather than claiming MySQL's
-privilege model.
+MyLite does not implement privileges, but system schema writes should still use
+MySQL-compatible access-denied diagnostics.
 
 ### Metadata
 
@@ -615,7 +614,7 @@ Implementation tests should cover these MySQL 8.4.9 expectations:
 | `CREATE INDEX IF NOT EXISTS idx ON t (a)` | Syntax error. |
 | `CREATE INDEX idx ON missing (a)` | Missing-table error; no mutation. |
 | unqualified table with no selected schema | Error 1046. |
-| system schema target | Deterministic MyLite system-schema rejection. |
+| system schema target | Access denied; no mutation. |
 | missing key column | Error 1072; no mutation. |
 | empty or trailing-comma key-part list | Syntax error. |
 | `COMMENT = 'bad'` | Syntax error. |

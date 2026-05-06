@@ -82,8 +82,9 @@ or implementation sources.
 - Qualified `CREATE TABLE d.t (a INT)` succeeds when `d` exists, even without a
   selected default schema.
 - Qualified creation in a missing schema fails with error 1049.
-- Creating in `information_schema` is rejected by privileges. MyLite does not
-  implement privileges, but system schemas must remain not writable.
+- Creating in `information_schema` returns MySQL-compatible access denied.
+  MyLite does not implement privileges, but system schemas must remain not
+  writable.
 - Duplicate table creation fails with error 1050.
 - `CREATE TABLE IF NOT EXISTS existing_table (...)` succeeds as a no-op,
   records note 1050, and must not mutate existing metadata or storage.

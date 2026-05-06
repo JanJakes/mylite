@@ -62,13 +62,7 @@ int mylite_dml_resolve_delete_target(mylite_db *database, struct mylite_select_t
     status = mylite_select_resolve_table_target(database, table);
     if (status == MYLITE_UNSUPPORTED && table->schema_name != NULL &&
         mylite_select_schema_name_is_system(table->schema_name)) {
-        (void)mylite_diagnostics_set_error_message_parts(
-            database,
-            "Access to system schema '",
-            table->schema_name,
-            "' is rejected."
-        );
-        return MYLITE_EXEC_ERROR;
+        return mylite_diagnostics_set_schema_access_denied_error(database, table->schema_name);
     }
     return status;
 }

@@ -51,8 +51,6 @@ Deferred behavior:
 - non-strict and `IGNORE` demotion to index 0 plus warning records
 - collation-aware label matching beyond exact byte matching
 - duplicate label diagnostics at SQL declaration time
-- `SET`, which should reuse the descriptor-payload infrastructure but stores a
-  bit mask instead of a one-based index
 
 ## SQLite Extension Surface Evaluation
 
@@ -112,7 +110,5 @@ The test suite covers:
 
 - Wire MyLite's parser, AST, catalog, and DML write-table descriptor loader to
   `ENUM(...)` declarations.
-- Reuse the payload storage for `SET(...)` with MySQL bit-mask assignment and
-  display rules.
 - Add SQL-mode-aware warning demotion for invalid enum assignments.
 - Integrate label lookup with the column collation registry.

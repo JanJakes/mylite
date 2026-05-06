@@ -1,0 +1,39 @@
+after-insert	1	a	1	a	0
+after-insert	2	a,b	3	a,b	0
+after-insert	3	a,b	3	a,b	0
+after-insert	4	a	1	a	0
+after-insert	5		0		0
+after-insert	6	a,d	9	a,d	0
+after-insert	7	a,b	3	a,b	0
+after-insert	8	NULL	NULL	NULL	1
+after-insert	9	a,b	3	a,b	0
+after-insert	10	a,b	3	a,b	0
+after-insert	11	a,b	3	a,b	0
+after-insert	12	a,b	3	a,b	0
+after-update	1	a,d	9	a,d
+after-update	2	a,b,c,d	15	a,b,c,d
+after-duplicate-update	1	a,d	9	a,d
+after-duplicate-update	2	a	1	a
+after-replace	1	a,d	9	a,d
+after-replace	2	a	1	a
+after-replace	13	a	1	a
+numeric-labels	1	1	2	1
+numeric-labels	2	2	4	2
+numeric-labels	3	0,1	3	0,1
+numeric-labels	4	0	1	0
+numeric-labels	5	1	2	1
+numeric-labels	6	0	1	0
+numeric-labels	7	0,2	5	0,2
+numeric-labels	8	0,2	5	0,2
+empty-label	1		0	
+empty-label	2		1	
+empty-label	3		1	
+empty-label	4	a	2	a
+empty-label	5	a	2	a
+empty-label	6	a	3	a
+wide-mask	1	v64	v64	0
+after-wide-mask	13
+after-missing-label	13
+after-mixed-label	13
+after-trailing-space	13
+after-decimal-text	13

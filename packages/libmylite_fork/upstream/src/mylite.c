@@ -19,6 +19,13 @@ static int myliteSetEnumColumnType(
   const char *zColumn,
   const struct mylite_sqlite_fork_enum_column_type *pType
 );
+static int myliteSetSetColumnType(
+  sqlite3 *db,
+  const char *zSchema,
+  const char *zTable,
+  const char *zColumn,
+  const struct mylite_sqlite_fork_set_column_type *pType
+);
 static int myliteMakeColumnType(
   const struct mylite_sqlite_fork_column_type *pType,
   MyliteColumnType *pOut
@@ -26,6 +33,20 @@ static int myliteMakeColumnType(
 static int myliteMakeEnumColumnType(
   sqlite3 *db,
   const struct mylite_sqlite_fork_enum_column_type *pType,
+  MyliteColumnType *pOut
+);
+static int myliteMakeSetColumnType(
+  sqlite3 *db,
+  const struct mylite_sqlite_fork_set_column_type *pType,
+  MyliteColumnType *pOut
+);
+static int myliteMakeValueListColumnType(
+  sqlite3 *db,
+  const struct mylite_sqlite_fork_enum_value *aValue,
+  sqlite3_uint64 nValue,
+  sqlite3_uint64 nMaxValue,
+  u8 eType,
+  int bRejectComma,
   MyliteColumnType *pOut
 );
 static int myliteCopyColumnType(
@@ -74,6 +95,17 @@ int mylite_sqlite_fork_set_enum_column_type(
 ){
   if( db==0 || pType==0 ) return SQLITE_MISUSE;
   return myliteSetEnumColumnType(db, zSchema, zTable, zColumn, pType);
+}
+
+int mylite_sqlite_fork_set_set_column_type(
+  sqlite3 *db,
+  const char *zSchema,
+  const char *zTable,
+  const char *zColumn,
+  const struct mylite_sqlite_fork_set_column_type *pType
+){
+  if( db==0 || pType==0 ) return SQLITE_MISUSE;
+  return myliteSetSetColumnType(db, zSchema, zTable, zColumn, pType);
 }
 
 int mylite_sqlite_fork_last_condition(
@@ -227,6 +259,52 @@ static int myliteSetEnumColumnType(
   return rc;
 }
 
+static int myliteSetSetColumnType(
+  sqlite3 *db,
+  const char *zSchema,
+  const char *zTable,
+  const char *zColumn,
+  const struct mylite_sqlite_fork_set_column_type *pType
+){
+  MyliteColumnType sqliteType = {0};
+  char *zErr = 0;
+  Table *pTab = 0;
+  int iCol = 0;
+  int rc = SQLITE_OK;
+
+  if( zTable==0 || zTable[0]==0 || zColumn==0 || zColumn[0]==0 ){
+    return SQLITE_MISUSE;
+  }
+
+  sqlite3_mutex_enter(db->mutex);
+  rc = sqlite3Init(db, &zErr);
+  if( rc==SQLITE_OK ){
+    pTab = sqlite3FindTable(db, zTable, myliteSchemaName(zSchema));
+    if( pTab==0 || pTab->aCol==0 ){
+      rc = SQLITE_NOTFOUND;
+    }
+  }
+  if( rc==SQLITE_OK ){
+    iCol = sqlite3ColumnIndex(pTab, zColumn);
+    if( iCol<0 ){
+      rc = SQLITE_NOTFOUND;
+    }
+  }
+  if( rc==SQLITE_OK ){
+    rc = myliteMakeSetColumnType(db, pType, &sqliteType);
+  }
+  if( rc==SQLITE_OK ){
+    sqlite3MyliteClearColumnType(db, &pTab->aCol[iCol]);
+    pTab->aCol[iCol].myliteType = sqliteType;
+    sqliteType = (MyliteColumnType){0};
+    myliteRefreshTableTypeFlag(pTab);
+  }
+  sqlite3_mutex_leave(db->mutex);
+  myliteClearColumnTypePayload(db, &sqliteType);
+  sqlite3_free(zErr);
+  return rc;
+}
+
 static int myliteMakeColumnType(
   const struct mylite_sqlite_fork_column_type *pType,
   MyliteColumnType *pOut
@@ -323,6 +401,8 @@ static int myliteMakeColumnType(
       return SQLITE_OK;
     case MYLITE_SQLITE_FORK_COLUMN_TYPE_ENUM:
       return SQLITE_MISUSE;
+    case MYLITE_SQLITE_FORK_COLUMN_TYPE_SET:
+      return SQLITE_MISUSE;
   }
 
   return SQLITE_MISUSE;
@@ -333,21 +413,50 @@ static int myliteMakeEnumColumnType(
   const struct mylite_sqlite_fork_enum_column_type *pType,
   MyliteColumnType *pOut
 ){
+  if( pType->flags!=0 ) return SQLITE_MISUSE;
+  return myliteMakeValueListColumnType(
+      db, pType->values, pType->value_count, 65535, MYLITE_COLTYPE_ENUM, 0, pOut
+  );
+}
+
+static int myliteMakeSetColumnType(
+  sqlite3 *db,
+  const struct mylite_sqlite_fork_set_column_type *pType,
+  MyliteColumnType *pOut
+){
+  if( pType->flags!=0 ) return SQLITE_MISUSE;
+  return myliteMakeValueListColumnType(
+      db, pType->values, pType->value_count, 64, MYLITE_COLTYPE_SET, 1, pOut
+  );
+}
+
+static int myliteMakeValueListColumnType(
+  sqlite3 *db,
+  const struct mylite_sqlite_fork_enum_value *aValue,
+  sqlite3_uint64 nValue,
+  sqlite3_uint64 nMaxValue,
+  u8 eType,
+  int bRejectComma,
+  MyliteColumnType *pOut
+){
   sqlite3_uint64 i;
   sqlite3_uint64 j;
 
   *pOut = (MyliteColumnType){0};
-  if( pType->flags!=0 || pType->values==0 || pType->value_count==0 ||
-      pType->value_count>65535 ){
+  if( aValue==0 || nValue==0 || nValue>nMaxValue ){
     return SQLITE_MISUSE;
   }
-  for(i=0; i<pType->value_count; i++){
-    const struct mylite_sqlite_fork_enum_value *pValue = &pType->values[i];
+  for(i=0; i<nValue; i++){
+    const struct mylite_sqlite_fork_enum_value *pValue = &aValue[i];
     if( pValue->text==0 || pValue->byte_length>0x7fffffff ){
       return SQLITE_MISUSE;
     }
+    if( bRejectComma &&
+        memchr(pValue->text, ',', (size_t)pValue->byte_length)!=0 ){
+      return SQLITE_MISUSE;
+    }
     for(j=0; j<i; j++){
-      const struct mylite_sqlite_fork_enum_value *pPrior = &pType->values[j];
+      const struct mylite_sqlite_fork_enum_value *pPrior = &aValue[j];
       if( pPrior->byte_length==pValue->byte_length &&
           memcmp(pPrior->text, pValue->text, (size_t)pValue->byte_length)==0 ){
         return SQLITE_MISUSE;
@@ -355,12 +464,12 @@ static int myliteMakeEnumColumnType(
     }
   }
 
-  pOut->eType = MYLITE_COLTYPE_ENUM;
-  pOut->nValue = (u32)pType->value_count;
+  pOut->eType = eType;
+  pOut->nValue = (u32)nValue;
   pOut->aValue = sqlite3DbMallocZero(0, sizeof(pOut->aValue[0])*pOut->nValue);
   if( pOut->aValue==0 ) return SQLITE_NOMEM;
-  for(i=0; i<pType->value_count; i++){
-    const struct mylite_sqlite_fork_enum_value *pValue = &pType->values[i];
+  for(i=0; i<nValue; i++){
+    const struct mylite_sqlite_fork_enum_value *pValue = &aValue[i];
     u32 n = (u32)pValue->byte_length;
     pOut->aValue[i].z = sqlite3DbMallocRaw(0, n+1);
     if( pOut->aValue[i].z==0 ){

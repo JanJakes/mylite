@@ -111,9 +111,9 @@ MyLite descriptor checks, so assignment coercion applies to assigned columns
 without revalidating unrelated stored values.
 The current descriptor families cover strict integer, `DOUBLE`, `VARCHAR`,
 `BINARY`, `VARBINARY`, `DECIMAL`, `DATE`, `DATETIME`, `TIME`, `YEAR`, and
-`ENUM` assignment behavior. `ENUM` also adds the first read-time descriptor
-hook because its compact physical index must display as a label while numeric
-contexts see the index.
+`ENUM` and `SET` assignment behavior. `ENUM` and `SET` also use the first
+read-time descriptor hook because their compact physical indexes and masks must
+display as labels while numeric contexts see the underlying numeric values.
 Fork-owned VDBE failures can also publish a structured MySQL condition through
 the diagnostics bridge before SQLite reports the statement error.
 

@@ -2289,6 +2289,7 @@ struct MyliteColumnType {
 # define MYLITE_COLTYPE_BLOB             12
 # define MYLITE_COLTYPE_YEAR             13
 # define MYLITE_COLTYPE_ENUM             14
+# define MYLITE_COLTYPE_SET              15
 
 # define MYLITE_COLTYPE_FLAG_UNSIGNED    0x0001
 # define MYLITE_COLTYPE_FLAG_ALLOW_ZERO  0x0002

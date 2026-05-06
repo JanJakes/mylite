@@ -53,6 +53,8 @@ static int test_native_year_type_coercion(void);
 
 static int test_native_enum_type_coercion(void);
 
+static int test_native_set_type_coercion(void);
+
 static int test_wordpress_like_crud(void);
 
 static int test_mylite_wordpress_like_crud(void);
@@ -135,6 +137,7 @@ int main(void) {
     failures += test_native_time_type_coercion();
     failures += test_native_year_type_coercion();
     failures += test_native_enum_type_coercion();
+    failures += test_native_set_type_coercion();
     failures += test_wordpress_like_crud();
     failures += test_mylite_wordpress_like_crud();
     failures += test_mylite_basic_type_coercion();
@@ -1637,6 +1640,351 @@ static int test_native_enum_type_coercion(void) {
         database,
         "ALTER TABLE enum_alter ADD COLUMN note TEXT",
         "native SQLite alter table does not double-free enum descriptors"
+    );
+
+    sqlite3_close(database);
+    return failures;
+}
+
+static int test_native_set_type_coercion(void) {
+    enum {
+        set_truncated_error = 1265,
+    };
+
+    static const struct mylite_sqlite_fork_enum_value flag_values[] = {
+        {.text = "a", .byte_length = sizeof("a") - 1},
+        {.text = "b", .byte_length = sizeof("b") - 1},
+        {.text = "c", .byte_length = sizeof("c") - 1},
+        {.text = "d", .byte_length = sizeof("d") - 1},
+    };
+    static const struct mylite_sqlite_fork_enum_value numeric_values[] = {
+        {.text = "0", .byte_length = sizeof("0") - 1},
+        {.text = "1", .byte_length = sizeof("1") - 1},
+        {.text = "2", .byte_length = sizeof("2") - 1},
+    };
+    static const struct mylite_sqlite_fork_enum_value empty_values[] = {
+        {.text = "", .byte_length = 0},
+        {.text = "a", .byte_length = sizeof("a") - 1},
+    };
+    static const struct mylite_sqlite_fork_enum_value wide_values[] = {
+        {.text = "v1", .byte_length = sizeof("v1") - 1},
+        {.text = "v2", .byte_length = sizeof("v2") - 1},
+        {.text = "v3", .byte_length = sizeof("v3") - 1},
+        {.text = "v4", .byte_length = sizeof("v4") - 1},
+        {.text = "v5", .byte_length = sizeof("v5") - 1},
+        {.text = "v6", .byte_length = sizeof("v6") - 1},
+        {.text = "v7", .byte_length = sizeof("v7") - 1},
+        {.text = "v8", .byte_length = sizeof("v8") - 1},
+        {.text = "v9", .byte_length = sizeof("v9") - 1},
+        {.text = "v10", .byte_length = sizeof("v10") - 1},
+        {.text = "v11", .byte_length = sizeof("v11") - 1},
+        {.text = "v12", .byte_length = sizeof("v12") - 1},
+        {.text = "v13", .byte_length = sizeof("v13") - 1},
+        {.text = "v14", .byte_length = sizeof("v14") - 1},
+        {.text = "v15", .byte_length = sizeof("v15") - 1},
+        {.text = "v16", .byte_length = sizeof("v16") - 1},
+        {.text = "v17", .byte_length = sizeof("v17") - 1},
+        {.text = "v18", .byte_length = sizeof("v18") - 1},
+        {.text = "v19", .byte_length = sizeof("v19") - 1},
+        {.text = "v20", .byte_length = sizeof("v20") - 1},
+        {.text = "v21", .byte_length = sizeof("v21") - 1},
+        {.text = "v22", .byte_length = sizeof("v22") - 1},
+        {.text = "v23", .byte_length = sizeof("v23") - 1},
+        {.text = "v24", .byte_length = sizeof("v24") - 1},
+        {.text = "v25", .byte_length = sizeof("v25") - 1},
+        {.text = "v26", .byte_length = sizeof("v26") - 1},
+        {.text = "v27", .byte_length = sizeof("v27") - 1},
+        {.text = "v28", .byte_length = sizeof("v28") - 1},
+        {.text = "v29", .byte_length = sizeof("v29") - 1},
+        {.text = "v30", .byte_length = sizeof("v30") - 1},
+        {.text = "v31", .byte_length = sizeof("v31") - 1},
+        {.text = "v32", .byte_length = sizeof("v32") - 1},
+        {.text = "v33", .byte_length = sizeof("v33") - 1},
+        {.text = "v34", .byte_length = sizeof("v34") - 1},
+        {.text = "v35", .byte_length = sizeof("v35") - 1},
+        {.text = "v36", .byte_length = sizeof("v36") - 1},
+        {.text = "v37", .byte_length = sizeof("v37") - 1},
+        {.text = "v38", .byte_length = sizeof("v38") - 1},
+        {.text = "v39", .byte_length = sizeof("v39") - 1},
+        {.text = "v40", .byte_length = sizeof("v40") - 1},
+        {.text = "v41", .byte_length = sizeof("v41") - 1},
+        {.text = "v42", .byte_length = sizeof("v42") - 1},
+        {.text = "v43", .byte_length = sizeof("v43") - 1},
+        {.text = "v44", .byte_length = sizeof("v44") - 1},
+        {.text = "v45", .byte_length = sizeof("v45") - 1},
+        {.text = "v46", .byte_length = sizeof("v46") - 1},
+        {.text = "v47", .byte_length = sizeof("v47") - 1},
+        {.text = "v48", .byte_length = sizeof("v48") - 1},
+        {.text = "v49", .byte_length = sizeof("v49") - 1},
+        {.text = "v50", .byte_length = sizeof("v50") - 1},
+        {.text = "v51", .byte_length = sizeof("v51") - 1},
+        {.text = "v52", .byte_length = sizeof("v52") - 1},
+        {.text = "v53", .byte_length = sizeof("v53") - 1},
+        {.text = "v54", .byte_length = sizeof("v54") - 1},
+        {.text = "v55", .byte_length = sizeof("v55") - 1},
+        {.text = "v56", .byte_length = sizeof("v56") - 1},
+        {.text = "v57", .byte_length = sizeof("v57") - 1},
+        {.text = "v58", .byte_length = sizeof("v58") - 1},
+        {.text = "v59", .byte_length = sizeof("v59") - 1},
+        {.text = "v60", .byte_length = sizeof("v60") - 1},
+        {.text = "v61", .byte_length = sizeof("v61") - 1},
+        {.text = "v62", .byte_length = sizeof("v62") - 1},
+        {.text = "v63", .byte_length = sizeof("v63") - 1},
+        {.text = "v64", .byte_length = sizeof("v64") - 1},
+    };
+
+    sqlite3 *database = NULL;
+    int failures = 0;
+
+    failures += open_configured_database(&database);
+    if (failures != 0) {
+        return failures;
+    }
+
+    failures += exec_sql(
+        database,
+        "CREATE TABLE set_direct(id INTEGER PRIMARY KEY, flags INTEGER)",
+        "create direct set descriptor fixture"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_set_column_type(
+            database,
+            NULL,
+            "set_direct",
+            "flags",
+            &(const struct mylite_sqlite_fork_set_column_type){
+                .values = flag_values,
+                .value_count = sizeof(flag_values) / sizeof(flag_values[0]),
+            }
+        ),
+        database,
+        "set direct set descriptor"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO set_direct VALUES "
+        "(1, 'a'), (2, 'a,b'), (3, 'b,a'), (4, 'a,a'), (5, ''), "
+        "(6, 9), (7, 3.9), (8, NULL), (9, '3'), (10, '+3'), "
+        "(11, '03'), (12, ' 3')",
+        "insert direct set descriptor values"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT group_concat("
+                   "id || ':' || COALESCE(flags, 'NULL') || ':' || "
+                   "COALESCE(flags + 0, 'NULL'), '|') "
+                   "FROM (SELECT id, flags FROM set_direct ORDER BY id)",
+            .expected = "1:a:1|2:a,b:3|3:a,b:3|4:a:1|5::0|6:a,d:9|"
+                        "7:a,b:3|8:NULL:NULL|9:a,b:3|10:a,b:3|"
+                        "11:a,b:3|12:a,b:3",
+            .context = "direct set descriptor returns labels with numeric masks",
+        }
+    );
+    failures += exec_sql(
+        database,
+        "UPDATE set_direct SET flags = 'd,a,d' WHERE id = 1",
+        "update direct set duplicate ordered labels"
+    );
+    failures += exec_sql(
+        database,
+        "UPDATE set_direct SET flags = 15 WHERE id = 2",
+        "update direct set full bitmask"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT group_concat(id || ':' || flags || ':' || (flags + 0), '|') "
+                   "FROM (SELECT id, flags FROM set_direct WHERE id IN (1, 2) "
+                   "ORDER BY id)",
+            .expected = "1:a,d:9|2:a,b,c,d:15",
+            .context = "direct set update normalizes labels in definition order",
+        }
+    );
+
+    failures += exec_sql(
+        database,
+        "CREATE TABLE set_numeric(id INTEGER PRIMARY KEY, flags INTEGER)",
+        "create direct numeric-label set fixture"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_set_column_type(
+            database,
+            NULL,
+            "set_numeric",
+            "flags",
+            &(const struct mylite_sqlite_fork_set_column_type){
+                .values = numeric_values,
+                .value_count = sizeof(numeric_values) / sizeof(numeric_values[0]),
+            }
+        ),
+        database,
+        "set direct numeric-label set descriptor"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO set_numeric VALUES "
+        "(1, 2), (2, '2'), (3, '3'), (4, 1), "
+        "(5, '1'), (6, '0'), (7, '0,2'), (8, '2,0')",
+        "insert direct numeric-label set values"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT group_concat(id || ':' || flags || ':' || (flags + 0), '|') "
+                   "FROM (SELECT id, flags FROM set_numeric ORDER BY id)",
+            .expected = "1:1:2|2:2:4|3:0,1:3|4:0:1|5:1:2|"
+                        "6:0:1|7:0,2:5|8:0,2:5",
+            .context = "direct set prefers exact numeric labels before masks",
+        }
+    );
+
+    failures += exec_sql(
+        database,
+        "CREATE TABLE set_empty(id INTEGER PRIMARY KEY, flags INTEGER)",
+        "create direct empty-label set fixture"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_set_column_type(
+            database,
+            NULL,
+            "set_empty",
+            "flags",
+            &(const struct mylite_sqlite_fork_set_column_type){
+                .values = empty_values,
+                .value_count = sizeof(empty_values) / sizeof(empty_values[0]),
+            }
+        ),
+        database,
+        "set direct empty-label set descriptor"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO set_empty VALUES (1, ''), (2, 1), (3, '1'), "
+        "(4, 'a'), (5, 2), (6, 3)",
+        "insert empty-label set values"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT group_concat(id || ':' || flags || ':' || (flags + 0), '|') "
+                   "FROM (SELECT id, flags FROM set_empty ORDER BY id)",
+            .expected = "1::0|2::1|3::1|4:a:2|5:a:2|6:a:3",
+            .context = "direct set treats empty string assignment as empty mask",
+        }
+    );
+
+    failures += exec_sql(
+        database,
+        "CREATE TABLE set_wide(id INTEGER PRIMARY KEY, flags INTEGER)",
+        "create direct 64-member set fixture"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_set_column_type(
+            database,
+            NULL,
+            "set_wide",
+            "flags",
+            &(const struct mylite_sqlite_fork_set_column_type){
+                .values = wide_values,
+                .value_count = sizeof(wide_values) / sizeof(wide_values[0]),
+            }
+        ),
+        database,
+        "set direct 64-member set descriptor"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO set_wide VALUES (1, '9223372036854775808')",
+        "insert direct 64th set member by unsigned mask text"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT flags FROM set_wide WHERE id = 1",
+            .expected = "v64",
+            .context = "direct set supports the 64th MySQL member bit",
+        }
+    );
+
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO set_direct VALUES (20, 16)",
+            .message_fragment = "invalid set value",
+            .context = "direct set rejects masks with bits outside the descriptor",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = set_truncated_error,
+            .sqlstate = "01000",
+            .context = "invalid set mask exposes MySQL condition",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear invalid set mask fork condition"
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO set_direct VALUES (21, 'a,missing,b')",
+            .message_fragment = "invalid set value",
+            .context = "direct set rejects unknown labels in strict mode",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = set_truncated_error,
+            .sqlstate = "01000",
+            .context = "invalid set label exposes MySQL condition",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear invalid set label fork condition"
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO set_direct VALUES (22, '3 ')",
+            .message_fragment = "invalid set value",
+            .context = "direct set rejects trailing-space numeric text",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = set_truncated_error,
+            .sqlstate = "01000",
+            .context = "invalid set trailing-space text exposes MySQL condition",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear invalid set trailing-space text fork condition"
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO set_direct VALUES (23, '3.9')",
+            .message_fragment = "invalid set value",
+            .context = "direct set rejects non-integer numeric text",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = set_truncated_error,
+            .sqlstate = "01000",
+            .context = "invalid set numeric text exposes MySQL condition",
+        }
     );
 
     sqlite3_close(database);

@@ -458,6 +458,13 @@ static int myliteCoerceEnum(
   u32 *pMyErrno,
   const char **pzSqlState
 );
+static int myliteCoerceSet(
+  Mem *pMem,
+  const MyliteColumnType *pType,
+  const char **pzErr,
+  u32 *pMyErrno,
+  const char **pzSqlState
+);
 static int myliteCoerceYear(
   Mem *pMem,
   const char **pzErr,
@@ -692,12 +699,38 @@ static int myliteEnumIndexFromText(
   const MyliteColumnType *pType,
   i64 *pIndex
 );
-static int myliteEnumFindValue(
+static int myliteSetMaskFromMem(
+  Mem *pMem,
+  const MyliteColumnType *pType,
+  u64 *pMask
+);
+static int myliteSetMaskFromText(
+  const char *zText,
+  int nText,
+  const MyliteColumnType *pType,
+  u64 *pMask
+);
+static int myliteSetMaskFromIntegerText(
+  const char *zText,
+  int nText,
+  u64 *pMask,
+  int *pHasInteger
+);
+static int myliteSetMaskFromListText(
+  const char *zText,
+  int nText,
+  const MyliteColumnType *pType,
+  u64 *pMask
+);
+static int myliteSetMaskFitsType(u64 mask, const MyliteColumnType *pType);
+static i64 myliteSetMaskToInt64(u64 mask);
+static int myliteValueListFindValue(
   const MyliteColumnType *pType,
   const char *zText,
   int nText
 );
 static int myliteEnumSetDisplayValue(Mem *pMem, const MyliteColumnType *pType);
+static int myliteSetSetDisplayValue(Mem *pMem, const MyliteColumnType *pType);
 static u64 myliteUtf8CharCount(const unsigned char *zText, int nText);
 
 static int myliteApplyColumnType(
@@ -782,6 +815,10 @@ static int myliteApplyColumnType(
       return myliteCoerceEnum(
           pMem, &pCol->myliteType, pzErr, pMyErrno, pzSqlState
       );
+    case MYLITE_COLTYPE_SET:
+      return myliteCoerceSet(
+          pMem, &pCol->myliteType, pzErr, pMyErrno, pzSqlState
+      );
     case MYLITE_COLTYPE_YEAR:
       return myliteCoerceYear(pMem, pzErr, pMyErrno, pzSqlState);
     case MYLITE_COLTYPE_DECIMAL:
@@ -816,6 +853,9 @@ static int myliteApplyColumnType(
 static int myliteApplyColumnReadType(Mem *pMem, const Column *pCol){
   if( pCol->myliteType.eType==MYLITE_COLTYPE_ENUM ){
     return myliteEnumSetDisplayValue(pMem, &pCol->myliteType);
+  }
+  if( pCol->myliteType.eType==MYLITE_COLTYPE_SET ){
+    return myliteSetSetDisplayValue(pMem, &pCol->myliteType);
   }
   return SQLITE_OK;
 }
@@ -997,6 +1037,27 @@ static int myliteCoerceEnum(
     return SQLITE_MISMATCH;
   }
   sqlite3VdbeMemSetInt64(pMem, iIndex);
+  return SQLITE_OK;
+}
+
+static int myliteCoerceSet(
+  Mem *pMem,
+  const MyliteColumnType *pType,
+  const char **pzErr,
+  u32 *pMyErrno,
+  const char **pzSqlState
+){
+  u64 mask = 0;
+  int rc;
+
+  rc = myliteSetMaskFromMem(pMem, pType, &mask);
+  if( rc!=SQLITE_OK || !myliteSetMaskFitsType(mask, pType) ){
+    *pzErr = "invalid set value";
+    *pMyErrno = 1265;
+    *pzSqlState = "01000";
+    return SQLITE_MISMATCH;
+  }
+  sqlite3VdbeMemSetInt64(pMem, myliteSetMaskToInt64(mask));
   return SQLITE_OK;
 }
 
@@ -2128,7 +2189,7 @@ static int myliteEnumIndexFromText(
   int iIndex;
 
   if( nText<0 ) return SQLITE_MISMATCH;
-  iIndex = myliteEnumFindValue(pType, zText, nText);
+  iIndex = myliteValueListFindValue(pType, zText, nText);
   if( iIndex>=0 ){
     *pIndex = iIndex + 1;
     return SQLITE_OK;
@@ -2139,7 +2200,146 @@ static int myliteEnumIndexFromText(
   return SQLITE_MISMATCH;
 }
 
-static int myliteEnumFindValue(
+static int myliteSetMaskFromMem(
+  Mem *pMem,
+  const MyliteColumnType *pType,
+  u64 *pMask
+){
+  double rValue;
+
+  if( pMem->flags & (MEM_Str|MEM_Blob) ){
+    if( ExpandBlob(pMem)!=SQLITE_OK ) return SQLITE_NOMEM;
+    return myliteSetMaskFromText(pMem->z, pMem->n, pType, pMask);
+  }
+  if( pMem->flags & (MEM_Int|MEM_IntReal) ){
+    *pMask = (u64)pMem->u.i;
+    return SQLITE_OK;
+  }
+  if( pMem->flags & MEM_Real ){
+    rValue = pMem->u.r;
+    if( sqlite3IsOverflow(rValue) ){
+      return SQLITE_MISMATCH;
+    }
+    if( rValue<0.0 ){
+      if( rValue<(double)SMALLEST_INT64 ) return SQLITE_MISMATCH;
+      *pMask = (u64)((i64)rValue);
+      return SQLITE_OK;
+    }
+    if( rValue>=18446744073709551616.0 ) return SQLITE_MISMATCH;
+    *pMask = (u64)rValue;
+    return SQLITE_OK;
+  }
+  return SQLITE_MISMATCH;
+}
+
+static int myliteSetMaskFromText(
+  const char *zText,
+  int nText,
+  const MyliteColumnType *pType,
+  u64 *pMask
+){
+  int iIndex;
+  int bHasInteger = 0;
+  int rc;
+
+  if( nText<0 ) return SQLITE_MISMATCH;
+  if( nText==0 ){
+    *pMask = 0;
+    return SQLITE_OK;
+  }
+  iIndex = myliteValueListFindValue(pType, zText, nText);
+  if( iIndex>=0 ){
+    *pMask = (u64)1 << iIndex;
+    return SQLITE_OK;
+  }
+  if( memchr(zText, ',', (size_t)nText)!=0 ){
+    return myliteSetMaskFromListText(zText, nText, pType, pMask);
+  }
+  rc = myliteSetMaskFromIntegerText(zText, nText, pMask, &bHasInteger);
+  if( rc!=SQLITE_OK || bHasInteger ){
+    return rc;
+  }
+  return myliteSetMaskFromListText(zText, nText, pType, pMask);
+}
+
+static int myliteSetMaskFromIntegerText(
+  const char *zText,
+  int nText,
+  u64 *pMask,
+  int *pHasInteger
+){
+  const char *zEnd;
+  const char *z;
+  const char *zDigit;
+  int bNegative = 0;
+  u64 mask = 0;
+
+  *pHasInteger = 0;
+  zEnd = zText + nText;
+  z = zText;
+  while( z<zEnd && sqlite3Isspace(*z) ) z++;
+  if( z<zEnd && (*z=='-' || *z=='+') ){
+    bNegative = *z=='-';
+    z++;
+  }
+  zDigit = z;
+  while( z<zEnd && z[0]>='0' && z[0]<='9' ){
+    u64 digit = (u64)(z[0] - '0');
+    if( mask>(~(u64)0 - digit)/10 ) return SQLITE_MISMATCH;
+    mask = mask*10 + digit;
+    z++;
+  }
+  if( z==zDigit ) return SQLITE_OK;
+  if( z<zEnd ) return SQLITE_MISMATCH;
+  if( bNegative ){
+    i64 iValue = 0;
+    if( sqlite3Atoi64(zText, &iValue, nText, SQLITE_UTF8)!=0 ){
+      return SQLITE_MISMATCH;
+    }
+    mask = (u64)iValue;
+  }
+  *pHasInteger = 1;
+  *pMask = mask;
+  return SQLITE_OK;
+}
+
+static int myliteSetMaskFromListText(
+  const char *zText,
+  int nText,
+  const MyliteColumnType *pType,
+  u64 *pMask
+){
+  int iStart = 0;
+  int i;
+  u64 mask = 0;
+
+  for(i=0; i<=nText; i++){
+    if( i==nText || zText[i]==',' ){
+      int nPart = i - iStart;
+      int iIndex;
+      if( nPart<=0 ) return SQLITE_MISMATCH;
+      iIndex = myliteValueListFindValue(pType, &zText[iStart], nPart);
+      if( iIndex<0 ) return SQLITE_MISMATCH;
+      mask |= (u64)1 << iIndex;
+      iStart = i + 1;
+    }
+  }
+  *pMask = mask;
+  return SQLITE_OK;
+}
+
+static int myliteSetMaskFitsType(u64 mask, const MyliteColumnType *pType){
+  if( pType->nValue>=64 ) return 1;
+  return (mask >> pType->nValue)==0;
+}
+
+static i64 myliteSetMaskToInt64(u64 mask){
+  i64 value;
+  memcpy(&value, &mask, sizeof(value));
+  return value;
+}
+
+static int myliteValueListFindValue(
   const MyliteColumnType *pType,
   const char *zText,
   int nText
@@ -2172,6 +2372,59 @@ static int myliteEnumSetDisplayValue(Mem *pMem, const MyliteColumnType *pType){
   rc = sqlite3VdbeMemSetStr(pMem, zText, nText, SQLITE_UTF8, SQLITE_TRANSIENT);
   if( rc!=SQLITE_OK ) return SQLITE_NOMEM;
   pMem->u.i = iIndex;
+  pMem->flags |= MEM_Int;
+  return SQLITE_OK;
+}
+
+static int myliteSetSetDisplayValue(Mem *pMem, const MyliteColumnType *pType){
+  u64 mask = 0;
+  u64 selected = 0;
+  u32 i;
+  int nText = 0;
+  int nOut = 0;
+  char *zOut;
+  int rc;
+
+  if( pMem->flags & MEM_Null ) return SQLITE_OK;
+  rc = myliteSetMaskFromMem(pMem, pType, &mask);
+  if( rc!=SQLITE_OK ) return rc==SQLITE_NOMEM ? SQLITE_NOMEM : SQLITE_OK;
+  if( !myliteSetMaskFitsType(mask, pType) ) return SQLITE_OK;
+
+  for(i=0; i<pType->nValue; i++){
+    if( (mask & ((u64)1 << i))!=0 && pType->aValue[i].n>0 ){
+      u64 nNeeded = (u64)nText + pType->aValue[i].n;
+      if( selected!=0 ) nNeeded++;
+      if( nNeeded>0x7fffffff ) return SQLITE_TOOBIG;
+      nText = (int)nNeeded;
+      selected |= (u64)1 << i;
+    }
+  }
+  if( nText==0 ){
+    rc = sqlite3VdbeMemSetStr(pMem, "", 0, SQLITE_UTF8, SQLITE_TRANSIENT);
+    if( rc!=SQLITE_OK ) return SQLITE_NOMEM;
+    pMem->u.i = myliteSetMaskToInt64(mask);
+    pMem->flags |= MEM_Int;
+    return SQLITE_OK;
+  }
+
+  zOut = sqlite3DbMallocRaw(pMem->db, nText+1);
+  if( zOut==0 ) return SQLITE_NOMEM;
+  selected = 0;
+  for(i=0; i<pType->nValue; i++){
+    if( (mask & ((u64)1 << i))!=0 && pType->aValue[i].n>0 ){
+      if( selected!=0 ){
+        zOut[nOut++] = ',';
+      }
+      memcpy(&zOut[nOut], pType->aValue[i].z, pType->aValue[i].n);
+      nOut += (int)pType->aValue[i].n;
+      selected |= (u64)1 << i;
+    }
+  }
+  zOut[nOut] = 0;
+  rc = sqlite3VdbeMemSetStr(pMem, zOut, nOut, SQLITE_UTF8, SQLITE_TRANSIENT);
+  sqlite3DbFree(pMem->db, zOut);
+  if( rc!=SQLITE_OK ) return SQLITE_NOMEM;
+  pMem->u.i = myliteSetMaskToInt64(mask);
   pMem->flags |= MEM_Int;
   return SQLITE_OK;
 }
@@ -5060,6 +5313,11 @@ case OP_MyliteColumnReadType: {
   pCol = &pTab->aCol[pOp->p2];
   rc2 = myliteApplyColumnReadType(pIn1, pCol);
   if( rc2==SQLITE_NOMEM ) goto no_mem;
+  if( rc2!=SQLITE_OK ){
+    sqlite3VdbeError(p, "MyLite column display value is too large");
+    rc = rc2;
+    goto abort_due_to_error;
+  }
   REGISTER_TRACE(pOp->p1, pIn1);
   break;
 }

@@ -18,7 +18,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       and zero-placeholder fields are covered; live row counts and timestamps
       remain open.
 - [ ] Align `USE information_schema; SELECT * FROM tables` with the same
-      MySQL-compatible metadata rows.
+      MySQL-compatible metadata rows. Resolution and zero-placeholder fields
+      are covered; live row counts and timestamps remain open with the
+      qualified `information_schema.TABLES` task.
 - [x] Verify and complete `SHOW DATABASES` parser and runtime coverage;
       verify `SHOW TABLE SCHEMAS` remains a MySQL syntax error.
 - [ ] Align `SHOW TABLE STATUS` values, including row counts, data length,

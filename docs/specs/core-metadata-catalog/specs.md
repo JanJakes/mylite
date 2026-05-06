@@ -401,6 +401,7 @@ The following observations were verified against `mylite-mysql-849`:
 | `SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA='mylite_metadata_catalog_a'` on an empty created schema | Returns `0`. |
 | `DROP DATABASE mylite_metadata_catalog_a; SELECT COUNT(*) FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME='mylite_metadata_catalog_a'` | Returns `0`. |
 | `SELECT COUNT(*) FROM information_schema.schemata`, `INFORMATION_SCHEMA.schemata`, and backtick-quoted `` `information_schema`.`SCHEMATA` `` | All resolve successfully. |
+| `USE information_schema; SELECT * FROM tables` | Resolves `tables` as `information_schema.TABLES` and returns the same system-view row shape and values as a qualified query. |
 | `SELECT ... FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA='information_schema' AND TABLE_NAME IN (...)` | The scoped system views are reported as `SYSTEM VIEW` rows with `ENGINE=NULL`, `VERSION=10`, `TABLE_ROWS=0`, zero size counters, `TABLE_COLLATION=NULL`, and empty comments. |
 | `CREATE TABLE simple_create ...; SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='simple_create'` | The base-table row reports `ENGINE='InnoDB'`, `VERSION=10`, `ROW_FORMAT='Dynamic'`, zero size counters for the current placeholder statistics slice, the next `AUTO_INCREMENT` value when present, the table collation, and the table comment. |
 
@@ -418,6 +419,8 @@ The following observations were verified against `mylite-mysql-849`:
   - created schema defaults and encryption are reflected in `SCHEMATA`
   - dropping a schema removes its `SCHEMATA` row
   - information schema table resolution is case-insensitive
+  - selecting `information_schema` as the default schema lets unqualified
+    `tables` resolve to `INFORMATION_SCHEMA.TABLES`
   - `TABLES` exposes the 21 MySQL column names and system-view rows
   - `TABLES` has no row for an empty user-created schema
   - `COLUMNS` exposes the 22 MySQL column names and has no rows before table

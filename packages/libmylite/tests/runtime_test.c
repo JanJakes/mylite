@@ -399,6 +399,8 @@ static int test_character_set_collation_foundation(void);
 
 static int test_core_metadata_catalog(void);
 
+static int test_information_schema_selected_schema_execution(void);
+
 static int test_information_schema_tables_engine_filter_execution(void);
 
 static int test_information_schema_engines_execution(void);
@@ -903,6 +905,7 @@ int main(void) {
     failures += test_schema_lifecycle();
     failures += test_character_set_collation_foundation();
     failures += test_core_metadata_catalog();
+    failures += test_information_schema_selected_schema_execution();
     failures += test_information_schema_tables_engine_filter_execution();
     failures += test_information_schema_engines_execution();
     failures += test_information_schema_character_sets_execution();
@@ -1706,6 +1709,34 @@ static int test_core_metadata_catalog(void) {
         MYLITE_EXEC_ERROR,
         "Unknown table 'VIEWS' in information_schema",
         "unknown information schema table"
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_information_schema_selected_schema_execution(void) {
+    static const char *const columns[] = {
+        "TABLE_SCHEMA",
+        "TABLE_NAME",
+        "AVG_ROW_LENGTH",
+        "DATA_LENGTH",
+    };
+    static const char *const values[] = {"information_schema", "TABLES", "0", "0"};
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open memory database");
+    failures += execute_sql(database, "USE information_schema", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT TABLE_SCHEMA, TABLE_NAME, AVG_ROW_LENGTH, DATA_LENGTH "
+        "FROM tables WHERE TABLE_NAME = 'TABLES'",
+        columns,
+        (int)(sizeof(columns) / sizeof(columns[0])),
+        values,
+        1,
+        "information_schema selected schema tables"
     );
 
     mylite_close(database);

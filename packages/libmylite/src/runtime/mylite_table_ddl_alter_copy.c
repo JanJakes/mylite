@@ -99,7 +99,7 @@ int mylite_table_ddl_copy_alter_table_statement(
         }
     }
     return plan->action_count == 0U && plan->unsupported_algorithm == NULL &&
-                   plan->unsupported_lock == NULL
+                   plan->unsupported_lock == NULL && !plan->has_auto_increment
                ? MYLITE_UNSUPPORTED
                : MYLITE_OK;
 }
@@ -124,6 +124,10 @@ static int copy_alter_table_item(
             target = &plan->unsupported_algorithm;
         } else if (item->ddl_table_option == MYLITE_SQL_AST_DDL_TABLE_OPTION_LOCK) {
             target = &plan->unsupported_lock;
+        } else if (item->ddl_table_option == MYLITE_SQL_AST_DDL_TABLE_OPTION_AUTO_INCREMENT) {
+            plan->has_auto_increment = true;
+            plan->auto_increment = mylite_ast_child_at(item, 0U)->column_length;
+            return MYLITE_OK;
         } else {
             return MYLITE_UNSUPPORTED;
         }

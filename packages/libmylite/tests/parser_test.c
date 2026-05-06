@@ -3663,6 +3663,8 @@ static int test_alter_table_column_operations_syntax(void) {
     enum {
         complex_varchar_length = 20,
         alter_rename_change_modify_item_count = 5,
+        alter_auto_increment_value = 50,
+        alter_auto_increment_no_equal_value = 70,
     };
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -3729,6 +3731,36 @@ static int test_alter_table_column_operations_syntax(void) {
         MYLITE_SQL_AST_DDL_TABLE_OPTION_LOCK,
         "alter lock option"
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE t AUTO_INCREMENT=50, AUTO_INCREMENT 70;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    items = child_at(statement, 1U);
+    failures += expect_child_count(items, 2U, "alter auto increment item count");
+    failures += expect_ddl_table_option(
+        child_at(items, 0U),
+        MYLITE_SQL_AST_DDL_TABLE_OPTION_AUTO_INCREMENT,
+        "alter auto increment option"
+    );
+    if (child_at(child_at(items, 0U), 0U) == NULL ||
+        child_at(child_at(items, 0U), 0U)->column_length != alter_auto_increment_value) {
+        fprintf(stderr, "alter AUTO_INCREMENT option was not recorded as 50\n");
+        failures = 1;
+    }
+    failures += expect_ddl_table_option(
+        child_at(items, 1U),
+        MYLITE_SQL_AST_DDL_TABLE_OPTION_AUTO_INCREMENT,
+        "alter auto increment no-equal option"
+    );
+    if (child_at(child_at(items, 1U), 0U) == NULL ||
+        child_at(child_at(items, 1U), 0U)->column_length != alter_auto_increment_no_equal_value) {
+        fprintf(stderr, "alter AUTO_INCREMENT option without equals was not recorded as 70\n");
+        failures = 1;
+    }
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(

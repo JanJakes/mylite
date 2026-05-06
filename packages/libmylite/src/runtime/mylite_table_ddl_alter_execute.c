@@ -43,6 +43,12 @@ static int validate_alter_table_target(mylite_stmt *stmt, bool *out_temporary);
 
 static int apply_alter_table_actions(mylite_stmt *stmt, struct mylite_alter_table_model *model);
 
+static void apply_alter_table_options(mylite_stmt *stmt, struct mylite_alter_table_model *model);
+
+static bool alter_table_model_has_auto_increment_column(
+    const struct mylite_alter_table_model *model
+);
+
 static int set_alter_table_unsupported_action_error(mylite_db *database, const char *feature);
 
 static int validate_alter_table_primary_key_part_not_null(
@@ -82,6 +88,9 @@ int mylite_table_ddl_execute_alter_table_prepared_statement(mylite_stmt *stmt) {
     }
     if (status == MYLITE_OK) {
         status = apply_alter_table_actions(stmt, &model);
+    }
+    if (status == MYLITE_OK) {
+        apply_alter_table_options(stmt, &model);
     }
     if (status == MYLITE_OK) {
         status = mylite_table_ddl_validate_alter_table_final_model(stmt->database, &model);
@@ -128,7 +137,7 @@ static int execute_alter_table_rename_statement(mylite_stmt *stmt) {
             stmt->alter_table.unsupported_lock
         );
     }
-    if (stmt->alter_table.action_count != 1U) {
+    if (stmt->alter_table.action_count != 1U || stmt->alter_table.has_auto_increment) {
         stmt->affected_rows = -1;
         return set_alter_table_unsupported_action_error(
             stmt->database,
@@ -382,6 +391,30 @@ static int apply_alter_table_actions(mylite_stmt *stmt, struct mylite_alter_tabl
     }
 
     return mylite_table_ddl_refresh_alter_table_index_metadata(stmt->database, model);
+}
+
+static void apply_alter_table_options(mylite_stmt *stmt, struct mylite_alter_table_model *model) {
+    if (!stmt->alter_table.has_auto_increment) {
+        return;
+    }
+    if (!alter_table_model_has_auto_increment_column(model)) {
+        model->clear_auto_increment = true;
+        return;
+    }
+    model->auto_increment = stmt->alter_table.auto_increment;
+    model->set_auto_increment = true;
+    model->clear_auto_increment = false;
+}
+
+static bool alter_table_model_has_auto_increment_column(
+    const struct mylite_alter_table_model *model
+) {
+    for (size_t index = 0U; index < model->column_count; ++index) {
+        if (model->columns[index].auto_increment) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static int set_alter_table_unsupported_action_error(mylite_db *database, const char *feature) {

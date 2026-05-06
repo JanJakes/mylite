@@ -41,7 +41,7 @@ MySQL 8.4.9 runtime before each item is marked complete.
 
 ## DDL grammar and metadata
 
-- [ ] Support `ALTER TABLE ... AUTO_INCREMENT=50`.
+- [x] Support `ALTER TABLE ... AUTO_INCREMENT=50`.
 - [ ] Support `CREATE TEMPORARY TABLE ... AUTO_INCREMENT=...`.
 - [ ] Make `CREATE TABLE IF NOT EXISTS t ...` a MySQL-compatible no-op when
       `t` exists.

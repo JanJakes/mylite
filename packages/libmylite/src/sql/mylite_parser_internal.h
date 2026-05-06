@@ -1272,6 +1272,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_ddl_table_option(
     struct mylite_sql_parser_ddl_table_option_tokens tokens,
     enum mylite_sql_ast_ddl_table_option option_kind
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_ddl_table_auto_increment_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_table_integer_option_tokens tokens
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_table_option_list(
     struct mylite_sql_parser_state *state
 );

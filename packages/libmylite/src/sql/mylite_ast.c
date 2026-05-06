@@ -1383,6 +1383,8 @@ const char *mylite_sql_ast_ddl_table_option_name(enum mylite_sql_ast_ddl_table_o
         return "algorithm";
     case MYLITE_SQL_AST_DDL_TABLE_OPTION_LOCK:
         return "lock";
+    case MYLITE_SQL_AST_DDL_TABLE_OPTION_AUTO_INCREMENT:
+        return "auto_increment";
     }
 
     return "unknown";

@@ -482,6 +482,14 @@ static int update_alter_table_auto_increment(
     char *sql = NULL;
     int rc = SQLITE_OK;
 
+    if (model->set_auto_increment) {
+        return mylite_catalog_update_auto_increment(
+            database,
+            model->schema_name,
+            model->table_name,
+            model->auto_increment
+        );
+    }
     if (!model->clear_auto_increment) {
         return MYLITE_OK;
     }

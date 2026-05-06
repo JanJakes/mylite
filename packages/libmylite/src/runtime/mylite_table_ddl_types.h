@@ -150,8 +150,10 @@ struct mylite_alter_table_plan {
     char *table_name;
     struct mylite_alter_table_action *actions;
     size_t action_count;
+    uint64_t auto_increment;
     char *unsupported_algorithm;
     char *unsupported_lock;
+    bool has_auto_increment;
 };
 
 struct mylite_index_ddl_plan {
@@ -224,8 +226,10 @@ struct mylite_alter_table_model {
     size_t column_count;
     struct mylite_alter_table_index *indexes;
     size_t index_count;
+    uint64_t auto_increment;
     bool clear_auto_increment;
     bool report_copied_rows;
+    bool set_auto_increment;
     bool temporary;
 };
 

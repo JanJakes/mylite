@@ -3468,6 +3468,13 @@ ddl_table_option(A) ::= LOCK(T) opt_equal ddl_lock(V). {
         state, (struct mylite_sql_parser_ddl_table_option_tokens){.option = T, .value = V},
         MYLITE_SQL_AST_DDL_TABLE_OPTION_LOCK);
 }
+ddl_table_option(A) ::= AUTO_INCREMENT(T) opt_equal INTEGER(V). {
+    A = mylite_sql_parser_make_ddl_table_auto_increment_option(
+        state, (struct mylite_sql_parser_table_integer_option_tokens){
+            .option = T,
+            .integer = V,
+        });
+}
 
 ddl_algorithm(A) ::= DEFAULT(T). {
     A = T;

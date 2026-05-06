@@ -394,6 +394,7 @@ enum mylite_sql_ast_ddl_table_option {
     MYLITE_SQL_AST_DDL_TABLE_OPTION_NONE = 0,
     MYLITE_SQL_AST_DDL_TABLE_OPTION_ALGORITHM = 1,
     MYLITE_SQL_AST_DDL_TABLE_OPTION_LOCK = 2,
+    MYLITE_SQL_AST_DDL_TABLE_OPTION_AUTO_INCREMENT = 3,
 };
 
 enum mylite_sql_ast_table_option {

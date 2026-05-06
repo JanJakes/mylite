@@ -4271,6 +4271,33 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_ddl_table_option(
     return option;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_ddl_table_auto_increment_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_table_integer_option_tokens tokens
+) {
+    struct mylite_sql_ast_node *option = make_node(
+        state,
+        MYLITE_SQL_AST_DDL_TABLE_OPTION,
+        span_join(span_from_token(&tokens.option), span_from_token(&tokens.integer))
+    );
+    struct mylite_sql_ast_node *value = NULL;
+
+    if (option == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_ddl_table_option(
+        option,
+        MYLITE_SQL_AST_DDL_TABLE_OPTION_AUTO_INCREMENT
+    );
+    value = make_checked_integer_literal(state, tokens.integer);
+    if (value == NULL) {
+        return option;
+    }
+    mylite_sql_ast_node_append_child(option, value);
+    return option;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_table_option_list(
     struct mylite_sql_parser_state *state
 ) {

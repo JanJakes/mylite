@@ -35683,6 +35683,8 @@ static int test_alter_table_column_operations_execution(void) {
         {"first_col", "id", "added", "a", "b", "c", "nn"};
     static const char *const final_columns[] = {"c", "first_col", "id", "b2", "added", "nn"};
     static const char *const ai_drop_columns[] = {"v"};
+    static const char *const alter_ai_columns[] = {"id", "v"};
+    static const char *const auto_increment_columns[] = {"AUTO_INCREMENT"};
     static const char *const empty_default_columns[] = {"id", "s"};
     static const char *const one_col_columns[] = {"only_col"};
     static const char *const invisible_alter_columns[] = {"v"};
@@ -35767,6 +35769,13 @@ static int test_alter_table_column_operations_execution(void) {
     static const char *const final_values[] =
         {"0", "q", "1", "b1", "7", "0", "5", "q", "2", "b2", "7", "0"};
     static const char *const ai_drop_values[] = {"10", "20"};
+    static const char *const alter_ai_initial_values[] = {"10", "1", "11", "2"};
+    static const char *const alter_ai_raised_values[] = {"10", "1", "11", "2", "50", "3"};
+    static const char *const alter_ai_lower_values[] = {"10", "1", "11", "2", "50", "3", "51", "4"};
+    static const char *const alter_ai_no_equal_values[] =
+        {"10", "1", "11", "2", "50", "3", "51", "4", "70", "5"};
+    static const char *const alter_ai_metadata_value[] = {"50"};
+    static const char *const alter_no_ai_metadata_value[] = {NULL};
     static const char *const empty_default_values[] = {"1", ""};
     static const char *const invisible_values[] = {"1"};
     mylite_db *database = NULL;
@@ -36078,6 +36087,102 @@ static int test_alter_table_column_operations_execution(void) {
         "alter drop auto increment preserves rows"
     );
     failures += expect_no_information_schema_statistics_index_row(database, "ai_drop", "PRIMARY");
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE alter_ai ("
+        "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, v INT) AUTO_INCREMENT=10",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "INSERT INTO alter_ai (v) VALUES (1),(2)", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id, v FROM alter_ai ORDER BY id",
+        alter_ai_columns,
+        2,
+        alter_ai_initial_values,
+        2,
+        "alter auto increment initial rows"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE alter_ai AUTO_INCREMENT=50",
+        0,
+        "alter auto increment affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT AUTO_INCREMENT FROM information_schema.TABLES "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'alter_ai'",
+        auto_increment_columns,
+        1,
+        alter_ai_metadata_value,
+        1,
+        "alter auto increment metadata"
+    );
+    failures += execute_sql(database, "INSERT INTO alter_ai (v) VALUES (3)", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id, v FROM alter_ai ORDER BY id",
+        alter_ai_columns,
+        2,
+        alter_ai_raised_values,
+        3,
+        "alter auto increment uses raised value"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE alter_ai AUTO_INCREMENT=5",
+        0,
+        "alter auto increment lower affected rows"
+    );
+    failures += execute_sql(database, "INSERT INTO alter_ai (v) VALUES (4)", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id, v FROM alter_ai ORDER BY id",
+        alter_ai_columns,
+        2,
+        alter_ai_lower_values,
+        4,
+        "alter auto increment lower keeps max plus one"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE alter_ai AUTO_INCREMENT 70",
+        0,
+        "alter auto increment without equals affected rows"
+    );
+    failures += execute_sql(database, "INSERT INTO alter_ai (v) VALUES (5)", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id, v FROM alter_ai ORDER BY id",
+        alter_ai_columns,
+        2,
+        alter_ai_no_equal_values,
+        5,
+        "alter auto increment without equals uses raised value"
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE alter_no_ai (id INT PRIMARY KEY) AUTO_INCREMENT=20",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE alter_no_ai AUTO_INCREMENT=50",
+        0,
+        "alter auto increment no auto column affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT AUTO_INCREMENT FROM information_schema.TABLES "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'alter_no_ai'",
+        auto_increment_columns,
+        1,
+        alter_no_ai_metadata_value,
+        1,
+        "alter auto increment no auto column metadata"
+    );
 
     failures += execute_sql(database, "CREATE TABLE empty_default_alter (id INT)", MYLITE_DONE);
     failures += execute_sql(database, "INSERT INTO empty_default_alter VALUES (1)", MYLITE_DONE);

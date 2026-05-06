@@ -13,6 +13,7 @@ Implemented fork points:
 - MyLite connection bootstrap for native collations, functions, and truncate
 - MyLite column descriptors stored on SQLite `Column` objects
 - VDBE write-time type checking through `OP_MyliteTypeCheck`
+- binary string byte-length and fixed-length padding through column descriptors
 - update-mask-aware descriptor checking for SQLite `UPDATE` record creation
 - structured fork diagnostics for MyLite-owned VDBE type-check failures
 - public MyLite DML write-table loading that applies catalog descriptors before
@@ -40,6 +41,8 @@ Implemented fork points:
   `docs/specs/sqlite-fork-type-coercion/specs.md`
 - SQLite fork diagnostics bridge:
   `docs/specs/sqlite-fork-diagnostics-bridge/specs.md`
+- SQLite fork binary string type descriptors:
+  `docs/specs/sqlite-fork-binary-string-types/specs.md`
 
 This specification is independently authored from SQLite public documentation,
 official MySQL 8.4 documentation already cited in the feature specs, observed
@@ -109,8 +112,8 @@ Implemented first slice:
 Next likely descriptor families:
 
 - `DECIMAL(p,s)` with exact rounding and range checks
-- binary strings with byte-length checks
 - temporal values with SQL-mode and fractional precision handling
+- blob-family capacity checks
 - `ENUM`, `SET`, `JSON`, and bit values
 
 ### Diagnostics and warnings

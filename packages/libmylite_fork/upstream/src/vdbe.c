@@ -447,6 +447,7 @@ static int myliteCoerceInteger(
 static int myliteMemToFiniteReal(Mem *pMem, double *pValue);
 static int myliteCoerceDouble(Mem *pMem, const char **pzErr);
 static int myliteCoerceVarchar(Mem *pMem, u64 nChar, const char **pzErr);
+static int myliteCoerceBinary(Mem *pMem, u64 nByte, int bFixed, const char **pzErr);
 static u64 myliteUtf8CharCount(const unsigned char *zText, int nText);
 
 static int myliteApplyColumnType(
@@ -494,6 +495,20 @@ static int myliteApplyColumnType(
       return rc;
     case MYLITE_COLTYPE_VARCHAR:
       rc = myliteCoerceVarchar(pMem, pCol->myliteType.nChar, pzErr);
+      if( rc!=SQLITE_OK ){
+        *pMyErrno = 1406;
+        *pzSqlState = "22001";
+      }
+      return rc;
+    case MYLITE_COLTYPE_BINARY:
+      rc = myliteCoerceBinary(pMem, pCol->myliteType.nByte, 1, pzErr);
+      if( rc!=SQLITE_OK ){
+        *pMyErrno = 1406;
+        *pzSqlState = "22001";
+      }
+      return rc;
+    case MYLITE_COLTYPE_VARBINARY:
+      rc = myliteCoerceBinary(pMem, pCol->myliteType.nByte, 0, pzErr);
       if( rc!=SQLITE_OK ){
         *pMyErrno = 1406;
         *pzSqlState = "22001";
@@ -600,6 +615,39 @@ static int myliteCoerceVarchar(Mem *pMem, u64 nChar, const char **pzErr){
     *pzErr = "varchar value is too long";
     return SQLITE_MISMATCH;
   }
+  return SQLITE_OK;
+}
+
+static int myliteCoerceBinary(Mem *pMem, u64 nByte, int bFixed, const char **pzErr){
+  int nOld;
+
+  if( nByte>(u64)0x7fffffff ){
+    *pzErr = "binary value is too long";
+    return SQLITE_MISMATCH;
+  }
+  if( (pMem->flags & (MEM_Str|MEM_Blob))==0 ){
+    if( sqlite3VdbeMemStringify(pMem, SQLITE_UTF8, 1)!=SQLITE_OK ){
+      return SQLITE_NOMEM;
+    }
+  }
+  if( ExpandBlob(pMem)!=SQLITE_OK ){
+    return SQLITE_NOMEM;
+  }
+  if( pMem->n<0 || (u64)pMem->n>nByte ){
+    *pzErr = "binary value is too long";
+    return SQLITE_MISMATCH;
+  }
+  if( bFixed && (u64)pMem->n<nByte ){
+    nOld = pMem->n;
+    if( sqlite3VdbeMemGrow(pMem, (int)nByte, 1)!=SQLITE_OK ){
+      return SQLITE_NOMEM;
+    }
+    memset(&pMem->z[nOld], 0, (size_t)nByte - (size_t)nOld);
+    pMem->n = (int)nByte;
+  }
+  pMem->flags &= ~(MEM_Int|MEM_Real|MEM_IntReal|MEM_Str|MEM_Term|MEM_Zero);
+  pMem->flags |= MEM_Blob;
+  pMem->enc = SQLITE_UTF8;
   return SQLITE_OK;
 }
 

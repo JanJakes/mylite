@@ -2261,6 +2261,7 @@ struct MyliteColumnType {
   i64 iMin;              /* Signed or supported unsigned lower bound */
   i64 iMax;              /* Signed or supported unsigned upper bound */
   u64 nChar;             /* Character-count limit for VARCHAR */
+  u64 nByte;             /* Byte-count limit for binary strings */
 };
 
 # define MYLITE_COLTYPE_NONE             0
@@ -2268,6 +2269,8 @@ struct MyliteColumnType {
 # define MYLITE_COLTYPE_UNSIGNED_INTEGER 2
 # define MYLITE_COLTYPE_DOUBLE           3
 # define MYLITE_COLTYPE_VARCHAR          4
+# define MYLITE_COLTYPE_BINARY           5
+# define MYLITE_COLTYPE_VARBINARY        6
 
 # define MYLITE_CONDITION_NONE           0
 # define MYLITE_CONDITION_ERROR          1

@@ -39,11 +39,15 @@ static int test_mysql_collations(void);
 
 static int test_native_type_coercion(void);
 
+static int test_native_binary_type_coercion(void);
+
 static int test_wordpress_like_crud(void);
 
 static int test_mylite_wordpress_like_crud(void);
 
 static int test_mylite_basic_type_coercion(void);
+
+static int test_mylite_binary_type_coercion(void);
 
 static int open_configured_database(sqlite3 **out_database);
 
@@ -100,9 +104,11 @@ int main(void) {
     failures += test_registered_functions();
     failures += test_mysql_collations();
     failures += test_native_type_coercion();
+    failures += test_native_binary_type_coercion();
     failures += test_wordpress_like_crud();
     failures += test_mylite_wordpress_like_crud();
     failures += test_mylite_basic_type_coercion();
+    failures += test_mylite_binary_type_coercion();
 
     return failures == 0 ? 0 : 1;
 }
@@ -347,6 +353,127 @@ static int test_native_type_coercion(void) {
         mylite_sqlite_fork_clear_condition(database),
         database,
         "clear fork condition"
+    );
+
+    sqlite3_close(database);
+    return failures;
+}
+
+static int test_native_binary_type_coercion(void) {
+    enum {
+        binary_length = 3,
+        varbinary_length = 4,
+        binary_string_too_long_error = 1406,
+    };
+
+    sqlite3 *database = NULL;
+    int failures = 0;
+
+    failures += open_configured_database(&database);
+    if (failures != 0) {
+        return failures;
+    }
+
+    failures += exec_sql(
+        database,
+        "CREATE TABLE binary_direct(id INTEGER PRIMARY KEY, fixed BLOB, variable BLOB)",
+        "create direct binary descriptor fixture"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_column_type(
+            database,
+            NULL,
+            "binary_direct",
+            "fixed",
+            &(const struct mylite_sqlite_fork_column_type){
+                .kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_BINARY,
+                .byte_maximum_length = binary_length,
+            }
+        ),
+        database,
+        "set direct fixed binary descriptor"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_column_type(
+            database,
+            NULL,
+            "binary_direct",
+            "variable",
+            &(const struct mylite_sqlite_fork_column_type){
+                .kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_VARBINARY,
+                .byte_maximum_length = varbinary_length,
+            }
+        ),
+        database,
+        "set direct varbinary descriptor"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO binary_direct VALUES (1, 'a', X'C3A9'), (2, 65, 1234)",
+        "insert direct binary descriptor values"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT group_concat(id || ':' || hex(fixed) || ':' || "
+                   "length(fixed) || ':' || hex(variable) || ':' || "
+                   "length(variable), '|') FROM ("
+                   "SELECT id, fixed, variable FROM binary_direct ORDER BY id)",
+            .expected = "1:610000:3:C3A9:2|2:363500:3:31323334:4",
+            .context = "direct binary descriptors coerce and pad stored bytes",
+        }
+    );
+    failures += exec_sql(
+        database,
+        "UPDATE binary_direct SET fixed = 'xy', variable = 'z' WHERE id = 2",
+        "update direct binary descriptor values"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT hex(fixed) || ':' || length(fixed) || ':' || "
+                   "hex(variable) || ':' || length(variable) "
+                   "FROM binary_direct WHERE id = 2",
+            .expected = "787900:3:7A:1",
+            .context = "direct binary update coerces assigned values",
+        }
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO binary_direct VALUES (3, X'61626364', X'6F6B')",
+            .message_fragment = "binary value is too long",
+            .context = "direct binary descriptor rejects over-length fixed value",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = binary_string_too_long_error,
+            .sqlstate = "22001",
+            .context = "over-length fixed binary exposes MySQL condition",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear fixed binary fork condition"
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO binary_direct VALUES (3, X'6F6B', X'6162636465')",
+            .message_fragment = "binary value is too long",
+            .context = "direct varbinary descriptor rejects over-length value",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = binary_string_too_long_error,
+            .sqlstate = "22001",
+            .context = "over-length varbinary exposes MySQL condition",
+        }
     );
 
     sqlite3_close(database);
@@ -910,6 +1037,183 @@ static int test_mylite_basic_type_coercion(void) {
         database,
         type_coercion_truncated_error,
         "MyLite invalid double condition"
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_mylite_binary_type_coercion(void) {
+    enum {
+        binary_column_count = 5,
+        binary_string_too_long_error = 1406,
+    };
+
+    static const char *const after_insert[] = {
+        "1",
+        "610000",
+        "3",
+        "C3A9",
+        "2",
+        "2",
+        "363500",
+        "3",
+        "31323334",
+        "4",
+    };
+    static const char *const after_update[] = {
+        "1",
+        "610000",
+        "3",
+        "C3A9",
+        "2",
+        "2",
+        "787900",
+        "3",
+        "7A",
+        "1",
+    };
+    static const char *const after_duplicate_update[] = {
+        "1",
+        "610000",
+        "3",
+        "C3A9",
+        "2",
+        "2",
+        "757600",
+        "3",
+        "7778",
+        "2",
+    };
+    static const char *const after_replace[] = {
+        "1",
+        "610000",
+        "3",
+        "C3A9",
+        "2",
+        "2",
+        "757600",
+        "3",
+        "7778",
+        "2",
+        "3",
+        "720000",
+        "3",
+        "7374",
+        "2",
+    };
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_mylite_ok(mylite_open_memory(&database), database, "open MyLite binary coercion");
+    if (failures != 0) {
+        return failures;
+    }
+
+    failures += exec_mylite_sql(
+        database,
+        "CREATE DATABASE mylite_binary_coercion CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+        "create MyLite binary coercion schema"
+    );
+    failures +=
+        exec_mylite_sql(database, "USE mylite_binary_coercion", "use binary coercion schema");
+    failures += exec_mylite_sql(
+        database,
+        "CREATE TABLE binary_basic ("
+        "id INT PRIMARY KEY,"
+        "fixed BINARY(3) NOT NULL,"
+        "variable VARBINARY(4) NOT NULL"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "create MyLite binary coercion table"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT INTO binary_basic VALUES (1, 'a', 'é'), (2, 65, 1234)",
+        "insert MyLite binary coercion rows"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT id, HEX(fixed), LENGTH(fixed), HEX(variable), LENGTH(variable) "
+                   "FROM binary_basic ORDER BY id",
+            .values = after_insert,
+            .column_count = binary_column_count,
+            .row_count = 2,
+            .context = "MyLite binary insert coercion matches MySQL fixture",
+        }
+    );
+    failures += exec_mylite_sql(
+        database,
+        "UPDATE binary_basic SET fixed = 'xy', variable = 'z' WHERE id = 2",
+        "update MyLite binary coercion row"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT id, HEX(fixed), LENGTH(fixed), HEX(variable), LENGTH(variable) "
+                   "FROM binary_basic ORDER BY id",
+            .values = after_update,
+            .column_count = binary_column_count,
+            .row_count = 2,
+            .context = "MyLite binary update coercion matches MySQL fixture",
+        }
+    );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT INTO binary_basic VALUES (2, 'uv', 'wx') "
+        "ON DUPLICATE KEY UPDATE fixed = VALUES(fixed), variable = VALUES(variable)",
+        "insert duplicate update MyLite binary coercion row"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT id, HEX(fixed), LENGTH(fixed), HEX(variable), LENGTH(variable) "
+                   "FROM binary_basic ORDER BY id",
+            .values = after_duplicate_update,
+            .column_count = binary_column_count,
+            .row_count = 2,
+            .context = "MyLite binary duplicate update coercion matches MySQL fixture",
+        }
+    );
+    failures += exec_mylite_sql(
+        database,
+        "REPLACE INTO binary_basic VALUES (3, 'r', 'st')",
+        "replace MyLite binary coercion row"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT id, HEX(fixed), LENGTH(fixed), HEX(variable), LENGTH(variable) "
+                   "FROM binary_basic ORDER BY id",
+            .values = after_replace,
+            .column_count = binary_column_count,
+            .row_count = 3,
+            .context = "MyLite binary replace coercion matches MySQL fixture",
+        }
+    );
+
+    failures += expect_mylite_sql_status(
+        database,
+        "INSERT INTO binary_basic VALUES (4, 'abcd', 'ok')",
+        MYLITE_SQLITE_ERROR,
+        "MyLite binary coercion rejects over-length fixed value"
+    );
+    failures += expect_mylite_error_condition(
+        database,
+        binary_string_too_long_error,
+        "MyLite over-length fixed binary condition"
+    );
+    failures += expect_mylite_sql_status(
+        database,
+        "INSERT INTO binary_basic VALUES (4, 'ok', 'abcde')",
+        MYLITE_SQLITE_ERROR,
+        "MyLite binary coercion rejects over-length varbinary value"
+    );
+    failures += expect_mylite_error_condition(
+        database,
+        binary_string_too_long_error,
+        "MyLite over-length varbinary condition"
     );
 
     mylite_close(database);

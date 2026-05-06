@@ -13,6 +13,8 @@ enum mylite_sqlite_fork_column_type_kind {
     MYLITE_SQLITE_FORK_COLUMN_TYPE_UNSIGNED_INTEGER = 2,
     MYLITE_SQLITE_FORK_COLUMN_TYPE_DOUBLE = 3,
     MYLITE_SQLITE_FORK_COLUMN_TYPE_VARCHAR = 4,
+    MYLITE_SQLITE_FORK_COLUMN_TYPE_BINARY = 5,
+    MYLITE_SQLITE_FORK_COLUMN_TYPE_VARBINARY = 6,
 };
 
 struct mylite_sqlite_fork_column_type {
@@ -20,6 +22,7 @@ struct mylite_sqlite_fork_column_type {
     sqlite3_int64 integer_minimum;
     sqlite3_int64 integer_maximum;
     sqlite3_uint64 character_maximum_length;
+    sqlite3_uint64 byte_maximum_length;
 };
 
 enum mylite_sqlite_fork_condition_level {

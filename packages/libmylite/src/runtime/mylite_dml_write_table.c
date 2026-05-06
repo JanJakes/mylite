@@ -85,6 +85,10 @@ static bool write_table_column_uses_double_type(const struct mylite_insert_table
 
 static bool write_table_column_uses_varchar_type(const struct mylite_insert_table_column *column);
 
+static bool write_table_column_uses_binary_type(const struct mylite_insert_table_column *column);
+
+static bool write_table_column_uses_varbinary_type(const struct mylite_insert_table_column *column);
+
 static int set_write_table_descriptor_error(
     mylite_db *database,
     const struct mylite_insert_table *table,
@@ -449,6 +453,16 @@ static bool write_table_column_fork_type(
         out_type->character_maximum_length = column->character_maximum_length;
         return true;
     }
+    if (write_table_column_uses_binary_type(column)) {
+        out_type->kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_BINARY;
+        out_type->byte_maximum_length = column->character_maximum_length;
+        return true;
+    }
+    if (write_table_column_uses_varbinary_type(column)) {
+        out_type->kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_VARBINARY;
+        out_type->byte_maximum_length = column->character_maximum_length;
+        return true;
+    }
     return false;
 }
 
@@ -532,6 +546,22 @@ static bool write_table_column_uses_varchar_type(const struct mylite_insert_tabl
     }
     return (mylite_ascii_case_equal(column->data_type, "char") ||
             mylite_ascii_case_equal(column->data_type, "varchar")) != 0;
+}
+
+static bool write_table_column_uses_binary_type(const struct mylite_insert_table_column *column) {
+    if (column == NULL || !column->has_character_maximum_length) {
+        return false;
+    }
+    return mylite_ascii_case_equal(column->data_type, "binary");
+}
+
+static bool write_table_column_uses_varbinary_type(
+    const struct mylite_insert_table_column *column
+) {
+    if (column == NULL || !column->has_character_maximum_length) {
+        return false;
+    }
+    return mylite_ascii_case_equal(column->data_type, "varbinary");
 }
 
 static int set_write_table_descriptor_error(

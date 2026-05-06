@@ -1,0 +1,9 @@
+after-insert	1	610000	3	C3A9	2
+after-insert	2	363500	3	31323334	4
+after-update	1	610000	3	C3A9	2
+after-update	2	787900	3	7A	1
+after-duplicate-update	1	610000	3	C3A9	2
+after-duplicate-update	2	757600	3	7778	2
+after-replace	1	610000	3	C3A9	2
+after-replace	2	757600	3	7778	2
+after-replace	3	720000	3	7374	2

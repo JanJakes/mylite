@@ -318,9 +318,10 @@ This metadata should be updated by SQLite DDL paths, not a parallel DDL engine.
    table elements, and `AUTO_INCREMENT`.
 8. Then move type descriptors into SQLite column metadata and enforce MySQL
    conversion/range/length rules in SQLite's insert/update path. Implemented
-   for the first signed integer, supported unsigned integer, `DOUBLE`, and
-   `VARCHAR` subset, with MyLite's public write paths now loading descriptors
-   from the catalog before preparing physical writes.
+   for the first signed integer, supported unsigned integer, `DOUBLE`,
+   `VARCHAR`, `BINARY`, and `VARBINARY` subset, with MyLite's public write
+   paths now loading descriptors from the catalog before preparing physical
+   writes.
 
 ## Lemon Grammar Direction
 

@@ -11,7 +11,8 @@ Implemented scope:
 - native SQLite scalar hooks for strict assignment coercion to signed integer,
   supported unsigned integer, `DOUBLE`, and `VARCHAR`
 - native SQLite column descriptor hooks that emit VDBE write-time coercion for
-  signed integer, supported unsigned integer, `DOUBLE`, and `VARCHAR`
+  signed integer, supported unsigned integer, `DOUBLE`, `VARCHAR`, `BINARY`,
+  and `VARBINARY`
 - MyLite public write-table loading attaches catalog-derived descriptors before
   preparing physical SQLite writes
 - MyLite `INSERT`, `UPDATE`, `REPLACE`, and duplicate-key update lowering uses
@@ -30,7 +31,7 @@ Deferred scope:
 - exact MySQL error messages, row interpolation, complete warning records, and
   `IGNORE` demotion for every conversion failure
 - full unsigned `BIGINT` above `INT64_MAX`
-- `DECIMAL`, temporal, JSON, `ENUM`, `SET`, bit, binary string, and spatial
+- `DECIMAL`, temporal, JSON, `ENUM`, `SET`, bit, blob-family, and spatial
   assignment conversion
 - direct SQLite parser/catalog reload into descriptors for SQL executed without
   MyLite's current statement layer
@@ -53,6 +54,8 @@ Deferred scope:
   https://www.sqlite.org/datatype3.html
 - Existing MyLite native execution plan:
   `docs/architecture/native-sqlite-execution-plan.md`
+- SQLite fork binary string type descriptors:
+  `docs/specs/sqlite-fork-binary-string-types/specs.md`
 
 This specification is independently authored from official documentation,
 observed MySQL 8.4.9 runtime behavior, and the current MyLite codebase. It does
@@ -180,6 +183,8 @@ The executable tests must cover:
   `REPLACE` behavior for the same fixture shape
 - native SQLite failure behavior for out-of-range integer, negative unsigned,
   over-length `VARCHAR`, and invalid `DOUBLE`
+- native SQLite failure behavior for over-length `BINARY` and `VARBINARY`
+  through the binary string descriptor slice
 - direct SQLite `INSERT` and `UPDATE` behavior through MyLite column descriptors
   without SQL wrapper functions
 - direct SQLite `UPDATE` behavior that coerces assigned descriptor columns
@@ -191,5 +196,5 @@ The executable tests must cover:
 This feature is `🟡` because it establishes the first native assignment
 coercion primitive and now uses direct VDBE write-time coercion through MyLite
 column descriptors for the common public write paths. Full MySQL assignment
-conversion, direct SQLite parser/catalog descriptor reload, and exact
-diagnostics remain deferred.
+conversion, blob-family coverage, direct SQLite parser/catalog descriptor
+reload, and exact diagnostics remain deferred.

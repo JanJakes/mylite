@@ -993,16 +993,14 @@ update_statement(A) ::= UPDATE(T) single_update_target(B) SET update_assignment_
         opt_where_clause(D) opt_order_by_clause(E) opt_update_limit_clause(F). {
     A = mylite_sql_parser_make_update_statement(state, T, B, C, D, E, F);
 }
+update_statement(A) ::= UPDATE(T) joined_update_table_references(B) SET update_assignment_list(C)
+        opt_where_clause(D). {
+    A = mylite_sql_parser_make_update_statement(
+        state, T, mylite_sql_parser_make_from_table_references(state, T, B), C, D, NULL, NULL);
+}
 
-single_update_target(A) ::= update_table_name(B) opt_table_alias(C). {
+single_update_target(A) ::= table_name(B) opt_table_alias(C). {
     A = mylite_sql_parser_make_update_target(state, B, C);
-}
-
-update_table_name(A) ::= identifier(B). {
-    A = B;
-}
-update_table_name(A) ::= identifier(B) DOT identifier(C). {
-    A = mylite_sql_parser_make_qualified_identifier(state, B, C);
 }
 
 update_assignment_list(A) ::= update_assignment(B). {
@@ -1028,6 +1026,34 @@ opt_update_limit_clause(A) ::= . {
 }
 opt_update_limit_clause(A) ::= LIMIT(T) limit_bound(B). {
     A = mylite_sql_parser_make_update_limit_clause(state, T, B);
+}
+
+joined_update_table_references(A) ::= joined_update_explicit_reference(B). {
+    A = mylite_sql_parser_make_table_reference_list(state, B);
+}
+joined_update_table_references(A) ::= table_factor(B) COMMA joined_table_reference(C). {
+    A = mylite_sql_parser_append_table_reference(
+        state, mylite_sql_parser_make_table_reference_list(state, B), C);
+}
+joined_update_table_references(A) ::= joined_update_table_references(B) COMMA joined_table_reference(C). {
+    A = mylite_sql_parser_append_table_reference(state, B, C);
+}
+
+joined_update_explicit_reference(A) ::= table_factor(B) inner_join_operator(C) table_factor(D)
+        opt_inner_join_condition(E). {
+    A = mylite_sql_parser_make_join_expression(state, B, C, D, E);
+}
+joined_update_explicit_reference(A) ::= table_factor(B) outer_join_operator(C) table_factor(D)
+        outer_join_condition(E). {
+    A = mylite_sql_parser_make_join_expression(state, B, C, D, E);
+}
+joined_update_explicit_reference(A) ::= joined_update_explicit_reference(B) inner_join_operator(C)
+        table_factor(D) opt_inner_join_condition(E). {
+    A = mylite_sql_parser_make_join_expression(state, B, C, D, E);
+}
+joined_update_explicit_reference(A) ::= joined_update_explicit_reference(B) outer_join_operator(C)
+        table_factor(D) outer_join_condition(E). {
+    A = mylite_sql_parser_make_join_expression(state, B, C, D, E);
 }
 
 delete_statement(A) ::= DELETE(T) FROM single_delete_target(B) opt_where_clause(C)

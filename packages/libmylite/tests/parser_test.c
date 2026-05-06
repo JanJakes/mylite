@@ -4689,6 +4689,8 @@ static int test_update_single_table_syntax(void)
     const struct mylite_sql_ast_node *target = NULL;
     const struct mylite_sql_ast_node *assignments = NULL;
     const struct mylite_sql_ast_node *assignment = NULL;
+    const struct mylite_sql_ast_node *from_clause = NULL;
+    const struct mylite_sql_ast_node *references = NULL;
     const struct mylite_sql_ast_node *where_clause = NULL;
     const struct mylite_sql_ast_node *order_by = NULL;
     const struct mylite_sql_ast_node *order_items = NULL;
@@ -4794,7 +4796,28 @@ static int test_update_single_table_syntax(void)
     failures += parse_sql("UPDATE IGNORE t SET a = 1", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("UPDATE t JOIN u ON t.id = u.id SET t.a = u.a",
+    failures += parse_sql("UPDATE t JOIN u ON t.id = u.id SET t.a = u.a WHERE u.keep = 1",
+                          MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    from_clause = child_at(statement, 0U);
+    assignments = child_at(statement, 1U);
+    where_clause = child_at(statement, 2U);
+    failures +=
+        expect_node(from_clause, MYLITE_SQL_AST_FROM_TABLE_REFERENCES, "joined update from clause");
+    references = child_at(from_clause, 0U);
+    failures +=
+        expect_node(references, MYLITE_SQL_AST_TABLE_REFERENCE_LIST, "joined update references");
+    failures += expect_node(child_at(references, 0U), MYLITE_SQL_AST_JOIN_EXPRESSION,
+                            "joined update join expression");
+    failures +=
+        expect_span_text(child_at(child_at(assignments, 0U), 0U), "t.a", "joined update target");
+    failures +=
+        expect_span_text(child_at(child_at(assignments, 0U), 1U), "u.a", "joined update value");
+    failures += expect_operator(child_at(where_clause, 0U), MYLITE_SQL_AST_OPERATOR_EQUAL,
+                                "joined update where");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("UPDATE t JOIN u ON t.id = u.id SET t.a = u.a ORDER BY t.id",
                           MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 

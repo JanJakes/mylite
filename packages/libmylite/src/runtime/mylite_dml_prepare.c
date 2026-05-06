@@ -451,6 +451,14 @@ static int clone_update_plan_nodes(mylite_stmt *stmt, const struct mylite_sql_as
         return MYLITE_NOMEM;
     }
 
+    if (stmt->update.form == MYLITE_UPDATE_JOINED_TABLES) {
+        status = clone_update_ast_node(stmt, mylite_ast_child_at(statement, 0U), sql, sql_length,
+                                       &stmt->update.from_clause);
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+
     for (const struct mylite_sql_ast_node *assignment =
              assignments == NULL ? NULL : assignments->first_child;
          assignment != NULL; assignment = assignment->next_sibling, ++assignment_index) {

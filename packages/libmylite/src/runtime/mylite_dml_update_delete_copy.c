@@ -48,7 +48,16 @@ int mylite_dml_copy_update_statement(const struct mylite_sql_ast_node *statement
 
     target = mylite_ast_child_at(statement, 0U);
     assignments = mylite_ast_child_at(statement, 1U);
-    status = copy_update_target(target, &plan->target);
+    if (target != NULL && target->kind == MYLITE_SQL_AST_UPDATE_TARGET) {
+        plan->form = MYLITE_UPDATE_SINGLE_TABLE;
+        status = copy_update_target(target, &plan->target);
+    } else if (target != NULL && (target->kind == MYLITE_SQL_AST_FROM_TABLE ||
+                                  target->kind == MYLITE_SQL_AST_FROM_TABLE_REFERENCES)) {
+        plan->form = MYLITE_UPDATE_JOINED_TABLES;
+        status = MYLITE_OK;
+    } else {
+        status = MYLITE_UNSUPPORTED;
+    }
     if (status == MYLITE_OK) {
         status = copy_update_assignments(assignments, plan);
     }

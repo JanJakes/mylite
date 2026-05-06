@@ -104,6 +104,11 @@ struct mylite_update_target {
     char *alias;
 };
 
+enum mylite_update_form {
+    MYLITE_UPDATE_SINGLE_TABLE = 0,
+    MYLITE_UPDATE_JOINED_TABLES = 1,
+};
+
 struct mylite_update_column_reference {
     char *schema_name;
     char *table_name;
@@ -116,9 +121,11 @@ struct mylite_update_assignment {
 };
 
 struct mylite_update_plan {
+    enum mylite_update_form form;
     struct mylite_update_target target;
     struct mylite_update_assignment *assignments;
     size_t assignment_count;
+    const struct mylite_sql_ast_node *from_clause;
     const struct mylite_sql_ast_node *where_clause;
     const struct mylite_sql_ast_node *order_by_clause;
     const struct mylite_sql_ast_node *limit_clause;

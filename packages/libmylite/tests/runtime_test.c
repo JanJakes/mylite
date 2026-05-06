@@ -29228,6 +29228,17 @@ static int test_update_single_table_execution(void)
         "1", "10", "2", "20", "3", "30",
     };
     static const char *const ai_values[] = {"20", "1", "21", "3"};
+    static const char *const joined_columns[] = {"id", "a", "s"};
+    static const char *const joined_values[] = {
+        "1", "20", "one", "2", "30", "two", "3", "3", "three",
+    };
+    static const char *const joined_left_values[] = {
+        "1", "20", "main", "2", "30", "two", "3", "3", "missing",
+    };
+    static const char *const joined_source_columns[] = {"id", "mark"};
+    static const char *const joined_source_values[] = {
+        "101", "src", "102", "two", "103", "dup", "104", "none",
+    };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     uint64_t last_insert_id = 0U;
@@ -29327,6 +29338,84 @@ static int test_update_single_table_execution(void)
     stmt = NULL;
     failures += expect_select_rows(database, "SELECT id, s FROM t ORDER BY id", limited_columns, 2,
                                    limited_values, 4, "update order limit values");
+
+    failures += execute_sql(database,
+                            "CREATE TABLE joined_update_main ("
+                            "id INT PRIMARY KEY, a INT, s VARCHAR(20))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE joined_update_source ("
+                            "id INT PRIMARY KEY, main_id INT, new_a INT, mark VARCHAR(20))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO joined_update_main VALUES "
+                            "(1,1,'one'),(2,2,'two'),(3,3,'three')",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO joined_update_source VALUES "
+                            "(101,1,20,'one'),(102,2,30,'two'),"
+                            "(103,2,40,'dup'),(104,4,50,'none')",
+                            MYLITE_DONE);
+    failures += prepare_sql(database,
+                            "UPDATE joined_update_main AS m "
+                            "JOIN joined_update_source AS s ON s.main_id = m.id "
+                            "SET m.a = s.new_a, m.s = s.mark WHERE s.new_a >= 20",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "joined update single target");
+    failures += expect_int64(mylite_affected_rows(stmt), 2, "joined update affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id, a, s FROM joined_update_main ORDER BY id",
+                                   joined_columns, 3, joined_values, 3, "joined update values");
+
+    failures += prepare_sql(database,
+                            "UPDATE joined_update_main AS m "
+                            "JOIN joined_update_source AS s ON s.main_id = m.id "
+                            "SET m.a = m.a",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "joined update no-op");
+    failures += expect_int64(mylite_affected_rows(stmt), 0, "joined update no-op affected");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "UPDATE joined_update_main AS m "
+                            "JOIN joined_update_source AS s ON s.main_id = m.id "
+                            "SET m.s = 'main', s.mark = 'src' WHERE m.id = 1",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "joined update multiple targets");
+    failures +=
+        expect_int64(mylite_affected_rows(stmt), 2, "joined update multiple target affected");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database, "SELECT id, mark FROM joined_update_source ORDER BY id", joined_source_columns, 2,
+        joined_source_values, 4, "joined update source values");
+
+    failures += prepare_sql(database,
+                            "UPDATE joined_update_main AS m "
+                            "LEFT JOIN joined_update_source AS s ON s.main_id = m.id "
+                            "SET m.s = 'missing' WHERE s.id IS NULL",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "joined update left join");
+    failures += expect_int64(mylite_affected_rows(stmt), 1, "joined update left join affected");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id, a, s FROM joined_update_main ORDER BY id",
+                                   joined_columns, 3, joined_left_values, 3,
+                                   "joined update left join values");
+
+    failures += prepare_sql(database,
+                            "UPDATE joined_update_main AS m "
+                            "JOIN joined_update_source AS s ON s.main_id = m.id SET id = 9",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "joined update ambiguous assignment");
+    failures +=
+        expect_contains(mylite_error_message(database), "Column 'id' in field list is ambiguous",
+                        "joined update ambiguous assignment error");
+    mylite_finalize(stmt);
+    stmt = NULL;
 
     failures += prepare_sql(database, "UPDATE t SET u = 1 WHERE id IN (11, 12)", MYLITE_OK, &stmt);
     failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "update duplicate rollback");

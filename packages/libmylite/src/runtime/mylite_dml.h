@@ -269,6 +269,8 @@ int mylite_dml_execute_update_rows_transaction(
     const struct mylite_update_bound_assignment *assignments, size_t assignment_count,
     const struct mylite_dml_expression_callbacks *callbacks,
     const struct mylite_update_rowset *rowset, int64_t *out_affected_rows);
+int mylite_dml_execute_joined_update_statement(
+    mylite_stmt *stmt, const struct mylite_dml_expression_callbacks *expression_callbacks);
 char *mylite_dml_build_update_scan_sql(mylite_db *database,
                                        const struct mylite_select_table *table);
 char *mylite_dml_build_update_physical_sql(mylite_db *database,

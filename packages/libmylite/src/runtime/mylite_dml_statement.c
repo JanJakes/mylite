@@ -276,6 +276,10 @@ int mylite_dml_execute_update_statement(
     int64_t affected_rows = 0;
     int status = MYLITE_OK;
 
+    if (stmt->update.form == MYLITE_UPDATE_JOINED_TABLES) {
+        return mylite_dml_execute_joined_update_statement(stmt, expression_callbacks);
+    }
+
     stmt->affected_rows = 0;
     stmt->matched_rows = 0U;
 

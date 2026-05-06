@@ -737,8 +737,9 @@ Use SQLite for durable storage, not as the semantic authority for Task 19.
 
 ## Explicit deferred behavior
 
-- Multiple-table updates, joins, CTEs, subqueries, and self-referencing
-  subquery diagnostics are deferred.
+- CTEs, subqueries, and self-referencing subquery diagnostics are deferred.
+  Multiple-table joined updates are tracked separately in
+  [UPDATE JOIN](../update-join/specs.md).
 - `LOW_PRIORITY`, `IGNORE`, partition clauses, index hints, and optimizer hints
   are deferred.
 - Function calls, including `LAST_INSERT_ID(expr)` and `DEFAULT(col_name)`,
@@ -785,7 +786,7 @@ these cases.
 | `UPDATE LOW_PRIORITY t SET a = 1` | deferred unless modifier support is implemented |
 | `UPDATE IGNORE t SET a = 1` | deferred unless `IGNORE` semantics are implemented |
 | `WITH cte AS (SELECT 1) UPDATE t SET a = 1` | deferred until CTE support |
-| `UPDATE t JOIN u ON t.id = u.id SET t.a = u.a` | deferred until multiple-table update |
+| `UPDATE t JOIN u ON t.id = u.id SET t.a = u.a` | covered by the separate UPDATE JOIN feature |
 
 ### Basic updates and assignment order
 

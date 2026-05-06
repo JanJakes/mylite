@@ -16,8 +16,8 @@
 #include "mylite_statement.h"
 #include "mylite_statement_ast.h"
 
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 static int validate_values_query_prepare_callbacks(
@@ -34,19 +34,22 @@ static int copy_values_query_sql(mylite_stmt *stmt, const struct mylite_sql_ast_
 static int clone_values_query_expressions(mylite_stmt *stmt,
                                           const struct mylite_sql_ast_node *row_list,
                                           const char *sql, size_t sql_length);
-static int attach_values_query_metadata(
-    mylite_stmt *stmt, const struct mylite_select_scalar_eval_callbacks *scalar_callbacks);
+static int
+attach_values_query_metadata(mylite_stmt *stmt,
+                             const struct mylite_select_scalar_eval_callbacks *scalar_callbacks);
 static int add_values_query_output_column(mylite_db *database, struct mylite_select_plan *plan,
                                           const char *label);
-static int bind_values_query_clauses(
-    mylite_stmt *stmt, const struct mylite_sql_ast_node *statement, const char *sql,
-    size_t sql_length, const struct mylite_select_union_prepare_callbacks *order_callbacks);
-static int materialize_values_query_result(
-    mylite_stmt *stmt, const struct mylite_select_scalar_eval_callbacks *scalar_callbacks,
-    const struct mylite_select_union_callbacks *order_callbacks);
-static int append_values_query_row(
-    mylite_stmt *stmt, size_t row_index,
-    const struct mylite_select_scalar_eval_callbacks *scalar_callbacks);
+static int
+bind_values_query_clauses(mylite_stmt *stmt, const struct mylite_sql_ast_node *statement,
+                          const char *sql, size_t sql_length,
+                          const struct mylite_select_union_prepare_callbacks *order_callbacks);
+static int
+materialize_values_query_result(mylite_stmt *stmt,
+                                const struct mylite_select_scalar_eval_callbacks *scalar_callbacks,
+                                const struct mylite_select_union_callbacks *order_callbacks);
+static int
+append_values_query_row(mylite_stmt *stmt, size_t row_index,
+                        const struct mylite_select_scalar_eval_callbacks *scalar_callbacks);
 static void record_values_found_rows(mylite_stmt *stmt, uint64_t pre_limit_count);
 static uint64_t values_found_rows_count_after_limit(uint64_t pre_limit_count,
                                                     const struct mylite_select_limit *limit,
@@ -264,9 +267,9 @@ static int clone_values_query_expressions(mylite_stmt *stmt,
         for (const struct mylite_sql_ast_node *expression = row->first_child; expression != NULL;
              expression = expression->next_sibling, ++index) {
             struct mylite_sql_ast_node *clone = NULL;
-            int status = mylite_statement_ast_clone_subtree(
-                &stmt->scalar_select_ast, expression, source, stmt->scalar_select_sql_text,
-                source_length, &clone);
+            int status = mylite_statement_ast_clone_subtree(&stmt->scalar_select_ast, expression,
+                                                            source, stmt->scalar_select_sql_text,
+                                                            source_length, &clone);
 
             if (status == MYLITE_NOMEM) {
                 (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
@@ -302,8 +305,8 @@ attach_values_query_metadata(mylite_stmt *stmt,
             mylite_result_metadata_deinit(&metadata);
             return MYLITE_UNSUPPORTED;
         }
-        status = mylite_result_metadata_copy_text(stmt->database, &metadata.columns[column].name,
-                                                  label);
+        status =
+            mylite_result_metadata_copy_text(stmt->database, &metadata.columns[column].name, label);
         if (status == MYLITE_OK) {
             metadata.columns[column].descriptor = mylite_expression_descriptor_defaults();
         }
@@ -319,11 +322,11 @@ attach_values_query_metadata(mylite_stmt *stmt,
     for (size_t row_index = 0U; row_index < stmt->values_query.row_count; ++row_index) {
         for (size_t column = 0U; column < stmt->values_query.column_count; ++column) {
             const struct mylite_sql_ast_node *expression =
-                stmt->values_query.expressions[row_index * stmt->values_query.column_count +
-                                               column];
+                stmt->values_query
+                    .expressions[row_index * stmt->values_query.column_count + column];
             struct mylite_field_descriptor descriptor = mylite_expression_descriptor_defaults();
-            int status = scalar_callbacks->infer_expression_descriptor(
-                stmt->database, expression, NULL, &descriptor);
+            int status = scalar_callbacks->infer_expression_descriptor(stmt->database, expression,
+                                                                       NULL, &descriptor);
 
             if (status != MYLITE_OK) {
                 mylite_result_metadata_deinit(&metadata);
@@ -363,9 +366,10 @@ static int add_values_query_output_column(mylite_db *database, struct mylite_sel
     return status;
 }
 
-static int bind_values_query_clauses(
-    mylite_stmt *stmt, const struct mylite_sql_ast_node *statement, const char *sql,
-    size_t sql_length, const struct mylite_select_union_prepare_callbacks *order_callbacks)
+static int
+bind_values_query_clauses(mylite_stmt *stmt, const struct mylite_sql_ast_node *statement,
+                          const char *sql, size_t sql_length,
+                          const struct mylite_select_union_prepare_callbacks *order_callbacks)
 {
     const struct mylite_sql_ast_node *order_by_clause =
         mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
@@ -386,9 +390,10 @@ static int bind_values_query_clauses(
     return status;
 }
 
-static int materialize_values_query_result(
-    mylite_stmt *stmt, const struct mylite_select_scalar_eval_callbacks *scalar_callbacks,
-    const struct mylite_select_union_callbacks *order_callbacks)
+static int
+materialize_values_query_result(mylite_stmt *stmt,
+                                const struct mylite_select_scalar_eval_callbacks *scalar_callbacks,
+                                const struct mylite_select_union_callbacks *order_callbacks)
 {
     uint64_t pre_limit_count = 0U;
     int status = MYLITE_OK;
@@ -431,9 +436,9 @@ static int materialize_values_query_result(
     return status;
 }
 
-static int append_values_query_row(
-    mylite_stmt *stmt, size_t row_index,
-    const struct mylite_select_scalar_eval_callbacks *scalar_callbacks)
+static int
+append_values_query_row(mylite_stmt *stmt, size_t row_index,
+                        const struct mylite_select_scalar_eval_callbacks *scalar_callbacks)
 {
     struct mylite_table_select_row row = {0};
     int status = MYLITE_OK;
@@ -462,9 +467,8 @@ static int append_values_query_row(
 
 static void record_values_found_rows(mylite_stmt *stmt, uint64_t pre_limit_count)
 {
-    stmt->database->previous_found_rows =
-        values_found_rows_count_after_limit(pre_limit_count, &stmt->select_plan.limit,
-                                            stmt->select_result.row_count);
+    stmt->database->previous_found_rows = values_found_rows_count_after_limit(
+        pre_limit_count, &stmt->select_plan.limit, stmt->select_result.row_count);
     stmt->previous_found_rows_recorded = true;
 }
 

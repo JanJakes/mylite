@@ -53,8 +53,7 @@ int mylite_select_union_prepare_query_expression(
     int status = MYLITE_OK;
 
     if (callbacks == NULL || callbacks->prepare_select_subquery == NULL ||
-        callbacks->scalar_callbacks == NULL ||
-        callbacks->clone_order_expressions == NULL ||
+        callbacks->scalar_callbacks == NULL || callbacks->clone_order_expressions == NULL ||
         callbacks->set_ambiguous_order_column_error == NULL ||
         callbacks->set_unsupported_order_error == NULL) {
         return MYLITE_MISUSE;
@@ -163,8 +162,7 @@ static int bind_union_query_clauses(mylite_db *database,
 
 static int collect_union_query_operands( // NOLINT(misc-no-recursion)
     mylite_db *database, const struct mylite_sql_ast_node *node, const char *sql, size_t sql_length,
-    struct mylite_union_plan *plan,
-    const struct mylite_select_union_prepare_callbacks *callbacks)
+    struct mylite_union_plan *plan, const struct mylite_select_union_prepare_callbacks *callbacks)
 {
     if (node == NULL) {
         return MYLITE_UNSUPPORTED;
@@ -199,9 +197,9 @@ static int collect_union_query_operands( // NOLINT(misc-no-recursion)
         if (status != MYLITE_OK) {
             return status;
         }
-        status = append_union_query_operand(database, plan, operand,
-                                            MYLITE_SQL_AST_SET_OPERATION_UNION,
-                                            MYLITE_SQL_AST_SET_DUPLICATES_DISTINCT, false);
+        status =
+            append_union_query_operand(database, plan, operand, MYLITE_SQL_AST_SET_OPERATION_UNION,
+                                       MYLITE_SQL_AST_SET_DUPLICATES_DISTINCT, false);
         if (status != MYLITE_OK) {
             mylite_finalize(operand);
         }

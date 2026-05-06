@@ -19159,12 +19159,12 @@ static int test_cte_query_expression_placeholder_execution(void)
     failures += expect_parser_placeholder_execution(
         database, "WITH cte AS (SELECT 1) SELECT * FROM cte", "CTE query expression",
         "non-recursive CTE placeholder");
-    failures += expect_parser_placeholder_execution(
-        database,
-        "WITH RECURSIVE seq(n) AS ("
-        "SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 3"
-        ") SELECT n FROM seq",
-        "CTE query expression", "recursive CTE placeholder");
+    failures +=
+        expect_parser_placeholder_execution(database,
+                                            "WITH RECURSIVE seq(n) AS ("
+                                            "SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 3"
+                                            ") SELECT n FROM seq",
+                                            "CTE query expression", "recursive CTE placeholder");
 
     mylite_close(database);
     return failures;
@@ -26847,39 +26847,38 @@ static int test_union_query_expression_execution(void)
 
     failures += expect_select_rows(database, "TABLE left_t ORDER BY id LIMIT 2", table_columns, 4,
                                    table_first_two_rows, 2, "table query expression");
-    failures += expect_select_rows(
-        database, "VALUES ROW(1,-2,3), ROW(5,7,9), ROW(4,6,8) ORDER BY column_1", values_columns,
-        3, ordered_values, 3, "values query expression");
-    failures += expect_select_rows(
-        database, "SELECT n AS v FROM left_t INTERSECT SELECT n FROM right_t "
-                  "ORDER BY v IS NULL, v",
-        v_column, 1, two_null_values, 2, "intersect distinct query expression");
+    failures +=
+        expect_select_rows(database, "VALUES ROW(1,-2,3), ROW(5,7,9), ROW(4,6,8) ORDER BY column_1",
+                           values_columns, 3, ordered_values, 3, "values query expression");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT n AS v FROM left_t INTERSECT SELECT n FROM right_t "
+                           "ORDER BY v IS NULL, v",
+                           v_column, 1, two_null_values, 2, "intersect distinct query expression");
     failures += expect_select_rows(database,
                                    "SELECT n AS v FROM left_t EXCEPT SELECT n FROM right_t "
                                    "ORDER BY v IS NULL, v",
-                                   v_column, 1, one_value, 1,
-                                   "except distinct query expression");
-    failures += expect_select_rows(
-        database,
-        "VALUES ROW(1), ROW(1), ROW(2) INTERSECT ALL "
-        "VALUES ROW(1), ROW(1), ROW(1), ROW(3) ORDER BY column_0",
-        column_0_column, 1, values_two_ones, 2, "intersect all values multiplicity");
+                                   v_column, 1, one_value, 1, "except distinct query expression");
+    failures += expect_select_rows(database,
+                                   "VALUES ROW(1), ROW(1), ROW(2) INTERSECT ALL "
+                                   "VALUES ROW(1), ROW(1), ROW(1), ROW(3) ORDER BY column_0",
+                                   column_0_column, 1, values_two_ones, 2,
+                                   "intersect all values multiplicity");
     failures += expect_select_rows(
         database,
         "VALUES ROW(1), ROW(1), ROW(2) EXCEPT ALL VALUES ROW(1), ROW(3) ORDER BY column_0",
         column_0_column, 1, values_one_two, 2, "except all values multiplicity");
-    failures += expect_select_rows(
-        database, "SELECT 1 AS v UNION SELECT 2 INTERSECT SELECT 2 ORDER BY v", v_column, 1,
-        one_two_values, 2, "intersect precedence over union");
-    failures += expect_select_rows(database,
-                                   "(SELECT 1 AS v UNION SELECT 2) EXCEPT SELECT 2 ORDER BY v",
-                                   v_column, 1, one_value, 1,
-                                   "parenthesized set expression precedence");
-    failures += expect_select_rows(
-        database,
-        "VALUES ROW(1,2), ROW(3,4), ROW(1,2) INTERSECT "
-        "VALUES ROW(1,2), ROW(5,6) ORDER BY column_0, column_1",
-        column_0_column_1_columns, 2, values_pair, 1, "values set operation");
+    failures +=
+        expect_select_rows(database, "SELECT 1 AS v UNION SELECT 2 INTERSECT SELECT 2 ORDER BY v",
+                           v_column, 1, one_two_values, 2, "intersect precedence over union");
+    failures +=
+        expect_select_rows(database, "(SELECT 1 AS v UNION SELECT 2) EXCEPT SELECT 2 ORDER BY v",
+                           v_column, 1, one_value, 1, "parenthesized set expression precedence");
+    failures +=
+        expect_select_rows(database,
+                           "VALUES ROW(1,2), ROW(3,4), ROW(1,2) INTERSECT "
+                           "VALUES ROW(1,2), ROW(5,6) ORDER BY column_0, column_1",
+                           column_0_column_1_columns, 2, values_pair, 1, "values set operation");
 
     failures += expect_select_rows(database,
                                    "SELECT 1 AS v UNION SELECT 1 UNION SELECT NULL UNION "

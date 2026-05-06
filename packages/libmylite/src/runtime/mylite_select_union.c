@@ -25,17 +25,17 @@ static int apply_except_operand(mylite_stmt *stmt, mylite_stmt *operand,
 static int materialize_set_operand_rows(mylite_stmt *stmt, mylite_stmt *operand,
                                         struct mylite_table_select_result *out_result,
                                         const struct mylite_select_union_callbacks *callbacks);
-static int append_union_operand_current_row_to_result(
-    mylite_stmt *stmt, mylite_stmt *operand, struct mylite_table_select_result *result,
-    const struct mylite_select_union_callbacks *callbacks);
+static int
+append_union_operand_current_row_to_result(mylite_stmt *stmt, mylite_stmt *operand,
+                                           struct mylite_table_select_result *result,
+                                           const struct mylite_select_union_callbacks *callbacks);
 static int keep_intersect_distinct_rows(mylite_stmt *stmt,
                                         const struct mylite_table_select_result *right);
 static int keep_except_distinct_rows(mylite_stmt *stmt,
                                      const struct mylite_table_select_result *right);
 static int keep_intersect_all_rows(mylite_stmt *stmt,
                                    const struct mylite_table_select_result *right);
-static int keep_except_all_rows(mylite_stmt *stmt,
-                                const struct mylite_table_select_result *right);
+static int keep_except_all_rows(mylite_stmt *stmt, const struct mylite_table_select_result *right);
 static bool rowset_contains_row(const mylite_stmt *stmt,
                                 const struct mylite_table_select_result *rowset,
                                 const struct mylite_table_select_row *row);
@@ -116,9 +116,9 @@ static int materialize_union_query_result(mylite_stmt *stmt,
         enum mylite_sql_ast_set_duplicate_mode duplicate_mode =
             index == 0U ? MYLITE_SQL_AST_SET_DUPLICATES_ALL
                         : stmt->union_plan.operators[index - 1U];
-        enum mylite_sql_ast_set_operation operation =
-            index == 0U ? MYLITE_SQL_AST_SET_OPERATION_UNION
-                        : stmt->union_plan.operations[index - 1U];
+        enum mylite_sql_ast_set_operation operation = index == 0U
+                                                          ? MYLITE_SQL_AST_SET_OPERATION_UNION
+                                                          : stmt->union_plan.operations[index - 1U];
 
         switch (operation) {
         case MYLITE_SQL_AST_SET_OPERATION_UNION:
@@ -126,8 +126,8 @@ static int materialize_union_query_result(mylite_stmt *stmt,
                                         callbacks);
             break;
         case MYLITE_SQL_AST_SET_OPERATION_INTERSECT:
-            status = apply_intersect_operand(stmt, stmt->union_plan.operands[index],
-                                             duplicate_mode, callbacks);
+            status = apply_intersect_operand(stmt, stmt->union_plan.operands[index], duplicate_mode,
+                                             callbacks);
             break;
         case MYLITE_SQL_AST_SET_OPERATION_EXCEPT:
             status = apply_except_operand(stmt, stmt->union_plan.operands[index], duplicate_mode,
@@ -259,9 +259,10 @@ static int materialize_set_operand_rows(mylite_stmt *stmt, mylite_stmt *operand,
     }
 }
 
-static int append_union_operand_current_row_to_result(
-    mylite_stmt *stmt, mylite_stmt *operand, struct mylite_table_select_result *result,
-    const struct mylite_select_union_callbacks *callbacks)
+static int
+append_union_operand_current_row_to_result(mylite_stmt *stmt, mylite_stmt *operand,
+                                           struct mylite_table_select_result *result,
+                                           const struct mylite_select_union_callbacks *callbacks)
 {
     struct mylite_table_select_row row = {0};
     int status = copy_union_operand_current_row(stmt, operand, &row, callbacks);

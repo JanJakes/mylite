@@ -54,8 +54,8 @@ int mylite_statement_execute_custom_with_callbacks(
         return mylite_select_union_execute_query(stmt, callbacks->union_callbacks);
     }
     if (stmt->kind == MYLITE_STMT_VALUES_QUERY) {
-        return mylite_values_query_execute_statement(
-            stmt, callbacks->scalar_callbacks, callbacks->union_callbacks);
+        return mylite_values_query_execute_statement(stmt, callbacks->scalar_callbacks,
+                                                     callbacks->union_callbacks);
     }
     if (stmt->kind == MYLITE_STMT_EXECUTE_PREPARED) {
         return mylite_prepared_statement_execute_execute(stmt);
@@ -194,8 +194,8 @@ int mylite_statement_execute_custom_with_callbacks(
     case MYLITE_STMT_UNION_QUERY:
         return mylite_select_union_execute_query(stmt, callbacks->union_callbacks);
     case MYLITE_STMT_VALUES_QUERY:
-        return mylite_values_query_execute_statement(
-            stmt, callbacks->scalar_callbacks, callbacks->union_callbacks);
+        return mylite_values_query_execute_statement(stmt, callbacks->scalar_callbacks,
+                                                     callbacks->union_callbacks);
     case MYLITE_STMT_EXECUTE_PREPARED:
         return mylite_prepared_statement_execute_execute(stmt);
     case MYLITE_STMT_SQLITE:

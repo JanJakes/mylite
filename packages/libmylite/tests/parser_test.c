@@ -111,8 +111,7 @@ static int expect_union_duplicate_mode(const struct mylite_sql_ast_node *node,
                                        enum mylite_sql_ast_set_duplicate_mode expected,
                                        const char *context);
 static int expect_set_operation(const struct mylite_sql_ast_node *node,
-                                enum mylite_sql_ast_set_operation expected,
-                                const char *context);
+                                enum mylite_sql_ast_set_operation expected, const char *context);
 static int expect_subquery_quantifier(const struct mylite_sql_ast_node *node,
                                       enum mylite_sql_ast_subquery_quantifier expected,
                                       const char *context);
@@ -4904,9 +4903,8 @@ static int test_delete_single_table_syntax(void)
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("WITH c AS (SELECT 1) DELETE FROM t", MYLITE_SQL_PARSE_OK, &result);
-    failures += expect_placeholder_statement(child_at(result.root, 0U),
-                                             MYLITE_SQL_AST_PLACEHOLDER_CTE,
-                                             "delete CTE placeholder");
+    failures += expect_placeholder_statement(
+        child_at(result.root, 0U), MYLITE_SQL_AST_PLACEHOLDER_CTE, "delete CTE placeholder");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("DELETE t FROM t JOIN u ON t.id = u.id WHERE u.keep = 0",
@@ -8379,18 +8377,18 @@ static int test_union_query_expression_syntax(void)
                             "table query from table");
     failures += expect_node(child_at(local_select, 2U), MYLITE_SQL_AST_ORDER_BY_CLAUSE,
                             "table query order");
-    failures += expect_node(child_at(local_select, 3U), MYLITE_SQL_AST_LIMIT_CLAUSE,
-                            "table query limit");
+    failures +=
+        expect_node(child_at(local_select, 3U), MYLITE_SQL_AST_LIMIT_CLAUSE, "table query limit");
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("VALUES ROW(1, 2), ROW(3, 4) ORDER BY column_0;",
-                          MYLITE_SQL_PARSE_OK, &result);
+    failures +=
+        parse_sql("VALUES ROW(1, 2), ROW(3, 4) ORDER BY column_0;", MYLITE_SQL_PARSE_OK, &result);
     query = child_at(result.root, 0U);
     failures += expect_node(query, MYLITE_SQL_AST_VALUES_STATEMENT, "values query");
-    failures += expect_node(child_at(query, 0U), MYLITE_SQL_AST_INSERT_ROW_LIST,
-                            "values query row list");
-    failures += expect_node(child_at(query, 1U), MYLITE_SQL_AST_ORDER_BY_CLAUSE,
-                            "values query order");
+    failures +=
+        expect_node(child_at(query, 0U), MYLITE_SQL_AST_INSERT_ROW_LIST, "values query row list");
+    failures +=
+        expect_node(child_at(query, 1U), MYLITE_SQL_AST_ORDER_BY_CLAUSE, "values query order");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("VALUES ROW(1) UNION TABLE t;", MYLITE_SQL_PARSE_OK, &result);
@@ -8404,14 +8402,15 @@ static int test_union_query_expression_syntax(void)
                             "values union table operand");
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("SELECT 1 AS v UNION SELECT 2 INTERSECT SELECT 2;",
-                          MYLITE_SQL_PARSE_OK, &result);
+    failures +=
+        parse_sql("SELECT 1 AS v UNION SELECT 2 INTERSECT SELECT 2;", MYLITE_SQL_PARSE_OK, &result);
     query = child_at(result.root, 0U);
     top_union = child_at(query, 0U);
     failures += expect_set_operation(top_union, MYLITE_SQL_AST_SET_OPERATION_UNION,
                                      "intersect precedence outer union");
-    failures += expect_set_operation(child_at(top_union, 1U), MYLITE_SQL_AST_SET_OPERATION_INTERSECT,
-                                     "intersect precedence inner intersect");
+    failures +=
+        expect_set_operation(child_at(top_union, 1U), MYLITE_SQL_AST_SET_OPERATION_INTERSECT,
+                             "intersect precedence inner intersect");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT 1 AS v EXCEPT DISTINCT SELECT 2;", MYLITE_SQL_PARSE_OK, &result);
@@ -8423,8 +8422,8 @@ static int test_union_query_expression_syntax(void)
                                             "except distinct mode");
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("(SELECT 1 UNION SELECT 2) EXCEPT SELECT 2;",
-                          MYLITE_SQL_PARSE_OK, &result);
+    failures +=
+        parse_sql("(SELECT 1 UNION SELECT 2) EXCEPT SELECT 2;", MYLITE_SQL_PARSE_OK, &result);
     query = child_at(result.root, 0U);
     top_union = child_at(query, 0U);
     failures += expect_set_operation(top_union, MYLITE_SQL_AST_SET_OPERATION_EXCEPT,
@@ -8451,12 +8450,10 @@ static int test_union_query_expression_syntax(void)
                           ") SELECT n FROM seq;",
                           MYLITE_SQL_PARSE_OK, &result);
     failures += expect_child_count(result.root, 2U, "CTE placeholder count");
-    failures += expect_placeholder_statement(child_at(result.root, 0U),
-                                             MYLITE_SQL_AST_PLACEHOLDER_CTE,
-                                             "non-recursive CTE placeholder");
-    failures += expect_placeholder_statement(child_at(result.root, 1U),
-                                             MYLITE_SQL_AST_PLACEHOLDER_CTE,
-                                             "recursive CTE placeholder");
+    failures += expect_placeholder_statement(
+        child_at(result.root, 0U), MYLITE_SQL_AST_PLACEHOLDER_CTE, "non-recursive CTE placeholder");
+    failures += expect_placeholder_statement(
+        child_at(result.root, 1U), MYLITE_SQL_AST_PLACEHOLDER_CTE, "recursive CTE placeholder");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT n FROM t ORDER BY n LIMIT 1 UNION ALL SELECT n FROM t;",

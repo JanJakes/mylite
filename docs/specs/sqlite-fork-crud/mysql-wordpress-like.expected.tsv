@@ -1,0 +1,8 @@
+posts-before-truncate	3	1	3	4
+published	1	hello-mylite	publish	2
+published	2	draft-notes	publish	1
+published	3	sqlite-fork-plan	publish	1
+meta-before-truncate	2	1:_thumbnail_id=99|3:_wp_page_template=default
+meta-after-truncate	0	0
+meta-after-reinsert	1	2	_restored	yes
+remaining-tables	1

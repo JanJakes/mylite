@@ -16,11 +16,11 @@ with MySQL temporal declarations:
 
 Later executable `CREATE TABLE` work uses these descriptors for metadata and
 physical text storage. The SQLite-fork descriptor slices now implement basic
-strict write-time `DATE`, `DATETIME(fsp)`, and `TIME(fsp)` assignment
+strict write-time `DATE`, `DATETIME(fsp)`, `TIME(fsp)`, and `YEAR` assignment
 conversion for public MyLite DML and direct annotated SQLite writes.
-`TIMESTAMP`, `YEAR`, `CURRENT_TIMESTAMP`, `ON UPDATE`, time zone conversion,
-SQL-mode variants, zero-value insertion modes, casts, functions, warning
-records, and protocol metadata remain later roadmap work.
+`TIMESTAMP`, `CURRENT_TIMESTAMP`, `ON UPDATE`, time zone conversion, SQL-mode
+variants, zero-value insertion modes beyond the covered strict baseline, casts,
+functions, warning records, and protocol metadata remain later roadmap work.
 
 ## Sources
 
@@ -208,9 +208,11 @@ normalized exactly like `TIME(0)`, `DATETIME(6)`, `TIMESTAMP(0)`, and `YEAR(4)`.
   `NO_ZERO_IN_DATE`, `ALLOW_INVALID_DATES`, and `TIME_TRUNCATE_FRACTIONAL`
   are deferred.
 - Temporal literals, casts, functions, arithmetic, result metadata, protocol
-  flags, and `TIMESTAMP`/`YEAR` assignment descriptors are deferred.
+  flags, and `TIMESTAMP` assignment descriptors are deferred.
 - Basic `DATE` and `DATETIME(fsp)` assignment conversion is implemented in the
   SQLite fork; see
   `docs/specs/sqlite-fork-temporal-type-descriptors/specs.md`.
 - Basic `TIME(fsp)` assignment conversion is implemented in the SQLite fork;
   see `docs/specs/sqlite-fork-time-type-descriptors/specs.md`.
+- Basic `YEAR` assignment conversion is implemented in the SQLite fork; see
+  `docs/specs/sqlite-fork-year-type-descriptors/specs.md`.

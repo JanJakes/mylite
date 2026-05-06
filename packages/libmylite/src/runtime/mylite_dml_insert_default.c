@@ -436,6 +436,7 @@ static bool insert_column_uses_text_storage(const struct mylite_insert_table_col
         "date",
         "time",
         "datetime",
+        "year",
     };
 
     if (column == NULL || column->data_type == NULL) {

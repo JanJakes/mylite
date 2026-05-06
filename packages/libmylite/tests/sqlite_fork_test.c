@@ -49,6 +49,8 @@ static int test_native_temporal_type_coercion(void);
 
 static int test_native_time_type_coercion(void);
 
+static int test_native_year_type_coercion(void);
+
 static int test_wordpress_like_crud(void);
 
 static int test_mylite_wordpress_like_crud(void);
@@ -64,6 +66,8 @@ static int test_mylite_decimal_type_coercion(void);
 static int test_mylite_temporal_type_coercion(void);
 
 static int test_mylite_time_type_coercion(void);
+
+static int test_mylite_year_type_coercion(void);
 
 static int test_mylite_collation_unique_semantics(void);
 
@@ -127,6 +131,7 @@ int main(void) {
     failures += test_native_decimal_type_coercion();
     failures += test_native_temporal_type_coercion();
     failures += test_native_time_type_coercion();
+    failures += test_native_year_type_coercion();
     failures += test_wordpress_like_crud();
     failures += test_mylite_wordpress_like_crud();
     failures += test_mylite_basic_type_coercion();
@@ -135,6 +140,7 @@ int main(void) {
     failures += test_mylite_decimal_type_coercion();
     failures += test_mylite_temporal_type_coercion();
     failures += test_mylite_time_type_coercion();
+    failures += test_mylite_year_type_coercion();
     failures += test_mylite_collation_unique_semantics();
 
     return failures == 0 ? 0 : 1;
@@ -1293,6 +1299,115 @@ static int test_native_time_type_coercion(void) {
             .mysql_errno = invalid_time_error,
             .sqlstate = "22007",
             .context = "malformed time exposes MySQL condition",
+        }
+    );
+
+    sqlite3_close(database);
+    return failures;
+}
+
+static int test_native_year_type_coercion(void) {
+    enum {
+        year_out_of_range_error = 1264,
+        invalid_year_error = 1366,
+    };
+
+    sqlite3 *database = NULL;
+    int failures = 0;
+
+    failures += open_configured_database(&database);
+    if (failures != 0) {
+        return failures;
+    }
+
+    failures += exec_sql(
+        database,
+        "CREATE TABLE year_direct(id INTEGER PRIMARY KEY, y TEXT)",
+        "create direct year descriptor fixture"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_column_type(
+            database,
+            NULL,
+            "year_direct",
+            "y",
+            &(const struct mylite_sqlite_fork_column_type){
+                .kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_YEAR,
+            }
+        ),
+        database,
+        "set direct year descriptor"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO year_direct VALUES "
+        "(1, 0), (2, '0'), (3, '00'), (4, '0000'), (5, 1), "
+        "(6, '69'), (7, 70), (8, 1901.5), (9, 2155)",
+        "insert direct year descriptor values"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT group_concat(id || ':' || y, '|') "
+                   "FROM (SELECT id, y FROM year_direct ORDER BY id)",
+            .expected = "1:0000|2:2000|3:2000|4:0000|5:2001|6:2069|7:1970|8:1902|9:2155",
+            .context = "direct year descriptor normalizes stored text",
+        }
+    );
+    failures += exec_sql(
+        database,
+        "UPDATE year_direct SET y = '2' WHERE id = 1",
+        "update direct quoted year"
+    );
+    failures += exec_sql(
+        database,
+        "UPDATE year_direct SET y = 98 WHERE id = 2",
+        "update direct numeric year"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT group_concat(id || ':' || y, '|') "
+                   "FROM (SELECT id, y FROM year_direct WHERE id IN (1, 2) ORDER BY id)",
+            .expected = "1:2002|2:1998",
+            .context = "direct year update coerces assigned values",
+        }
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO year_direct VALUES (10, 100)",
+            .message_fragment = "year value is out of range",
+            .context = "direct year descriptor rejects out-of-range value",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = year_out_of_range_error,
+            .sqlstate = "22003",
+            .context = "out-of-range year exposes MySQL condition",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear out-of-range year fork condition"
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO year_direct VALUES (10, 'bad')",
+            .message_fragment = "invalid year value",
+            .context = "direct year descriptor rejects invalid text",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = invalid_year_error,
+            .sqlstate = "HY000",
+            .context = "invalid year text exposes MySQL condition",
         }
     );
 
@@ -2808,6 +2923,162 @@ static int test_mylite_time_type_coercion(void) {
         database,
         invalid_time_error,
         "MyLite malformed time condition"
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_mylite_year_type_coercion(void) {
+    enum {
+        year_column_count = 3,
+        year_initial_row_count = 10,
+        year_after_replace_row_count = 11,
+        year_out_of_range_error = 1264,
+        invalid_year_error = 1366,
+    };
+
+    static const char *const after_insert[] = {
+        "1",    "0000", "0",    "2",    "2000", "2000", "3",    "2000", "2000", "4",
+        "0000", "0",    "5",    "2001", "2001", "6",    "2069", "2069", "7",    "1970",
+        "1970", "8",    "1901", "1901", "9",    "1902", "1902", "10",   "2155", "2155",
+    };
+    static const char *const after_update[] = {
+        "1",    "2002", "2002", "2",    "1998", "1998", "3",    "2000", "2000", "4",
+        "0000", "0",    "5",    "2001", "2001", "6",    "2069", "2069", "7",    "1970",
+        "1970", "8",    "1901", "1901", "9",    "1902", "1902", "10",   "2155", "2155",
+    };
+    static const char *const after_duplicate_update[] = {
+        "1",    "2002", "2002", "2",    "2012", "2012", "3",    "2000", "2000", "4",
+        "0000", "0",    "5",    "2001", "2001", "6",    "2069", "2069", "7",    "1970",
+        "1970", "8",    "1901", "1901", "9",    "1902", "1902", "10",   "2155", "2155",
+    };
+    static const char *const after_replace[] = {
+        "1",    "2002", "2002", "2",    "2012", "2012", "3",    "2000", "2000", "4",    "0000",
+        "0",    "5",    "2001", "2001", "6",    "2069", "2069", "7",    "1970", "1970", "8",
+        "1901", "1901", "9",    "1902", "1902", "10",   "2155", "2155", "11",   "2068", "2068",
+    };
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_mylite_ok(mylite_open_memory(&database), database, "open MyLite year coercion");
+    if (failures != 0) {
+        return failures;
+    }
+
+    failures += exec_mylite_sql(
+        database,
+        "CREATE DATABASE mylite_year_coercion CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+        "create MyLite year coercion schema"
+    );
+    failures += exec_mylite_sql(database, "USE mylite_year_coercion", "use year coercion schema");
+    failures += exec_mylite_sql(
+        database,
+        "CREATE TABLE year_basic (id INT PRIMARY KEY, y YEAR NOT NULL) "
+        "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "create MyLite year coercion table"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT INTO year_basic VALUES "
+        "(1, 0), (2, '0'), (3, '00'), (4, '0000'), (5, 1), "
+        "(6, '69'), (7, 70), (8, 1901.4), (9, 1901.5), (10, 2155)",
+        "insert MyLite year coercion rows"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT id, y, y + 0 FROM year_basic ORDER BY id",
+            .values = after_insert,
+            .column_count = year_column_count,
+            .row_count = year_initial_row_count,
+            .context = "MyLite year insert coercion matches MySQL fixture",
+        }
+    );
+    failures += exec_mylite_sql(
+        database,
+        "UPDATE year_basic SET y = '2' WHERE id = 1",
+        "update quoted MyLite year row"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "UPDATE year_basic SET y = 98 WHERE id = 2",
+        "update numeric MyLite year row"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT id, y, y + 0 FROM year_basic ORDER BY id",
+            .values = after_update,
+            .column_count = year_column_count,
+            .row_count = year_initial_row_count,
+            .context = "MyLite year update coercion matches MySQL fixture",
+        }
+    );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT INTO year_basic VALUES (2, '2012') ON DUPLICATE KEY UPDATE y = VALUES(y)",
+        "insert duplicate update MyLite year row"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT id, y, y + 0 FROM year_basic ORDER BY id",
+            .values = after_duplicate_update,
+            .column_count = year_column_count,
+            .row_count = year_initial_row_count,
+            .context = "MyLite year duplicate update coercion matches MySQL fixture",
+        }
+    );
+    failures += exec_mylite_sql(
+        database,
+        "REPLACE INTO year_basic VALUES (11, '68')",
+        "replace MyLite year row"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT id, y, y + 0 FROM year_basic ORDER BY id",
+            .values = after_replace,
+            .column_count = year_column_count,
+            .row_count = year_after_replace_row_count,
+            .context = "MyLite year replace coercion matches MySQL fixture",
+        }
+    );
+
+    failures += expect_mylite_sql_status(
+        database,
+        "INSERT INTO year_basic VALUES (12, 100)",
+        MYLITE_SQLITE_ERROR,
+        "MyLite year coercion rejects 100"
+    );
+    failures += expect_mylite_error_condition(
+        database,
+        year_out_of_range_error,
+        "MyLite out-of-range YEAR 100 condition"
+    );
+    failures += expect_mylite_sql_status(
+        database,
+        "INSERT INTO year_basic VALUES (12, 1900)",
+        MYLITE_SQLITE_ERROR,
+        "MyLite year coercion rejects 1900"
+    );
+    failures += expect_mylite_error_condition(
+        database,
+        year_out_of_range_error,
+        "MyLite out-of-range YEAR 1900 condition"
+    );
+    failures += expect_mylite_sql_status(
+        database,
+        "INSERT INTO year_basic VALUES (12, 'bad')",
+        MYLITE_SQLITE_ERROR,
+        "MyLite year coercion rejects invalid text"
+    );
+    failures += expect_mylite_error_condition(
+        database,
+        invalid_year_error,
+        "MyLite invalid YEAR text condition"
     );
 
     mylite_close(database);

@@ -231,6 +231,10 @@ static int myliteMakeColumnType(
       pOut->eType = MYLITE_COLTYPE_BLOB;
       pOut->nByte = pType->byte_maximum_length;
       return SQLITE_OK;
+    case MYLITE_SQLITE_FORK_COLUMN_TYPE_YEAR:
+      if( pType->flags!=0 ) return SQLITE_MISUSE;
+      pOut->eType = MYLITE_COLTYPE_YEAR;
+      return SQLITE_OK;
   }
 
   return SQLITE_MISUSE;

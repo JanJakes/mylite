@@ -22451,8 +22451,10 @@ static int text_value_to_numeric(
             warnings,
             (struct numeric_text_input){.start = start, .text = text}
         );
+        out_numeric->is_integer = true;
     } else if (numeric_text_is_hex_like(start)) {
         status = append_truncation_warning(warnings, text);
+        out_numeric->is_integer = true;
     } else {
         status = parse_numeric_text_double(
             (struct numeric_text_parse_input){.text = text, .start = start},
@@ -22563,6 +22565,8 @@ static int parse_numeric_text_double(
     } else {
         out_numeric->int64_value = numeric_real_to_truncated_int64(out_numeric->real_value);
     }
+    out_numeric->uint64_value = (uint64_t)out_numeric->int64_value;
+    out_numeric->is_integer = !overflow && numeric_text_prefix_is_integer(input.start, end);
     if (end == input.start || (end != NULL && *end != '\0') || overflow) {
         return append_truncation_warning(warnings, input.text);
     }

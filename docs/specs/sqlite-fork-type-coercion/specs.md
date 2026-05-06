@@ -13,7 +13,7 @@ Implemented scope:
 - native SQLite column descriptor hooks that emit VDBE write-time coercion for
   signed integer, supported unsigned integer, `DOUBLE`, `VARCHAR`, `BINARY`,
   `VARBINARY`, text families, blob families, `DECIMAL`, `DATE`, `DATETIME`,
-  and `TIME`
+  `TIME`, and `YEAR`
 - MyLite public write-table loading attaches catalog-derived descriptors before
   preparing physical SQLite writes
 - MyLite `INSERT`, `UPDATE`, `REPLACE`, and duplicate-key update lowering uses
@@ -26,13 +26,18 @@ Implemented scope:
 - MySQL 8.4.9 verified success fixture covering numeric strings, numeric-to-text
   conversion, multi-byte `VARCHAR` length, update assignment coercion,
   duplicate-key update coercion, and replacement-row coercion
+- MySQL 8.4.9 verified `YEAR` fixture covering quoted-zero behavior,
+  two-digit mapping, fractional rounding, and strict diagnostics
+- expression-side numeric text coercion now keeps fully numeric integer text in
+  the integer arithmetic path, which is required when text-backed MySQL storage
+  columns participate in numeric expressions such as `YEAR + 0`
 
 Deferred scope:
 
 - exact MySQL error messages, row interpolation, complete warning records, and
   `IGNORE` demotion for every conversion failure
 - full unsigned `BIGINT` above `INT64_MAX`
-- `TIMESTAMP`, `YEAR`, JSON, `ENUM`, `SET`, bit, and spatial assignment
+- `TIMESTAMP`, JSON, `ENUM`, `SET`, bit, and spatial assignment
   conversion
 - decimal-aware comparison/index ordering, compact decimal storage, and direct
   SQLite parser numeric-literal preservation
@@ -67,6 +72,8 @@ Deferred scope:
   `docs/specs/sqlite-fork-time-type-descriptors/specs.md`
 - SQLite fork text/blob family descriptors:
   `docs/specs/sqlite-fork-text-blob-family-descriptors/specs.md`
+- SQLite fork year type descriptors:
+  `docs/specs/sqlite-fork-year-type-descriptors/specs.md`
 
 This specification is independently authored from official documentation,
 observed MySQL 8.4.9 runtime behavior, and the current MyLite codebase. It does
@@ -138,6 +145,13 @@ establishes the first supported text/blob family assignment behavior: text
 byte-capacity checks, multibyte UTF-8 boundary failures, blob byte-capacity
 checks, numeric-to-string assignment, SQLite TEXT/BLOB storage class
 canonicalization, and 1406/22001 diagnostics.
+
+The fixture in
+`docs/specs/sqlite-fork-year-type-descriptors/mysql-year-coercion.sql`
+establishes the first supported `YEAR` assignment behavior: numeric zero versus
+quoted zero, the `0000` sentinel, one- and two-digit year windows, fractional
+rounding before mapping, canonical four-character storage, and 1264/22003 plus
+1366/HY000 diagnostics.
 
 ## Runtime Design
 
@@ -233,6 +247,15 @@ colon-abbreviated values, compact numeric/text forms, and fractional seconds.
 It rounds fractional seconds to the declared precision, rejects values outside
 MySQL's `-838:59:59.000000` through `838:59:59.000000` range, canonicalizes
 negative zero to positive zero, and stores canonical text.
+
+### `YEAR` assignment
+
+The `YEAR` descriptor stores canonical four-character text. It preserves the
+MySQL distinction between numeric zero, which stores the zero-year sentinel
+`0000`, and quoted zero, which stores `2000`. Textual `0000` stores the
+sentinel. One- and two-digit values map to `2001..2069` and `1970..1999`.
+Fractional inputs round half away from zero before this mapping. Values outside
+`1901..2155`, except `0000`, fail in strict mode.
 
 ### Text and blob family assignment
 

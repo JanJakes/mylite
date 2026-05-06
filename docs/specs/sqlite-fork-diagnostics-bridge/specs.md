@@ -18,8 +18,8 @@ Implemented scope:
   error condition instead of falling back to generic error 1105
 - direct fork and public MyLite tests cover out-of-range integer, over-length
   `VARCHAR`, invalid `DOUBLE`, over-length binary string, invalid decimal,
-  out-of-range decimal, invalid temporal, and datetime overflow assignment
-  conditions
+  out-of-range decimal, invalid temporal, datetime overflow, invalid `YEAR`,
+  and out-of-range `YEAR` assignment conditions
 
 Deferred scope:
 
@@ -101,6 +101,8 @@ multiple warnings without aborting execution.
 | out-of-range `DECIMAL(p,s)` assignment | 1264 | `22003` |
 | invalid `DATE`, `DATETIME(fsp)`, or `TIME(fsp)` assignment | 1292 | `22007` |
 | post-round `DATETIME(fsp)` overflow | 1441 | `22008` |
+| invalid `YEAR` assignment text | 1366 | `HY000` |
+| out-of-range `YEAR` assignment | 1264 | `22003` |
 | invalid internal MyLite descriptor | 1105 | `HY000` |
 
 MyLite still uses SQLite's error message as the public text in this slice. The

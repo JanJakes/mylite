@@ -98,6 +98,8 @@ static bool write_table_column_uses_blob_family_type(
     const struct mylite_insert_table_column *column
 );
 
+static bool write_table_column_uses_year_type(const struct mylite_insert_table_column *column);
+
 static bool write_table_column_uses_decimal_type(const struct mylite_insert_table_column *column);
 
 static bool write_table_column_uses_date_type(const struct mylite_insert_table_column *column);
@@ -504,6 +506,10 @@ static bool write_table_column_fork_type(
         out_type->byte_maximum_length = column->character_maximum_length;
         return true;
     }
+    if (write_table_column_uses_year_type(column)) {
+        out_type->kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_YEAR;
+        return true;
+    }
     if (write_table_column_uses_decimal_type(column)) {
         out_type->kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_DECIMAL;
         out_type->numeric_precision = column->numeric_precision;
@@ -656,6 +662,13 @@ static bool write_table_column_uses_blob_family_type(
             mylite_ascii_case_equal(column->data_type, "blob") ||
             mylite_ascii_case_equal(column->data_type, "mediumblob") ||
             mylite_ascii_case_equal(column->data_type, "longblob")) != 0;
+}
+
+static bool write_table_column_uses_year_type(const struct mylite_insert_table_column *column) {
+    if (column == NULL) {
+        return false;
+    }
+    return mylite_ascii_case_equal(column->data_type, "year");
 }
 
 static bool write_table_column_uses_decimal_type(const struct mylite_insert_table_column *column) {

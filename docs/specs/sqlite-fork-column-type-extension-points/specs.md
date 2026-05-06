@@ -19,7 +19,7 @@ Implemented scope:
 - support strict assignment coercion for signed integer ranges, supported
   unsigned integer ranges, `DOUBLE`, `VARCHAR(n)`, `BINARY(n)`,
   `VARBINARY(n)`, text families, blob families, `DECIMAL(p,s)`, `DATE`,
-  `DATETIME(fsp)`, and `TIME(fsp)`
+  `DATETIME(fsp)`, `TIME(fsp)`, and `YEAR`
 - preserve ordinary SQLite affinity for columns without a MyLite descriptor
 - cover direct SQLite `INSERT` and `UPDATE` statements that write through the
   new descriptor path without SQL wrapper functions
@@ -41,7 +41,7 @@ Deferred scope:
 - exact MySQL diagnostic messages, row interpolation, complete warning records,
   and `IGNORE` demotion
 - non-strict SQL mode clipping and string truncation behavior
-- `TIMESTAMP`, `YEAR`, JSON, `ENUM`, `SET`, bit, and spatial assignment
+- `TIMESTAMP`, JSON, `ENUM`, `SET`, bit, and spatial assignment
   conversion
 - preserving MyLite descriptors through SQLite-native schema rebuilds that are
   not coordinated by MyLite
@@ -70,6 +70,8 @@ Deferred scope:
   `docs/specs/sqlite-fork-time-type-descriptors/specs.md`
 - SQLite fork text/blob family descriptors:
   `docs/specs/sqlite-fork-text-blob-family-descriptors/specs.md`
+- SQLite fork year type descriptors:
+  `docs/specs/sqlite-fork-year-type-descriptors/specs.md`
 - Existing SQLite source-tree fork package:
   `docs/specs/sqlite-source-tree-fork/specs.md`
 
@@ -152,6 +154,11 @@ SQLite already uses for table affinity. For each target column:
   numeric/text forms; round fractional seconds to the declared precision;
   reject malformed or out-of-range values; canonicalize negative zero; and
   store canonical text.
+- `YEAR` descriptors distinguish numeric zero from quoted zero at the
+  assignment boundary, map one- and two-digit years through MySQL's
+  `2001..2069` and `1970..1999` windows, round fractional inputs before
+  mapping, reject values outside `1901..2155` plus the `0000` sentinel, and
+  store canonical four-character text.
 
 On failure, SQLite aborts the statement with `SQLITE_CONSTRAINT_DATATYPE` and a
 message naming the failed conversion and target column. The fork diagnostics
@@ -181,7 +188,7 @@ The executable tests must cover:
 - MyLite fork primitives still register on a SQLite connection
 - a table can be annotated with signed integer, unsigned integer, `DOUBLE`,
   `VARCHAR`, `BINARY`, `VARBINARY`, text-family, blob-family, `DECIMAL`,
-  `DATE`, `DATETIME`, and `TIME` descriptors
+  `DATE`, `DATETIME`, `TIME`, and `YEAR` descriptors
 - direct SQLite `INSERT` coerces numeric strings, numeric-to-text values, and
   approximate values through native descriptors
 - direct SQLite `UPDATE` uses the same native descriptor path
@@ -195,6 +202,7 @@ The executable tests must cover:
 - invalid date text, invalid datetime text, and post-round datetime overflow
   fail through the native opcode
 - invalid and out-of-range time text fails through the native opcode
+- invalid and out-of-range year values fail through the native opcode
 - over-length text-family and blob-family assignments fail through the native
   opcode
 - zero temporal sentinels are accepted only when the descriptor explicitly
@@ -220,6 +228,9 @@ The MySQL 8.4.9 fixture in
 `docs/specs/sqlite-fork-text-blob-family-descriptors/mysql-text-blob-family-coercion.sql`
 is the runtime baseline for the first supported text/blob family assignment
 behavior.
+The MySQL 8.4.9 fixture in
+`docs/specs/sqlite-fork-year-type-descriptors/mysql-year-coercion.sql` is the
+runtime baseline for the first supported `YEAR` assignment behavior.
 
 ## Compatibility Status
 

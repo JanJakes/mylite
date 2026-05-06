@@ -20,8 +20,8 @@ Implemented fork points:
 - text/blob family byte-capacity checks and storage-class canonicalization
   through column descriptors
 - decimal precision/scale rounding and range checks through column descriptors
-- date, datetime, and time parsing, fractional rounding, and range checks through
-  column descriptors
+- date, datetime, time, and year parsing, fractional rounding, mapping, and
+  range checks through column descriptors
 - update-mask-aware descriptor checking for SQLite `UPDATE` record creation
 - structured fork diagnostics for MyLite-owned VDBE type-check failures
 - public MyLite DML write-table loading that applies catalog descriptors before
@@ -57,6 +57,8 @@ Implemented fork points:
   `docs/specs/sqlite-fork-decimal-type-descriptors/specs.md`
 - SQLite fork temporal type descriptors:
   `docs/specs/sqlite-fork-temporal-type-descriptors/specs.md`
+- SQLite fork YEAR type descriptors:
+  `docs/specs/sqlite-fork-year-type-descriptors/specs.md`
 - SQLite collation prefix uniqueness:
   `docs/specs/sqlite-collation-prefix-unique/specs.md`
 
@@ -130,14 +132,17 @@ Implemented first slice:
 
 Next likely descriptor families:
 
-- `TIMESTAMP` and `YEAR` temporal values with SQL-mode behavior
+- `TIMESTAMP` temporal values with SQL-mode and time-zone behavior
 - `ENUM`, `SET`, `JSON`, and bit values
 
 The next temporal-specific fork points are accepted-assignment warnings,
 SQL-mode-sensitive zero date handling, `TIME_TRUNCATE_FRACTIONAL`,
-`TIMESTAMP` time-zone conversion, and direct SQLite parser/catalog descriptor
-loading. The next decimal-specific fork points are comparison/index ordering
-and direct SQLite parser numeric-literal preservation.
+`TIMESTAMP` time-zone conversion, `YEAR(4)` declaration warnings, and direct
+SQLite parser/catalog descriptor loading. The next decimal-specific fork points
+are comparison/index ordering and direct SQLite parser numeric-literal
+preservation. The expression side also needs continued MySQL numeric-context
+coercion work because text-backed storage values must behave like MySQL when
+used in arithmetic, comparison, grouping, and ordering expressions.
 
 ### Diagnostics and warnings
 

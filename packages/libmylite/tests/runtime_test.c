@@ -48561,7 +48561,7 @@ static int test_union_query_expression_execution(void) {
         "SELECT s + 0 FROM right_t WHERE id = 10 ORDER BY v",
         v_column,
         1,
-        (const char *[]){"0.0000", "0.0000"},
+        (const char *[]){"0", "0"},
         2,
         "union operand warnings rows"
     );

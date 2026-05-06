@@ -450,6 +450,12 @@ static int myliteCoerceVarchar(Mem *pMem, u64 nChar, const char **pzErr);
 static int myliteCoerceBinary(Mem *pMem, u64 nByte, int bFixed, const char **pzErr);
 static int myliteCoerceTextFamily(Mem *pMem, u64 nByte, const char **pzErr);
 static int myliteCoerceBlobFamily(Mem *pMem, u64 nByte, const char **pzErr);
+static int myliteCoerceYear(
+  Mem *pMem,
+  const char **pzErr,
+  u32 *pMyErrno,
+  const char **pzSqlState
+);
 static int myliteCoerceDecimal(
   Mem *pMem,
   u8 nPrecision,
@@ -584,6 +590,7 @@ static int myliteParseTimeFraction(
 static int myliteTimeHasColon(const char *zText, int i, int nText);
 static int myliteTimeWithinRange(i64 iUs);
 static void myliteTimeFormat(i64 iUs, u8 nFsp, char *zOut, int *pnOut);
+static int myliteYearTextIsFourZero(const char *zText, int nText);
 static int myliteParseTemporalText(
   const char *zText,
   int nText,
@@ -746,6 +753,8 @@ static int myliteApplyColumnType(
         *pzSqlState = "22001";
       }
       return rc;
+    case MYLITE_COLTYPE_YEAR:
+      return myliteCoerceYear(pMem, pzErr, pMyErrno, pzSqlState);
     case MYLITE_COLTYPE_DECIMAL:
       return myliteCoerceDecimal(
           pMem, pCol->myliteType.nPrecision, pCol->myliteType.nScale,
@@ -932,6 +941,55 @@ static int myliteCoerceBlobFamily(Mem *pMem, u64 nByte, const char **pzErr){
   pMem->flags |= MEM_Blob;
   pMem->enc = SQLITE_UTF8;
   return SQLITE_OK;
+}
+
+static int myliteCoerceYear(
+  Mem *pMem,
+  const char **pzErr,
+  u32 *pMyErrno,
+  const char **pzSqlState
+){
+  int bTextLike = (pMem->flags & (MEM_Str|MEM_Blob))!=0;
+  int bFourZero = 0;
+  double rValue;
+  double rAdjusted;
+  i64 iValue;
+  char zOut[5];
+
+  if( bTextLike ){
+    if( ExpandBlob(pMem)!=SQLITE_OK ) return SQLITE_NOMEM;
+    bFourZero = myliteYearTextIsFourZero(pMem->z, pMem->n);
+  }
+  if( myliteMemToFiniteReal(pMem, &rValue)!=SQLITE_OK ){
+    *pzErr = "invalid year value";
+    *pMyErrno = 1366;
+    *pzSqlState = "HY000";
+    return SQLITE_MISMATCH;
+  }
+  rAdjusted = rValue<0.0 ? rValue - 0.5 : rValue + 0.5;
+  if( rAdjusted<(double)SMALLEST_INT64 || rAdjusted>(double)LARGEST_INT64 ){
+    *pzErr = "year value is out of range";
+    *pMyErrno = 1264;
+    *pzSqlState = "22003";
+    return SQLITE_MISMATCH;
+  }
+  iValue = (i64)rAdjusted;
+  if( bTextLike && iValue==0 && !bFourZero ){
+    iValue = 2000;
+  }else if( iValue>=1 && iValue<=69 ){
+    iValue += 2000;
+  }else if( iValue>=70 && iValue<=99 ){
+    iValue += 1900;
+  }else if( iValue==0 ){
+    /* Numeric 0 and textual '0000' store MySQL's zero-year sentinel. */
+  }else if( iValue<1901 || iValue>2155 ){
+    *pzErr = "year value is out of range";
+    *pMyErrno = 1264;
+    *pzSqlState = "22003";
+    return SQLITE_MISMATCH;
+  }
+  sqlite3_snprintf(sizeof(zOut), zOut, "%04lld", iValue);
+  return sqlite3VdbeMemSetStr(pMem, zOut, 4, SQLITE_UTF8, SQLITE_TRANSIENT);
 }
 
 static int myliteCoerceDecimal(
@@ -1610,6 +1668,15 @@ static void myliteTimeFormat(i64 iUs, u8 nFsp, char *zOut, int *pnOut){
     *pnOut += nFsp;
     zOut[*pnOut] = 0;
   }
+}
+
+static int myliteYearTextIsFourZero(const char *zText, int nText){
+  int i = 0;
+  while( i<nText && sqlite3Isspace(zText[i]) ) i++;
+  while( nText>i && sqlite3Isspace(zText[nText-1]) ) nText--;
+  if( i<nText && zText[i]=='+' ) i++;
+  return nText - i==4 && zText[i]=='0' && zText[i+1]=='0' &&
+      zText[i+2]=='0' && zText[i+3]=='0';
 }
 
 static int myliteParseTemporalText(

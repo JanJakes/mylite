@@ -85,7 +85,8 @@ The fork path should reuse the independent MySQL behavior research already
 captured in these areas:
 
 - column type descriptors for integer, boolean, string, binary, exact numeric,
-  approximate numeric, and temporal declarations
+  approximate numeric, and temporal declarations, including the initial
+  SQLite-fork `DATE`, `DATETIME`, `TIME`, and `YEAR` assignment descriptors
 - schema, table, column, and index metadata shape
 - `CREATE TABLE`, `DROP TABLE`, `TRUNCATE TABLE`, standalone indexes, and
   table/index alterations

@@ -28,6 +28,9 @@ bool mylite_expression_descriptor_infer_session_or_inet_function(
 bool mylite_expression_descriptor_infer_strcmp_function(
     const struct mylite_sql_ast_node *name, bool result_nullable,
     struct mylite_field_descriptor *out_descriptor);
+bool mylite_expression_descriptor_infer_regexp_scalar_function(
+    mylite_db *database, const struct mylite_sql_ast_node *name, bool result_nullable,
+    struct mylite_field_descriptor *out_descriptor);
 bool mylite_expression_descriptor_infer_uuid_function(
     mylite_db *database, const struct mylite_sql_ast_node *name,
     struct mylite_field_descriptor *out_descriptor);

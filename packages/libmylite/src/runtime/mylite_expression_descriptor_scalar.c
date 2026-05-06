@@ -141,6 +141,36 @@ bool mylite_expression_descriptor_infer_strcmp_function(
     return true;
 }
 
+bool mylite_expression_descriptor_infer_regexp_scalar_function(
+    mylite_db *database, const struct mylite_sql_ast_node *name, bool result_nullable,
+    struct mylite_field_descriptor *out_descriptor)
+{
+    if (mylite_function_name_is_regexp_instr(name)) {
+        *out_descriptor = mylite_expression_descriptor_signed_longlong(result_nullable);
+        out_descriptor->length = mylite_mysql_signed_longlong_display_length;
+        return true;
+    }
+    if (mylite_function_name_is_regexp_substr(name) ||
+        mylite_function_name_is_regexp_replace(name)) {
+        bool nullable = mylite_function_name_is_regexp_substr(name) ? true : result_nullable;
+        uint64_t length = mylite_function_name_is_regexp_replace(name)
+                              ? mylite_mysql_medium_text_length
+                              : mylite_mysql_text_length;
+
+        *out_descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_VAR_STRING,
+            .flags = 0U,
+            .length = length,
+            .decimals = mylite_mysql_not_fixed_decimals,
+            .charset_id = mylite_expression_descriptor_connection_charset_id(database),
+            .nullable = nullable,
+        };
+        mylite_field_descriptor_set_nullable(out_descriptor, nullable);
+        return true;
+    }
+    return false;
+}
+
 bool mylite_expression_descriptor_infer_uuid_function(
     mylite_db *database, const struct mylite_sql_ast_node *name,
     struct mylite_field_descriptor *out_descriptor)

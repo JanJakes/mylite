@@ -150,6 +150,10 @@ static void regexp_parser_set_error(struct mylite_regexp_parser *parser, unsigne
 static void regexp_node_free(struct mylite_regexp_node *node);
 static int regexp_search(const struct mylite_regexp_node *node,
                          const struct mylite_regexp_match_context *context, bool *out_match);
+static int regexp_search_match(const struct mylite_regexp_node *node,
+                               const struct mylite_regexp_match_context *context,
+                               size_t start_offset, bool *out_found,
+                               struct mylite_regexp_match *out_match);
 static int regexp_match_node(const struct mylite_regexp_node *node,
                              const struct mylite_regexp_match_context *context, size_t position,
                              struct mylite_regexp_position_list *out_positions);
@@ -253,6 +257,69 @@ int mylite_regexp_match(const char *value, size_t value_length, const char *patt
     }
 
     status = regexp_search(node, &context, out_match);
+    regexp_node_free(node);
+    return status;
+}
+
+int mylite_regexp_find(const char *value, size_t value_length, const char *pattern,
+                       size_t pattern_length, size_t start_offset, size_t occurrence,
+                       struct mylite_regexp_options options, bool *out_found,
+                       struct mylite_regexp_match *out_match, struct mylite_regexp_error *out_error)
+{
+    struct mylite_regexp_parser parser = {
+        .pattern = pattern == NULL ? "" : pattern,
+        .length = pattern == NULL ? 0U : pattern_length,
+    };
+    struct mylite_regexp_match_context context = {
+        .value = value == NULL ? "" : value,
+        .length = value == NULL ? 0U : value_length,
+        .options = options,
+    };
+    struct mylite_regexp_node *node = NULL;
+    size_t search_offset = start_offset;
+    size_t requested = occurrence == 0U ? 1U : occurrence;
+    int status = MYLITE_REGEXP_OK;
+
+    if (out_found == NULL || out_match == NULL) {
+        return MYLITE_REGEXP_NOMEM;
+    }
+    if (out_error != NULL) {
+        *out_error = (struct mylite_regexp_error){0};
+    }
+    *out_found = false;
+    *out_match = (struct mylite_regexp_match){0};
+
+    node = parse_regexp_pattern(&parser);
+    if (node == NULL) {
+        if (parser.error_message != NULL) {
+            if (out_error != NULL) {
+                *out_error = (struct mylite_regexp_error){
+                    .code = parser.error_code == 0U ? MYLITE_REGEXP_ERROR_CODE : parser.error_code,
+                    .message = parser.error_message,
+                };
+            }
+            return MYLITE_REGEXP_PATTERN_ERROR;
+        }
+        return MYLITE_REGEXP_NOMEM;
+    }
+
+    for (size_t found_count = 0U; search_offset <= context.length;) {
+        struct mylite_regexp_match match = {0};
+        bool found = false;
+
+        status = regexp_search_match(node, &context, search_offset, &found, &match);
+        if (status != MYLITE_REGEXP_OK || !found) {
+            break;
+        }
+        ++found_count;
+        if (found_count >= requested) {
+            *out_found = true;
+            *out_match = match;
+            break;
+        }
+        search_offset = match.end > match.start ? match.end : match.start + 1U;
+    }
+
     regexp_node_free(node);
     return status;
 }
@@ -952,7 +1019,25 @@ static void regexp_node_free(struct mylite_regexp_node *node)
 static int regexp_search(const struct mylite_regexp_node *node,
                          const struct mylite_regexp_match_context *context, bool *out_match)
 {
-    for (size_t position = 0U; position <= context->length; ++position) {
+    struct mylite_regexp_match match = {0};
+    bool found = false;
+    int status = regexp_search_match(node, context, 0U, &found, &match);
+
+    if (status == MYLITE_REGEXP_OK) {
+        *out_match = found;
+    }
+    return status;
+}
+
+static int regexp_search_match(const struct mylite_regexp_node *node,
+                               const struct mylite_regexp_match_context *context,
+                               size_t start_offset, bool *out_found,
+                               struct mylite_regexp_match *out_match)
+{
+    *out_found = false;
+    *out_match = (struct mylite_regexp_match){0};
+
+    for (size_t position = start_offset; position <= context->length;) {
         struct mylite_regexp_position_list positions = {0};
         int status = regexp_match_node(node, context, position, &positions);
 
@@ -961,13 +1046,19 @@ static int regexp_search(const struct mylite_regexp_node *node,
             return status;
         }
         if (positions.count > 0U) {
+            size_t end = positions.items[0];
+
             regexp_position_list_deinit(&positions);
-            *out_match = true;
+            *out_found = true;
+            *out_match = (struct mylite_regexp_match){.start = position, .end = end};
             return MYLITE_REGEXP_OK;
         }
         regexp_position_list_deinit(&positions);
+        if (position == context->length) {
+            break;
+        }
+        ++position;
     }
-    *out_match = false;
     return MYLITE_REGEXP_OK;
 }
 
@@ -1128,40 +1219,38 @@ static int regexp_match_repeat_then_rest(const struct mylite_regexp_node *repeat
     struct mylite_regexp_position_list child_positions = {0};
     int status = MYLITE_REGEXP_OK;
 
-    if (state.count >= repeat->repeat.minimum) {
-        status = regexp_match_sequence(sequence, context, next_child_index, state.position,
-                                       out_positions);
+    if (state.count != repeat->repeat.maximum) {
+        status = regexp_match_node(repeat->repeat.child, context, state.position, &child_positions);
+        if (status != MYLITE_REGEXP_OK) {
+            regexp_position_list_deinit(&child_positions);
+            return status;
+        }
+        for (size_t index = 0U; index < child_positions.count; ++index) {
+            size_t next_position = child_positions.items[index];
+
+            if (next_position == state.position) {
+                continue;
+            }
+            status = regexp_match_repeat_then_rest(repeat, sequence, context, next_child_index,
+                                                   (struct mylite_regexp_repeat_match_state){
+                                                       .position = next_position,
+                                                       .count = state.count + 1U,
+                                                   },
+                                                   out_positions);
+            if (status != MYLITE_REGEXP_OK) {
+                break;
+            }
+        }
+        regexp_position_list_deinit(&child_positions);
         if (status != MYLITE_REGEXP_OK) {
             return status;
         }
     }
-    if (state.count == repeat->repeat.maximum) {
-        return MYLITE_REGEXP_OK;
+    if (state.count >= repeat->repeat.minimum) {
+        return regexp_match_sequence(sequence, context, next_child_index, state.position,
+                                     out_positions);
     }
-
-    status = regexp_match_node(repeat->repeat.child, context, state.position, &child_positions);
-    if (status != MYLITE_REGEXP_OK) {
-        regexp_position_list_deinit(&child_positions);
-        return status;
-    }
-    for (size_t index = 0U; index < child_positions.count; ++index) {
-        size_t next_position = child_positions.items[index];
-
-        if (next_position == state.position) {
-            continue;
-        }
-        status = regexp_match_repeat_then_rest(repeat, sequence, context, next_child_index,
-                                               (struct mylite_regexp_repeat_match_state){
-                                                   .position = next_position,
-                                                   .count = state.count + 1U,
-                                               },
-                                               out_positions);
-        if (status != MYLITE_REGEXP_OK) {
-            break;
-        }
-    }
-    regexp_position_list_deinit(&child_positions);
-    return status;
+    return MYLITE_REGEXP_OK;
 }
 
 static int regexp_match_repeat_positions(const struct mylite_regexp_node *repeat,
@@ -1172,32 +1261,33 @@ static int regexp_match_repeat_positions(const struct mylite_regexp_node *repeat
     struct mylite_regexp_position_list child_positions = {0};
     int status = MYLITE_REGEXP_OK;
 
+    if (count != repeat->repeat.maximum) {
+        status = regexp_match_node(repeat->repeat.child, context, position, &child_positions);
+        if (status != MYLITE_REGEXP_OK) {
+            regexp_position_list_deinit(&child_positions);
+            return status;
+        }
+        for (size_t index = 0U; index < child_positions.count; ++index) {
+            size_t next_position = child_positions.items[index];
+
+            if (next_position == position) {
+                continue;
+            }
+            status = regexp_match_repeat_positions(repeat, context, next_position, count + 1U,
+                                                   out_positions);
+            if (status != MYLITE_REGEXP_OK) {
+                break;
+            }
+        }
+        regexp_position_list_deinit(&child_positions);
+        if (status != MYLITE_REGEXP_OK) {
+            return status;
+        }
+    }
     if (count >= repeat->repeat.minimum && !regexp_position_list_append(out_positions, position)) {
         return MYLITE_REGEXP_NOMEM;
     }
-    if (count == repeat->repeat.maximum) {
-        return MYLITE_REGEXP_OK;
-    }
-
-    status = regexp_match_node(repeat->repeat.child, context, position, &child_positions);
-    if (status != MYLITE_REGEXP_OK) {
-        regexp_position_list_deinit(&child_positions);
-        return status;
-    }
-    for (size_t index = 0U; index < child_positions.count; ++index) {
-        size_t next_position = child_positions.items[index];
-
-        if (next_position == position) {
-            continue;
-        }
-        status = regexp_match_repeat_positions(repeat, context, next_position, count + 1U,
-                                               out_positions);
-        if (status != MYLITE_REGEXP_OK) {
-            break;
-        }
-    }
-    regexp_position_list_deinit(&child_positions);
-    return status;
+    return MYLITE_REGEXP_OK;
 }
 
 static bool regexp_literal_matches(unsigned char value, unsigned char literal,

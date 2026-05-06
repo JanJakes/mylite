@@ -21,8 +21,18 @@ struct mylite_regexp_error {
     const char *message;
 };
 
+struct mylite_regexp_match {
+    size_t start;
+    size_t end;
+};
+
 int mylite_regexp_match(const char *value, size_t value_length, const char *pattern,
                         size_t pattern_length, struct mylite_regexp_options options,
                         bool *out_match, struct mylite_regexp_error *out_error);
+int mylite_regexp_find(const char *value, size_t value_length, const char *pattern,
+                       size_t pattern_length, size_t start_offset, size_t occurrence,
+                       struct mylite_regexp_options options, bool *out_found,
+                       struct mylite_regexp_match *out_match,
+                       struct mylite_regexp_error *out_error);
 
 #endif

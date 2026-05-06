@@ -142,6 +142,7 @@ enum {
     mysql_warning_default_value_generated = 3773,
     mysql_warning_user_lock_name_too_long = 4163,
     mysql_warning_illegal_regexp_argument = 3685,
+    mysql_warning_regexp_index_out_of_bounds = 3686,
     mysql_warning_regexp_error = 3691,
 };
 
@@ -266,6 +267,7 @@ static int test_select_integer_literal(void);
 static int test_select_integer_literal_with_semicolon(void);
 static int test_expression_operator_foundation(void);
 static int test_regexp_predicates_execution(void);
+static int test_regexp_scalar_functions_execution(void);
 static int test_scalar_builtin_functions_execution(void);
 static int test_current_temporal_functions_execution(void);
 static int test_date_and_datediff_functions_execution(void);
@@ -502,6 +504,7 @@ int main(void)
     failures += test_select_integer_literal_with_semicolon();
     failures += test_expression_operator_foundation();
     failures += test_regexp_predicates_execution();
+    failures += test_regexp_scalar_functions_execution();
     failures += test_scalar_builtin_functions_execution();
     failures += test_current_temporal_functions_execution();
     failures += test_date_and_datediff_functions_execution();
@@ -2401,6 +2404,211 @@ static int test_regexp_predicates_execution(void)
     failures +=
         expect_int((int)mylite_warning_code(database, 0), mysql_warning_incorrect_escape_arguments,
                    "regexp invalid match type code");
+
+    mylite_close(database);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
+    return failures;
+}
+
+static int test_regexp_scalar_functions_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const scalar_columns[] = {
+        "i1",        "i_from2",   "i_occ2",      "i_occ2_after", "i_match_type", "i_none",
+        "s1",        "s3",        "s_from5",     "s_none",       "r1",           "r3",
+        "r_all",     "r_pos",     "r_none",      "zero_substr",  "zero_replace", "overlap_i",
+        "overlap_s", "overlap_r", "greedy_plus", "alt_order1",   "alt_order2",
+    };
+    static const char *const scalar_values[] = {
+        "1",       "9",  "9",     "12",        "5",     "0",     "abc", "ghi",
+        "def",     NULL, "a X c", "abc def X", "X X X", "abc X", "abc", "",
+        "XbXbXbX", "3",  "aa",    "aaX",       "aaa",   "a",     "ab",
+    };
+    static const char *const null_columns[] = {
+        "i_null_expr",       "i_null_pat",        "i_null_pos", "i_null_occ",  "i_null_return",
+        "i_null_match_type", "s_null_expr",       "s_null_pat", "s_null_pos",  "s_null_occ",
+        "s_null_match_type", "r_null_expr",       "r_null_pat", "r_null_repl", "r_null_pos",
+        "r_null_occ",        "r_null_match_type",
+    };
+    static const char *const null_values[] = {
+        NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+        NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    };
+    static const char *const metadata_columns[] = {"ri", "rs", "rr"};
+    static const char *const metadata_values[] = {"1", "a", "xbc"};
+    static const struct expected_result_metadata metadata[] = {
+        {"ri", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"rs", NULL, NULL, NULL, NULL, NULL, 65535U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"rr", NULL, NULL, NULL, NULL, NULL, 16777215U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         MYLITE_FIELD_FLAG_NOT_NULL, 0U, 0},
+    };
+    static const char *const id_columns[] = {"id"};
+    static const char *const matching_ids[] = {"1", "2"};
+    static const char *const note_columns[] = {"id", "note"};
+    static const char *const updated_notes[] = {"1", "alpha-#", "2", "beta-#"};
+    static const char *const remaining_ids[] = {"1", "2", "4"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open regexp scalar database");
+    failures += execute_sql(database, "CREATE DATABASE mylite_regexp_scalars", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_regexp_scalars", MYLITE_DONE);
+
+    failures += expect_select_rows(database,
+                                   "SELECT "
+                                   "REGEXP_INSTR('dog cat dog','dog') AS i1, "
+                                   "REGEXP_INSTR('dog cat dog','dog',2) AS i_from2, "
+                                   "REGEXP_INSTR('dog cat dog','dog',1,2) AS i_occ2, "
+                                   "REGEXP_INSTR('dog cat dog','dog',1,2,1) AS i_occ2_after, "
+                                   "REGEXP_INSTR('dog cat dog','cat',1,1,0,'c') AS i_match_type, "
+                                   "REGEXP_INSTR('abc','z') AS i_none, "
+                                   "REGEXP_SUBSTR('abc def ghi','[a-z]+') AS s1, "
+                                   "REGEXP_SUBSTR('abc def ghi','[a-z]+',1,3) AS s3, "
+                                   "REGEXP_SUBSTR('abc def ghi','[a-z]+',5,1) AS s_from5, "
+                                   "REGEXP_SUBSTR('abc','z') AS s_none, "
+                                   "REGEXP_REPLACE('a b c','b','X') AS r1, "
+                                   "REGEXP_REPLACE('abc def ghi','[a-z]+','X',1,3) AS r3, "
+                                   "REGEXP_REPLACE('abc def ghi','[a-z]+','X') AS r_all, "
+                                   "REGEXP_REPLACE('abc abc','abc','X',2,1) AS r_pos, "
+                                   "REGEXP_REPLACE('abc','z','X') AS r_none, "
+                                   "REGEXP_SUBSTR('bbb','a*') AS zero_substr, "
+                                   "REGEXP_REPLACE('bbb','a*','X') AS zero_replace, "
+                                   "REGEXP_INSTR('aaaa','aa',1,2) AS overlap_i, "
+                                   "REGEXP_SUBSTR('aaaa','aa',1,2) AS overlap_s, "
+                                   "REGEXP_REPLACE('aaaa','aa','X',1,2) AS overlap_r, "
+                                   "REGEXP_SUBSTR('aaa','a+') AS greedy_plus, "
+                                   "REGEXP_SUBSTR('ab','a|ab') AS alt_order1, "
+                                   "REGEXP_SUBSTR('ab','ab|a') AS alt_order2",
+                                   scalar_columns,
+                                   (int)(sizeof(scalar_columns) / sizeof(scalar_columns[0])),
+                                   scalar_values, 1, "regexp scalar values");
+
+    failures +=
+        expect_select_rows(database,
+                           "SELECT "
+                           "REGEXP_INSTR(NULL,'a') AS i_null_expr, "
+                           "REGEXP_INSTR('abc',NULL) AS i_null_pat, "
+                           "REGEXP_INSTR('abc','a',NULL) AS i_null_pos, "
+                           "REGEXP_INSTR('abc','a',1,NULL) AS i_null_occ, "
+                           "REGEXP_INSTR('abc','a',1,1,NULL) AS i_null_return, "
+                           "REGEXP_INSTR('abc','a',1,1,0,NULL) AS i_null_match_type, "
+                           "REGEXP_SUBSTR(NULL,'a') AS s_null_expr, "
+                           "REGEXP_SUBSTR('abc',NULL) AS s_null_pat, "
+                           "REGEXP_SUBSTR('abc','a',NULL) AS s_null_pos, "
+                           "REGEXP_SUBSTR('abc','a',1,NULL) AS s_null_occ, "
+                           "REGEXP_SUBSTR('abc','a',1,1,NULL) AS s_null_match_type, "
+                           "REGEXP_REPLACE(NULL,'a','x') AS r_null_expr, "
+                           "REGEXP_REPLACE('abc',NULL,'x') AS r_null_pat, "
+                           "REGEXP_REPLACE('abc','a',NULL) AS r_null_repl, "
+                           "REGEXP_REPLACE('abc','a','x',NULL) AS r_null_pos, "
+                           "REGEXP_REPLACE('abc','a','x',1,NULL) AS r_null_occ, "
+                           "REGEXP_REPLACE('abc','a','x',1,0,NULL) AS r_null_match_type",
+                           null_columns, (int)(sizeof(null_columns) / sizeof(null_columns[0])),
+                           null_values, 1, "regexp scalar null values");
+
+    failures += prepare_sql(database,
+                            "SELECT REGEXP_INSTR('abc','a') AS ri, "
+                            "REGEXP_SUBSTR('abc','a') AS rs, "
+                            "REGEXP_REPLACE('abc','a','x') AS rr",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "regexp scalar metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "regexp scalar metadata row");
+    failures += expect_string(mylite_column_text(stmt, 0), metadata_values[0],
+                              "regexp instr metadata value");
+    failures += expect_string(mylite_column_text(stmt, 1), metadata_values[1],
+                              "regexp substr metadata value");
+    failures += expect_string(mylite_column_text(stmt, 2), metadata_values[2],
+                              "regexp replace metadata value");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "regexp scalar metadata done");
+    failures += expect_column_names(stmt, metadata_columns, 3, "regexp scalar metadata columns");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database,
+                            "CREATE TABLE regexp_scalar_items ("
+                            "id INT PRIMARY KEY, txt VARCHAR(32), note VARCHAR(32))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO regexp_scalar_items VALUES "
+                            "(1,'alpha-12',NULL), (2,'beta-3',NULL), "
+                            "(3,'plain',NULL), (4,NULL,NULL)",
+                            MYLITE_DONE);
+    failures +=
+        expect_select_rows(database,
+                           "SELECT id FROM regexp_scalar_items "
+                           "WHERE REGEXP_INSTR(txt,'[0-9]+') > 0 "
+                           "ORDER BY REGEXP_SUBSTR(txt,'[0-9]+')",
+                           id_columns, 1, matching_ids, 2, "regexp scalar table predicates/order");
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE regexp_scalar_items SET note=REGEXP_REPLACE(txt,'[0-9]+','#') "
+        "WHERE REGEXP_SUBSTR(txt,'[0-9]+') IS NOT NULL",
+        2, "regexp scalar update affected rows");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT id, note FROM regexp_scalar_items "
+                           "WHERE note IS NOT NULL ORDER BY id",
+                           note_columns, 2, updated_notes, 2, "regexp scalar update values");
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM regexp_scalar_items WHERE REGEXP_INSTR(txt,'[0-9]+') = 0", 1,
+        "regexp scalar delete affected rows");
+    failures +=
+        expect_select_rows(database, "SELECT id FROM regexp_scalar_items ORDER BY id", id_columns,
+                           1, remaining_ids, 3, "regexp scalar delete remaining rows");
+
+    failures += expect_prepare_error(
+        database, "SELECT REGEXP_INSTR('abc','a',1,1,2)", MYLITE_EXEC_ERROR,
+        "Incorrect arguments to regexp_instr: return_option", "regexp instr invalid return option");
+    failures += expect_int(mylite_warning_count(database), 1,
+                           "regexp instr invalid return option warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_incorrect_escape_arguments,
+                   "regexp instr invalid return option code");
+    failures += expect_prepare_error(database, "SELECT REGEXP_SUBSTR('abc','a',1,1,'x')",
+                                     MYLITE_EXEC_ERROR, "Incorrect arguments to regexp_substr",
+                                     "regexp substr invalid match type");
+    failures += expect_int(mylite_warning_count(database), 1,
+                           "regexp substr invalid match type warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_incorrect_escape_arguments,
+                   "regexp substr invalid match type code");
+    failures +=
+        expect_prepare_error(database, "SELECT REGEXP_REPLACE('abc','a','x',0)", MYLITE_EXEC_ERROR,
+                             "Incorrect parameters in the call to native function "
+                             "'regexp_replace'",
+                             "regexp replace invalid position");
+    failures += expect_int(mylite_warning_count(database), 1,
+                           "regexp replace invalid position warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_wrong_parameters_to_native_fct,
+                           "regexp replace invalid position code");
+    failures += expect_prepare_error(
+        database, "SELECT REGEXP_INSTR('abc','a',4)", MYLITE_EXEC_ERROR,
+        "Index out of bounds in regular expression search", "regexp instr position out of bounds");
+    failures += expect_int(mylite_warning_count(database), 1,
+                           "regexp instr position out of bounds warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_regexp_index_out_of_bounds,
+                   "regexp instr position out of bounds code");
+    failures += expect_prepare_error(database, "SELECT REGEXP_SUBSTR('abc','(')", MYLITE_EXEC_ERROR,
+                                     "Mismatched parenthesis", "regexp scalar invalid pattern");
+    failures += expect_int(mylite_warning_count(database), 1,
+                           "regexp scalar invalid pattern warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_regexp_error,
+                           "regexp scalar invalid pattern code");
+    failures += expect_prepare_error(database, "SELECT REGEXP_REPLACE('abc','','x')",
+                                     MYLITE_EXEC_ERROR, "Illegal argument to a regular expression",
+                                     "regexp scalar empty pattern");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "regexp scalar empty pattern warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_illegal_regexp_argument,
+                   "regexp scalar empty pattern code");
 
     mylite_close(database);
     // NOLINTEND(readability-function-size,readability-magic-numbers)

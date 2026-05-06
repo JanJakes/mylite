@@ -32,6 +32,7 @@ enum {
     MYLITE_WARNING_UNKNOWN_LOCALE = 1649,
     MYLITE_WARNING_OUT_OF_RANGE = 1690,
     MYLITE_WARNING_INVALID_ARGUMENT_FOR_LOGARITHM = 3020,
+    MYLITE_WARNING_REGEXP_INDEX_OUT_OF_BOUNDS = 3686,
     MYLITE_WARNING_REGEXP_ERROR = 3691,
     MYLITE_EXPRESSION_TEXT_BUFFER_SIZE = 64,
     MYLITE_EXPRESSION_DECIMAL_TEXT_BUFFER_SIZE = 128,
@@ -662,6 +663,9 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_IS_FREE_LOCK = 145,
     MYLITE_SCALAR_FUNCTION_IS_USED_LOCK = 146,
     MYLITE_SCALAR_FUNCTION_RELEASE_ALL_LOCKS = 147,
+    MYLITE_SCALAR_FUNCTION_REGEXP_INSTR = 148,
+    MYLITE_SCALAR_FUNCTION_REGEXP_SUBSTR = 149,
+    MYLITE_SCALAR_FUNCTION_REGEXP_REPLACE = 150,
 };
 
 struct angle_conversion_input {
@@ -1816,12 +1820,58 @@ static int eval_regexp_like_function(const struct mylite_sql_ast_node *arguments
                                      const struct mylite_expression_eval_context *context,
                                      struct mylite_expression_warnings *warnings,
                                      struct mylite_expression_value *out_value);
+static int eval_regexp_instr_function(const struct mylite_sql_ast_node *arguments,
+                                      const struct mylite_expression_eval_context *context,
+                                      struct mylite_expression_warnings *warnings,
+                                      struct mylite_expression_value *out_value);
+static int eval_regexp_substr_function(const struct mylite_sql_ast_node *arguments,
+                                       const struct mylite_expression_eval_context *context,
+                                       struct mylite_expression_warnings *warnings,
+                                       struct mylite_expression_value *out_value);
+static int eval_regexp_replace_function(const struct mylite_sql_ast_node *arguments,
+                                        const struct mylite_expression_eval_context *context,
+                                        struct mylite_expression_warnings *warnings,
+                                        struct mylite_expression_value *out_value);
 static int eval_regexp_match_type(const struct mylite_expression_value *match_type,
                                   struct mylite_expression_warnings *warnings,
-                                  struct mylite_regexp_options *options);
+                                  const char *function_name, struct mylite_regexp_options *options);
+static int eval_regexp_match_type_argument(const struct mylite_sql_ast_node *match_type_node,
+                                           const struct mylite_expression_eval_context *context,
+                                           struct mylite_expression_warnings *warnings,
+                                           const char *function_name,
+                                           struct mylite_regexp_options *options,
+                                           bool *out_null_result);
+static int eval_regexp_integer_argument(const struct mylite_sql_ast_node *argument,
+                                        const struct mylite_expression_eval_context *context,
+                                        struct mylite_expression_warnings *warnings,
+                                        int64_t *out_integer, bool *out_null_result);
+static int eval_regexp_text_argument(const struct mylite_sql_ast_node *argument,
+                                     const struct mylite_expression_eval_context *context,
+                                     struct mylite_expression_warnings *warnings, char **out_text,
+                                     size_t *out_length, bool *out_null_result);
+static int find_regexp_match(const char *value_text, size_t value_length, const char *pattern_text,
+                             size_t pattern_length, size_t start_offset, size_t occurrence,
+                             struct mylite_regexp_options options,
+                             struct mylite_expression_warnings *warnings, bool *out_found,
+                             struct mylite_regexp_match *out_match);
+static int set_regexp_replace_result(const char *value_text, size_t value_length,
+                                     const char *pattern_text, size_t pattern_length,
+                                     const char *replacement_text, size_t replacement_length,
+                                     size_t start_offset, int64_t occurrence,
+                                     struct mylite_regexp_options options,
+                                     struct mylite_expression_warnings *warnings,
+                                     struct mylite_expression_value *out_value);
+static bool regexp_position_out_of_bounds(int64_t position, size_t value_length,
+                                          bool allow_position_after_end);
+static size_t regexp_occurrence_to_size(int64_t occurrence);
+static int append_regexp_index_error(struct mylite_expression_warnings *warnings);
+static int append_regexp_native_parameter_error(struct mylite_expression_warnings *warnings,
+                                                const char *function_name);
+static int append_regexp_instr_return_option_error(struct mylite_expression_warnings *warnings);
 static int append_regexp_pattern_error(struct mylite_expression_warnings *warnings,
                                        const struct mylite_regexp_error *error);
-static int append_regexp_match_type_error(struct mylite_expression_warnings *warnings);
+static int append_regexp_match_type_error(struct mylite_expression_warnings *warnings,
+                                          const char *function_name);
 static int eval_in(enum mylite_sql_ast_operator operator_kind,
                    const struct mylite_sql_ast_node *node,
                    const struct mylite_expression_eval_context *context,
@@ -2237,6 +2287,12 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
         return arity == 2U;
     case MYLITE_SCALAR_FUNCTION_REGEXP_LIKE:
         return arity == 2U || arity == 3U;
+    case MYLITE_SCALAR_FUNCTION_REGEXP_INSTR:
+        return arity >= 2U && arity <= 6U;
+    case MYLITE_SCALAR_FUNCTION_REGEXP_SUBSTR:
+        return arity >= 2U && arity <= 5U;
+    case MYLITE_SCALAR_FUNCTION_REGEXP_REPLACE:
+        return arity >= 3U && arity <= 6U;
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_RAND:
         return arity == 0U || arity == 1U;
@@ -3335,6 +3391,12 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_greatest_least_function(function_id, arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_REGEXP_LIKE:
         return eval_regexp_like_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_REGEXP_INSTR:
+        return eval_regexp_instr_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_REGEXP_SUBSTR:
+        return eval_regexp_substr_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_REGEXP_REPLACE:
+        return eval_regexp_replace_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_ISNULL:
         return eval_isnull_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_DATABASE:
@@ -6873,6 +6935,9 @@ static bool temporal_part_from_function(enum mylite_scalar_function_id function_
     case MYLITE_SCALAR_FUNCTION_GREATEST:
     case MYLITE_SCALAR_FUNCTION_LEAST:
     case MYLITE_SCALAR_FUNCTION_REGEXP_LIKE:
+    case MYLITE_SCALAR_FUNCTION_REGEXP_INSTR:
+    case MYLITE_SCALAR_FUNCTION_REGEXP_SUBSTR:
+    case MYLITE_SCALAR_FUNCTION_REGEXP_REPLACE:
     case MYLITE_SCALAR_FUNCTION_STRCMP:
     case MYLITE_SCALAR_FUNCTION_FORMAT:
     case MYLITE_SCALAR_FUNCTION_NOW:
@@ -11358,6 +11423,9 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_GREATEST:
     case MYLITE_SCALAR_FUNCTION_LEAST:
     case MYLITE_SCALAR_FUNCTION_REGEXP_LIKE:
+    case MYLITE_SCALAR_FUNCTION_REGEXP_INSTR:
+    case MYLITE_SCALAR_FUNCTION_REGEXP_SUBSTR:
+    case MYLITE_SCALAR_FUNCTION_REGEXP_REPLACE:
     case MYLITE_SCALAR_FUNCTION_STRCMP:
     case MYLITE_SCALAR_FUNCTION_ISNULL:
     case MYLITE_SCALAR_FUNCTION_DATABASE:
@@ -13383,6 +13451,9 @@ static int trigonometric_function_result(struct trigonometric_input input,
     case MYLITE_SCALAR_FUNCTION_GREATEST:
     case MYLITE_SCALAR_FUNCTION_LEAST:
     case MYLITE_SCALAR_FUNCTION_REGEXP_LIKE:
+    case MYLITE_SCALAR_FUNCTION_REGEXP_INSTR:
+    case MYLITE_SCALAR_FUNCTION_REGEXP_SUBSTR:
+    case MYLITE_SCALAR_FUNCTION_REGEXP_REPLACE:
     case MYLITE_SCALAR_FUNCTION_STRCMP:
     case MYLITE_SCALAR_FUNCTION_ISNULL:
     case MYLITE_SCALAR_FUNCTION_DATABASE:
@@ -13720,6 +13791,9 @@ static int inverse_trigonometric_function_result(struct inverse_trigonometric_in
     case MYLITE_SCALAR_FUNCTION_GREATEST:
     case MYLITE_SCALAR_FUNCTION_LEAST:
     case MYLITE_SCALAR_FUNCTION_REGEXP_LIKE:
+    case MYLITE_SCALAR_FUNCTION_REGEXP_INSTR:
+    case MYLITE_SCALAR_FUNCTION_REGEXP_SUBSTR:
+    case MYLITE_SCALAR_FUNCTION_REGEXP_REPLACE:
     case MYLITE_SCALAR_FUNCTION_STRCMP:
     case MYLITE_SCALAR_FUNCTION_ISNULL:
     case MYLITE_SCALAR_FUNCTION_DATABASE:
@@ -13965,6 +14039,9 @@ static int angle_conversion_result(struct angle_conversion_input conversion, dou
     case MYLITE_SCALAR_FUNCTION_GREATEST:
     case MYLITE_SCALAR_FUNCTION_LEAST:
     case MYLITE_SCALAR_FUNCTION_REGEXP_LIKE:
+    case MYLITE_SCALAR_FUNCTION_REGEXP_INSTR:
+    case MYLITE_SCALAR_FUNCTION_REGEXP_SUBSTR:
+    case MYLITE_SCALAR_FUNCTION_REGEXP_REPLACE:
     case MYLITE_SCALAR_FUNCTION_STRCMP:
     case MYLITE_SCALAR_FUNCTION_ISNULL:
     case MYLITE_SCALAR_FUNCTION_DATABASE:
@@ -16117,7 +16194,7 @@ static int eval_regexp_like_function(const struct mylite_sql_ast_node *arguments
     }
 
     if (match_type_node != NULL) {
-        status = eval_regexp_match_type(&match_type, warnings, &options);
+        status = eval_regexp_match_type(&match_type, warnings, "regexp_like", &options);
     }
     if (status == 0) {
         status = value_to_string(&value, &value_text);
@@ -16147,9 +16224,219 @@ cleanup:
     return status;
 }
 
+static int eval_regexp_instr_function(const struct mylite_sql_ast_node *arguments,
+                                      const struct mylite_expression_eval_context *context,
+                                      struct mylite_expression_warnings *warnings,
+                                      struct mylite_expression_value *out_value)
+{
+    char *value_text = NULL;
+    char *pattern_text = NULL;
+    size_t value_length = 0U;
+    size_t pattern_length = 0U;
+    int64_t position = 1;
+    int64_t occurrence = 1;
+    int64_t return_option = 0;
+    struct mylite_regexp_options options = {0};
+    struct mylite_regexp_match match = {0};
+    bool null_result = false;
+    bool found = false;
+    int status = eval_regexp_text_argument(child_at(arguments, 0U), context, warnings, &value_text,
+                                           &value_length, &null_result);
+
+    if (status == 0 && !null_result) {
+        status = eval_regexp_text_argument(child_at(arguments, 1U), context, warnings,
+                                           &pattern_text, &pattern_length, &null_result);
+    }
+    if (status == 0 && !null_result && child_at(arguments, 2U) != NULL) {
+        status = eval_regexp_integer_argument(child_at(arguments, 2U), context, warnings, &position,
+                                              &null_result);
+    }
+    if (status == 0 && !null_result && child_at(arguments, 3U) != NULL) {
+        status = eval_regexp_integer_argument(child_at(arguments, 3U), context, warnings,
+                                              &occurrence, &null_result);
+    }
+    if (status == 0 && !null_result && child_at(arguments, 4U) != NULL) {
+        status = eval_regexp_integer_argument(child_at(arguments, 4U), context, warnings,
+                                              &return_option, &null_result);
+    }
+    if (status == 0 && !null_result) {
+        status = eval_regexp_match_type_argument(child_at(arguments, 5U), context, warnings,
+                                                 "regexp_instr", &options, &null_result);
+    }
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (null_result) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    if (regexp_position_out_of_bounds(position, value_length, false)) {
+        status = append_regexp_index_error(warnings);
+        status = status == 0 ? MYLITE_EXEC_ERROR : status;
+        goto cleanup;
+    }
+    if (return_option != 0 && return_option != 1) {
+        status = append_regexp_instr_return_option_error(warnings);
+        status = status == 0 ? MYLITE_EXEC_ERROR : status;
+        goto cleanup;
+    }
+
+    occurrence = occurrence <= 0 ? 1 : occurrence;
+    status = find_regexp_match(value_text, value_length, pattern_text, pattern_length,
+                               (size_t)(position - 1), regexp_occurrence_to_size(occurrence),
+                               options, warnings, &found, &match);
+    if (status == 0) {
+        int64_t result = found ? (int64_t)((return_option == 0 ? match.start : match.end) + 1U) : 0;
+
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
+                                                      .int64_value = result};
+    }
+
+cleanup:
+    free(value_text);
+    free(pattern_text);
+    return status;
+}
+
+static int eval_regexp_substr_function(const struct mylite_sql_ast_node *arguments,
+                                       const struct mylite_expression_eval_context *context,
+                                       struct mylite_expression_warnings *warnings,
+                                       struct mylite_expression_value *out_value)
+{
+    char *value_text = NULL;
+    char *pattern_text = NULL;
+    size_t value_length = 0U;
+    size_t pattern_length = 0U;
+    int64_t position = 1;
+    int64_t occurrence = 1;
+    struct mylite_regexp_options options = {0};
+    struct mylite_regexp_match match = {0};
+    bool null_result = false;
+    bool found = false;
+    int status = eval_regexp_text_argument(child_at(arguments, 0U), context, warnings, &value_text,
+                                           &value_length, &null_result);
+
+    if (status == 0 && !null_result) {
+        status = eval_regexp_text_argument(child_at(arguments, 1U), context, warnings,
+                                           &pattern_text, &pattern_length, &null_result);
+    }
+    if (status == 0 && !null_result && child_at(arguments, 2U) != NULL) {
+        status = eval_regexp_integer_argument(child_at(arguments, 2U), context, warnings, &position,
+                                              &null_result);
+    }
+    if (status == 0 && !null_result && child_at(arguments, 3U) != NULL) {
+        status = eval_regexp_integer_argument(child_at(arguments, 3U), context, warnings,
+                                              &occurrence, &null_result);
+    }
+    if (status == 0 && !null_result) {
+        status = eval_regexp_match_type_argument(child_at(arguments, 4U), context, warnings,
+                                                 "regexp_substr", &options, &null_result);
+    }
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (null_result) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    if (position <= 0) {
+        status = append_regexp_native_parameter_error(warnings, "regexp_substr");
+        status = status == 0 ? MYLITE_EXEC_ERROR : status;
+        goto cleanup;
+    }
+    if (regexp_position_out_of_bounds(position, value_length, true)) {
+        status = append_regexp_index_error(warnings);
+        status = status == 0 ? MYLITE_EXEC_ERROR : status;
+        goto cleanup;
+    }
+
+    occurrence = occurrence <= 0 ? 1 : occurrence;
+    status = find_regexp_match(value_text, value_length, pattern_text, pattern_length,
+                               (size_t)(position - 1), regexp_occurrence_to_size(occurrence),
+                               options, warnings, &found, &match);
+    if (status == 0 && found) {
+        status = set_text_value(value_text + match.start, match.end - match.start, out_value);
+    } else if (status == 0) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+    }
+
+cleanup:
+    free(value_text);
+    free(pattern_text);
+    return status;
+}
+
+static int eval_regexp_replace_function(const struct mylite_sql_ast_node *arguments,
+                                        const struct mylite_expression_eval_context *context,
+                                        struct mylite_expression_warnings *warnings,
+                                        struct mylite_expression_value *out_value)
+{
+    char *value_text = NULL;
+    char *pattern_text = NULL;
+    char *replacement_text = NULL;
+    size_t value_length = 0U;
+    size_t pattern_length = 0U;
+    size_t replacement_length = 0U;
+    int64_t position = 1;
+    int64_t occurrence = 0;
+    struct mylite_regexp_options options = {0};
+    bool null_result = false;
+    int status = eval_regexp_text_argument(child_at(arguments, 0U), context, warnings, &value_text,
+                                           &value_length, &null_result);
+
+    if (status == 0 && !null_result) {
+        status = eval_regexp_text_argument(child_at(arguments, 1U), context, warnings,
+                                           &pattern_text, &pattern_length, &null_result);
+    }
+    if (status == 0 && !null_result) {
+        status = eval_regexp_text_argument(child_at(arguments, 2U), context, warnings,
+                                           &replacement_text, &replacement_length, &null_result);
+    }
+    if (status == 0 && !null_result && child_at(arguments, 3U) != NULL) {
+        status = eval_regexp_integer_argument(child_at(arguments, 3U), context, warnings, &position,
+                                              &null_result);
+    }
+    if (status == 0 && !null_result && child_at(arguments, 4U) != NULL) {
+        status = eval_regexp_integer_argument(child_at(arguments, 4U), context, warnings,
+                                              &occurrence, &null_result);
+    }
+    if (status == 0 && !null_result) {
+        status = eval_regexp_match_type_argument(child_at(arguments, 5U), context, warnings,
+                                                 "regexp_replace", &options, &null_result);
+    }
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (null_result) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    if (position <= 0) {
+        status = append_regexp_native_parameter_error(warnings, "regexp_replace");
+        status = status == 0 ? MYLITE_EXEC_ERROR : status;
+        goto cleanup;
+    }
+    if (regexp_position_out_of_bounds(position, value_length, true)) {
+        status = append_regexp_index_error(warnings);
+        status = status == 0 ? MYLITE_EXEC_ERROR : status;
+        goto cleanup;
+    }
+
+    occurrence = occurrence < 0 ? 1 : occurrence;
+    status = set_regexp_replace_result(value_text, value_length, pattern_text, pattern_length,
+                                       replacement_text, replacement_length, (size_t)(position - 1),
+                                       occurrence, options, warnings, out_value);
+
+cleanup:
+    free(value_text);
+    free(pattern_text);
+    free(replacement_text);
+    return status;
+}
+
 static int eval_regexp_match_type(const struct mylite_expression_value *match_type,
                                   struct mylite_expression_warnings *warnings,
-                                  struct mylite_regexp_options *options)
+                                  const char *function_name, struct mylite_regexp_options *options)
 {
     char *text = NULL;
     int status = value_to_string(match_type, &text);
@@ -16174,7 +16461,7 @@ static int eval_regexp_match_type(const struct mylite_expression_value *match_ty
         case 'u':
             break;
         default:
-            status = append_regexp_match_type_error(warnings);
+            status = append_regexp_match_type_error(warnings, function_name);
             status = status == 0 ? MYLITE_EXEC_ERROR : status;
             free(text);
             return status;
@@ -16182,6 +16469,207 @@ static int eval_regexp_match_type(const struct mylite_expression_value *match_ty
     }
     free(text);
     return 0;
+}
+
+static int eval_regexp_match_type_argument(const struct mylite_sql_ast_node *match_type_node,
+                                           const struct mylite_expression_eval_context *context,
+                                           struct mylite_expression_warnings *warnings,
+                                           const char *function_name,
+                                           struct mylite_regexp_options *options,
+                                           bool *out_null_result)
+{
+    struct mylite_expression_value match_type = {0};
+    int status = 0;
+
+    if (match_type_node == NULL) {
+        return 0;
+    }
+
+    status = eval_node(match_type_node, context, warnings, &match_type);
+    if (status == 0 && is_null(&match_type)) {
+        *out_null_result = true;
+    }
+    if (status == 0 && !*out_null_result) {
+        status = eval_regexp_match_type(&match_type, warnings, function_name, options);
+    }
+    mylite_expression_value_deinit(&match_type);
+    return status;
+}
+
+static int eval_regexp_integer_argument(const struct mylite_sql_ast_node *argument,
+                                        const struct mylite_expression_eval_context *context,
+                                        struct mylite_expression_warnings *warnings,
+                                        int64_t *out_integer, bool *out_null_result)
+{
+    struct mylite_expression_value value = {0};
+    int status = eval_node(argument, context, warnings, &value);
+
+    if (status == 0 && is_null(&value)) {
+        *out_null_result = true;
+    }
+    if (status == 0 && !*out_null_result) {
+        status = cast_value_to_signed_integer(&value, warnings, out_integer);
+    }
+    mylite_expression_value_deinit(&value);
+    return status;
+}
+
+static int eval_regexp_text_argument(const struct mylite_sql_ast_node *argument,
+                                     const struct mylite_expression_eval_context *context,
+                                     struct mylite_expression_warnings *warnings, char **out_text,
+                                     size_t *out_length, bool *out_null_result)
+{
+    struct mylite_expression_value value = {0};
+    int status = eval_node(argument, context, warnings, &value);
+
+    if (status == 0 && is_null(&value)) {
+        *out_null_result = true;
+    }
+    if (status == 0 && !*out_null_result) {
+        status = value_to_string_with_length(&value, out_text, out_length);
+    }
+    mylite_expression_value_deinit(&value);
+    return status;
+}
+
+static int find_regexp_match(const char *value_text, size_t value_length, const char *pattern_text,
+                             size_t pattern_length, size_t start_offset, size_t occurrence,
+                             struct mylite_regexp_options options,
+                             struct mylite_expression_warnings *warnings, bool *out_found,
+                             struct mylite_regexp_match *out_match)
+{
+    struct mylite_regexp_error error = {0};
+    int status =
+        mylite_regexp_find(value_text, value_length, pattern_text, pattern_length, start_offset,
+                           occurrence, options, out_found, out_match, &error);
+
+    if (status == MYLITE_REGEXP_PATTERN_ERROR) {
+        status = append_regexp_pattern_error(warnings, &error);
+        return status == 0 ? MYLITE_EXEC_ERROR : status;
+    }
+    return status;
+}
+
+static int set_regexp_replace_result(const char *value_text, size_t value_length,
+                                     const char *pattern_text, size_t pattern_length,
+                                     const char *replacement_text, size_t replacement_length,
+                                     size_t start_offset, int64_t occurrence,
+                                     struct mylite_regexp_options options,
+                                     struct mylite_expression_warnings *warnings,
+                                     struct mylite_expression_value *out_value)
+{
+    char *result = copy_span_text("", 0U);
+    size_t result_length = 0U;
+    size_t copied_offset = 0U;
+    size_t search_offset = start_offset;
+    size_t found_count = 0U;
+    int status = 0;
+
+    if (result == NULL) {
+        return -1;
+    }
+    if (start_offset > 0U) {
+        status = append_text(&result, &result_length, value_text, start_offset);
+        copied_offset = start_offset;
+    }
+    while (status == 0 && search_offset <= value_length) {
+        struct mylite_regexp_match match = {0};
+        bool found = false;
+        bool replace_match = false;
+
+        status = find_regexp_match(value_text, value_length, pattern_text, pattern_length,
+                                   search_offset, 1U, options, warnings, &found, &match);
+        if (status != 0 || !found) {
+            break;
+        }
+
+        ++found_count;
+        replace_match = occurrence == 0 || found_count == regexp_occurrence_to_size(occurrence);
+        if (replace_match) {
+            status = append_text(&result, &result_length, value_text + copied_offset,
+                                 match.start - copied_offset);
+            if (status == 0) {
+                status = append_text(&result, &result_length, replacement_text, replacement_length);
+            }
+            copied_offset = match.end;
+            if (occurrence > 0) {
+                break;
+            }
+        }
+
+        search_offset = match.end > match.start ? match.end : match.start + 1U;
+    }
+    if (status == 0) {
+        status = append_text(&result, &result_length, value_text + copied_offset,
+                             value_length - copied_offset);
+    }
+    if (status == 0) {
+        out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
+        out_value->text_value = result;
+        out_value->text_length = result_length;
+        result = NULL;
+    }
+
+    free(result);
+    return status;
+}
+
+static bool regexp_position_out_of_bounds(int64_t position, size_t value_length,
+                                          bool allow_position_after_end)
+{
+    size_t limit = value_length;
+
+    if (position <= 0) {
+        return true;
+    }
+    if (allow_position_after_end || value_length == 0U) {
+        limit = value_length == SIZE_MAX ? SIZE_MAX : value_length + 1U;
+    }
+    if ((uint64_t)position > (uint64_t)limit) {
+        return true;
+    }
+    return false;
+}
+
+static size_t regexp_occurrence_to_size(int64_t occurrence)
+{
+    if (occurrence <= 0) {
+        return 1U;
+    }
+    if ((uint64_t)occurrence > (uint64_t)SIZE_MAX) {
+        return SIZE_MAX;
+    }
+    return (size_t)occurrence;
+}
+
+static int append_regexp_index_error(struct mylite_expression_warnings *warnings)
+{
+    return mylite_expression_warnings_append_condition(
+        warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, MYLITE_WARNING_REGEXP_INDEX_OUT_OF_BOUNDS,
+        "Index out of bounds in regular expression search.");
+}
+
+static int append_regexp_native_parameter_error(struct mylite_expression_warnings *warnings,
+                                                const char *function_name)
+{
+    char message[MYLITE_EXPRESSION_DECIMAL_TEXT_BUFFER_SIZE];
+    int length = snprintf(message, sizeof(message),
+                          "Incorrect parameters in the call to native function '%s'",
+                          function_name == NULL ? "" : function_name);
+
+    if (length <= 0 || (size_t)length >= sizeof(message)) {
+        return -1;
+    }
+    return mylite_expression_warnings_append_condition(
+        warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR,
+        MYLITE_WARNING_WRONG_PARAMETERS_TO_NATIVE_FCT, message);
+}
+
+static int append_regexp_instr_return_option_error(struct mylite_expression_warnings *warnings)
+{
+    return mylite_expression_warnings_append_condition(
+        warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, MYLITE_WARNING_INCORRECT_REGEXP_ARGUMENTS,
+        "Incorrect arguments to regexp_instr: return_option must be 1 or 0.");
 }
 
 static int append_regexp_pattern_error(struct mylite_expression_warnings *warnings,
@@ -16196,11 +16684,19 @@ static int append_regexp_pattern_error(struct mylite_expression_warnings *warnin
         warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, code, message);
 }
 
-static int append_regexp_match_type_error(struct mylite_expression_warnings *warnings)
+static int append_regexp_match_type_error(struct mylite_expression_warnings *warnings,
+                                          const char *function_name)
 {
+    char message[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
+    int length = snprintf(message, sizeof(message), "Incorrect arguments to %s",
+                          function_name == NULL ? "regexp_like" : function_name);
+
+    if (length <= 0 || (size_t)length >= sizeof(message)) {
+        return -1;
+    }
     return mylite_expression_warnings_append_condition(
         warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, MYLITE_WARNING_INCORRECT_REGEXP_ARGUMENTS,
-        "Incorrect arguments to regexp_like");
+        message);
 }
 
 static int eval_in(enum mylite_sql_ast_operator operator_kind,
@@ -17918,6 +18414,9 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"LEAST", MYLITE_SCALAR_FUNCTION_LEAST},
         {"STRCMP", MYLITE_SCALAR_FUNCTION_STRCMP},
         {"REGEXP_LIKE", MYLITE_SCALAR_FUNCTION_REGEXP_LIKE},
+        {"REGEXP_INSTR", MYLITE_SCALAR_FUNCTION_REGEXP_INSTR},
+        {"REGEXP_SUBSTR", MYLITE_SCALAR_FUNCTION_REGEXP_SUBSTR},
+        {"REGEXP_REPLACE", MYLITE_SCALAR_FUNCTION_REGEXP_REPLACE},
         {"ISNULL", MYLITE_SCALAR_FUNCTION_ISNULL},
         {"DATABASE", MYLITE_SCALAR_FUNCTION_DATABASE},
         {"SCHEMA", MYLITE_SCALAR_FUNCTION_SCHEMA},
@@ -18124,6 +18623,9 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_GREATEST:
     case MYLITE_SCALAR_FUNCTION_LEAST:
     case MYLITE_SCALAR_FUNCTION_REGEXP_LIKE:
+    case MYLITE_SCALAR_FUNCTION_REGEXP_INSTR:
+    case MYLITE_SCALAR_FUNCTION_REGEXP_SUBSTR:
+    case MYLITE_SCALAR_FUNCTION_REGEXP_REPLACE:
     case MYLITE_SCALAR_FUNCTION_ISNULL:
     case MYLITE_SCALAR_FUNCTION_DATE:
     case MYLITE_SCALAR_FUNCTION_DATEDIFF:

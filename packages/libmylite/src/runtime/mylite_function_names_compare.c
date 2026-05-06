@@ -43,3 +43,24 @@ bool mylite_function_name_is_regexp_like(const struct mylite_sql_ast_node *name)
 
     return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }
+
+bool mylite_function_name_is_regexp_instr(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"REGEXP_INSTR"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+bool mylite_function_name_is_regexp_substr(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"REGEXP_SUBSTR"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+bool mylite_function_name_is_regexp_replace(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"REGEXP_REPLACE"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}

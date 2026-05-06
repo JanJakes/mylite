@@ -217,6 +217,10 @@ static bool infer_common_scalar_function_descriptor(mylite_db *database,
         *out_descriptor = mylite_expression_descriptor_boolean(result_nullable);
         return true;
     }
+    if (mylite_expression_descriptor_infer_regexp_scalar_function(database, name, result_nullable,
+                                                                  out_descriptor)) {
+        return true;
+    }
     if (mylite_expression_descriptor_infer_uuid_function(database, name, out_descriptor)) {
         return true;
     }

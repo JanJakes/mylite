@@ -99,7 +99,7 @@ read as `0` in ordinary `SELECT @@warning_count` / `@@error_count` statements.
 Boolean variables return MySQL-compatible integers:
 
 - `@@autocommit` returns `1`.
-- `@@sql_notes` returns `1`.
+- `@@sql_notes` returns the current session value, defaulting to `1`.
 - `@@transaction_read_only` returns `0`.
 
 `@@transaction_isolation` returns `REPEATABLE-READ`.

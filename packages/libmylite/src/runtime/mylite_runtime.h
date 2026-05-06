@@ -70,6 +70,7 @@ struct mylite_db {
     uint64_t wait_timeout;
     bool foreign_key_checks;
     bool unique_checks;
+    bool sql_notes;
     struct mylite_uuid_state uuid_state;
     struct mylite_uuid_short_state uuid_short_state;
     struct mylite_user_variable_store user_variables;

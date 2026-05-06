@@ -872,6 +872,44 @@ static int test_connection_charset_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql(
+        "SET foreign_key_checks = OFF; "
+        "SET unique_checks = TRUE; "
+        "SET default_storage_engine = MEMORY; "
+        "SET time_zone = SYSTEM; "
+        "SET sql_notes = FALSE;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_child_count(result.root, 5U, "set keyword variable script");
+    statement = child_at(result.root, 0U);
+    failures += expect_literal(
+        child_at(statement, 1U),
+        MYLITE_SQL_AST_LITERAL_FALSE,
+        "set foreign key checks off value"
+    );
+    statement = child_at(result.root, 1U);
+    failures += expect_literal(
+        child_at(statement, 1U),
+        MYLITE_SQL_AST_LITERAL_TRUE,
+        "set unique checks true value"
+    );
+    statement = child_at(result.root, 2U);
+    failures += expect_span_text(
+        child_at(statement, 1U),
+        "MEMORY",
+        "set default storage engine keyword value"
+    );
+    statement = child_at(result.root, 3U);
+    failures += expect_span_text(child_at(statement, 1U), "SYSTEM", "set time zone keyword value");
+    statement = child_at(result.root, 4U);
+    failures += expect_literal(
+        child_at(statement, 1U),
+        MYLITE_SQL_AST_LITERAL_FALSE,
+        "set sql notes false value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     return failures;
 }
 

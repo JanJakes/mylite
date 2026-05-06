@@ -50,6 +50,7 @@ int mylite_show_variables_sql(
     bool first = true;
     bool global = query->scope == MYLITE_SQL_AST_SHOW_VARIABLES_GLOBAL;
     bool foreign_key_checks = mylite_connection_default_foreign_key_checks();
+    bool sql_notes = mylite_connection_default_sql_notes();
     const char *sql_mode = mylite_connection_default_sql_mode();
     bool unique_checks = mylite_connection_default_unique_checks();
     int status = MYLITE_OK;
@@ -68,6 +69,7 @@ int mylite_show_variables_sql(
         collation_database = schema_default.collation;
         default_storage_engine = mylite_connection_storage_engine(database);
         foreign_key_checks = mylite_connection_foreign_key_checks(database);
+        sql_notes = mylite_connection_sql_notes(database);
         sql_mode = mylite_connection_sql_mode(database);
         time_zone = mylite_connection_time_zone(database);
         unique_checks = mylite_connection_unique_checks(database);
@@ -150,7 +152,7 @@ int mylite_show_variables_sql(
     append_show_variable_row(sql, &first, "max_connections", max_connections);
     append_show_variable_row(sql, &first, "max_error_count", "1024");
     append_show_variable_row(sql, &first, "sql_mode", sql_mode);
-    append_show_variable_row(sql, &first, "sql_notes", "ON");
+    append_show_variable_row(sql, &first, "sql_notes", show_variable_bool(sql_notes));
     append_show_variable_row(sql, &first, "time_zone", time_zone);
     append_show_variable_row(sql, &first, "transaction_isolation", "REPEATABLE-READ");
     append_show_variable_row(sql, &first, "transaction_read_only", "OFF");

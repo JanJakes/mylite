@@ -50,6 +50,11 @@ static int execute_set_sql_mode_statement(
     const struct mylite_connection_system_variable_plan *plan
 );
 
+static int execute_set_sql_notes_statement(
+    mylite_stmt *stmt,
+    const struct mylite_connection_system_variable_plan *plan
+);
+
 static int execute_set_unique_checks_statement(
     mylite_stmt *stmt,
     const struct mylite_connection_system_variable_plan *plan
@@ -257,6 +262,8 @@ int mylite_connection_execute_set_system_variable_statement(mylite_stmt *stmt) {
         return execute_set_group_concat_max_len_statement(stmt, plan);
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_MODE:
         return execute_set_sql_mode_statement(stmt, plan);
+    case MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_NOTES:
+        return execute_set_sql_notes_statement(stmt, plan);
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_TIME_ZONE:
         return execute_set_time_zone_statement(stmt, plan);
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
@@ -328,6 +335,16 @@ static int execute_set_sql_mode_statement(
         return execute_set_sql_mode_replace_statement(stmt);
     }
     return mylite_connection_set_sql_mode(stmt->database, plan->value);
+}
+
+static int execute_set_sql_notes_statement(
+    mylite_stmt *stmt,
+    const struct mylite_connection_system_variable_plan *plan
+) {
+    if (plan->use_default) {
+        return mylite_connection_set_default_sql_notes(stmt->database);
+    }
+    return mylite_connection_set_sql_notes(stmt->database, plan->unsigned_value != 0U);
 }
 
 static int execute_set_unique_checks_statement(
@@ -439,6 +456,7 @@ static int copy_connection_system_variable_statement(
     }
 
     if (plan->variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS ||
+        plan->variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_NOTES ||
         plan->variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_UNIQUE_CHECKS) {
         return copy_connection_boolean_system_variable_value(
             database,
@@ -531,6 +549,12 @@ static int copy_connection_boolean_system_variable_value(
         plan->use_default = true;
         return MYLITE_OK;
     }
+    if (value != NULL && value->kind == MYLITE_SQL_AST_LITERAL &&
+        (value->literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ||
+         value->literal_kind == MYLITE_SQL_AST_LITERAL_FALSE)) {
+        plan->unsigned_value = value->literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ? 1U : 0U;
+        return MYLITE_OK;
+    }
     if (!copy_signed_integer_value(value, &negative, &magnitude)) {
         return set_system_variable_type_error(database, variable_name);
     }
@@ -573,12 +597,14 @@ static int copy_connection_string_system_variable_value(
         plan->use_default = true;
         return MYLITE_OK;
     }
-    if (value == NULL || value->kind != MYLITE_SQL_AST_LITERAL ||
-        value->literal_kind != MYLITE_SQL_AST_LITERAL_STRING) {
+    if (value == NULL || (value->kind != MYLITE_SQL_AST_IDENTIFIER &&
+                          (value->kind != MYLITE_SQL_AST_LITERAL ||
+                           value->literal_kind != MYLITE_SQL_AST_LITERAL_STRING))) {
         return set_system_variable_type_error(database, variable_name);
     }
 
-    plan->value = mylite_copy_string_literal_span(value);
+    plan->value = value->kind == MYLITE_SQL_AST_IDENTIFIER ? mylite_copy_schema_text_span(value)
+                                                           : mylite_copy_string_literal_span(value);
     return plan->value == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
 
@@ -666,6 +692,9 @@ static enum mylite_connection_system_variable set_system_variable_kind(
     if (mylite_ascii_case_equal(name, "time_zone")) {
         return MYLITE_CONNECTION_SYSTEM_VARIABLE_TIME_ZONE;
     }
+    if (mylite_ascii_case_equal(name, "sql_notes")) {
+        return MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_NOTES;
+    }
     if (mylite_ascii_case_equal(name, "unique_checks")) {
         return MYLITE_CONNECTION_SYSTEM_VARIABLE_UNIQUE_CHECKS;
     }
@@ -718,6 +747,8 @@ static const char *set_system_variable_name(enum mylite_connection_system_variab
         return "group_concat_max_len";
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_MODE:
         return "sql_mode";
+    case MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_NOTES:
+        return "sql_notes";
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_TIME_ZONE:
         return "time_zone";
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_UNIQUE_CHECKS:

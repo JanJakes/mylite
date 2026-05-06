@@ -648,8 +648,18 @@ static int64_t system_variable_boolean_value(
 ) {
     switch (id) {
     case MYLITE_SYSTEM_VARIABLE_AUTOCOMMIT:
-    case MYLITE_SYSTEM_VARIABLE_SQL_NOTES:
         return 1;
+    case MYLITE_SYSTEM_VARIABLE_SQL_NOTES:
+        if (scope == MYLITE_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+            if (mylite_connection_default_sql_notes()) {
+                return 1;
+            }
+            return 0;
+        }
+        if (mylite_connection_sql_notes(database)) {
+            return 1;
+        }
+        return 0;
     case MYLITE_SYSTEM_VARIABLE_LOG_BIN:
     case MYLITE_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS:
         return 0;

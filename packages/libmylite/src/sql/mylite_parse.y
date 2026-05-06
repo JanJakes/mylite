@@ -1872,6 +1872,18 @@ set_system_variable_value(A) ::= MINUS(T) numeric_literal(V). [UMINUS] {
 set_system_variable_value(A) ::= DEFAULT(T). {
     A = mylite_sql_parser_make_default(state, T);
 }
+set_system_variable_value(A) ::= ON(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_TRUE);
+}
+set_system_variable_value(A) ::= OFF(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FALSE);
+}
+set_system_variable_value(A) ::= SYSTEM(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+set_system_variable_value(A) ::= identifier(B). {
+    A = B;
+}
 set_system_variable_value(A) ::= REPLACE(T) LPAREN(L) set_system_variable_name(B) COMMA STRING(C) COMMA STRING(D) RPAREN(R). {
     struct mylite_sql_ast_node *arguments = mylite_sql_parser_make_function_argument_list(state, B);
     arguments = mylite_sql_parser_append_function_argument(

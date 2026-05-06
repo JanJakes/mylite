@@ -90,7 +90,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
 - [x] Support `SELECT @@gtid_purged`, `@@log_bin`, and
       `@@log_bin_trust_function_creators` with embedded-compatible values.
 - [ ] Complete additional `SET` syntaxes for session variables, booleans,
-      keywords, and dump-style backup/restore scripts.
+      keywords, and dump-style backup/restore scripts. Boolean keyword values,
+      unquoted string keyword values, and mutable `sql_notes` are covered; mixed
+      user/system-variable dump assignment lists remain open.
 - [x] Decide and document whether `SELECT VERSION()` / `@@version` should
       report the MySQL compatibility target (`8.4.9`) or MyLite's own version,
       then align tests and docs.

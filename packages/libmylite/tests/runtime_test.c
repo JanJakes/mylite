@@ -39206,6 +39206,8 @@ static int test_show_variables_execution(void) {
     static const char *const lower_case_table_names_values[] = {"lower_case_table_names", "0"};
     static const char *const max_allowed_packet_values[] = {"max_allowed_packet", "67108864"};
     static const char *const max_connections_values[] = {"max_connections", "151"};
+    static const char *const sql_notes_values[] = {"sql_notes", "ON"};
+    static const char *const sql_notes_off_values[] = {"sql_notes", "OFF"};
     static const char *const time_zone_values[] = {"time_zone", "SYSTEM"};
     static const char *const utc_time_zone_values[] = {"time_zone", "+00:00"};
     static const char *const unique_checks_values[] = {"unique_checks", "ON"};
@@ -39266,6 +39268,7 @@ static int test_show_variables_execution(void) {
         "dse",
         "fk",
         "tz",
+        "sn",
         "uc",
         "wt",
     };
@@ -39273,6 +39276,7 @@ static int test_show_variables_execution(void) {
         "MEMORY",
         "0",
         "+00:00",
+        "1",
         "0",
         "123",
     };
@@ -39281,7 +39285,22 @@ static int test_show_variables_execution(void) {
         "1",
         "SYSTEM",
         "1",
+        "1",
         "28800",
+    };
+    static const char *const keyword_system_variable_values[] = {
+        "MEMORY",
+        "0",
+        "SYSTEM",
+        "0",
+        "1",
+    };
+    static const char *const keyword_system_variable_restored_values[] = {
+        "InnoDB",
+        "1",
+        "SYSTEM",
+        "1",
+        "0",
     };
     static const char *const system_variable_charset_columns[] =
         {"client", "global_client", "connection", "global_connection"};
@@ -39567,6 +39586,15 @@ static int test_show_variables_execution(void) {
         max_connections_values,
         1,
         "show variables max connections"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW VARIABLES LIKE 'sql_notes'",
+        columns,
+        2,
+        sql_notes_values,
+        1,
+        "show variables sql notes"
     );
     failures += expect_select_rows(
         database,
@@ -39865,7 +39893,7 @@ static int test_show_variables_execution(void) {
     failures += expect_select_rows(
         database,
         "SELECT @@default_storage_engine AS dse, @@foreign_key_checks AS fk, "
-        "@@time_zone AS tz, @@unique_checks AS uc, @@wait_timeout AS wt",
+        "@@time_zone AS tz, @@sql_notes AS sn, @@unique_checks AS uc, @@wait_timeout AS wt",
         wp_system_variable_changed_columns,
         (int)(sizeof(wp_system_variable_changed_columns) /
               sizeof(wp_system_variable_changed_columns[0])),
@@ -39931,12 +39959,13 @@ static int test_show_variables_execution(void) {
     failures += execute_sql(database, "SET default_storage_engine = DEFAULT", MYLITE_DONE);
     failures += execute_sql(database, "SET foreign_key_checks = DEFAULT", MYLITE_DONE);
     failures += execute_sql(database, "SET time_zone = DEFAULT", MYLITE_DONE);
+    failures += execute_sql(database, "SET sql_notes = DEFAULT", MYLITE_DONE);
     failures += execute_sql(database, "SET unique_checks = DEFAULT", MYLITE_DONE);
     failures += execute_sql(database, "SET wait_timeout = DEFAULT", MYLITE_DONE);
     failures += expect_select_rows(
         database,
         "SELECT @@default_storage_engine AS dse, @@foreign_key_checks AS fk, "
-        "@@time_zone AS tz, @@unique_checks AS uc, @@wait_timeout AS wt",
+        "@@time_zone AS tz, @@sql_notes AS sn, @@unique_checks AS uc, @@wait_timeout AS wt",
         wp_system_variable_changed_columns,
         (int)(sizeof(wp_system_variable_changed_columns) /
               sizeof(wp_system_variable_changed_columns[0])),
@@ -39944,6 +39973,46 @@ static int test_show_variables_execution(void) {
         1,
         "wp priority system variables default restore"
     );
+    failures += execute_sql(database, "SET default_storage_engine = MEMORY", MYLITE_DONE);
+    failures += execute_sql(database, "SET foreign_key_checks = OFF", MYLITE_DONE);
+    failures += execute_sql(database, "SET time_zone = SYSTEM", MYLITE_DONE);
+    failures += execute_sql(database, "SET sql_notes = FALSE", MYLITE_DONE);
+    failures += execute_sql(database, "SET unique_checks = TRUE", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT @@default_storage_engine AS dse, @@foreign_key_checks AS fk, "
+        "@@time_zone AS tz, @@sql_notes AS sn, @@unique_checks AS uc",
+        (const char *const[]){"dse", "fk", "tz", "sn", "uc"},
+        5,
+        keyword_system_variable_values,
+        1,
+        "keyword system variable assignment values"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW VARIABLES LIKE 'sql_notes'",
+        columns,
+        2,
+        sql_notes_off_values,
+        1,
+        "show variables sql notes off"
+    );
+    failures += execute_sql(database, "SET default_storage_engine = InnoDB", MYLITE_DONE);
+    failures += execute_sql(database, "SET foreign_key_checks = ON", MYLITE_DONE);
+    failures += execute_sql(database, "SET sql_notes = TRUE", MYLITE_DONE);
+    failures += execute_sql(database, "SET unique_checks = OFF", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT @@default_storage_engine AS dse, @@foreign_key_checks AS fk, "
+        "@@time_zone AS tz, @@sql_notes AS sn, @@unique_checks AS uc",
+        (const char *const[]){"dse", "fk", "tz", "sn", "uc"},
+        5,
+        keyword_system_variable_restored_values,
+        1,
+        "keyword system variable restored values"
+    );
+    failures += execute_sql(database, "SET default_storage_engine = DEFAULT", MYLITE_DONE);
+    failures += execute_sql(database, "SET unique_checks = DEFAULT", MYLITE_DONE);
     failures += expect_prepare_error(
         database,
         "SET foreign_key_checks = 2",

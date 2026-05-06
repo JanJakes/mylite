@@ -18,10 +18,8 @@ policy, fixed compatibility defaults, and the public version constant.
 Deferred surfaces:
 
 - execution of `SHOW VARIABLES ... WHERE expr`
-- direct `SET` assignment to most system variables beyond the current
-  `sql_mode` and `group_concat_max_len` slices
-- `SELECT @@var_name`, `SELECT @@SESSION.var_name`, and
-  `SELECT @@GLOBAL.var_name`
+- direct `SET` assignment to system variables beyond the current scoped
+  session-variable slices
 - complete MySQL server variable catalog
 - variable metadata tables in Performance Schema
 - privilege-sensitive or plugin/build-dependent variable behavior
@@ -62,6 +60,8 @@ The following behavior was verified against MySQL 8.4.9:
 | `SHOW GLOBAL VARIABLES LIKE 'error_count'` | Returns no row because `error_count` has no global value. |
 | `SHOW VARIABLES LIKE 'max_error_count'` | Returns `max_error_count`, `1024`. |
 | `SHOW VARIABLES LIKE 'sql_notes'` | Returns `sql_notes`, `ON`. |
+| `SET sql_notes = OFF; SHOW VARIABLES LIKE 'sql_notes'` | Returns `sql_notes`, `OFF`. `TRUE`, `FALSE`, `ON`, `OFF`, and `DEFAULT` are accepted for supported boolean session variables. |
+| `SET default_storage_engine = MEMORY; SET time_zone = SYSTEM` | Unquoted identifier/keyword values are accepted for supported string session variables. |
 | `SHOW VARIABLES LIKE 'version%'` | Returns version-related rows including `version`, `version_comment`, `version_compile_machine`, `version_compile_os`, and `version_compile_zlib` on the verification server. |
 | `SET NAMES utf8mb4 COLLATE utf8mb4_bin; SHOW VARIABLES LIKE 'character\_set\_%'` | Session client/connection/results rows become `utf8mb4`; database/server remain `utf8mb4`; filesystem is `binary`; system is `utf8mb3`. |
 | `SET NAMES utf8mb4 COLLATE utf8mb4_bin; SHOW VARIABLES LIKE 'collation_connection'` | Returns `utf8mb4_bin`. |
@@ -153,7 +153,7 @@ Catalog for this slice:
 | `log_bin_trust_function_creators` | `OFF` | `OFF` | Embedded runtime placeholder; stored program privilege behavior is deferred. |
 | `max_error_count` | `1024` | `1024` | Storage cap behavior remains deferred; diagnostics currently store all generated conditions in memory. |
 | `sql_mode` | current handle state, default MySQL 8.4 mode string | MySQL 8.4 default mode string | Session/local assignment is implemented for recognized modes and the focused `REPLACE(...)` removal idiom. Implemented expression/DDL/DML behavior may still be narrower than the full mode surface. |
-| `sql_notes` | `ON` | `ON` | Direct assignment is deferred; current implemented note paths behave as enabled. |
+| `sql_notes` | current handle state, default `ON` | `ON` | Session/local assignment is implemented for numeric, boolean keyword, and `DEFAULT` values. |
 | `transaction_isolation` | `REPEATABLE-READ` | `REPEATABLE-READ` | Fixed compatibility value; isolation-level semantics are deferred. |
 | `transaction_read_only` | `OFF` | `OFF` | This variable is the default transaction mode, not the current active transaction access mode. |
 | `version` | `8.4.9` | same as session | MySQL compatibility target exposed to MySQL-oriented clients. |
@@ -222,6 +222,8 @@ Runtime coverage:
   `collation_database`
 - `SET SESSION group_concat_max_len` changes the session row without changing
   the global/default row
+- supported `SET` session-variable assignments update displayed session rows,
+  including boolean keywords and unquoted string keyword values
 - `WHERE` filters displayed columns and reports unknown-column diagnostics
 - `LIMIT` remains a syntax error
 - `SHOW VARIABLES` clears prior diagnostics before reporting `warning_count`
@@ -231,10 +233,9 @@ Runtime coverage:
 
 - Full MySQL system-variable catalog and metadata.
 - Broader SHOW `WHERE` expressions beyond the shared filter subset.
-- General system-variable assignment and validation beyond `sql_mode` and
-  `group_concat_max_len`.
-- SQL system-variable expression forms through `@@`.
-- Mutable `sql_notes`, `max_error_count`, and autocommit state.
+- General system-variable assignment and validation beyond the current scoped
+  session-variable slices.
+- Mutable `max_error_count` and autocommit state.
 - Complete warning/error generated-condition counters under a future
   `max_error_count` cap.
 - Performance Schema system-variable tables and protocol-level variable

@@ -1,5 +1,6 @@
 #include "mylite_show_create_table_columns.h"
 
+#include "mylite_catalog.h"
 #include "mylite_charset.h"
 #include "mylite_diagnostics.h"
 #include "mylite_runtime.h"
@@ -31,14 +32,20 @@ int mylite_show_create_table_append_columns(mylite_db *database, sqlite3_str *cr
                                             bool *first_line)
 {
     sqlite3_stmt *select = NULL;
-    static const char sql[] =
+    char *sql = sqlite3_mprintf(
         "SELECT column_name, column_type, is_nullable, column_default, extra, column_comment, "
         "character_set_name, collation_name, data_type "
-        "FROM __mylite_column_catalog WHERE table_schema = ? AND table_name = ? "
-        "ORDER BY ordinal_position";
-    int rc =
-        sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select, NULL);
+        "FROM %s WHERE table_schema = ? AND table_name = ? "
+        "ORDER BY ordinal_position",
+        mylite_catalog_column_catalog_name(target->temporary));
+    int rc = SQLITE_OK;
 
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select, NULL);
+    sqlite3_free(sql);
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
     }

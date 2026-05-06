@@ -2534,14 +2534,14 @@ cte_query_expression_placeholder(A) ::= WITH(T) parser_placeholder_tail(B). {
         state, MYLITE_SQL_AST_PLACEHOLDER_CTE, T, B);
 }
 
-create_partitioned_table_statement(A) ::= CREATE(T) TABLE opt_if_not_exists table_name
+create_partitioned_table_statement(A) ::= CREATE(T) opt_temporary TABLE opt_if_not_exists table_name
         LPAREN table_element_list RPAREN table_option_list partition_options(B). {
     A = mylite_sql_parser_make_placeholder_statement(
         state, MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING, T, B);
 }
 
-create_table_statement(A) ::= CREATE(T) TABLE opt_if_not_exists(B) table_name(C) LPAREN table_element_list(D) RPAREN table_option_list(E). {
-    A = mylite_sql_parser_make_create_table_statement(state, T, B, C, D, E);
+create_table_statement(A) ::= CREATE(T) opt_temporary(U) TABLE opt_if_not_exists(B) table_name(C) LPAREN table_element_list(D) RPAREN table_option_list(E). {
+    A = mylite_sql_parser_make_create_table_statement(state, T, U, B, C, D, E);
 }
 
 create_index_statement(A) ::= CREATE(T) index_class(C) INDEX identifier(B) opt_index_type(P)

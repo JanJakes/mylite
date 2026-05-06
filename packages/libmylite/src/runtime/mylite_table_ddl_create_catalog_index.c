@@ -1,5 +1,6 @@
 #include "mylite_table_ddl_create_catalog_index.h"
 
+#include "mylite_catalog.h"
 #include "mylite_diagnostics.h"
 #include "mylite_runtime.h"
 #include "mylite_table_ddl.h"
@@ -20,15 +21,21 @@ int mylite_table_ddl_insert_create_table_index_catalog_rows(
     mylite_db *database, const char *schema_name, const struct mylite_create_table_plan *plan)
 {
     sqlite3_stmt *insert = NULL;
-    static const char sql[] =
-        "INSERT INTO __mylite_index_catalog("
+    char *sql = sqlite3_mprintf(
+        "INSERT INTO %s("
         "table_catalog, table_schema, table_name, non_unique, index_schema, index_name, "
         "seq_in_index, column_name, collation, cardinality, sub_part, packed, nullable, "
         "index_type, comment, index_comment, is_visible, expression)"
-        " VALUES('def', ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, ?, ?, '', ?, ?, NULL)";
-    int rc =
-        sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &insert, NULL);
+        " VALUES('def', ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, ?, ?, '', ?, ?, NULL)",
+        mylite_catalog_index_catalog_name(plan->temporary));
+    int rc = SQLITE_OK;
 
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &insert, NULL);
+    sqlite3_free(sql);
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
     }

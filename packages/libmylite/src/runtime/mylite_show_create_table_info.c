@@ -1,5 +1,6 @@
 #include "mylite_show_create_table_info.h"
 
+#include "mylite_catalog.h"
 #include "mylite_charset.h"
 #include "mylite_diagnostics.h"
 #include "mylite_runtime.h"
@@ -16,13 +17,18 @@ int mylite_show_create_table_read_info(mylite_db *database,
                                        struct mylite_show_create_table_info *out_info)
 {
     sqlite3_stmt *select = NULL;
-    static const char sql[] =
-        "SELECT engine, auto_increment, table_collation, table_comment "
-        "FROM __mylite_table_catalog WHERE table_schema = ? AND table_name = ?";
-    int rc =
-        sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select, NULL);
+    char *sql = sqlite3_mprintf("SELECT engine, auto_increment, table_collation, table_comment "
+                                "FROM %s WHERE table_schema = ? AND table_name = ?",
+                                mylite_catalog_table_catalog_name(target->temporary));
+    int rc = SQLITE_OK;
 
     *out_info = (struct mylite_show_create_table_info){0};
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select, NULL);
+    sqlite3_free(sql);
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
     }

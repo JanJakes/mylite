@@ -7,8 +7,7 @@
 
 int mylite_show_index_copy_target(mylite_db *database, const struct mylite_sql_ast_node *statement,
                                   struct mylite_show_index_target *out_target);
-int mylite_show_index_validate_target(mylite_db *database,
-                                      const struct mylite_show_index_target *target);
+int mylite_show_index_validate_target(mylite_db *database, struct mylite_show_index_target *target);
 void mylite_show_index_target_deinit(struct mylite_show_index_target *target);
 
 #endif

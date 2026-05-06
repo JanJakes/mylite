@@ -425,6 +425,15 @@ void mylite_sql_ast_node_set_reference_match(struct mylite_sql_ast_node *node,
     node->reference_match = match;
 }
 
+void mylite_sql_ast_node_set_create_table_temporary(struct mylite_sql_ast_node *node)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->create_table_temporary = true;
+}
+
 void mylite_sql_ast_node_set_drop_table_temporary(struct mylite_sql_ast_node *node)
 {
     if (node == NULL) {

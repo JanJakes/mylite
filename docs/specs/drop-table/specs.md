@@ -17,11 +17,11 @@ In scope:
 - deterministic duplicate-name validation
 - all-or-nothing behavior for non-`IF EXISTS` multi-table drops
 - `RESTRICT` and `CASCADE` as accepted no-op tail modifiers
-- `DROP TEMPORARY TABLE` parsed and executed without dropping base tables
+- `DROP TABLE` temporary-table shadow resolution
+- `DROP TEMPORARY TABLE` for supported temporary tables
 
 Out of scope:
 
-- actual temporary table storage and session lifecycle
 - warning/note records for missing `IF EXISTS` targets
 - trigger, privilege, foreign-key, view, routine, and prepared-statement
   interactions
@@ -92,8 +92,8 @@ Temporary tables:
   the base table intact.
 - `DROP TEMPORARY TABLE IF EXISTS base_table` succeeds as a temporary-table
   no-op and records a 1051 note.
-- Actual temporary table deletion is deferred until temporary-table support is
-  implemented.
+- `DROP TABLE base_table` removes a shadowing temporary table first, then
+  exposes the persistent table again.
 
 Metadata and side effects:
 

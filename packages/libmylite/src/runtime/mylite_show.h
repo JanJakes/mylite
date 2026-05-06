@@ -82,7 +82,7 @@ int mylite_show_copy_columns_table_target(const struct mylite_show_columns_sourc
 int mylite_show_copy_columns_selected_schema(mylite_db *database,
                                              struct mylite_show_columns_target *target);
 int mylite_show_validate_columns_target(mylite_db *database,
-                                        const struct mylite_show_columns_target *target,
+                                        struct mylite_show_columns_target *target,
                                         const char *information_schema_unsupported_message);
 void mylite_show_columns_target_deinit(struct mylite_show_columns_target *target);
 char *mylite_show_copy_like_pattern_span(const struct mylite_sql_ast_node *node);

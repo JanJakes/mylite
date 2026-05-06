@@ -54,6 +54,7 @@ int mylite_show_prepare_columns_statement(mylite_db *database,
                                                            .table_name = target.table_name,
                                                            .like_pattern = like_pattern,
                                                            .full = statement->show_columns_full,
+                                                           .temporary = target.temporary,
                                                        });
         if (sqlite_sql == NULL) {
             status = MYLITE_NOMEM;
@@ -98,6 +99,7 @@ int mylite_show_prepare_describe_table_statement(mylite_db *database,
                                                            .table_name = target.table_name,
                                                            .like_pattern = column_pattern,
                                                            .full = false,
+                                                           .temporary = target.temporary,
                                                        });
         if (sqlite_sql == NULL) {
             status = MYLITE_NOMEM;
@@ -135,6 +137,7 @@ int mylite_show_prepare_index_statement(mylite_db *database,
             &(const struct mylite_show_index_query){
                 .schema_name = target.schema_name,
                 .table_name = target.table_name,
+                .temporary = target.temporary,
                 .where_expression =
                     where_clause == NULL ? NULL : mylite_ast_child_at(where_clause, 0U),
             },
@@ -215,7 +218,7 @@ int mylite_show_copy_columns_selected_schema(mylite_db *database,
 }
 
 int mylite_show_validate_columns_target(mylite_db *database,
-                                        const struct mylite_show_columns_target *target,
+                                        struct mylite_show_columns_target *target,
                                         const char *information_schema_unsupported_message)
 {
     struct mylite_schema_presence presence;
@@ -239,8 +242,17 @@ int mylite_show_validate_columns_target(mylite_db *database,
         return MYLITE_UNSUPPORTED;
     }
 
-    status =
-        mylite_catalog_table_exists(database, target->schema_name, target->table_name, &exists);
+    status = mylite_catalog_temporary_table_exists(database, target->schema_name,
+                                                   target->table_name, &exists);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (exists) {
+        target->temporary = true;
+        return MYLITE_OK;
+    }
+    status = mylite_catalog_persistent_table_exists(database, target->schema_name,
+                                                    target->table_name, &exists);
     if (status != MYLITE_OK) {
         return status;
     }
@@ -248,6 +260,7 @@ int mylite_show_validate_columns_target(mylite_db *database,
         return mylite_diagnostics_set_table_doesnt_exist_error(database, target->schema_name,
                                                                target->table_name);
     }
+    target->temporary = false;
     return MYLITE_OK;
 }
 

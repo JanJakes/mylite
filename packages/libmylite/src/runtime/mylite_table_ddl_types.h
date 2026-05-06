@@ -66,6 +66,7 @@ struct mylite_create_table_plan {
     size_t column_count;
     struct mylite_create_table_index *indexes;
     size_t index_count;
+    bool temporary;
 };
 
 struct mylite_create_table_column_index_status {
@@ -78,6 +79,7 @@ struct mylite_drop_table_target {
     char *schema_name;
     char *table_name;
     bool exists;
+    bool temporary;
 };
 
 struct mylite_drop_table_plan {

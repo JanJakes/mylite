@@ -52,7 +52,8 @@ static char *build_create_physical_table_sql(mylite_db *database, const char *ph
         return NULL;
     }
 
-    sqlite3_str_appendf(sql, "CREATE TABLE \"%w\"(", physical_name);
+    sqlite3_str_appendf(sql, "CREATE %sTABLE \"%w\"(", plan->temporary ? "TEMPORARY " : "",
+                        physical_name);
     for (size_t index = 0U; index < plan->column_count; ++index) {
         struct mylite_column_type_descriptor descriptor;
         int status = mylite_table_ddl_describe_create_table_column(

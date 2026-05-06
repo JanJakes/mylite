@@ -44,7 +44,13 @@ int mylite_table_ddl_validate_create_table_plan(mylite_db *database, const char 
         return MYLITE_EXEC_ERROR;
     }
 
-    status = mylite_catalog_table_exists(database, schema_name, plan->table_name, &exists);
+    if (plan->temporary) {
+        status =
+            mylite_catalog_temporary_table_exists(database, schema_name, plan->table_name, &exists);
+    } else {
+        status = mylite_catalog_persistent_table_exists(database, schema_name, plan->table_name,
+                                                        &exists);
+    }
     if (status != MYLITE_OK) {
         return status;
     }

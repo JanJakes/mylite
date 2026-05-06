@@ -45,6 +45,7 @@ struct mylite_show_table_status_query {
 struct mylite_show_columns_target {
     char *schema_name;
     char *table_name;
+    bool temporary;
 };
 
 struct mylite_show_columns_source_nodes {
@@ -57,11 +58,13 @@ struct mylite_show_columns_query {
     const char *table_name;
     const char *like_pattern;
     bool full;
+    bool temporary;
 };
 
 struct mylite_show_index_target {
     char *schema_name;
     char *table_name;
+    bool temporary;
 };
 
 struct mylite_show_index_source_nodes {
@@ -73,6 +76,7 @@ struct mylite_show_index_query {
     const char *schema_name;
     const char *table_name;
     const struct mylite_sql_ast_node *where_expression;
+    bool temporary;
 };
 
 struct mylite_show_diagnostics_query {

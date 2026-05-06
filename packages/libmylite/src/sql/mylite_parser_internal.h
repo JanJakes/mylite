@@ -915,8 +915,9 @@ mylite_sql_parser_make_stored_program_body_with_end_token(struct mylite_sql_pars
                                                           struct mylite_sql_token end_token);
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_token create_token,
-    struct mylite_sql_ast_node *if_not_exists, struct mylite_sql_ast_node *table_name,
-    struct mylite_sql_ast_node *columns, struct mylite_sql_ast_node *options);
+    struct mylite_sql_token temporary_token, struct mylite_sql_ast_node *if_not_exists,
+    struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *columns,
+    struct mylite_sql_ast_node *options);
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_index_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_parser_create_index_tokens tokens,
     enum mylite_sql_ast_index_class index_class, struct mylite_sql_ast_node *index_name,

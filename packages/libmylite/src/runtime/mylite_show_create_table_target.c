@@ -42,16 +42,18 @@ int mylite_show_create_table_copy_target(mylite_db *database,
 }
 
 int mylite_show_create_table_validate_target(mylite_db *database,
-                                             const struct mylite_show_create_table_target *target)
+                                             struct mylite_show_create_table_target *target)
 {
     struct mylite_show_columns_target columns_target = {
         .schema_name = target->schema_name,
         .table_name = target->table_name,
     };
-
-    return mylite_show_validate_columns_target(
+    int status = mylite_show_validate_columns_target(
         database, &columns_target,
         "SHOW CREATE TABLE for information_schema tables is not supported");
+
+    target->temporary = columns_target.temporary;
+    return status;
 }
 
 void mylite_show_create_table_target_deinit(struct mylite_show_create_table_target *target)

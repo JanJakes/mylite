@@ -3711,12 +3711,16 @@ mylite_sql_parser_make_stored_program_body_with_end_token(struct mylite_sql_pars
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_token create_token,
-    struct mylite_sql_ast_node *if_not_exists, struct mylite_sql_ast_node *table_name,
-    struct mylite_sql_ast_node *columns, struct mylite_sql_ast_node *options)
+    struct mylite_sql_token temporary_token, struct mylite_sql_ast_node *if_not_exists,
+    struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *columns,
+    struct mylite_sql_ast_node *options)
 {
     struct mylite_sql_source_span span = span_from_token(&create_token);
     struct mylite_sql_ast_node *statement = NULL;
 
+    if (temporary_token.text != NULL) {
+        span = span_join(span, span_from_token(&temporary_token));
+    }
     if (table_name != NULL) {
         span = span_join(span, table_name->span);
     }
@@ -3730,6 +3734,9 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
     statement = make_node(state, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, span);
     if (statement == NULL) {
         return NULL;
+    }
+    if (temporary_token.text != NULL) {
+        mylite_sql_ast_node_set_create_table_temporary(statement);
     }
 
     mylite_sql_ast_node_append_child(statement, table_name);

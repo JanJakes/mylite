@@ -1,5 +1,6 @@
 #include "mylite_show.h"
 
+#include "mylite_catalog.h"
 #include "mylite_diagnostics.h"
 #include "mylite_field_descriptor.h"
 #include "mylite_metadata.h"
@@ -88,9 +89,9 @@ char *mylite_show_columns_sql(mylite_db *database, const struct mylite_show_colu
     if (query->full) {
         sqlite3_str_appendf(sql, ", privileges AS \"Privileges\", column_comment AS \"Comment\"");
     }
-    sqlite3_str_appendf(sql,
-                        " FROM __mylite_column_catalog WHERE table_schema = %Q AND table_name = %Q",
-                        query->schema_name, query->table_name);
+    sqlite3_str_appendf(sql, " FROM %s WHERE table_schema = %Q AND table_name = %Q",
+                        mylite_catalog_column_catalog_name(query->temporary), query->schema_name,
+                        query->table_name);
     if (query->like_pattern != NULL) {
         sqlite3_str_appendf(sql, " AND column_name LIKE %Q ESCAPE '\\'", query->like_pattern);
     }
@@ -123,9 +124,10 @@ int mylite_show_index_sql(mylite_db *database, const struct mylite_show_index_qu
                         "comment AS \"Comment\", index_comment AS \"Index_comment\", "
                         "is_visible AS \"Visible\", expression AS \"Expression\", "
                         "rowid AS \"__mylite_order\" "
-                        "FROM __mylite_index_catalog "
+                        "FROM %s "
                         "WHERE table_schema = %Q AND table_name = %Q) AS show_index",
-                        query->schema_name, query->table_name);
+                        mylite_catalog_index_catalog_name(query->temporary), query->schema_name,
+                        query->table_name);
     if (status == MYLITE_OK && query->where_expression != NULL) {
         sqlite3_str_appendall(sql, " WHERE ");
         status = append_show_index_where_expression(database, sql, query->where_expression);

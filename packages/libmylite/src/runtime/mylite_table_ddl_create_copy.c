@@ -24,6 +24,7 @@ int mylite_table_ddl_copy_create_table_statement(const struct mylite_sql_ast_nod
     const struct mylite_sql_ast_node *elements = mylite_ast_child_at(statement, 1U);
     int status = mylite_table_ddl_copy_create_table_name(table_name, plan);
 
+    plan->temporary = statement->create_table_temporary;
     if (status != MYLITE_OK) {
         return status;
     }

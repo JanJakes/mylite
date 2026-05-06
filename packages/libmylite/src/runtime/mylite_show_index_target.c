@@ -48,8 +48,7 @@ int mylite_show_index_copy_target(mylite_db *database, const struct mylite_sql_a
     return status;
 }
 
-int mylite_show_index_validate_target(mylite_db *database,
-                                      const struct mylite_show_index_target *target)
+int mylite_show_index_validate_target(mylite_db *database, struct mylite_show_index_target *target)
 {
     struct mylite_schema_presence presence;
     bool exists = false;
@@ -70,8 +69,17 @@ int mylite_show_index_validate_target(mylite_db *database,
         return MYLITE_OK;
     }
 
-    status =
-        mylite_catalog_table_exists(database, target->schema_name, target->table_name, &exists);
+    status = mylite_catalog_temporary_table_exists(database, target->schema_name,
+                                                   target->table_name, &exists);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (exists) {
+        target->temporary = true;
+        return MYLITE_OK;
+    }
+    status = mylite_catalog_persistent_table_exists(database, target->schema_name,
+                                                    target->table_name, &exists);
     if (status != MYLITE_OK) {
         return status;
     }
@@ -79,6 +87,7 @@ int mylite_show_index_validate_target(mylite_db *database,
         return mylite_diagnostics_set_table_doesnt_exist_error(database, target->schema_name,
                                                                target->table_name);
     }
+    target->temporary = false;
     return MYLITE_OK;
 }
 

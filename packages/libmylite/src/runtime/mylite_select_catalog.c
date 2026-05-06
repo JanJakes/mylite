@@ -1,5 +1,6 @@
 #include "mylite_select_catalog.h"
 
+#include "mylite_catalog.h"
 #include "mylite_diagnostics.h"
 #include "mylite_field_descriptor.h"
 #include "mylite_metadata_constants.h"
@@ -52,18 +53,32 @@ static sqlite3_destructor_type sqlite_transient_destructor(void);
 int mylite_select_load_table_columns(mylite_db *database, struct mylite_select_table *table)
 {
     sqlite3_stmt *select = NULL;
-    static const char sql[] =
-        "SELECT column_name, extra, is_nullable, data_type, character_octet_length, "
-        "numeric_precision, numeric_scale, datetime_precision, collation_name, column_type, "
-        "column_key, column_default FROM __mylite_column_catalog WHERE table_schema = ? "
-        "AND table_name = ? ORDER BY ordinal_position";
+    char *sql = NULL;
+    bool temporary = false;
     int rc = SQLITE_OK;
+    int catalog_status = MYLITE_OK;
 
     if (mylite_ascii_case_equal(table->schema_name, "information_schema")) {
         return load_information_schema_table_columns(database, table);
     }
 
+    catalog_status = mylite_catalog_temporary_table_exists(database, table->schema_name,
+                                                           table->table_name, &temporary);
+    if (catalog_status != MYLITE_OK) {
+        return catalog_status;
+    }
+    sql = sqlite3_mprintf("SELECT column_name, extra, is_nullable, data_type, "
+                          "character_octet_length, numeric_precision, numeric_scale, "
+                          "datetime_precision, collation_name, column_type, column_key, "
+                          "column_default FROM %s WHERE table_schema = ? "
+                          "AND table_name = ? ORDER BY ordinal_position",
+                          mylite_catalog_column_catalog_name(temporary));
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
     rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select, NULL);
+    sqlite3_free(sql);
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
     }
@@ -268,17 +283,29 @@ static int load_select_column_from_catalog_row(mylite_db *database,
 static int load_select_table_unique_not_null_keys(mylite_db *database,
                                                   struct mylite_select_table *table)
 {
-    static const char sql[] =
-        "SELECT index_name, column_name, nullable, sub_part, expression "
-        "FROM __mylite_index_catalog WHERE table_schema = ? AND table_name = ? "
-        "AND non_unique = 0 ORDER BY index_name, seq_in_index";
+    char *sql = NULL;
     sqlite3_stmt *select = NULL;
     struct mylite_select_column_sequence key = {0};
     char *current_name = NULL;
     bool key_usable = true;
-    int rc =
-        sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select, NULL);
+    bool temporary = false;
+    int rc = SQLITE_OK;
+    int catalog_status = mylite_catalog_temporary_table_exists(database, table->schema_name,
+                                                               table->table_name, &temporary);
 
+    if (catalog_status != MYLITE_OK) {
+        return catalog_status;
+    }
+    sql = sqlite3_mprintf("SELECT index_name, column_name, nullable, sub_part, expression "
+                          "FROM %s WHERE table_schema = ? AND table_name = ? "
+                          "AND non_unique = 0 ORDER BY index_name, seq_in_index",
+                          mylite_catalog_index_catalog_name(temporary));
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select, NULL);
+    sqlite3_free(sql);
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
     }

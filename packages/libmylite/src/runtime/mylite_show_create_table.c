@@ -64,7 +64,8 @@ static int show_create_table_sql(mylite_db *database,
         return MYLITE_NOMEM;
     }
 
-    sqlite3_str_appendall(create_sql, "CREATE TABLE ");
+    sqlite3_str_appendall(create_sql,
+                          target->temporary ? "CREATE TEMPORARY TABLE " : "CREATE TABLE ");
     mylite_show_create_append_identifier(create_sql, target->table_name);
     sqlite3_str_appendall(create_sql, " (\n");
     status =

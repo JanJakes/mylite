@@ -2202,6 +2202,17 @@ static int test_create_table_base_execution_syntax(void)
     }
     mylite_sql_parse_result_deinit(&result);
 
+    failures +=
+        parse_sql("CREATE TEMPORARY TABLE temp_base (id INT);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT,
+                            "create temporary table statement");
+    if (!statement->create_table_temporary) {
+        fprintf(stderr, "CREATE TEMPORARY TABLE did not record temporary mode\n");
+        failures = 1;
+    }
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("CREATE TABLE charset_short (a INT) DEFAULT CHARSET utf8mb4;",
                           MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);

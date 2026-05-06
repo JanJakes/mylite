@@ -1,5 +1,6 @@
 #include "mylite_table_ddl_catalog.h"
 
+#include "mylite_catalog.h"
 #include "mylite_diagnostics.h"
 #include "mylite_runtime.h"
 #include "mylite_span.h"
@@ -54,20 +55,26 @@ static int insert_table_catalog_row(mylite_db *database, const char *schema_name
         bind_table_comment = 6,
     };
     sqlite3_stmt *insert = NULL;
-    static const char sql[] =
-        "INSERT INTO __mylite_table_catalog("
+    char *sql = sqlite3_mprintf(
+        "INSERT INTO %s("
         "table_catalog, table_schema, table_name, table_type, engine, version, row_format, "
         "table_rows, avg_row_length, data_length, max_data_length, index_length, data_free, "
         "auto_increment, create_time, update_time, check_time, table_collation, checksum, "
         "create_options, table_comment)"
         " VALUES('def', ?, ?, 'BASE TABLE', ?, 10, NULL, 0, NULL, NULL, NULL, NULL, NULL, "
-        "?, '1970-01-01 00:00:00', NULL, NULL, ?, NULL, '', ?)";
+        "?, '1970-01-01 00:00:00', NULL, NULL, ?, NULL, '', ?)",
+        mylite_catalog_table_catalog_name(plan->temporary));
     const char *collation =
         plan->options.collation == NULL ? schema_default->collation : plan->options.collation;
     const char *comment = plan->options.comment == NULL ? "" : plan->options.comment;
-    int rc =
-        sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &insert, NULL);
+    int rc = SQLITE_OK;
 
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &insert, NULL);
+    sqlite3_free(sql);
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
     }
@@ -97,18 +104,24 @@ static int insert_column_catalog_rows(mylite_db *database, const char *schema_na
                                       const struct mylite_create_table_plan *plan)
 {
     sqlite3_stmt *insert = NULL;
-    static const char sql[] =
-        "INSERT INTO __mylite_column_catalog("
+    char *sql = sqlite3_mprintf(
+        "INSERT INTO %s("
         "table_catalog, table_schema, table_name, column_name, ordinal_position, column_default, "
         "is_nullable, data_type, character_maximum_length, character_octet_length, "
         "numeric_precision, numeric_scale, datetime_precision, character_set_name, "
         "collation_name, column_type, column_key, extra, privileges, column_comment, "
         "generation_expression, srs_id)"
         " VALUES('def', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-        "'select,insert,update,references', ?, '', NULL)";
-    int rc =
-        sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &insert, NULL);
+        "'select,insert,update,references', ?, '', NULL)",
+        mylite_catalog_column_catalog_name(plan->temporary));
+    int rc = SQLITE_OK;
 
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &insert, NULL);
+    sqlite3_free(sql);
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
     }

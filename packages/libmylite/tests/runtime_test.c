@@ -354,6 +354,7 @@ static int test_window_function_placeholder_execution(void);
 static int test_create_table_base_execution(void);
 static int test_create_table_prepare_has_no_side_effects(void);
 static int test_drop_table_base_execution(void);
+static int test_temporary_table_execution(void);
 static int test_create_drop_index_execution(void);
 static int test_alter_table_column_operations_execution(void);
 static int test_alter_table_key_operations_execution(void);
@@ -587,6 +588,7 @@ int main(void)
     failures += test_create_table_base_execution();
     failures += test_create_table_prepare_has_no_side_effects();
     failures += test_drop_table_base_execution();
+    failures += test_temporary_table_execution();
     failures += test_create_drop_index_execution();
     failures += test_alter_table_column_operations_execution();
     failures += test_alter_table_key_operations_execution();
@@ -20195,6 +20197,122 @@ static int test_drop_table_base_execution(void)
 
     mylite_close(database);
     remove_runtime_test_files();
+    return failures;
+}
+
+static int test_temporary_table_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const selected_columns[] = {"id", "temp_note"};
+    static const char *const temp_values[] = {"2", "temp"};
+    static const char *const base_columns[] = {"id", "note"};
+    static const char *const base_values[] = {"1", "base"};
+    static const char *const show_columns[] = {"Field", "Type", "Null", "Key", "Default", "Extra"};
+    static const char *const temp_column_values[] = {
+        "id", "int", "NO", "PRI", NULL, "", "temp_note", "varchar(20)", "YES", "", NULL, "",
+    };
+    static const char *const base_column_values[] = {
+        "id", "int", "NO", "PRI", NULL, "", "note", "varchar(20)", "YES", "", NULL, "",
+    };
+    static const char *const show_create_columns[] = {"Table", "Create Table"};
+    static const char temp_create[] =
+        "CREATE TEMPORARY TABLE `shadowed` (\n"
+        "  `id` int NOT NULL,\n"
+        "  `temp_note` varchar(20) DEFAULT NULL,\n"
+        "  PRIMARY KEY (`id`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
+    static const char *const temp_create_values[] = {"shadowed", temp_create};
+    static const char *const show_index_columns[] = {
+        "Table",      "Non_unique",  "Key_name",      "Seq_in_index", "Column_name",
+        "Collation",  "Cardinality", "Sub_part",      "Packed",       "Null",
+        "Index_type", "Comment",     "Index_comment", "Visible",      "Expression"};
+    static const char *const show_index_values[] = {
+        "shadowed", "0", "PRIMARY", "1", "id", "A",   NULL, NULL,
+        NULL,       "",  "BTREE",   "",  "",   "YES", NULL,
+    };
+    static const char *const show_temp_only_columns[] = {
+        "Tables_in_mylite_temp_tables (temp_only)"};
+    static const char *const count_columns[] = {"COUNT(*)"};
+    static const char *const zero_count[] = {"0"};
+    const char *path = MYLITE_RUNTIME_TEST_FILE_PATH;
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    remove_runtime_test_files();
+    failures += expect_status(mylite_open(path, &database), MYLITE_OK, "open temporary table file");
+    failures += execute_sql(database, "CREATE DATABASE mylite_temp_tables", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_temp_tables", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE shadowed ("
+                            "id INT PRIMARY KEY, note VARCHAR(20))",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO shadowed VALUES (1,'base')", MYLITE_DONE);
+
+    failures += execute_sql(database,
+                            "CREATE TEMPORARY TABLE shadowed ("
+                            "id INT PRIMARY KEY, temp_note VARCHAR(20))",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO shadowed VALUES (2,'temp')", MYLITE_DONE);
+    failures += expect_select_rows(database, "SELECT id, temp_note FROM shadowed", selected_columns,
+                                   2, temp_values, 1, "temporary table shadows base table");
+    failures += expect_select_rows(database, "SHOW COLUMNS FROM shadowed", show_columns, 6,
+                                   temp_column_values, 2, "show columns resolves temporary table");
+    failures += expect_select_rows(database, "SHOW INDEX FROM shadowed", show_index_columns, 15,
+                                   show_index_values, 1, "show index resolves temporary table");
+    failures +=
+        expect_select_rows(database, "SHOW CREATE TABLE shadowed", show_create_columns, 2,
+                           temp_create_values, 1, "show create table resolves temporary table");
+
+    failures += execute_sql(database, "CREATE TEMPORARY TABLE temp_only (id INT)", MYLITE_DONE);
+    failures += expect_select_rows(database, "SHOW TABLES LIKE 'temp_only'", show_temp_only_columns,
+                                   1, NULL, 0, "temporary table omitted from show tables");
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES "
+        "WHERE TABLE_SCHEMA = 'mylite_temp_tables' AND TABLE_NAME = 'temp_only'",
+        count_columns, 1, zero_count, 1, "temporary table omitted from information schema");
+
+    failures += execute_sql(database, "DROP TABLE shadowed", MYLITE_DONE);
+    failures += expect_select_rows(database, "SELECT id, note FROM shadowed", base_columns, 2,
+                                   base_values, 1, "drop table removes temporary before base");
+    failures += expect_select_rows(database, "SHOW COLUMNS FROM shadowed", show_columns, 6,
+                                   base_column_values, 2, "show columns returns base after drop");
+
+    failures += prepare_sql(database, "DROP TEMPORARY TABLE shadowed", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR,
+                              "drop temporary ignores persistent table");
+    failures += expect_contains(mylite_error_message(database),
+                                "Unknown table 'mylite_temp_tables.shadowed'",
+                                "drop temporary persistent table error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database,
+                            "CREATE TEMPORARY TABLE IF NOT EXISTS shadowed "
+                            "(id INT PRIMARY KEY, temp_note VARCHAR(20))",
+                            MYLITE_DONE);
+    failures +=
+        expect_select_rows(database, "SELECT COUNT(*) FROM shadowed", count_columns, 1, zero_count,
+                           1, "temporary if not exists creates over persistent table");
+    failures += execute_sql(database, "DROP TEMPORARY TABLE shadowed", MYLITE_DONE);
+    failures += expect_select_rows(database, "SELECT id, note FROM shadowed", base_columns, 2,
+                                   base_values, 1, "drop temporary reveals persistent table");
+
+    mylite_close(database);
+    database = NULL;
+
+    failures +=
+        expect_status(mylite_open(path, &database), MYLITE_OK, "reopen temporary table file");
+    failures += execute_sql(database, "USE mylite_temp_tables", MYLITE_DONE);
+    failures += expect_prepare_error(database, "SELECT * FROM temp_only", MYLITE_EXEC_ERROR,
+                                     "doesn't exist", "temporary table expires on close");
+    failures += expect_select_rows(database, "SELECT id, note FROM shadowed", base_columns, 2,
+                                   base_values, 1, "persistent table survives temporary close");
+
+    mylite_close(database);
+    remove_runtime_test_files();
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
     return failures;
 }
 

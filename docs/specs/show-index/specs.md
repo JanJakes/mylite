@@ -56,8 +56,9 @@ multi-part index with prefix, descending order, comment, and invisibility,
 MySQL returns:
 
 - primary key: `Non_unique = 0`, `Key_name = PRIMARY`, `Seq_in_index = 1`,
-  `Collation = A`, `Sub_part = NULL`, `Null = ''`, `Index_type = BTREE`,
-  `Visible = YES`, `Expression = NULL`
+  `Collation = A`, `Cardinality = 0` before table statistics are available,
+  `Sub_part = NULL`, `Null = ''`, `Index_type = BTREE`, `Visible = YES`,
+  `Expression = NULL`
 - unique key: `Non_unique = 0`, index name as created, normal key-part order
 - nonunique key: `Non_unique = 1`; key parts are ordered by `Seq_in_index`;
   descending parts use `Collation = D`, ascending parts use `A`; nullable
@@ -153,8 +154,8 @@ Rows are ordered by the internal catalog row order, which preserves the
 DDL-defined index order for currently supported `CREATE TABLE`, `ALTER TABLE`,
 and standalone `CREATE INDEX` paths. The existing catalog already stores
 supported primary, unique, ordinary, prefix, collation, comment, visibility,
-nullable, and effective index-type metadata. Cardinality is reported from the
-catalog and may be `NULL` until statistics maintenance exists.
+nullable, and effective index-type metadata. Cardinality uses MySQL's observed
+zero placeholder for newly created rows until statistics maintenance exists.
 
 `SHOW INDEX ... WHERE expr` filters rows after mapping the displayed column names
 to the result shape. The executable subset includes string and numeric literals,
@@ -186,7 +187,8 @@ Runtime tests cover:
 - no selected schema diagnostic
 - primary, unique, nonunique, and multi-part index rows
 - prefix lengths, ascending/descending collation, comments, nullable flag,
-  index visibility, and index type values already preserved by the catalog
+  zero cardinality placeholders, index visibility, and index type values
+  already preserved by the catalog
 - `INDEXES` and `KEYS` synonyms
 - `FROM` and `IN`
 - explicit schema and `db.table`

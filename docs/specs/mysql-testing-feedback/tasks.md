@@ -32,7 +32,7 @@ MySQL 8.4.9 runtime before each item is marked complete.
       spacing, text-column defaults, comments, and `USING BTREE`.
 - [ ] Align `SHOW CREATE TABLE missing_table` diagnostics with MySQL.
 - [ ] Verify and complete `DESCRIBE` / `SHOW COLUMNS` for generated schemas.
-- [ ] Verify and complete `SHOW INDEX` parsing and metadata, including
+- [x] Verify and complete `SHOW INDEX` parsing and metadata, including
       cardinality placeholders where MySQL reports `0`.
 - [ ] Align `information_schema.TABLE_CONSTRAINTS` ordering and content with
       MySQL.

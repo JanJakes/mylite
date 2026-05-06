@@ -334,7 +334,7 @@ static int insert_alter_table_index_catalog_rows(
         "table_catalog, table_schema, table_name, non_unique, index_schema, index_name, "
         "seq_in_index, column_name, collation, cardinality, sub_part, packed, nullable, "
         "index_type, comment, index_comment, is_visible, expression)"
-        " VALUES('def', ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, ?, ?, ?, ?, ?, NULL)",
+        " VALUES('def', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NULL, ?, ?, ?, ?, ?, NULL)",
         mylite_catalog_index_catalog_name(model->temporary)
     );
     int rc = SQLITE_OK;

@@ -35530,6 +35530,42 @@ static int test_create_drop_index_execution(void) {
             .visible = "NO",
         }
     );
+    failures += prepare_sql(
+        database,
+        "CREATE INDEX idx_engine_attr ON idx_base (a) ENGINE_ATTRIBUTE='{}'",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "does not support ENGINE_ATTRIBUTE",
+        "standalone index rejects unsupported engine attribute"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_no_information_schema_statistics_index_row(database, "idx_base", "idx_engine_attr");
+    failures += execute_sql_expect_done_affected(
+        database,
+        "CREATE INDEX idx_secondary_attr ON idx_base (c) SECONDARY_ENGINE_ATTRIBUTE='{}'",
+        0,
+        "create secondary index with secondary engine attribute"
+    );
+    failures += expect_information_schema_statistics_row(
+        database,
+        &(const struct expected_statistics_row){
+            .table_name = "idx_base",
+            .index_name = "idx_secondary_attr",
+            .seq_in_index = 1,
+            .column_name = "c",
+            .non_unique = 1,
+            .collation = "A",
+            .sub_part = NULL,
+            .index_comment = "",
+            .visible = "YES",
+        }
+    );
 
     failures += execute_sql_expect_done_affected(
         database,
@@ -42846,6 +42882,18 @@ static int test_show_create_table_execution(void) {
         "  KEY `idx_hash` (`id`)\n"
         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
     static const char *const index_rewrite_values[] = {"index_rewrite", index_rewrite_create};
+    static const char standalone_index_options_create[] =
+        "CREATE TABLE `standalone_index_options` (\n"
+        "  `a` int DEFAULT NULL,\n"
+        "  `b` varchar(20) DEFAULT NULL,\n"
+        "  `c` varchar(20) DEFAULT NULL,\n"
+        "  KEY `idx_comment` (`c`(3) DESC,`a`) COMMENT 'hello' "
+        "/*!80000 INVISIBLE */\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
+    static const char *const standalone_index_options_values[] = {
+        "standalone_index_options",
+        standalone_index_options_create
+    };
     static const char text_defaults_create[] = "CREATE TABLE `text_defaults` (\n"
                                                "  `a` text,\n"
                                                "  `b` text,\n"
@@ -42977,6 +43025,27 @@ static int test_show_create_table_execution(void) {
         index_rewrite_values,
         1,
         "show create table preserves explicit index type through rewrites"
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE standalone_index_options ("
+        "a INT, b VARCHAR(20), c VARCHAR(20))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE INDEX idx_comment ON standalone_index_options "
+        "(c(3) DESC, a ASC) COMMENT 'hello' INVISIBLE KEY_BLOCK_SIZE = 8",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW CREATE TABLE standalone_index_options",
+        columns,
+        2,
+        standalone_index_options_values,
+        1,
+        "show create table standalone index options"
     );
 
     failures += execute_sql(

@@ -208,9 +208,11 @@ int mylite_table_ddl_copy_create_table_index_options(
             index->is_visible = false;
             break;
         case MYLITE_SQL_AST_INDEX_OPTION_KEY_BLOCK_SIZE:
-        case MYLITE_SQL_AST_INDEX_OPTION_ENGINE_ATTRIBUTE:
         case MYLITE_SQL_AST_INDEX_OPTION_SECONDARY_ENGINE_ATTRIBUTE:
         case MYLITE_SQL_AST_INDEX_OPTION_NONE:
+            break;
+        case MYLITE_SQL_AST_INDEX_OPTION_ENGINE_ATTRIBUTE:
+            index->has_engine_attribute = true;
             break;
         case MYLITE_SQL_AST_INDEX_OPTION_WITH_PARSER:
             index->has_with_parser = true;

@@ -57,6 +57,7 @@ struct mylite_create_table_index {
     bool is_unique;
     bool is_visible;
     bool explicit_name;
+    bool has_engine_attribute;
     bool has_with_parser;
     bool display_index_type;
 };

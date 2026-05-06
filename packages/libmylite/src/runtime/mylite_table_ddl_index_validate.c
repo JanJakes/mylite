@@ -162,6 +162,13 @@ int mylite_table_ddl_validate_create_index_supported_features(
         );
         return MYLITE_EXEC_ERROR;
     }
+    if (plan->index.has_engine_attribute) {
+        (void)mylite_diagnostics_set_error_message(
+            database,
+            "Storage engine 'InnoDB' does not support ENGINE_ATTRIBUTE"
+        );
+        return MYLITE_EXEC_ERROR;
+    }
     return MYLITE_OK;
 }
 

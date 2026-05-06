@@ -59,7 +59,7 @@ MySQL 8.4.9 runtime before each item is marked complete.
 - [x] Support or intentionally diagnose `CREATE FULLTEXT INDEX`.
 - [x] Support or intentionally diagnose `ALTER TABLE ... ADD FULLTEXT INDEX`.
 - [x] Support or intentionally diagnose `CREATE SPATIAL INDEX`.
-- [ ] Complete `CREATE INDEX` forms with ordering, comments, and complex index
+- [x] Complete `CREATE INDEX` forms with ordering, comments, and complex index
       options.
 - [x] Verify and complete `DROP INDEX ...`.
 - [ ] Complete complex `ALTER TABLE ... MODIFY/CHANGE COLUMN` forms,

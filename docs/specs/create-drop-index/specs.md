@@ -41,9 +41,9 @@ First executable implementation slice:
   MySQL-accepted positions; record the effective metadata type as `BTREE` for
   MyLite's InnoDB-compatible table model and preserve explicit BTREE display
   metadata for `SHOW CREATE TABLE`
-- support `KEY_BLOCK_SIZE`, `COMMENT`, `VISIBLE`, `INVISIBLE`,
-  `ENGINE_ATTRIBUTE`, and `SECONDARY_ENGINE_ATTRIBUTE` syntax and metadata
-  where the current catalog can represent it
+- support `KEY_BLOCK_SIZE`, `COMMENT`, `VISIBLE`, `INVISIBLE`, and
+  `SECONDARY_ENGINE_ATTRIBUTE` syntax and metadata where the current catalog
+  can represent it; reject `ENGINE_ATTRIBUTE` for the scoped InnoDB runtime
 - update unique-index conflict surfaces used by `INSERT`, ODKU, `REPLACE`, and
   `UPDATE` immediately after successful `CREATE UNIQUE INDEX`, and remove
   them after successful `DROP INDEX`
@@ -56,7 +56,7 @@ Deferred from the first slice:
 - executable `FULLTEXT` and `SPATIAL` indexes
 - `WITH PARSER` runtime behavior
 - functional key parts and multi-valued indexes
-- optimizer use, index hints, `SHOW INDEX`, and `SHOW CREATE TABLE` formatting
+- optimizer use and index hints
 - complete type/prefix/collation validation and storage-engine warning fidelity
 - primary-key drop when it interacts with `AUTO_INCREMENT`, generated invisible
   primary keys, foreign keys, generated columns, triggers, and privileges
@@ -245,14 +245,13 @@ Post-key-list options:
 | `KEY_BLOCK_SIZE [=] integer` | accepted; index-level effect is engine-specific and not supported by InnoDB |
 | `COMMENT 'text'` | accepted; shown in `STATISTICS.INDEX_COMMENT` |
 | `VISIBLE` / `INVISIBLE` | accepted for non-primary indexes; default visible |
-| `ENGINE_ATTRIBUTE [=] 'json-or-empty-string'` | accepted after JSON validation; repeated values use the last specified value |
-| `SECONDARY_ENGINE_ATTRIBUTE [=] 'json-or-empty-string'` | same storage-engine attribute boundary |
+| `ENGINE_ATTRIBUTE [=] 'json-or-empty-string'` | InnoDB rejects index-level `ENGINE_ATTRIBUTE` with error 3981 after validating the attribute string as JSON. Invalid JSON reports error 3980 first. |
+| `SECONDARY_ENGINE_ATTRIBUTE [=] 'json-or-empty-string'` | accepted for the scoped InnoDB probes and not displayed by `SHOW CREATE TABLE` |
 | `WITH PARSER parser_name` | accepted only for full-text indexes |
 
 `COMMENT = 'text'` is a syntax error. String-valued engine attributes with
-invalid JSON are validation errors in MySQL; the first MyLite slice may defer
-JSON validation if it returns a deterministic diagnostic or records the raw
-option as metadata with an explicit compatibility gap.
+invalid JSON are validation errors in MySQL; for valid `ENGINE_ATTRIBUTE`
+JSON, the first MyLite slice reports the InnoDB storage-engine rejection.
 
 ### ALGORITHM and LOCK
 
@@ -607,7 +606,9 @@ Implementation tests should cover these MySQL 8.4.9 expectations:
 | `CREATE INDEX idx_post ON t (a) USING BTREE` | Succeeds. |
 | `CREATE INDEX idx_type ON t (a) TYPE BTREE` | Succeeds. |
 | `CREATE INDEX idx_hash ON t (a) USING HASH` on InnoDB | Succeeds with note 3502 and records effective BTREE-compatible metadata. |
-| `CREATE INDEX idx_comment ON t (c(3) DESC, a ASC) COMMENT 'hello' INVISIBLE KEY_BLOCK_SIZE = 8` | Succeeds; statistics expose `SUB_PART=3`, `COLLATION='D'/'A'`, comment, and invisible state. |
+| `CREATE INDEX idx_comment ON t (c(3) DESC, a ASC) COMMENT 'hello' INVISIBLE KEY_BLOCK_SIZE = 8` | Succeeds; statistics expose `SUB_PART=3`, `COLLATION='D'/'A'`, comment, and invisible state. `SHOW CREATE TABLE` displays `KEY \`idx_comment\` (\`c\`(3) DESC,\`a\`) COMMENT 'hello' /*!80000 INVISIBLE */`; `KEY_BLOCK_SIZE` is not displayed for the scoped InnoDB probe. |
+| `CREATE INDEX idx_secondary_attr ON t (a) SECONDARY_ENGINE_ATTRIBUTE='{}'` | Succeeds without visible `SHOW CREATE TABLE` metadata. |
+| `CREATE INDEX idx_engine_attr ON t (a) ENGINE_ATTRIBUTE='{}'` | Error 3981 for InnoDB; no mutation. |
 | creating a redundant index with a different name | Succeeds with warning 1831. |
 | creating a second index with the same name | Error 1061; no mutation. |
 | `CREATE INDEX ON t (a)` | Syntax error. |

@@ -78,6 +78,7 @@ add_library(mylite STATIC
   src/runtime/mylite_dml_insert_transaction_finish.c
   src/runtime/mylite_dml_insert_unique_probe.c
   src/runtime/mylite_dml_numeric_coercion.c
+  src/runtime/mylite_dml_string_coercion.c
   src/runtime/mylite_dml_temporal_coercion.c
   src/runtime/mylite_dml_statement.c
   src/runtime/mylite_dml_prepare.c

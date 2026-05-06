@@ -148,6 +148,7 @@ enum {
     mysql_warning_no_default = 1364,
     mysql_warning_division_by_zero = 1365,
     mysql_warning_truncated_wrong_value_for_field = 1366,
+    mysql_error_data_too_long = 1406,
     mysql_warning_incorrect_string_value = 1411,
     mysql_warning_datetime_function_overflow = 1441,
     mysql_warning_row_is_referenced = 1451,
@@ -525,6 +526,8 @@ static int test_non_strict_not_null_coercion_execution(void);
 static int test_temporal_dml_coercion_execution(void);
 
 static int test_numeric_dml_coercion_execution(void);
+
+static int test_string_dml_coercion_execution(void);
 
 static int test_insert_on_duplicate_key_update_execution(void);
 
@@ -1007,6 +1010,7 @@ int main(void) {
     failures += test_non_strict_not_null_coercion_execution();
     failures += test_temporal_dml_coercion_execution();
     failures += test_numeric_dml_coercion_execution();
+    failures += test_string_dml_coercion_execution();
     failures += test_insert_on_duplicate_key_update_execution();
     failures += test_foreign_key_insert_execution();
     failures += test_foreign_key_parent_restrict_execution();
@@ -46118,12 +46122,8 @@ static int test_insert_set_execution(void) {
         );
     }
 
-    failures += prepare_sql(
-        database,
-        "INSERT INTO defaults_set SET v = 'missing_required'",
-        MYLITE_OK,
-        &stmt
-    );
+    failures +=
+        prepare_sql(database, "INSERT INTO defaults_set SET v = 'missing'", MYLITE_OK, &stmt);
     failures +=
         expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "insert set missing required default");
     failures += expect_contains(
@@ -48475,6 +48475,164 @@ static int test_numeric_dml_coercion_execution(void) {
         final_numeric_values,
         5,
         "numeric final coerced values"
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_string_dml_coercion_execution(void) {
+    static const char *const string_columns[] = {"id", "u", "v", "c"};
+    static const char *const string_values[] = {
+        "1",
+        "1",
+        "1234",
+        "abcd",
+        "2",
+        "2",
+        "zzzz",
+        "yyyy",
+        "3",
+        "3",
+        "1234",
+        "abcd",
+    };
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open string coercion db");
+    failures += execute_sql(database, "CREATE DATABASE mylite_string_dml", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_string_dml", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE string_values ("
+        "id INT PRIMARY KEY, u INT UNIQUE, v VARCHAR(4), c CHAR(4))",
+        MYLITE_DONE
+    );
+
+    failures += prepare_sql(
+        database,
+        "INSERT INTO string_values VALUES (1, 1, 'abcdef', 'uvwxyz')",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Data too long for column 'v' at row 1",
+        "strict string insert length error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_error_data_too_long,
+        "strict string insert length code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO string_values VALUES (1, 1, 'abcdef', 'uvwxyz')",
+        1,
+        "non-strict string insert values"
+    );
+    failures += expect_int(mylite_warning_count(database), 2, "string insert warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_truncated,
+        "string insert varchar warning code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_data_truncated,
+        "string insert char warning code"
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO string_values SET id = 2, u = 2, v = 'ghijkl', c = 'mnopqr'",
+        1,
+        "non-strict string insert set"
+    );
+    failures += expect_int(mylite_warning_count(database), 2, "string insert set warning count");
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "REPLACE INTO string_values VALUES (3, 3, 'pqrstu', 'vwxyz')",
+        1,
+        "non-strict string replace"
+    );
+    failures += expect_int(mylite_warning_count(database), 2, "string replace warning count");
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO string_values VALUES (3, 4, 'ok', 'ok') "
+        "ON DUPLICATE KEY UPDATE v = '123456', c = 'abcdef'",
+        2,
+        "non-strict string odku update"
+    );
+    failures += expect_int(mylite_warning_count(database), 2, "string odku warning count");
+
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "UPDATE string_values SET v = 'zzzzzz' WHERE id = 2",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Data too long for column 'v' at row 1",
+        "strict string update length error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_error_data_too_long,
+        "strict string update length code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE string_values SET v = 'zzzzzz', c = 'yyyyyy' WHERE id = 2",
+        1,
+        "non-strict string update"
+    );
+    failures += expect_int(mylite_warning_count(database), 2, "string update warning count");
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE string_source (id INT PRIMARY KEY, v VARCHAR(8), c VARCHAR(8))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO string_source VALUES (1, '123456', 'abcdef')",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE string_values JOIN string_source "
+        "ON string_values.id = string_source.id "
+        "SET string_values.v = string_source.v, string_values.c = string_source.c",
+        1,
+        "joined string update"
+    );
+    failures += expect_int(mylite_warning_count(database), 2, "joined string update warnings");
+
+    failures += expect_select_rows(
+        database,
+        "SELECT id,u,v,c FROM string_values ORDER BY id",
+        string_columns,
+        4,
+        string_values,
+        3,
+        "string final coerced values"
     );
 
     mylite_close(database);

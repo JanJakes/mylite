@@ -149,10 +149,17 @@ MySQL 8.4.9 runtime before each item is marked complete.
       string prefixes, strict truncation/incorrect-value rejection, non-strict
       warning coercion, decimal scale rounding notes, and DECIMAL result text
       shape.
+- [x] Align `CHAR`/`VARCHAR` length coercion in strict and non-strict modes for
+      currently supported `INSERT ... VALUES`, `INSERT ... SET`, `REPLACE`,
+      ODKU update assignments, single-table `UPDATE`, and joined `UPDATE`
+      paths. Covered behavior includes strict 1406 rejection, non-strict 1265
+      warning truncation, and assignment/column-order warning emission for
+      covered forms.
 - [ ] Align remaining numeric/string casts and coercions in strict and
-      non-strict modes, including CHAR/VARCHAR length truncation, unsigned and
-      width-specific numeric range clipping, floating-point column edge cases,
-      scalar `CAST`/`CONVERT` value semantics, and `IGNORE` demotion.
+      non-strict modes, including TEXT/BLOB limits, binary-string byte edge
+      cases, charset-specific string validation, unsigned and width-specific
+      numeric range clipping, floating-point column edge cases, scalar
+      `CAST`/`CONVERT` value semantics, and `IGNORE` demotion.
 - [x] Complete `CAST(...)` and `CONVERT(...)` syntax, including
       `CONVERT ... USING utf8`.
 - [x] Complete `SELECT DATE(...)` and date-function predicates.

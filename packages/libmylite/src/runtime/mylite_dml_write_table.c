@@ -171,9 +171,11 @@ static int load_insert_column_from_catalog_row(
         return MYLITE_NOMEM;
     }
 
+    column.character_maximum_length = row->character_maximum_length;
     column.numeric_scale = row->numeric_scale;
     column.auto_increment = mylite_text_contains_word(column.extra, "auto_increment");
     column.generated_default = mylite_text_contains_word(column.extra, "DEFAULT_GENERATED");
+    column.has_character_maximum_length = row->has_character_maximum_length;
     column.has_numeric_scale = row->has_numeric_scale;
     if (column.auto_increment) {
         load_context->table->has_auto_increment = true;

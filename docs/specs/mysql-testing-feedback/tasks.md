@@ -74,7 +74,7 @@ MySQL 8.4.9 runtime before each item is marked complete.
 - [x] Support `INSERT ... SELECT FROM DUAL`.
 - [x] Verify and complete `INSERT ... SET ...` defaults and generated values.
 - [x] Verify and complete `INSERT` without `INTO`.
-- [ ] Complete complex insert value expressions.
+- [x] Complete complex insert value expressions.
 - [x] Align `ON DUPLICATE KEY UPDATE` affected-row semantics.
 - [ ] Align composite primary-key duplicate handling.
 - [x] Make `FOUND_ROWS()` return `0` on a fresh connection before any prior

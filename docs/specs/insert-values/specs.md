@@ -18,6 +18,10 @@ In scope:
   default
 - deterministic literal values and deterministic defaults already represented
   by the supported `CREATE TABLE` metadata
+- row value expressions from MyLite's shared scalar expression subset,
+  including arithmetic, scalar function calls, session-stable temporal
+  functions, `RAND()`, `UUID()`, user and system variables, and expression
+  warning promotion
 - `DEFAULT` value tokens, default all-column rows, nullable implicit defaults,
   literal defaults, unary numeric defaults, string defaults, `NULL` defaults,
   and `CURRENT_TIMESTAMP` defaults
@@ -34,7 +38,7 @@ Out of scope:
 - priority modifiers, `DELAYED`, partitions, and insert-from-query sources
 - `INSERT IGNORE`, row aliases, and `ON DUPLICATE KEY UPDATE` are implemented
   in follow-up scoped feature slices
-- arbitrary expression evaluation in row values
+- expression forms outside MyLite's shared scalar expression evaluator
 - arbitrary generated default-expression evaluation, including function calls
   such as `concat('a','b')`
 - MySQL's complete type conversion, range enforcement, truncation warnings,
@@ -214,10 +218,10 @@ The statement node records no priority, ignore, delayed, partition, alias, or
 duplicate-key modifiers in this task. Unsupported modifiers remain parse errors
 until specified.
 
-Each row node stores its value children in source order. A value may be a
-literal, unary numeric expression, `CURRENT_TIMESTAMP`, parenthesized expression
-from the current expression subset, or `DEFAULT`. Runtime execution supports
-only the deterministic subset documented below.
+Each row node stores its value children in source order. A value may be any
+expression accepted by the current shared scalar expression subset or
+`DEFAULT`. Runtime execution supports that shared subset for row values and
+still treats generated default-expression evaluation as a separate boundary.
 
 ### Lemon grammar snippets
 
@@ -292,6 +296,15 @@ Value resolution:
   metadata.
 - Integer, decimal, float, `TRUE`, and `FALSE` literals are bound as
   deterministic scalar values. Full MySQL type coercion is deferred.
+- Non-`DEFAULT` row expressions are evaluated through the shared expression
+  evaluator before type binding. Supported examples include arithmetic
+  expressions, parenthesized expressions, `CONCAT()`, numeric scalar
+  functions such as `ABS()` and `ROUND()`, temporal functions such as `NOW()`
+  and `TIMESTAMP()`, `RAND()`, `UUID()`, user variables, and supported system
+  variables.
+- Expression warnings raised while evaluating row values are promoted using
+  the strict DML policy. For example, `SQRT('9x')` fails the insert, records
+  the truncation warning, and rolls back the candidate row.
 - `NULL` is accepted only for nullable columns and for auto-increment columns.
 - `DEFAULT` requests the column's default behavior.
 - Omitted nullable columns store `NULL`.
@@ -342,10 +355,8 @@ MyLite intentionally documents these boundaries for Task 13:
 - Arbitrary generated default expressions are not evaluated yet. This includes
   arithmetic expressions such as `(1 + 2)` and function calls such as
   `concat('a','b')`.
-- Row value expressions beyond literals, unary numeric values, and
-  `CURRENT_TIMESTAMP` are parseable only where the existing expression grammar
-  already accepts them, but execution returns a deterministic unsupported
-  expression diagnostic when such an expression is used.
+- Row value expression forms not yet supported by the shared scalar evaluator
+  fail with the evaluator's deterministic expression diagnostic.
 - Full MySQL type conversion is deferred. Current storage binds deterministic
   scalar values into SQLite columns and relies on SQLite affinity for simple
   numeric text.
@@ -376,6 +387,9 @@ Implementation tests should cover these MySQL 8.4.9 expectations:
 | `INSERT INTO ai_explicit VALUES (NULL,10),(0,20),(5,50),(NULL,60)` | Allocates generated ids around explicit value and records first generated id. |
 | `INSERT INTO dflt (nn,nd,nul,txt) VALUES (1, DEFAULT, DEFAULT, DEFAULT)` | Stores `(1,9,NULL,'hello')`. |
 | `INSERT INTO dflt (nn) VALUES (DEFAULT)` | Fails because `nn` has no default. |
+| `INSERT INTO scalar_insert (...) VALUES (CONCAT('a','b'), ABS(-3), ROUND(12.345,2), TIMESTAMP(...), RAND(7), UUID())` | Evaluates supported scalar expressions and stores MySQL-compatible values. |
+| `INSERT INTO scalar_insert (...) VALUES (CONCAT('c','d'), 2 + 5, UNIX_TIMESTAMP('1970-01-01 00:00:01'), NOW(6), RAND(7), UUID())` | Evaluates arithmetic, epoch, temporal, random, and UUID row expressions. |
+| `INSERT INTO scalar_insert (id,n) VALUES (3, SQRT('9x'))` | Fails under strict DML warning promotion and rolls back the row. |
 | no selected schema | Execution error containing `No database selected`. |
 | qualified missing schema | Execution error containing `Unknown database`. |
 | missing table in existing schema | Execution error containing `doesn't exist`. |
@@ -415,3 +429,5 @@ Implementation tests should cover these MySQL 8.4.9 expectations:
   - required-column and explicit-null diagnostics
   - atomic multi-row rollback
   - deterministic unsupported generated-default behavior
+  - scalar row expressions, statement-stable temporal functions, random and
+    UUID functions, and strict warning promotion

@@ -22,6 +22,11 @@
 %type ddl_algorithm { struct mylite_sql_token }
 %type ddl_lock { struct mylite_sql_token }
 %type opt_index_or_key { struct mylite_sql_token }
+%type opt_index_hint_list { struct mylite_sql_token }
+%type index_hint_list { struct mylite_sql_token }
+%type index_hint { struct mylite_sql_token }
+%type index_hint_index_or_key { struct mylite_sql_token }
+%type opt_index_hint_scope { struct mylite_sql_token }
 %type nonreserved_identifier_keyword { struct mylite_sql_token }
 %type select_modifiers { struct mylite_sql_parser_select_duplicate_mode }
 %type select_duplicate_mode { struct mylite_sql_parser_select_duplicate_mode }
@@ -999,7 +1004,7 @@ update_statement(A) ::= UPDATE(T) joined_update_table_references(B) SET update_a
         state, T, mylite_sql_parser_make_from_table_references(state, T, B), C, D, NULL, NULL);
 }
 
-single_update_target(A) ::= table_name(B) opt_table_alias(C). {
+single_update_target(A) ::= table_name(B) opt_table_alias(C) opt_index_hint_list. {
     A = mylite_sql_parser_make_update_target(state, B, C);
 }
 
@@ -1073,7 +1078,7 @@ delete_statement(A) ::= DELETE(T) FROM delete_using_target_list(B) USING(U) tabl
         mylite_sql_parser_make_from_table_references(state, U, C), D);
 }
 
-single_delete_target(A) ::= delete_table_name(B) opt_table_alias(C). {
+single_delete_target(A) ::= delete_table_name(B) opt_table_alias(C) opt_index_hint_list. {
     A = mylite_sql_parser_make_delete_target(state, B, C);
 }
 
@@ -4091,8 +4096,76 @@ using_column_list(A) ::= using_column_list(B) COMMA identifier(C). {
         });
 }
 
-table_factor(A) ::= table_name(B) opt_table_alias(C). {
+table_factor(A) ::= table_name(B) opt_table_alias(C) opt_index_hint_list. {
     A = mylite_sql_parser_make_table_factor(state, B, C);
+}
+
+opt_index_hint_list(A) ::= . {
+    A = (struct mylite_sql_token){0};
+}
+opt_index_hint_list(A) ::= index_hint_list(B). {
+    A = B;
+}
+
+index_hint_list(A) ::= index_hint(B). {
+    A = B;
+}
+index_hint_list(A) ::= index_hint_list(B) index_hint. {
+    A = B;
+}
+
+index_hint(A) ::= USE(T) index_hint_index_or_key opt_index_hint_scope
+        LPAREN opt_index_hint_name_list RPAREN. {
+    A = T;
+}
+index_hint(A) ::= IGNORE(T) index_hint_index_or_key opt_index_hint_scope
+        LPAREN opt_index_hint_name_list RPAREN. {
+    A = T;
+}
+index_hint(A) ::= FORCE(T) index_hint_index_or_key opt_index_hint_scope
+        LPAREN opt_index_hint_name_list RPAREN. {
+    A = T;
+}
+
+index_hint_index_or_key(A) ::= INDEX(T). {
+    A = T;
+}
+index_hint_index_or_key(A) ::= KEY(T). {
+    A = T;
+}
+
+opt_index_hint_scope(A) ::= . {
+    A = (struct mylite_sql_token){0};
+}
+opt_index_hint_scope(A) ::= FOR(T) JOIN. {
+    A = T;
+}
+opt_index_hint_scope(A) ::= FOR(T) ORDER BY. {
+    A = T;
+}
+opt_index_hint_scope(A) ::= FOR(T) GROUP BY. {
+    A = T;
+}
+
+opt_index_hint_name_list(A) ::= . {
+    A = NULL;
+}
+opt_index_hint_name_list(A) ::= index_hint_name_list(B). {
+    A = B;
+}
+
+index_hint_name_list(A) ::= index_hint_name(B). {
+    A = B;
+}
+index_hint_name_list(A) ::= index_hint_name_list(B) COMMA index_hint_name. {
+    A = B;
+}
+
+index_hint_name(A) ::= identifier(B). {
+    A = B;
+}
+index_hint_name(A) ::= PRIMARY(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
 }
 
 table_name(A) ::= qualified_identifier(B). {

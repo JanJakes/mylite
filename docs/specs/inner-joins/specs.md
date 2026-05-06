@@ -47,7 +47,8 @@ Out of scope for the first implementation slice:
   surface
 - derived tables, `LATERAL`, table functions, subqueries, CTEs, and views
 - information-schema and performance-schema joins
-- partitions and index hints
+- partitions; index hints are parsed and ignored by the separate placeholder
+  slice
 - optimizer hints and optimizer pushdown
 - join-order optimization beyond preserving MySQL-visible semantics
 - `DISTINCT`, set operations, windows, locking clauses, and `SELECT ... INTO`
@@ -424,7 +425,8 @@ later work:
 | Parenthesized table references | Supported and can override comma/explicit join precedence. | Deferred. |
 | Outer joins | Supported with null extension and different `ON`/`WHERE` placement effects. | Deferred to Task 27. |
 | Derived tables and subqueries in `FROM` | Supported with required aliases for derived tables. | Deferred. |
-| Index hints and partitions | Supported in table references. | Deferred. |
+| Index hints | Supported in table references. | Parsed and ignored by the placeholder slice. |
+| Partitions | Supported in table references. | Deferred. |
 | Multi-table `UPDATE`/`DELETE` joins | Supported by MySQL. | Deferred to DML-specific tasks. |
 
 ## MyLite parser and AST design
@@ -552,7 +554,7 @@ joined_table_reference ::= joined_table_reference RIGHT JOIN table_factor join_c
 joined_table_reference ::= joined_table_reference NATURAL JOIN table_factor.
 joined_table_reference ::= joined_table_reference STRAIGHT_JOIN table_factor opt_join_condition.
 
-/* Deferred: derived tables, lateral tables, partitions, and index hints. */
+/* Deferred: derived tables, lateral tables, and partitions. */
 table_factor ::= table_subquery table_alias.
 table_factor ::= LATERAL table_subquery table_alias.
 table_factor ::= table_name PARTITION LPAREN identifier_list RPAREN opt_table_alias.

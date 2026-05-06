@@ -41,7 +41,8 @@ Out of scope for Task 19:
 - multiple-table `UPDATE` and joined table references
 - common table expressions before `UPDATE`
 - `LOW_PRIORITY` and `IGNORE`
-- partition clauses, index hints, optimizer hints, and locking modifiers
+- partition clauses, optimizer hints, and locking modifiers; index hints are
+  parsed and ignored by the separate placeholder slice
 - `ORDER BY` or `LIMIT` variants other than single `LIMIT row_count`
 - subqueries, `EXISTS`, row constructors, variables, parameters, function
   calls, casts, `CASE`, collations, JSON operators, regular expressions, and
@@ -503,10 +504,9 @@ update_statement ::= UPDATE IGNORE single_update_target SET update_assignment_li
 /* Deferred: common table expressions. */
 update_statement ::= WITH cte_list UPDATE single_update_target SET update_assignment_list.
 
-/* Deferred: partitions and index hints. */
+/* Deferred: partition selection. */
 single_update_target ::= table_name PARTITION LPAREN identifier_list RPAREN
     opt_table_alias.
-single_update_target ::= table_name opt_table_alias index_hint_list.
 
 /* Deferred: joined and multiple-table updates. */
 update_statement ::= UPDATE table_reference_list SET update_assignment_list
@@ -740,8 +740,9 @@ Use SQLite for durable storage, not as the semantic authority for Task 19.
 - CTEs, subqueries, and self-referencing subquery diagnostics are deferred.
   Multiple-table joined updates are tracked separately in
   [UPDATE JOIN](../update-join/specs.md).
-- `LOW_PRIORITY`, `IGNORE`, partition clauses, index hints, and optimizer hints
-  are deferred.
+- `LOW_PRIORITY`, `IGNORE`, partition clauses, and optimizer hints are
+  deferred. Index hints are parsed and ignored by
+  [index hint parser placeholders](../index-hint-placeholders/specs.md).
 - Function calls, including `LAST_INSERT_ID(expr)` and `DEFAULT(col_name)`,
   are deferred unless Task 24 or a narrower function subset lands first.
 - Generated-column DDL/runtime behavior is deferred. Task 19 should include

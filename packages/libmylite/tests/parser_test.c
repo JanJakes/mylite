@@ -4763,6 +4763,18 @@ static int test_update_single_table_syntax(void)
                                  "second duplicate target");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("UPDATE app.t AS tt USE INDEX (PRIMARY) "
+                          "SET tt.a = tt.a + 1 WHERE tt.id = 1",
+                          MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    target = child_at(statement, 0U);
+    failures +=
+        expect_span_text(child_at(child_at(target, 0U), 0U), "app", "update hint target schema");
+    failures +=
+        expect_span_text(child_at(child_at(target, 0U), 1U), "t", "update hint target table");
+    failures += expect_span_text(child_at(target, 1U), "tt", "update hint alias");
+    mylite_sql_parse_result_deinit(&result);
+
     failures +=
         parse_sql("UPDATE t SET a = 1 LIMIT 18446744073709551615", MYLITE_SQL_PARSE_OK, &result);
     limit = child_at(child_at(result.root, 0U), 2U);
@@ -4885,6 +4897,16 @@ static int test_delete_single_table_syntax(void)
     failures += parse_sql("DELETE FROM t tt WHERE tt.id = 1", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
     failures += expect_span_text(child_at(child_at(statement, 0U), 1U), "tt", "delete bare alias");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DELETE FROM t AS tt FORCE INDEX (PRIMARY) WHERE tt.id = 1",
+                          MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    target = child_at(statement, 0U);
+    failures += expect_span_text(child_at(target, 0U), "t", "delete hint target");
+    failures += expect_span_text(child_at(target, 1U), "tt", "delete hint alias");
+    failures += expect_operator(child_at(child_at(statement, 1U), 0U),
+                                MYLITE_SQL_AST_OPERATOR_EQUAL, "delete hint predicate");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("DELETE FROM t WHERE category = 1 ORDER BY v DESC, id ASC LIMIT 2",
@@ -7790,6 +7812,21 @@ static int test_select_table_core_syntax(void)
     failures += expect_span_text(child_at(child_at(select, 1U), 1U), "alias", "bare table alias");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SELECT a FROM app.t AS alias "
+                          "USE INDEX (PRIMARY, idx_a) "
+                          "FORCE KEY FOR ORDER BY (`idx b`) "
+                          "IGNORE INDEX FOR JOIN (idx_c);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    from_table = child_at(select, 1U);
+    qualified = child_at(from_table, 0U);
+    failures +=
+        expect_node(from_table, MYLITE_SQL_AST_FROM_TABLE, "index hint single table from node");
+    failures += expect_span_text(child_at(qualified, 0U), "app", "index hint schema");
+    failures += expect_span_text(child_at(qualified, 1U), "t", "index hint table");
+    failures += expect_span_text(child_at(from_table, 1U), "alias", "index hint alias");
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("SELECT a, * FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
@@ -7930,6 +7967,17 @@ static int test_select_inner_join_syntax(void)
     failures += expect_span_text(child_at(qualified, 1U), "l", "aliased join table");
     failures += expect_span_text(child_at(table, 1U), "lefty", "AS join alias");
     failures += expect_span_text(child_at(child_at(join, 1U), 1U), "righty", "bare join alias");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT * FROM l USE INDEX FOR JOIN (PRIMARY) "
+                          "JOIN r AS rr IGNORE KEY FOR ORDER BY (idx_r) "
+                          "ON l.id = rr.l_id;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    join = child_at(child_at(child_at(child_at(result.root, 0U), 1U), 0U), 0U);
+    failures += expect_node(join, MYLITE_SQL_AST_JOIN_EXPRESSION, "join with index hints");
+    failures += expect_span_text(child_at(child_at(join, 0U), 0U), "l", "hinted join left");
+    failures += expect_span_text(child_at(child_at(join, 1U), 0U), "r", "hinted join right");
+    failures += expect_span_text(child_at(child_at(join, 1U), 1U), "rr", "hinted join alias");
     mylite_sql_parse_result_deinit(&result);
 
     failures +=

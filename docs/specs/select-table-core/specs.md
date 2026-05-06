@@ -38,7 +38,8 @@ Out of scope:
 - subqueries
 - locking clauses
 - `SELECT ... INTO`
-- optimizer hints, index hints, partitions, and SELECT modifiers
+- optimizer hints, partitions, and SELECT modifiers; index hints are parsed
+  and ignored by the separate placeholder slice
 - parameter markers and prepared statement marker binding
 - expression operator expansion, function calls, aggregate calls, expression
   type inference, and broad expression evaluation
@@ -438,9 +439,8 @@ select_statement ::= SELECT select_list FROM single_table_reference LIMIT limit_
 select_statement ::= SELECT select_list FROM single_table_reference locking_clause.
 select_statement ::= SELECT select_list INTO select_into_target FROM single_table_reference.
 
-/* Deferred: partitions and index hints. */
+/* Deferred: partition selection. */
 single_table_reference ::= table_name PARTITION LPAREN identifier_list RPAREN opt_table_alias.
-single_table_reference ::= table_name opt_table_alias index_hint_list.
 ```
 
 ### Runtime execution
@@ -608,7 +608,7 @@ Parser tests:
 - parse rejection or unsupported handling for `SELECT a, * FROM t`
 - parse rejection or unsupported handling for deferred clauses:
   `WHERE`, `ORDER BY`, `LIMIT`, joins, grouping, aggregate calls, subqueries,
-  CTEs, locking clauses, `SELECT ... INTO`, partitions, and index hints
+  CTEs, locking clauses, `SELECT ... INTO`, and partitions
 
 Runtime tests:
 

@@ -6986,6 +6986,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"FOLLOWING", MYLITE_SQL_PARSE_FOLLOWING},
         {"FOLLOWS", MYLITE_SQL_PARSE_FOLLOWS},
         {"FORMAT", MYLITE_SQL_PARSE_FORMAT},
+        {"FORCE", MYLITE_SQL_PARSE_FORCE},
         {"FROM", MYLITE_SQL_PARSE_FROM},
         {"FOREIGN", MYLITE_SQL_PARSE_FOREIGN},
         {"FULL", MYLITE_SQL_PARSE_FULL},

@@ -26221,6 +26221,8 @@ static int test_select_table_core_execution(void)
     failures += execute_sql(database, "USE mylite_select15", MYLITE_DONE);
     failures += expect_select_rows(database, "SELECT * FROM t", visible_columns, 3, visible_values,
                                    2, "selected schema select");
+    failures += expect_select_rows(database, "SELECT * FROM t USE INDEX ()", visible_columns, 3,
+                                   visible_values, 2, "select ignores empty index hint");
     failures +=
         expect_select_rows(database, "SELECT mylite_select15.t.a, t.b FROM t", qualified_columns, 2,
                            qualified_values, 2, "qualified column select");
@@ -26390,6 +26392,12 @@ static int test_inner_join_execution(void)
                                    "FROM left_t AS l JOIN right_t AS r ON l.id = r.left_id "
                                    "WHERE r.id < 20 ORDER BY r.id",
                                    join_columns, 3, join_values, 2, "inner join on rows");
+    failures += expect_select_rows(database,
+                                   "SELECT l.id AS left_id, r.id AS right_id, r.label "
+                                   "FROM left_t AS l USE INDEX (PRIMARY) "
+                                   "JOIN right_t AS r FORCE KEY FOR JOIN (PRIMARY) "
+                                   "ON l.id = r.left_id WHERE r.id < 20 ORDER BY r.id",
+                                   join_columns, 3, join_values, 2, "inner join ignores hints");
     failures += expect_select_rows(database,
                                    "SELECT left_t.id, right_t.id "
                                    "FROM left_t, right_t "
@@ -29385,6 +29393,16 @@ static int test_update_single_table_execution(void)
     failures += expect_select_rows(database, "SELECT a FROM t WHERE id = 11", (const char *[]){"a"},
                                    1, repeated_values, 1, "update repeated target value");
 
+    failures +=
+        prepare_sql(database, "UPDATE t AS tt USE INDEX (PRIMARY) SET tt.b = 22 WHERE tt.id = 11",
+                    MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "update ignores index hint");
+    failures += expect_int64(mylite_affected_rows(stmt), 1, "update hint affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT b FROM t WHERE id = 11", (const char *[]){"b"},
+                                   1, (const char *[]){"22"}, 1, "update hint value");
+
     failures += prepare_sql(database, "UPDATE t SET a = a WHERE id IN (10, 11)", MYLITE_OK, &stmt);
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "update no-op");
     failures += expect_int64(mylite_affected_rows(stmt), 0, "update no-op affected rows");
@@ -29712,6 +29730,15 @@ static int test_delete_single_table_execution(void)
     failures += expect_int64(mylite_affected_rows(stmt), 0, "delete no match affected rows");
     mylite_finalize(stmt);
     stmt = NULL;
+
+    failures += prepare_sql(database, "DELETE FROM t AS tt USE INDEX (PRIMARY) WHERE tt.id = 999",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "delete ignores index hint");
+    failures += expect_int64(mylite_affected_rows(stmt), 0, "delete hint affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id, v FROM t ORDER BY id", id_v_columns, 2,
+                                   after_alias_delete_values, 2, "delete hint rows");
 
     failures += prepare_sql(database,
                             "DELETE FROM t WHERE category >= 2 "

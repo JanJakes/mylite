@@ -47,7 +47,8 @@ Out of scope for this slice:
 - parenthesized table-reference groups
 - derived tables, `LATERAL`, table functions, subqueries, CTEs, and views
 - information-schema and performance-schema joins
-- partitions and index hints
+- partitions; index hints are parsed and ignored by the separate placeholder
+  slice
 - optimizer hints and optimizer pushdown
 - `DISTINCT`, set operations, windows, locking clauses, and `SELECT ... INTO`
 - multi-table `UPDATE` and `DELETE`
@@ -453,7 +454,8 @@ leaves for later work:
 | Parenthesized table references | Supported and can change comma/explicit join operands, including outer joins. | Deferred. |
 | Derived tables and subqueries in `FROM` | Supported with aliases. | Deferred. |
 | ODBC `{ OJ ... }` escaped references | Accepted for compatibility. | Deferred. |
-| Index hints and partitions | Supported in table references. | Deferred. |
+| Index hints | Supported in table references. | Parsed and ignored by the placeholder slice. |
+| Partitions | Supported in table references. | Deferred. |
 | Multi-table `UPDATE`/`DELETE` joins | Supported by MySQL. | Deferred to DML-specific tasks. |
 
 ## MyLite parser and AST design
@@ -549,7 +551,7 @@ joined_table_reference ::= joined_table_reference NATURAL RIGHT JOIN table_facto
 joined_table_reference ::= joined_table_reference STRAIGHT_JOIN table_factor opt_join_condition.
 escaped_table_reference ::= LBRACE OJ table_reference RBRACE.
 
-/* Deferred: derived tables, lateral tables, partitions, and index hints. */
+/* Deferred: derived tables, lateral tables, and partitions. */
 table_factor ::= table_subquery table_alias.
 table_factor ::= LATERAL table_subquery table_alias.
 table_factor ::= table_name PARTITION LPAREN identifier_list RPAREN opt_table_alias.
@@ -729,5 +731,5 @@ sides, and includes runtime tests for rows, metadata, warnings, diagnostics,
 ordering, limits, and aggregate counts.
 
 Compatibility remains partial for the explicitly deferred surfaces above:
-natural joins, parenthesized table references, derived tables, index hints, and
+natural joins, parenthesized table references, derived tables, partitions, and
 optimizer behavior.

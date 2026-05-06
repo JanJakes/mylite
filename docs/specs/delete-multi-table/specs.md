@@ -28,8 +28,8 @@ Out of scope for this slice:
 - `ORDER BY` and `LIMIT`, which MySQL does not accept for multi-table
   `DELETE`
 - `NATURAL` joins, `STRAIGHT_JOIN`, parenthesized table references, derived
-  tables, views, CTEs, subqueries, table functions, index hints, and
-  optimizer hints
+  tables, views, CTEs, subqueries, table functions, and optimizer hints;
+  index hints are parsed and ignored by the separate placeholder slice
 - information-schema or performance-schema delete targets
 - privileges, triggers, foreign keys, cascading actions, binary logging,
   replication, table locks, and optimizer plan details

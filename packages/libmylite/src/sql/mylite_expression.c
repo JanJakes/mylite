@@ -3813,7 +3813,7 @@ static int append_unsigned_complement_warning(struct mylite_expression_warnings 
 
 static char *copy_span_text(const char *text, size_t length);
 
-static char *decode_string_literal(const struct mylite_sql_ast_node *node);
+static char *decode_string_literal(const struct mylite_sql_ast_node *node, size_t *out_length);
 
 static bool decode_string_escape(char escaped, char *out_character);
 
@@ -14722,7 +14722,7 @@ static char *copy_charset_node_name(const struct mylite_sql_ast_node *node) {
         return copy_span_text("binary", strlen("binary"));
     }
     if (node->kind == MYLITE_SQL_AST_LITERAL) {
-        return decode_string_literal(node);
+        return decode_string_literal(node, NULL);
     }
     return copy_unquoted_identifier_text(node->span);
 }
@@ -20510,8 +20510,7 @@ static int eval_literal(
     case MYLITE_SQL_AST_LITERAL_STRING:
     case MYLITE_SQL_AST_LITERAL_NATIONAL_STRING:
         out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
-        out_value->text_value = decode_string_literal(node);
-        out_value->text_length = out_value->text_value == NULL ? 0U : strlen(out_value->text_value);
+        out_value->text_value = decode_string_literal(node, &out_value->text_length);
         return out_value->text_value == NULL ? -1 : 0;
     case MYLITE_SQL_AST_LITERAL_HEX:
         return eval_hex_literal(node, out_value);
@@ -23320,7 +23319,7 @@ static char *copy_span_text(const char *text, size_t length) {
     return copy;
 }
 
-static char *decode_string_literal(const struct mylite_sql_ast_node *node) {
+static char *decode_string_literal(const struct mylite_sql_ast_node *node, size_t *out_length) {
     const char *text = node->span.text;
     size_t length = node->span.length;
     size_t start = 0U;
@@ -23362,6 +23361,9 @@ static char *decode_string_literal(const struct mylite_sql_ast_node *node) {
         }
     }
     decoded[output] = '\0';
+    if (out_length != NULL) {
+        *out_length = output;
+    }
     return decoded;
 }
 
@@ -23371,6 +23373,9 @@ static bool decode_string_escape(char escaped, char *out_character) {
     case '"':
     case '\\':
         *out_character = escaped;
+        return true;
+    case '0':
+        *out_character = '\0';
         return true;
     case 'b':
         *out_character = '\b';

@@ -7427,6 +7427,8 @@ static int test_scalar_builtin_functions_execution(void) {
         "hex_utf8",
         "hex_int",
         "hex_zero",
+        "hex_nul_literal",
+        "hex_nul_length",
         "hex_negative",
         "hex_max_unsigned",
         "hex_signed_boundary",
@@ -7453,6 +7455,8 @@ static int test_scalar_builtin_functions_execution(void) {
         "E78CAB",
         "FF",
         "0",
+        "610062",
+        "3",
         "FFFFFFFFFFFFFFFF",
         "FFFFFFFFFFFFFFFF",
         "8000000000000000",
@@ -7473,11 +7477,12 @@ static int test_scalar_builtin_functions_execution(void) {
         "3",
     };
     static const char *const base64_columns[] = {
-        "to_ascii",          "to_empty",   "to_null",        "to_utf8",         "to_int",
-        "to_decimal",        "to_float",   "to_negative",    "to_binary",       "long_length",
-        "long_encoded",      "from_ascii", "from_empty_len", "from_null",       "from_utf8",
-        "from_ws",           "from_num",   "from_binary",    "from_binary_len", "from_nonzero_pad2",
-        "from_nonzero_pad1",
+        "to_ascii",       "to_empty",        "to_null",           "to_utf8",
+        "to_int",         "to_decimal",      "to_float",          "to_negative",
+        "to_binary",      "long_length",     "long_encoded",      "from_ascii",
+        "from_empty_len", "from_null",       "from_utf8",         "from_ws",
+        "from_num",       "to_nul_literal",  "from_nul_literal",  "from_nul_length",
+        "from_binary",    "from_binary_len", "from_nonzero_pad2", "from_nonzero_pad1",
     };
     static const char *const base64_values[] = {
         "YWJj",
@@ -7497,6 +7502,9 @@ static int test_scalar_builtin_functions_execution(void) {
         "E78CAB",
         "abc",
         "D76DF8",
+        "YmluYXJ5AGRhdGE=",
+        "62696E6172790064617461",
+        "11",
         "00FF",
         "2",
         "00",
@@ -9145,6 +9153,8 @@ static int test_scalar_builtin_functions_execution(void) {
         "HEX('\xE7\x8C\xAB') AS hex_utf8, "
         "HEX(255) AS hex_int, "
         "HEX(0) AS hex_zero, "
+        "HEX('a\\0b') AS hex_nul_literal, "
+        "LENGTH('a\\0b') AS hex_nul_length, "
         "HEX(-1) AS hex_negative, "
         "HEX(18446744073709551615) AS hex_max_unsigned, "
         "HEX(9223372036854775808) AS hex_signed_boundary, "
@@ -9189,6 +9199,9 @@ static int test_scalar_builtin_functions_execution(void) {
         "HEX(FROM_BASE64('54yr')) AS from_utf8, "
         "FROM_BASE64('Y W\nJ\v\f\rj\t') AS from_ws, "
         "HEX(FROM_BASE64(1234)) AS from_num, "
+        "TO_BASE64('binary\\0data') AS to_nul_literal, "
+        "HEX(FROM_BASE64(TO_BASE64('binary\\0data'))) AS from_nul_literal, "
+        "LENGTH(FROM_BASE64(TO_BASE64('binary\\0data'))) AS from_nul_length, "
         "HEX(FROM_BASE64(TO_BASE64(CHAR(0,255 USING binary)))) AS from_binary, "
         "LENGTH(FROM_BASE64(TO_BASE64(CHAR(0,255 USING binary)))) AS from_binary_len, "
         "HEX(FROM_BASE64('AB==')) AS from_nonzero_pad2, "

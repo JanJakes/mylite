@@ -53,6 +53,8 @@
 %type show_character_set_keyword { struct mylite_sql_token }
 %type opt_show_character_set_filter { struct mylite_sql_ast_node * }
 %type opt_show_collation_filter { struct mylite_sql_ast_node * }
+%type opt_set_system_variable_scope { enum mylite_sql_ast_set_system_variable_scope }
+%type set_system_variable_value { struct mylite_sql_ast_node * }
 %type opt_show_tables_schema { struct mylite_sql_ast_node * }
 %type opt_show_tables_filter { struct mylite_sql_ast_node * }
 %type show_table_status_keyword { struct mylite_sql_token }
@@ -251,7 +253,7 @@ statement(A) ::= set_names_statement(B). {
 statement(A) ::= set_character_set_statement(B). {
     A = B;
 }
-statement(A) ::= set_sql_mode_statement(B). {
+statement(A) ::= set_system_variable_statement(B). {
     A = B;
 }
 statement(A) ::= create_table_statement(B). {
@@ -1431,32 +1433,49 @@ set_character_set_statement(A) ::= SET(T) CHARSET DEFAULT(D). {
         state, T, mylite_sql_parser_make_default(state, D));
 }
 
-set_sql_mode_statement(A) ::= SET(T) set_sql_mode_variable(B) EQ set_sql_mode_value(C). {
-    A = mylite_sql_parser_make_set_sql_mode_statement(state, T, B, C);
+set_system_variable_statement(A) ::= SET(T) opt_set_system_variable_scope(S)
+        set_system_variable_name(B) EQ set_system_variable_value(C). {
+    A = mylite_sql_parser_make_set_system_variable_statement(state, T, S, B, C);
 }
-set_sql_mode_statement(A) ::= SET(T) SESSION set_sql_mode_variable(B) EQ set_sql_mode_value(C). {
-    A = mylite_sql_parser_make_set_sql_mode_statement(state, T, B, C);
+
+opt_set_system_variable_scope(A) ::= . {
+    A = MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_SESSION;
 }
-set_sql_mode_statement(A) ::= SET(T) LOCAL set_sql_mode_variable(B) EQ set_sql_mode_value(C). {
-    A = mylite_sql_parser_make_set_sql_mode_statement(state, T, B, C);
+opt_set_system_variable_scope(A) ::= SESSION. {
+    A = MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_SESSION;
 }
-set_sql_mode_variable(A) ::= IDENTIFIER(T). {
+opt_set_system_variable_scope(A) ::= LOCAL. {
+    A = MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_SESSION;
+}
+opt_set_system_variable_scope(A) ::= GLOBAL. {
+    A = MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_GLOBAL;
+}
+
+set_system_variable_name(A) ::= IDENTIFIER(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
-set_sql_mode_variable(A) ::= QUOTED_IDENTIFIER(T). {
+set_system_variable_name(A) ::= QUOTED_IDENTIFIER(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
-set_sql_mode_variable(A) ::= SYSTEM_VARIABLE(T). {
+set_system_variable_name(A) ::= SYSTEM_VARIABLE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 
-set_sql_mode_value(A) ::= STRING(T). {
-    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+set_system_variable_value(A) ::= literal(B). {
+    A = B;
 }
-set_sql_mode_value(A) ::= DEFAULT(T). {
+set_system_variable_value(A) ::= PLUS(T) numeric_literal(V). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, T, MYLITE_SQL_AST_OPERATOR_POSITIVE, V);
+}
+set_system_variable_value(A) ::= MINUS(T) numeric_literal(V). [UMINUS] {
+    A = mylite_sql_parser_make_unary_expression(
+        state, T, MYLITE_SQL_AST_OPERATOR_NEGATIVE, V);
+}
+set_system_variable_value(A) ::= DEFAULT(T). {
     A = mylite_sql_parser_make_default(state, T);
 }
-set_sql_mode_value(A) ::= REPLACE(T) LPAREN(L) set_sql_mode_variable(B) COMMA STRING(C) COMMA STRING(D) RPAREN(R). {
+set_system_variable_value(A) ::= REPLACE(T) LPAREN(L) set_system_variable_name(B) COMMA STRING(C) COMMA STRING(D) RPAREN(R). {
     struct mylite_sql_ast_node *arguments = mylite_sql_parser_make_function_argument_list(state, B);
     arguments = mylite_sql_parser_append_function_argument(
         state, arguments, mylite_sql_parser_make_literal(state, C, MYLITE_SQL_AST_LITERAL_STRING));

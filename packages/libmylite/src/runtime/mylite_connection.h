@@ -4,6 +4,8 @@
 #include <mylite/mylite.h>
 
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
 struct mylite_connection_names_state {
     const char *character_set_name;
@@ -20,6 +22,8 @@ int mylite_connection_set_names_state(mylite_db *database,
 int mylite_connection_set_character_set_state(mylite_db *database, const char *character_set_name);
 int mylite_connection_set_default_sql_mode(mylite_db *database);
 int mylite_connection_set_sql_mode(mylite_db *database, const char *sql_mode);
+int mylite_connection_set_default_group_concat_max_len(mylite_db *database);
+int mylite_connection_set_group_concat_max_len(mylite_db *database, uint64_t value);
 
 const char *mylite_connection_character_set_client(const mylite_db *database);
 const char *mylite_connection_character_set_connection(const mylite_db *database);
@@ -28,5 +32,8 @@ const char *mylite_connection_collation_connection(const mylite_db *database);
 const char *mylite_connection_default_sql_mode(void);
 const char *mylite_connection_sql_mode(const mylite_db *database);
 bool mylite_connection_sql_mode_has_only_full_group_by(const mylite_db *database);
+uint64_t mylite_connection_default_group_concat_max_len(void);
+uint64_t mylite_connection_group_concat_max_len(const mylite_db *database);
+size_t mylite_connection_group_concat_max_len_size(const mylite_db *database);
 
 #endif

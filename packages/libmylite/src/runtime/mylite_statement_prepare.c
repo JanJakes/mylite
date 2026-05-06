@@ -101,8 +101,9 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
         case MYLITE_SQL_AST_SET_NAMES_STATEMENT:
         case MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT:
             return mylite_connection_prepare_charset_statement(database, statement, out_stmt);
-        case MYLITE_SQL_AST_SET_SQL_MODE_STATEMENT:
-            return mylite_connection_prepare_sql_mode_statement(database, statement, out_stmt);
+        case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT:
+            return mylite_connection_prepare_system_variable_statement(database, statement,
+                                                                       out_stmt);
         case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
             return mylite_statement_prepare_custom_statement(database, MYLITE_STMT_CREATE_TABLE,
                                                              statement, out_stmt, callbacks);

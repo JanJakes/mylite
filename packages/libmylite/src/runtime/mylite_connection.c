@@ -16,6 +16,8 @@
 #include <time.h>
 
 static const uint64_t mylite_embedded_connection_id = 1U;
+static const uint64_t mylite_min_group_concat_max_len = 4U;
+static const uint64_t mylite_default_group_concat_max_len = 1024U;
 static const char mylite_default_sql_mode[] =
     "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,"
     "ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION";
@@ -256,6 +258,23 @@ int mylite_connection_set_sql_mode(mylite_db *database, const char *sql_mode)
     return MYLITE_OK;
 }
 
+int mylite_connection_set_default_group_concat_max_len(mylite_db *database)
+{
+    return mylite_connection_set_group_concat_max_len(database,
+                                                      mylite_default_group_concat_max_len);
+}
+
+int mylite_connection_set_group_concat_max_len(mylite_db *database, uint64_t value)
+{
+    if (database == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    database->group_concat_max_len =
+        value < mylite_min_group_concat_max_len ? mylite_min_group_concat_max_len : value;
+    return MYLITE_OK;
+}
+
 const char *mylite_connection_default_sql_mode(void)
 {
     return mylite_default_sql_mode;
@@ -273,6 +292,25 @@ bool mylite_connection_sql_mode_has_only_full_group_by(const mylite_db *database
         .sql_mode = mylite_connection_sql_mode(database),
         .expected = "ONLY_FULL_GROUP_BY",
     });
+}
+
+uint64_t mylite_connection_default_group_concat_max_len(void)
+{
+    return mylite_default_group_concat_max_len;
+}
+
+uint64_t mylite_connection_group_concat_max_len(const mylite_db *database)
+{
+    return database == NULL || database->group_concat_max_len == 0U
+               ? mylite_default_group_concat_max_len
+               : database->group_concat_max_len;
+}
+
+size_t mylite_connection_group_concat_max_len_size(const mylite_db *database)
+{
+    uint64_t value = mylite_connection_group_concat_max_len(database);
+
+    return value > (uint64_t)SIZE_MAX ? SIZE_MAX : (size_t)value;
 }
 
 static int open_sqlite_database(const char *filename, int flags, const char *vfs_name,
@@ -304,6 +342,7 @@ static int open_sqlite_database(const char *filename, int flags, const char *vfs
     }
 
     (void)mylite_connection_set_default_state(database);
+    (void)mylite_connection_set_default_group_concat_max_len(database);
     rc = mylite_connection_set_default_sql_mode(database);
     if (rc != MYLITE_OK) {
         sqlite3_close(database->sqlite);

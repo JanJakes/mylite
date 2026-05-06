@@ -3095,9 +3095,10 @@ mylite_sql_parser_make_set_character_set_statement(struct mylite_sql_parser_stat
     return statement;
 }
 
-struct mylite_sql_ast_node *mylite_sql_parser_make_set_sql_mode_statement(
+struct mylite_sql_ast_node *mylite_sql_parser_make_set_system_variable_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_token set_token,
-    struct mylite_sql_ast_node *variable_name, struct mylite_sql_ast_node *value)
+    enum mylite_sql_ast_set_system_variable_scope scope, struct mylite_sql_ast_node *variable_name,
+    struct mylite_sql_ast_node *value)
 {
     struct mylite_sql_source_span span = span_from_token(&set_token);
     struct mylite_sql_ast_node *statement = NULL;
@@ -3106,11 +3107,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_set_sql_mode_statement(
         span = span_join(span, value->span);
     }
 
-    statement = make_node(state, MYLITE_SQL_AST_SET_SQL_MODE_STATEMENT, span);
+    statement = make_node(state, MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT, span);
     if (statement == NULL) {
         return NULL;
     }
 
+    mylite_sql_ast_node_set_system_variable_scope(statement, scope);
     mylite_sql_ast_node_append_child(statement, variable_name);
     mylite_sql_ast_node_append_child(statement, value);
     return statement;

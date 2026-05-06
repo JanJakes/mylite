@@ -60,6 +60,7 @@ struct mylite_db {
     const char *character_set_results;
     const char *collation_connection;
     char *sql_mode;
+    uint64_t group_concat_max_len;
     struct mylite_uuid_state uuid_state;
     struct mylite_uuid_short_state uuid_short_state;
 };
@@ -106,7 +107,7 @@ struct mylite_stmt {
     struct mylite_savepoint_plan savepoint;
     struct mylite_select_plan select_plan;
     struct mylite_union_plan union_plan;
-    struct mylite_connection_sql_mode_plan connection_sql_mode;
+    struct mylite_connection_system_variable_plan connection_system_variable;
     struct mylite_result_metadata result_metadata;
     struct mylite_scalar_result scalar_result;
     struct mylite_table_select_result select_result;

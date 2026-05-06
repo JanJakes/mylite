@@ -409,7 +409,8 @@ static int test_connection_charset_statements(void)
                           MYLITE_SQL_PARSE_OK, &result);
     failures += expect_child_count(result.root, 3U, "set sql mode script");
     statement = child_at(result.root, 0U);
-    failures += expect_node(statement, MYLITE_SQL_AST_SET_SQL_MODE_STATEMENT, "set sql mode");
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT, "set sql mode");
     failures += expect_span_text(child_at(statement, 0U), "sql_mode", "set sql mode variable");
     failures += expect_literal(child_at(statement, 1U), MYLITE_SQL_AST_LITERAL_STRING,
                                "set sql mode value");
@@ -427,6 +428,41 @@ static int test_connection_charset_statements(void)
     statement = child_at(result.root, 0U);
     failures += expect_node(child_at(statement, 1U), MYLITE_SQL_AST_FUNCTION_CALL,
                             "set sql mode replace value");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SET group_concat_max_len = 4; "
+                          "SET SESSION group_concat_max_len = DEFAULT; "
+                          "SET LOCAL @@session.group_concat_max_len = -1; "
+                          "SET @@LOCAL.group_concat_max_len = +5; "
+                          "SET GLOBAL group_concat_max_len = 8; "
+                          "SET group_concat_max_len = 4.9; "
+                          "SET group_concat_max_len = NULL;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_child_count(result.root, 7U, "set group concat max len script");
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT,
+                            "set group concat max len");
+    failures += expect_span_text(child_at(statement, 0U), "group_concat_max_len",
+                                 "set group concat max len variable");
+    failures += expect_literal(child_at(statement, 1U), MYLITE_SQL_AST_LITERAL_INTEGER,
+                               "set group concat max len integer value");
+    statement = child_at(result.root, 1U);
+    failures += expect_node(child_at(statement, 1U), MYLITE_SQL_AST_DEFAULT,
+                            "set group concat max len default value");
+    statement = child_at(result.root, 2U);
+    failures += expect_node(child_at(statement, 1U), MYLITE_SQL_AST_UNARY_EXPRESSION,
+                            "set group concat max len negative value");
+    statement = child_at(result.root, 3U);
+    failures += expect_span_text(child_at(statement, 0U), "@@LOCAL.group_concat_max_len",
+                                 "set group concat max len local variable");
+    failures += expect_node(child_at(statement, 1U), MYLITE_SQL_AST_UNARY_EXPRESSION,
+                            "set group concat max len positive value");
+    statement = child_at(result.root, 5U);
+    failures += expect_literal(child_at(statement, 1U), MYLITE_SQL_AST_LITERAL_DECIMAL,
+                               "set group concat max len decimal value");
+    statement = child_at(result.root, 6U);
+    failures += expect_literal(child_at(statement, 1U), MYLITE_SQL_AST_LITERAL_NULL,
+                               "set group concat max len null value");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

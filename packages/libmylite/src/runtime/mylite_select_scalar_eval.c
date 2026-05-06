@@ -1,5 +1,6 @@
 #include "mylite_select_scalar.h"
 
+#include "mylite_connection.h"
 #include "mylite_diagnostics.h"
 #include "mylite_error_codes.h"
 #include "mylite_select.h"
@@ -15,10 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum {
-    mylite_scalar_group_concat_max_len = 1024U,
-    mylite_scalar_group_concat_warning_size = 64U,
-};
+enum { mylite_scalar_group_concat_warning_size = 64U };
 
 struct mylite_select_scalar_expression_context {
     mylite_stmt *stmt;
@@ -417,6 +415,7 @@ static int append_scalar_group_concat_value(mylite_stmt *stmt, char **result, si
     char *text = mylite_expression_value_to_text(value);
     size_t text_length = scalar_group_concat_value_text_length(value, text);
     size_t remaining = 0U;
+    size_t max_len = mylite_connection_group_concat_max_len_size(stmt->database);
     size_t append_length = text_length;
     char *buffer = NULL;
     int status = MYLITE_OK;
@@ -429,13 +428,13 @@ static int append_scalar_group_concat_value(mylite_stmt *stmt, char **result, si
         free(text);
         return MYLITE_OK;
     }
-    if (*result_length >= mylite_scalar_group_concat_max_len) {
+    if (*result_length >= max_len) {
         free(text);
         *truncated = true;
         return append_scalar_group_concat_truncation_warning(stmt);
     }
 
-    remaining = mylite_scalar_group_concat_max_len - *result_length;
+    remaining = max_len - *result_length;
     if (append_length > remaining) {
         append_length = remaining;
         *truncated = true;

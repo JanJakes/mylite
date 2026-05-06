@@ -8,6 +8,7 @@
 #include "sqlite3.h"
 
 #include <stdbool.h>
+#include <stdio.h>
 
 static void append_show_variable_row(sqlite3_str *sql, bool *first, const char *name,
                                      const char *value);
@@ -26,6 +27,7 @@ int mylite_show_variables_sql(mylite_db *database, const struct mylite_show_vari
     const char *character_set_results = mylite_charset_default_name();
     const char *collation_connection = mylite_charset_default_collation_name();
     const char *collation_database = mylite_charset_default_collation_name();
+    char group_concat_max_len[32] = {0};
     bool first = true;
     bool global = query->scope == MYLITE_SQL_AST_SHOW_VARIABLES_GLOBAL;
     const char *sql_mode = mylite_connection_default_sql_mode();
@@ -45,6 +47,9 @@ int mylite_show_variables_sql(mylite_db *database, const struct mylite_show_vari
         collation_database = schema_default.collation;
         sql_mode = mylite_connection_sql_mode(database);
     }
+    snprintf(group_concat_max_len, sizeof(group_concat_max_len), "%llu",
+             (unsigned long long)(global ? mylite_connection_default_group_concat_max_len()
+                                         : mylite_connection_group_concat_max_len(database)));
 
     sql = sqlite3_str_new(database->sqlite);
     if (sql == NULL) {
@@ -68,6 +73,7 @@ int mylite_show_variables_sql(mylite_db *database, const struct mylite_show_vari
     if (!global) {
         append_show_variable_row(sql, &first, "error_count", "0");
     }
+    append_show_variable_row(sql, &first, "group_concat_max_len", group_concat_max_len);
     append_show_variable_row(sql, &first, "max_error_count", "1024");
     append_show_variable_row(sql, &first, "sql_mode", sql_mode);
     append_show_variable_row(sql, &first, "sql_notes", "ON");

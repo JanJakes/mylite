@@ -704,6 +704,16 @@ void mylite_sql_ast_node_set_show_status_scope(struct mylite_sql_ast_node *node,
     node->show_status_scope = scope;
 }
 
+void mylite_sql_ast_node_set_system_variable_scope(
+    struct mylite_sql_ast_node *node, enum mylite_sql_ast_set_system_variable_scope scope)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->set_system_variable_scope = scope;
+}
+
 const struct mylite_sql_ast_node *
 mylite_sql_ast_unwrap_parenthesized_expression(const struct mylite_sql_ast_node *expression)
 {
@@ -793,8 +803,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "set_names_statement";
     case MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT:
         return "set_character_set_statement";
-    case MYLITE_SQL_AST_SET_SQL_MODE_STATEMENT:
-        return "set_sql_mode_statement";
+    case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT:
+        return "set_system_variable_statement";
     case MYLITE_SQL_AST_DEFAULT:
         return "default";
     case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:

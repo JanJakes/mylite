@@ -204,7 +204,7 @@ static int copy_insert_like_statement(enum mylite_stmt_kind kind,
     case MYLITE_STMT_USE_SCHEMA:
     case MYLITE_STMT_SET_NAMES:
     case MYLITE_STMT_SET_CHARACTER_SET:
-    case MYLITE_STMT_SET_SQL_MODE:
+    case MYLITE_STMT_SET_SYSTEM_VARIABLE:
     case MYLITE_STMT_CREATE_TABLE:
     case MYLITE_STMT_DROP_TABLE:
     case MYLITE_STMT_RENAME_TABLE:

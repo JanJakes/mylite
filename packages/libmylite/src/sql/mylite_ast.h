@@ -146,7 +146,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_SHOW_TABLE_STATUS_STATEMENT = 135,
     MYLITE_SQL_AST_DELETE_TARGET_LIST = 136,
     MYLITE_SQL_AST_DELETE_TARGET_NAME = 137,
-    MYLITE_SQL_AST_SET_SQL_MODE_STATEMENT = 138,
+    MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT = 138,
 };
 
 enum mylite_sql_ast_delete_form {
@@ -182,6 +182,11 @@ enum mylite_sql_ast_show_variables_scope {
 enum mylite_sql_ast_show_status_scope {
     MYLITE_SQL_AST_SHOW_STATUS_SESSION = 0,
     MYLITE_SQL_AST_SHOW_STATUS_GLOBAL = 1,
+};
+
+enum mylite_sql_ast_set_system_variable_scope {
+    MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_SESSION = 0,
+    MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_GLOBAL = 1,
 };
 
 enum mylite_sql_ast_operator {
@@ -561,6 +566,7 @@ struct mylite_sql_ast_node {
     enum mylite_sql_ast_show_diagnostics_kind show_diagnostics_kind;
     enum mylite_sql_ast_show_variables_scope show_variables_scope;
     enum mylite_sql_ast_show_status_scope show_status_scope;
+    enum mylite_sql_ast_set_system_variable_scope set_system_variable_scope;
     enum mylite_sql_ast_delete_form delete_form;
     unsigned int column_display_width;
     bool column_type_unsigned;
@@ -719,6 +725,8 @@ void mylite_sql_ast_node_set_show_variables_scope(struct mylite_sql_ast_node *no
                                                   enum mylite_sql_ast_show_variables_scope scope);
 void mylite_sql_ast_node_set_show_status_scope(struct mylite_sql_ast_node *node,
                                                enum mylite_sql_ast_show_status_scope scope);
+void mylite_sql_ast_node_set_system_variable_scope(
+    struct mylite_sql_ast_node *node, enum mylite_sql_ast_set_system_variable_scope scope);
 
 const struct mylite_sql_ast_node *
 mylite_sql_ast_unwrap_parenthesized_expression(const struct mylite_sql_ast_node *expression);

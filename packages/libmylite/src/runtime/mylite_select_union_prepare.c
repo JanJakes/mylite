@@ -262,7 +262,7 @@ static bool union_operand_calc_found_rows(const mylite_stmt *operand)
     case MYLITE_STMT_USE_SCHEMA:
     case MYLITE_STMT_SET_NAMES:
     case MYLITE_STMT_SET_CHARACTER_SET:
-    case MYLITE_STMT_SET_SQL_MODE:
+    case MYLITE_STMT_SET_SYSTEM_VARIABLE:
     case MYLITE_STMT_CREATE_TABLE:
     case MYLITE_STMT_DROP_TABLE:
     case MYLITE_STMT_RENAME_TABLE:

@@ -15,13 +15,13 @@ The first executable slice includes:
   expressions in the current row source
 - string-literal `SEPARATOR`
 - `NULL` skipping, empty-group `NULL`, output metadata, and warning 1260 on
-  default-length truncation
+  truncation
+- session/local `group_concat_max_len` control of truncation and metadata
 
 Out of scope for this slice:
 
 - window-function `OVER (...)`
-- mutable `group_concat_max_len`; MyLite enforces MySQL's default 1024-byte
-  session value until broader system-variable assignment exists
+- global or persisted `group_concat_max_len` mutation
 - binary-string display fidelity for embedded NUL bytes
 - full charset/collation derivation beyond the existing expression descriptor
   model
@@ -75,9 +75,9 @@ Runtime probes showed `SEPARATOR NULL`, numeric separator tokens, and function
 calls in the separator position are syntax errors in MySQL 8.4.9.
 
 The result length is capped by `group_concat_max_len`, which defaults to 1024
-bytes. MyLite enforces this default cap. When output is cut, it appends warning
-1260 with the message `Row N was cut by GROUP_CONCAT()`, where `N` is the
-one-based contributing row that first exceeded the cap.
+bytes and is mutable per session. When output is cut, it appends warning 1260
+with the message `Row N was cut by GROUP_CONCAT()`, where `N` is the one-based
+contributing row that first exceeded the cap.
 
 ## Representative Runtime Expectations
 
@@ -112,7 +112,7 @@ INSERT INTO t VALUES
 | `SELECT GROUP_CONCAT('a','b')` | `ab` |
 | `SELECT GROUP_CONCAT('a',NULL,'b')` | `NULL` |
 
-With `group_concat_max_len = 4`, MySQL returns `alph` for
+With `SET SESSION group_concat_max_len = 4`, MySQL returns `alph` for
 `GROUP_CONCAT(txt ORDER BY id SEPARATOR ',')` over the `grp='a'` rows and emits
 warning 1260.
 
@@ -120,11 +120,15 @@ warning 1260.
 
 With MySQL's default `group_concat_max_len=1024`, text inputs return a
 `LONG_BLOB`-family descriptor with the connection/table collation and nullable
-result. Binary inputs return a binary descriptor. MyLite maps this first slice to
-a nullable `BLOB` descriptor with declared length `1024 * connection charset
-maxlen`, decimals `31`, and the current connection charset. Binary-specific
-metadata is deferred until MyLite's expression descriptors preserve binary
-string provenance through aggregate arguments.
+result. When the session value is `512` bytes or lower, MySQL reports a
+`VAR_STRING`-family descriptor for nonbinary inputs. Binary inputs return a
+binary descriptor. MyLite maps current nonbinary results to nullable `BLOB`
+metadata when the session limit is above `512`, and nullable `VAR_STRING`
+metadata when it is `512` or lower. Declared length is the session limit
+multiplied by the connection charset maxlen, decimals are `31`, and the current
+connection charset is reported. Binary-specific metadata is deferred until
+MyLite's expression descriptors preserve binary string provenance through
+aggregate arguments.
 
 ## MyLite Grammar
 
@@ -158,9 +162,10 @@ order expressions are evaluated.
 
 At finalization, MyLite sorts stored items when an aggregate-local `ORDER BY`
 exists, removes duplicate tuples for `DISTINCT`, joins row payloads with the
-separator, enforces the 1024-byte cap, and returns `NULL` if no item remains.
-All heap-owned argument values, order values, row text, separator text, and final
-buffers are statement-owned and released through aggregate-state deinit.
+separator, enforces the current session `group_concat_max_len` byte cap, and
+returns `NULL` if no item remains. All heap-owned argument values, order values,
+row text, separator text, and final buffers are statement-owned and released
+through aggregate-state deinit.
 
 No storage-format changes are required.
 
@@ -182,3 +187,4 @@ Tests cover:
 - `HAVING` and statement `ORDER BY` over a `GROUP_CONCAT()` alias
 - metadata for the default text descriptor
 - truncation at the default 1024-byte cap and warning 1260
+- truncation and metadata after `SET SESSION group_concat_max_len = 4`

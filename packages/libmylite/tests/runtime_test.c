@@ -112,6 +112,7 @@ enum {
     mysql_warning_wrong_usage = 1221,
     mysql_warning_wrong_number_of_columns = 1222,
     mysql_warning_wrong_value_for_var = 1231,
+    mysql_warning_wrong_type_for_var = 1232,
     mysql_warning_wrong_sql_calc_found_rows_placement = 1234,
     mysql_warning_not_supported_yet = 1235,
     mysql_warning_unknown = 1105,
@@ -16840,6 +16841,8 @@ static int test_aggregate_grouping_execution(void)
         "a", "alpha|beta", "b", "gamma|delta", NULL, "epsilon",
     };
     static const char *const group_concat_tuple_values[] = {"abc|abc"};
+    static const char *const group_concat_short_values[] = {"alph"};
+    static const char *const group_concat_short_rowless_values[] = {"abcd"};
     static const char *const conversion_columns[] = {"sum_s", "avg_s", "min_s", "max_s"};
     static const char *const conversion_values[] = {"12.5", "4.166666666666667", "10", "bad"};
     static const struct expected_result_metadata metadata[] = {
@@ -16863,6 +16866,10 @@ static int test_aggregate_grouping_execution(void)
     static const struct expected_result_metadata group_concat_metadata[] = {
         {"gc", NULL, NULL, NULL, NULL, NULL, 4096U, MYLITE_FIELD_TYPE_BLOB, 31U, 255U,
          MYLITE_FIELD_FLAG_BLOB, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    static const struct expected_result_metadata group_concat_short_metadata[] = {
+        {"gc", NULL, NULL, NULL, NULL, NULL, 16U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_BLOB | MYLITE_FIELD_FLAG_NOT_NULL, 1},
     };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
@@ -17305,6 +17312,32 @@ static int test_aggregate_grouping_execution(void)
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "GROUP_CONCAT truncation done");
     mylite_finalize(stmt);
     stmt = NULL;
+
+    failures += execute_sql(database, "SET SESSION group_concat_max_len = 4", MYLITE_DONE);
+    failures += expect_select_rows(database,
+                                   "SELECT GROUP_CONCAT(txt ORDER BY id) AS gc "
+                                   "FROM t",
+                                   group_concat_columns, 1, group_concat_short_values, 1,
+                                   "GROUP_CONCAT session max length");
+    failures += expect_int(mylite_warning_count(database), 1,
+                           "GROUP_CONCAT session max length warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_group_concat_cut,
+                           "GROUP_CONCAT session max length warning code");
+    failures += expect_select_rows(database, "SELECT GROUP_CONCAT('abcd', 'ef') AS gc",
+                                   group_concat_columns, 1, group_concat_short_rowless_values, 1,
+                                   "GROUP_CONCAT rowless session max length");
+    failures += expect_int(mylite_warning_count(database), 1,
+                           "GROUP_CONCAT rowless session max length warning count");
+    failures += prepare_sql(database, "SELECT GROUP_CONCAT(txt) AS gc FROM t", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, group_concat_short_metadata,
+        (int)(sizeof(group_concat_short_metadata) / sizeof(group_concat_short_metadata[0])),
+        "GROUP_CONCAT short metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "GROUP_CONCAT short metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "GROUP_CONCAT short metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "SET SESSION group_concat_max_len = DEFAULT", MYLITE_DONE);
 
     failures += expect_prepare_error(database, "SELECT COUNT(DISTINCT COUNT(*)) FROM cd_t",
                                      MYLITE_EXEC_ERROR, "Invalid use of group function",
@@ -20278,6 +20311,10 @@ static int test_show_variables_execution(void)
         "STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,"
         "ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION",
     };
+    static const char *const default_group_concat_max_len_values[] = {"group_concat_max_len",
+                                                                      "1024"};
+    static const char *const short_group_concat_max_len_values[] = {"group_concat_max_len", "4"};
+    static const char *const six_group_concat_max_len_values[] = {"group_concat_max_len", "6"};
     static const char *const selected_database_collation_values[] = {"collation_database",
                                                                      "latin1_bin"};
     static const char *const selected_connection_collation_values[] = {"collation_connection",
@@ -20321,6 +20358,12 @@ static int test_show_variables_execution(void)
                                    version_values, 5, "show variables version rows");
     failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'no_such_variable'", columns, 2,
                                    NULL, 0, "show variables empty like result");
+    failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'group_concat_max_len'", columns,
+                                   2, default_group_concat_max_len_values, 1,
+                                   "show variables group concat max len default");
+    failures += expect_select_rows(database, "SHOW GLOBAL VARIABLES LIKE 'group_concat_max_len'",
+                                   columns, 2, default_group_concat_max_len_values, 1,
+                                   "show global variables group concat max len default");
     failures += expect_show_variables_contains(
         database, &(const struct show_variable_expectation){
                       .sql = "SHOW VARIABLES",
@@ -20374,6 +20417,64 @@ static int test_show_variables_execution(void)
     failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'sql_mode'", columns, 2,
                                    default_sql_mode_values, 1,
                                    "show variables sql mode unchanged after invalid set");
+    failures += execute_sql(database, "SET SESSION group_concat_max_len = 4", MYLITE_DONE);
+    failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'group_concat_max_len'", columns,
+                                   2, short_group_concat_max_len_values, 1,
+                                   "show variables group concat max len session set");
+    failures += execute_sql(database, "SET @@LOCAL.group_concat_max_len = 6", MYLITE_DONE);
+    failures += expect_select_rows(database, "SHOW LOCAL VARIABLES LIKE 'group_concat_max_len'",
+                                   columns, 2, six_group_concat_max_len_values, 1,
+                                   "show variables group concat max len local set");
+    failures += execute_sql(database, "SET group_concat_max_len = 0", MYLITE_DONE);
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "set group concat max len low warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_truncated_wrong_value,
+                   "set group concat max len low warning code");
+    failures += expect_string(mylite_warning_message(database, 0),
+                              "Truncated incorrect group_concat_max_len value: '0'",
+                              "set group concat max len low warning message");
+    failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'group_concat_max_len'", columns,
+                                   2, short_group_concat_max_len_values, 1,
+                                   "show variables group concat max len clamps low value");
+    failures += execute_sql(database, "SET group_concat_max_len = -1", MYLITE_DONE);
+    failures += expect_int(mylite_warning_count(database), 1,
+                           "set group concat max len negative warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_truncated_wrong_value,
+                   "set group concat max len negative warning code");
+    failures += expect_string(mylite_warning_message(database, 0),
+                              "Truncated incorrect group_concat_max_len value: '-1'",
+                              "set group concat max len negative warning message");
+    failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'group_concat_max_len'", columns,
+                                   2, short_group_concat_max_len_values, 1,
+                                   "show variables group concat max len clamps negative value");
+    failures += expect_prepare_error(database, "SET group_concat_max_len = '7'", MYLITE_EXEC_ERROR,
+                                     "Incorrect argument type to variable 'group_concat_max_len'",
+                                     "set group concat max len string error");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_wrong_type_for_var,
+                           "set group concat max len type error code");
+    failures += expect_prepare_error(database, "SET group_concat_max_len = 4.9", MYLITE_EXEC_ERROR,
+                                     "Incorrect argument type to variable 'group_concat_max_len'",
+                                     "set group concat max len decimal error");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_wrong_type_for_var,
+                           "set group concat max len decimal error code");
+    failures += expect_prepare_error(database, "SET group_concat_max_len = NULL", MYLITE_EXEC_ERROR,
+                                     "Incorrect argument type to variable 'group_concat_max_len'",
+                                     "set group concat max len null error");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_wrong_type_for_var,
+                           "set group concat max len null error code");
+    failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'group_concat_max_len'", columns,
+                                   2, short_group_concat_max_len_values, 1,
+                                   "show variables group concat max len unchanged after error");
+    failures += execute_sql(database, "SET group_concat_max_len = DEFAULT", MYLITE_DONE);
+    failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'group_concat_max_len'", columns,
+                                   2, default_group_concat_max_len_values, 1,
+                                   "show variables group concat max len default restored");
+    failures +=
+        expect_prepare_error(database, "SET GLOBAL group_concat_max_len = 8", MYLITE_UNSUPPORTED,
+                             "SET GLOBAL group_concat_max_len is not supported",
+                             "set global group concat max len unsupported");
     failures += expect_prepare_error(database, "SHOW VARIABLES WHERE Variable_name = 'autocommit'",
                                      MYLITE_UNSUPPORTED, "SHOW VARIABLES WHERE is not supported",
                                      "show variables where is parsed but unsupported");

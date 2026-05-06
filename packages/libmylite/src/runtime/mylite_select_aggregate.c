@@ -1,5 +1,6 @@
 #include "mylite_select_aggregate.h"
 
+#include "mylite_connection.h"
 #include "mylite_diagnostics.h"
 #include "mylite_error_codes.h"
 #include "mylite_expression.h"
@@ -15,10 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum {
-    mylite_group_concat_max_len = 1024U,
-    mylite_group_concat_warning_size = 64U,
-};
+enum { mylite_group_concat_warning_size = 64U };
 
 static int
 update_table_select_count_distinct_state(mylite_stmt *stmt,
@@ -739,18 +737,19 @@ static int append_group_concat_piece(mylite_stmt *stmt, char **result, size_t *r
                                      bool *truncated)
 {
     size_t remaining = 0U;
+    size_t max_len = mylite_connection_group_concat_max_len_size(stmt->database);
     size_t append_length = piece_length;
     char *buffer = NULL;
 
     if (*truncated || piece_length == 0U) {
         return MYLITE_OK;
     }
-    if (*result_length >= mylite_group_concat_max_len) {
+    if (*result_length >= max_len) {
         *truncated = true;
         return append_group_concat_truncation_warning(stmt, row_number);
     }
 
-    remaining = mylite_group_concat_max_len - *result_length;
+    remaining = max_len - *result_length;
     if (append_length > remaining) {
         append_length = remaining;
         *truncated = true;

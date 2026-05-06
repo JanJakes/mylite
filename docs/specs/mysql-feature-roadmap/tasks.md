@@ -299,9 +299,10 @@ level application surfaces.
        including `Variable_name` / `Value` metadata, `LOCAL` as a session
        synonym, case-insensitive `LIKE` filtering with escapes, a practical
        catalog of charset/collation, diagnostics, autocommit, transaction,
-       SQL-mode, and version variables, session/default scope behavior, and a
-       clear unsupported diagnostic for parsed `WHERE` filters until shared
-       SHOW filtering lands. The first `SHOW STATUS` slice is specified for
+       SQL-mode, `group_concat_max_len`, and version variables,
+       session/default scope behavior, and a clear unsupported diagnostic for
+       parsed `WHERE` filters until shared SHOW filtering lands. The first
+       `SHOW STATUS` slice is specified for
        `SHOW [GLOBAL|SESSION|LOCAL] STATUS [LIKE 'pattern' | WHERE expr]`,
        including `Variable_name` / `Value` metadata, `LOCAL` as a session
        synonym, case-insensitive `LIKE` filtering with escapes, embedded
@@ -330,6 +331,9 @@ level application surfaces.
        [SHOW COLLATION](../show-collation/specs.md).
 41. [ ] User and system variables: `SET`, user-variable storage, system-variable
        validation, scope, charset/collation metadata, and expression use.
+       Focused session-variable slices are specified and implemented for
+       `sql_mode` and `group_concat_max_len`; global mutation, user variables,
+       persisted variables, and `@@` expression reads remain unfinished.
 42. [ ] Prepared statements: `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`,
        parameter markers, metadata, and diagnostics.
 43. [ ] `CREATE TABLE ... LIKE`: metadata cloning, indexes, defaults, generated

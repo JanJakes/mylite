@@ -196,7 +196,7 @@ void mylite_finalize(mylite_stmt *stmt)
     free(stmt->schema_name);
     mylite_schema_options_deinit(&stmt->options);
     mylite_connection_charset_plan_deinit(&stmt->connection_charset);
-    mylite_connection_sql_mode_plan_deinit(&stmt->connection_sql_mode);
+    mylite_connection_system_variable_plan_deinit(&stmt->connection_system_variable);
     mylite_table_ddl_create_table_plan_deinit(&stmt->create_table);
     mylite_table_ddl_drop_table_plan_deinit(&stmt->drop_table);
     mylite_table_ddl_rename_table_plan_deinit(&stmt->rename_table);

@@ -76,19 +76,22 @@ representative is deterministic for MyLite's current row materialization.
 MyLite-owned Lemon grammar shape:
 
 ```lemon
-set_sql_mode_statement ::= SET opt_set_sql_mode_scope set_sql_mode_variable EQ
-    set_sql_mode_value.
+set_system_variable_statement ::= SET opt_set_system_variable_scope
+    set_system_variable_name EQ set_system_variable_value.
 
-opt_set_sql_mode_scope ::= .
-opt_set_sql_mode_scope ::= SESSION.
-opt_set_sql_mode_scope ::= LOCAL.
+opt_set_system_variable_scope ::= .
+opt_set_system_variable_scope ::= SESSION.
+opt_set_system_variable_scope ::= LOCAL.
+opt_set_system_variable_scope ::= GLOBAL.
 
-set_sql_mode_variable ::= identifier.
-set_sql_mode_variable ::= SYSTEM_VARIABLE.
+set_system_variable_name ::= identifier.
+set_system_variable_name ::= SYSTEM_VARIABLE.
 
-set_sql_mode_value ::= STRING.
-set_sql_mode_value ::= DEFAULT.
-set_sql_mode_value ::= REPLACE LPAREN set_sql_mode_variable COMMA STRING
+set_system_variable_value ::= literal.
+set_system_variable_value ::= PLUS numeric_literal.
+set_system_variable_value ::= MINUS numeric_literal.
+set_system_variable_value ::= DEFAULT.
+set_system_variable_value ::= REPLACE LPAREN set_system_variable_name COMMA STRING
     COMMA STRING RPAREN.
 ```
 

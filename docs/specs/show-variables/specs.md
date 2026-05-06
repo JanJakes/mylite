@@ -18,7 +18,8 @@ policy, fixed compatibility defaults, and the public version constant.
 Deferred surfaces:
 
 - execution of `SHOW VARIABLES ... WHERE expr`
-- direct `SET` assignment to system variables
+- direct `SET` assignment to most system variables beyond the current
+  `sql_mode` and `group_concat_max_len` slices
 - `SELECT @@var_name`, `SELECT @@SESSION.var_name`, and
   `SELECT @@GLOBAL.var_name`
 - complete MySQL server variable catalog
@@ -53,6 +54,8 @@ The following behavior was verified against MySQL 8.4.9:
 | `SHOW VARIABLES LIKE 'collation_%'` | Returns `collation_connection`, `collation_database`, and `collation_server`. |
 | `SHOW VARIABLES LIKE 'autocommit'` | Returns `autocommit`, `ON`. |
 | `SHOW VARIABLES LIKE 'sql_mode'` | Returns `ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION`. |
+| `SHOW VARIABLES LIKE 'group_concat_max_len'` | Returns `group_concat_max_len`, `1024` by default. |
+| `SET SESSION group_concat_max_len = 4; SHOW VARIABLES LIKE 'group_concat_max_len'` | Returns `group_concat_max_len`, `4`. |
 | `SHOW VARIABLES LIKE 'warning_count'` | Returns `warning_count`, `0` for the statement itself. `SHOW VARIABLES` is nondiagnostic and clears a previous warning before reporting this variable. |
 | `SHOW VARIABLES LIKE 'error_count'` | Returns `error_count`, `0` for the statement itself. |
 | `SHOW GLOBAL VARIABLES LIKE 'warning_count'` | Returns no row because `warning_count` has no global value. |
@@ -144,8 +147,9 @@ Catalog for this slice:
 | `collation_database` | selected schema default, or server default when no schema is selected | `utf8mb4_0900_ai_ci` | Backed by MyLite schema defaults for session scope. |
 | `collation_server` | `utf8mb4_0900_ai_ci` | `utf8mb4_0900_ai_ci` | MyLite's current server default collation. |
 | `error_count` | `0` | omitted | SHOW VARIABLES clears prior diagnostics before reporting. |
+| `group_concat_max_len` | current handle state, default `1024` | `1024` | Session/local assignment is implemented; global mutation is deferred. |
 | `max_error_count` | `1024` | `1024` | Storage cap behavior remains deferred; diagnostics currently store all generated conditions in memory. |
-| `sql_mode` | MySQL 8.4 default mode string | same as session | Direct `SET sql_mode` is deferred. Implemented expression/DDL/DML behavior may still be narrower than the full mode surface. |
+| `sql_mode` | current handle state, default MySQL 8.4 mode string | MySQL 8.4 default mode string | Session/local assignment is implemented for recognized modes and the focused `REPLACE(...)` removal idiom. Implemented expression/DDL/DML behavior may still be narrower than the full mode surface. |
 | `sql_notes` | `ON` | `ON` | Direct assignment is deferred; current implemented note paths behave as enabled. |
 | `transaction_isolation` | `REPEATABLE-READ` | `REPEATABLE-READ` | Fixed compatibility value; isolation-level semantics are deferred. |
 | `transaction_read_only` | `OFF` | `OFF` | This variable is the default transaction mode, not the current active transaction access mode. |
@@ -211,6 +215,8 @@ Runtime coverage:
   collation behavior
 - selected schema defaults change `character_set_database` and
   `collation_database`
+- `SET SESSION group_concat_max_len` changes the session row without changing
+  the global/default row
 - `WHERE` returns the clear unsupported diagnostic
 - `LIMIT` remains a syntax error
 - `SHOW VARIABLES` clears prior diagnostics before reporting `warning_count`
@@ -220,9 +226,10 @@ Runtime coverage:
 
 - Full MySQL system-variable catalog and metadata.
 - General `SHOW ... WHERE` filtering.
-- General system-variable assignment and validation.
+- General system-variable assignment and validation beyond `sql_mode` and
+  `group_concat_max_len`.
 - SQL system-variable expression forms through `@@`.
-- Mutable `sql_mode`, `sql_notes`, `max_error_count`, and autocommit state.
+- Mutable `sql_notes`, `max_error_count`, and autocommit state.
 - Complete warning/error generated-condition counters under a future
   `max_error_count` cap.
 - Performance Schema system-variable tables and protocol-level variable

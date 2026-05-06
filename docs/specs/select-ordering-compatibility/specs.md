@@ -101,21 +101,24 @@ The same connection also showed:
 The intended accepted surface is:
 
 ```lemon
-statement(A) ::= set_sql_mode_statement(A).
+statement(A) ::= set_system_variable_statement(A).
 
-set_sql_mode_statement(A) ::= SET(T) opt_sql_mode_scope sql_mode_variable(V)
-        EQ sql_mode_value(E).
+set_system_variable_statement(A) ::= SET(T) opt_system_variable_scope
+        system_variable_name(V) EQ system_variable_value(E).
 
-opt_sql_mode_scope ::= .
-opt_sql_mode_scope ::= SESSION.
-opt_sql_mode_scope ::= LOCAL.
+opt_system_variable_scope ::= .
+opt_system_variable_scope ::= SESSION.
+opt_system_variable_scope ::= LOCAL.
+opt_system_variable_scope ::= GLOBAL.
 
-sql_mode_variable(A) ::= identifier(A).
-sql_mode_variable(A) ::= SYSTEM_VARIABLE(A).
+system_variable_name(A) ::= identifier(A).
+system_variable_name(A) ::= SYSTEM_VARIABLE(A).
 
-sql_mode_value(A) ::= STRING(A).
-sql_mode_value(A) ::= DEFAULT(A).
-sql_mode_value(A) ::= REPLACE LPAREN sql_mode_variable COMMA STRING COMMA
+system_variable_value(A) ::= literal(A).
+system_variable_value(A) ::= PLUS numeric_literal(A).
+system_variable_value(A) ::= MINUS numeric_literal(A).
+system_variable_value(A) ::= DEFAULT(A).
+system_variable_value(A) ::= REPLACE LPAREN system_variable_name COMMA STRING COMMA
         STRING RPAREN.
 ```
 

@@ -1,5 +1,6 @@
 #include "mylite_expression_descriptor_aggregate.h"
 
+#include "mylite_connection.h"
 #include "mylite_expression_descriptor.h"
 #include "mylite_metadata_constants.h"
 #include "mylite_span.h"
@@ -86,12 +87,18 @@ int mylite_expression_descriptor_infer_aggregate_expression(
         mylite_field_descriptor_set_nullable(&descriptor, true);
         *out_descriptor = descriptor;
         return MYLITE_OK;
-    case MYLITE_SQL_AST_AGGREGATE_GROUP_CONCAT:
+    case MYLITE_SQL_AST_AGGREGATE_GROUP_CONCAT: {
+        uint64_t group_concat_max_len = mylite_connection_group_concat_max_len(database);
+        uint64_t character_max_length =
+            mylite_expression_descriptor_connection_character_max_length(database);
+
         descriptor = (struct mylite_field_descriptor){
-            .type = MYLITE_FIELD_TYPE_BLOB,
-            .flags = MYLITE_FIELD_FLAG_BLOB,
-            .length =
-                1024U * mylite_expression_descriptor_connection_character_max_length(database),
+            .type = group_concat_max_len <= 512U ? MYLITE_FIELD_TYPE_VAR_STRING
+                                                 : MYLITE_FIELD_TYPE_BLOB,
+            .flags = group_concat_max_len <= 512U ? 0U : MYLITE_FIELD_FLAG_BLOB,
+            .length = group_concat_max_len > UINT64_MAX / character_max_length
+                          ? UINT64_MAX
+                          : group_concat_max_len * character_max_length,
             .decimals = mylite_mysql_not_fixed_decimals,
             .charset_id = mylite_expression_descriptor_connection_collation_id(database),
             .nullable = true,
@@ -99,6 +106,7 @@ int mylite_expression_descriptor_infer_aggregate_expression(
         mylite_field_descriptor_set_nullable(&descriptor, true);
         *out_descriptor = descriptor;
         return MYLITE_OK;
+    }
     case MYLITE_SQL_AST_AGGREGATE_NONE:
         break;
     }

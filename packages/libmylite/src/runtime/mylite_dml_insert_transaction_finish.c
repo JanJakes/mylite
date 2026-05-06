@@ -1,5 +1,6 @@
 #include "mylite_dml_insert_transaction_finish.h"
 
+#include "mylite_catalog.h"
 #include "mylite_dml_insert_default.h"
 #include "mylite_runtime.h"
 #include "mylite_transactions.h"
@@ -54,6 +55,14 @@ int mylite_dml_finish_successful_insert_transaction(
         );
     }
     if (status == MYLITE_OK) {
+        status = mylite_catalog_refresh_table_statistics(
+            database,
+            schema_name,
+            table_name,
+            table->physical_name
+        );
+    }
+    if (status == MYLITE_OK) {
         status = mylite_transaction_commit_statement_atomicity(database, atomicity);
         if (status == MYLITE_OK) {
             result->affected_rows = (int64_t)state->accepted_row_count;
@@ -86,6 +95,14 @@ int mylite_dml_finish_successful_replace_transaction(
             schema_name,
             table_name,
             mylite_dml_insert_auto_increment_next_value(state)
+        );
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_catalog_refresh_table_statistics(
+            database,
+            schema_name,
+            table_name,
+            table->physical_name
         );
     }
     if (status == MYLITE_OK) {

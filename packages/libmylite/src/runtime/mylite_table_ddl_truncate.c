@@ -43,6 +43,11 @@ static int reset_truncate_table_auto_increment(
     const struct mylite_truncate_table_plan *plan
 );
 
+static int refresh_truncate_table_statistics(
+    mylite_db *database,
+    const struct mylite_truncate_table_plan *plan
+);
+
 static sqlite3_destructor_type sqlite_transient_destructor(void);
 
 int mylite_table_ddl_execute_truncate_table_statement(
@@ -151,6 +156,9 @@ static int truncate_table_transaction(
         status = reset_truncate_table_auto_increment(database, plan);
     }
     if (status == MYLITE_OK) {
+        status = refresh_truncate_table_statistics(database, plan);
+    }
+    if (status == MYLITE_OK) {
         status = mylite_transaction_commit_statement_atomicity(database, &atomicity);
         if (status == MYLITE_OK) {
             return MYLITE_OK;
@@ -205,6 +213,28 @@ static int reset_truncate_table_auto_increment(
     rc = sqlite3_step(update);
     sqlite3_finalize(update);
     return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
+}
+
+static int refresh_truncate_table_statistics(
+    mylite_db *database,
+    const struct mylite_truncate_table_plan *plan
+) {
+    char *physical_name = mylite_catalog_physical_table_name(plan->schema_name, plan->table_name);
+    int status = MYLITE_OK;
+
+    if (physical_name == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    status = mylite_catalog_refresh_table_statistics(
+        database,
+        plan->schema_name,
+        plan->table_name,
+        physical_name
+    );
+    free(physical_name);
+    return status;
 }
 
 static sqlite3_destructor_type sqlite_transient_destructor(void) {

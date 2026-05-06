@@ -9,6 +9,7 @@
 #include "sqlite3.h"
 
 #include <stddef.h>
+#include <stdlib.h>
 
 static int insert_table_catalog_row(
     mylite_db *database,
@@ -44,6 +45,12 @@ static struct mylite_create_table_column_index_status create_table_column_index_
     const char *column_name
 );
 
+static int refresh_create_table_statistics(
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_create_table_plan *plan
+);
+
 static sqlite3_destructor_type sqlite_transient_destructor(void);
 
 int mylite_table_ddl_insert_create_table_catalog_rows(
@@ -60,6 +67,9 @@ int mylite_table_ddl_insert_create_table_catalog_rows(
     if (status == MYLITE_OK) {
         status =
             mylite_table_ddl_insert_create_table_index_catalog_rows(database, schema_name, plan);
+    }
+    if (status == MYLITE_OK) {
+        status = refresh_create_table_statistics(database, schema_name, plan);
     }
     return status;
 }
@@ -365,6 +375,29 @@ static struct mylite_create_table_column_index_status create_table_column_index_
             }
         }
     }
+    return status;
+}
+
+static int refresh_create_table_statistics(
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_create_table_plan *plan
+) {
+    char *physical_name = mylite_catalog_physical_table_name(schema_name, plan->table_name);
+    int status = MYLITE_OK;
+
+    if (physical_name == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    status = mylite_catalog_refresh_table_statistics(
+        database,
+        schema_name,
+        plan->table_name,
+        physical_name
+    );
+    free(physical_name);
     return status;
 }
 

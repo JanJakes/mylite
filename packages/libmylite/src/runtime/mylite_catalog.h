@@ -50,6 +50,12 @@ int mylite_catalog_update_auto_increment(
     const char *table_name,
     uint64_t next_auto_increment
 );
+int mylite_catalog_refresh_table_statistics(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    const char *physical_name
+);
 int mylite_catalog_delete_table_rows(
     mylite_db *database,
     const char *schema_name,

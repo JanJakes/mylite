@@ -1,8 +1,11 @@
 #include "mylite_table_ddl_index_catalog.h"
 
+#include "mylite_catalog.h"
 #include "mylite_diagnostics.h"
 #include "mylite_transactions.h"
 #include "sqlite3.h"
+
+#include <stdlib.h>
 
 static int insert_standalone_index_catalog_rows(
     mylite_db *database,
@@ -36,6 +39,14 @@ int mylite_table_ddl_create_index_catalog_transaction(
 
     status = insert_standalone_index_catalog_rows(database, model, index);
     if (status == MYLITE_OK) {
+        status = mylite_catalog_refresh_table_statistics(
+            database,
+            model->schema_name,
+            model->table_name,
+            model->physical_name
+        );
+    }
+    if (status == MYLITE_OK) {
         status = mylite_transaction_commit_storage(database);
         if (status == MYLITE_OK) {
             return MYLITE_OK;
@@ -57,6 +68,23 @@ int mylite_table_ddl_drop_index_catalog_transaction(
     }
 
     status = delete_index_catalog_rows(database, plan);
+    if (status == MYLITE_OK) {
+        char *physical_name =
+            mylite_catalog_physical_table_name(plan->schema_name, plan->table_name);
+
+        if (physical_name == NULL) {
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
+            status = MYLITE_NOMEM;
+        } else {
+            status = mylite_catalog_refresh_table_statistics(
+                database,
+                plan->schema_name,
+                plan->table_name,
+                physical_name
+            );
+            free(physical_name);
+        }
+    }
     if (status == MYLITE_OK) {
         status = mylite_transaction_commit_storage(database);
         if (status == MYLITE_OK) {

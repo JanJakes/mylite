@@ -48,6 +48,11 @@ static int update_alter_table_auto_increment(
     const struct mylite_alter_table_model *model
 );
 
+static int refresh_alter_table_statistics(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model
+);
+
 static sqlite3_destructor_type sqlite_transient_destructor(void);
 
 int mylite_table_ddl_rewrite_alter_table_catalog(
@@ -67,6 +72,9 @@ int mylite_table_ddl_rewrite_alter_table_catalog(
     }
     if (status == MYLITE_OK) {
         status = update_alter_table_auto_increment(database, model);
+    }
+    if (status == MYLITE_OK) {
+        status = refresh_alter_table_statistics(database, model);
     }
     return status;
 }
@@ -513,6 +521,18 @@ static int update_alter_table_auto_increment(
     rc = sqlite3_step(update);
     sqlite3_finalize(update);
     return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
+}
+
+static int refresh_alter_table_statistics(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model
+) {
+    return mylite_catalog_refresh_table_statistics(
+        database,
+        model->schema_name,
+        model->table_name,
+        model->physical_name
+    );
 }
 
 static sqlite3_destructor_type sqlite_transient_destructor(void) {

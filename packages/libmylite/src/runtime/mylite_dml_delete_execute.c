@@ -1,5 +1,6 @@
 #include "mylite_dml.h"
 
+#include "mylite_catalog.h"
 #include "mylite_diagnostics.h"
 #include "mylite_select.h"
 #include "mylite_select_types.h"
@@ -86,6 +87,14 @@ int mylite_dml_execute_delete_rows_transaction(
     }
     sqlite3_finalize(delete_stmt);
 
+    if (status == MYLITE_OK) {
+        status = mylite_catalog_refresh_table_statistics(
+            database,
+            table->schema_name,
+            table->table_name,
+            table->physical_name
+        );
+    }
     if (status == MYLITE_OK) {
         status = mylite_transaction_commit_statement_atomicity(database, &atomicity);
         if (status == MYLITE_OK) {
@@ -191,6 +200,14 @@ static int execute_delete_rowset(
         *affected_rows += sqlite3_changes(database->sqlite);
     }
     sqlite3_finalize(delete_stmt);
+    if (status == MYLITE_OK) {
+        status = mylite_catalog_refresh_table_statistics(
+            database,
+            table->schema_name,
+            table->table_name,
+            table->physical_name
+        );
+    }
     return status;
 }
 

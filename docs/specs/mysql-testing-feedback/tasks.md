@@ -15,18 +15,20 @@ MySQL 8.4.9 runtime before each item is marked complete.
 
 - [ ] Align `SELECT * FROM information_schema.TABLES` metadata with MySQL for
       row format, size fields, timestamps, and placeholder values. Row-format
-      and zero-placeholder fields are covered; live row counts and timestamps
-      remain open.
+      zero-placeholder fields, row counts, and small-table size fields are
+      covered; timestamps remain open.
 - [ ] Align `USE information_schema; SELECT * FROM tables` with the same
       MySQL-compatible metadata rows. Resolution and zero-placeholder fields
-      are covered; live row counts and timestamps remain open with the
-      qualified `information_schema.TABLES` task.
+      plus row-count and small-table size fields are covered; timestamps remain
+      open with the qualified `information_schema.TABLES` task.
 - [x] Verify and complete `SHOW DATABASES` parser and runtime coverage;
       verify `SHOW TABLE SCHEMAS` remains a MySQL syntax error.
 - [ ] Align `SHOW TABLE STATUS` values, including row counts, data length,
-      timestamps, and `AUTO_INCREMENT`.
+      timestamps, and `AUTO_INCREMENT`. Row counts, small-table size fields,
+      secondary-index length, and `AUTO_INCREMENT` are covered; timestamps
+      remain open.
 - [x] Verify and complete `SHOW TABLE STATUS WHERE ...` filtering.
-- [ ] Align `CREATE TABLE ... AUTO_INCREMENT=100` metadata and status
+- [x] Align `CREATE TABLE ... AUTO_INCREMENT=100` metadata and status
       reporting with MySQL next-value expectations.
 - [ ] Align `SHOW CREATE TABLE` formatting and metadata, including index
       spacing, text-column defaults, comments, and `USING BTREE`.

@@ -11,6 +11,9 @@ static const char index_catalog_name[] = "__mylite_index_catalog";
 static const char temporary_table_catalog_name[] = "__mylite_temp_table_catalog";
 static const char temporary_column_catalog_name[] = "__mylite_temp_column_catalog";
 static const char temporary_index_catalog_name[] = "__mylite_temp_index_catalog";
+
+enum { mylite_catalog_innodb_page_bytes = 16384 };
+
 static const char schema_catalog_sql[] = "CREATE TABLE IF NOT EXISTS __mylite_schema_catalog("
                                          "name TEXT PRIMARY KEY COLLATE BINARY,"
                                          "default_character_set TEXT NOT NULL,"
@@ -200,6 +203,29 @@ static int resolve_table_catalog_name(
     bool *out_exists
 );
 
+static int read_physical_table_row_count(
+    mylite_db *database,
+    const char *physical_name,
+    sqlite3_int64 *out_row_count
+);
+
+static int read_secondary_index_count(
+    mylite_db *database,
+    const char *index_catalog,
+    const char *schema_name,
+    const char *table_name,
+    sqlite3_int64 *out_index_count
+);
+
+static int update_table_statistics(
+    mylite_db *database,
+    const char *table_catalog,
+    const char *schema_name,
+    const char *table_name,
+    sqlite3_int64 row_count,
+    sqlite3_int64 secondary_index_count
+);
+
 static sqlite3_destructor_type sqlite_transient_destructor(void);
 
 int mylite_catalog_initialize(mylite_db *database) {
@@ -314,6 +340,61 @@ int mylite_catalog_update_auto_increment(
     rc = sqlite3_step(update);
     sqlite3_finalize(update);
     return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
+}
+
+int mylite_catalog_refresh_table_statistics(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    const char *physical_name
+) {
+    const char *table_catalog = NULL;
+    bool temporary = false;
+    bool exists = false;
+    sqlite3_int64 row_count = 0;
+    sqlite3_int64 secondary_index_count = 0;
+    int status = MYLITE_OK;
+
+    if (database == NULL || schema_name == NULL || table_name == NULL || physical_name == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    status = resolve_table_catalog_name(
+        database,
+        schema_name,
+        table_name,
+        &table_catalog,
+        &temporary,
+        &exists
+    );
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (!exists) {
+        return mylite_diagnostics_set_table_doesnt_exist_error(database, schema_name, table_name);
+    }
+
+    status = read_physical_table_row_count(database, physical_name, &row_count);
+    if (status == MYLITE_OK) {
+        status = read_secondary_index_count(
+            database,
+            mylite_catalog_index_catalog_name(temporary),
+            schema_name,
+            table_name,
+            &secondary_index_count
+        );
+    }
+    if (status == MYLITE_OK) {
+        status = update_table_statistics(
+            database,
+            table_catalog,
+            schema_name,
+            table_name,
+            row_count,
+            secondary_index_count
+        );
+    }
+    return status;
 }
 
 int mylite_catalog_delete_table_rows(
@@ -725,6 +806,125 @@ static int load_table_metadata_from_catalog(
     sqlite3_finalize(stmt);
     return (rc == SQLITE_ROW || rc == SQLITE_DONE) ? MYLITE_OK
                                                    : mylite_diagnostics_set_sqlite_error(database);
+}
+
+static int read_physical_table_row_count(
+    mylite_db *database,
+    const char *physical_name,
+    sqlite3_int64 *out_row_count
+) {
+    sqlite3_stmt *stmt = NULL;
+    char *sql = sqlite3_mprintf("SELECT COUNT(*) FROM \"%w\"", physical_name);
+    int rc = SQLITE_OK;
+
+    *out_row_count = 0;
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
+    sqlite3_free(sql);
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+
+    rc = sqlite3_step(stmt);
+    if (rc == SQLITE_ROW) {
+        *out_row_count = sqlite3_column_int64(stmt, 0);
+    }
+    sqlite3_finalize(stmt);
+    return rc == SQLITE_ROW ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
+}
+
+static int read_secondary_index_count(
+    mylite_db *database,
+    const char *index_catalog,
+    const char *schema_name,
+    const char *table_name,
+    sqlite3_int64 *out_index_count
+) {
+    sqlite3_stmt *stmt = NULL;
+    char *sql = sqlite3_mprintf(
+        "SELECT COUNT(*) FROM ("
+        "SELECT index_name FROM %s "
+        "WHERE table_schema = ? AND table_name = ? AND index_name <> 'PRIMARY' "
+        "GROUP BY index_name)",
+        index_catalog
+    );
+    int rc = SQLITE_OK;
+
+    *out_index_count = 0;
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
+    sqlite3_free(sql);
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+
+    sqlite3_bind_text(stmt, 1, schema_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(stmt, 2, table_name, -1, sqlite_transient_destructor());
+    rc = sqlite3_step(stmt);
+    if (rc == SQLITE_ROW) {
+        *out_index_count = sqlite3_column_int64(stmt, 0);
+    }
+    sqlite3_finalize(stmt);
+    return rc == SQLITE_ROW ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
+}
+
+static int update_table_statistics(
+    mylite_db *database,
+    const char *table_catalog,
+    const char *schema_name,
+    const char *table_name,
+    sqlite3_int64 row_count,
+    sqlite3_int64 secondary_index_count
+) {
+    enum {
+        bind_rows = 1,
+        bind_avg_row_length = 2,
+        bind_data_length = 3,
+        bind_index_length = 4,
+        bind_schema = 5,
+        bind_table = 6,
+    };
+
+    sqlite3_stmt *update = NULL;
+    char *sql = sqlite3_mprintf(
+        "UPDATE %s SET table_rows = ?, avg_row_length = ?, data_length = ?, "
+        "max_data_length = 0, index_length = ?, data_free = 0 "
+        "WHERE table_schema = ? AND table_name = ?",
+        table_catalog
+    );
+    sqlite3_int64 data_length = mylite_catalog_innodb_page_bytes;
+    sqlite3_int64 avg_row_length = row_count == 0 ? 0 : data_length / row_count;
+    sqlite3_int64 index_length = secondary_index_count * mylite_catalog_innodb_page_bytes;
+    int rc = SQLITE_OK;
+
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &update, NULL);
+    sqlite3_free(sql);
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+
+    sqlite3_bind_int64(update, bind_rows, row_count);
+    sqlite3_bind_int64(update, bind_avg_row_length, avg_row_length);
+    sqlite3_bind_int64(update, bind_data_length, data_length);
+    sqlite3_bind_int64(update, bind_index_length, index_length);
+    sqlite3_bind_text(update, bind_schema, schema_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(update, bind_table, table_name, -1, sqlite_transient_destructor());
+    rc = sqlite3_step(update);
+    sqlite3_finalize(update);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
 static int resolve_table_catalog_name(

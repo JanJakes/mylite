@@ -42,8 +42,8 @@ The following behavior was verified against MySQL 8.4.9:
 | `SHOW TABLE STATUS` with no selected database | Error `1046`, SQLSTATE `3D000`, message `No database selected`. |
 | `SHOW TABLE STATUS FROM missing_show_table_status` | Error `1049`, SQLSTATE `42000`, message `Unknown database 'missing_show_table_status'`. |
 | `SHOW TABLE STATUS` | Columns are `Name`, `Engine`, `Version`, `Row_format`, `Rows`, `Avg_row_length`, `Data_length`, `Max_data_length`, `Index_length`, `Data_free`, `Auto_increment`, `Create_time`, `Update_time`, `Check_time`, `Collation`, `Checksum`, `Create_options`, `Comment`. |
-| Empty InnoDB base table | `Engine=InnoDB`, `Version=10`, `Row_format=Dynamic`, `Rows=0`, numeric storage counters are nonnegative, `Auto_increment=NULL`, `Check_time=NULL`, default table collation, `Checksum=NULL`, and empty `Create_options` / `Comment`. |
-| Table created with `COMMENT='table comment' AUTO_INCREMENT=42` and two inserted rows | `Comment` is `table comment`; next `Auto_increment` is `44`. |
+| Empty InnoDB base table | `Engine=InnoDB`, `Version=10`, `Row_format=Dynamic`, `Rows=0`, `Avg_row_length=0`, `Data_length=16384`, `Max_data_length=0`, secondary-index `Index_length` in 16 KiB page units, `Data_free=0`, `Auto_increment=NULL`, `Check_time=NULL`, default table collation, `Checksum=NULL`, and empty `Create_options` / `Comment`. |
+| Table created with `COMMENT='table comment' AUTO_INCREMENT=42` and two inserted rows | `Rows=2`, `Avg_row_length=8192`, `Data_length=16384`, `Comment` is `table comment`, and next `Auto_increment` is `44`. |
 | `SHOW TABLE STATUS LIKE 'camel%'` with table `CamelCase` | No row on the local Linux runtime. |
 | `SHOW TABLE STATUS LIKE 'Camel%'` with table `CamelCase` | Returns `CamelCase`. |
 | `SHOW TABLE STATUS LIKE 'beta\_%'` with table `beta_1` | Returns `beta_1`. |
@@ -124,11 +124,11 @@ Column mapping:
 - `Row_format`: `COALESCE(row_format, 'Dynamic')` for user base tables because
   MyLite currently stores `NULL` for its InnoDB facade while MySQL reports
   `Dynamic` for ordinary InnoDB tables.
-- `Rows`: `table_rows`
+- `Rows`: maintained catalog row count after successful DML.
 - `Avg_row_length`, `Data_length`, `Max_data_length`, `Index_length`,
-  `Data_free`: catalog values when present; for current user base tables these
-  are deterministic `0` placeholders until MyLite maintains physical storage
-  statistics.
+  `Data_free`: maintained catalog statistics. MyLite mirrors the MySQL 8.4.9
+  small InnoDB-table shape with a 16 KiB data page, integer average-row length,
+  and one 16 KiB index page per secondary logical index.
 - `Auto_increment`: `auto_increment`
 - `Create_time`: `create_time`
 - `Update_time`: `update_time`
@@ -203,7 +203,10 @@ Runtime coverage:
 - empty schema with stable metadata
 - `LIKE` case sensitivity
 - escaped `_` in `LIKE`
-- `WHERE` unsupported diagnostic
-- base-table metadata, including collation, comment, and next auto-increment
+- `WHERE` filtering and unknown-column diagnostics
+- base-table metadata, including row counts, size fields, collation, comment,
+  and next auto-increment
+- transaction rollback of maintained row counts
+- secondary-index length changes after `CREATE INDEX` and `DROP INDEX`
 - `information_schema` lower-case and mixed-case schema/pattern behavior
 - deterministic status placeholders for system views

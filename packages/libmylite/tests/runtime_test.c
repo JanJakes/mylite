@@ -33814,7 +33814,7 @@ static int expect_simple_create_table_row(mylite_db *database) {
         );
         failures += expect_string(
             mylite_column_text(stmt, tables_data_length_column),
-            "0",
+            "16384",
             "created table data length"
         );
         failures += expect_string(
@@ -33824,7 +33824,7 @@ static int expect_simple_create_table_row(mylite_db *database) {
         );
         failures += expect_string(
             mylite_column_text(stmt, tables_index_length_column),
-            "0",
+            "32768",
             "created table index length"
         );
         failures += expect_string(
@@ -34985,9 +34985,9 @@ static int test_temporary_table_execution(void) {
         "InnoDB",
         "10",
         "Dynamic",
-        "0",
-        "0",
-        "0",
+        "1",
+        "16384",
+        "16384",
         "0",
         "0",
         "0",
@@ -35000,8 +35000,9 @@ static int test_temporary_table_execution(void) {
         "",
         "",
     };
-    static const char *const ai_info_columns[] = {"TABLE_NAME", "AUTO_INCREMENT"};
-    static const char *const ai_info_values[] = {"ai_shadow", "11"};
+    static const char *const ai_info_columns[] =
+        {"TABLE_NAME", "TABLE_ROWS", "AVG_ROW_LENGTH", "DATA_LENGTH", "AUTO_INCREMENT"};
+    static const char *const ai_info_values[] = {"ai_shadow", "1", "16384", "16384", "11"};
     static const char *const ai_columns[] = {"id", "note"};
     static const char *const temp_ai_values[] = {"500", "temp"};
     static const char *const persistent_ai_values[] = {
@@ -35219,10 +35220,11 @@ static int test_temporary_table_execution(void) {
     );
     failures += expect_select_rows(
         database,
-        "SELECT TABLE_NAME, AUTO_INCREMENT FROM INFORMATION_SCHEMA.TABLES "
+        "SELECT TABLE_NAME, TABLE_ROWS, AVG_ROW_LENGTH, DATA_LENGTH, AUTO_INCREMENT "
+        "FROM INFORMATION_SCHEMA.TABLES "
         "WHERE TABLE_SCHEMA = 'mylite_temp_tables' AND TABLE_NAME = 'ai_shadow'",
         ai_info_columns,
-        2,
+        5,
         ai_info_values,
         1,
         "information schema tables reports persistent auto increment"
@@ -38525,16 +38527,16 @@ static int test_show_table_status_execution(void) {
     };
     static const char *const selected_values[] = {
         "CamelCase",   "InnoDB", "10",          "Dynamic", "0",  "0",
-        "0",           "0",      "0",           "0",       NULL, "1970-01-01 00:00:00",
+        "16384",       "0",      "0",           "0",       NULL, "1970-01-01 00:00:00",
         NULL,          NULL,     "utf8mb4_bin", NULL,      "",   "",
         "alpha",       "InnoDB", "10",          "Dynamic", "0",  "0",
-        "0",           "0",      "0",           "0",       NULL, "1970-01-01 00:00:00",
+        "16384",       "0",      "0",           "0",       NULL, "1970-01-01 00:00:00",
         NULL,          NULL,     "utf8mb4_bin", NULL,      "",   "",
         "beta_1",      "InnoDB", "10",          "Dynamic", "0",  "0",
-        "0",           "0",      "0",           "0",       NULL, "1970-01-01 00:00:00",
+        "16384",       "0",      "0",           "0",       NULL, "1970-01-01 00:00:00",
         NULL,          NULL,     "utf8mb4_bin", NULL,      "",   "",
-        "status_meta", "InnoDB", "10",          "Dynamic", "0",  "0",
-        "0",           "0",      "0",           "0",       "44", "1970-01-01 00:00:00",
+        "status_meta", "InnoDB", "10",          "Dynamic", "2",  "8192",
+        "16384",       "0",      "0",           "0",       "44", "1970-01-01 00:00:00",
         NULL,          NULL,     "utf8mb4_bin", NULL,      "",   "table comment",
     };
     static const char *const alpha_values[] = {
@@ -38544,7 +38546,7 @@ static int test_show_table_status_execution(void) {
         "Dynamic",
         "0",
         "0",
-        "0",
+        "16384",
         "0",
         "0",
         "0",
@@ -38564,7 +38566,7 @@ static int test_show_table_status_execution(void) {
         "Dynamic",
         "0",
         "0",
-        "0",
+        "16384",
         "0",
         "0",
         "0",
@@ -38584,7 +38586,7 @@ static int test_show_table_status_execution(void) {
         "Dynamic",
         "0",
         "0",
-        "0",
+        "16384",
         "0",
         "0",
         "0",
@@ -38604,7 +38606,7 @@ static int test_show_table_status_execution(void) {
         "Dynamic",
         "0",
         "0",
-        "0",
+        "16384",
         "0",
         "0",
         "0",
@@ -38633,6 +38635,86 @@ static int test_show_table_status_execution(void) {
         NULL,
         NULL,
         NULL,
+        NULL,
+        "",
+        "",
+    };
+    static const char *const rollback_one_row_values[] = {
+        "rollback_stats",
+        "InnoDB",
+        "10",
+        "Dynamic",
+        "1",
+        "16384",
+        "16384",
+        "0",
+        "0",
+        "0",
+        NULL,
+        "1970-01-01 00:00:00",
+        NULL,
+        NULL,
+        "utf8mb4_bin",
+        NULL,
+        "",
+        "",
+    };
+    static const char *const rollback_three_row_values[] = {
+        "rollback_stats",
+        "InnoDB",
+        "10",
+        "Dynamic",
+        "3",
+        "5461",
+        "16384",
+        "0",
+        "0",
+        "0",
+        NULL,
+        "1970-01-01 00:00:00",
+        NULL,
+        NULL,
+        "utf8mb4_bin",
+        NULL,
+        "",
+        "",
+    };
+    static const char *const index_length_zero_values[] = {
+        "index_length_stats",
+        "InnoDB",
+        "10",
+        "Dynamic",
+        "0",
+        "0",
+        "16384",
+        "0",
+        "0",
+        "0",
+        NULL,
+        "1970-01-01 00:00:00",
+        NULL,
+        NULL,
+        "utf8mb4_bin",
+        NULL,
+        "",
+        "",
+    };
+    static const char *const index_length_one_values[] = {
+        "index_length_stats",
+        "InnoDB",
+        "10",
+        "Dynamic",
+        "0",
+        "0",
+        "16384",
+        "0",
+        "16384",
+        "0",
+        NULL,
+        "1970-01-01 00:00:00",
+        NULL,
+        NULL,
+        "utf8mb4_bin",
         NULL,
         "",
         "",
@@ -38795,6 +38877,65 @@ static int test_show_table_status_execution(void) {
         "show table status information schema mixed-case schema"
     );
     failures += expect_show_table_status_information_schema_rows(database, columns);
+    failures +=
+        execute_sql(database, "CREATE TABLE rollback_stats (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO rollback_stats VALUES (1)", MYLITE_DONE);
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO rollback_stats VALUES (2),(3)", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SHOW TABLE STATUS LIKE 'rollback_stats'",
+        columns,
+        18,
+        rollback_three_row_values,
+        1,
+        "show table status row count inside transaction"
+    );
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SHOW TABLE STATUS LIKE 'rollback_stats'",
+        columns,
+        18,
+        rollback_one_row_values,
+        1,
+        "show table status row count after rollback"
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE index_length_stats (id INT PRIMARY KEY, v INT)",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW TABLE STATUS LIKE 'index_length_stats'",
+        columns,
+        18,
+        index_length_zero_values,
+        1,
+        "show table status initial secondary index length"
+    );
+    failures +=
+        execute_sql(database, "CREATE INDEX idx_status_v ON index_length_stats (v)", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SHOW TABLE STATUS LIKE 'index_length_stats'",
+        columns,
+        18,
+        index_length_one_values,
+        1,
+        "show table status create index length"
+    );
+    failures += execute_sql(database, "DROP INDEX idx_status_v ON index_length_stats", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SHOW TABLE STATUS LIKE 'index_length_stats'",
+        columns,
+        18,
+        index_length_zero_values,
+        1,
+        "show table status drop index length"
+    );
     failures += expect_prepare_error(
         database,
         "SHOW TABLE STATUS FROM missing_show_table_status",

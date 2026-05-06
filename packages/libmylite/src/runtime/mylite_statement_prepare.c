@@ -322,8 +322,7 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
     return status;
 }
 
-static enum mylite_stmt_kind
-placeholder_statement_kind(const struct mylite_sql_ast_node *statement)
+static enum mylite_stmt_kind placeholder_statement_kind(const struct mylite_sql_ast_node *statement)
 {
     switch (statement->placeholder_statement_kind) {
     case MYLITE_SQL_AST_PLACEHOLDER_CALL:

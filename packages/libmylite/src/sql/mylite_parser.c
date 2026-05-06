@@ -3301,16 +3301,17 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_placeholder_statement_with_en
     struct mylite_sql_parser_state *state, enum mylite_sql_ast_placeholder_statement_kind kind,
     struct mylite_sql_token start_token, struct mylite_sql_token end_token)
 {
-    struct mylite_sql_ast_node *statement = make_node(
-        state, MYLITE_SQL_AST_PLACEHOLDER_STATEMENT,
-        span_join(span_from_token(&start_token), span_from_token(&end_token)));
+    struct mylite_sql_ast_node *statement =
+        make_node(state, MYLITE_SQL_AST_PLACEHOLDER_STATEMENT,
+                  span_join(span_from_token(&start_token), span_from_token(&end_token)));
     mylite_sql_ast_node_set_placeholder_statement_kind(statement, kind);
     return statement;
 }
 
-struct mylite_sql_ast_node *mylite_sql_parser_make_stored_program_body(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token start_token,
-    struct mylite_sql_ast_node *last_node)
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_stored_program_body(struct mylite_sql_parser_state *state,
+                                           struct mylite_sql_token start_token,
+                                           struct mylite_sql_ast_node *last_node)
 {
     struct mylite_sql_source_span span = span_from_token(&start_token);
 
@@ -3320,9 +3321,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_stored_program_body(
     return make_node(state, MYLITE_SQL_AST_SCRIPT, span);
 }
 
-struct mylite_sql_ast_node *mylite_sql_parser_make_stored_program_body_with_end_token(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token start_token,
-    struct mylite_sql_token end_token)
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_stored_program_body_with_end_token(struct mylite_sql_parser_state *state,
+                                                          struct mylite_sql_token start_token,
+                                                          struct mylite_sql_token end_token)
 {
     return make_node(state, MYLITE_SQL_AST_SCRIPT,
                      span_join(span_from_token(&start_token), span_from_token(&end_token)));

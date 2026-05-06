@@ -183,9 +183,8 @@ int mylite_statement_execute_custom_with_callbacks(
 
 static int execute_parser_placeholder_statement(mylite_stmt *stmt)
 {
-    return mylite_diagnostics_append_warning(
-        stmt->database, MYLITE_MYSQL_ER_NOT_SUPPORTED_YET,
-        parser_placeholder_warning_message(stmt->kind));
+    return mylite_diagnostics_append_warning(stmt->database, MYLITE_MYSQL_ER_NOT_SUPPORTED_YET,
+                                             parser_placeholder_warning_message(stmt->kind));
 }
 
 static const char *parser_placeholder_warning_message(enum mylite_stmt_kind kind)

@@ -90,6 +90,8 @@ Verified collations for this feature:
 | `utf8mb3_bin` | `utf8mb3` | 83 | no |
 | `utf8mb4_0900_ai_ci` | `utf8mb4` | 255 | yes |
 | `utf8mb4_bin` | `utf8mb4` | 46 | no |
+| `utf8mb4_unicode_520_ci` | `utf8mb4` | 246 | no |
+| `utf8mb4_unicode_ci` | `utf8mb4` | 224 | no |
 
 `SET NAMES charset` sets `character_set_client`,
 `character_set_connection`, and `character_set_results` to the normalized

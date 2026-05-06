@@ -109,6 +109,8 @@ the current charset foundation:
 | --- | --- | --- |
 | default connection literal after startup or `SET NAMES utf8mb4` | `utf8mb4` | `utf8mb4_0900_ai_ci` |
 | `SET NAMES utf8mb4 COLLATE utf8mb4_bin` literal | `utf8mb4` | `utf8mb4_bin` |
+| `SET NAMES utf8mb4 COLLATE utf8mb4_unicode_520_ci` literal | `utf8mb4` | `utf8mb4_unicode_520_ci` |
+| `SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci` literal | `utf8mb4` | `utf8mb4_unicode_ci` |
 | `SET NAMES latin1` literal | `latin1` | `latin1_swedish_ci` |
 | `SET NAMES latin1 COLLATE latin1_bin` literal | `latin1` | `latin1_bin` |
 | numeric expression | `binary` | `binary` |
@@ -167,6 +169,8 @@ Observed metadata:
 | --- | --- | ---: | ---: | ---: | --- |
 | `SET NAMES utf8mb4` | `VAR_STRING` | `255` | `256` | `31` | none |
 | `SET NAMES utf8mb4 COLLATE utf8mb4_bin` | `VAR_STRING` | `46` | `256` | `31` | none |
+| `SET NAMES utf8mb4 COLLATE utf8mb4_unicode_520_ci` | `VAR_STRING` | `246` | `256` | `31` | none |
+| `SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci` | `VAR_STRING` | `224` | `256` | `31` | none |
 | `SET NAMES latin1` | `VAR_STRING` | `8` | `64` | `31` | none |
 
 `COERCIBILITY(expr)` returns `LONGLONG`, length `10`, decimals `0`, charset id

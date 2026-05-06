@@ -683,6 +683,7 @@ static const struct mylite_collation_info *lookup_collation(const char *name, si
         {"binary", "binary"},
         {"utf8mb4_0900_ai_ci", "utf8mb4"},
         {"utf8mb4_unicode_520_ci", "utf8mb4"},
+        {"utf8mb4_unicode_ci", "utf8mb4"},
         {"utf8mb4_bin", "utf8mb4"},
         {"utf8mb3_general_ci", "utf8mb3"},
         {"utf8mb3_bin", "utf8mb3"},

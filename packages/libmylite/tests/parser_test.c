@@ -794,6 +794,11 @@ static int test_create_table_string_binary_columns(void)
     }
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("CREATE TABLE unicode_ci_string ("
+                          "u VARCHAR(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("CREATE TABLE bad_char_length (a CHAR(256));",
                           MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);

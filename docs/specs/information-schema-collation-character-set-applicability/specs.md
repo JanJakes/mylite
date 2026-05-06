@@ -79,6 +79,8 @@ The verified supported-subset probe, ordered by collation name, returned:
 | `utf8mb3_general_ci` | `utf8mb3` |
 | `utf8mb4_0900_ai_ci` | `utf8mb4` |
 | `utf8mb4_bin` | `utf8mb4` |
+| `utf8mb4_unicode_520_ci` | `utf8mb4` |
+| `utf8mb4_unicode_ci` | `utf8mb4` |
 
 The full MySQL catalog is larger. In the verified runtime,
 `SELECT * FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY LIMIT 2`
@@ -136,6 +138,8 @@ MyLite first-slice rows:
 | `utf8mb3_general_ci` | `utf8mb3` |
 | `utf8mb4_0900_ai_ci` | `utf8mb4` |
 | `utf8mb4_bin` | `utf8mb4` |
+| `utf8mb4_unicode_520_ci` | `utf8mb4` |
+| `utf8mb4_unicode_ci` | `utf8mb4` |
 
 Rows must be generated from `mylite_collation_count()` and
 `mylite_collation_at()`, the same registry used by `SHOW COLLATION` and

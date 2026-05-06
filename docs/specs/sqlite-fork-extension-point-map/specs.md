@@ -18,7 +18,7 @@ Implemented fork points:
 - VDBE write-time type checking through `OP_MyliteTypeCheck`
 - binary string byte-length and fixed-length padding through column descriptors
 - decimal precision/scale rounding and range checks through column descriptors
-- date and datetime parsing, fractional rounding, and range checks through
+- date, datetime, and time parsing, fractional rounding, and range checks through
   column descriptors
 - update-mask-aware descriptor checking for SQLite `UPDATE` record creation
 - structured fork diagnostics for MyLite-owned VDBE type-check failures
@@ -126,15 +126,15 @@ Implemented first slice:
 
 Next likely descriptor families:
 
-- `TIME`, `TIMESTAMP`, and `YEAR` temporal values with SQL-mode behavior
+- `TIMESTAMP` and `YEAR` temporal values with SQL-mode behavior
 - blob-family capacity checks
 - `ENUM`, `SET`, `JSON`, and bit values
 
 The next temporal-specific fork points are accepted-assignment warnings,
-SQL-mode-sensitive zero date handling, `TIMESTAMP` time-zone conversion, and
-direct SQLite parser/catalog descriptor loading. The next decimal-specific fork
-points are comparison/index ordering and direct SQLite parser numeric-literal
-preservation.
+SQL-mode-sensitive zero date handling, `TIME_TRUNCATE_FRACTIONAL`,
+`TIMESTAMP` time-zone conversion, and direct SQLite parser/catalog descriptor
+loading. The next decimal-specific fork points are comparison/index ordering
+and direct SQLite parser numeric-literal preservation.
 
 ### Diagnostics and warnings
 

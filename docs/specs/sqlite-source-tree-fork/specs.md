@@ -58,6 +58,8 @@ Deferred scope:
   `docs/specs/sqlite-fork-decimal-type-descriptors/specs.md`
 - SQLite fork temporal type descriptors:
   `docs/specs/sqlite-fork-temporal-type-descriptors/specs.md`
+- SQLite fork time type descriptors:
+  `docs/specs/sqlite-fork-time-type-descriptors/specs.md`
 
 This specification is independently authored from official SQLite source-tree
 layout, observed MyLite build behavior, and the current MyLite codebase.
@@ -102,7 +104,8 @@ The fork's `UPDATE` record-building path uses SQLite's changed-column mask for
 MyLite descriptor checks, so assignment coercion applies to assigned columns
 without revalidating unrelated stored values.
 The current descriptor families cover strict integer, `DOUBLE`, `VARCHAR`,
-`BINARY`, `VARBINARY`, `DECIMAL`, `DATE`, and `DATETIME` assignment behavior.
+`BINARY`, `VARBINARY`, `DECIMAL`, `DATE`, `DATETIME`, and `TIME` assignment
+behavior.
 Fork-owned VDBE failures can also publish a structured MySQL condition through
 the diagnostics bridge before SQLite reports the statement error.
 

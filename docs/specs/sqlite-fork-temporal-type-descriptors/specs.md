@@ -19,7 +19,9 @@ temporal assignment types:
 
 Deferred scope:
 
-- `TIME`, `TIMESTAMP`, and `YEAR` value assignment descriptors
+- `TIMESTAMP` and `YEAR` value assignment descriptors
+- `TIME(fsp)` is implemented by the dedicated SQLite fork TIME descriptor
+  slice
 - session time zone conversion and `TIMESTAMP` default/on-update behavior
 - SQL-mode-specific zero date, zero-in-date, invalid-date, and non-strict
   warning behavior
@@ -43,6 +45,8 @@ Deferred scope:
 - SQLite fork type coercion and diagnostics specs:
   `docs/specs/sqlite-fork-type-coercion/specs.md` and
   `docs/specs/sqlite-fork-diagnostics-bridge/specs.md`
+- SQLite fork TIME type descriptors:
+  `docs/specs/sqlite-fork-time-type-descriptors/specs.md`
 
 This specification is independently authored from official documentation,
 observed MySQL 8.4.9 runtime behavior, and the current MyLite codebase.
@@ -175,5 +179,6 @@ Executable coverage includes:
 
 This feature is `🟡`: the native write-path primitive is implemented for basic
 `DATE` and `DATETIME` assignment, but zero-date SQL modes, accepted-assignment
-warnings, `TIME`, `TIMESTAMP`, `YEAR`, direct parser integration, and full
-temporal protocol metadata remain future work.
+warnings, `TIMESTAMP`, `YEAR`, direct parser integration, and full temporal
+protocol metadata remain future work. `TIME(fsp)` assignment is tracked in the
+dedicated SQLite fork TIME descriptor slice.

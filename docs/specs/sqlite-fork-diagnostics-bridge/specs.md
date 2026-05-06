@@ -99,7 +99,7 @@ multiple warnings without aborting execution.
 | over-length `BINARY(n)` or `VARBINARY(n)` | 1406 | `22001` |
 | invalid `DECIMAL(p,s)` assignment text | 1366 | `HY000` |
 | out-of-range `DECIMAL(p,s)` assignment | 1264 | `22003` |
-| invalid `DATE` or `DATETIME(fsp)` assignment | 1292 | `22007` |
+| invalid `DATE`, `DATETIME(fsp)`, or `TIME(fsp)` assignment | 1292 | `22007` |
 | post-round `DATETIME(fsp)` overflow | 1441 | `22008` |
 | invalid internal MyLite descriptor | 1105 | `HY000` |
 

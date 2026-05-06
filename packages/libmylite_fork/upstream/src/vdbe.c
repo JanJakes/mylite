@@ -472,6 +472,13 @@ static int myliteCoerceDateTime(
   u32 *pMyErrno,
   const char **pzSqlState
 );
+static int myliteCoerceTime(
+  Mem *pMem,
+  u8 nFsp,
+  const char **pzErr,
+  u32 *pMyErrno,
+  const char **pzSqlState
+);
 static int myliteDecimalText(
   const char *zText,
   int nText,
@@ -519,7 +526,62 @@ struct MyliteTemporalParts {
 # define MYLITE_TEMPORAL_OK       0
 # define MYLITE_TEMPORAL_INVALID  1
 # define MYLITE_TEMPORAL_OVERFLOW 2
+# define MYLITE_TIME_US_PER_SECOND ((i64)1000000)
+# define MYLITE_TIME_US_PER_MINUTE ((i64)60*MYLITE_TIME_US_PER_SECOND)
+# define MYLITE_TIME_US_PER_HOUR   ((i64)60*MYLITE_TIME_US_PER_MINUTE)
+# define MYLITE_TIME_MAX_US        \
+    ((i64)838*MYLITE_TIME_US_PER_HOUR + (i64)59*MYLITE_TIME_US_PER_MINUTE + \
+     (i64)59*MYLITE_TIME_US_PER_SECOND)
 static int myliteTemporalText(Mem *pMem);
+static int myliteParseTimeText(const char *zText, int nText, u8 nFsp, i64 *pUs);
+static int myliteParseTimeParts(
+  const char *zText,
+  int *pi,
+  int nText,
+  u8 nFsp,
+  i64 *pUs
+);
+static int myliteParseColonTime(
+  const char *zText,
+  int *pi,
+  int nText,
+  u8 nFsp,
+  i64 iDay,
+  i64 *pUs
+);
+static int myliteParseCompactTime(
+  const char *zText,
+  int *pi,
+  int nText,
+  u8 nFsp,
+  i64 *pUs
+);
+static int myliteTimeReadUnsigned(
+  const char *zText,
+  int *pi,
+  int nText,
+  i64 iLimit,
+  i64 *pValue
+);
+static int myliteTimeReadVariableDigits(
+  const char *zText,
+  int *pi,
+  int nText,
+  int nMin,
+  int nMax,
+  int *pValue
+);
+static int myliteParseTimeFraction(
+  const char *zText,
+  int *pi,
+  int nText,
+  u8 nFsp,
+  int *pUs,
+  int *pNonzero
+);
+static int myliteTimeHasColon(const char *zText, int i, int nText);
+static int myliteTimeWithinRange(i64 iUs);
+static void myliteTimeFormat(i64 iUs, u8 nFsp, char *zOut, int *pnOut);
 static int myliteParseTemporalText(
   const char *zText,
   int nText,
@@ -684,6 +746,10 @@ static int myliteApplyColumnType(
           pMem, pCol->myliteType.nFsp,
           (pCol->myliteType.mFlags & MYLITE_COLTYPE_FLAG_ALLOW_ZERO)!=0,
           pzErr, pMyErrno, pzSqlState
+      );
+    case MYLITE_COLTYPE_TIME:
+      return myliteCoerceTime(
+          pMem, pCol->myliteType.nFsp, pzErr, pMyErrno, pzSqlState
       );
     default:
       *pzErr = "invalid MyLite column type";
@@ -1164,6 +1230,31 @@ static int myliteCoerceDateTime(
   return sqlite3VdbeMemSetStr(pMem, zOut, nOut, SQLITE_UTF8, SQLITE_TRANSIENT);
 }
 
+static int myliteCoerceTime(
+  Mem *pMem,
+  u8 nFsp,
+  const char **pzErr,
+  u32 *pMyErrno,
+  const char **pzSqlState
+){
+  i64 iUs = 0;
+  char zOut[32];
+  int nOut = 0;
+  int rc;
+
+  rc = myliteTemporalText(pMem);
+  if( rc!=SQLITE_OK ) return rc;
+  rc = myliteParseTimeText(pMem->z, pMem->n, nFsp, &iUs);
+  if( rc!=MYLITE_TEMPORAL_OK ){
+    *pzErr = "invalid time value";
+    *pMyErrno = 1292;
+    *pzSqlState = "22007";
+    return SQLITE_MISMATCH;
+  }
+  myliteTimeFormat(iUs, nFsp, zOut, &nOut);
+  return sqlite3VdbeMemSetStr(pMem, zOut, nOut, SQLITE_UTF8, SQLITE_TRANSIENT);
+}
+
 static int myliteTemporalText(Mem *pMem){
   if( (pMem->flags & (MEM_Str|MEM_Blob))==0 ){
     if( sqlite3VdbeMemStringify(pMem, SQLITE_UTF8, 1)!=SQLITE_OK ){
@@ -1171,6 +1262,308 @@ static int myliteTemporalText(Mem *pMem){
     }
   }
   return ExpandBlob(pMem);
+}
+
+static int myliteParseTimeText(const char *zText, int nText, u8 nFsp, i64 *pUs){
+  int i = 0;
+  int bNegative = 0;
+  i64 iUs = 0;
+  int rc;
+
+  while( i<nText && sqlite3Isspace(zText[i]) ) i++;
+  while( nText>i && sqlite3Isspace(zText[nText-1]) ) nText--;
+  if( i>=nText ) return MYLITE_TEMPORAL_INVALID;
+  if( zText[i]=='+' ) return MYLITE_TEMPORAL_INVALID;
+  if( zText[i]=='-' ){
+    bNegative = 1;
+    i++;
+  }
+  if( i>=nText || zText[i]=='+' || zText[i]=='-' ){
+    return MYLITE_TEMPORAL_INVALID;
+  }
+
+  rc = myliteParseTimeParts(zText, &i, nText, nFsp, &iUs);
+  if( rc!=MYLITE_TEMPORAL_OK ) return rc;
+  while( i<nText && sqlite3Isspace(zText[i]) ) i++;
+  if( i!=nText || !myliteTimeWithinRange(iUs) ){
+    return MYLITE_TEMPORAL_INVALID;
+  }
+  if( bNegative && iUs!=0 ){
+    iUs = -iUs;
+  }
+  *pUs = iUs;
+  return MYLITE_TEMPORAL_OK;
+}
+
+static int myliteParseTimeParts(
+  const char *zText,
+  int *pi,
+  int nText,
+  u8 nFsp,
+  i64 *pUs
+){
+  int iStart = *pi;
+  int nDigit = myliteTemporalDigitRun(zText, iStart, nText);
+  int iAfterDigits = iStart + nDigit;
+
+  if( nDigit==0 ){
+    if( iStart<nText && zText[iStart]==':' ){
+      return myliteParseColonTime(zText, pi, nText, nFsp, 0, pUs);
+    }
+    return MYLITE_TEMPORAL_INVALID;
+  }
+
+  if( iAfterDigits<nText && sqlite3Isspace(zText[iAfterDigits]) ){
+    int iAfterSpace = iAfterDigits;
+    while( iAfterSpace<nText && sqlite3Isspace(zText[iAfterSpace]) ){
+      iAfterSpace++;
+    }
+    if( iAfterSpace<nText && myliteTimeHasColon(zText, iAfterSpace, nText) ){
+      i64 iDay = 0;
+      int iDayStart = iStart;
+      int rc = myliteTimeReadUnsigned(zText, &iDayStart, nText, 1000000, &iDay);
+      if( rc!=MYLITE_TEMPORAL_OK ) return rc;
+      *pi = iAfterSpace;
+      return myliteParseColonTime(zText, pi, nText, nFsp, iDay, pUs);
+    }
+  }
+  if( iAfterDigits<nText && zText[iAfterDigits]==':' ){
+    return myliteParseColonTime(zText, pi, nText, nFsp, 0, pUs);
+  }
+  return myliteParseCompactTime(zText, pi, nText, nFsp, pUs);
+}
+
+static int myliteParseColonTime(
+  const char *zText,
+  int *pi,
+  int nText,
+  u8 nFsp,
+  i64 iDay,
+  i64 *pUs
+){
+  i64 iHour = 0;
+  i64 iWholeUs;
+  int min = 0;
+  int s = 0;
+  int us = 0;
+  int bFractionNonzero = 0;
+  int rc;
+
+  if( *pi<nText && zText[*pi]==':' ){
+    (*pi)++;
+  }else{
+    rc = myliteTimeReadUnsigned(zText, pi, nText, 1000000, &iHour);
+    if( rc!=MYLITE_TEMPORAL_OK ) return rc;
+    if( *pi>=nText || zText[*pi]!=':' ) return MYLITE_TEMPORAL_INVALID;
+    (*pi)++;
+  }
+
+  rc = myliteTimeReadVariableDigits(zText, pi, nText, 1, 2, &min);
+  if( rc!=MYLITE_TEMPORAL_OK ) return rc;
+  if( *pi<nText && zText[*pi]==':' ){
+    (*pi)++;
+    rc = myliteTimeReadVariableDigits(zText, pi, nText, 1, 2, &s);
+    if( rc!=MYLITE_TEMPORAL_OK ) return rc;
+  }
+  if( *pi<nText && zText[*pi]=='.' ){
+    rc = myliteParseTimeFraction(
+        zText, pi, nText, nFsp, &us, &bFractionNonzero
+    );
+    if( rc!=MYLITE_TEMPORAL_OK ) return rc;
+  }
+  if( min>59 || s>59 ) return MYLITE_TEMPORAL_INVALID;
+  iWholeUs = ((iDay*24 + iHour)*MYLITE_TIME_US_PER_HOUR) +
+      ((i64)min*MYLITE_TIME_US_PER_MINUTE) +
+      ((i64)s*MYLITE_TIME_US_PER_SECOND);
+  if( iWholeUs>MYLITE_TIME_MAX_US ||
+      (iWholeUs==MYLITE_TIME_MAX_US && bFractionNonzero) ){
+    return MYLITE_TEMPORAL_INVALID;
+  }
+  *pUs = iWholeUs + (i64)us;
+  return MYLITE_TEMPORAL_OK;
+}
+
+static int myliteParseCompactTime(
+  const char *zText,
+  int *pi,
+  int nText,
+  u8 nFsp,
+  i64 *pUs
+){
+  int i = *pi;
+  int nDigit = myliteTemporalDigitRun(zText, i, nText);
+  int value = 0;
+  int h;
+  int min;
+  int s;
+  int us = 0;
+  int bFractionNonzero = 0;
+  i64 iWholeUs;
+  int j;
+  int rc;
+
+  if( nDigit==0 ) return MYLITE_TEMPORAL_INVALID;
+  while( nDigit>6 && zText[i]=='0' ){
+    i++;
+    nDigit--;
+  }
+  if( nDigit>6 ) return MYLITE_TEMPORAL_INVALID;
+  for(j=0; j<nDigit; j++){
+    value = value*10 + (zText[i+j] - '0');
+  }
+  i += nDigit;
+  s = value%100;
+  value /= 100;
+  min = value%100;
+  h = value/100;
+  if( min>59 || s>59 ) return MYLITE_TEMPORAL_INVALID;
+  if( i<nText && zText[i]=='.' ){
+    rc = myliteParseTimeFraction(
+        zText, &i, nText, nFsp, &us, &bFractionNonzero
+    );
+    if( rc!=MYLITE_TEMPORAL_OK ) return rc;
+  }
+  *pi = i;
+  iWholeUs = ((i64)h*MYLITE_TIME_US_PER_HOUR) +
+      ((i64)min*MYLITE_TIME_US_PER_MINUTE) +
+      ((i64)s*MYLITE_TIME_US_PER_SECOND);
+  if( iWholeUs>MYLITE_TIME_MAX_US ||
+      (iWholeUs==MYLITE_TIME_MAX_US && bFractionNonzero) ){
+    return MYLITE_TEMPORAL_INVALID;
+  }
+  *pUs = iWholeUs + (i64)us;
+  return MYLITE_TEMPORAL_OK;
+}
+
+static int myliteTimeReadUnsigned(
+  const char *zText,
+  int *pi,
+  int nText,
+  i64 iLimit,
+  i64 *pValue
+){
+  int i = *pi;
+  i64 value = 0;
+
+  if( i>=nText || !sqlite3Isdigit(zText[i]) ){
+    return MYLITE_TEMPORAL_INVALID;
+  }
+  while( i<nText && sqlite3Isdigit(zText[i]) ){
+    int digit = zText[i] - '0';
+    if( value>(iLimit - digit)/10 ){
+      return MYLITE_TEMPORAL_INVALID;
+    }
+    value = value*10 + digit;
+    i++;
+  }
+  *pi = i;
+  *pValue = value;
+  return MYLITE_TEMPORAL_OK;
+}
+
+static int myliteTimeReadVariableDigits(
+  const char *zText,
+  int *pi,
+  int nText,
+  int nMin,
+  int nMax,
+  int *pValue
+){
+  int i = *pi;
+  int value = 0;
+  int nDigit = 0;
+
+  while( i<nText && nDigit<nMax && sqlite3Isdigit(zText[i]) ){
+    value = value*10 + (zText[i] - '0');
+    i++;
+    nDigit++;
+  }
+  if( nDigit<nMin ) return MYLITE_TEMPORAL_INVALID;
+  *pi = i;
+  *pValue = value;
+  return MYLITE_TEMPORAL_OK;
+}
+
+static int myliteParseTimeFraction(
+  const char *zText,
+  int *pi,
+  int nText,
+  u8 nFsp,
+  int *pUs,
+  int *pNonzero
+){
+  int i = *pi + 1;
+  int nKept = 0;
+  int nDigit = 0;
+  int iRound = -1;
+  int iValue = 0;
+  int iIncrement = 1;
+  int j;
+
+  *pNonzero = 0;
+  if( i>=nText || !sqlite3Isdigit(zText[i]) ){
+    return MYLITE_TEMPORAL_INVALID;
+  }
+  while( i<nText && sqlite3Isdigit(zText[i]) ){
+    int digit = zText[i] - '0';
+    if( digit!=0 ) *pNonzero = 1;
+    if( nKept<(int)nFsp ){
+      iValue = iValue*10 + digit;
+      nKept++;
+    }else if( iRound<0 ){
+      iRound = digit;
+    }
+    nDigit++;
+    i++;
+  }
+  if( nDigit==0 ) return MYLITE_TEMPORAL_INVALID;
+  while( nKept<6 ){
+    iValue *= 10;
+    nKept++;
+  }
+  if( iRound>=5 ){
+    for(j=0; j<6-(int)nFsp; j++) iIncrement *= 10;
+    iValue += iIncrement;
+  }
+  *pi = i;
+  *pUs = iValue;
+  return MYLITE_TEMPORAL_OK;
+}
+
+static int myliteTimeHasColon(const char *zText, int i, int nText){
+  while( i<nText && !sqlite3Isspace(zText[i]) && zText[i]!='.' ){
+    if( zText[i]==':' ) return 1;
+    i++;
+  }
+  return 0;
+}
+
+static int myliteTimeWithinRange(i64 iUs){
+  if( iUs<0 ) iUs = -iUs;
+  return iUs<=MYLITE_TIME_MAX_US;
+}
+
+static void myliteTimeFormat(i64 iUs, u8 nFsp, char *zOut, int *pnOut){
+  char zFraction[8];
+  int bNegative = iUs<0;
+  i64 iAbs = bNegative ? -iUs : iUs;
+  i64 iTotalSeconds = iAbs/MYLITE_TIME_US_PER_SECOND;
+  int us = (int)(iAbs%MYLITE_TIME_US_PER_SECOND);
+  int h = (int)(iTotalSeconds/3600);
+  int min = (int)((iTotalSeconds/60)%60);
+  int s = (int)(iTotalSeconds%60);
+
+  sqlite3_snprintf(
+      32, zOut, "%s%02d:%02d:%02d", bNegative ? "-" : "", h, min, s
+  );
+  *pnOut = sqlite3Strlen30(zOut);
+  if( nFsp>0 ){
+    sqlite3_snprintf(sizeof(zFraction), zFraction, "%06d", us);
+    zOut[(*pnOut)++] = '.';
+    memcpy(&zOut[*pnOut], zFraction, nFsp);
+    *pnOut += nFsp;
+    zOut[*pnOut] = 0;
+  }
 }
 
 static int myliteParseTemporalText(

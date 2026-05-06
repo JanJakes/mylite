@@ -45,6 +45,8 @@ static int test_native_decimal_type_coercion(void);
 
 static int test_native_temporal_type_coercion(void);
 
+static int test_native_time_type_coercion(void);
+
 static int test_wordpress_like_crud(void);
 
 static int test_mylite_wordpress_like_crud(void);
@@ -56,6 +58,8 @@ static int test_mylite_binary_type_coercion(void);
 static int test_mylite_decimal_type_coercion(void);
 
 static int test_mylite_temporal_type_coercion(void);
+
+static int test_mylite_time_type_coercion(void);
 
 static int test_mylite_collation_unique_semantics(void);
 
@@ -117,12 +121,14 @@ int main(void) {
     failures += test_native_binary_type_coercion();
     failures += test_native_decimal_type_coercion();
     failures += test_native_temporal_type_coercion();
+    failures += test_native_time_type_coercion();
     failures += test_wordpress_like_crud();
     failures += test_mylite_wordpress_like_crud();
     failures += test_mylite_basic_type_coercion();
     failures += test_mylite_binary_type_coercion();
     failures += test_mylite_decimal_type_coercion();
     failures += test_mylite_temporal_type_coercion();
+    failures += test_mylite_time_type_coercion();
     failures += test_mylite_collation_unique_semantics();
 
     return failures == 0 ? 0 : 1;
@@ -1009,6 +1015,156 @@ static int test_native_temporal_type_coercion(void) {
             .sql = "SELECT d || ':' || dt FROM temporal_zero_direct WHERE id = 1",
             .expected = "0000-00-00:0000-00-00 00:00:00",
             .context = "direct temporal descriptors can allow zero sentinels",
+        }
+    );
+
+    sqlite3_close(database);
+    return failures;
+}
+
+static int test_native_time_type_coercion(void) {
+    enum {
+        invalid_time_error = 1292,
+        time_millisecond_precision = 3,
+        time_microsecond_precision = 6,
+    };
+
+    sqlite3 *database = NULL;
+    int failures = 0;
+
+    failures += open_configured_database(&database);
+    if (failures != 0) {
+        return failures;
+    }
+
+    failures += exec_sql(
+        database,
+        "CREATE TABLE time_direct(id INTEGER PRIMARY KEY, t TEXT, t3 TEXT, t6 TEXT)",
+        "create direct time descriptor fixture"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_column_type(
+            database,
+            NULL,
+            "time_direct",
+            "t",
+            &(const struct mylite_sqlite_fork_column_type){
+                .kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_TIME,
+            }
+        ),
+        database,
+        "set direct time descriptor"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_column_type(
+            database,
+            NULL,
+            "time_direct",
+            "t3",
+            &(const struct mylite_sqlite_fork_column_type){
+                .kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_TIME,
+                .datetime_precision = time_millisecond_precision,
+            }
+        ),
+        database,
+        "set direct time(3) descriptor"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_column_type(
+            database,
+            NULL,
+            "time_direct",
+            "t6",
+            &(const struct mylite_sqlite_fork_column_type){
+                .kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_TIME,
+                .datetime_precision = time_microsecond_precision,
+            }
+        ),
+        database,
+        "set direct time(6) descriptor"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO time_direct VALUES "
+        "(1, '12:34:56', '12:34:56.7896', '12:34:56.1234567'),"
+        "(2, '-12:34:56', '-12:34:56.7896', '-12:34:56.1234567'),"
+        "(3, '1 02:03:04', '1 02:03:04.5678', '1 02:03:04.123456'),"
+        "(4, 123456, 123456.789, 123456.123456),"
+        "(5, 1234, 1234.5, 1234.123456),"
+        "(6, 12, 12.9, 12.123456),"
+        "(7, '34:56', '34:56.7894', '34:56.789456'),"
+        "(8, ':12', '1:2:3.4567', '-00:00:00.0000004'),"
+        "(9, '838:59:58.5', '838:59:58.9995', '838:59:58.9999995')",
+        "insert direct time descriptor values"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT group_concat(id || ':' || t || ':' || t3 || ':' || t6, '|') "
+                   "FROM (SELECT id, t, t3, t6 FROM time_direct ORDER BY id)",
+            .expected = "1:12:34:56:12:34:56.790:12:34:56.123457|"
+                        "2:-12:34:56:-12:34:56.790:-12:34:56.123457|"
+                        "3:26:03:04:26:03:04.568:26:03:04.123456|"
+                        "4:12:34:56:12:34:56.789:12:34:56.123456|"
+                        "5:00:12:34:00:12:34.500:00:12:34.123456|"
+                        "6:00:00:12:00:00:12.900:00:00:12.123456|"
+                        "7:34:56:00:34:56:00.789:34:56:00.789456|"
+                        "8:00:12:00:01:02:03.457:00:00:00.000000|"
+                        "9:838:59:59:838:59:59.000:838:59:59.000000",
+            .context = "direct time descriptors normalize stored text",
+        }
+    );
+    failures += exec_sql(
+        database,
+        "UPDATE time_direct SET t = '23:59:59.9', "
+        "t3 = '-23:59:59.9994', t6 = '838:59:58.999999' WHERE id = 1",
+        "update direct time descriptor values"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT t || ':' || t3 || ':' || t6 FROM time_direct WHERE id = 1",
+            .expected = "24:00:00:-23:59:59.999:838:59:58.999999",
+            .context = "direct time update coerces assigned values",
+        }
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO time_direct VALUES (10, '838:59:59.000001', "
+                   "'00:00:00', '00:00:00')",
+            .message_fragment = "invalid time value",
+            .context = "direct time descriptor rejects out-of-range values",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = invalid_time_error,
+            .sqlstate = "22007",
+            .context = "out-of-range time exposes MySQL condition",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear out-of-range time fork condition"
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO time_direct VALUES (10, '12:60:00', "
+                   "'00:00:00', '00:00:00')",
+            .message_fragment = "invalid time value",
+            .context = "direct time descriptor rejects malformed values",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = invalid_time_error,
+            .sqlstate = "22007",
+            .context = "malformed time exposes MySQL condition",
         }
     );
 
@@ -2176,6 +2332,170 @@ static int test_mylite_temporal_type_coercion(void) {
         database,
         datetime_overflow_error,
         "MyLite datetime overflow condition"
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_mylite_time_type_coercion(void) {
+    enum {
+        time_column_count = 4,
+        time_initial_row_count = 6,
+        time_after_replace_row_count = 7,
+        invalid_time_error = 1292,
+    };
+
+    static const char *const after_insert[] = {
+        "1", "12:34:56",  "12:34:56.790",  "12:34:56.123457",
+        "2", "-12:34:56", "-12:34:56.790", "-12:34:56.123457",
+        "3", "26:03:04",  "26:03:04.568",  "26:03:04.123456",
+        "4", "12:34:56",  "12:34:56.789",  "12:34:56.123456",
+        "5", "00:12:00",  "01:02:03.457",  "00:00:00.000000",
+        "6", "838:59:59", "838:59:59.000", "838:59:59.000000",
+    };
+    static const char *const after_update[] = {
+        "1", "24:00:00",  "-23:59:59.999", "838:59:58.999999",
+        "2", "-12:34:56", "-12:34:56.790", "-12:34:56.123457",
+        "3", "26:03:04",  "26:03:04.568",  "26:03:04.123456",
+        "4", "12:34:56",  "12:34:56.789",  "12:34:56.123456",
+        "5", "00:12:00",  "01:02:03.457",  "00:00:00.000000",
+        "6", "838:59:59", "838:59:59.000", "838:59:59.000000",
+    };
+    static const char *const after_duplicate_update[] = {
+        "1", "24:00:00",  "-23:59:59.999", "838:59:58.999999",
+        "2", "00:00:01",  "12:34:00.988",  "-838:59:59.000000",
+        "3", "26:03:04",  "26:03:04.568",  "26:03:04.123456",
+        "4", "12:34:56",  "12:34:56.789",  "12:34:56.123456",
+        "5", "00:12:00",  "01:02:03.457",  "00:00:00.000000",
+        "6", "838:59:59", "838:59:59.000", "838:59:59.000000",
+    };
+    static const char *const after_replace[] = {
+        "1", "24:00:00",   "-23:59:59.999", "838:59:58.999999",
+        "2", "00:00:01",   "12:34:00.988",  "-838:59:59.000000",
+        "3", "26:03:04",   "26:03:04.568",  "26:03:04.123456",
+        "4", "12:34:56",   "12:34:56.789",  "12:34:56.123456",
+        "5", "00:12:00",   "01:02:03.457",  "00:00:00.000000",
+        "6", "838:59:59",  "838:59:59.000", "838:59:59.000000",
+        "7", "-838:59:59", "00:00:00.000",  "12:34:57.000000",
+    };
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_mylite_ok(mylite_open_memory(&database), database, "open MyLite time coercion");
+    if (failures != 0) {
+        return failures;
+    }
+
+    failures += exec_mylite_sql(
+        database,
+        "CREATE DATABASE mylite_time_coercion CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+        "create MyLite time coercion schema"
+    );
+    failures += exec_mylite_sql(database, "USE mylite_time_coercion", "use time coercion schema");
+    failures += exec_mylite_sql(
+        database,
+        "CREATE TABLE time_basic ("
+        "id INT PRIMARY KEY,"
+        "t TIME NOT NULL,"
+        "t3 TIME(3) NOT NULL,"
+        "t6 TIME(6) NOT NULL"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "create MyLite time coercion table"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT INTO time_basic VALUES "
+        "(1, '12:34:56', '12:34:56.7896', '12:34:56.1234567'),"
+        "(2, '-12:34:56', '-12:34:56.7896', '-12:34:56.1234567'),"
+        "(3, '1 02:03:04', '1 02:03:04.5678', '1 02:03:04.123456'),"
+        "(4, 123456, 123456.789, 123456.123456),"
+        "(5, ':12', '1:2:3.4567', '-00:00:00.0000004'),"
+        "(6, '838:59:58.5', '838:59:58.9995', '838:59:58.9999995')",
+        "insert MyLite time coercion rows"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT id, t, t3, t6 FROM time_basic ORDER BY id",
+            .values = after_insert,
+            .column_count = time_column_count,
+            .row_count = time_initial_row_count,
+            .context = "MyLite time insert coercion matches MySQL fixture",
+        }
+    );
+    failures += exec_mylite_sql(
+        database,
+        "UPDATE time_basic SET t = '23:59:59.9', "
+        "t3 = '-23:59:59.9994', t6 = '838:59:58.999999' WHERE id = 1",
+        "update MyLite time coercion row"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT id, t, t3, t6 FROM time_basic ORDER BY id",
+            .values = after_update,
+            .column_count = time_column_count,
+            .row_count = time_initial_row_count,
+            .context = "MyLite time update coercion matches MySQL fixture",
+        }
+    );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT INTO time_basic VALUES "
+        "(2, '00:00:00.5', '12:34.9876', '-838:59:58.9999995') "
+        "ON DUPLICATE KEY UPDATE t = VALUES(t), t3 = VALUES(t3), t6 = VALUES(t6)",
+        "insert duplicate update MyLite time coercion row"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT id, t, t3, t6 FROM time_basic ORDER BY id",
+            .values = after_duplicate_update,
+            .column_count = time_column_count,
+            .row_count = time_initial_row_count,
+            .context = "MyLite time duplicate update coercion matches MySQL fixture",
+        }
+    );
+    failures += exec_mylite_sql(
+        database,
+        "REPLACE INTO time_basic VALUES "
+        "(7, '-838:59:58.5', '-00:00:00.0004', '123456.9999995')",
+        "replace MyLite time coercion row"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT id, t, t3, t6 FROM time_basic ORDER BY id",
+            .values = after_replace,
+            .column_count = time_column_count,
+            .row_count = time_after_replace_row_count,
+            .context = "MyLite time replace coercion matches MySQL fixture",
+        }
+    );
+
+    failures += expect_mylite_sql_status(
+        database,
+        "INSERT INTO time_basic VALUES (8, '838:59:59.000001', '00:00:00', '00:00:00')",
+        MYLITE_SQLITE_ERROR,
+        "MyLite time coercion rejects out-of-range values"
+    );
+    failures += expect_mylite_error_condition(
+        database,
+        invalid_time_error,
+        "MyLite out-of-range time condition"
+    );
+    failures += expect_mylite_sql_status(
+        database,
+        "INSERT INTO time_basic VALUES (8, '12:60:00', '00:00:00', '00:00:00')",
+        MYLITE_SQLITE_ERROR,
+        "MyLite time coercion rejects malformed values"
+    );
+    failures += expect_mylite_error_condition(
+        database,
+        invalid_time_error,
+        "MyLite malformed time condition"
     );
 
     mylite_close(database);

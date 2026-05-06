@@ -12,7 +12,7 @@ Implemented scope:
   supported unsigned integer, `DOUBLE`, and `VARCHAR`
 - native SQLite column descriptor hooks that emit VDBE write-time coercion for
   signed integer, supported unsigned integer, `DOUBLE`, `VARCHAR`, `BINARY`,
-  `VARBINARY`, `DECIMAL`, `DATE`, and `DATETIME`
+  `VARBINARY`, `DECIMAL`, `DATE`, `DATETIME`, and `TIME`
 - MyLite public write-table loading attaches catalog-derived descriptors before
   preparing physical SQLite writes
 - MyLite `INSERT`, `UPDATE`, `REPLACE`, and duplicate-key update lowering uses
@@ -31,7 +31,7 @@ Deferred scope:
 - exact MySQL error messages, row interpolation, complete warning records, and
   `IGNORE` demotion for every conversion failure
 - full unsigned `BIGINT` above `INT64_MAX`
-- `TIME`, `TIMESTAMP`, `YEAR`, JSON, `ENUM`, `SET`, bit, blob-family, and spatial
+- `TIMESTAMP`, `YEAR`, JSON, `ENUM`, `SET`, bit, blob-family, and spatial
   assignment conversion
 - decimal-aware comparison/index ordering, compact decimal storage, and direct
   SQLite parser numeric-literal preservation
@@ -62,6 +62,8 @@ Deferred scope:
   `docs/specs/sqlite-fork-decimal-type-descriptors/specs.md`
 - SQLite fork temporal type descriptors:
   `docs/specs/sqlite-fork-temporal-type-descriptors/specs.md`
+- SQLite fork time type descriptors:
+  `docs/specs/sqlite-fork-time-type-descriptors/specs.md`
 
 This specification is independently authored from official documentation,
 observed MySQL 8.4.9 runtime behavior, and the current MyLite codebase. It does
@@ -119,6 +121,13 @@ establishes the first supported temporal assignment behavior: canonical and
 compact `DATE`/`DATETIME` inputs, two-digit year expansion, fractional-second
 rounding to declared `DATETIME(fsp)` precision, date/time carry, invalid
 temporal errors, and post-round datetime overflow errors.
+
+The fixture in
+`docs/specs/sqlite-fork-time-type-descriptors/mysql-time-coercion.sql`
+establishes the first supported `TIME(fsp)` assignment behavior: elapsed-time
+hours, negative values, day-plus-time strings, colon abbreviations, compact
+numeric forms, fractional rounding, strict range checks, and canonical text
+storage.
 
 ## Runtime Design
 
@@ -206,6 +215,15 @@ Zero-date and zero-in-date behavior currently follows the MySQL default strict
 mode fixture and rejects those values. Non-strict SQL modes and warning records
 for accepted date truncation remain deferred.
 
+### `TIME` assignment
+
+The `TIME` descriptor carries fractional seconds precision `0..6`. The VDBE
+hook accepts elapsed-time strings, negative values, day-plus-time strings,
+colon-abbreviated values, compact numeric/text forms, and fractional seconds.
+It rounds fractional seconds to the declared precision, rejects values outside
+MySQL's `-838:59:59.000000` through `838:59:59.000000` range, canonicalizes
+negative zero to positive zero, and stores canonical text.
+
 ## Lemon Grammar Direction
 
 No new MyLite grammar is introduced in this slice. The long-term fork grammar
@@ -232,13 +250,16 @@ The executable tests must cover:
   descriptor slice
 - native SQLite failure behavior for invalid dates, invalid datetimes, and
   post-round datetime overflow through the temporal descriptor slice
+- native SQLite failure behavior for invalid and out-of-range `TIME` values
+  through the time descriptor slice
 - direct SQLite `INSERT` and `UPDATE` behavior through MyLite column descriptors
   without SQL wrapper functions
 - direct SQLite `UPDATE` behavior that coerces assigned descriptor columns
   without revalidating unchanged legacy stored values
 - MySQL fixture diffs against `mysql-basic-type-coercion.expected.tsv`,
   `mysql-decimal-coercion.expected.tsv`, and
-  `mysql-temporal-coercion.expected.tsv`
+  `mysql-temporal-coercion.expected.tsv`, and
+  `mysql-time-coercion.expected.tsv`
 
 ## Compatibility Status
 

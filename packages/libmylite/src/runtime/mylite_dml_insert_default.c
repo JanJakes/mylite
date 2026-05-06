@@ -415,6 +415,7 @@ static bool insert_column_uses_temporal_text_storage(
         return false;
     }
     return (mylite_ascii_case_equal(column->data_type, "date") ||
+            mylite_ascii_case_equal(column->data_type, "time") ||
             mylite_ascii_case_equal(column->data_type, "datetime")) != 0;
 }
 
@@ -433,6 +434,7 @@ static bool insert_column_uses_text_storage(const struct mylite_insert_table_col
         "mediumblob",
         "longblob",
         "date",
+        "time",
         "datetime",
     };
 

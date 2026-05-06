@@ -18,6 +18,7 @@ enum mylite_sqlite_fork_column_type_kind {
     MYLITE_SQLITE_FORK_COLUMN_TYPE_DECIMAL = 7,
     MYLITE_SQLITE_FORK_COLUMN_TYPE_DATE = 8,
     MYLITE_SQLITE_FORK_COLUMN_TYPE_DATETIME = 9,
+    MYLITE_SQLITE_FORK_COLUMN_TYPE_TIME = 10,
 };
 
 enum mylite_sqlite_fork_column_type_flags {

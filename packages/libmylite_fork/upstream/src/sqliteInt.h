@@ -2277,6 +2277,7 @@ struct MyliteColumnType {
 # define MYLITE_COLTYPE_DECIMAL          7
 # define MYLITE_COLTYPE_DATE             8
 # define MYLITE_COLTYPE_DATETIME         9
+# define MYLITE_COLTYPE_TIME             10
 
 # define MYLITE_COLTYPE_FLAG_UNSIGNED    0x0001
 # define MYLITE_COLTYPE_FLAG_ALLOW_ZERO  0x0002

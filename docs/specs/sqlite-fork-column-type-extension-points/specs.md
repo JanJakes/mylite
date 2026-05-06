@@ -18,7 +18,7 @@ Implemented scope:
   a target table has MyLite descriptors
 - support strict assignment coercion for signed integer ranges, supported
   unsigned integer ranges, `DOUBLE`, `VARCHAR(n)`, `BINARY(n)`,
-  `VARBINARY(n)`, `DECIMAL(p,s)`, `DATE`, and `DATETIME(fsp)`
+  `VARBINARY(n)`, `DECIMAL(p,s)`, `DATE`, `DATETIME(fsp)`, and `TIME(fsp)`
 - preserve ordinary SQLite affinity for columns without a MyLite descriptor
 - cover direct SQLite `INSERT` and `UPDATE` statements that write through the
   new descriptor path without SQL wrapper functions
@@ -40,7 +40,7 @@ Deferred scope:
 - exact MySQL diagnostic messages, row interpolation, complete warning records,
   and `IGNORE` demotion
 - non-strict SQL mode clipping and string truncation behavior
-- `TIME`, `TIMESTAMP`, `YEAR`, JSON, `ENUM`, `SET`, bit, blob-family, and spatial
+- `TIMESTAMP`, `YEAR`, JSON, `ENUM`, `SET`, bit, blob-family, and spatial
   assignment conversion
 - preserving MyLite descriptors through SQLite-native schema rebuilds that are
   not coordinated by MyLite
@@ -65,6 +65,8 @@ Deferred scope:
   `docs/specs/sqlite-fork-decimal-type-descriptors/specs.md`
 - SQLite fork temporal type descriptors:
   `docs/specs/sqlite-fork-temporal-type-descriptors/specs.md`
+- SQLite fork time type descriptors:
+  `docs/specs/sqlite-fork-time-type-descriptors/specs.md`
 - Existing SQLite source-tree fork package:
   `docs/specs/sqlite-source-tree-fork/specs.md`
 
@@ -137,6 +139,11 @@ SQLite already uses for table affinity. For each target column:
   post-round overflow, and store canonical text with the declared fractional
   scale. `ALLOW_ZERO_TEMPORAL` likewise accepts only the all-zero datetime
   sentinel.
+- `TIME(fsp)` descriptors validate supported elapsed-time inputs, including
+  negative values, day-plus-time strings, colon abbreviations, and compact
+  numeric/text forms; round fractional seconds to the declared precision;
+  reject malformed or out-of-range values; canonicalize negative zero; and
+  store canonical text.
 
 On failure, SQLite aborts the statement with `SQLITE_CONSTRAINT_DATATYPE` and a
 message naming the failed conversion and target column. The fork diagnostics
@@ -165,7 +172,7 @@ The executable tests must cover:
 - source-tree SQLite still builds and reports the pinned version
 - MyLite fork primitives still register on a SQLite connection
 - a table can be annotated with signed integer, unsigned integer, `DOUBLE`,
-  `VARCHAR`, `BINARY`, `VARBINARY`, `DECIMAL`, `DATE`, and `DATETIME`
+  `VARCHAR`, `BINARY`, `VARBINARY`, `DECIMAL`, `DATE`, `DATETIME`, and `TIME`
   descriptors
 - direct SQLite `INSERT` coerces numeric strings, numeric-to-text values, and
   approximate values through native descriptors
@@ -179,6 +186,7 @@ The executable tests must cover:
   decimal assignments fail through the native opcode
 - invalid date text, invalid datetime text, and post-round datetime overflow
   fail through the native opcode
+- invalid and out-of-range time text fails through the native opcode
 - zero temporal sentinels are accepted only when the descriptor explicitly
   enables `ALLOW_ZERO_TEMPORAL`
 
@@ -195,6 +203,9 @@ The MySQL 8.4.9 fixture in
 `docs/specs/sqlite-fork-temporal-type-descriptors/mysql-temporal-coercion.sql`
 is the runtime baseline for the first supported date/datetime assignment
 behavior.
+The MySQL 8.4.9 fixture in
+`docs/specs/sqlite-fork-time-type-descriptors/mysql-time-coercion.sql` is the
+runtime baseline for the first supported `TIME(fsp)` assignment behavior.
 
 ## Compatibility Status
 

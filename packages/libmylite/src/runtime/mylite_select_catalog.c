@@ -8,11 +8,25 @@
 #include "mylite_select.h"
 #include "mylite_select_catalog_descriptor.h"
 #include "mylite_span.h"
+#include "mylite_value_list_column_type.h"
 #include "sqlite3.h"
 
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+
+enum select_catalog_column_index {
+    select_catalog_column_name_index = 0,
+    select_catalog_extra_index = 1,
+    select_catalog_data_type_index = 3,
+    select_catalog_column_type_index = 9,
+};
+
+struct select_table_unique_not_null_key_state {
+    struct mylite_select_column_sequence key;
+    char *current_name;
+    bool key_usable;
+};
 
 static int load_select_column_from_catalog_row(
     mylite_db *database,
@@ -40,6 +54,13 @@ static bool information_schema_column_is_not_null_text(const char *name);
 static int load_select_table_unique_not_null_keys(
     mylite_db *database,
     struct mylite_select_table *table
+);
+
+static int load_select_table_unique_not_null_key_row(
+    mylite_db *database,
+    struct mylite_select_table *table,
+    sqlite3_stmt *select,
+    struct select_table_unique_not_null_key_state *state
 );
 
 static int reset_select_table_unique_not_null_key(
@@ -225,23 +246,29 @@ static int load_information_schema_column(
 
 static struct mylite_field_descriptor information_schema_column_descriptor(const char *name) {
     bool integer = information_schema_column_is_integer(name);
-    bool nullable = !information_schema_column_is_not_null_text(name);
-    struct mylite_field_descriptor descriptor = integer
-                                                    ? (struct mylite_field_descriptor){
-                                                          .type = MYLITE_FIELD_TYPE_LONGLONG,
-                                                          .flags = MYLITE_FIELD_FLAG_BINARY |
-                                                                   MYLITE_FIELD_FLAG_NUM,
-                                                          .length = mylite_mysql_signed_longlong_display_length,
-                                                          .charset_id = mylite_mysql_binary_charset_id,
-                                                          .nullable = nullable,
-                                                      }
-                                                    : (struct mylite_field_descriptor){
-                                                          .type = MYLITE_FIELD_TYPE_VAR_STRING,
-                                                          .length = mylite_mysql_text_length,
-                                                          .decimals = mylite_mysql_not_fixed_decimals,
-                                                          .charset_id = mylite_mysql_utf8mb4_0900_ai_ci_charset_id,
-                                                          .nullable = nullable,
-                                                      };
+    bool nullable = true;
+    struct mylite_field_descriptor descriptor = {0};
+
+    if (information_schema_column_is_not_null_text(name)) {
+        nullable = false;
+    }
+    if (integer) {
+        descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_LONGLONG,
+            .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+            .length = mylite_mysql_signed_longlong_display_length,
+            .charset_id = mylite_mysql_binary_charset_id,
+            .nullable = nullable,
+        };
+    } else {
+        descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_VAR_STRING,
+            .length = mylite_mysql_text_length,
+            .decimals = mylite_mysql_not_fixed_decimals,
+            .charset_id = mylite_mysql_utf8mb4_0900_ai_ci_charset_id,
+            .nullable = nullable,
+        };
+    }
 
     mylite_field_descriptor_set_nullable(&descriptor, nullable);
     return descriptor;
@@ -311,8 +338,12 @@ static int load_select_column_from_catalog_row(
     struct mylite_select_table *table,
     sqlite3_stmt *select
 ) {
-    const char *name = (const char *)sqlite3_column_text(select, 0);
-    const char *extra = (const char *)sqlite3_column_text(select, 1);
+    const char *name = (const char *)sqlite3_column_text(select, select_catalog_column_name_index);
+    const char *extra = (const char *)sqlite3_column_text(select, select_catalog_extra_index);
+    const char *data_type =
+        (const char *)sqlite3_column_text(select, select_catalog_data_type_index);
+    const char *column_type =
+        (const char *)sqlite3_column_text(select, select_catalog_column_type_index);
     struct mylite_select_column column = {
         .visible = select_column_extra_is_visible(extra),
     };
@@ -326,6 +357,19 @@ static int load_select_column_from_catalog_row(
     if (status != MYLITE_OK) {
         mylite_select_column_deinit(&column);
         return status;
+    }
+    if (mylite_value_list_column_type_is_supported(data_type)) {
+        status = mylite_configure_value_list_column_type(
+            database,
+            table->physical_name,
+            column.name,
+            data_type,
+            column_type
+        );
+        if (status != MYLITE_OK) {
+            mylite_select_column_deinit(&column);
+            return status;
+        }
     }
 
     columns = realloc(table->columns, (table->column_count + 1U) * sizeof(*table->columns));
@@ -345,9 +389,9 @@ static int load_select_table_unique_not_null_keys(
 ) {
     char *sql = NULL;
     sqlite3_stmt *select = NULL;
-    struct mylite_select_column_sequence key = {0};
-    char *current_name = NULL;
-    bool key_usable = true;
+    struct select_table_unique_not_null_key_state state = {
+        .key_usable = true,
+    };
     bool temporary = false;
     int rc = SQLITE_OK;
     int catalog_status = mylite_catalog_temporary_table_exists(
@@ -379,74 +423,89 @@ static int load_select_table_unique_not_null_keys(
     sqlite3_bind_text(select, 1, table->schema_name, -1, sqlite_transient_destructor());
     sqlite3_bind_text(select, 2, table->table_name, -1, sqlite_transient_destructor());
     while ((rc = sqlite3_step(select)) == SQLITE_ROW) {
-        const char *index_name = (const char *)sqlite3_column_text(select, 0);
-        const char *safe_index_name = index_name == NULL ? "" : index_name;
-        const char *column_name = (const char *)sqlite3_column_text(select, 1);
-        const char *nullable = (const char *)sqlite3_column_text(select, 2);
-        size_t column_index = 0U;
+        int status = load_select_table_unique_not_null_key_row(database, table, select, &state);
 
-        if (current_name != NULL && !mylite_ascii_case_equal(current_name, safe_index_name)) {
-            int status = reset_select_table_unique_not_null_key(
-                database,
-                table,
-                &key,
-                &current_name,
-                &key_usable
-            );
-
-            if (status != MYLITE_OK) {
-                sqlite3_finalize(select);
-                return status;
-            }
-        }
-
-        if (current_name == NULL) {
-            current_name = mylite_copy_span_text(safe_index_name, strlen(safe_index_name));
-            if (current_name == NULL) {
-                sqlite3_finalize(select);
-                mylite_select_column_sequence_deinit(&key);
-                (void)mylite_diagnostics_set_error_message(database, "out of memory");
-                return MYLITE_NOMEM;
-            }
-        }
-        if (!select_table_unique_not_null_catalog_row_usable(
-                table,
-                select,
-                column_name,
-                nullable,
-                &column_index
-            )) {
-            key_usable = false;
-            continue;
-        }
-
-        if (key_usable && append_select_table_unique_key_column(
-                              database,
-                              &key,
-                              table->first_column_index + column_index
-                          ) != MYLITE_OK) {
+        if (status != MYLITE_OK) {
             sqlite3_finalize(select);
-            mylite_select_column_sequence_deinit(&key);
-            return MYLITE_NOMEM;
+            mylite_select_column_sequence_deinit(&state.key);
+            free(state.current_name);
+            return status;
         }
     }
     sqlite3_finalize(select);
     if (rc != SQLITE_DONE) {
-        free(current_name);
-        mylite_select_column_sequence_deinit(&key);
+        free(state.current_name);
+        mylite_select_column_sequence_deinit(&state.key);
         return mylite_diagnostics_set_sqlite_error(database);
     }
-    if (current_name != NULL) {
-        int status = finish_select_table_unique_not_null_key(database, table, &key, key_usable);
+    if (state.current_name != NULL) {
+        int status =
+            finish_select_table_unique_not_null_key(database, table, &state.key, state.key_usable);
 
         if (status != MYLITE_OK) {
-            free(current_name);
-            mylite_select_column_sequence_deinit(&key);
+            free(state.current_name);
+            mylite_select_column_sequence_deinit(&state.key);
             return status;
         }
     }
-    free(current_name);
-    mylite_select_column_sequence_deinit(&key);
+    free(state.current_name);
+    mylite_select_column_sequence_deinit(&state.key);
+    return MYLITE_OK;
+}
+
+static int load_select_table_unique_not_null_key_row(
+    mylite_db *database,
+    struct mylite_select_table *table,
+    sqlite3_stmt *select,
+    struct select_table_unique_not_null_key_state *state
+) {
+    const char *index_name = (const char *)sqlite3_column_text(select, 0);
+    const char *safe_index_name = index_name == NULL ? "" : index_name;
+    const char *column_name = (const char *)sqlite3_column_text(select, 1);
+    const char *nullable = (const char *)sqlite3_column_text(select, 2);
+    size_t column_index = 0U;
+
+    if (state->current_name != NULL &&
+        !mylite_ascii_case_equal(state->current_name, safe_index_name)) {
+        int status = reset_select_table_unique_not_null_key(
+            database,
+            table,
+            &state->key,
+            &state->current_name,
+            &state->key_usable
+        );
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    if (state->current_name == NULL) {
+        state->current_name = mylite_copy_span_text(safe_index_name, strlen(safe_index_name));
+        if (state->current_name == NULL) {
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+    }
+    if (!select_table_unique_not_null_catalog_row_usable(
+            table,
+            select,
+            column_name,
+            nullable,
+            &column_index
+        )) {
+        state->key_usable = false;
+        return MYLITE_OK;
+    }
+    if (!state->key_usable) {
+        return MYLITE_OK;
+    }
+    if (append_select_table_unique_key_column(
+            database,
+            &state->key,
+            table->first_column_index + column_index
+        ) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     return MYLITE_OK;
 }
 

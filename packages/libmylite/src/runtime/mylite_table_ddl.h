@@ -47,6 +47,10 @@ int mylite_table_ddl_describe_create_table_column(
     const struct mylite_create_table_options *table_options,
     struct mylite_column_type_descriptor *out_descriptor
 );
+const char *mylite_table_ddl_create_table_column_type_text(
+    const struct mylite_create_table_column *column,
+    const struct mylite_column_type_descriptor *descriptor
+);
 const char *mylite_table_ddl_create_table_column_extra(
     const struct mylite_create_table_column *column
 );

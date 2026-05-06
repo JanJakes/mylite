@@ -17,7 +17,8 @@ int mylite_dml_finish_failed_insert_transaction(
     int status = MYLITE_OK;
 
     mylite_transaction_rollback_statement_atomicity(database, atomicity);
-    if (table->has_auto_increment && next_auto_increment > table->next_auto_increment) {
+    if (table->has_auto_increment && next_auto_increment > table->next_auto_increment &&
+        (state->accepted_row_count != 0U || state->advance_auto_increment_on_failure)) {
         status = mylite_transaction_update_table_auto_increment(
             database,
             schema_name,

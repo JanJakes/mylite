@@ -28,6 +28,12 @@ static int apply_catalog_binary_column_descriptor(
     struct mylite_field_descriptor *descriptor
 );
 
+static int apply_catalog_value_list_column_descriptor(
+    mylite_db *database,
+    const struct mylite_catalog_column_descriptor_source *source,
+    struct mylite_field_descriptor *descriptor
+);
+
 static int apply_catalog_numeric_column_descriptor(
     const struct mylite_catalog_column_descriptor_source *source,
     struct mylite_field_descriptor *descriptor
@@ -73,6 +79,10 @@ int mylite_select_catalog_apply_column_type_descriptor(
         return status;
     }
     status = apply_catalog_binary_column_descriptor(source, descriptor);
+    if (status != MYLITE_UNSUPPORTED) {
+        return status;
+    }
+    status = apply_catalog_value_list_column_descriptor(database, source, descriptor);
     if (status != MYLITE_UNSUPPORTED) {
         return status;
     }
@@ -197,6 +207,32 @@ static int apply_catalog_binary_column_descriptor(
         descriptor->length = catalog_text_type_length(data_type);
     } else {
         return MYLITE_UNSUPPORTED;
+    }
+    return MYLITE_OK;
+}
+
+static int apply_catalog_value_list_column_descriptor(
+    mylite_db *database,
+    const struct mylite_catalog_column_descriptor_source *source,
+    struct mylite_field_descriptor *descriptor
+) {
+    const char *data_type = source->data_type;
+
+    if (mylite_ascii_case_equal(data_type, "enum")) {
+        descriptor->type = MYLITE_FIELD_TYPE_ENUM;
+        descriptor->flags |= MYLITE_FIELD_FLAG_ENUM;
+    } else if (mylite_ascii_case_equal(data_type, "set")) {
+        descriptor->type = MYLITE_FIELD_TYPE_SET;
+        descriptor->flags |= MYLITE_FIELD_FLAG_SET;
+    } else {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    descriptor->length =
+        catalog_int64_or_zero(source->select, source->character_octet_length_index);
+    if (field_descriptor_collation_id(database, source->collation_name, &descriptor->charset_id) !=
+        MYLITE_OK) {
+        return MYLITE_EXEC_ERROR;
     }
     return MYLITE_OK;
 }

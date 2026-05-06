@@ -11,6 +11,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <string.h>
 
 static bool validate_create_table_column_names(
     mylite_db *database,
@@ -21,6 +22,23 @@ static bool validate_create_table_indexes(
     mylite_db *database,
     const struct mylite_create_table_plan *plan
 );
+
+static bool validate_create_table_value_list_columns(
+    mylite_db *database,
+    const struct mylite_create_table_plan *plan
+);
+
+static bool validate_create_table_value_list_column(
+    mylite_db *database,
+    const struct mylite_create_table_column *column
+);
+
+static bool value_list_column_has_duplicate(
+    const struct mylite_create_table_column_type *type,
+    size_t before_index
+);
+
+static bool text_contains_comma(const char *text);
 
 static int append_create_table_exists_note(mylite_db *database, const char *table_name);
 
@@ -115,6 +133,9 @@ int mylite_table_ddl_validate_create_table_plan(
     if (!validate_create_table_column_names(database, plan)) {
         return MYLITE_EXEC_ERROR;
     }
+    if (!validate_create_table_value_list_columns(database, plan)) {
+        return MYLITE_EXEC_ERROR;
+    }
     status = mylite_table_ddl_assign_generated_index_names(database, plan);
     if (status != MYLITE_OK) {
         return status;
@@ -152,6 +173,92 @@ static bool validate_create_table_column_names(
         }
     }
     return true;
+}
+
+static bool validate_create_table_value_list_columns(
+    mylite_db *database,
+    const struct mylite_create_table_plan *plan
+) {
+    for (size_t index = 0U; index < plan->column_count; ++index) {
+        if (!validate_create_table_value_list_column(database, &plan->columns[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool validate_create_table_value_list_column(
+    mylite_db *database,
+    const struct mylite_create_table_column *column
+) {
+    enum { enum_value_limit = 65535U, set_value_limit = 64U };
+    const struct mylite_create_table_column_type *type = &column->type;
+    bool is_enum = type->ast_type == MYLITE_SQL_AST_COLUMN_TYPE_ENUM;
+    bool is_set = type->ast_type == MYLITE_SQL_AST_COLUMN_TYPE_SET;
+
+    if (!is_enum && !is_set) {
+        return true;
+    }
+    if (type->value_count == 0U) {
+        (void)mylite_diagnostics_set_error_message_parts(
+            database,
+            "Column '",
+            column->name,
+            "' has an empty value list"
+        );
+        return false;
+    }
+    if ((is_enum && type->value_count > enum_value_limit) ||
+        (is_set && type->value_count > set_value_limit)) {
+        (void)mylite_diagnostics_set_error_message_parts(
+            database,
+            "Column '",
+            column->name,
+            "' has too many values"
+        );
+        return false;
+    }
+
+    for (size_t index = 0U; index < type->value_count; ++index) {
+        if (value_list_column_has_duplicate(type, index)) {
+            (void)mylite_diagnostics_set_error_message_parts(
+                database,
+                "Column '",
+                column->name,
+                "' has duplicated value"
+            );
+            return false;
+        }
+        if (is_set && text_contains_comma(type->value_list[index])) {
+            (void)mylite_diagnostics_set_error_message_parts(
+                database,
+                "Column '",
+                column->name,
+                "' has illegal SET value"
+            );
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool value_list_column_has_duplicate(
+    const struct mylite_create_table_column_type *type,
+    size_t before_index
+) {
+    for (size_t index = 0U; index < before_index; ++index) {
+        if (strcmp(type->value_list[index], type->value_list[before_index]) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool text_contains_comma(const char *text) {
+    if (text == NULL) {
+        return false;
+    }
+    return strchr(text, ',') != NULL;
 }
 
 static bool validate_create_table_indexes(

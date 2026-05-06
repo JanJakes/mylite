@@ -4902,6 +4902,33 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_type(
     return node;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_set_column_type_value_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *column_type,
+    struct mylite_sql_token left_paren,
+    struct mylite_sql_ast_node *values,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_ast_node *value = values == NULL ? NULL : values->first_child;
+
+    (void)left_paren;
+    if (!is_parse_ok(state) || column_type == NULL || values == NULL) {
+        return column_type;
+    }
+
+    while (value != NULL) {
+        struct mylite_sql_ast_node *next = value->next_sibling;
+
+        mylite_sql_ast_node_append_child(column_type, value);
+        value = next;
+    }
+    mylite_sql_ast_node_set_span(
+        column_type,
+        span_join(column_type->span, span_from_token(&right_paren))
+    );
+    return column_type;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_set_column_display_width(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *column_type,
@@ -7434,6 +7461,8 @@ static const char *column_type_descriptor_name(enum mylite_sql_ast_column_type c
     case MYLITE_SQL_AST_COLUMN_TYPE_BIGINT:
     case MYLITE_SQL_AST_COLUMN_TYPE_BOOL:
     case MYLITE_SQL_AST_COLUMN_TYPE_BOOLEAN:
+    case MYLITE_SQL_AST_COLUMN_TYPE_ENUM:
+    case MYLITE_SQL_AST_COLUMN_TYPE_SET:
         break;
     }
     return "";
@@ -7624,6 +7653,7 @@ static bool lookup_keyword_parser_token(
         {"ENGINE_ATTRIBUTE", MYLITE_SQL_PARSE_ENGINE_ATTRIBUTE},
         {"ENFORCED", MYLITE_SQL_PARSE_ENFORCED},
         {"ENCRYPTION", MYLITE_SQL_PARSE_ENCRYPTION},
+        {"ENUM", MYLITE_SQL_PARSE_ENUM},
         {"ERRORS", MYLITE_SQL_PARSE_ERRORS},
         {"ESCAPE", MYLITE_SQL_PARSE_ESCAPE},
         {"EVENT", MYLITE_SQL_PARSE_EVENT},

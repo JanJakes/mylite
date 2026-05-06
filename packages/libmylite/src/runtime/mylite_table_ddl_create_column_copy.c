@@ -11,6 +11,26 @@ static int copy_create_table_column_type(
     struct mylite_create_table_column_type *type
 );
 
+static int copy_create_table_value_list(
+    const struct mylite_sql_ast_node *type_node,
+    struct mylite_create_table_column_type *type
+);
+
+static int add_create_table_value_list_member(
+    struct mylite_create_table_column_type *type,
+    char *member
+);
+
+static char *build_value_list_column_type(
+    enum mylite_sql_ast_column_type type,
+    char *const *values,
+    size_t value_count
+);
+
+static size_t escaped_value_length(const char *value);
+
+static void append_escaped_value(char **cursor, const char *value);
+
 static int copy_create_table_column_attributes(
     const struct mylite_sql_ast_node *attributes,
     struct mylite_create_table_column *column
@@ -104,7 +124,133 @@ static int copy_create_table_column_type(
         type->attributes.collation = type->collation;
         type->attributes.collation_length = strlen(type->collation);
     }
+    return copy_create_table_value_list(type_node, type);
+}
+
+static int copy_create_table_value_list(
+    const struct mylite_sql_ast_node *type_node,
+    struct mylite_create_table_column_type *type
+) {
+    uint64_t display_length = 0U;
+
+    if (type->ast_type != MYLITE_SQL_AST_COLUMN_TYPE_ENUM &&
+        type->ast_type != MYLITE_SQL_AST_COLUMN_TYPE_SET) {
+        return MYLITE_OK;
+    }
+
+    for (const struct mylite_sql_ast_node *value = type_node->first_child; value != NULL;
+         value = value->next_sibling) {
+        char *copy = NULL;
+        size_t member_length = 0U;
+        int status = MYLITE_OK;
+
+        if (value->kind != MYLITE_SQL_AST_LITERAL ||
+            value->literal_kind != MYLITE_SQL_AST_LITERAL_STRING) {
+            return MYLITE_UNSUPPORTED;
+        }
+
+        copy = mylite_copy_string_literal_span(value);
+        if (copy == NULL) {
+            return MYLITE_NOMEM;
+        }
+        member_length = strlen(copy);
+        status = add_create_table_value_list_member(type, copy);
+        if (status != MYLITE_OK) {
+            free(copy);
+            return status;
+        }
+
+        if (type->ast_type == MYLITE_SQL_AST_COLUMN_TYPE_ENUM) {
+            if (member_length > display_length) {
+                display_length = member_length;
+            }
+        } else {
+            display_length += member_length;
+            if (type->value_count > 1U) {
+                ++display_length;
+            }
+        }
+    }
+
+    type->value_list_display_length = display_length;
+    type->value_list_column_type =
+        build_value_list_column_type(type->ast_type, type->value_list, type->value_count);
+    return type->value_list_column_type == NULL ? MYLITE_NOMEM : MYLITE_OK;
+}
+
+static int add_create_table_value_list_member(
+    struct mylite_create_table_column_type *type,
+    char *member
+) {
+    char **values =
+        (char **)realloc((void *)type->value_list, (type->value_count + 1U) * sizeof(*values));
+
+    if (values == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    type->value_list = values;
+    type->value_list[type->value_count++] = member;
     return MYLITE_OK;
+}
+
+static char *build_value_list_column_type(
+    enum mylite_sql_ast_column_type type,
+    char *const *values,
+    size_t value_count
+) {
+    const char *prefix = type == MYLITE_SQL_AST_COLUMN_TYPE_SET ? "set(" : "enum(";
+    size_t length = strlen(prefix) + 2U;
+    char *column_type = NULL;
+    char *cursor = NULL;
+
+    for (size_t index = 0U; index < value_count; ++index) {
+        length += escaped_value_length(values[index]) + 2U;
+        if (index != 0U) {
+            ++length;
+        }
+    }
+
+    column_type = malloc(length);
+    if (column_type == NULL) {
+        return NULL;
+    }
+
+    cursor = column_type;
+    memcpy(cursor, prefix, strlen(prefix));
+    cursor += strlen(prefix);
+    for (size_t index = 0U; index < value_count; ++index) {
+        if (index != 0U) {
+            *cursor++ = ',';
+        }
+        *cursor++ = '\'';
+        append_escaped_value(&cursor, values[index]);
+        *cursor++ = '\'';
+    }
+    *cursor++ = ')';
+    *cursor = '\0';
+    return column_type;
+}
+
+static size_t escaped_value_length(const char *value) {
+    size_t length = 0U;
+
+    for (size_t index = 0U; value != NULL && value[index] != '\0'; ++index) {
+        ++length;
+        if (value[index] == '\'' || value[index] == '\\') {
+            ++length;
+        }
+    }
+    return length;
+}
+
+static void append_escaped_value(char **cursor, const char *value) {
+    for (size_t index = 0U; value != NULL && value[index] != '\0'; ++index) {
+        if (value[index] == '\'' || value[index] == '\\') {
+            *(*cursor)++ = value[index];
+        }
+        *(*cursor)++ = value[index];
+    }
 }
 
 static int copy_create_table_column_attributes(

@@ -211,6 +211,7 @@ struct mylite_insert_execution_state {
     size_t accepted_row_count;
     size_t duplicate_count;
     bool generated_insert_id;
+    bool advance_auto_increment_on_failure;
 };
 
 struct mylite_insert_transaction_result {

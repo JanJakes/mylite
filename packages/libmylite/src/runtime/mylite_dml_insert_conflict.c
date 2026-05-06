@@ -52,6 +52,7 @@ int mylite_dml_validate_insert_unique_indexes(
                     values
                 );
             }
+            state->advance_auto_increment_on_failure = true;
             return mylite_dml_insert_set_duplicate_entry_error(
                 database,
                 table_name,

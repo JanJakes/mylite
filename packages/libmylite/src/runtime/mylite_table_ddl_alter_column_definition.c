@@ -81,7 +81,9 @@ int mylite_table_ddl_init_alter_table_column_from_definition(
     }
     out_column->is_nullable = mylite_copy_span_text(nullable_text, strlen(nullable_text));
     out_column->data_type = mylite_copy_nonempty_cstring(descriptor.data_type);
-    out_column->column_type = mylite_copy_nonempty_cstring(descriptor.column_type);
+    out_column->column_type = mylite_copy_nonempty_cstring(
+        mylite_table_ddl_create_table_column_type_text(definition, &descriptor)
+    );
     out_column->column_key = mylite_copy_span_text("", 0U);
     out_column->extra =
         mylite_copy_span_text(extra == NULL ? "" : extra, extra == NULL ? 0U : strlen(extra));

@@ -3972,6 +3972,17 @@ int mylite_expression_value_copy(
     return 0;
 }
 
+void mylite_expression_value_set_numeric_context(
+    struct mylite_expression_value *value,
+    int64_t numeric_value
+) {
+    if (value == NULL) {
+        return;
+    }
+    value->numeric_context_value = numeric_value;
+    value->has_numeric_context_value = true;
+}
+
 char *mylite_expression_value_to_text(const struct mylite_expression_value *value) {
     char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
 
@@ -4008,6 +4019,9 @@ char *mylite_expression_value_to_text(const struct mylite_expression_value *valu
 int64_t mylite_expression_value_to_int64(const struct mylite_expression_value *value) {
     if (value == NULL || value->kind == MYLITE_EXPRESSION_VALUE_NULL) {
         return 0;
+    }
+    if (value->has_numeric_context_value) {
+        return value->numeric_context_value;
     }
     if (value->kind == MYLITE_EXPRESSION_VALUE_INT64) {
         return value->int64_value;
@@ -5034,6 +5048,8 @@ static int eval_cast_expression(
     case MYLITE_SQL_AST_COLUMN_TYPE_DATETIME:
     case MYLITE_SQL_AST_COLUMN_TYPE_TIMESTAMP:
     case MYLITE_SQL_AST_COLUMN_TYPE_YEAR:
+    case MYLITE_SQL_AST_COLUMN_TYPE_ENUM:
+    case MYLITE_SQL_AST_COLUMN_TYPE_SET:
         status = -1;
         break;
     }
@@ -22398,6 +22414,13 @@ static int value_to_numeric(
     struct numeric_value *out_numeric
 ) {
     *out_numeric = (struct numeric_value){0};
+    if (value->has_numeric_context_value) {
+        out_numeric->int64_value = value->numeric_context_value;
+        out_numeric->uint64_value = (uint64_t)value->numeric_context_value;
+        out_numeric->real_value = (double)value->numeric_context_value;
+        out_numeric->is_integer = true;
+        return 0;
+    }
     switch (value->kind) {
     case MYLITE_EXPRESSION_VALUE_INT64:
         out_numeric->int64_value = value->int64_value;
@@ -22609,6 +22632,10 @@ static int cast_value_to_signed_integer(
     if (out_integer == NULL) {
         return -1;
     }
+    if (value->has_numeric_context_value) {
+        *out_integer = value->numeric_context_value;
+        return 0;
+    }
     if (value->kind == MYLITE_EXPRESSION_VALUE_INT64) {
         *out_integer = value->int64_value;
         return 0;
@@ -22638,6 +22665,10 @@ static int cast_value_to_unsigned_integer(
 ) {
     if (out_integer == NULL) {
         return -1;
+    }
+    if (value->has_numeric_context_value) {
+        *out_integer = (uint64_t)value->numeric_context_value;
+        return 0;
     }
     if (value->kind == MYLITE_EXPRESSION_VALUE_INT64) {
         *out_integer = (uint64_t)value->int64_value;

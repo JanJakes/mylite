@@ -22,6 +22,10 @@ struct mylite_create_table_column_type {
     struct mylite_column_type_attributes attributes;
     char *character_set;
     char *collation;
+    char **value_list;
+    size_t value_count;
+    char *value_list_column_type;
+    uint64_t value_list_display_length;
 };
 
 struct mylite_create_table_column {

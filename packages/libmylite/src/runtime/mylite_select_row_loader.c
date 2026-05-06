@@ -25,6 +25,15 @@ static int append_table_select_join_scan_row(
     struct mylite_table_select_table_rowset *rowset
 );
 
+static int copy_sqlite_column_value_for_descriptor(
+    sqlite3_stmt *sqlite_stmt,
+    size_t sqlite_column_index,
+    const struct mylite_field_descriptor *descriptor,
+    struct mylite_expression_value *out_value
+);
+
+static bool field_descriptor_has_value_list_type(const struct mylite_field_descriptor *descriptor);
+
 int mylite_select_load_join_rowsets(
     mylite_stmt *stmt,
     struct mylite_table_select_table_rowset *rowsets
@@ -81,9 +90,14 @@ int mylite_select_copy_current_sqlite_column_value(
         return -1;
     }
 
-    status = mylite_sqlite_copy_column_value(stmt->sqlite_stmt, column_index, out_value);
+    column = mylite_select_plan_column_const(&stmt->select_plan, column_index, NULL);
+    status = copy_sqlite_column_value_for_descriptor(
+        stmt->sqlite_stmt,
+        column_index,
+        column == NULL ? NULL : &column->descriptor,
+        out_value
+    );
     if (status == 0) {
-        column = mylite_select_plan_column_const(&stmt->select_plan, column_index, NULL);
         out_value->preserve_temporal_fraction_digits =
             mylite_field_descriptor_preserves_temporal_fraction_digits(
                 column == NULL ? NULL : &column->descriptor
@@ -197,7 +211,12 @@ static int append_table_select_join_scan_row(
     }
 
     for (size_t index = 0U; index < row.value_count; ++index) {
-        if (mylite_sqlite_copy_column_value(scan, index + 1U, &row.values[index]) != 0) {
+        if (copy_sqlite_column_value_for_descriptor(
+                scan,
+                index + 1U,
+                &table->columns[index].descriptor,
+                &row.values[index]
+            ) != 0) {
             mylite_select_row_deinit(&row);
             (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
@@ -213,4 +232,36 @@ static int append_table_select_join_scan_row(
     rowset->rows = rows;
     rowset->rows[rowset->row_count++] = row;
     return MYLITE_OK;
+}
+
+static int copy_sqlite_column_value_for_descriptor(
+    sqlite3_stmt *sqlite_stmt,
+    size_t sqlite_column_index,
+    const struct mylite_field_descriptor *descriptor,
+    struct mylite_expression_value *out_value
+) {
+    int status = 0;
+
+    if (!field_descriptor_has_value_list_type(descriptor)) {
+        return mylite_sqlite_copy_column_value(sqlite_stmt, sqlite_column_index, out_value);
+    }
+
+    status = mylite_sqlite_copy_column_text_value(sqlite_stmt, sqlite_column_index, out_value);
+    if (status == 0 && out_value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+        mylite_expression_value_set_numeric_context(
+            out_value,
+            sqlite3_column_int64(sqlite_stmt, (int)sqlite_column_index)
+        );
+    }
+    return status;
+}
+
+static bool field_descriptor_has_value_list_type(const struct mylite_field_descriptor *descriptor) {
+    if (descriptor == NULL) {
+        return false;
+    }
+    if (descriptor->type == MYLITE_FIELD_TYPE_ENUM) {
+        return true;
+    }
+    return descriptor->type == MYLITE_FIELD_TYPE_SET;
 }

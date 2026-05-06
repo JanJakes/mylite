@@ -2756,6 +2756,9 @@ column_type(A) ::= double_column_type(B). {
 column_type(A) ::= temporal_column_type(B). {
     A = B;
 }
+column_type(A) ::= value_list_column_type(B). {
+    A = B;
+}
 
 integer_column_type(A) ::= integer_type_name(B) opt_integer_display_width(C). {
     A = mylite_sql_parser_set_column_display_width(state, B, C);
@@ -3099,6 +3102,38 @@ temporal_column_type(A) ::= YEAR(T) opt_year_width(B). {
         mylite_sql_parser_set_column_precision_scale(
             state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_YEAR),
             B));
+}
+
+value_list_column_type(A) ::= ENUM(T) LPAREN(L) value_list_literals(B) RPAREN(R) character_type_attribute_list(C). {
+    A = mylite_sql_parser_apply_column_type_attributes(
+        state,
+        mylite_sql_parser_set_column_type_value_list(
+            state,
+            mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_ENUM),
+            L,
+            B,
+            R),
+        C);
+}
+value_list_column_type(A) ::= SET(T) LPAREN(L) value_list_literals(B) RPAREN(R) character_type_attribute_list(C). {
+    A = mylite_sql_parser_apply_column_type_attributes(
+        state,
+        mylite_sql_parser_set_column_type_value_list(
+            state,
+            mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_SET),
+            L,
+            B,
+            R),
+        C);
+}
+
+value_list_literals(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_expression_list(
+        state, mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING));
+}
+value_list_literals(A) ::= value_list_literals(B) COMMA STRING(T). {
+    A = mylite_sql_parser_append_expression(
+        state, B, mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING));
 }
 
 opt_temporal_fsp(A) ::= . {
@@ -5296,6 +5331,9 @@ nonreserved_identifier_keyword(A) ::= EXCHANGE(T). {
     A = T;
 }
 nonreserved_identifier_keyword(A) ::= EXCLUSIVE(T). {
+    A = T;
+}
+nonreserved_identifier_keyword(A) ::= ENUM(T). {
     A = T;
 }
 nonreserved_identifier_keyword(A) ::= EXTENDED(T). {

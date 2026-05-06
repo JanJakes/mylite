@@ -37,12 +37,16 @@ Implemented scope:
 - load MyLite catalog column metadata into those descriptors before public
   MyLite write statements prepare their physical SQLite `INSERT`, `UPDATE`,
   `REPLACE`, and duplicate-key update SQL
+- load MyLite catalog value-list metadata into those descriptors before public
+  MyLite table-backed `SELECT` statements prepare physical SQLite scans
+- preserve `ENUM`/`SET` direct display text and numeric-context ordinals or
+  bitmasks through MyLite row materialization
 
 Deferred scope:
 
 - direct SQLite parser support for MySQL column type syntax
-- direct SQLite parser/catalog descriptor reload for MySQL SQL executed without
-  MyLite's current statement layer
+- direct SQLite parser/catalog descriptor reload for MySQL SQL executed
+  entirely inside SQLite without MyLite's current statement layer
 - full unsigned `BIGINT` values above SQLite's signed 64-bit integer storage
   range
 - exact MySQL diagnostic messages, row interpolation, complete warning records,
@@ -173,12 +177,16 @@ SQLite already uses for table affinity. For each target column:
   labels and numeric indexes to compact one-based integer storage, reject
   invalid strict assignments with condition 1265 / SQLSTATE `01000`, and
   use read-time metadata to display labels while preserving numeric index
-  behavior for arithmetic contexts.
+  behavior for arithmetic contexts. MyLite's custom SELECT runtime copies the
+  display string and attaches the ordinal as numeric context before evaluating
+  expressions.
 - `SET` descriptors store copied value-list metadata on the column, convert
   labels, comma-separated label lists, and numeric masks to compact integer
   bit-mask storage, reject invalid strict assignments with condition 1265 /
   SQLSTATE `01000`, and use read-time metadata to display comma-joined labels
-  while preserving numeric mask behavior for arithmetic contexts.
+  while preserving numeric mask behavior for arithmetic contexts. MyLite's
+  custom SELECT runtime copies the display string and attaches the bitmask as
+  numeric context before evaluating expressions.
 
 On failure, SQLite aborts the statement with `SQLITE_CONSTRAINT_DATATYPE` and a
 message naming the failed conversion and target column. The fork diagnostics

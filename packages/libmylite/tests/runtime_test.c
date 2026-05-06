@@ -435,6 +435,8 @@ static int test_window_function_placeholder_execution(void);
 
 static int test_create_table_base_execution(void);
 
+static int test_enum_set_sql_integration_execution(void);
+
 static int test_create_table_prepare_has_no_side_effects(void);
 
 static int test_drop_table_base_execution(void);
@@ -923,6 +925,7 @@ int main(void) {
     failures += test_cte_query_expression_placeholder_execution();
     failures += test_window_function_placeholder_execution();
     failures += test_create_table_base_execution();
+    failures += test_enum_set_sql_integration_execution();
     failures += test_create_table_prepare_has_no_side_effects();
     failures += test_drop_table_base_execution();
     failures += test_temporary_table_execution();
@@ -33650,6 +33653,258 @@ static int test_create_table_base_execution(void) {
     }
 
     remove_runtime_test_files();
+    return failures;
+}
+
+static int test_enum_set_sql_integration_execution(void) {
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const char *const metadata_columns[] = {
+        "COLUMN_NAME",
+        "DATA_TYPE",
+        "COLUMN_TYPE",
+        "CHARACTER_MAXIMUM_LENGTH",
+        "CHARACTER_OCTET_LENGTH",
+        "CHARACTER_SET_NAME",
+        "COLLATION_NAME",
+    };
+    static const char *const metadata_values[] = {
+        "post_status",
+        "enum",
+        "enum('draft','publish','trash')",
+        "7",
+        "7",
+        "latin1",
+        "latin1_bin",
+        "feature_flags",
+        "set",
+        "set('sticky','featured','private')",
+        "23",
+        "23",
+        "latin1",
+        "latin1_bin",
+        "review_state",
+        "enum",
+        "enum('','pending','approved')",
+        "8",
+        "32",
+        "utf8mb4",
+        "utf8mb4_unicode_ci",
+    };
+    static const char *const show_columns[] = {"Field", "Type", "Null", "Key", "Default", "Extra"};
+    static const char *const show_status_values[] = {
+        "post_status",
+        "enum('draft','publish','trash')",
+        "NO",
+        "",
+        "draft",
+        "",
+    };
+    static const char *const read_columns[] = {
+        "id",
+        "post_status",
+        "status_index",
+        "feature_flags",
+        "flag_bits",
+        "review_state",
+        "review_index",
+    };
+    static const char *const inserted_values[] = {
+        "1", "draft",   "1", "sticky",           "1", "pending",  "2",
+        "2", "publish", "2", "featured,private", "6", "approved", "3",
+        "3", "publish", "2", "sticky,featured",  "3", "",         "1",
+        "4", "trash",   "3", "sticky,featured",  "3", "",         "1",
+    };
+    static const char *const changed_values[] = {
+        "1", "publish", "2", "featured,private", "6", "approved", "3",
+        "2", "draft",   "1", "sticky,private",   "5", "pending",  "2",
+        "3", "publish", "2", "sticky,featured",  "3", "",         "1",
+        "4", "trash",   "3", "sticky,featured",  "3", "",         "1",
+        "5", "trash",   "3", "sticky,private",   "5", "pending",  "2",
+    };
+    static const char *const count_columns[] = {"row_count", "max_id"};
+    static const char *const empty_count_values[] = {"0", "0"};
+    static const char *const after_truncate_values[] =
+        {"1", "draft", "1", "sticky", "1", "pending", "2"};
+    const char *path = MYLITE_RUNTIME_TEST_FILE_PATH;
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    remove_runtime_test_files();
+    failures += expect_status(mylite_open(path, &database), MYLITE_OK, "open enum set file");
+    failures += execute_sql(
+        database,
+        "CREATE DATABASE mylite_enum_set_sql DEFAULT CHARACTER SET latin1 COLLATE latin1_bin",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "USE mylite_enum_set_sql", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE posts ("
+        "id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,"
+        "post_status ENUM('draft','publish','trash') NOT NULL DEFAULT 'draft',"
+        "feature_flags SET('sticky','featured','private') DEFAULT NULL,"
+        "review_state ENUM('','pending','approved') CHARACTER SET utf8mb4 "
+        "COLLATE utf8mb4_unicode_ci DEFAULT '',"
+        "PRIMARY KEY (id)"
+        ") ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_bin",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE bad_enum_duplicate (a ENUM('a','a'))",
+        MYLITE_EXEC_ERROR
+    );
+    failures +=
+        execute_sql(database, "CREATE TABLE bad_set_comma (a SET('a,b'))", MYLITE_EXEC_ERROR);
+    failures += expect_select_rows(
+        database,
+        "SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, CHARACTER_MAXIMUM_LENGTH, "
+        "CHARACTER_OCTET_LENGTH, CHARACTER_SET_NAME, COLLATION_NAME "
+        "FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = 'mylite_enum_set_sql' AND TABLE_NAME = 'posts' "
+        "AND COLUMN_NAME IN ('post_status','feature_flags','review_state') "
+        "ORDER BY ORDINAL_POSITION",
+        metadata_columns,
+        7,
+        metadata_values,
+        3,
+        "enum set information schema metadata"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW COLUMNS FROM posts LIKE 'post_status'",
+        show_columns,
+        6,
+        show_status_values,
+        1,
+        "enum show columns type"
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO posts (post_status, feature_flags, review_state) VALUES "
+        "('draft','sticky','pending'),"
+        "('publish','featured,private','approved'),"
+        "(2,3,1),"
+        "('trash','sticky,featured','')",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO posts (post_status) VALUES ('missing')",
+        MYLITE_SQLITE_ERROR
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, post_status, post_status + 0 AS status_index, "
+        "feature_flags, feature_flags + 0 AS flag_bits, "
+        "review_state, review_state + 0 AS review_index "
+        "FROM posts ORDER BY id",
+        read_columns,
+        7,
+        inserted_values,
+        4,
+        "enum set readback after write"
+    );
+    mylite_close(database);
+    database = NULL;
+
+    failures += expect_status(mylite_open(path, &database), MYLITE_OK, "reopen enum set file");
+    failures += execute_sql(database, "USE mylite_enum_set_sql", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id, post_status, post_status + 0 AS status_index, "
+        "feature_flags, feature_flags + 0 AS flag_bits, "
+        "review_state, review_state + 0 AS review_index "
+        "FROM posts ORDER BY id",
+        read_columns,
+        7,
+        inserted_values,
+        4,
+        "enum set readback after reopen"
+    );
+
+    failures += execute_sql(
+        database,
+        "UPDATE posts SET post_status = 'publish', "
+        "feature_flags = 'featured,private', review_state = 3 WHERE id = 1",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO posts SET post_status = 3, feature_flags = 5, review_state = 'pending'",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO posts (id, post_status, feature_flags, review_state) "
+        "VALUES (2, 'draft', 'sticky,private', 'pending') "
+        "ON DUPLICATE KEY UPDATE post_status = VALUES(post_status), "
+        "feature_flags = VALUES(feature_flags), review_state = VALUES(review_state)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "REPLACE INTO posts (id, post_status, feature_flags, review_state) "
+        "VALUES (6, 'trash', 'private', 'approved')",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "DELETE FROM posts WHERE id = 6", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id, post_status, post_status + 0 AS status_index, "
+        "feature_flags, feature_flags + 0 AS flag_bits, "
+        "review_state, review_state + 0 AS review_index "
+        "FROM posts ORDER BY id",
+        read_columns,
+        7,
+        changed_values,
+        5,
+        "enum set CRUD readback"
+    );
+
+    failures += execute_sql(database, "TRUNCATE TABLE posts", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS row_count, COALESCE(MAX(id), 0) AS max_id FROM posts",
+        count_columns,
+        2,
+        empty_count_values,
+        1,
+        "enum set truncate empties table"
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO posts (post_status, feature_flags, review_state) "
+        "VALUES ('draft', 'sticky', 'pending')",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, post_status, post_status + 0 AS status_index, "
+        "feature_flags, feature_flags + 0 AS flag_bits, "
+        "review_state, review_state + 0 AS review_index "
+        "FROM posts",
+        read_columns,
+        7,
+        after_truncate_values,
+        1,
+        "enum set truncate resets auto increment"
+    );
+    failures += execute_sql(database, "DROP TABLE posts", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS row_count, 0 AS max_id FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = 'mylite_enum_set_sql' AND TABLE_NAME = 'posts'",
+        count_columns,
+        2,
+        empty_count_values,
+        1,
+        "enum set drop clears metadata"
+    );
+
+    mylite_close(database);
+    remove_runtime_test_files();
+    // NOLINTEND(readability-magic-numbers)
     return failures;
 }
 

@@ -40,6 +40,16 @@ static bool create_table_column_uses_temporal_descriptor(
     enum mylite_sql_ast_column_type column_type
 );
 
+static bool create_table_column_uses_value_list_descriptor(
+    enum mylite_sql_ast_column_type column_type
+);
+
+static enum mylite_column_type_status describe_create_table_value_list_column(
+    const struct mylite_create_table_column *column,
+    struct mylite_column_type_attributes attributes,
+    struct mylite_column_type_descriptor *out_descriptor
+);
+
 int mylite_table_ddl_execute_create_table_statement(
     mylite_db *database,
     const char *selected_schema,
@@ -164,11 +174,23 @@ int mylite_table_ddl_describe_create_table_column(
             attributes,
             out_descriptor
         );
+    } else if (create_table_column_uses_value_list_descriptor(column->type.ast_type)) {
+        status = describe_create_table_value_list_column(column, attributes, out_descriptor);
     } else {
         return MYLITE_UNSUPPORTED;
     }
 
     return status == MYLITE_COLUMN_TYPE_OK ? MYLITE_OK : MYLITE_EXEC_ERROR;
+}
+
+const char *mylite_table_ddl_create_table_column_type_text(
+    const struct mylite_create_table_column *column,
+    const struct mylite_column_type_descriptor *descriptor
+) {
+    if (column != NULL && column->type.value_list_column_type != NULL) {
+        return column->type.value_list_column_type;
+    }
+    return descriptor == NULL ? "" : descriptor->column_type;
 }
 
 const char *mylite_table_ddl_create_table_column_extra(
@@ -262,6 +284,10 @@ static const char *create_table_column_type_name(enum mylite_sql_ast_column_type
         return "TIMESTAMP";
     case MYLITE_SQL_AST_COLUMN_TYPE_YEAR:
         return "YEAR";
+    case MYLITE_SQL_AST_COLUMN_TYPE_ENUM:
+        return "ENUM";
+    case MYLITE_SQL_AST_COLUMN_TYPE_SET:
+        return "SET";
     case MYLITE_SQL_AST_COLUMN_TYPE_NONE:
         return NULL;
     }
@@ -300,7 +326,7 @@ static bool create_table_column_uses_character_set_defaults(
         return false;
     }
     if (column_type > MYLITE_SQL_AST_COLUMN_TYPE_LONGTEXT) {
-        return false;
+        return create_table_column_uses_value_list_descriptor(column_type);
     }
     return true;
 }
@@ -327,4 +353,52 @@ static bool create_table_column_uses_temporal_descriptor(
         return false;
     }
     return true;
+}
+
+static bool create_table_column_uses_value_list_descriptor(
+    enum mylite_sql_ast_column_type column_type
+) {
+    if (column_type == MYLITE_SQL_AST_COLUMN_TYPE_ENUM) {
+        return true;
+    }
+    return column_type == MYLITE_SQL_AST_COLUMN_TYPE_SET;
+}
+
+static enum mylite_column_type_status describe_create_table_value_list_column(
+    const struct mylite_create_table_column *column,
+    struct mylite_column_type_attributes attributes,
+    struct mylite_column_type_descriptor *out_descriptor
+) {
+    struct mylite_column_type_descriptor string_descriptor = {0};
+    uint64_t display_length = column->type.value_list_display_length;
+    uint64_t validation_length = display_length == 0U ? 1U : display_length;
+    enum mylite_column_type_status status = MYLITE_COLUMN_TYPE_OK;
+
+    attributes.has_length = true;
+    attributes.length = validation_length;
+    status = mylite_column_type_describe_string_binary(
+        "VARCHAR",
+        strlen("VARCHAR"),
+        attributes,
+        &string_descriptor
+    );
+    if (status != MYLITE_COLUMN_TYPE_OK) {
+        return status;
+    }
+
+    *out_descriptor = (struct mylite_column_type_descriptor){
+        .is_enum = column->type.ast_type == MYLITE_SQL_AST_COLUMN_TYPE_ENUM,
+        .is_set = column->type.ast_type == MYLITE_SQL_AST_COLUMN_TYPE_SET,
+        .is_character_string = string_descriptor.is_character_string,
+        .is_binary_string = string_descriptor.is_binary_string,
+        .character_maximum_length = display_length,
+        .character_octet_length =
+            display_length == 0U ? 0U : string_descriptor.character_octet_length,
+        .canonical_type_name =
+            column->type.ast_type == MYLITE_SQL_AST_COLUMN_TYPE_SET ? "SET" : "ENUM",
+        .data_type = column->type.ast_type == MYLITE_SQL_AST_COLUMN_TYPE_SET ? "set" : "enum",
+        .character_set_name = string_descriptor.character_set_name,
+        .collation_name = string_descriptor.collation_name,
+    };
+    return MYLITE_COLUMN_TYPE_OK;
 }

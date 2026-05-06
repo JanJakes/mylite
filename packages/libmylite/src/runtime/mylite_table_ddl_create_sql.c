@@ -334,6 +334,9 @@ static const char *sqlite_affinity_for_descriptor(
     if (descriptor->integer_type != MYLITE_COLUMN_INTEGER_NONE || descriptor->is_boolean_alias) {
         return "INTEGER";
     }
+    if (descriptor->is_enum || descriptor->is_set) {
+        return "INTEGER";
+    }
     if (descriptor->is_approximate_numeric) {
         return "REAL";
     }

@@ -98,6 +98,8 @@ struct mylite_column_type_descriptor {
     bool is_character_string;
     bool is_exact_numeric;
     bool is_approximate_numeric;
+    bool is_enum;
+    bool is_set;
     bool is_deprecated_binary_attribute;
     bool is_alias;
     bool is_zerofill;

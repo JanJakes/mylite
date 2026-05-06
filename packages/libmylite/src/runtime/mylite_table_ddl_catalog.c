@@ -301,7 +301,7 @@ static int insert_column_catalog_row(
     sqlite3_bind_text(
         insert,
         bind_column_type,
-        descriptor.column_type,
+        mylite_table_ddl_create_table_column_type_text(column, &descriptor),
         -1,
         sqlite_transient_destructor()
     );

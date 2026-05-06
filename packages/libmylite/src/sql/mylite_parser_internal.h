@@ -1436,6 +1436,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_type(
     struct mylite_sql_token type_token,
     enum mylite_sql_ast_column_type column_type
 );
+struct mylite_sql_ast_node *mylite_sql_parser_set_column_type_value_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *column_type,
+    struct mylite_sql_token left_paren,
+    struct mylite_sql_ast_node *values,
+    struct mylite_sql_token right_paren
+);
 struct mylite_sql_ast_node *mylite_sql_parser_set_column_display_width(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *column_type,

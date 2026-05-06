@@ -4,6 +4,7 @@
 #include "mylite_diagnostics.h"
 #include "mylite_runtime.h"
 #include "mylite_span.h"
+#include "mylite_value_list_column_type.h"
 #include "sqlite3.h"
 #include <mylite_fork/mylite_sqlite_fork.h>
 
@@ -430,6 +431,20 @@ static int configure_write_table_column_types(
         const struct mylite_insert_table_column *column = &table->columns[index];
         int rc = SQLITE_OK;
 
+        if (mylite_value_list_column_type_is_supported(column->data_type)) {
+            int status = mylite_configure_value_list_column_type(
+                database,
+                table->physical_name,
+                column->name,
+                column->data_type,
+                column->column_type
+            );
+
+            if (status != MYLITE_OK) {
+                return status;
+            }
+            continue;
+        }
         if (write_table_column_fork_type(column, table->allow_zero_temporal, &type)) {
             rc = mylite_sqlite_fork_set_column_type(
                 database->sqlite,

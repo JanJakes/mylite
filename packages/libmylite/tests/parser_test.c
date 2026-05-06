@@ -16,6 +16,8 @@ static int test_create_table_integer_boolean_columns(void);
 
 static int test_create_table_string_binary_columns(void);
 
+static int test_create_table_enum_set_columns(void);
+
 static int test_create_table_numeric_columns(void);
 
 static int test_create_table_temporal_columns(void);
@@ -386,6 +388,7 @@ int main(void) {
     failures += test_connection_charset_statements();
     failures += test_create_table_integer_boolean_columns();
     failures += test_create_table_string_binary_columns();
+    failures += test_create_table_enum_set_columns();
     failures += test_create_table_numeric_columns();
     failures += test_create_table_temporal_columns();
     failures += test_create_table_column_attributes();
@@ -1409,6 +1412,93 @@ static int test_create_table_string_binary_columns(void) {
     failures += parse_sql(
         "CREATE TABLE bad_binary_collation (a CHAR CHARACTER SET utf8mb4 "
         "COLLATE binary);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_create_table_enum_set_columns(void) {
+    enum {
+        expected_column_count = 3,
+        enum_value_count = 3,
+        set_value_count = 2,
+        status_column = 0,
+        flags_column = 1,
+        enum_name_column = 2,
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *column_type = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "CREATE TABLE app.enum_set_types ("
+        "status ENUM('draft','publish','trash') CHARACTER SET utf8mb4 "
+        "COLLATE utf8mb4_unicode_ci, "
+        "flags SET('sticky','featured'), enum INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    columns = child_at(child_at(result.root, 0U), 1U);
+    failures += expect_node(columns, MYLITE_SQL_AST_COLUMN_DEFINITION_LIST, "enum set columns");
+    failures += expect_child_count(columns, expected_column_count, "enum set column count");
+
+    column_type = child_at(child_at(columns, status_column), 1U);
+    failures += expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_ENUM, "enum column");
+    failures += expect_span_text(
+        column_type,
+        "ENUM('draft','publish','trash') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+        "enum span"
+    );
+    failures += expect_child_count(column_type, enum_value_count, "enum value count");
+    failures +=
+        expect_literal(child_at(column_type, 0U), MYLITE_SQL_AST_LITERAL_STRING, "enum first");
+    failures += expect_span_text(child_at(column_type, 0U), "'draft'", "enum first text");
+    failures += expect_span_text(child_at(column_type, 1U), "'publish'", "enum second text");
+    failures += expect_span_text(child_at(column_type, 2U), "'trash'", "enum third text");
+    if (column_type != NULL &&
+        (!column_type->has_column_character_set || !column_type->has_column_collation)) {
+        fprintf(stderr, "enum character attributes were not recorded\n");
+        failures = 1;
+    }
+
+    column_type = child_at(child_at(columns, flags_column), 1U);
+    failures += expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_SET, "set column");
+    failures += expect_span_text(column_type, "SET('sticky','featured')", "set span");
+    failures += expect_child_count(column_type, set_value_count, "set value count");
+    failures +=
+        expect_literal(child_at(column_type, 0U), MYLITE_SQL_AST_LITERAL_STRING, "set first");
+    failures += expect_span_text(child_at(column_type, 0U), "'sticky'", "set first text");
+    failures += expect_span_text(child_at(column_type, 1U), "'featured'", "set second text");
+
+    failures += expect_span_text(
+        child_at(child_at(columns, enum_name_column), 0U),
+        "enum",
+        "enum identifier"
+    );
+    failures += expect_column_type(
+        child_at(child_at(columns, enum_name_column), 1U),
+        MYLITE_SQL_AST_COLUMN_TYPE_INT,
+        "enum identifier type"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE bad_empty_enum (a ENUM());",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE bad_empty_set (a SET());", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE bad_enum_missing_comma (a ENUM('a' 'b'));",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

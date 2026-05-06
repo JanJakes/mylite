@@ -33,6 +33,11 @@ Implemented fork points:
 - structured fork diagnostics for MyLite-owned VDBE type-check failures
 - public MyLite DML write-table loading that applies catalog descriptors before
   physical SQLite write statements are prepared
+- public MyLite SELECT table loading that applies value-list descriptors before
+  physical SQLite scan statements are prepared
+- MyLite expression values with a MySQL numeric-context side channel for fork
+  results such as `ENUM` and `SET`, where direct display and arithmetic context
+  intentionally differ
 
 ## Sources
 
@@ -140,6 +145,9 @@ Implemented first slice:
 - `OP_MyliteTypeCheck` before `OP_MakeRecord`
 - assignment-aware `UPDATE` checks using SQLite's changed-column map
 - catalog-fed descriptors for public MyLite write paths
+- catalog-fed value-list descriptors for public MyLite table-backed read paths
+- MyLite result materialization that preserves fork-provided display strings
+  and numeric context for `ENUM`/`SET`
 
 Next likely descriptor families:
 

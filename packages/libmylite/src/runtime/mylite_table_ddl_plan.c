@@ -184,6 +184,11 @@ void mylite_table_ddl_create_table_column_deinit(struct mylite_create_table_colu
     free(column->name);
     free(column->type.character_set);
     free(column->type.collation);
+    for (size_t index = 0U; index < column->type.value_count; ++index) {
+        free(column->type.value_list[index]);
+    }
+    free((void *)column->type.value_list);
+    free(column->type.value_list_column_type);
     free(column->default_text);
     free(column->comment);
     *column = (struct mylite_create_table_column){0};

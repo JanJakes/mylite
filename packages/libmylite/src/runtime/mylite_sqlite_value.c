@@ -46,3 +46,31 @@ int mylite_sqlite_copy_column_value(
     }
     return -1;
 }
+
+int mylite_sqlite_copy_column_text_value(
+    sqlite3_stmt *sqlite_stmt,
+    size_t column_index,
+    struct mylite_expression_value *out_value
+) {
+    int sqlite_type = SQLITE_NULL;
+    const unsigned char *text = NULL;
+    int bytes = 0;
+
+    if (sqlite_stmt == NULL) {
+        return -1;
+    }
+
+    sqlite_type = sqlite3_column_type(sqlite_stmt, (int)column_index);
+    if (sqlite_type == SQLITE_NULL) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        return 0;
+    }
+
+    text = sqlite3_column_text(sqlite_stmt, (int)column_index);
+    bytes = sqlite3_column_bytes(sqlite_stmt, (int)column_index);
+    out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
+    out_value->preserve_temporal_fraction_digits = false;
+    out_value->text_length = bytes < 0 ? 0U : (size_t)bytes;
+    out_value->text_value = mylite_copy_span_text((const char *)text, out_value->text_length);
+    return out_value->text_value == NULL ? -1 : 0;
+}

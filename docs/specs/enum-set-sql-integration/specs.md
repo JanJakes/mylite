@@ -2,8 +2,14 @@
 
 ## Status
 
-Planned first executable slice for routing MyLite-declared `ENUM` and `SET`
-columns into the SQLite fork's native value-list descriptors.
+First executable slice implemented for routing MyLite-declared `ENUM` and
+`SET` columns into the SQLite fork's native value-list descriptors.
+
+Implemented coverage includes parser/AST support, `CREATE TABLE` metadata,
+`SHOW COLUMNS`, `INFORMATION_SCHEMA.COLUMNS`, `INSERT`, `INSERT ... SET`,
+`UPDATE`, `REPLACE`, ODKU update branches, `DELETE`, `TRUNCATE`, `DROP TABLE`,
+descriptor-backed `SELECT col` display, and numeric context through
+`SELECT col + 0`.
 
 ## Sources
 
@@ -164,6 +170,18 @@ that loader:
 The catalog parser should be strict because MyLite owns the canonical catalog
 text. Broader import compatibility can be added later.
 
+Before table-backed `SELECT` materializes rows, MyLite also attaches
+`ENUM`/`SET` descriptors from catalog metadata to the live SQLite schema. The
+fork returns the MySQL display string while preserving the ordinal or bitmask
+as numeric context; MyLite stores that numeric context on its expression value
+so `SELECT col` displays labels and `SELECT col + 0` uses MySQL numeric
+semantics in the custom SELECT runtime.
+
+Failed single-row strict enum/set assignment does not advance
+`AUTO_INCREMENT`. A failed multi-row statement that already accepted generated
+rows still preserves MySQL's gap behavior, and duplicate-key errors continue to
+consume generated auto-increment values.
+
 ## Tests
 
 Fast tests must cover:
@@ -191,3 +209,5 @@ The MySQL fixture records the comparable metadata and CRUD behavior from MySQL
   create-column descriptor path;
 - richer charset byte-length accounting beyond the current supported charset
   registry.
+- enum/set comparison, sorting, grouping, and aggregate type aggregation beyond
+  the current display and numeric-context foundation.

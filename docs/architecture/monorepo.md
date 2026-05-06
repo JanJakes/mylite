@@ -14,14 +14,17 @@ will all depend on it.
 | `cmake/` | Shared CMake helpers used by packages and tools. |
 | `docs/architecture/` | Architecture notes and engineering standards for repository-wide design decisions. |
 | `docs/specs/` | Feature specifications and MySQL-runtime-verified test expectations for substantive compatibility work. |
+| `packages/libmylite_fork/` | Private SQLite source-tree fork package used by MyLite for native SQLite integration work. |
 | `packages/libmylite/` | Embedded MyLite runtime library. This owns the public C API and core SQL pipeline implementation. |
 | `tests/` | Cross-package and integration tests. Package-local tests stay next to the package they exercise. |
 | `third_party/` | Pinned upstream source snapshots and vendored build tools. |
 | `tools/` | Command-line tools and developer utilities. Buildable tools should live in subdirectories. |
 
-SQLite source is pinned in `third_party/sqlite/`. Lemon is vendored from that
-same SQLite source snapshot and built as a host tool so generated parser code is
-reproducible.
+SQLite source for the active fork is pinned in
+`packages/libmylite_fork/upstream/`. MyLite builds it as individual source-tree
+files rather than the amalgamation, generates SQLite's derived parser and
+opcode files in the build tree, and also uses that pinned Lemon source for the
+MyLite SQL parser generator.
 
 ## Build
 

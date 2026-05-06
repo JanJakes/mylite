@@ -7,6 +7,9 @@ function(mylite_add_developer_tool_targets)
     "${PROJECT_SOURCE_DIR}/tools/*.c"
     "${PROJECT_SOURCE_DIR}/tools/*.h"
   )
+  list(FILTER mylite_first_party_c_files EXCLUDE REGEX
+    "/packages/libmylite_fork/upstream/"
+  )
   list(SORT mylite_first_party_c_files)
 
   find_program(MYLITE_CLANG_FORMAT_EXECUTABLE NAMES clang-format)
@@ -39,7 +42,10 @@ function(mylite_add_developer_tool_targets)
   find_program(MYLITE_RUN_CLANG_TIDY_EXECUTABLE NAMES run-clang-tidy)
   if(MYLITE_RUN_CLANG_TIDY_EXECUTABLE)
     add_custom_target(tidy
-      COMMAND "${MYLITE_RUN_CLANG_TIDY_EXECUTABLE}" -p "${CMAKE_BINARY_DIR}" packages tools tests
+      COMMAND "${MYLITE_RUN_CLANG_TIDY_EXECUTABLE}"
+              -p "${CMAKE_BINARY_DIR}"
+              -source-filter "^(?!.*packages/libmylite_fork/upstream/).*"
+              packages tools tests
       WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
       COMMENT "Running clang-tidy on first-party C sources"
       VERBATIM

@@ -38,7 +38,6 @@ endif()
 add_library(mylite STATIC
   "${MYLITE_SQL_PARSE_C}"
   src/charset/mylite_charset.c
-  src/fork/mylite_sqlite_fork.c
   src/runtime/mylite_advisory_locks.c
   src/runtime/mylite_connection.c
   src/runtime/mylite_connection_statement.c
@@ -309,13 +308,12 @@ target_include_directories(mylite
   PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/charset"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/fork"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/sql"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/storage"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/types"
     "${MYLITE_SQL_PARSE_DIR}"
 )
-target_link_libraries(mylite PRIVATE MyLite::sqlite)
+target_link_libraries(mylite PRIVATE MyLite::mylite_fork)
 
 if(NOT WIN32)
   target_compile_definitions(mylite PRIVATE _POSIX_C_SOURCE=200809L)
@@ -349,7 +347,7 @@ if(BUILD_TESTING)
   add_executable(mylite_runtime_test
     tests/runtime_test.c
   )
-  target_link_libraries(mylite_runtime_test PRIVATE MyLite::mylite MyLite::sqlite)
+  target_link_libraries(mylite_runtime_test PRIVATE MyLite::mylite MyLite::mylite_fork)
   target_include_directories(mylite_runtime_test PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/storage"
@@ -362,7 +360,7 @@ if(BUILD_TESTING)
   add_executable(mylite_sqlite_fork_test
     tests/sqlite_fork_test.c
   )
-  target_link_libraries(mylite_sqlite_fork_test PRIVATE MyLite::mylite MyLite::sqlite)
+  target_link_libraries(mylite_sqlite_fork_test PRIVATE MyLite::mylite MyLite::mylite_fork)
   target_include_directories(mylite_sqlite_fork_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
   mylite_configure_c_target(mylite_sqlite_fork_test)
 

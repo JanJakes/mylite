@@ -1,0 +1,10 @@
+{
+  "name": "SQLite",
+  "version": "3.53.0",
+  "version_number": 3053000,
+  "archive_number": 3530000,
+  "source_archive": "https://www.sqlite.org/2026/sqlite-src-3530000.zip",
+  "source_archive_sha3_256": "4ffbd00ba8db1e1172dbc69a5203a2c185556a32543e58585ba3713abf676fe5",
+  "build": "source-tree",
+  "uses_amalgamation": false
+}

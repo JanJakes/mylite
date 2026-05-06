@@ -270,7 +270,7 @@ static int mylite_file_read(sqlite3_file *file, void *buffer, int amount, sqlite
 static int mylite_file_write(
     sqlite3_file *file,
     const void *buffer,
-    int amount,
+    int amount, // NOLINT(bugprone-easily-swappable-parameters)
     sqlite3_int64 offset
 ) {
     struct mylite_vfs_file *mylite_file = from_sqlite_file(file);
@@ -415,7 +415,7 @@ static int mylite_file_shm_unmap(sqlite3_file *file, int delete_flag) {
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 static int mylite_file_fetch(
     sqlite3_file *file,
-    sqlite3_int64 offset,
+    sqlite3_int64 offset, // NOLINT(bugprone-easily-swappable-parameters)
     int amount,
     void **out_mapping
 ) {

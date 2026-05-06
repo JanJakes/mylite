@@ -62,8 +62,8 @@ integration surfaces.
 ### Core library
 
 - `libmylite` is the embedded runtime.
-- SQLite is bundled into the library and used as the storage and execution
-  engine.
+- `libmylite_fork` is MyLite's private SQLite source-tree fork. It is bundled
+  into the runtime and used as the storage and execution engine.
 - MyLite adds the MySQL-facing parser, metadata model, built-in functions,
   compatibility rules, and `.mylite` file handling around SQLite.
 

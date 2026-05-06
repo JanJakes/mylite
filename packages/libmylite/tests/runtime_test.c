@@ -1,11 +1,11 @@
 #include <mylite/mylite.h>
 
-#include "fork/mylite_sqlite_fork.h"
 #include "mylite_file_format.h"
 #include "mylite_internal.h"
 #include "mylite_vfs.h"
 #include "sql/mylite_lexer.h"
 #include "sqlite3.h"
+#include <mylite_fork/mylite_sqlite_fork.h>
 
 #include <ctype.h>
 #include <inttypes.h>
@@ -4763,6 +4763,7 @@ static int test_json_scalar_foundation_execution(void) {
     return failures;
 }
 
+// NOLINTNEXTLINE(readability-function-size)
 static int test_scalar_builtin_functions_execution(void) {
     // NOLINTBEGIN(readability-magic-numbers)
     static const char *const scalar_columns[] = {
@@ -7629,6 +7630,7 @@ static int test_scalar_builtin_functions_execution(void) {
         "23097d223405d8228642a477bda255b32aadbce4bda0b3f7e36c9da7",
         "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
         "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+        // NOLINTNEXTLINE(bugprone-suspicious-missing-comma)
         "cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7"
         "cc2358baeca134c825a7",
         "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274f"
@@ -7670,12 +7672,14 @@ static int test_scalar_builtin_functions_execution(void) {
         "2658551721",
     };
     static const char *const hash_site_projection_columns[] = {"id", "md5_s", "sha1_s", "sha2_n"};
+    static const char hash_site_projection_sha2_value[] =
+        "b862018b2ae5757e33c3e65e6d16d54cb88beea4ef61e921a56b3c884ab674a6676c463b3a0"
+        "dbe043dc922f12912be38be2c5a548a22cfd2cf88944061d3170c";
     static const char *const hash_site_projection_values[] = {
         "2",
         "3c9547d2fcb523a7ae5681eedde43fb6",
         "11d1bf272c85166064dc293aee08e01772bbe27b",
-        ("b862018b2ae5757e33c3e65e6d16d54cb88beea4ef61e921a56b3c884ab674a6676c463b3a0"
-         "dbe043dc922f12912be38be2c5a548a22cfd2cf88944061d3170c"),
+        hash_site_projection_sha2_value,
         "1",
         "6163d4d147449f6d66d997b68a412a5a",
         "9a0bfcaf729c85f0a59dbb45fbf4f06d6f1cf072",
@@ -11006,6 +11010,7 @@ static int test_hex_bit_literal_execution(void) {
     return failures;
 }
 
+// NOLINTNEXTLINE(readability-function-cognitive-complexity)
 static int test_current_temporal_functions_execution(void) {
     // NOLINTBEGIN(readability-magic-numbers)
     enum { temporal_max_fsp = 6U };
@@ -43005,6 +43010,7 @@ static int test_show_index_execution(void) {
     return failures;
 }
 
+// NOLINTNEXTLINE(readability-function-cognitive-complexity)
 static int test_insert_values_execution(void) {
     enum {
         insert_forms_row_count = 5,
@@ -43023,6 +43029,8 @@ static int test_insert_values_execution(void) {
         explicit_auto_after_explicit_id = 9,
         explicit_auto_generated_after_explicit_v = 60,
         defaults_explicit_default_nd = 9,
+        scalar_insert_expression_column_count = 6,
+        scalar_insert_temporal_column_count = 5,
     };
 
     const char *path = MYLITE_RUNTIME_TEST_FILE_PATH;
@@ -43747,7 +43755,7 @@ static int test_insert_values_execution(void) {
         "IS_UUID(u) AS uuid_ok "
         "FROM scalar_insert WHERE id = 1",
         (const char *const[]){"s", "n", "d_ok", "formatted_dt", "rand_ok", "uuid_ok"},
-        6,
+        scalar_insert_expression_column_count,
         (const char *const[]){"ab", "3", "1", "2024-02-29 01:02:03", "1", "1"},
         1,
         "scalar INSERT VALUES expressions"
@@ -43758,7 +43766,7 @@ static int test_insert_values_execution(void) {
         "IS_UUID(u) AS uuid_ok "
         "FROM scalar_insert WHERE id = 2",
         (const char *const[]){"s", "n", "d_ok", "dt_ok", "uuid_ok"},
-        5,
+        scalar_insert_temporal_column_count,
         (const char *const[]){"cd", "7", "1", "1", "1"},
         1,
         "scalar INSERT VALUES current temporal expression"
@@ -44090,6 +44098,7 @@ static int test_insert_set_execution(void) {
         auto_ref_after_explicit_id = 31,
         duplicate_first_id = 20,
         duplicate_after_failure_id = 22,
+        scalar_set_projection_column_count = 6,
     };
 
     const char *path = MYLITE_RUNTIME_TEST_FILE_PATH;
@@ -44635,7 +44644,7 @@ static int test_insert_set_execution(void) {
         "IS_UUID(u) AS uuid_ok "
         "FROM scalar_set WHERE id = 1",
         (const char *const[]){"s", "n", "d_ok", "formatted_dt", "rand_ok", "uuid_ok"},
-        6,
+        scalar_set_projection_column_count,
         (const char *const[]){"xy", "2", "1", "2024-02-29 02:03:04", "1", "1"},
         1,
         "scalar INSERT SET expressions"
@@ -44780,6 +44789,7 @@ static int test_replace_execution(void) {
         replace_ai_explicit_id = 20,
         replace_ai_failed_first_id = 11,
         replace_ai_failed_next_id = 13,
+        replace_scalar_projection_column_count = 6,
     };
 
     const char *path = MYLITE_RUNTIME_TEST_FILE_PATH;
@@ -45103,7 +45113,7 @@ static int test_replace_execution(void) {
         "r > 0.9065 AND r < 0.9066 AS rand_ok "
         "FROM replace_scalar WHERE id = 1",
         (const char *const[]){"id", "s", "n", "d_ok", "formatted_dt", "rand_ok"},
-        6,
+        replace_scalar_projection_column_count,
         (const char *const[]){"1", "rv", "4", "1", "2024-02-29 03:04:05", "1"},
         1,
         "replace values scalar expression row"
@@ -45115,7 +45125,7 @@ static int test_replace_execution(void) {
         "r > 0.9065 AND r < 0.9066 AS rand_ok "
         "FROM replace_scalar WHERE id = 2",
         (const char *const[]){"id", "s", "n", "d_ok", "formatted_dt", "rand_ok"},
-        6,
+        replace_scalar_projection_column_count,
         (const char *const[]){"2", "set", "6", "1", "2024-03-01 04:05:06", "1"},
         1,
         "replace set scalar expression row"
@@ -48180,8 +48190,19 @@ static int test_union_query_expression_execution(void) {
     static const char *const two_decimal_value[] = {"2.0000"};
     static const char *const column_0_column[] = {"column_0"};
     static const char *const column_0_column_1_columns[] = {"column_0", "column_1"};
-    static const char *const values_columns[] = {"column_0", "column_1", "column_2"};
-    static const char *const ordered_values[] = {"1", "-2", "3", "4", "6", "8", "5", "7", "9"};
+    static const char *const query_expression_column_labels[] =
+        {"column_0", "column_1", "column_2"};
+    static const char *const query_expression_expected_rows[] = {
+        "1",
+        "-2",
+        "3",
+        "4",
+        "6",
+        "8",
+        "5",
+        "7",
+        "9",
+    };
     static const char *const values_pair[] = {"1", "2"};
     static const char *const values_two_ones[] = {"1", "1"};
     static const char *const values_one_two[] = {"1", "2"};
@@ -48286,9 +48307,9 @@ static int test_union_query_expression_execution(void) {
     failures += expect_select_rows(
         database,
         "VALUES ROW(1,-2,3), ROW(5,7,9), ROW(4,6,8) ORDER BY column_1",
-        values_columns,
+        query_expression_column_labels,
         3,
-        ordered_values,
+        query_expression_expected_rows,
         3,
         "values query expression"
     );
@@ -54786,9 +54807,10 @@ static int expect_savepoint_warning(
     return failures;
 }
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 static int expect_parser_placeholder_execution(
     mylite_db *database,
-    const char *sql,
+    const char *sql, // NOLINT(bugprone-easily-swappable-parameters)
     const char *warning_fragment,
     const char *context
 ) {

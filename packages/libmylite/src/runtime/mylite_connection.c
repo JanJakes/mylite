@@ -9,11 +9,11 @@
 #include "mylite_prepared_statements.h"
 #include "mylite_runtime.h"
 #include "mylite_span.h"
-#include "mylite_sqlite_fork.h"
 #include "mylite_transactions.h"
 #include "mylite_user_variables.h"
 #include "mylite_vfs.h"
 #include "sqlite3.h"
+#include <mylite_fork/mylite_sqlite_fork.h>
 
 #include <stdlib.h>
 #include <string.h>

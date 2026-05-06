@@ -4,9 +4,9 @@
 #include "mylite_diagnostics.h"
 #include "mylite_runtime.h"
 #include "mylite_span.h"
-#include "mylite_sqlite_fork.h"
 #include "mylite_transactions.h"
 #include "sqlite3.h"
+#include <mylite_fork/mylite_sqlite_fork.h>
 
 #include <mylite/mylite.h>
 

@@ -1274,6 +1274,8 @@ const char *mylite_sql_ast_column_attribute_name(
         return "primary_key";
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_UNIQUE_KEY:
         return "unique_key";
+    case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_GENERATED:
+        return "generated";
     }
 
     return "unknown";

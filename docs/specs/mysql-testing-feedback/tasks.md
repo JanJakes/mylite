@@ -34,7 +34,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
 - [x] Align `SHOW CREATE TABLE` formatting and metadata, including index
       spacing, text-column defaults, comments, and `USING BTREE`.
 - [x] Align `SHOW CREATE TABLE missing_table` diagnostics with MySQL.
-- [ ] Verify and complete `DESCRIBE` / `SHOW COLUMNS` for generated schemas.
+- [x] Verify and complete `DESCRIBE` / `SHOW COLUMNS` for generated schemas.
+      Stored, virtual, and default-virtual generated-column metadata now
+      reports MySQL-compatible `Extra` values.
 - [x] Verify and complete `SHOW INDEX` parsing and metadata, including
       cardinality placeholders where MySQL reports `0`.
 - [ ] Align `information_schema.TABLE_CONSTRAINTS` ordering and content with

@@ -41722,6 +41722,83 @@ static int test_show_columns_execution(void) {
     static const char *const override_values[] = {"override_col", "int", "YES", "", NULL, ""};
     static const char *const keyword_fields_values[] = {"fields", "int", "YES", "", NULL, ""};
     static const char *const keyword_columns_values[] = {"columns", "int", "YES", "", NULL, ""};
+    static const char *const generated_columns_values[] = {
+        "base",
+        "int",
+        "YES",
+        "",
+        NULL,
+        "",
+        "stored_col",
+        "int",
+        "YES",
+        "",
+        NULL,
+        "STORED GENERATED",
+        "virtual_col",
+        "int",
+        "YES",
+        "",
+        NULL,
+        "VIRTUAL GENERATED",
+        "default_virtual",
+        "int",
+        "YES",
+        "",
+        NULL,
+        "VIRTUAL GENERATED",
+    };
+    static const char *const generated_full_values[] = {
+        "base",
+        "int",
+        NULL,
+        "YES",
+        "",
+        NULL,
+        "",
+        "select,insert,update,references",
+        "",
+        "stored_col",
+        "int",
+        NULL,
+        "YES",
+        "",
+        NULL,
+        "STORED GENERATED",
+        "select,insert,update,references",
+        "",
+        "virtual_col",
+        "int",
+        NULL,
+        "YES",
+        "",
+        NULL,
+        "VIRTUAL GENERATED",
+        "select,insert,update,references",
+        "",
+        "default_virtual",
+        "int",
+        NULL,
+        "YES",
+        "",
+        NULL,
+        "VIRTUAL GENERATED",
+        "select,insert,update,references",
+        "",
+    };
+    static const char *const generated_like_values[] =
+        {"stored_col", "int", "YES", "", NULL, "STORED GENERATED"};
+    static const char *const generated_info_columns[] = {"COLUMN_NAME", "EXTRA"};
+    static const char *const generated_info_values[] = {
+        "base",
+        "",
+        "stored_col",
+        "STORED GENERATED",
+        "virtual_col",
+        "VIRTUAL GENERATED",
+        "default_virtual",
+        "VIRTUAL GENERATED",
+    };
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -41749,6 +41826,15 @@ static int test_show_columns_execution(void) {
         "a_1 INT, "
         "PRIMARY KEY (id), KEY name_idx (name), "
         "UNIQUE KEY amount_unique (amount))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE generated_meta ("
+        "base INT, "
+        "stored_col INT GENERATED ALWAYS AS (base + 1) STORED, "
+        "virtual_col INT GENERATED ALWAYS AS (base + 2) VIRTUAL, "
+        "default_virtual INT AS (base + 3))",
         MYLITE_DONE
     );
 
@@ -41787,6 +41873,44 @@ static int test_show_columns_execution(void) {
         meta_values,
         6,
         "show extended columns current no-op"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW COLUMNS FROM generated_meta",
+        standard_columns,
+        6,
+        generated_columns_values,
+        4,
+        "show columns generated column metadata"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW FULL COLUMNS FROM generated_meta",
+        full_columns,
+        9,
+        generated_full_values,
+        4,
+        "show full columns generated column metadata"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW COLUMNS FROM generated_meta LIKE 'stored%'",
+        standard_columns,
+        6,
+        generated_like_values,
+        1,
+        "show columns generated column like"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COLUMN_NAME, EXTRA FROM information_schema.COLUMNS "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'generated_meta' "
+        "ORDER BY ORDINAL_POSITION",
+        generated_info_columns,
+        2,
+        generated_info_values,
+        4,
+        "information schema generated column extra metadata"
     );
     failures += expect_select_rows(
         database,
@@ -42024,6 +42148,34 @@ static int test_describe_table_execution(void) {
         "",
     };
     static const char *const b_values[] = {"code", "int", "YES", "", NULL, ""};
+    static const char *const generated_values[] = {
+        "base",
+        "int",
+        "YES",
+        "",
+        NULL,
+        "",
+        "stored_col",
+        "int",
+        "YES",
+        "",
+        NULL,
+        "STORED GENERATED",
+        "virtual_col",
+        "int",
+        "YES",
+        "",
+        NULL,
+        "VIRTUAL GENERATED",
+        "default_virtual",
+        "int",
+        "YES",
+        "",
+        NULL,
+        "VIRTUAL GENERATED",
+    };
+    static const char *const stored_generated_values[] =
+        {"stored_col", "int", "YES", "", NULL, "STORED GENERATED"};
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -42053,6 +42205,15 @@ static int test_describe_table_execution(void) {
         "PRIMARY KEY (id), KEY name_idx (name))",
         MYLITE_DONE
     );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE generated_meta ("
+        "base INT, "
+        "stored_col INT GENERATED ALWAYS AS (base + 1) STORED, "
+        "virtual_col INT GENERATED ALWAYS AS (base + 2) VIRTUAL, "
+        "default_virtual INT AS (base + 3))",
+        MYLITE_DONE
+    );
 
     failures += expect_select_rows(
         database,
@@ -42080,6 +42241,24 @@ static int test_describe_table_execution(void) {
         meta_values,
         7,
         "explain table synonym"
+    );
+    failures += expect_select_rows(
+        database,
+        "DESCRIBE generated_meta",
+        standard_columns,
+        6,
+        generated_values,
+        4,
+        "describe generated column metadata"
+    );
+    failures += expect_select_rows(
+        database,
+        "DESCRIBE generated_meta stored_col",
+        standard_columns,
+        6,
+        stored_generated_values,
+        1,
+        "describe generated column filter"
     );
     failures += expect_select_rows(
         database,

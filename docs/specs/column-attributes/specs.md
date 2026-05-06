@@ -297,7 +297,7 @@ Implementation tests should cover these MySQL 8.4.9 expectations:
 | signed nonnumeric literal defaults | parse error |
 | `a VARCHAR(20) DEFAULT UPPER('x')` | parse error |
 | `a VARCHAR(20) DEFAULT (UPPER('x'))` | parse error until function-call expressions land |
-| `a INT AUTO_INCREMENT`, inline keys, references, checks, generated columns | parse error until later roadmap tasks |
+| `a INT AUTO_INCREMENT`, inline keys, references, checks | parse error until later roadmap tasks |
 
 Runtime tests should verify that valid covered `CREATE TABLE` statements
 prepare as `MYLITE_UNSUPPORTED` and leave `INFORMATION_SCHEMA.TABLES` and
@@ -322,6 +322,9 @@ prepare as `MYLITE_UNSUPPORTED` and leave `INFORMATION_SCHEMA.TABLES` and
   semantic restrictions are deferred.
 - Introducer-prefixed strings and types not yet implemented by earlier roadmap
   tasks remain deferred.
-- Generated columns, `AUTO_INCREMENT`, inline indexes and keys, foreign-key
-  references, `CHECK` constraints, `SERIAL DEFAULT VALUE`, and table options are
-  deferred to later roadmap tasks.
+- Generated columns are accepted for base column metadata, `SHOW COLUMNS`,
+  `DESCRIBE`, and `information_schema.COLUMNS`; generated-column value
+  evaluation is deferred.
+- `AUTO_INCREMENT`, inline indexes and keys, foreign-key references, `CHECK`
+  constraints, `SERIAL DEFAULT VALUE`, and table options are deferred to later
+  roadmap tasks.

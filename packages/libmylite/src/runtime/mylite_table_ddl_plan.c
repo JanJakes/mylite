@@ -186,6 +186,7 @@ void mylite_table_ddl_create_table_column_deinit(struct mylite_create_table_colu
     free(column->type.collation);
     free(column->default_text);
     free(column->comment);
+    free(column->generation_expression);
     *column = (struct mylite_create_table_column){0};
 }
 

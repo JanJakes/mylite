@@ -61,6 +61,7 @@ The following behavior was verified against MySQL 8.4.9:
 | `SHOW COLUMNS FROM meta LIKE 'a\_%'` | Backslash escapes `_`, so only literal-underscore names such as `a_1` match. |
 | `SHOW COLUMNS FROM meta WHERE Field = 'name'` | Filters rows by the displayed `Field` column. |
 | `SHOW EXTENDED COLUMNS FROM meta` | Includes internal hidden storage-engine columns in MySQL; MyLite currently has no equivalent hidden-column catalog. |
+| `SHOW COLUMNS FROM gen_cols` with stored and virtual generated columns | Reports generated columns with `Extra` values `STORED GENERATED` and `VIRTUAL GENERATED`; omitted storage defaults to virtual. |
 | `SHOW FULL COLUMNS FROM information_schema.COLUMNS LIKE 'COLUMN_NAME'` | Returns `COLUMN_NAME` with the `FULL` result shape; MyLite defers system-view column descriptions for this slice. |
 | `SHOW COLUMNS FROM missing_info FROM information_schema` | Error `1109`, SQLSTATE `42S02`, message `Unknown table 'MISSING_INFO' in information_schema`. |
 | `CREATE TABLE columns (fields INT, columns INT, extended INT, full INT)` | `COLUMNS`, `FIELDS`, `EXTENDED`, and `FULL` are usable as unquoted identifiers in table and column contexts. |
@@ -135,8 +136,8 @@ Rows:
 - `Key` uses the catalog's highest-priority key marker: `PRI`, `UNI`, `MUL`,
   or empty string.
 - `Extra` uses the catalog's stored extra marker, including `auto_increment`,
-  `on update CURRENT_TIMESTAMP`, generated-default markers, and `INVISIBLE`
-  where present.
+  `on update CURRENT_TIMESTAMP`, generated-default markers, generated-column
+  storage markers, and `INVISIBLE` where present.
 - `Privileges` uses MyLite's stored column privilege string for now.
 - `SHOW EXTENDED COLUMNS` is accepted and currently returns the same user
   columns as `SHOW COLUMNS`; MyLite has no hidden storage-engine column catalog
@@ -186,6 +187,8 @@ Parser coverage:
 - `SHOW COLUMNS FROM db.t`
 - `SHOW COLUMNS FROM t LIKE 'name'`
 - `SHOW COLUMNS FROM t WHERE Field = 'name'`
+- generated-column metadata for `GENERATED ALWAYS AS (...) STORED`,
+  `GENERATED ALWAYS AS (...) VIRTUAL`, and `AS (...)` default-virtual forms
 - `COLUMNS`, `FIELDS`, `EXTENDED`, and `FULL` as unquoted identifiers in table
   and column definitions
 - syntax rejection for missing table name, non-string `LIKE`, combined `LIKE`
@@ -199,6 +202,8 @@ Runtime coverage:
 - schema-qualified listing via `FROM` and `IN`
 - `db.table` target resolution
 - `EXTENDED` accepted as current no-op over MyLite's user-column catalog
+- generated-column `Extra` values through `SHOW COLUMNS`, `SHOW FULL COLUMNS`,
+  and `DESCRIBE`
 - parsed `WHERE` returns a deterministic unsupported diagnostic
 - `LIKE` wildcard filtering and case behavior
 - escaped `_` in `LIKE`

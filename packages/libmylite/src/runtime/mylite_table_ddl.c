@@ -198,6 +198,20 @@ const char *mylite_table_ddl_create_table_column_extra(
     if (column->auto_increment) {
         return "auto_increment";
     }
+    if (column->generated_column_storage == MYLITE_SQL_AST_GENERATED_COLUMN_STORAGE_STORED &&
+        !column->visible) {
+        return "STORED GENERATED INVISIBLE";
+    }
+    if (column->generated_column_storage == MYLITE_SQL_AST_GENERATED_COLUMN_STORAGE_STORED) {
+        return "STORED GENERATED";
+    }
+    if (column->generated_column_storage == MYLITE_SQL_AST_GENERATED_COLUMN_STORAGE_VIRTUAL &&
+        !column->visible) {
+        return "VIRTUAL GENERATED INVISIBLE";
+    }
+    if (column->generated_column_storage == MYLITE_SQL_AST_GENERATED_COLUMN_STORAGE_VIRTUAL) {
+        return "VIRTUAL GENERATED";
+    }
     if (column->has_generated_default && column->has_on_update_current_timestamp &&
         !column->visible) {
         return "DEFAULT_GENERATED on update CURRENT_TIMESTAMP INVISIBLE";

@@ -53,6 +53,8 @@
 %type check_enforcement { struct mylite_sql_parser_constraint_enforcement }
 %type reference_action { struct mylite_sql_parser_reference_action }
 %type reference_match_kind { struct mylite_sql_parser_reference_match }
+%type opt_generated_always { struct mylite_sql_token }
+%type opt_generated_column_storage { struct mylite_sql_parser_generated_column_storage }
 %type fulltext_index_option_list { struct mylite_sql_ast_node * }
 %type fulltext_index_option { struct mylite_sql_ast_node * }
 %type opt_like_escape { struct mylite_sql_ast_node * }
@@ -3295,6 +3297,37 @@ column_attribute(A) ::= UNIQUE(U) KEY(K). {
             .unique_token = U,
             .key_token = K,
         });
+}
+column_attribute(A) ::= opt_generated_always(G) AS(AK) LPAREN expression(E) RPAREN opt_generated_column_storage(S). {
+    A = mylite_sql_parser_make_column_generated_attribute(state, G, AK, E, S);
+}
+
+opt_generated_always(A) ::= . {
+    A = (struct mylite_sql_token){0};
+}
+opt_generated_always(A) ::= GENERATED(T) IDENTIFIER(W). {
+    if (!mylite_sql_parser_token_equals(&W, "ALWAYS")) {
+        mylite_sql_parser_state_syntax_error(state, MYLITE_SQL_PARSE_IDENTIFIER, W);
+    }
+    A = T;
+}
+
+opt_generated_column_storage(A) ::= . {
+    A = (struct mylite_sql_parser_generated_column_storage){
+        .value = MYLITE_SQL_AST_GENERATED_COLUMN_STORAGE_VIRTUAL,
+    };
+}
+opt_generated_column_storage(A) ::= VIRTUAL(T). {
+    A = (struct mylite_sql_parser_generated_column_storage){
+        .token = T,
+        .value = MYLITE_SQL_AST_GENERATED_COLUMN_STORAGE_VIRTUAL,
+    };
+}
+opt_generated_column_storage(A) ::= STORED(T). {
+    A = (struct mylite_sql_parser_generated_column_storage){
+        .token = T,
+        .value = MYLITE_SQL_AST_GENERATED_COLUMN_STORAGE_STORED,
+    };
 }
 
 table_primary_key_constraint(A) ::= PRIMARY(P) KEY opt_primary_key_name(B) opt_index_type(C) LPAREN key_part_list(D) RPAREN index_option_list(E). {

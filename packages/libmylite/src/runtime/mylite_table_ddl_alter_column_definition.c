@@ -89,7 +89,10 @@ int mylite_table_ddl_init_alter_table_column_from_definition(
         definition->comment == NULL ? "" : definition->comment,
         definition->comment == NULL ? 0U : strlen(definition->comment)
     );
-    out_column->generation_expression = mylite_copy_span_text("", 0U);
+    out_column->generation_expression = mylite_copy_span_text(
+        definition->generation_expression == NULL ? "" : definition->generation_expression,
+        definition->generation_expression == NULL ? 0U : strlen(definition->generation_expression)
+    );
     if (out_column->name == NULL || (source_name != NULL && out_column->source_name == NULL) ||
         (definition->default_text != NULL && out_column->column_default == NULL) ||
         out_column->is_nullable == NULL || out_column->data_type == NULL ||

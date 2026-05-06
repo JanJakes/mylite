@@ -5708,6 +5708,35 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_unique_key_attribute(
     return attribute;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_generated_attribute(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token start_token,
+    struct mylite_sql_token as_token,
+    struct mylite_sql_ast_node *expression,
+    struct mylite_sql_parser_generated_column_storage storage
+) {
+    struct mylite_sql_source_span span =
+        start_token.text == NULL ? span_from_token(&as_token) : span_from_token(&start_token);
+    struct mylite_sql_ast_node *attribute = NULL;
+
+    if (expression != NULL) {
+        span = span_join(span, expression->span);
+    }
+    if (storage.token.text != NULL) {
+        span = span_join(span, span_from_token(&storage.token));
+    }
+
+    attribute = make_node(state, MYLITE_SQL_AST_COLUMN_ATTRIBUTE, span);
+    if (attribute == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_column_attribute(attribute, MYLITE_SQL_AST_COLUMN_ATTRIBUTE_GENERATED);
+    attribute->generated_column_storage = storage.value;
+    mylite_sql_ast_node_append_child(attribute, expression);
+    return attribute;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_current_timestamp(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token current_timestamp_token,
@@ -7781,6 +7810,7 @@ static bool lookup_keyword_parser_token(
         {"FULL", MYLITE_SQL_PARSE_FULL},
         {"FULLTEXT", MYLITE_SQL_PARSE_FULLTEXT},
         {"FUNCTION", MYLITE_SQL_PARSE_FUNCTION},
+        {"GENERATED", MYLITE_SQL_PARSE_GENERATED},
         {"GLOBAL", MYLITE_SQL_PARSE_GLOBAL},
         {"GRANT", MYLITE_SQL_PARSE_GRANT},
         {"GRANTS", MYLITE_SQL_PARSE_GRANTS},
@@ -7951,6 +7981,7 @@ static bool lookup_keyword_parser_token(
         {"START", MYLITE_SQL_PARSE_START},
         {"STARTS", MYLITE_SQL_PARSE_STARTS},
         {"STATUS", MYLITE_SQL_PARSE_STATUS},
+        {"STORED", MYLITE_SQL_PARSE_STORED},
         {"STORAGE", MYLITE_SQL_PARSE_STORAGE},
         {"STRING", MYLITE_SQL_PARSE_STRINGKW},
         {"SUBCLASS_ORIGIN", MYLITE_SQL_PARSE_SUBCLASS_ORIGIN},
@@ -7998,6 +8029,7 @@ static bool lookup_keyword_parser_token(
         {"WEEK", MYLITE_SQL_PARSE_WEEK},
         {"WHEN", MYLITE_SQL_PARSE_WHEN},
         {"WHERE", MYLITE_SQL_PARSE_WHERE},
+        {"VIRTUAL", MYLITE_SQL_PARSE_VIRTUAL},
         {"VISIBLE", MYLITE_SQL_PARSE_VISIBLE},
         {"WARNINGS", MYLITE_SQL_PARSE_WARNINGS},
         {"WINDOW", MYLITE_SQL_PARSE_WINDOW},
@@ -8174,6 +8206,10 @@ static bool lexer_next_non_comment(
     } while (is_comment_token(out_token->kind));
 
     return true;
+}
+
+bool mylite_sql_parser_token_equals(const struct mylite_sql_token *token, const char *text) {
+    return token_text_equals(token, text);
 }
 
 static bool token_text_equals(const struct mylite_sql_token *token, const char *text) {

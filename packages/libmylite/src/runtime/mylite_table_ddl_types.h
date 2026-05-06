@@ -29,6 +29,7 @@ struct mylite_create_table_column {
     struct mylite_create_table_column_type type;
     char *default_text;
     char *comment;
+    char *generation_expression;
     bool nullable;
     bool auto_increment;
     bool primary_key;
@@ -36,6 +37,7 @@ struct mylite_create_table_column {
     bool visible;
     bool has_generated_default;
     bool has_on_update_current_timestamp;
+    enum mylite_sql_ast_generated_column_storage generated_column_storage;
 };
 
 struct mylite_create_table_key_part {

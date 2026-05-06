@@ -151,6 +151,11 @@ struct mylite_sql_parser_column_unique_key_attribute_tokens {
     struct mylite_sql_token key_token;
 };
 
+struct mylite_sql_parser_generated_column_storage {
+    struct mylite_sql_token token;
+    enum mylite_sql_ast_generated_column_storage value;
+};
+
 struct mylite_sql_parser_table_string_option_tokens {
     struct mylite_sql_token option;
     struct mylite_sql_token string;
@@ -341,6 +346,7 @@ void mylite_sql_parser_state_syntax_error(
     int parser_token,
     struct mylite_sql_token token
 );
+bool mylite_sql_parser_token_equals(const struct mylite_sql_token *token, const char *text);
 void mylite_sql_parser_state_parse_failed(struct mylite_sql_parser_state *state);
 void mylite_sql_parser_state_accept(struct mylite_sql_parser_state *state);
 void mylite_sql_parser_state_stack_overflow(struct mylite_sql_parser_state *state);
@@ -1602,6 +1608,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_primary_key_attribute(
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_unique_key_attribute(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_parser_column_unique_key_attribute_tokens tokens
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_generated_attribute(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token start_token,
+    struct mylite_sql_token as_token,
+    struct mylite_sql_ast_node *expression,
+    struct mylite_sql_parser_generated_column_storage storage
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_current_timestamp(
     struct mylite_sql_parser_state *state,

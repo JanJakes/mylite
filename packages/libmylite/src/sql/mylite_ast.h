@@ -343,6 +343,13 @@ enum mylite_sql_ast_column_attribute {
     MYLITE_SQL_AST_COLUMN_ATTRIBUTE_AUTO_INCREMENT = 10,
     MYLITE_SQL_AST_COLUMN_ATTRIBUTE_PRIMARY_KEY = 11,
     MYLITE_SQL_AST_COLUMN_ATTRIBUTE_UNIQUE_KEY = 12,
+    MYLITE_SQL_AST_COLUMN_ATTRIBUTE_GENERATED = 13,
+};
+
+enum mylite_sql_ast_generated_column_storage {
+    MYLITE_SQL_AST_GENERATED_COLUMN_STORAGE_NONE = 0,
+    MYLITE_SQL_AST_GENERATED_COLUMN_STORAGE_VIRTUAL = 1,
+    MYLITE_SQL_AST_GENERATED_COLUMN_STORAGE_STORED = 2,
 };
 
 enum mylite_sql_ast_column_format {
@@ -637,6 +644,7 @@ struct mylite_sql_ast_node {
     enum mylite_sql_ast_column_attribute column_attribute;
     enum mylite_sql_ast_column_format column_format;
     enum mylite_sql_ast_column_storage column_storage;
+    enum mylite_sql_ast_generated_column_storage generated_column_storage;
     enum mylite_sql_ast_key_part_order key_part_order;
     enum mylite_sql_ast_index_algorithm index_algorithm;
     enum mylite_sql_ast_index_option index_option;

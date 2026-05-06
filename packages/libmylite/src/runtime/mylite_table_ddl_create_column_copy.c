@@ -166,6 +166,15 @@ static int copy_create_table_column_attributes(
         case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_UNIQUE_KEY:
             column->unique_key = true;
             break;
+        case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_GENERATED:
+            copy = copy_expression_text(mylite_ast_child_at(attribute, 0U));
+            if (copy == NULL) {
+                return MYLITE_NOMEM;
+            }
+            free(column->generation_expression);
+            column->generation_expression = copy;
+            column->generated_column_storage = attribute->generated_column_storage;
+            break;
         case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_COLUMN_FORMAT:
         case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_STORAGE:
         case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_NONE:

@@ -11,15 +11,20 @@ assignment-coercion opcode when preparing writes to those tables.
 Implemented scope:
 
 - add MyLite-owned type metadata to SQLite's internal `Column` objects
+- add owned descriptor payload storage for column types with value lists
 - add `mylite_sqlite_fork_set_column_type()` and
   `mylite_sqlite_fork_clear_column_type()` for attaching descriptors to a live
   SQLite schema
+- add `mylite_sqlite_fork_set_enum_column_type()` for attaching copied
+  `ENUM` value-list descriptors to a live SQLite schema
 - add `OP_MyliteTypeCheck`, emitted from SQLite's `sqlite3TableAffinity()` when
   a target table has MyLite descriptors
+- add `OP_MyliteColumnReadType` for direct column reads whose displayed and
+  numeric-context values differ from physical storage
 - support strict assignment coercion for signed integer ranges, supported
   unsigned integer ranges, `DOUBLE`, `VARCHAR(n)`, `BINARY(n)`,
   `VARBINARY(n)`, text families, blob families, `DECIMAL(p,s)`, `DATE`,
-  `DATETIME(fsp)`, `TIME(fsp)`, and `YEAR`
+  `DATETIME(fsp)`, `TIME(fsp)`, `YEAR`, and `ENUM(...)`
 - preserve ordinary SQLite affinity for columns without a MyLite descriptor
 - cover direct SQLite `INSERT` and `UPDATE` statements that write through the
   new descriptor path without SQL wrapper functions
@@ -41,8 +46,7 @@ Deferred scope:
 - exact MySQL diagnostic messages, row interpolation, complete warning records,
   and `IGNORE` demotion
 - non-strict SQL mode clipping and string truncation behavior
-- `TIMESTAMP`, JSON, `ENUM`, `SET`, bit, and spatial assignment
-  conversion
+- `TIMESTAMP`, JSON, `SET`, bit, and spatial assignment conversion
 - preserving MyLite descriptors through SQLite-native schema rebuilds that are
   not coordinated by MyLite
 
@@ -72,6 +76,8 @@ Deferred scope:
   `docs/specs/sqlite-fork-text-blob-family-descriptors/specs.md`
 - SQLite fork year type descriptors:
   `docs/specs/sqlite-fork-year-type-descriptors/specs.md`
+- SQLite fork enum type descriptors:
+  `docs/specs/sqlite-fork-enum-type-descriptors/specs.md`
 - Existing SQLite source-tree fork package:
   `docs/specs/sqlite-source-tree-fork/specs.md`
 
@@ -159,6 +165,11 @@ SQLite already uses for table affinity. For each target column:
   `2001..2069` and `1970..1999` windows, round fractional inputs before
   mapping, reject values outside `1901..2155` plus the `0000` sentinel, and
   store canonical four-character text.
+- `ENUM` descriptors store copied value-list metadata on the column, convert
+  labels and numeric indexes to compact one-based integer storage, reject
+  invalid strict assignments with condition 1265 / SQLSTATE `01000`, and
+  use read-time metadata to display labels while preserving numeric index
+  behavior for arithmetic contexts.
 
 On failure, SQLite aborts the statement with `SQLITE_CONSTRAINT_DATATYPE` and a
 message naming the failed conversion and target column. The fork diagnostics
@@ -203,6 +214,10 @@ The executable tests must cover:
   fail through the native opcode
 - invalid and out-of-range time text fails through the native opcode
 - invalid and out-of-range year values fail through the native opcode
+- valid enum labels, numeric indexes, quoted integer indexes, numeric-looking
+  labels, empty labels, selected labels, and numeric-context enum indexes pass
+  through the native descriptor path
+- invalid enum labels and indexes fail through the native opcode
 - over-length text-family and blob-family assignments fail through the native
   opcode
 - zero temporal sentinels are accepted only when the descriptor explicitly
@@ -231,6 +246,10 @@ behavior.
 The MySQL 8.4.9 fixture in
 `docs/specs/sqlite-fork-year-type-descriptors/mysql-year-coercion.sql` is the
 runtime baseline for the first supported `YEAR` assignment behavior.
+The MySQL 8.4.9 fixture in
+`docs/specs/sqlite-fork-enum-type-descriptors/mysql-enum-coercion.sql` is the
+runtime baseline for the first supported `ENUM` assignment and readback
+behavior.
 
 ## Compatibility Status
 

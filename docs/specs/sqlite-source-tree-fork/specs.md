@@ -64,6 +64,8 @@ Deferred scope:
   `docs/specs/sqlite-fork-text-blob-family-descriptors/specs.md`
 - SQLite fork year type descriptors:
   `docs/specs/sqlite-fork-year-type-descriptors/specs.md`
+- SQLite fork enum type descriptors:
+  `docs/specs/sqlite-fork-enum-type-descriptors/specs.md`
 
 This specification is independently authored from official SQLite source-tree
 layout, observed MyLite build behavior, and the current MyLite codebase.
@@ -108,8 +110,10 @@ The fork's `UPDATE` record-building path uses SQLite's changed-column mask for
 MyLite descriptor checks, so assignment coercion applies to assigned columns
 without revalidating unrelated stored values.
 The current descriptor families cover strict integer, `DOUBLE`, `VARCHAR`,
-`BINARY`, `VARBINARY`, `DECIMAL`, `DATE`, `DATETIME`, `TIME`, and `YEAR`
-assignment behavior.
+`BINARY`, `VARBINARY`, `DECIMAL`, `DATE`, `DATETIME`, `TIME`, `YEAR`, and
+`ENUM` assignment behavior. `ENUM` also adds the first read-time descriptor
+hook because its compact physical index must display as a label while numeric
+contexts see the index.
 Fork-owned VDBE failures can also publish a structured MySQL condition through
 the diagnostics bridge before SQLite reports the statement error.
 

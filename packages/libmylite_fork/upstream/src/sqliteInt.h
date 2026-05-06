@@ -1350,6 +1350,7 @@ typedef struct KeyInfo KeyInfo;
 typedef struct Lookaside Lookaside;
 typedef struct LookasideSlot LookasideSlot;
 typedef struct Module Module;
+typedef struct MyliteColumnValue MyliteColumnValue;
 typedef struct MyliteColumnType MyliteColumnType;
 typedef struct NameContext NameContext;
 typedef struct OnOrUsing OnOrUsing;
@@ -2254,10 +2255,16 @@ struct Module {
 /* MyLite-owned assignment type metadata.  SQLite's parser may leave this
 ** empty; MyLite attaches descriptors from its schema catalog before preparing
 ** DML that writes user rows. */
+struct MyliteColumnValue {
+  char *z;
+  u32 n;
+};
 struct MyliteColumnType {
   u8 eType;              /* One of MYLITE_COLTYPE_* */
   u8 bReserved;
   u16 mFlags;
+  u32 nValue;            /* ENUM/SET descriptor payload length */
+  MyliteColumnValue *aValue;
   i64 iMin;              /* Signed or supported unsigned lower bound */
   i64 iMax;              /* Signed or supported unsigned upper bound */
   u64 nChar;             /* Character-count limit for VARCHAR */
@@ -2281,6 +2288,7 @@ struct MyliteColumnType {
 # define MYLITE_COLTYPE_TEXT             11
 # define MYLITE_COLTYPE_BLOB             12
 # define MYLITE_COLTYPE_YEAR             13
+# define MYLITE_COLTYPE_ENUM             14
 
 # define MYLITE_COLTYPE_FLAG_UNSIGNED    0x0001
 # define MYLITE_COLTYPE_FLAG_ALLOW_ZERO  0x0002
@@ -5025,6 +5033,9 @@ Expr *sqlite3ColumnExpr(Table*,Column*);
 void sqlite3ColumnSetColl(sqlite3*,Column*,const char*zColl);
 const char *sqlite3ColumnColl(Column*);
 void sqlite3DeleteColumnNames(sqlite3*,Table*);
+#ifdef SQLITE_ENABLE_MYLITE
+void sqlite3MyliteClearColumnType(sqlite3*,Column*);
+#endif
 void sqlite3GenerateColumnNames(Parse *pParse, Select *pSelect);
 int sqlite3ColumnsFromExprList(Parse*,ExprList*,i16*,Column**);
 void sqlite3SubqueryColumnTypes(Parse*,Table*,Select*,char);

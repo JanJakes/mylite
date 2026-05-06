@@ -51,6 +51,8 @@ static int test_native_time_type_coercion(void);
 
 static int test_native_year_type_coercion(void);
 
+static int test_native_enum_type_coercion(void);
+
 static int test_wordpress_like_crud(void);
 
 static int test_mylite_wordpress_like_crud(void);
@@ -132,6 +134,7 @@ int main(void) {
     failures += test_native_temporal_type_coercion();
     failures += test_native_time_type_coercion();
     failures += test_native_year_type_coercion();
+    failures += test_native_enum_type_coercion();
     failures += test_wordpress_like_crud();
     failures += test_mylite_wordpress_like_crud();
     failures += test_mylite_basic_type_coercion();
@@ -1409,6 +1412,231 @@ static int test_native_year_type_coercion(void) {
             .sqlstate = "HY000",
             .context = "invalid year text exposes MySQL condition",
         }
+    );
+
+    sqlite3_close(database);
+    return failures;
+}
+
+static int test_native_enum_type_coercion(void) {
+    enum {
+        enum_truncated_error = 1265,
+    };
+
+    static const struct mylite_sqlite_fork_enum_value status_values[] = {
+        {.text = "draft", .byte_length = sizeof("draft") - 1},
+        {.text = "published", .byte_length = sizeof("published") - 1},
+        {.text = "archived", .byte_length = sizeof("archived") - 1},
+    };
+    static const struct mylite_sqlite_fork_enum_value numeric_values[] = {
+        {.text = "0", .byte_length = sizeof("0") - 1},
+        {.text = "1", .byte_length = sizeof("1") - 1},
+        {.text = "2", .byte_length = sizeof("2") - 1},
+    };
+    static const struct mylite_sqlite_fork_enum_value empty_values[] = {
+        {.text = "", .byte_length = 0},
+        {.text = "a", .byte_length = sizeof("a") - 1},
+    };
+
+    sqlite3 *database = NULL;
+    int failures = 0;
+
+    failures += open_configured_database(&database);
+    if (failures != 0) {
+        return failures;
+    }
+
+    failures += exec_sql(
+        database,
+        "CREATE TABLE enum_direct(id INTEGER PRIMARY KEY, status INTEGER)",
+        "create direct enum descriptor fixture"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_enum_column_type(
+            database,
+            NULL,
+            "enum_direct",
+            "status",
+            &(const struct mylite_sqlite_fork_enum_column_type){
+                .values = status_values,
+                .value_count = sizeof(status_values) / sizeof(status_values[0]),
+            }
+        ),
+        database,
+        "set direct enum descriptor"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO enum_direct VALUES "
+        "(1, 'draft'), (2, 2), (3, '2'), (4, 3.9), (5, NULL)",
+        "insert direct enum descriptor values"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT group_concat("
+                   "id || ':' || COALESCE(status, 'NULL') || ':' || "
+                   "COALESCE(status + 0, 'NULL'), '|') "
+                   "FROM (SELECT id, status FROM enum_direct ORDER BY id)",
+            .expected = "1:draft:1|2:published:2|3:published:2|4:archived:3|5:NULL:NULL",
+            .context = "direct enum descriptor returns labels with numeric indexes",
+        }
+    );
+    failures += exec_sql(
+        database,
+        "UPDATE enum_direct SET status = 'archived' WHERE id = 1",
+        "update direct enum label"
+    );
+    failures += exec_sql(
+        database,
+        "UPDATE enum_direct SET status = '+2' WHERE id = 2",
+        "update direct enum signed integer text"
+    );
+    failures += exec_sql(
+        database,
+        "UPDATE enum_direct SET status = '02' WHERE id = 3",
+        "update direct enum zero-padded integer text"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT group_concat(id || ':' || status || ':' || (status + 0), '|') "
+                   "FROM (SELECT id, status FROM enum_direct WHERE id IN (1, 2, 3) "
+                   "ORDER BY id)",
+            .expected = "1:archived:3|2:published:2|3:published:2",
+            .context = "direct enum update coerces labels and integer text",
+        }
+    );
+
+    failures += exec_sql(
+        database,
+        "CREATE TABLE enum_numeric(id INTEGER PRIMARY KEY, value INTEGER)",
+        "create direct numeric-label enum fixture"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_enum_column_type(
+            database,
+            NULL,
+            "enum_numeric",
+            "value",
+            &(const struct mylite_sqlite_fork_enum_column_type){
+                .values = numeric_values,
+                .value_count = sizeof(numeric_values) / sizeof(numeric_values[0]),
+            }
+        ),
+        database,
+        "set direct numeric-label enum descriptor"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO enum_numeric VALUES "
+        "(1, 2), (2, '2'), (3, '3'), (4, 1), (5, '1'), (6, '0')",
+        "insert direct numeric-label enum values"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT group_concat(id || ':' || value || ':' || (value + 0), '|') "
+                   "FROM (SELECT id, value FROM enum_numeric ORDER BY id)",
+            .expected = "1:1:2|2:2:3|3:2:3|4:0:1|5:1:2|6:0:1",
+            .context = "direct enum prefers exact labels before numeric indexes",
+        }
+    );
+
+    failures += exec_sql(
+        database,
+        "CREATE TABLE enum_empty(id INTEGER PRIMARY KEY, value INTEGER)",
+        "create direct empty-label enum fixture"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_enum_column_type(
+            database,
+            NULL,
+            "enum_empty",
+            "value",
+            &(const struct mylite_sqlite_fork_enum_column_type){
+                .values = empty_values,
+                .value_count = sizeof(empty_values) / sizeof(empty_values[0]),
+            }
+        ),
+        database,
+        "set direct empty-label enum descriptor"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO enum_empty VALUES (1, ''), (2, 1), (3, '1')",
+        "insert empty-label enum values"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT group_concat(id || ':' || value || ':' || (value + 0), '|') "
+                   "FROM (SELECT id, value FROM enum_empty ORDER BY id)",
+            .expected = "1::1|2::1|3::1",
+            .context = "direct enum preserves valid empty labels as index one",
+        }
+    );
+
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO enum_direct VALUES (6, 0)",
+            .message_fragment = "invalid enum value",
+            .context = "direct enum descriptor rejects index zero in strict mode",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = enum_truncated_error,
+            .sqlstate = "01000",
+            .context = "invalid enum index exposes MySQL condition",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear invalid enum index fork condition"
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO enum_direct VALUES (6, 'missing')",
+            .message_fragment = "invalid enum value",
+            .context = "direct enum descriptor rejects unknown labels in strict mode",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = enum_truncated_error,
+            .sqlstate = "01000",
+            .context = "invalid enum label exposes MySQL condition",
+        }
+    );
+    failures += exec_sql(
+        database,
+        "CREATE TABLE enum_alter(id INTEGER PRIMARY KEY, value INTEGER)",
+        "create direct enum alter fixture"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_enum_column_type(
+            database,
+            NULL,
+            "enum_alter",
+            "value",
+            &(const struct mylite_sqlite_fork_enum_column_type){
+                .values = status_values,
+                .value_count = sizeof(status_values) / sizeof(status_values[0]),
+            }
+        ),
+        database,
+        "set direct enum alter descriptor"
+    );
+    failures += exec_sql(
+        database,
+        "ALTER TABLE enum_alter ADD COLUMN note TEXT",
+        "native SQLite alter table does not double-free enum descriptors"
     );
 
     sqlite3_close(database);

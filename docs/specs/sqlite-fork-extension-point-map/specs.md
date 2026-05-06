@@ -15,13 +15,18 @@ Implemented fork points:
   grouping, duplicate elimination, and unique-key probes where generated SQL
   preserves expression collation
 - MyLite column descriptors stored on SQLite `Column` objects
+- owned per-column descriptor payloads for value-list types, beginning with
+  `ENUM`
 - VDBE write-time type checking through `OP_MyliteTypeCheck`
+- VDBE read-time column transformation for MySQL types whose physical storage
+  differs from displayed and numeric-context values, beginning with `ENUM`
 - binary string byte-length and fixed-length padding through column descriptors
 - text/blob family byte-capacity checks and storage-class canonicalization
   through column descriptors
 - decimal precision/scale rounding and range checks through column descriptors
 - date, datetime, time, and year parsing, fractional rounding, mapping, and
   range checks through column descriptors
+- enum label/index assignment and readback through payload descriptors
 - update-mask-aware descriptor checking for SQLite `UPDATE` record creation
 - structured fork diagnostics for MyLite-owned VDBE type-check failures
 - public MyLite DML write-table loading that applies catalog descriptors before
@@ -59,6 +64,8 @@ Implemented fork points:
   `docs/specs/sqlite-fork-temporal-type-descriptors/specs.md`
 - SQLite fork YEAR type descriptors:
   `docs/specs/sqlite-fork-year-type-descriptors/specs.md`
+- SQLite fork ENUM type descriptors:
+  `docs/specs/sqlite-fork-enum-type-descriptors/specs.md`
 - SQLite collation prefix uniqueness:
   `docs/specs/sqlite-collation-prefix-unique/specs.md`
 
@@ -133,7 +140,12 @@ Implemented first slice:
 Next likely descriptor families:
 
 - `TIMESTAMP` temporal values with SQL-mode and time-zone behavior
-- `ENUM`, `SET`, `JSON`, and bit values
+- `SET`, JSON, and bit values
+
+`ENUM` establishes a new descriptor-payload and read-type boundary: physical
+storage can be compact while selected values expose MySQL's string display and
+numeric index behavior. `SET` should reuse that payload ownership pattern but
+with bit-mask assignment and comma-list display semantics.
 
 The next temporal-specific fork points are accepted-assignment warnings,
 SQL-mode-sensitive zero date handling, `TIME_TRUNCATE_FRACTIONAL`,
@@ -141,8 +153,9 @@ SQL-mode-sensitive zero date handling, `TIME_TRUNCATE_FRACTIONAL`,
 SQLite parser/catalog descriptor loading. The next decimal-specific fork points
 are comparison/index ordering and direct SQLite parser numeric-literal
 preservation. The expression side also needs continued MySQL numeric-context
-coercion work because text-backed storage values must behave like MySQL when
-used in arithmetic, comparison, grouping, and ordering expressions.
+coercion work because text-backed and descriptor-backed storage values must
+behave like MySQL when used in arithmetic, comparison, grouping, and ordering
+expressions.
 
 ### Diagnostics and warnings
 

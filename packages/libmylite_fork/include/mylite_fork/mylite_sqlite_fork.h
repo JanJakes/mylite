@@ -22,6 +22,7 @@ enum mylite_sqlite_fork_column_type_kind {
     MYLITE_SQLITE_FORK_COLUMN_TYPE_TEXT = 11,
     MYLITE_SQLITE_FORK_COLUMN_TYPE_BLOB = 12,
     MYLITE_SQLITE_FORK_COLUMN_TYPE_YEAR = 13,
+    MYLITE_SQLITE_FORK_COLUMN_TYPE_ENUM = 14,
 };
 
 enum mylite_sqlite_fork_column_type_flags {
@@ -38,6 +39,17 @@ struct mylite_sqlite_fork_column_type {
     sqlite3_uint64 numeric_precision;
     sqlite3_uint64 numeric_scale;
     sqlite3_uint64 datetime_precision;
+    unsigned int flags;
+};
+
+struct mylite_sqlite_fork_enum_value {
+    const char *text;
+    sqlite3_uint64 byte_length;
+};
+
+struct mylite_sqlite_fork_enum_column_type {
+    const struct mylite_sqlite_fork_enum_value *values;
+    sqlite3_uint64 value_count;
     unsigned int flags;
 };
 
@@ -69,6 +81,13 @@ int mylite_sqlite_fork_set_column_type(
     const char *table_name,
     const char *column_name,
     const struct mylite_sqlite_fork_column_type *type
+);
+int mylite_sqlite_fork_set_enum_column_type(
+    sqlite3 *database,
+    const char *schema_name,
+    const char *table_name,
+    const char *column_name,
+    const struct mylite_sqlite_fork_enum_column_type *type
 );
 int mylite_sqlite_fork_clear_column_type(
     sqlite3 *database,

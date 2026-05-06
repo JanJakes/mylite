@@ -13,7 +13,9 @@ Implemented scope:
 - native SQLite column descriptor hooks that emit VDBE write-time coercion for
   signed integer, supported unsigned integer, `DOUBLE`, `VARCHAR`, `BINARY`,
   `VARBINARY`, text families, blob families, `DECIMAL`, `DATE`, `DATETIME`,
-  `TIME`, and `YEAR`
+  `TIME`, `YEAR`, and `ENUM`
+- native SQLite read-time descriptor hooks for direct `ENUM` column reads, so
+  stored indexes display as labels while arithmetic sees MySQL enum indexes
 - MyLite public write-table loading attaches catalog-derived descriptors before
   preparing physical SQLite writes
 - MyLite `INSERT`, `UPDATE`, `REPLACE`, and duplicate-key update lowering uses
@@ -37,8 +39,7 @@ Deferred scope:
 - exact MySQL error messages, row interpolation, complete warning records, and
   `IGNORE` demotion for every conversion failure
 - full unsigned `BIGINT` above `INT64_MAX`
-- `TIMESTAMP`, JSON, `ENUM`, `SET`, bit, and spatial assignment
-  conversion
+- `TIMESTAMP`, JSON, `SET`, bit, and spatial assignment conversion
 - decimal-aware comparison/index ordering, compact decimal storage, and direct
   SQLite parser numeric-literal preservation
 - direct SQLite parser/catalog reload into descriptors for SQL executed without
@@ -74,6 +75,8 @@ Deferred scope:
   `docs/specs/sqlite-fork-text-blob-family-descriptors/specs.md`
 - SQLite fork year type descriptors:
   `docs/specs/sqlite-fork-year-type-descriptors/specs.md`
+- SQLite fork enum type descriptors:
+  `docs/specs/sqlite-fork-enum-type-descriptors/specs.md`
 
 This specification is independently authored from official documentation,
 observed MySQL 8.4.9 runtime behavior, and the current MyLite codebase. It does
@@ -152,6 +155,13 @@ establishes the first supported `YEAR` assignment behavior: numeric zero versus
 quoted zero, the `0000` sentinel, one- and two-digit year windows, fractional
 rounding before mapping, canonical four-character storage, and 1264/22003 plus
 1366/HY000 diagnostics.
+
+The fixture in
+`docs/specs/sqlite-fork-enum-type-descriptors/mysql-enum-coercion.sql`
+establishes the first supported `ENUM` descriptor behavior: label and numeric
+index assignment, numeric-looking label precedence, empty-label handling,
+selected label display, numeric-context indexes, and 1265/01000 strict
+diagnostics.
 
 ## Runtime Design
 

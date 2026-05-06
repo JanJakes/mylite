@@ -765,6 +765,9 @@ void sqlite3DeleteColumnNames(sqlite3 *db, Table *pTable){
   if( (pCol = pTable->aCol)!=0 ){
     for(i=0; i<pTable->nCol; i++, pCol++){
       assert( pCol->zCnName==0 || pCol->hName==sqlite3StrIHash(pCol->zCnName) );
+#ifdef SQLITE_ENABLE_MYLITE
+      sqlite3MyliteClearColumnType(db, pCol);
+#endif
       sqlite3DbFree(db, pCol->zCnName);
     }
     sqlite3DbNNFreeNN(db, pTable->aCol);

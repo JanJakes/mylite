@@ -1,0 +1,34 @@
+after-insert	1	draft	1	draft	0
+after-insert	2	published	2	published	0
+after-insert	3	published	2	published	0
+after-insert	4	archived	3	archived	0
+after-insert	5	NULL	NULL	NULL	1
+after-update	1	archived	3	archived
+after-update	2	published	2	published
+after-update	3	published	2	published
+after-update	4	archived	3	archived
+after-update	5	NULL	NULL	NULL
+after-duplicate-update	1	archived	3	archived
+after-duplicate-update	2	draft	1	draft
+after-duplicate-update	3	published	2	published
+after-duplicate-update	4	archived	3	archived
+after-duplicate-update	5	NULL	NULL	NULL
+after-replace	1	archived	3	archived
+after-replace	2	draft	1	draft
+after-replace	3	published	2	published
+after-replace	4	archived	3	archived
+after-replace	5	NULL	NULL	NULL
+after-replace	6	draft	1	draft
+numeric-labels	1	1	2	1
+numeric-labels	2	2	3	2
+numeric-labels	3	2	3	2
+numeric-labels	4	0	1	0
+numeric-labels	5	1	2	1
+numeric-labels	6	0	1	0
+empty-label	1		1	
+empty-label	2		1	
+empty-label	3		1	
+after-zero-index	6
+after-missing-label	6
+after-decimal-text	6
+after-junk-text	6

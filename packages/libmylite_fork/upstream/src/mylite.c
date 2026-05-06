@@ -12,10 +12,28 @@ static int myliteSetColumnType(
   const char *zColumn,
   const MyliteColumnType *pType
 );
+static int myliteSetEnumColumnType(
+  sqlite3 *db,
+  const char *zSchema,
+  const char *zTable,
+  const char *zColumn,
+  const struct mylite_sqlite_fork_enum_column_type *pType
+);
 static int myliteMakeColumnType(
   const struct mylite_sqlite_fork_column_type *pType,
   MyliteColumnType *pOut
 );
+static int myliteMakeEnumColumnType(
+  sqlite3 *db,
+  const struct mylite_sqlite_fork_enum_column_type *pType,
+  MyliteColumnType *pOut
+);
+static int myliteCopyColumnType(
+  sqlite3 *db,
+  MyliteColumnType *pOut,
+  const MyliteColumnType *pIn
+);
+static void myliteClearColumnTypePayload(sqlite3 *db, MyliteColumnType *pType);
 static const char *myliteSchemaName(const char *zSchema);
 static void myliteRefreshTableTypeFlag(Table *pTab);
 
@@ -41,12 +59,21 @@ int mylite_sqlite_fork_clear_column_type(
   const char *zTable,
   const char *zColumn
 ){
-  const MyliteColumnType sqliteType = {
-    MYLITE_COLTYPE_NONE, 0, 0, 0, 0, 0, 0, 0, 0, 0
-  };
+  const MyliteColumnType sqliteType = {0};
 
   if( db==0 ) return SQLITE_MISUSE;
   return myliteSetColumnType(db, zSchema, zTable, zColumn, &sqliteType);
+}
+
+int mylite_sqlite_fork_set_enum_column_type(
+  sqlite3 *db,
+  const char *zSchema,
+  const char *zTable,
+  const char *zColumn,
+  const struct mylite_sqlite_fork_enum_column_type *pType
+){
+  if( db==0 || pType==0 ) return SQLITE_MISUSE;
+  return myliteSetEnumColumnType(db, zSchema, zTable, zColumn, pType);
 }
 
 int mylite_sqlite_fork_last_condition(
@@ -102,6 +129,12 @@ void sqlite3MyliteClearCondition(sqlite3 *db){
   db->myliteCondition.zSqlState[0] = 0;
 }
 
+void sqlite3MyliteClearColumnType(sqlite3 *db, Column *pCol){
+  if( pCol==0 ) return;
+  myliteClearColumnTypePayload(db, &pCol->myliteType);
+  pCol->myliteType = (MyliteColumnType){0};
+}
+
 static int myliteSetColumnType(
   sqlite3 *db,
   const char *zSchema,
@@ -109,6 +142,7 @@ static int myliteSetColumnType(
   const char *zColumn,
   const MyliteColumnType *pType
 ){
+  MyliteColumnType sqliteType = {0};
   char *zErr = 0;
   Table *pTab = 0;
   int iCol = 0;
@@ -133,10 +167,62 @@ static int myliteSetColumnType(
     }
   }
   if( rc==SQLITE_OK ){
-    pTab->aCol[iCol].myliteType = *pType;
+    rc = myliteCopyColumnType(db, &sqliteType, pType);
+  }
+  if( rc==SQLITE_OK ){
+    sqlite3MyliteClearColumnType(db, &pTab->aCol[iCol]);
+    pTab->aCol[iCol].myliteType = sqliteType;
+    sqliteType = (MyliteColumnType){0};
     myliteRefreshTableTypeFlag(pTab);
   }
   sqlite3_mutex_leave(db->mutex);
+  myliteClearColumnTypePayload(db, &sqliteType);
+  sqlite3_free(zErr);
+  return rc;
+}
+
+static int myliteSetEnumColumnType(
+  sqlite3 *db,
+  const char *zSchema,
+  const char *zTable,
+  const char *zColumn,
+  const struct mylite_sqlite_fork_enum_column_type *pType
+){
+  MyliteColumnType sqliteType = {0};
+  char *zErr = 0;
+  Table *pTab = 0;
+  int iCol = 0;
+  int rc = SQLITE_OK;
+
+  if( zTable==0 || zTable[0]==0 || zColumn==0 || zColumn[0]==0 ){
+    return SQLITE_MISUSE;
+  }
+
+  sqlite3_mutex_enter(db->mutex);
+  rc = sqlite3Init(db, &zErr);
+  if( rc==SQLITE_OK ){
+    pTab = sqlite3FindTable(db, zTable, myliteSchemaName(zSchema));
+    if( pTab==0 || pTab->aCol==0 ){
+      rc = SQLITE_NOTFOUND;
+    }
+  }
+  if( rc==SQLITE_OK ){
+    iCol = sqlite3ColumnIndex(pTab, zColumn);
+    if( iCol<0 ){
+      rc = SQLITE_NOTFOUND;
+    }
+  }
+  if( rc==SQLITE_OK ){
+    rc = myliteMakeEnumColumnType(db, pType, &sqliteType);
+  }
+  if( rc==SQLITE_OK ){
+    sqlite3MyliteClearColumnType(db, &pTab->aCol[iCol]);
+    pTab->aCol[iCol].myliteType = sqliteType;
+    sqliteType = (MyliteColumnType){0};
+    myliteRefreshTableTypeFlag(pTab);
+  }
+  sqlite3_mutex_leave(db->mutex);
+  myliteClearColumnTypePayload(db, &sqliteType);
   sqlite3_free(zErr);
   return rc;
 }
@@ -235,9 +321,102 @@ static int myliteMakeColumnType(
       if( pType->flags!=0 ) return SQLITE_MISUSE;
       pOut->eType = MYLITE_COLTYPE_YEAR;
       return SQLITE_OK;
+    case MYLITE_SQLITE_FORK_COLUMN_TYPE_ENUM:
+      return SQLITE_MISUSE;
   }
 
   return SQLITE_MISUSE;
+}
+
+static int myliteMakeEnumColumnType(
+  sqlite3 *db,
+  const struct mylite_sqlite_fork_enum_column_type *pType,
+  MyliteColumnType *pOut
+){
+  sqlite3_uint64 i;
+  sqlite3_uint64 j;
+
+  *pOut = (MyliteColumnType){0};
+  if( pType->flags!=0 || pType->values==0 || pType->value_count==0 ||
+      pType->value_count>65535 ){
+    return SQLITE_MISUSE;
+  }
+  for(i=0; i<pType->value_count; i++){
+    const struct mylite_sqlite_fork_enum_value *pValue = &pType->values[i];
+    if( pValue->text==0 || pValue->byte_length>0x7fffffff ){
+      return SQLITE_MISUSE;
+    }
+    for(j=0; j<i; j++){
+      const struct mylite_sqlite_fork_enum_value *pPrior = &pType->values[j];
+      if( pPrior->byte_length==pValue->byte_length &&
+          memcmp(pPrior->text, pValue->text, (size_t)pValue->byte_length)==0 ){
+        return SQLITE_MISUSE;
+      }
+    }
+  }
+
+  pOut->eType = MYLITE_COLTYPE_ENUM;
+  pOut->nValue = (u32)pType->value_count;
+  pOut->aValue = sqlite3DbMallocZero(0, sizeof(pOut->aValue[0])*pOut->nValue);
+  if( pOut->aValue==0 ) return SQLITE_NOMEM;
+  for(i=0; i<pType->value_count; i++){
+    const struct mylite_sqlite_fork_enum_value *pValue = &pType->values[i];
+    u32 n = (u32)pValue->byte_length;
+    pOut->aValue[i].z = sqlite3DbMallocRaw(0, n+1);
+    if( pOut->aValue[i].z==0 ){
+      myliteClearColumnTypePayload(db, pOut);
+      return SQLITE_NOMEM;
+    }
+    if( n>0 ){
+      memcpy(pOut->aValue[i].z, pValue->text, n);
+    }
+    pOut->aValue[i].z[n] = 0;
+    pOut->aValue[i].n = n;
+  }
+  return SQLITE_OK;
+}
+
+static int myliteCopyColumnType(
+  sqlite3 *db,
+  MyliteColumnType *pOut,
+  const MyliteColumnType *pIn
+){
+  u32 i;
+
+  *pOut = *pIn;
+  pOut->aValue = 0;
+  pOut->nValue = 0;
+  if( pIn->nValue==0 ){
+    return SQLITE_OK;
+  }
+  pOut->aValue = sqlite3DbMallocZero(0, sizeof(pOut->aValue[0])*pIn->nValue);
+  if( pOut->aValue==0 ) return SQLITE_NOMEM;
+  pOut->nValue = pIn->nValue;
+  for(i=0; i<pIn->nValue; i++){
+    pOut->aValue[i].z = sqlite3DbMallocRaw(0, pIn->aValue[i].n+1);
+    if( pOut->aValue[i].z==0 ){
+      myliteClearColumnTypePayload(db, pOut);
+      return SQLITE_NOMEM;
+    }
+    if( pIn->aValue[i].n>0 ){
+      memcpy(pOut->aValue[i].z, pIn->aValue[i].z, pIn->aValue[i].n);
+    }
+    pOut->aValue[i].z[pIn->aValue[i].n] = 0;
+    pOut->aValue[i].n = pIn->aValue[i].n;
+  }
+  return SQLITE_OK;
+}
+
+static void myliteClearColumnTypePayload(sqlite3 *db, MyliteColumnType *pType){
+  u32 i;
+  (void)db;
+  if( pType==0 || pType->aValue==0 ) return;
+  for(i=0; i<pType->nValue; i++){
+    sqlite3_free(pType->aValue[i].z);
+  }
+  sqlite3_free(pType->aValue);
+  pType->aValue = 0;
+  pType->nValue = 0;
 }
 
 static const char *myliteSchemaName(const char *zSchema){

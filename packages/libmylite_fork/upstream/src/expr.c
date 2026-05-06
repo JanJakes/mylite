@@ -4479,15 +4479,25 @@ int sqlite3ExprCodeGetColumn(
   int iReg,        /* Store results here */
   u8 p5            /* P5 value for OP_Column + FLAGS */
 ){
+  VdbeOp *pOp;
+  Vdbe *v;
   assert( pParse->pVdbe!=0 );
   assert( (p5 & (OPFLAG_NOCHNG|OPFLAG_TYPEOFARG|OPFLAG_LENGTHARG))==p5 );
   assert( IsVirtual(pTab) || (p5 & OPFLAG_NOCHNG)==0 );
-  sqlite3ExprCodeGetColumnOfTable(pParse->pVdbe, pTab, iTable, iColumn, iReg);
+  v = pParse->pVdbe;
+  sqlite3ExprCodeGetColumnOfTable(v, pTab, iTable, iColumn, iReg);
+  pOp = sqlite3VdbeGetLastOp(v);
   if( p5 ){
-    VdbeOp *pOp = sqlite3VdbeGetLastOp(pParse->pVdbe);
     if( pOp->opcode==OP_Column ) pOp->p5 = p5;
     if( pOp->opcode==OP_VColumn ) pOp->p5 = (p5 & OPFLAG_NOCHNG);
   }
+#ifdef SQLITE_ENABLE_MYLITE
+  if( p5==0 && pOp->opcode==OP_Column && iColumn>=0 && iColumn<pTab->nCol &&
+      pTab->aCol[iColumn].myliteType.eType==MYLITE_COLTYPE_ENUM ){
+    sqlite3VdbeAddOp2(v, OP_MyliteColumnReadType, iReg, iColumn);
+    sqlite3VdbeAppendP4(v, pTab, P4_TABLE);
+  }
+#endif
   return iReg;
 }
 

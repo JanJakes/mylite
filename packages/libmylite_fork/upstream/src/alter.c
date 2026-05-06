@@ -542,6 +542,9 @@ void sqlite3AlterBeginAddColumn(Parse *pParse, SrcList *pSrc){
     Column *pCol = &pNew->aCol[i];
     pCol->zCnName = sqlite3DbStrDup(db, pCol->zCnName);
     pCol->hName = sqlite3StrIHash(pCol->zCnName);
+#ifdef SQLITE_ENABLE_MYLITE
+    pCol->myliteType = (MyliteColumnType){0};
+#endif
   }
   assert( IsOrdinaryTable(pNew) );
   pNew->u.tab.pDfltList = sqlite3ExprListDup(db, pTab->u.tab.pDfltList, 0);

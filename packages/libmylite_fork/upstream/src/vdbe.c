@@ -436,6 +436,7 @@ static int myliteApplyColumnType(
   u32 *pMyErrno,
   const char **pzSqlState
 );
+static int myliteApplyColumnReadType(Mem *pMem, const Column *pCol);
 static void myliteApplyOrdinaryAffinity(Mem *pMem, char affinity, u8 enc);
 static int myliteCoerceInteger(
   Mem *pMem,
@@ -450,6 +451,13 @@ static int myliteCoerceVarchar(Mem *pMem, u64 nChar, const char **pzErr);
 static int myliteCoerceBinary(Mem *pMem, u64 nByte, int bFixed, const char **pzErr);
 static int myliteCoerceTextFamily(Mem *pMem, u64 nByte, const char **pzErr);
 static int myliteCoerceBlobFamily(Mem *pMem, u64 nByte, const char **pzErr);
+static int myliteCoerceEnum(
+  Mem *pMem,
+  const MyliteColumnType *pType,
+  const char **pzErr,
+  u32 *pMyErrno,
+  const char **pzSqlState
+);
 static int myliteCoerceYear(
   Mem *pMem,
   const char **pzErr,
@@ -673,6 +681,23 @@ static void myliteTemporalFormatDateTime(
   char *zOut,
   int *pnOut
 );
+static int myliteEnumIndexFromMem(
+  Mem *pMem,
+  const MyliteColumnType *pType,
+  i64 *pIndex
+);
+static int myliteEnumIndexFromText(
+  const char *zText,
+  int nText,
+  const MyliteColumnType *pType,
+  i64 *pIndex
+);
+static int myliteEnumFindValue(
+  const MyliteColumnType *pType,
+  const char *zText,
+  int nText
+);
+static int myliteEnumSetDisplayValue(Mem *pMem, const MyliteColumnType *pType);
 static u64 myliteUtf8CharCount(const unsigned char *zText, int nText);
 
 static int myliteApplyColumnType(
@@ -753,6 +778,10 @@ static int myliteApplyColumnType(
         *pzSqlState = "22001";
       }
       return rc;
+    case MYLITE_COLTYPE_ENUM:
+      return myliteCoerceEnum(
+          pMem, &pCol->myliteType, pzErr, pMyErrno, pzSqlState
+      );
     case MYLITE_COLTYPE_YEAR:
       return myliteCoerceYear(pMem, pzErr, pMyErrno, pzSqlState);
     case MYLITE_COLTYPE_DECIMAL:
@@ -782,6 +811,13 @@ static int myliteApplyColumnType(
       *pzSqlState = "HY000";
       return SQLITE_MISMATCH;
   }
+}
+
+static int myliteApplyColumnReadType(Mem *pMem, const Column *pCol){
+  if( pCol->myliteType.eType==MYLITE_COLTYPE_ENUM ){
+    return myliteEnumSetDisplayValue(pMem, &pCol->myliteType);
+  }
+  return SQLITE_OK;
 }
 
 static void myliteApplyOrdinaryAffinity(Mem *pMem, char affinity, u8 enc){
@@ -940,6 +976,27 @@ static int myliteCoerceBlobFamily(Mem *pMem, u64 nByte, const char **pzErr){
   pMem->flags &= ~(MEM_Int|MEM_Real|MEM_IntReal|MEM_Str|MEM_Term|MEM_Zero);
   pMem->flags |= MEM_Blob;
   pMem->enc = SQLITE_UTF8;
+  return SQLITE_OK;
+}
+
+static int myliteCoerceEnum(
+  Mem *pMem,
+  const MyliteColumnType *pType,
+  const char **pzErr,
+  u32 *pMyErrno,
+  const char **pzSqlState
+){
+  i64 iIndex = 0;
+  int rc;
+
+  rc = myliteEnumIndexFromMem(pMem, pType, &iIndex);
+  if( rc!=SQLITE_OK || iIndex<1 || iIndex>(i64)pType->nValue ){
+    *pzErr = "invalid enum value";
+    *pMyErrno = 1265;
+    *pzSqlState = "01000";
+    return SQLITE_MISMATCH;
+  }
+  sqlite3VdbeMemSetInt64(pMem, iIndex);
   return SQLITE_OK;
 }
 
@@ -2033,6 +2090,90 @@ static void myliteTemporalFormatDateTime(
     *pnOut += nFsp;
     zOut[*pnOut] = 0;
   }
+}
+
+static int myliteEnumIndexFromMem(
+  Mem *pMem,
+  const MyliteColumnType *pType,
+  i64 *pIndex
+){
+  double rValue;
+
+  if( pMem->flags & (MEM_Str|MEM_Blob) ){
+    if( ExpandBlob(pMem)!=SQLITE_OK ) return SQLITE_NOMEM;
+    return myliteEnumIndexFromText(pMem->z, pMem->n, pType, pIndex);
+  }
+  if( pMem->flags & (MEM_Int|MEM_IntReal) ){
+    *pIndex = pMem->u.i;
+    return SQLITE_OK;
+  }
+  if( pMem->flags & MEM_Real ){
+    rValue = pMem->u.r;
+    if( sqlite3IsOverflow(rValue) ||
+        rValue<(double)SMALLEST_INT64 || rValue>(double)LARGEST_INT64 ){
+      return SQLITE_MISMATCH;
+    }
+    *pIndex = (i64)rValue;
+    return SQLITE_OK;
+  }
+  return SQLITE_MISMATCH;
+}
+
+static int myliteEnumIndexFromText(
+  const char *zText,
+  int nText,
+  const MyliteColumnType *pType,
+  i64 *pIndex
+){
+  int iIndex;
+
+  if( nText<0 ) return SQLITE_MISMATCH;
+  iIndex = myliteEnumFindValue(pType, zText, nText);
+  if( iIndex>=0 ){
+    *pIndex = iIndex + 1;
+    return SQLITE_OK;
+  }
+  if( sqlite3Atoi64(zText, pIndex, nText, SQLITE_UTF8)==0 ){
+    return SQLITE_OK;
+  }
+  return SQLITE_MISMATCH;
+}
+
+static int myliteEnumFindValue(
+  const MyliteColumnType *pType,
+  const char *zText,
+  int nText
+){
+  u32 i;
+  for(i=0; i<pType->nValue; i++){
+    if( pType->aValue[i].n==(u32)nText &&
+        memcmp(pType->aValue[i].z, zText, (size_t)nText)==0 ){
+      return (int)i;
+    }
+  }
+  return -1;
+}
+
+static int myliteEnumSetDisplayValue(Mem *pMem, const MyliteColumnType *pType){
+  i64 iIndex = 0;
+  const char *zText = "";
+  int nText = 0;
+  int rc;
+
+  if( pMem->flags & MEM_Null ) return SQLITE_OK;
+  rc = myliteEnumIndexFromMem(pMem, pType, &iIndex);
+  if( rc!=SQLITE_OK ) return rc==SQLITE_NOMEM ? SQLITE_NOMEM : SQLITE_OK;
+  if( iIndex<0 || iIndex>(i64)pType->nValue ) return SQLITE_OK;
+  if( iIndex>0 ){
+    const MyliteColumnValue *pValue = &pType->aValue[iIndex-1];
+    zText = pValue->z;
+    nText = (int)pValue->n;
+  }
+  rc = sqlite3VdbeMemSetStr(pMem, zText, nText, SQLITE_UTF8, SQLITE_TRANSIENT);
+  if( rc!=SQLITE_OK ) return SQLITE_NOMEM;
+  pMem->u.i = iIndex;
+  pMem->flags |= MEM_Int;
+  return SQLITE_OK;
 }
 
 static u64 myliteUtf8CharCount(const unsigned char *zText, int nText){
@@ -4898,6 +5039,31 @@ op_column_corrupt:
     goto abort_due_to_error;
   }
 }
+
+/* Opcode: MyliteColumnReadType P1 P2 * P4 *
+** Synopsis: mylite_readtype(r[P1])
+**
+** Apply MyLite read-time column metadata to register P1 for logical column P2
+** of table P4.  This is used for MySQL types whose physical SQLite storage is
+** not the same as their displayed value or numeric-context value.
+*/
+#ifdef SQLITE_ENABLE_MYLITE
+case OP_MyliteColumnReadType: {
+  Table *pTab;
+  Column *pCol;
+  int rc2;
+
+  assert( pOp->p4type==P4_TABLE );
+  pTab = pOp->p4.pTab;
+  assert( pOp->p2>=0 && pOp->p2<pTab->nCol );
+  pIn1 = &aMem[pOp->p1];
+  pCol = &pTab->aCol[pOp->p2];
+  rc2 = myliteApplyColumnReadType(pIn1, pCol);
+  if( rc2==SQLITE_NOMEM ) goto no_mem;
+  REGISTER_TRACE(pOp->p1, pIn1);
+  break;
+}
+#endif
 
 /* Opcode: MyliteTypeCheck P1 P2 P3 P4 *
 ** Synopsis: mylite_typecheck(r[P1@P2])

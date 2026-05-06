@@ -1,0 +1,76 @@
+# Foreign Key Support Tasks
+
+This task list breaks roadmap Task 48 into implementation slices. Every
+completed item must include MySQL 8.4.9 runtime-verified expectations,
+MyLite runtime tests, compatibility documentation updates, and a focused
+commit.
+
+## Foundation
+
+- [ ] Add a persistent foreign-key catalog with one row per child column part.
+- [ ] Add catalog helper APIs for FK catalog names, cleanup, rename rewrites,
+      and lookup by child constraint or parent unique index.
+- [ ] Update `INFORMATION_SCHEMA.TABLE_CONSTRAINTS`,
+      `INFORMATION_SCHEMA.KEY_COLUMN_USAGE`, and
+      `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS` to read from the FK catalog.
+- [ ] Render catalog-backed foreign-key lines in `SHOW CREATE TABLE`.
+
+## `CREATE TABLE`
+
+- [ ] Copy table-level `FOREIGN KEY` clauses into create-table plans with
+      constraint name, optional supporting-index name, child columns,
+      referenced table, referenced columns, match option, and referential
+      actions.
+- [ ] Generate MySQL-style unnamed FK constraint names.
+- [ ] Create or reuse supporting child indexes during `CREATE TABLE`.
+- [ ] Validate child columns, parent table, referenced columns, and referenced
+      unique/primary key metadata.
+- [ ] Atomically insert FK catalog rows with the table, column, and index
+      catalog rows.
+
+## `ALTER TABLE`
+
+- [ ] Implement `ALTER TABLE ... ADD [CONSTRAINT] FOREIGN KEY ...` over
+      supported base tables.
+- [ ] Validate existing child rows when `foreign_key_checks = 1`.
+- [ ] Skip existing-row validation when `foreign_key_checks = 0`.
+- [ ] Implement `ALTER TABLE ... DROP FOREIGN KEY` without removing the
+      supporting child index.
+- [ ] Preserve mixed-action ALTER atomicity when FK actions are combined with
+      supported column/index actions.
+
+## DML Enforcement
+
+- [ ] Enforce child-row insert checks for `INSERT ... VALUES`, `INSERT ... SET`,
+      `INSERT ... SELECT FROM DUAL`, `ON DUPLICATE KEY UPDATE`, `INSERT IGNORE`,
+      and `REPLACE`.
+- [ ] Enforce child-row update checks for single-table and joined `UPDATE`.
+- [ ] Enforce parent-row `ON UPDATE RESTRICT` and `NO ACTION`.
+- [ ] Enforce parent-row `ON DELETE RESTRICT` and `NO ACTION`.
+- [ ] Implement `ON UPDATE CASCADE` and `ON DELETE CASCADE`.
+- [ ] Implement `ON UPDATE SET NULL` and `ON DELETE SET NULL`.
+- [ ] Verify and document `SET DEFAULT` behavior before enabling or rejecting
+      it with a MySQL-compatible diagnostic.
+- [ ] Apply `foreign_key_checks` consistently without retroactive validation on
+      re-enable.
+
+## DDL Dependencies
+
+- [ ] Reject dropping a parent primary/unique index needed by a foreign key.
+- [ ] Reject or correctly handle dropping parent and child tables according to
+      MySQL `foreign_key_checks` behavior.
+- [ ] Reject or correctly rewrite `RENAME TABLE` / `ALTER TABLE ... RENAME`
+      for child and parent tables.
+- [ ] Apply MySQL-compatible foreign-key restrictions to `TRUNCATE TABLE`.
+- [ ] Preserve or reject column changes that affect FK child/parent columns
+      with MySQL-compatible diagnostics.
+
+## Follow-On Compatibility
+
+- [ ] Verify temporary table foreign-key behavior against MySQL 8.4.9 and add
+      explicit diagnostics or support.
+- [ ] Add field-metadata coverage for FK information-schema rows when the
+      unified information-schema metadata pass lands.
+- [ ] Revisit `INSERT IGNORE`, `UPDATE IGNORE`, and `REPLACE` after FK
+      enforcement to align warning demotion and delete-plus-insert behavior.
+

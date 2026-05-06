@@ -362,7 +362,9 @@ level application surfaces.
 47. [ ] Triggers: `CREATE TRIGGER`, `DROP TRIGGER`, `SHOW TRIGGERS`,
        `SHOW CREATE TRIGGER`, timing, ordering, body execution, and metadata.
 48. [ ] Foreign keys: definition, validation, cascades, `RESTRICT`/`NO ACTION`,
-       `SET NULL`, metadata, and enforcement.
+       `SET NULL`, metadata, and enforcement. Active staged work is tracked in
+       [foreign-key support](../foreign-key-support/specs.md) and
+       [foreign-key support tasks](../foreign-key-support/tasks.md).
 49. [ ] JSON type and functions: validation, extraction, paths, comparison,
        mutation, generated-column interactions, and metadata. Started with the
        scalar foundation for `JSON_VALID`, `JSON_TYPE`, `JSON_QUOTE`,

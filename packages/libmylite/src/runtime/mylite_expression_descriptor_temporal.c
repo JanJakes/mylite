@@ -204,6 +204,11 @@ bool mylite_expression_descriptor_infer_temporal_scalar_function(
         *out_descriptor = descriptor;
         return true;
     }
+    if (mylite_function_name_is_week(name)) {
+        *out_descriptor = mylite_expression_descriptor_signed_longlong(true);
+        out_descriptor->length = mylite_mysql_temporal_part_short_display_length;
+        return true;
+    }
     if (mylite_function_name_is_year_part(name)) {
         struct mylite_field_descriptor descriptor = {
             .type = MYLITE_FIELD_TYPE_YEAR,

@@ -24,7 +24,7 @@ projection, `WHERE`, and `ORDER BY`, and supported single-table `UPDATE` and
 
 Out of scope:
 
-- `WEEK`, `YEARWEEK`, `WEEKDAY`, `MONTHNAME`, `DAYNAME`, and combined
+- `WEEKOFYEAR`, `YEARWEEK`, `WEEKDAY`, `MONTHNAME`, `DAYNAME`, and combined
   `EXTRACT()` units such as `YEAR_MONTH`
 - `EXTRACT(MICROSECOND FROM ...)`, `EXTRACT(QUARTER FROM ...)`, and combined
   microsecond units such as `DAY_MICROSECOND`; direct `MICROSECOND()` and
@@ -282,5 +282,6 @@ After implementation, the listed temporal part functions have partial
 compatibility for the supported scalar expression paths and date/datetime input
 surface. `MICROSECOND()` also covers the time-conversion cases listed above.
 Time-only parsing for the other time-part functions, combined `EXTRACT` units,
-`EXTRACT(MICROSECOND FROM ...)`, week and calendar-name functions, exact native
-diagnostics, and broader SQL-mode temporal variants remain deferred.
+`EXTRACT(MICROSECOND FROM ...)`, remaining week and calendar-name functions,
+exact native diagnostics, and broader SQL-mode temporal variants remain
+deferred.

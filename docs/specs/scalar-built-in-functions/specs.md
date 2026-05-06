@@ -66,6 +66,7 @@ In scope for the initial implementation:
   - `UTC_DATE`, `UTC_TIME`, `UTC_TIMESTAMP`
   - `DATE`
   - `YEAR`, `MONTH`, `DAY`, `DAYOFMONTH`, `DAYOFWEEK`, `DAYOFYEAR`, `QUARTER`
+  - `WEEK`
   - `HOUR`, `MINUTE`, `SECOND`, `MICROSECOND`
   - `DATEDIFF`
   - `DATE_ADD`, `ADDDATE`
@@ -113,7 +114,7 @@ Out of scope for the initial implementation:
   are grammar-level scalar expressions owned by
   `docs/specs/cast-expression/specs.md` and
   `docs/specs/convert-function/specs.md`
-- week-numbering functions, named time zones, SQL-mode-specific zero-date
+- remaining week-numbering functions, named time zones, SQL-mode-specific zero-date
   `STR_TO_DATE` variants, locale-sensitive temporal behavior beyond the first
   formatting/parsing slice, and time-zone table integration
 - `SLEEP`, `BENCHMARK`, and other nondeterministic or diagnostic/performance
@@ -198,7 +199,7 @@ by common scalar expressions:
   `LOCALTIMESTAMP`, `CURDATE`/`CURRENT_DATE`, `CURTIME`/`CURRENT_TIME`,
   `DATE`, `DATEDIFF`, `DATE_ADD`, `DATE_SUB`, `ADDDATE`, `SUBDATE`,
   `YEAR`, `MONTH`, `DAY`, `DAYOFMONTH`, `DAYOFWEEK`, `DAYOFYEAR`, `QUARTER`,
-  `HOUR`, `MINUTE`, `SECOND`, `MICROSECOND`,
+  `WEEK`, `HOUR`, `MINUTE`, `SECOND`, `MICROSECOND`,
   `EXTRACT` for the simple `YEAR`, `MONTH`, `DAY`, `HOUR`, `MINUTE`, and
   `SECOND` units, `TIMESTAMP`, `TIMESTAMPADD` for the simple `DAY`, `WEEK`,
   `MONTH`, `YEAR`, `HOUR`, `MINUTE`, and `SECOND` units, and `TIMESTAMPDIFF`
@@ -213,6 +214,7 @@ by common scalar expressions:
   `docs/specs/date-and-datediff-functions/specs.md` and
   `docs/specs/date-add-sub-functions/specs.md` and
   `docs/specs/temporal-part-functions/specs.md` and
+  `docs/specs/week-function/specs.md` and
   `docs/specs/timestamp-function/specs.md` and
   `docs/specs/timestampadd-function/specs.md` and
   `docs/specs/timestampdiff-function/specs.md` and

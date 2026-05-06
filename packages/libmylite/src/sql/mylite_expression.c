@@ -685,6 +685,7 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_JSON_CONTAINS_PATH = 158,
     MYLITE_SCALAR_FUNCTION_JSON_KEYS = 159,
     MYLITE_SCALAR_FUNCTION_JSON_LENGTH = 160,
+    MYLITE_SCALAR_FUNCTION_WEEK = 161,
 };
 
 enum json_expression_constant {
@@ -923,6 +924,26 @@ static struct temporal_week_year date_format_week_year(const struct temporal_dat
                                                        bool monday_first);
 static struct temporal_week_year
 date_format_sunday_week_year(const struct temporal_date_value *date);
+static int eval_week_function(const struct mylite_sql_ast_node *arguments,
+                              const struct mylite_expression_eval_context *context,
+                              struct mylite_expression_warnings *warnings,
+                              struct mylite_expression_value *out_value);
+static int eval_week_null_date_mode_warnings(const struct mylite_sql_ast_node *mode_argument,
+                                             const struct mylite_expression_eval_context *context,
+                                             struct mylite_expression_warnings *warnings);
+static int week_mode_from_argument(const struct mylite_sql_ast_node *mode_argument,
+                                   const struct mylite_expression_eval_context *context,
+                                   struct mylite_expression_warnings *warnings,
+                                   unsigned int *out_mode);
+static int week_mode_from_value(const struct mylite_expression_value *value,
+                                struct mylite_expression_warnings *warnings,
+                                unsigned int *out_mode);
+static int week_number(const struct temporal_date_value *date, unsigned int mode);
+static int64_t week_year_start_day(int year, unsigned int mode);
+static int week_relative_weekday(const struct temporal_date_value *date, unsigned int mode);
+static bool week_mode_uses_first_weekday(unsigned int mode);
+static bool week_mode_is_monday_first(unsigned int mode);
+static bool week_mode_has_one_based_range(unsigned int mode);
 static int eval_date_function(const struct mylite_sql_ast_node *arguments,
                               const struct mylite_expression_eval_context *context,
                               struct mylite_expression_warnings *warnings,
@@ -2565,6 +2586,7 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_ROUND:
     case MYLITE_SCALAR_FUNCTION_ATAN:
     case MYLITE_SCALAR_FUNCTION_ATAN2:
+    case MYLITE_SCALAR_FUNCTION_WEEK:
         return arity == 1U || arity == 2U;
     case MYLITE_SCALAR_FUNCTION_FORMAT:
         return arity == 2U || arity == 3U;
@@ -3546,6 +3568,8 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_unix_timestamp_function(node, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_DATE_FORMAT:
         return eval_date_format_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_WEEK:
+        return eval_week_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_STR_TO_DATE:
         return eval_str_to_date_function(node, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_TIME_FORMAT:
@@ -6248,6 +6272,175 @@ date_format_sunday_week_year(const struct temporal_date_value *date)
     };
 }
 
+static int eval_week_function(const struct mylite_sql_ast_node *arguments,
+                              const struct mylite_expression_eval_context *context,
+                              struct mylite_expression_warnings *warnings,
+                              struct mylite_expression_value *out_value)
+{
+    const struct mylite_sql_ast_node *date_argument = child_at(arguments, 0U);
+    const struct mylite_sql_ast_node *mode_argument = child_at(arguments, 1U);
+    struct mylite_expression_value date_value = {0};
+    struct temporal_date_value date = {0};
+    unsigned int mode = 0U;
+    bool valid = false;
+    int status = eval_node(date_argument, context, warnings, &date_value);
+
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&date_value)) {
+        status = eval_week_null_date_mode_warnings(mode_argument, context, warnings);
+        if (status == 0) {
+            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        }
+        goto cleanup;
+    }
+
+    status = temporal_date_from_value_with_mode(&date_value, true, false, warnings, &date, &valid);
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (!valid) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+
+    status = week_mode_from_argument(mode_argument, context, warnings, &mode);
+    if (status == 0) {
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = week_number(&date, mode),
+        };
+    }
+
+cleanup:
+    mylite_expression_value_deinit(&date_value);
+    return status;
+}
+
+static int eval_week_null_date_mode_warnings(const struct mylite_sql_ast_node *mode_argument,
+                                             const struct mylite_expression_eval_context *context,
+                                             struct mylite_expression_warnings *warnings)
+{
+    struct mylite_expression_value mode_value = {0};
+    int status = 0;
+
+    if (mode_argument == NULL) {
+        return 0;
+    }
+    status = eval_node(mode_argument, context, warnings, &mode_value);
+    mylite_expression_value_deinit(&mode_value);
+    return status;
+}
+
+static int week_mode_from_argument(const struct mylite_sql_ast_node *mode_argument,
+                                   const struct mylite_expression_eval_context *context,
+                                   struct mylite_expression_warnings *warnings,
+                                   unsigned int *out_mode)
+{
+    struct mylite_expression_value mode_value = {0};
+    int status = 0;
+
+    *out_mode = 0U;
+    if (mode_argument == NULL) {
+        return 0;
+    }
+
+    status = eval_node(mode_argument, context, warnings, &mode_value);
+    if (status == 0) {
+        status = week_mode_from_value(&mode_value, warnings, out_mode);
+    }
+    mylite_expression_value_deinit(&mode_value);
+    return status;
+}
+
+static int week_mode_from_value(const struct mylite_expression_value *value,
+                                struct mylite_expression_warnings *warnings, unsigned int *out_mode)
+{
+    int64_t integer = 0;
+    int status = 0;
+
+    if (value == NULL || out_mode == NULL) {
+        return -1;
+    }
+    if (is_null(value)) {
+        *out_mode = 0U;
+        return 0;
+    }
+    status = cast_value_to_signed_integer(value, warnings, &integer);
+    if (status == 0) {
+        *out_mode = (unsigned int)((uint64_t)integer & UINT64_C(7));
+    }
+    return status;
+}
+
+static int week_number(const struct temporal_date_value *date, unsigned int mode)
+{
+    int64_t date_day = temporal_day_number(date);
+    int64_t current_start = week_year_start_day(date == NULL ? 0 : date->year, mode);
+
+    if (!week_mode_has_one_based_range(mode)) {
+        if (date_day < current_start) {
+            return 0;
+        }
+        return (int)((date_day - current_start) / MYLITE_TEMPORAL_DAYS_PER_WEEK) + 1;
+    }
+
+    int64_t next_start = week_year_start_day((date == NULL ? 0 : date->year) + 1, mode);
+    if (date_day >= next_start) {
+        return 1;
+    }
+    if (date_day < current_start) {
+        int64_t previous_start = week_year_start_day((date == NULL ? 0 : date->year) - 1, mode);
+
+        return (int)((current_start - previous_start) / MYLITE_TEMPORAL_DAYS_PER_WEEK);
+    }
+    return (int)((date_day - current_start) / MYLITE_TEMPORAL_DAYS_PER_WEEK) + 1;
+}
+
+static int64_t week_year_start_day(int year, unsigned int mode)
+{
+    struct temporal_date_value first_day = {
+        .year = year,
+        .month = 1,
+        .day = 1,
+    };
+    int weekday = week_relative_weekday(&first_day, mode);
+    int64_t start_day = temporal_day_number(&first_day) - weekday;
+
+    if (week_mode_uses_first_weekday(mode)) {
+        return weekday == 0 ? start_day : start_day + MYLITE_TEMPORAL_DAYS_PER_WEEK;
+    }
+    if (MYLITE_TEMPORAL_DAYS_PER_WEEK - weekday < 4) {
+        start_day += MYLITE_TEMPORAL_DAYS_PER_WEEK;
+    }
+    return start_day;
+}
+
+static int week_relative_weekday(const struct temporal_date_value *date, unsigned int mode)
+{
+    return week_mode_is_monday_first(mode) ? date_format_weekday_monday(date)
+                                           : date_format_weekday_sunday(date);
+}
+
+static bool week_mode_uses_first_weekday(unsigned int mode)
+{
+    bool monday_first = week_mode_is_monday_first(mode);
+    bool first_weekday_bit = (mode & 4U) != 0U;
+
+    return monday_first == first_weekday_bit;
+}
+
+static bool week_mode_is_monday_first(unsigned int mode)
+{
+    return (mode & 1U) != 0U;
+}
+
+static bool week_mode_has_one_based_range(unsigned int mode)
+{
+    return (mode & 2U) != 0U;
+}
+
 static int eval_date_function(const struct mylite_sql_ast_node *arguments,
                               const struct mylite_expression_eval_context *context,
                               struct mylite_expression_warnings *warnings,
@@ -8261,6 +8454,7 @@ static bool temporal_part_from_function(enum mylite_scalar_function_id function_
     case MYLITE_SCALAR_FUNCTION_SUBTIME:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_LAST_DAY:
+    case MYLITE_SCALAR_FUNCTION_WEEK:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPADD:
     case MYLITE_SCALAR_FUNCTION_TO_DAYS:
@@ -12646,6 +12840,7 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_SUBTIME:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_LAST_DAY:
+    case MYLITE_SCALAR_FUNCTION_WEEK:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPADD:
     case MYLITE_SCALAR_FUNCTION_TO_DAYS:
@@ -14666,6 +14861,7 @@ static int trigonometric_function_result(struct trigonometric_input input,
     case MYLITE_SCALAR_FUNCTION_SUBTIME:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_LAST_DAY:
+    case MYLITE_SCALAR_FUNCTION_WEEK:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPADD:
     case MYLITE_SCALAR_FUNCTION_TO_DAYS:
@@ -15012,6 +15208,7 @@ static int inverse_trigonometric_function_result(struct inverse_trigonometric_in
     case MYLITE_SCALAR_FUNCTION_SUBTIME:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_LAST_DAY:
+    case MYLITE_SCALAR_FUNCTION_WEEK:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPADD:
     case MYLITE_SCALAR_FUNCTION_TO_DAYS:
@@ -15268,6 +15465,7 @@ static int angle_conversion_result(struct angle_conversion_input conversion, dou
     case MYLITE_SCALAR_FUNCTION_SUBTIME:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_LAST_DAY:
+    case MYLITE_SCALAR_FUNCTION_WEEK:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPADD:
     case MYLITE_SCALAR_FUNCTION_TO_DAYS:
@@ -19833,6 +20031,7 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"DAYOFMONTH", MYLITE_SCALAR_FUNCTION_DAY},
         {"DAYOFWEEK", MYLITE_SCALAR_FUNCTION_DAYOFWEEK},
         {"DAYOFYEAR", MYLITE_SCALAR_FUNCTION_DAYOFYEAR},
+        {"WEEK", MYLITE_SCALAR_FUNCTION_WEEK},
         {"QUARTER", MYLITE_SCALAR_FUNCTION_QUARTER},
         {"HOUR", MYLITE_SCALAR_FUNCTION_HOUR},
         {"MINUTE", MYLITE_SCALAR_FUNCTION_MINUTE},
@@ -20025,6 +20224,7 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_YEAR:
     case MYLITE_SCALAR_FUNCTION_MONTH:
     case MYLITE_SCALAR_FUNCTION_DAY:
+    case MYLITE_SCALAR_FUNCTION_WEEK:
     case MYLITE_SCALAR_FUNCTION_DAYOFWEEK:
     case MYLITE_SCALAR_FUNCTION_DAYOFYEAR:
     case MYLITE_SCALAR_FUNCTION_QUARTER:

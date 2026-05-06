@@ -399,8 +399,7 @@ static int expect_exec_error(mylite_stmt *stmt, mylite_db *database, const char 
 static int expect_savepoint_warning(mylite_db *database, const char *error_fragment,
                                     const char *context);
 static int expect_parser_placeholder_execution(mylite_db *database, const char *sql,
-                                               const char *warning_fragment,
-                                               const char *context);
+                                               const char *warning_fragment, const char *context);
 static int execute_sql_expect_done_affected(mylite_db *database, const char *sql,
                                             int64_t expected_affected_rows, const char *context);
 static int expect_select_rows(mylite_db *database, const char *sql, const char *const *columns,
@@ -6744,6 +6743,14 @@ static int test_date_and_datediff_functions_execution(void)
          MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED, 1},
     };
+    static const struct expected_result_metadata week_metadata[] = {
+        {"week_default", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"week_mode", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+    };
     static const char *const projection_columns[] = {"id", "extracted", "days"};
     static const char *const projection_values[] = {
         "2", "2024-03-02", "3", "1", "2024-02-29", "1",
@@ -6757,7 +6764,10 @@ static int test_date_and_datediff_functions_execution(void)
     static const char *const part_projection_values[] = {
         "1", "2024", "12", "56", "5", "123456", "2", "2024", "1", "3", "6", "0",
     };
+    static const char *const week_projection_columns[] = {"id", "week_default", "week_mode"};
+    static const char *const week_projection_values[] = {"1", "8", "9", "2", "8", "9"};
     static const char *const part_updated_columns[] = {"id", "n", "note"};
+    static const char *const week_updated_values[] = {"1", "9", "leap"};
     static const char *const part_updated_values[] = {"1", "60", "leap"};
     static const char *const part_remaining_values[] = {"1", "3"};
     mylite_db *database = NULL;
@@ -6813,6 +6823,20 @@ static int test_date_and_datediff_functions_execution(void)
     failures += expect_string(mylite_column_text(stmt, 8), "2024", "EXTRACT YEAR metadata value");
     failures += expect_string(mylite_column_text(stmt, 9), "12", "EXTRACT HOUR metadata value");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "temporal part metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT WEEK('2024-02-29') AS week_default, "
+                            "WEEK('2024-02-29', 3) AS week_mode",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, week_metadata,
+                                       (int)(sizeof(week_metadata) / sizeof(week_metadata[0])),
+                                       "WEEK metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "WEEK metadata row");
+    failures += expect_string(mylite_column_text(stmt, 0), "8", "WEEK metadata default value");
+    failures += expect_string(mylite_column_text(stmt, 1), "9", "WEEK metadata mode value");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "WEEK metadata done");
     mylite_finalize(stmt);
     stmt = NULL;
 
@@ -6948,6 +6972,112 @@ static int test_date_and_datediff_functions_execution(void)
     failures += expect_string(mylite_column_text(stmt, 37), "1", "nested DATE_ADD hour");
     failures += expect_int(mylite_warning_count(database), 0, "temporal part scalar warnings");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "temporal part scalar done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT WEEK('2008-02-20') AS default_week, "
+                            "WEEK('2008-02-20', 0) AS mode_0, "
+                            "WEEK('2008-02-20', 1) AS mode_1, "
+                            "WEEK('2024-01-01', 0) AS jan_mode_0, "
+                            "WEEK('2024-01-01', 1) AS jan_mode_1, "
+                            "WEEK('2024-01-01', 2) AS jan_mode_2, "
+                            "WEEK('2024-01-01', 3) AS jan_mode_3, "
+                            "WEEK('2024-01-01', 4) AS jan_mode_4, "
+                            "WEEK('2024-01-01', 5) AS jan_mode_5, "
+                            "WEEK('2024-01-01', 6) AS jan_mode_6, "
+                            "WEEK('2024-01-01', 7) AS jan_mode_7, "
+                            "WEEK('2000-01-01', 0) AS prev_zero, "
+                            "WEEK('2000-01-01', 2) AS prev_one, "
+                            "WEEK('2018-12-31', 1) AS next_zero, "
+                            "WEEK('2018-12-31', 3) AS next_one, "
+                            "WEEK(240229) AS numeric_week",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "WEEK scalar row");
+    failures += expect_string(mylite_column_text(stmt, 0), "7", "WEEK default mode");
+    failures += expect_string(mylite_column_text(stmt, 1), "7", "WEEK explicit mode 0");
+    failures += expect_string(mylite_column_text(stmt, 2), "8", "WEEK explicit mode 1");
+    failures += expect_string(mylite_column_text(stmt, 3), "0", "WEEK January mode 0");
+    failures += expect_string(mylite_column_text(stmt, 4), "1", "WEEK January mode 1");
+    failures += expect_string(mylite_column_text(stmt, 5), "53", "WEEK January mode 2");
+    failures += expect_string(mylite_column_text(stmt, 6), "1", "WEEK January mode 3");
+    failures += expect_string(mylite_column_text(stmt, 7), "1", "WEEK January mode 4");
+    failures += expect_string(mylite_column_text(stmt, 8), "1", "WEEK January mode 5");
+    failures += expect_string(mylite_column_text(stmt, 9), "1", "WEEK January mode 6");
+    failures += expect_string(mylite_column_text(stmt, 10), "1", "WEEK January mode 7");
+    failures += expect_string(mylite_column_text(stmt, 11), "0", "WEEK previous year zero");
+    failures += expect_string(mylite_column_text(stmt, 12), "52", "WEEK previous year one");
+    failures += expect_string(mylite_column_text(stmt, 13), "53", "WEEK next year zero");
+    failures += expect_string(mylite_column_text(stmt, 14), "1", "WEEK next year one");
+    failures += expect_string(mylite_column_text(stmt, 15), "8", "WEEK numeric date");
+    failures += expect_int(mylite_warning_count(database), 0, "WEEK scalar warning count");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "WEEK scalar done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT WEEK(NULL) AS null_date, "
+                            "WEEK('2024-01-01', NULL) AS null_mode, "
+                            "WEEK(NULL, 3) AS null_date_mode",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "WEEK null row");
+    failures += expect_null_text(mylite_column_text(stmt, 0), "WEEK NULL date");
+    failures += expect_string(mylite_column_text(stmt, 1), "0", "WEEK NULL mode");
+    failures += expect_null_text(mylite_column_text(stmt, 2), "WEEK NULL date with mode");
+    failures += expect_int(mylite_warning_count(database), 0, "WEEK null warning count");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "WEEK null done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT WEEK('2000-01-01', 8) AS mode_8, "
+                            "WEEK('2024-01-01', 9) AS mode_9, "
+                            "WEEK('2000-01-01', -1) AS mode_negative, "
+                            "WEEK('2000-01-01', 1.9) AS mode_real, "
+                            "WEEK('2000-01-01', '1.9') AS mode_text_real, "
+                            "WEEK('2024-01-01', 'bad') AS mode_bad",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "WEEK mode conversion row");
+    failures += expect_string(mylite_column_text(stmt, 0), "0", "WEEK mode 8 masks to 0");
+    failures += expect_string(mylite_column_text(stmt, 1), "1", "WEEK mode 9 masks to 1");
+    failures += expect_string(mylite_column_text(stmt, 2), "52", "WEEK negative mode masks");
+    failures += expect_string(mylite_column_text(stmt, 3), "52", "WEEK real mode rounds");
+    failures += expect_string(mylite_column_text(stmt, 4), "0", "WEEK text real truncates");
+    failures += expect_string(mylite_column_text(stmt, 5), "0", "WEEK bad mode truncates");
+    failures += expect_int(mylite_warning_count(database), 2, "WEEK mode warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_truncated_wrong_value, "WEEK mode warning code 0");
+    failures += expect_int((int)mylite_warning_code(database, 1),
+                           mysql_warning_truncated_wrong_value, "WEEK mode warning code 1");
+    failures += expect_string(mylite_warning_message(database, 0),
+                              "Truncated incorrect INTEGER value: '1.9'", "WEEK text real warning");
+    failures += expect_string(mylite_warning_message(database, 1),
+                              "Truncated incorrect INTEGER value: 'bad'", "WEEK bad warning");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "WEEK mode conversion done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "SELECT WEEK('bad') AS bad_text, "
+                            "WEEK('2008-00-00') AS zero_month, "
+                            "WEEK('2008-01-00') AS zero_day",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "WEEK invalid row");
+    failures += expect_null_text(mylite_column_text(stmt, 0), "WEEK bad text");
+    failures += expect_null_text(mylite_column_text(stmt, 1), "WEEK zero month");
+    failures += expect_null_text(mylite_column_text(stmt, 2), "WEEK zero day");
+    failures += expect_int(mylite_warning_count(database), 3, "WEEK invalid warning count");
+    for (int index = 0; index < 3; ++index) {
+        failures += expect_int((int)mylite_warning_code(database, index),
+                               mysql_warning_truncated_wrong_value, "WEEK invalid warning code");
+    }
+    failures += expect_string(mylite_warning_message(database, 0),
+                              "Incorrect datetime value: 'bad'", "WEEK bad text warning");
+    failures += expect_string(mylite_warning_message(database, 1),
+                              "Incorrect datetime value: '2008-00-00'", "WEEK zero month warning");
+    failures += expect_string(mylite_warning_message(database, 2),
+                              "Incorrect datetime value: '2008-01-00'", "WEEK zero day warning");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "WEEK invalid done");
     mylite_finalize(stmt);
     stmt = NULL;
 
@@ -7227,6 +7357,22 @@ static int test_date_and_datediff_functions_execution(void)
                             "(3, NULL, 0, 'null')",
                             MYLITE_DONE);
     failures += expect_select_rows(database,
+                                   "SELECT id, WEEK(dt) AS week_default, "
+                                   "WEEK(dt, 3) AS week_mode "
+                                   "FROM temporal_parts "
+                                   "WHERE WEEK(dt, 3) >= 9 "
+                                   "ORDER BY WEEK(dt), id",
+                                   week_projection_columns, 3, week_projection_values, 2,
+                                   "WEEK table projection");
+    failures += execute_sql_expect_done_affected(database,
+                                                 "UPDATE temporal_parts "
+                                                 "SET n = WEEK(dt, 3) "
+                                                 "WHERE id = 1",
+                                                 1, "WEEK update");
+    failures +=
+        expect_select_rows(database, "SELECT id, n, note FROM temporal_parts WHERE id = 1",
+                           part_updated_columns, 3, week_updated_values, 1, "WEEK updated row");
+    failures += expect_select_rows(database,
                                    "SELECT id, YEAR(dt) AS y, EXTRACT(HOUR FROM dt) AS h, "
                                    "SECOND(dt) AS s, DAYOFWEEK(dt) AS dow, "
                                    "MICROSECOND(dt) AS us "
@@ -7249,6 +7395,15 @@ static int test_date_and_datediff_functions_execution(void)
     failures +=
         expect_select_rows(database, "SELECT id FROM temporal_parts ORDER BY id", remaining_columns,
                            1, part_remaining_values, 2, "temporal part delete result");
+    failures += execute_sql(database,
+                            "INSERT INTO temporal_parts VALUES "
+                            "(4, '2024-01-01', 0, 'week-delete')",
+                            MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM temporal_parts WHERE id = 4 AND WEEK(dt) = 0", 1, "WEEK delete");
+    failures +=
+        expect_select_rows(database, "SELECT id FROM temporal_parts ORDER BY id", remaining_columns,
+                           1, part_remaining_values, 2, "WEEK delete result");
     failures += prepare_sql(database,
                             "UPDATE temporal_parts "
                             "SET n = DAYOFWEEK('2008-00-00') WHERE id = 1",
@@ -7262,6 +7417,18 @@ static int test_date_and_datediff_functions_execution(void)
         expect_int(mylite_warning_count(database), 1, "temporal part invalid update warning count");
     mylite_finalize(stmt);
     stmt = NULL;
+    failures += prepare_sql(database,
+                            "UPDATE temporal_parts "
+                            "SET n = WEEK('2008-00-00') WHERE id = 1",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "WEEK invalid update warning promoted");
+    failures +=
+        expect_contains(mylite_error_message(database), "Incorrect datetime value: '2008-00-00'",
+                        "WEEK invalid update error");
+    failures += expect_int(mylite_warning_count(database), 1, "WEEK invalid update warning count");
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += prepare_sql(database, "DELETE FROM temporal_parts WHERE MICROSECOND('bad') IS NULL",
                             MYLITE_OK, &stmt);
     failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR,
@@ -7271,6 +7438,15 @@ static int test_date_and_datediff_functions_execution(void)
                         "temporal part invalid delete error");
     failures +=
         expect_int(mylite_warning_count(database), 1, "temporal part invalid delete warning count");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "DELETE FROM temporal_parts WHERE WEEK('bad') IS NULL",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "WEEK invalid delete warning promoted");
+    failures += expect_contains(mylite_error_message(database), "Incorrect datetime value: 'bad'",
+                                "WEEK invalid delete error");
+    failures += expect_int(mylite_warning_count(database), 1, "WEEK invalid delete warning count");
     mylite_finalize(stmt);
     stmt = NULL;
     failures += expect_select_rows(database, "SELECT id FROM temporal_parts ORDER BY id",
@@ -7292,6 +7468,10 @@ static int test_date_and_datediff_functions_execution(void)
     failures += expect_no_stmt_handle(&stmt, "MONTH two arity");
     failures += prepare_sql(database, "SELECT DAYOFWEEK()", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "DAYOFWEEK empty arity");
+    failures += prepare_sql(database, "SELECT WEEK()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "WEEK empty arity");
+    failures += prepare_sql(database, "SELECT WEEK('2024-01-01', 0, 1)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "WEEK three arity");
     failures +=
         prepare_sql(database, "SELECT MICROSECOND('12:34:56','x')", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "MICROSECOND two arity");
@@ -18838,9 +19018,9 @@ static int test_stored_program_placeholder_execution(void)
                                                     "CALL placeholder");
     failures += expect_select_rows(database, "SHOW WARNINGS", diagnostics_columns, 3, call_warning,
                                    1, "CALL placeholder show warnings");
-    failures += expect_parser_placeholder_execution(database, "CREATE PROCEDURE p() SELECT 1",
-                                                    "CREATE PROCEDURE",
-                                                    "CREATE PROCEDURE placeholder");
+    failures +=
+        expect_parser_placeholder_execution(database, "CREATE PROCEDURE p() SELECT 1",
+                                            "CREATE PROCEDURE", "CREATE PROCEDURE placeholder");
     failures += expect_parser_placeholder_execution(
         database, "CREATE FUNCTION f(v BIGINT) RETURNS BIGINT RETURN v", "CREATE FUNCTION",
         "CREATE FUNCTION placeholder");
@@ -18857,8 +19037,7 @@ static int test_stored_program_placeholder_execution(void)
         database, "CREATE EVENT ev ON SCHEDULE EVERY 1 DAY DO DELETE FROM t WHERE id < 0",
         "CREATE EVENT", "CREATE EVENT placeholder");
     failures += expect_parser_placeholder_execution(database, "DROP PROCEDURE IF EXISTS p",
-                                                    "DROP PROCEDURE",
-                                                    "DROP PROCEDURE placeholder");
+                                                    "DROP PROCEDURE", "DROP PROCEDURE placeholder");
     failures += expect_parser_placeholder_execution(database, "DROP FUNCTION IF EXISTS f",
                                                     "DROP FUNCTION", "DROP FUNCTION placeholder");
     failures += expect_parser_placeholder_execution(database, "DROP TRIGGER IF EXISTS tr",

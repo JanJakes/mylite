@@ -5,6 +5,7 @@
 #include "mylite_select_subquery.h"
 #include "mylite_span.h"
 #include "mylite_system_variables.h"
+#include "mylite_user_variables.h"
 
 #include <stdlib.h>
 
@@ -106,6 +107,9 @@ bool mylite_select_expression_is_group_invariant( // NOLINT(misc-no-recursion)
         if (mylite_system_variable_identifier_is_system_variable(expression)) {
             return true;
         }
+        if (mylite_user_variable_identifier_is_user_variable(expression)) {
+            return true;
+        }
         return select_identifier_is_group_invariant(plan, expression, reference_policy);
     case MYLITE_SQL_AST_CAST_EXPRESSION:
         return mylite_select_expression_is_group_invariant(
@@ -205,6 +209,13 @@ bool mylite_select_expression_is_group_invariant( // NOLINT(misc-no-recursion)
     case MYLITE_SQL_AST_SET_NAMES_STATEMENT:
     case MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT:
     case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT:
+    case MYLITE_SQL_AST_SET_USER_VARIABLE_STATEMENT:
+    case MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT_LIST:
+    case MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT:
+    case MYLITE_SQL_AST_PREPARE_STATEMENT:
+    case MYLITE_SQL_AST_EXECUTE_STATEMENT:
+    case MYLITE_SQL_AST_EXECUTE_USING_LIST:
+    case MYLITE_SQL_AST_DEALLOCATE_PREPARE_STATEMENT:
     case MYLITE_SQL_AST_DEFAULT:
     case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_COLUMN_DEFINITION_LIST:

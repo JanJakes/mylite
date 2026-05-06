@@ -6,12 +6,14 @@
 #include "mylite_dml.h"
 #include "mylite_error_codes.h"
 #include "mylite_metadata.h"
+#include "mylite_prepared_statements.h"
 #include "mylite_schema.h"
 #include "mylite_select.h"
 #include "mylite_select_rowset.h"
 #include "mylite_statement_prepare.h"
 #include "mylite_table_ddl.h"
 #include "mylite_transactions.h"
+#include "mylite_user_variables.h"
 #include "sqlite3.h"
 
 #include <stdbool.h>
@@ -22,6 +24,9 @@ int64_t mylite_affected_rows(const mylite_stmt *stmt)
 {
     if (stmt == NULL) {
         return -1;
+    }
+    if (stmt->kind == MYLITE_STMT_EXECUTE_PREPARED && stmt->prepared_execute_stmt != NULL) {
+        return mylite_affected_rows(stmt->prepared_execute_stmt);
     }
 
     return stmt->affected_rows;
@@ -193,10 +198,15 @@ void mylite_finalize(mylite_stmt *stmt)
     }
 
     sqlite3_finalize(stmt->sqlite_stmt);
+    mylite_finalize(stmt->prepared_execute_stmt);
     free(stmt->schema_name);
     mylite_schema_options_deinit(&stmt->options);
     mylite_connection_charset_plan_deinit(&stmt->connection_charset);
     mylite_connection_system_variable_plan_deinit(&stmt->connection_system_variable);
+    mylite_user_variable_set_plan_deinit(&stmt->set_user_variable);
+    mylite_prepared_statement_prepare_plan_deinit(&stmt->prepare_statement);
+    mylite_prepared_statement_execute_plan_deinit(&stmt->execute_prepared);
+    mylite_prepared_statement_deallocate_plan_deinit(&stmt->deallocate_prepare);
     mylite_table_ddl_create_table_plan_deinit(&stmt->create_table);
     mylite_table_ddl_drop_table_plan_deinit(&stmt->drop_table);
     mylite_table_ddl_rename_table_plan_deinit(&stmt->rename_table);
@@ -231,6 +241,11 @@ void mylite_finalize(mylite_stmt *stmt)
 
 int64_t mylite_column_int64(const mylite_stmt *stmt, int column)
 {
+    if (stmt != NULL && stmt->kind == MYLITE_STMT_EXECUTE_PREPARED &&
+        stmt->prepared_execute_stmt != NULL) {
+        return mylite_column_int64(stmt->prepared_execute_stmt, column);
+    }
+
     const struct mylite_expression_value *value =
         mylite_statement_table_select_current_output_value(stmt, column);
 
@@ -257,6 +272,11 @@ int64_t mylite_column_int64(const mylite_stmt *stmt, int column)
 
 const char *mylite_column_text(const mylite_stmt *stmt, int column)
 {
+    if (stmt != NULL && stmt->kind == MYLITE_STMT_EXECUTE_PREPARED &&
+        stmt->prepared_execute_stmt != NULL) {
+        return mylite_column_text(stmt->prepared_execute_stmt, column);
+    }
+
     if (stmt != NULL &&
         (stmt->kind == MYLITE_STMT_TABLE_SELECT || stmt->kind == MYLITE_STMT_UNION_QUERY) &&
         stmt->select_result.has_current_row) {

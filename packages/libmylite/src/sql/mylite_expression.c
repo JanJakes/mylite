@@ -2169,7 +2169,7 @@ static bool expression_is_supported_no_table(const struct mylite_sql_ast_node *e
 static bool
 expression_is_supported_no_table_identifier(const struct mylite_sql_ast_node *expression,
                                             bool require_cacheable);
-static bool expression_is_system_variable_identifier(const struct mylite_sql_ast_node *expression);
+static bool expression_is_session_variable_identifier(const struct mylite_sql_ast_node *expression);
 static enum mylite_scalar_function_id scalar_function_id(const struct mylite_sql_ast_node *node);
 static enum mylite_scalar_function_id
 scalar_function_id_from_span(struct mylite_sql_source_span span);
@@ -2431,22 +2431,16 @@ expression_is_supported_no_table_identifier(const struct mylite_sql_ast_node *ex
     if (require_cacheable) {
         return false;
     }
-    return expression_is_system_variable_identifier(expression);
+    return expression_is_session_variable_identifier(expression);
 }
 
-static bool expression_is_system_variable_identifier(const struct mylite_sql_ast_node *expression)
+static bool expression_is_session_variable_identifier(const struct mylite_sql_ast_node *expression)
 {
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_IDENTIFIER ||
         expression->span.length < 2U || expression->span.text == NULL) {
         return false;
     }
-    if (expression->span.text[0] != '@') {
-        return false;
-    }
-    if (expression->span.text[1] != '@') {
-        return false;
-    }
-    return true;
+    return expression->span.text[0] == '@';
 }
 
 bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_node *expression)

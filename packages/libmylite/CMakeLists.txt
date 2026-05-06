@@ -128,6 +128,7 @@ add_library(mylite STATIC
   src/runtime/mylite_information_schema_target.c
   src/runtime/mylite_metadata.c
   src/runtime/mylite_metadata_constants.c
+  src/runtime/mylite_prepared_statements.c
   src/runtime/mylite_schema.c
   src/runtime/mylite_select.c
   src/runtime/mylite_select_aggregate.c
@@ -235,6 +236,7 @@ add_library(mylite STATIC
   src/runtime/mylite_statement_strcmp.c
   src/runtime/mylite_strcmp_compare.c
   src/runtime/mylite_system_variables.c
+  src/runtime/mylite_user_variables.c
   src/runtime/mylite_storage_engine.c
   src/runtime/mylite_table_ddl.c
   src/runtime/mylite_table_ddl_alter.c

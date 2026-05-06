@@ -337,11 +337,19 @@ level application surfaces.
        Focused session-variable slices are specified and implemented for
        `sql_mode` and `group_concat_max_len`, and the first
        [system-variable expression read](../system-variable-expression-reads/specs.md)
-       slice covers the current `SHOW VARIABLES` catalog; global mutation,
-       user variables, persisted variables, direct arbitrary assignment, and
+       slice covers the current `SHOW VARIABLES` catalog. The first
+       [user-variable foundation](../user-variable-foundation/specs.md) slice
+       implements `SET @var`, expression reads, statement-start
+       multi-assignment semantics, and result metadata; global mutation,
+       persisted variables, direct arbitrary system-variable assignment, and
        complete variable-catalog coverage remain unfinished.
 42. [ ] Prepared statements: `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`,
-       parameter markers, metadata, and diagnostics.
+       parameter markers, metadata, and diagnostics. The first
+       [SQL prepared statements](../sql-prepared-statements/specs.md) slice
+       implements SQL-level prepare/execute/deallocate over literals and user
+       variables, parameter-marker substitution from user variables, delegated
+       result metadata after execution, and MySQL-compatible diagnostics for the
+       covered paths; binary protocol prepared statements remain unfinished.
 43. [ ] `CREATE TABLE ... LIKE`: metadata cloning, indexes, defaults, generated
        columns, temporary tables, and atomicity.
 44. [ ] `CREATE TABLE ... SELECT` and `INSERT ... SELECT`: type inference,

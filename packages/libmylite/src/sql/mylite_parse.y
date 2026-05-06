@@ -55,6 +55,11 @@
 %type opt_show_collation_filter { struct mylite_sql_ast_node * }
 %type opt_set_system_variable_scope { enum mylite_sql_ast_set_system_variable_scope }
 %type set_system_variable_value { struct mylite_sql_ast_node * }
+%type set_user_variable_assignment_list { struct mylite_sql_ast_node * }
+%type set_user_variable_assignment { struct mylite_sql_ast_node * }
+%type prepare_source { struct mylite_sql_ast_node * }
+%type opt_execute_using_list { struct mylite_sql_ast_node * }
+%type execute_using_list { struct mylite_sql_ast_node * }
 %type opt_show_tables_schema { struct mylite_sql_ast_node * }
 %type opt_show_tables_filter { struct mylite_sql_ast_node * }
 %type show_table_status_keyword { struct mylite_sql_token }
@@ -255,6 +260,18 @@ statement(A) ::= set_character_set_statement(B). {
     A = B;
 }
 statement(A) ::= set_system_variable_statement(B). {
+    A = B;
+}
+statement(A) ::= set_user_variable_statement(B). {
+    A = B;
+}
+statement(A) ::= prepare_statement(B). {
+    A = B;
+}
+statement(A) ::= execute_statement(B). {
+    A = B;
+}
+statement(A) ::= deallocate_prepare_statement(B). {
     A = B;
 }
 statement(A) ::= create_table_statement(B). {
@@ -1484,6 +1501,64 @@ set_system_variable_value(A) ::= REPLACE(T) LPAREN(L) set_system_variable_name(B
         state, arguments, mylite_sql_parser_make_literal(state, D, MYLITE_SQL_AST_LITERAL_STRING));
     A = mylite_sql_parser_make_function_call(
         state, mylite_sql_parser_make_identifier(state, T), L, arguments, R);
+}
+
+set_user_variable_statement(A) ::= SET(T) set_user_variable_assignment_list(B). {
+    A = mylite_sql_parser_make_set_user_variable_statement(state, T, B);
+}
+
+set_user_variable_assignment_list(A) ::= set_user_variable_assignment(B). {
+    A = mylite_sql_parser_make_user_variable_assignment_list(state, B);
+}
+set_user_variable_assignment_list(A) ::= set_user_variable_assignment_list(B) COMMA set_user_variable_assignment(C). {
+    A = mylite_sql_parser_append_user_variable_assignment(state, B, C);
+}
+
+set_user_variable_assignment(A) ::= USER_VARIABLE(T) EQ expression(B). {
+    A = mylite_sql_parser_make_user_variable_assignment(
+        state, mylite_sql_parser_make_identifier(state, T), B);
+}
+set_user_variable_assignment(A) ::= USER_VARIABLE(T) ASSIGN expression(B). {
+    A = mylite_sql_parser_make_user_variable_assignment(
+        state, mylite_sql_parser_make_identifier(state, T), B);
+}
+
+prepare_statement(A) ::= PREPARE(T) identifier(B) FROM prepare_source(C). {
+    A = mylite_sql_parser_make_prepare_statement(state, T, B, C);
+}
+
+prepare_source(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+prepare_source(A) ::= USER_VARIABLE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+
+execute_statement(A) ::= EXECUTE(T) identifier(B) opt_execute_using_list(C). {
+    A = mylite_sql_parser_make_execute_statement(state, T, B, C);
+}
+
+opt_execute_using_list(A) ::= . {
+    A = NULL;
+}
+opt_execute_using_list(A) ::= USING execute_using_list(B). {
+    A = B;
+}
+
+execute_using_list(A) ::= USER_VARIABLE(T). {
+    A = mylite_sql_parser_make_execute_using_list(
+        state, mylite_sql_parser_make_identifier(state, T));
+}
+execute_using_list(A) ::= execute_using_list(B) COMMA USER_VARIABLE(T). {
+    A = mylite_sql_parser_append_execute_using_variable(
+        state, B, mylite_sql_parser_make_identifier(state, T));
+}
+
+deallocate_prepare_statement(A) ::= DEALLOCATE(T) PREPARE identifier(B). {
+    A = mylite_sql_parser_make_deallocate_prepare_statement(state, T, B);
+}
+deallocate_prepare_statement(A) ::= DROP(T) PREPARE identifier(B). {
+    A = mylite_sql_parser_make_deallocate_prepare_statement(state, T, B);
 }
 
 create_table_statement(A) ::= CREATE(T) TABLE opt_if_not_exists(B) table_name(C) LPAREN table_element_list(D) RPAREN table_option_list(E). {
@@ -3272,6 +3347,9 @@ primary_expression(A) ::= json_extract_expression(B). {
     A = B;
 }
 primary_expression(A) ::= SYSTEM_VARIABLE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+primary_expression(A) ::= USER_VARIABLE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 primary_expression(A) ::= qualified_identifier(B). {

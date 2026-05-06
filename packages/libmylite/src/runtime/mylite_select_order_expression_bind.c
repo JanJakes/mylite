@@ -8,6 +8,7 @@
 #include "mylite_select_subquery.h"
 #include "mylite_span.h"
 #include "mylite_system_variables.h"
+#include "mylite_user_variables.h"
 #include "sql/mylite_ast.h"
 #include "sql/mylite_expression.h"
 
@@ -167,6 +168,13 @@ int mylite_select_bind_order_expression( // NOLINT(misc-no-recursion)
     case MYLITE_SQL_AST_SET_NAMES_STATEMENT:
     case MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT:
     case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT:
+    case MYLITE_SQL_AST_SET_USER_VARIABLE_STATEMENT:
+    case MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT_LIST:
+    case MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT:
+    case MYLITE_SQL_AST_PREPARE_STATEMENT:
+    case MYLITE_SQL_AST_EXECUTE_STATEMENT:
+    case MYLITE_SQL_AST_EXECUTE_USING_LIST:
+    case MYLITE_SQL_AST_DEALLOCATE_PREPARE_STATEMENT:
     case MYLITE_SQL_AST_DEFAULT:
     case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_COLUMN_DEFINITION_LIST:
@@ -242,6 +250,9 @@ static int bind_order_identifier_expression(mylite_db *database,
     int status = MYLITE_OK;
 
     if (mylite_system_variable_identifier_is_system_variable(expression)) {
+        return MYLITE_OK;
+    }
+    if (mylite_user_variable_identifier_is_user_variable(expression)) {
         return MYLITE_OK;
     }
 

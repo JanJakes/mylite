@@ -5,6 +5,7 @@
 #include "mylite_diagnostics.h"
 #include "mylite_dml.h"
 #include "mylite_error_codes.h"
+#include "mylite_prepared_statements.h"
 #include "mylite_runtime.h"
 #include "mylite_select_context.h"
 #include "mylite_select_prepare.h"
@@ -13,6 +14,7 @@
 #include "mylite_span.h"
 #include "mylite_statement.h"
 #include "mylite_statement_types.h"
+#include "mylite_user_variables.h"
 
 static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql_ast_node *root,
                                     const char *sql, size_t sql_length, mylite_stmt **out_stmt,
@@ -104,6 +106,17 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
         case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT:
             return mylite_connection_prepare_system_variable_statement(database, statement,
                                                                        out_stmt);
+        case MYLITE_SQL_AST_SET_USER_VARIABLE_STATEMENT:
+            return mylite_user_variable_prepare_set_statement(database, statement, out_stmt);
+        case MYLITE_SQL_AST_PREPARE_STATEMENT:
+            return mylite_prepared_statement_prepare_prepare_statement(database, statement,
+                                                                       out_stmt);
+        case MYLITE_SQL_AST_EXECUTE_STATEMENT:
+            return mylite_prepared_statement_prepare_execute_statement(database, statement,
+                                                                       out_stmt);
+        case MYLITE_SQL_AST_DEALLOCATE_PREPARE_STATEMENT:
+            return mylite_prepared_statement_prepare_deallocate_statement(database, statement,
+                                                                          out_stmt);
         case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
             return mylite_statement_prepare_custom_statement(database, MYLITE_STMT_CREATE_TABLE,
                                                              statement, out_stmt, callbacks);
@@ -287,6 +300,9 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
         case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION:
         case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
         case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
+        case MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT_LIST:
+        case MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT:
+        case MYLITE_SQL_AST_EXECUTE_USING_LIST:
             break;
         }
     }

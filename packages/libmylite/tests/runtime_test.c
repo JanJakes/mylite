@@ -121,10 +121,12 @@ enum {
     mysql_warning_incorrect_escape_arguments = 1210,
     mysql_warning_operand_columns = 1241,
     mysql_warning_subquery_no_1_row = 1242,
+    mysql_warning_unknown_stmt_handler = 1243,
     mysql_warning_table_name_not_allowed = 1250,
     mysql_warning_group_concat_cut = 1260,
     mysql_warning_deprecated_syntax = 1287,
     mysql_warning_truncated_wrong_value = 1292,
+    mysql_warning_unsupported_prepared_statement = 1295,
     mysql_warning_invalid_character_string = 1300,
     mysql_warning_savepoint_does_not_exist = 1305,
     mysql_warning_no_default = 1364,
@@ -321,6 +323,8 @@ static int test_uuid_scalar_functions(mylite_db *database);
 static int test_inet_ipv4_functions_execution(void);
 static int test_charset_collation_functions_execution(void);
 static int test_session_information_functions_execution(void);
+static int test_user_variable_foundation_execution(void);
+static int test_sql_prepared_statements_execution(void);
 static int test_case_expression_execution(void);
 static int test_cast_expression_execution(void);
 static int test_convert_expression_execution(void);
@@ -544,6 +548,8 @@ int main(void)
     failures += test_inet_ipv4_functions_execution();
     failures += test_charset_collation_functions_execution();
     failures += test_session_information_functions_execution();
+    failures += test_user_variable_foundation_execution();
+    failures += test_sql_prepared_statements_execution();
     failures += test_case_expression_execution();
     failures += test_cast_expression_execution();
     failures += test_convert_expression_execution();
@@ -13666,7 +13672,7 @@ static int test_trigonometric_scalar_function_execution(mylite_db *database)
         "0",
         "0.8414709848078965",
         "0.5403023058681398",
-        "1.5574077246549023",
+        "1.557407724654902",
         NULL,
         NULL,
         NULL,
@@ -13678,7 +13684,7 @@ static int test_trigonometric_scalar_function_execution(mylite_db *database)
         "-1.2246467991473532e-16",
         "0.4533964905016491",
         "-0.8913089376870335",
-        "-0.5086861259107568",
+        "-0.5086861259107567",
         "0",
         "1",
         "0",
@@ -13694,7 +13700,7 @@ static int test_trigonometric_scalar_function_execution(mylite_db *database)
         "0",
         "0",
         "1",
-        "-0.004962015874444895",
+        "-0.004962015874444894",
         "-0.004961954789184062",
         "0",
         "1",
@@ -13928,15 +13934,15 @@ static int test_cot_scalar_function_execution(mylite_db *database)
         "cot_pi",  "cot_neg_pi", "cot_huge",    "cot_tiny_pos", "cot_tiny_neg",
     };
     static const char *const cot_values[] = {
-        "0.6420926159343306",
-        "-1.5726734063976893",
-        "-0.6420926159343306",
+        "0.6420926159343308",
+        "-1.5726734063976895",
+        "-0.6420926159343308",
         NULL,
         "6.123233995736766e-17",
         "1.0000000000000002",
         "-8165619676597685",
         "8165619676597685",
-        "-1.9658487799516644",
+        "-1.9658487799516648",
         "1e308",
         "-1e308",
     };
@@ -13944,13 +13950,13 @@ static int test_cot_scalar_function_execution(mylite_db *database)
         "cot_trail", "cot_spaced", "cot_exp", "cot_pos_over", "cot_neg_over",
     };
     static const char *const warning_values[] = {
-        "0.6420926159343306",  "-7.489155308722675", "-1.702956919426469",
-        "-201.53099572900314", "201.53099572900314",
+        "0.6420926159343308", "-7.489155308722675", "-1.702956919426469",
+        "-201.5309957290032", "201.5309957290032",
     };
     static const char *const cot_projection_columns[] = {"id", "c"};
     static const char *const cot_projection_values[] = {
-        "4", "-8165619676597685",  "3", "-0.6420926159343306",
-        "2", "0.6420926159343306", "5", "1e308",
+        "4", "-8165619676597685",  "3", "-0.6420926159343308",
+        "2", "0.6420926159343308", "5", "1e308",
     };
     static const char *const id_column[] = {"id"};
     static const char *const selected_id_values[] = {"2", "5"};
@@ -14274,7 +14280,7 @@ static int test_inverse_trigonometric_scalar_function_execution(mylite_db *datab
         "0",
         "1.5707963267948966",
         "3.141592653589793",
-        "1.0471975511965979",
+        "1.0471975511965976",
         "2.0943951023931957",
         NULL,
         NULL,
@@ -14284,8 +14290,8 @@ static int test_inverse_trigonometric_scalar_function_execution(mylite_db *datab
         "0",
         "-1.5707963267948966",
         "0.2013579207903308",
-        "0.5235987755982989",
-        "-0.5235987755982989",
+        "0.5235987755982988",
+        "-0.5235987755982988",
         NULL,
         NULL,
         NULL,
@@ -14333,7 +14339,7 @@ static int test_inverse_trigonometric_scalar_function_execution(mylite_db *datab
         "0",
         "1.5707963267948966",
         "6",
-        "1.369438406004566",
+        "1.3694384060045657",
         "0.2013579207903308",
         "2",
         "1.5707963267948966",
@@ -17051,6 +17057,255 @@ static int test_session_information_functions_execution(void)
     failures += expect_select_rows(database, "SELECT DATABASE() AS db_name",
                                    (const char *const[]){"db_name"}, 1, dropped_schema_value, 1,
                                    "database after drop selected schema");
+
+    mylite_close(database);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
+    return failures;
+}
+
+static int test_user_variable_foundation_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const variable_columns[] = {"missing", "answer", "text_value", "null_value"};
+    static const char *const variable_values[] = {NULL, "42", "hello", NULL};
+    static const char *const quoted_columns[] = {"lower_a", "dash_value"};
+    static const char *const quoted_values[] = {"7", "quoted"};
+    static const char *const assignment_columns[] = {"a_value", "b_value", "c_value"};
+    static const char *const assignment_values[] = {"5", "11", NULL};
+    static const char *const id_column[] = {"id"};
+    static const char *const greater_than_threshold_values[] = {"2", "3"};
+    static const char *const row_columns[] = {"id", "note"};
+    static const char *const final_row_values[] = {"1", "alpha", "2", "matched"};
+    static const struct expected_result_metadata metadata[] = {
+        {"missing", NULL, NULL, NULL, NULL, NULL, 65535U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 63U,
+         MYLITE_FIELD_FLAG_BINARY, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"answer", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"text_value", NULL, NULL, NULL, NULL, NULL, 16777215U, MYLITE_FIELD_TYPE_MEDIUM_BLOB, 31U,
+         255U, MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BLOB, MYLITE_FIELD_FLAG_BINARY, 0},
+        {"null_value", NULL, NULL, NULL, NULL, NULL, 16777215U, MYLITE_FIELD_TYPE_MEDIUM_BLOB, 31U,
+         63U, MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_BLOB, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open user variable database");
+
+    failures += execute_sql(database, "SET @answer = 42, @text_value = 'hello', @null_value = NULL",
+                            MYLITE_DONE);
+    failures += prepare_sql(database,
+                            "SELECT @missing AS missing, @answer AS answer, "
+                            "@text_value AS text_value, @null_value AS null_value",
+                            MYLITE_OK, &stmt);
+    failures += expect_column_names(stmt, variable_columns, 4, "user variable columns");
+    failures += expect_result_metadata(stmt, metadata, 4, "user variable metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "user variable row");
+    for (int column = 0; column < 4; ++column) {
+        if (variable_values[column] == NULL) {
+            failures += expect_null_text(mylite_column_text(stmt, column), "user variable value");
+        } else {
+            failures += expect_string(mylite_column_text(stmt, column), variable_values[column],
+                                      "user variable value");
+        }
+    }
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "user variable done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "SET @A = 7, @'dash-name' = 'quoted'", MYLITE_DONE);
+    failures +=
+        expect_select_rows(database, "SELECT @a AS lower_a, @`dash-name` AS dash_value",
+                           quoted_columns, 2, quoted_values, 1, "quoted user variable lookup");
+
+    failures += execute_sql(database, "SET @a = 10", MYLITE_DONE);
+    failures += execute_sql(database, "SET @a = 1, @b = @a + 1, @a = 5, @c = @b + @a", MYLITE_DONE);
+    failures += expect_select_rows(database, "SELECT @a AS a_value, @b AS b_value, @c AS c_value",
+                                   assignment_columns, 3, assignment_values, 1,
+                                   "multi-assignment statement-start values");
+
+    failures += execute_sql(database, "CREATE DATABASE mylite_user_variables", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_user_variables", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE variable_rows ("
+                            "id INT PRIMARY KEY, "
+                            "note VARCHAR(20))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO variable_rows VALUES "
+                            "(1,'alpha'),(2,'beta'),(3,'gamma')",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "SET @threshold = 1, @label = 'matched'", MYLITE_DONE);
+    failures += expect_select_rows(database,
+                                   "SELECT id FROM variable_rows "
+                                   "WHERE id > @threshold ORDER BY id",
+                                   id_column, 1, greater_than_threshold_values, 2,
+                                   "user variable WHERE predicate");
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE variable_rows SET note = @label WHERE id = @threshold + 1", 1,
+        "user variable UPDATE expression");
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM variable_rows WHERE id = @threshold + 2", 1,
+        "user variable DELETE predicate");
+    failures +=
+        expect_select_rows(database, "SELECT id, note FROM variable_rows ORDER BY id", row_columns,
+                           2, final_row_values, 2, "user variable DML final rows");
+
+    mylite_close(database);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
+    return failures;
+}
+
+static int test_sql_prepared_statements_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const id_name_columns[] = {"id", "name"};
+    static const char *const inserted_row_values[] = {"4", "can't"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open prepared statement database");
+    failures += execute_sql(database, "CREATE DATABASE mylite_prepared_statements", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_prepared_statements", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE prepared_statement_rows ("
+                            "id INT PRIMARY KEY, "
+                            "name VARCHAR(20), "
+                            "note VARCHAR(20))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO prepared_statement_rows VALUES "
+                            "(1,'alpha','a'),(2,'beta','b'),(3,'gamma','c')",
+                            MYLITE_DONE);
+
+    failures +=
+        execute_sql(database, "PREPARE add_one FROM 'SELECT ? + 1 AS plus_one'", MYLITE_DONE);
+    failures += execute_sql(database, "SET @x = 41", MYLITE_DONE);
+    failures += prepare_sql(database, "EXECUTE add_one USING @x", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "execute add_one row");
+    failures +=
+        expect_column_names(stmt, (const char *const[]){"plus_one"}, 1, "execute add_one columns");
+    failures += expect_string(mylite_column_text(stmt, 0), "42", "execute add_one value");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "execute add_one done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database,
+                            "SET @sql = 'SELECT id, name FROM prepared_statement_rows "
+                            "WHERE id > ? ORDER BY id LIMIT ?'",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "PREPARE from_var FROM @sql", MYLITE_DONE);
+    failures += execute_sql(database, "SET @min_id = 1, @row_limit = 1", MYLITE_DONE);
+    failures +=
+        prepare_sql(database, "EXECUTE from_var USING @min_id, @row_limit", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "execute from variable row");
+    failures += expect_column_names(stmt, id_name_columns, 2, "execute from variable columns");
+    failures += expect_string(mylite_column_text(stmt, 0), "2", "execute from variable id");
+    failures += expect_string(mylite_column_text(stmt, 1), "beta", "execute from variable name");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "execute from variable done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "PREPARE MixedName FROM 'SELECT 4 AS v'", MYLITE_DONE);
+    failures += prepare_sql(database, "EXECUTE mixedname", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "case-insensitive execute row");
+    failures +=
+        expect_column_names(stmt, (const char *const[]){"v"}, 1, "case-insensitive columns");
+    failures += expect_string(mylite_column_text(stmt, 0), "4", "case-insensitive value");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "case-insensitive execute done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "PREPARE `select` FROM 'SELECT 3 AS v'", MYLITE_DONE);
+    failures += prepare_sql(database, "EXECUTE `select`", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "quoted execute row");
+    failures += expect_string(mylite_column_text(stmt, 0), "3", "quoted execute value");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "quoted execute done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database,
+                            "PREPARE ins FROM 'INSERT INTO prepared_statement_rows(id, name, note) "
+                            "VALUES (?, ?, ?)'",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "SET @new_id = 4, @new_name = 'delta', @new_note = 'can''t'",
+                            MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(database,
+                                                 "EXECUTE ins USING @new_id, @new_name, "
+                                                 "@new_note",
+                                                 1, "prepared INSERT affected rows");
+    failures += expect_select_rows(database,
+                                   "SELECT id, note FROM prepared_statement_rows "
+                                   "WHERE id = 4",
+                                   (const char *const[]){"id", "note"}, 2, inserted_row_values, 1,
+                                   "prepared INSERT stored row");
+
+    failures += execute_sql(database, "PREPARE mismatch FROM 'SELECT ? AS v'", MYLITE_DONE);
+    failures += prepare_sql(database, "EXECUTE mismatch", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Incorrect arguments to EXECUTE",
+                                  "prepared parameter count mismatch");
+    failures += expect_int(mylite_warning_count(database), 1, "prepared mismatch warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_incorrect_escape_arguments,
+                   "prepared mismatch warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "EXECUTE no_such", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Unknown prepared statement handler",
+                                  "unknown prepared execute");
+    failures += expect_int(mylite_warning_count(database), 1, "unknown execute warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_unknown_stmt_handler, "unknown execute warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "DEALLOCATE PREPARE no_such", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Unknown prepared statement handler",
+                                  "unknown prepared deallocate");
+    failures += expect_int(mylite_warning_count(database), 1, "unknown deallocate warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_unknown_stmt_handler, "unknown deallocate warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "PREPARE dup FROM 'SELECT 1 AS v'", MYLITE_DONE);
+    failures += execute_sql(database, "PREPARE dup FROM @missing_sql", MYLITE_PARSE_ERROR);
+    failures += prepare_sql(database, "EXECUTE dup", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Unknown prepared statement handler",
+                                  "failed duplicate prepare removes old statement");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
+                            "PREPARE nested_prepare FROM "
+                            "'PREPARE inner_s FROM ''SELECT 1'''",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_exec_error(stmt, database, "not supported in the prepared statement protocol",
+                          "nested prepared statement rejected");
+    failures += expect_int(mylite_warning_count(database), 1, "nested prepare warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0),
+                   mysql_warning_unsupported_prepared_statement, "nested prepare warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "DROP PREPARE add_one", MYLITE_DONE);
+    failures += prepare_sql(database, "EXECUTE add_one", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Unknown prepared statement handler",
+                                  "drop prepare removes statement");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "DEALLOCATE PREPARE from_var", MYLITE_DONE);
+    failures += execute_sql(database, "DEALLOCATE PREPARE mixedname", MYLITE_DONE);
+    failures += execute_sql(database, "DEALLOCATE PREPARE `select`", MYLITE_DONE);
+    failures += execute_sql(database, "DEALLOCATE PREPARE ins", MYLITE_DONE);
+    failures += execute_sql(database, "DEALLOCATE PREPARE mismatch", MYLITE_DONE);
 
     mylite_close(database);
     // NOLINTEND(readability-function-size,readability-magic-numbers)

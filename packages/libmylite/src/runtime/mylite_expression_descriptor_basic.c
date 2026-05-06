@@ -5,6 +5,7 @@
 #include "mylite_select.h"
 #include "mylite_select_resolve.h"
 #include "mylite_system_variables.h"
+#include "mylite_user_variables.h"
 #include "sql/mylite_ast.h"
 
 #include <stddef.h>
@@ -61,6 +62,9 @@ int mylite_expression_descriptor_infer_identifier(mylite_db *database,
 {
     if (mylite_system_variable_identifier_is_system_variable(expression)) {
         return mylite_system_variable_infer_identifier(database, expression, out_descriptor);
+    }
+    if (mylite_user_variable_identifier_is_user_variable(expression)) {
+        return mylite_user_variable_infer_identifier(database, expression, out_descriptor);
     }
 
     size_t column_index = plan == NULL ? 0U : mylite_select_plan_column_count(plan);

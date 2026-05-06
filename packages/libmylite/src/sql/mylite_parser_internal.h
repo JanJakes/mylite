@@ -784,6 +784,38 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_set_system_variable_statement
     struct mylite_sql_parser_state *state, struct mylite_sql_token set_token,
     enum mylite_sql_ast_set_system_variable_scope scope, struct mylite_sql_ast_node *variable_name,
     struct mylite_sql_ast_node *value);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_set_user_variable_statement(struct mylite_sql_parser_state *state,
+                                                   struct mylite_sql_token set_token,
+                                                   struct mylite_sql_ast_node *assignments);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_user_variable_assignment_list(struct mylite_sql_parser_state *state,
+                                                     struct mylite_sql_ast_node *assignment);
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_user_variable_assignment(struct mylite_sql_parser_state *state,
+                                                  struct mylite_sql_ast_node *list,
+                                                  struct mylite_sql_ast_node *assignment);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_user_variable_assignment(struct mylite_sql_parser_state *state,
+                                                struct mylite_sql_ast_node *variable,
+                                                struct mylite_sql_ast_node *expression);
+struct mylite_sql_ast_node *mylite_sql_parser_make_prepare_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token prepare_token,
+    struct mylite_sql_ast_node *statement_name, struct mylite_sql_ast_node *source);
+struct mylite_sql_ast_node *mylite_sql_parser_make_execute_statement(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token execute_token,
+    struct mylite_sql_ast_node *statement_name, struct mylite_sql_ast_node *using_list);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_execute_using_list(struct mylite_sql_parser_state *state,
+                                          struct mylite_sql_ast_node *variable);
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_execute_using_variable(struct mylite_sql_parser_state *state,
+                                                struct mylite_sql_ast_node *list,
+                                                struct mylite_sql_ast_node *variable);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_deallocate_prepare_statement(struct mylite_sql_parser_state *state,
+                                                    struct mylite_sql_token keyword_token,
+                                                    struct mylite_sql_ast_node *statement_name);
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_token create_token,
     struct mylite_sql_ast_node *if_not_exists, struct mylite_sql_ast_node *table_name,

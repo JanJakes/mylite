@@ -9,12 +9,14 @@
 #include "mylite_expression_collation_types.h"
 #include "mylite_field_descriptor.h"
 #include "mylite_metadata_types.h"
+#include "mylite_prepared_statements_types.h"
 #include "mylite_schema_types.h"
 #include "mylite_select_types.h"
 #include "mylite_show_types.h"
 #include "mylite_statement_types.h"
 #include "mylite_table_ddl_types.h"
 #include "mylite_transaction_types.h"
+#include "mylite_user_variables_types.h"
 #include "sql/mylite_ast.h"
 #include "sqlite3.h"
 #include "types/mylite_column_type.h"
@@ -63,6 +65,8 @@ struct mylite_db {
     uint64_t group_concat_max_len;
     struct mylite_uuid_state uuid_state;
     struct mylite_uuid_short_state uuid_short_state;
+    struct mylite_user_variable_store user_variables;
+    struct mylite_prepared_statement_store prepared_statements;
 };
 
 struct mylite_statement_timestamp {
@@ -92,6 +96,10 @@ struct mylite_stmt {
     struct mylite_statement_timestamp statement_timestamp;
     struct mylite_schema_options options;
     struct mylite_connection_charset_plan connection_charset;
+    struct mylite_set_user_variable_plan set_user_variable;
+    struct mylite_prepare_statement_plan prepare_statement;
+    struct mylite_execute_prepared_plan execute_prepared;
+    struct mylite_deallocate_prepare_plan deallocate_prepare;
     struct mylite_create_table_plan create_table;
     struct mylite_drop_table_plan drop_table;
     struct mylite_rename_table_plan rename_table;
@@ -126,6 +134,7 @@ struct mylite_stmt {
     size_t select_constant_value_count;
     struct mylite_rand_state *rand_states;
     size_t rand_state_count;
+    mylite_stmt *prepared_execute_stmt;
     bool select_constant_predicate_evaluated;
     bool select_constant_predicate_matches;
     int64_t affected_rows;

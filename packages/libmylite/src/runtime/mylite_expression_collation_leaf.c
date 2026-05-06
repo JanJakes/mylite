@@ -8,6 +8,7 @@
 #include "mylite_select.h"
 #include "mylite_span.h"
 #include "mylite_system_variables.h"
+#include "mylite_user_variables.h"
 
 #include <stdlib.h>
 
@@ -59,6 +60,8 @@ int mylite_expression_infer_identifier_collation_info(
 
     if (mylite_system_variable_identifier_is_system_variable(expression)) {
         status = mylite_system_variable_infer_identifier(database, expression, &descriptor);
+    } else if (mylite_user_variable_identifier_is_user_variable(expression)) {
+        status = mylite_user_variable_infer_identifier(database, expression, &descriptor);
     } else if (context != NULL && context->table != NULL) {
         status = infer_table_identifier_descriptor(context->table, expression, &descriptor);
     } else if (context != NULL && context->plan != NULL && callbacks != NULL &&

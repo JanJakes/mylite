@@ -8,6 +8,7 @@
 #include "mylite_dml_insert_diagnostics.h"
 #include "mylite_span.h"
 #include "mylite_system_variables.h"
+#include "mylite_user_variables.h"
 #include "sql/mylite_ast.h"
 #include "sql/mylite_expression.h"
 
@@ -274,6 +275,9 @@ static int resolve_insert_expression_identifier(void *user_data,
     }
     if (mylite_system_variable_identifier_is_system_variable(identifier)) {
         return mylite_system_variable_eval_identifier(context->database, identifier, out_value);
+    }
+    if (mylite_user_variable_identifier_is_user_variable(identifier)) {
+        return mylite_user_variable_eval_identifier(context->database, identifier, out_value);
     }
     if (context->values == NULL) {
         return -1;

@@ -8,6 +8,7 @@
 #include "mylite_select_resolve.h"
 #include "mylite_span.h"
 #include "mylite_system_variables.h"
+#include "mylite_user_variables.h"
 #include "sqlite3.h"
 
 #include <stdlib.h>
@@ -97,7 +98,8 @@ bind_union_global_order_item(mylite_db *database, const struct mylite_sql_ast_no
 
     if ((expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
          expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) &&
-        !mylite_system_variable_identifier_is_system_variable(expression)) {
+        !mylite_system_variable_identifier_is_system_variable(expression) &&
+        !mylite_user_variable_identifier_is_user_variable(expression)) {
         enum mylite_select_order_key_kind kind = MYLITE_SELECT_ORDER_KEY_EXPRESSION;
         size_t index = 0U;
         int status =
@@ -141,6 +143,9 @@ static int bind_union_global_order_expression(
     case MYLITE_SQL_AST_IDENTIFIER:
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER: {
         if (mylite_system_variable_identifier_is_system_variable(expression)) {
+            return MYLITE_OK;
+        }
+        if (mylite_user_variable_identifier_is_user_variable(expression)) {
             return MYLITE_OK;
         }
         enum mylite_select_order_key_kind kind = MYLITE_SELECT_ORDER_KEY_EXPRESSION;

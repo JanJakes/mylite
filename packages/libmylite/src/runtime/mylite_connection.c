@@ -6,9 +6,11 @@
 #include "mylite_diagnostics.h"
 #include "mylite_error_codes.h"
 #include "mylite_expression.h"
+#include "mylite_prepared_statements.h"
 #include "mylite_runtime.h"
 #include "mylite_span.h"
 #include "mylite_transactions.h"
+#include "mylite_user_variables.h"
 #include "mylite_vfs.h"
 #include "sqlite3.h"
 
@@ -109,6 +111,8 @@ void mylite_close(mylite_db *database)
     mylite_expression_warnings_deinit(&database->warnings);
     free(database->selected_schema);
     free(database->sql_mode);
+    mylite_user_variable_store_deinit(&database->user_variables);
+    mylite_prepared_statement_store_deinit(&database->prepared_statements);
     mylite_transaction_savepoint_state_deinit(&database->savepoints);
     mylite_transaction_clear_pending_auto_increments(database);
     free(database);

@@ -3,6 +3,7 @@
 #include "mylite_connection.h"
 #include "mylite_connection_statement.h"
 #include "mylite_dml_statement.h"
+#include "mylite_prepared_statements.h"
 #include "mylite_runtime.h"
 #include "mylite_schema.h"
 #include "mylite_select_context.h"
@@ -11,6 +12,7 @@
 #include "mylite_table_ddl.h"
 #include "mylite_table_ddl_statement.h"
 #include "mylite_transactions.h"
+#include "mylite_user_variables.h"
 
 int mylite_statement_execute_custom(mylite_stmt *stmt)
 {
@@ -43,6 +45,9 @@ int mylite_statement_execute_custom_with_callbacks(
     }
     if (stmt->kind == MYLITE_STMT_UNION_QUERY) {
         return mylite_select_union_execute_query(stmt, callbacks->union_callbacks);
+    }
+    if (stmt->kind == MYLITE_STMT_EXECUTE_PREPARED) {
+        return mylite_prepared_statement_execute_execute(stmt);
     }
     if (stmt->executed) {
         return MYLITE_DONE;
@@ -82,6 +87,15 @@ int mylite_statement_execute_custom_with_callbacks(
         break;
     case MYLITE_STMT_SET_SYSTEM_VARIABLE:
         status = mylite_connection_execute_set_system_variable_statement(stmt);
+        break;
+    case MYLITE_STMT_SET_USER_VARIABLE:
+        status = mylite_user_variable_execute_set_statement(stmt);
+        break;
+    case MYLITE_STMT_PREPARE_STATEMENT:
+        status = mylite_prepared_statement_execute_prepare(stmt);
+        break;
+    case MYLITE_STMT_DEALLOCATE_PREPARE:
+        status = mylite_prepared_statement_execute_deallocate(stmt);
         break;
     case MYLITE_STMT_CREATE_TABLE:
         status = mylite_table_ddl_execute_create_table_statement(
@@ -140,6 +154,8 @@ int mylite_statement_execute_custom_with_callbacks(
         return callbacks->execute_table_select(stmt);
     case MYLITE_STMT_UNION_QUERY:
         return mylite_select_union_execute_query(stmt, callbacks->union_callbacks);
+    case MYLITE_STMT_EXECUTE_PREPARED:
+        return mylite_prepared_statement_execute_execute(stmt);
     case MYLITE_STMT_SQLITE:
         status = MYLITE_MISUSE;
         break;

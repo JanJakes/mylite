@@ -43,6 +43,7 @@ static int test_update_single_table_syntax(void);
 static int test_delete_single_table_syntax(void);
 static int test_transaction_statement_syntax(void);
 static int test_savepoint_statement_syntax(void);
+static int test_user_variable_and_prepared_statement_syntax(void);
 static int test_select_expression_list(void);
 static int test_expression_operator_foundation_syntax(void);
 static int test_scalar_function_call_syntax(void);
@@ -198,6 +199,7 @@ int main(void)
     failures += test_delete_single_table_syntax();
     failures += test_transaction_statement_syntax();
     failures += test_savepoint_statement_syntax();
+    failures += test_user_variable_and_prepared_statement_syntax();
     failures += test_select_expression_list();
     failures += test_expression_operator_foundation_syntax();
     failures += test_scalar_function_call_syntax();
@@ -5162,6 +5164,79 @@ static int test_savepoint_statement_syntax(void)
     failures += parse_sql("RELEASE SAVEPOINT", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("RELEASE SAVEPOINT select", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_user_variable_and_prepared_statement_syntax(void)
+{
+    enum {
+        set_statement_index = 0,
+        prepare_statement_index = 1,
+        execute_statement_index = 2,
+        deallocate_statement_index = 3,
+        drop_statement_index = 4,
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *assignment_list = NULL;
+    const struct mylite_sql_ast_node *assignment = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SET @a = 1, @b := @a + 1, @'dash-name' = 'x'; "
+                          "PREPARE stmt FROM 'SELECT ? + ?'; "
+                          "EXECUTE stmt USING @a, @b; "
+                          "DEALLOCATE PREPARE stmt; "
+                          "DROP PREPARE `select`",
+                          MYLITE_SQL_PARSE_OK, &result);
+
+    statement = child_at(result.root, set_statement_index);
+    failures += expect_node(statement, MYLITE_SQL_AST_SET_USER_VARIABLE_STATEMENT,
+                            "SET user variable statement");
+    failures += expect_child_count(statement, 1U, "SET user variable child count");
+    assignment_list = child_at(statement, 0U);
+    failures += expect_node(assignment_list, MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT_LIST,
+                            "SET user variable assignment list");
+    failures += expect_child_count(assignment_list, 3U, "SET user variable assignment count");
+    assignment = child_at(assignment_list, 0U);
+    failures += expect_node(assignment, MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT,
+                            "SET user variable assignment");
+    failures += expect_span_text(child_at(assignment, 0U), "@a", "SET user variable name");
+    assignment = child_at(assignment_list, 2U);
+    failures +=
+        expect_span_text(child_at(assignment, 0U), "@'dash-name'", "SET quoted user variable name");
+
+    statement = child_at(result.root, prepare_statement_index);
+    failures += expect_node(statement, MYLITE_SQL_AST_PREPARE_STATEMENT, "PREPARE statement");
+    failures += expect_child_count(statement, 2U, "PREPARE child count");
+    failures += expect_span_text(child_at(statement, 0U), "stmt", "PREPARE name");
+    failures += expect_literal(child_at(statement, 1U), MYLITE_SQL_AST_LITERAL_STRING,
+                               "PREPARE literal source");
+
+    statement = child_at(result.root, execute_statement_index);
+    failures += expect_node(statement, MYLITE_SQL_AST_EXECUTE_STATEMENT, "EXECUTE statement");
+    failures += expect_child_count(statement, 2U, "EXECUTE child count");
+    failures += expect_node(child_at(statement, 1U), MYLITE_SQL_AST_EXECUTE_USING_LIST,
+                            "EXECUTE using list");
+    failures += expect_child_count(child_at(statement, 1U), 2U, "EXECUTE using count");
+
+    statement = child_at(result.root, deallocate_statement_index);
+    failures += expect_node(statement, MYLITE_SQL_AST_DEALLOCATE_PREPARE_STATEMENT,
+                            "DEALLOCATE PREPARE statement");
+    failures += expect_span_text(child_at(statement, 0U), "stmt", "DEALLOCATE name");
+
+    statement = child_at(result.root, drop_statement_index);
+    failures += expect_node(statement, MYLITE_SQL_AST_DEALLOCATE_PREPARE_STATEMENT,
+                            "DROP PREPARE statement");
+    failures += expect_span_text(child_at(statement, 0U), "`select`", "DROP PREPARE name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SET @a = 1, @@sql_mode = ''", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT ? AS v", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("EXECUTE stmt USING 1", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

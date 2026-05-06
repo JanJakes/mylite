@@ -9,6 +9,7 @@
 #include "mylite_select_resolve.h"
 #include "mylite_span.h"
 #include "mylite_system_variables.h"
+#include "mylite_user_variables.h"
 
 #include <stdlib.h>
 
@@ -357,6 +358,9 @@ static int resolve_table_select_expression_identifier(void *user_data,
     if (mylite_system_variable_identifier_is_system_variable(identifier)) {
         return mylite_system_variable_eval_identifier(context->stmt->database, identifier,
                                                       out_value);
+    }
+    if (mylite_user_variable_identifier_is_user_variable(identifier)) {
+        return mylite_user_variable_eval_identifier(context->stmt->database, identifier, out_value);
     }
 
     if (context->having_resolution) {

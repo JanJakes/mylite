@@ -8,11 +8,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+static const mylite_stmt *effective_metadata_stmt(const mylite_stmt *stmt);
 static void result_column_metadata_deinit(struct mylite_result_column_metadata *metadata);
 
 const struct mylite_result_column_metadata *mylite_result_metadata_column(const mylite_stmt *stmt,
                                                                           int column)
 {
+    stmt = effective_metadata_stmt(stmt);
     if (stmt == NULL || column < 0 || stmt->result_metadata.columns == NULL ||
         (size_t)column >= stmt->result_metadata.column_count) {
         return NULL;
@@ -68,6 +70,7 @@ size_t mylite_result_metadata_label_count(const struct mylite_result_metadata *m
 
 int mylite_column_count(const mylite_stmt *stmt)
 {
+    stmt = effective_metadata_stmt(stmt);
     if (stmt == NULL) {
         return 0;
     }
@@ -90,6 +93,7 @@ const char *mylite_column_name(const mylite_stmt *stmt, int column)
     const struct mylite_result_column_metadata *metadata =
         mylite_result_metadata_column(stmt, column);
 
+    stmt = effective_metadata_stmt(stmt);
     if (metadata != NULL && metadata->name != NULL) {
         return metadata->name;
     }
@@ -205,6 +209,15 @@ int mylite_column_is_nullable(const mylite_stmt *stmt, int column)
         return 1;
     }
     return 0;
+}
+
+static const mylite_stmt *effective_metadata_stmt(const mylite_stmt *stmt)
+{
+    if (stmt != NULL && stmt->kind == MYLITE_STMT_EXECUTE_PREPARED &&
+        stmt->prepared_execute_stmt != NULL) {
+        return stmt->prepared_execute_stmt;
+    }
+    return stmt;
 }
 
 static void result_column_metadata_deinit(struct mylite_result_column_metadata *metadata)

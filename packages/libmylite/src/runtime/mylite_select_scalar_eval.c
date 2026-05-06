@@ -10,6 +10,7 @@
 #include "mylite_span.h"
 #include "mylite_statement.h"
 #include "mylite_system_variables.h"
+#include "mylite_user_variables.h"
 #include "sql/mylite_ast.h"
 
 #include <stdint.h>
@@ -635,6 +636,9 @@ static int scalar_context_resolve_identifier(void *user_data,
     if (mylite_system_variable_identifier_is_system_variable(identifier)) {
         return mylite_system_variable_eval_identifier(context->stmt->database, identifier,
                                                       out_value);
+    }
+    if (mylite_user_variable_identifier_is_user_variable(identifier)) {
+        return mylite_user_variable_eval_identifier(context->stmt->database, identifier, out_value);
     }
     return -1;
 }

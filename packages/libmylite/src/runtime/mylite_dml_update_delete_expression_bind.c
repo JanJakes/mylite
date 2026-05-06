@@ -6,6 +6,7 @@
 #include "mylite_select_types.h"
 #include "mylite_span.h"
 #include "mylite_system_variables.h"
+#include "mylite_user_variables.h"
 #include "sql/mylite_ast.h"
 #include "sql/mylite_expression.h"
 
@@ -39,6 +40,9 @@ int mylite_dml_bind_mutation_expression(
     case MYLITE_SQL_AST_IDENTIFIER:
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER: {
         if (mylite_system_variable_identifier_is_system_variable(expression)) {
+            return MYLITE_OK;
+        }
+        if (mylite_user_variable_identifier_is_user_variable(expression)) {
             return MYLITE_OK;
         }
         size_t column_index = table->column_count;
@@ -157,6 +161,13 @@ int mylite_dml_bind_mutation_expression(
     case MYLITE_SQL_AST_SET_NAMES_STATEMENT:
     case MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT:
     case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT:
+    case MYLITE_SQL_AST_SET_USER_VARIABLE_STATEMENT:
+    case MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT_LIST:
+    case MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT:
+    case MYLITE_SQL_AST_PREPARE_STATEMENT:
+    case MYLITE_SQL_AST_EXECUTE_STATEMENT:
+    case MYLITE_SQL_AST_EXECUTE_USING_LIST:
+    case MYLITE_SQL_AST_DEALLOCATE_PREPARE_STATEMENT:
     case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_COLUMN_DEFINITION_LIST:
     case MYLITE_SQL_AST_COLUMN_DEFINITION:

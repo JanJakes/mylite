@@ -16,8 +16,8 @@ The work is intentionally split into reviewable slices:
 - `SHOW CREATE TABLE` rendering
 - insert/update child-row checks
 - update/delete parent-row checks and referential actions
-- DDL dependency restrictions for parent indexes, parent tables, renames, and
-  truncation
+- DDL dependency restrictions for child/parent indexes, parent/child tables,
+  renames, truncation, and FK columns
 
 Out of scope for the first implementation slices:
 
@@ -88,6 +88,10 @@ Observed rule and error details:
   but later unmatched child inserts fail with 1452.
 - Dropping a foreign key reports affected rows `0` and leaves the supporting
   child index in place.
+- Dropping a child supporting index, a referenced parent `PRIMARY` index, or a
+  referenced parent unique index while the foreign key exists fails with error
+  1553, including when `foreign_key_checks=0`; an `AUTO_INCREMENT` primary key
+  still fails first with error 1075.
 - Updating or deleting parent rows that are referenced by `RESTRICT` or
   `NO ACTION` constraints fails with error 1451 / SQLSTATE `23000`.
 - `CASCADE`, `SET NULL`, and default `NO ACTION` rules are reported in
@@ -148,9 +152,12 @@ reuses the supporting child index, validates existing child rows while
 `foreign_key_checks=0`, and permits missing referenced tables only while checks
 are disabled. FK-only `ALTER TABLE ... DROP FOREIGN KEY` removes only
 foreign-key metadata and leaves the supporting child index in place.
-`ON UPDATE CASCADE`, `ON UPDATE SET NULL`, mixed-action ALTER FK operations,
-recursive referential actions, and dependency restrictions remain follow-up
-slices.
+`DROP INDEX` and `ALTER TABLE ... DROP INDEX` / `DROP PRIMARY KEY` reject
+child supporting indexes and parent primary/unique indexes required by foreign
+keys with error 1553, even while `foreign_key_checks=0`. `ON UPDATE CASCADE`,
+`ON UPDATE SET NULL`, mixed-action ALTER FK operations, recursive referential
+actions, and table/rename/truncate/column dependency restrictions remain
+follow-up slices.
 
 ## DDL Semantics
 
@@ -173,6 +180,12 @@ catalog rewrites participate in the shadow-table ALTER model.
 
 `ALTER TABLE ... DROP FOREIGN KEY` removes only the foreign-key catalog rows.
 It must not remove the supporting child index.
+
+`DROP INDEX` and `ALTER TABLE ... DROP INDEX` / `DROP PRIMARY KEY` must reject
+indexes that are still required by a foreign key. MyLite enforces this for
+child supporting indexes and parent primary/unique indexes recorded in the
+foreign-key catalog. Broader table, rename, truncate, and column dependency
+rules remain follow-up slices.
 
 ## DML Semantics
 
@@ -202,7 +215,8 @@ The foreign-key catalog backs:
   rows
 - `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS` rows
 - `SHOW CREATE TABLE` foreign-key lines
-- dependency checks for parent unique indexes
+- dependency checks for child supporting indexes and parent primary/unique
+  indexes
 
 Ordering must follow observed MySQL behavior for each metadata surface. Existing
 primary-key, unique-key, and CHECK rows must retain their ordering.

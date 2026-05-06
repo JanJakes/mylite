@@ -6,6 +6,7 @@
 #include "mylite_table_ddl_alter_index_build.h"
 #include "mylite_table_ddl_alter_index_model.h"
 #include "mylite_table_ddl_alter_model.h"
+#include "mylite_table_ddl_index_validate.h"
 
 #include <stdbool.h>
 #include <stdlib.h>
@@ -184,6 +185,17 @@ static int apply_alter_table_drop_primary_key(
             return mylite_table_ddl_set_alter_table_wrong_auto_increment_error(database);
         }
     }
+    int status = mylite_table_ddl_validate_index_foreign_key_dependencies(
+        database,
+        model->schema_name,
+        model->table_name,
+        "PRIMARY",
+        model->temporary
+    );
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
     return mylite_table_ddl_remove_alter_table_index(model, primary_index);
 }
 
@@ -196,6 +208,17 @@ static int apply_alter_table_drop_index(
 
     if (index == model->index_count || mylite_ascii_case_equal(action->old_name, "PRIMARY")) {
         return mylite_table_ddl_set_alter_table_cant_drop_column_error(database, action->old_name);
+    }
+    int status = mylite_table_ddl_validate_index_foreign_key_dependencies(
+        database,
+        model->schema_name,
+        model->table_name,
+        model->indexes[index].name,
+        model->temporary
+    );
+
+    if (status != MYLITE_OK) {
+        return status;
     }
     return mylite_table_ddl_remove_alter_table_index(model, index);
 }

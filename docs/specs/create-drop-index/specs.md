@@ -561,6 +561,9 @@ The first executable slice is implemented for supported base tables:
   checks, including prefix-length comparisons and nullable unique-key behavior.
 - `DROP INDEX name ON table` removes metadata rows and removes the index from
   later unique-conflict checks.
+- `DROP INDEX` rejects child supporting indexes and parent primary/unique
+  indexes required by foreign-key catalog rows with error 1553, even while
+  `foreign_key_checks=0`.
 - warning 3502 is recorded for HASH fallback and warning 1831 is recorded for
   redundant index definitions.
 - `WITH PARSER` is accepted by the parser only on the full-text standalone
@@ -585,8 +588,8 @@ metadata-only.
 - Optimizer behavior, invisible-index use, index hints, `SHOW INDEX`,
   `SHOW CREATE TABLE`, and Performance Schema/sys index statistics are
   deferred.
-- Foreign-key dependency checks, generated columns, triggers, privileges,
-  partition routing, and online DDL concurrency are deferred.
+- Generated columns, triggers, privileges, partition routing, and online DDL
+  concurrency are deferred.
 - Full warning records and SQLSTATE/numeric-code public exposure remain tied
   to MyLite's broader diagnostics work.
 
@@ -602,6 +605,8 @@ Implementation tests should cover these MySQL 8.4.9 expectations:
 | nullable unique index with multiple `NULL` values | Succeeds; later duplicate non-`NULL` values fail, additional `NULL` values do not conflict. |
 | `CREATE UNIQUE INDEX uq_a ON t (a) INVISIBLE` | Succeeds; duplicate enforcement still applies. |
 | `DROP INDEX uq_a ON t` | Succeeds; later duplicate values on `a` are allowed unless another unique key conflicts. |
+| `DROP INDEX fk_child ON child` while `fk_child` supports a foreign key | Error 1553; the foreign key and index remain. |
+| `DROP INDEX parent_unique ON parent` while a foreign key references it | Error 1553 even when `foreign_key_checks=0`; the foreign key and index remain. |
 | `CREATE INDEX idx_pre USING BTREE ON t (a)` | Succeeds. |
 | `CREATE INDEX idx_post ON t (a) USING BTREE` | Succeeds. |
 | `CREATE INDEX idx_type ON t (a) TYPE BTREE` | Succeeds. |

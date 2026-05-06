@@ -60,7 +60,8 @@ commit.
 
 ## DDL Dependencies
 
-- [ ] Reject dropping a parent primary/unique index needed by a foreign key.
+- [x] Reject dropping a child supporting index or parent primary/unique index
+      needed by a foreign key.
 - [ ] Reject or correctly handle dropping parent and child tables according to
       MySQL `foreign_key_checks` behavior.
 - [ ] Reject or correctly rewrite `RENAME TABLE` / `ALTER TABLE ... RENAME`

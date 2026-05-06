@@ -327,12 +327,17 @@ Runtime probes observed:
   supporting child index remained.
 - `DROP INDEX supporting_index` while the foreign key existed failed with
   error 1553.
+- dropping the referenced parent `PRIMARY` or unique index while the foreign
+  key existed also failed with error 1553, including with
+  `foreign_key_checks=0`.
 - missing foreign-key names failed with error 1091.
 
 Foreign keys require compatible child and parent column definitions, usable
 indexes, and storage-engine support. MyLite implements FK-only ADD/DROP shapes
-using the foreign-key catalog and existing DML enforcement. Mixed FK actions
-with supported column/index actions, dependency checks, and broader recursive
+using the foreign-key catalog and existing DML enforcement. MyLite also rejects
+dropping child supporting indexes and parent primary/unique indexes recorded in
+the foreign-key catalog. Mixed FK actions with supported column/index actions,
+broader table/rename/truncate/column dependency checks, and recursive
 referential behavior remain deferred.
 
 ## MyLite behavior
@@ -642,8 +647,8 @@ Foreign-key validation, once executable:
 - enforce future inserts, updates, deletes, and parent-key updates once checks
   are enabled
 - preserve supporting child indexes after `DROP FOREIGN KEY`
-- reject dropping supporting indexes with 1553 while dependent foreign keys
-  exist
+- reject dropping child supporting indexes and parent primary/unique indexes
+  with 1553 while dependent foreign keys exist
 
 ### Runtime and storage design
 

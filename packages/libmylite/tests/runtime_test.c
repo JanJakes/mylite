@@ -115,6 +115,7 @@ enum {
     mysql_warning_duplicate_entry = 1062,
     mysql_warning_multiple_primary = 1068,
     mysql_warning_key_column_missing = 1072,
+    mysql_warning_wrong_auto_key = 1075,
     mysql_warning_unknown_table = 1109,
     mysql_warning_invalid_null = 1138,
     mysql_warning_no_such_table = 1146,
@@ -148,6 +149,7 @@ enum {
     mysql_warning_datetime_function_overflow = 1441,
     mysql_warning_row_is_referenced = 1451,
     mysql_warning_no_referenced_row = 1452,
+    mysql_warning_drop_index_foreign_key = 1553,
     mysql_warning_wrong_paramcount_to_native_fct = 1582,
     mysql_warning_wrong_parameters_to_native_fct = 1583,
     mysql_warning_unknown_locale = 1649,
@@ -521,6 +523,8 @@ static int test_foreign_key_child_update_execution(void);
 static int test_foreign_key_delete_actions_execution(void);
 
 static int test_alter_table_foreign_key_execution(void);
+
+static int test_foreign_key_index_dependency_execution(void);
 
 static int test_select_table_core_execution(void);
 
@@ -982,6 +986,7 @@ int main(void) {
     failures += test_foreign_key_child_update_execution();
     failures += test_foreign_key_delete_actions_execution();
     failures += test_alter_table_foreign_key_execution();
+    failures += test_foreign_key_index_dependency_execution();
     failures += test_select_table_core_execution();
     failures += test_inner_join_execution();
     failures += test_outer_join_execution();
@@ -49410,6 +49415,224 @@ static int test_alter_table_foreign_key_execution(void) {
         one_count_values,
         1,
         "alter foreign key checks off key column usage"
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_foreign_key_index_dependency_execution(void) {
+    static const char *const count_columns[] = {"c"};
+    static const char *const one_count_values[] = {"1"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open foreign key index database");
+    failures += execute_sql(database, "CREATE DATABASE fk_index_dependencies", MYLITE_DONE);
+    failures += execute_sql(database, "USE fk_index_dependencies", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "CREATE TABLE parent_pk_dep (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE child_pk_dep ("
+        "id INT PRIMARY KEY, "
+        "parent_id INT, "
+        "CONSTRAINT fk_parent_pk_dep FOREIGN KEY (parent_id) REFERENCES parent_pk_dep(id)"
+        ")",
+        MYLITE_DONE
+    );
+
+    failures +=
+        prepare_sql(database, "ALTER TABLE parent_pk_dep DROP PRIMARY KEY", MYLITE_OK, &stmt);
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "foreign key blocks alter drop primary"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Cannot drop index 'PRIMARY': needed in a foreign key constraint",
+        "foreign key alter drop primary error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_drop_index_foreign_key,
+        "foreign key alter drop primary code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "DROP INDEX `PRIMARY` ON parent_pk_dep", MYLITE_OK, &stmt);
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "foreign key blocks standalone drop primary"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Cannot drop index 'PRIMARY': needed in a foreign key constraint",
+        "foreign key standalone drop primary error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_drop_index_foreign_key,
+        "foreign key standalone drop primary code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE parent_ai_dep (id INT AUTO_INCREMENT PRIMARY KEY)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE child_ai_dep ("
+        "id INT PRIMARY KEY, "
+        "parent_id INT, "
+        "CONSTRAINT fk_parent_ai_dep FOREIGN KEY (parent_id) REFERENCES parent_ai_dep(id)"
+        ")",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(database, "DROP INDEX `PRIMARY` ON parent_ai_dep", MYLITE_OK, &stmt);
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "foreign key standalone drop auto primary keeps mysql precedence"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Incorrect table definition; there can be only one auto column and it must be defined "
+        "as a key",
+        "foreign key standalone drop auto primary error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_wrong_auto_key,
+        "foreign key standalone drop auto primary code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "ALTER TABLE child_pk_dep DROP INDEX fk_parent_pk_dep",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "foreign key blocks alter drop supporting index"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Cannot drop index 'fk_parent_pk_dep': needed in a foreign key constraint",
+        "foreign key alter drop supporting index error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_drop_index_foreign_key,
+        "foreign key alter drop supporting index code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "DROP INDEX fk_parent_pk_dep ON child_pk_dep", MYLITE_OK, &stmt);
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "foreign key blocks standalone drop supporting index"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Cannot drop index 'fk_parent_pk_dep': needed in a foreign key constraint",
+        "foreign key standalone drop supporting index error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_drop_index_foreign_key,
+        "foreign key standalone drop supporting index code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(
+        database,
+        "ALTER TABLE child_pk_dep DROP FOREIGN KEY fk_parent_pk_dep",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "DROP INDEX fk_parent_pk_dep ON child_pk_dep", MYLITE_DONE);
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE parent_unique_dep (id INT PRIMARY KEY, code INT UNIQUE)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE child_unique_dep ("
+        "id INT PRIMARY KEY, "
+        "code INT, "
+        "CONSTRAINT fk_parent_unique_dep FOREIGN KEY (code) REFERENCES parent_unique_dep(code)"
+        ")",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(database, "DROP INDEX code ON parent_unique_dep", MYLITE_OK, &stmt);
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "foreign key blocks parent unique drop index"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Cannot drop index 'code': needed in a foreign key constraint",
+        "foreign key parent unique drop index error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_drop_index_foreign_key,
+        "foreign key parent unique drop index code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "SET foreign_key_checks=0", MYLITE_DONE);
+    failures +=
+        prepare_sql(database, "ALTER TABLE parent_unique_dep DROP INDEX code", MYLITE_OK, &stmt);
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "foreign key checks off still blocks parent unique drop index"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Cannot drop index 'code': needed in a foreign key constraint",
+        "foreign key checks off parent unique drop index error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_drop_index_foreign_key,
+        "foreign key checks off parent unique drop index code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.STATISTICS "
+        "WHERE TABLE_SCHEMA = 'fk_index_dependencies' "
+        "AND TABLE_NAME = 'parent_unique_dep' "
+        "AND INDEX_NAME = 'code'",
+        count_columns,
+        1,
+        one_count_values,
+        1,
+        "foreign key blocked parent unique index remains"
     );
 
     mylite_close(database);

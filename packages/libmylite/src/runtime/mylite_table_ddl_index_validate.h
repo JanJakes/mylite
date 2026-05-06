@@ -17,6 +17,13 @@ int mylite_table_ddl_validate_drop_index_plan(
     struct mylite_index_ddl_plan *plan,
     struct mylite_alter_table_model *model
 );
+int mylite_table_ddl_validate_index_foreign_key_dependencies(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    const char *index_name,
+    bool temporary
+);
 int mylite_table_ddl_validate_create_index_columns(
     mylite_db *database,
     const struct mylite_alter_table_model *model,

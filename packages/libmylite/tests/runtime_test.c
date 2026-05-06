@@ -2870,6 +2870,39 @@ static int test_information_schema_check_constraints_execution(void) {
     static const char *const show_tables_values[] = {"CHECK_CONSTRAINTS", "SYSTEM VIEW"};
     static const char *const count_columns[] = {"c"};
     static const char *const count_values[] = {"0"};
+    static const char *const check_values[] = {
+        "def",
+        "mylite_check_constraints",
+        "check_constraints_create_chk_1",
+        "(`id` > 0)",
+        "def",
+        "mylite_check_constraints",
+        "chk_score",
+        "(`score` < 10)",
+    };
+    static const char *const table_constraint_values[] = {
+        "def",
+        "mylite_check_constraints",
+        "check_constraints_create_chk_1",
+        "mylite_check_constraints",
+        "check_constraints_create",
+        "CHECK",
+        "NO",
+        "def",
+        "mylite_check_constraints",
+        "chk_score",
+        "mylite_check_constraints",
+        "check_constraints_create",
+        "CHECK",
+        "YES",
+        "def",
+        "mylite_check_constraints",
+        "PRIMARY",
+        "mylite_check_constraints",
+        "check_constraints_fixture",
+        "PRIMARY KEY",
+        "YES",
+    };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -2932,22 +2965,41 @@ static int test_information_schema_check_constraints_execution(void) {
         "information schema check constraints count filter"
     );
 
-    failures += prepare_sql(
+    failures += execute_sql(
         database,
         "CREATE TABLE check_constraints_create ("
         "id INT CHECK (id > 0) NOT ENFORCED,"
-        "body VARCHAR(20),"
-        "CONSTRAINT chk_body CHECK (body <> '') ENFORCED)",
-        MYLITE_OK,
-        &stmt
+        "score INT,"
+        "CONSTRAINT chk_score CHECK (score < 10) ENFORCED)",
+        MYLITE_DONE
     );
-    failures += expect_status(
-        mylite_step(stmt),
-        MYLITE_UNSUPPORTED,
-        "create check does not create check constraints rows"
+    failures += expect_select_rows(
+        database,
+        "SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS",
+        columns,
+        check_constraints_column_count,
+        check_values,
+        2,
+        "create check constraints rows"
     );
-    mylite_finalize(stmt);
-    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT * FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS",
+        (const char *[]){
+            "CONSTRAINT_CATALOG",
+            "CONSTRAINT_SCHEMA",
+            "CONSTRAINT_NAME",
+            "TABLE_SCHEMA",
+            "TABLE_NAME",
+            "CONSTRAINT_TYPE",
+            "ENFORCED",
+        },
+        table_constraints_column_count,
+        table_constraint_values,
+        3,
+        "table constraints check rows"
+    );
+    failures += execute_sql(database, "DROP TABLE check_constraints_create", MYLITE_DONE);
     failures += expect_empty_information_schema_table(
         database,
         "SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS",
@@ -33867,32 +33919,22 @@ static int test_create_table_base_execution(void) {
     failures += expect_simple_create_column_rows(database);
     failures += expect_simple_create_statistics_rows(database);
 
-    failures += prepare_sql(
+    failures += execute_sql(
         database,
         "CREATE TABLE check_constraints ("
         "id INT CHECK (id > 0) NOT ENFORCED, "
         "body VARCHAR(20), "
         "CONSTRAINT chk_body CHECK (body <> '') ENFORCED)",
-        MYLITE_OK,
-        &stmt
+        MYLITE_DONE
     );
-    failures += expect_status(
-        mylite_step(stmt),
-        MYLITE_UNSUPPORTED,
-        "create table check placeholder rejected"
-    );
-    failures += expect_contains(
-        mylite_error_message(database),
-        "CHECK",
-        "create table check unsupported error"
-    );
-    mylite_finalize(stmt);
-    stmt = NULL;
-    failures += expect_no_information_schema_table_name_row(database, "check_constraints");
-    failures += expect_no_information_schema_table_constraints_row(
+    failures += expect_information_schema_table_constraints_row(
         database,
-        "check_constraints",
-        "chk_body"
+        &(const struct expected_table_constraints_row){
+            .schema_name = "mylite_ct11",
+            .table_name = "check_constraints",
+            .constraint_name = "chk_body",
+            .constraint_type = "CHECK",
+        }
     );
 
     failures += execute_sql(

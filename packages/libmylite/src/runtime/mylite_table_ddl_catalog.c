@@ -26,6 +26,21 @@ static int insert_column_catalog_rows(
     const struct mylite_create_table_plan *plan
 );
 
+static int insert_check_constraint_catalog_rows(
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_create_table_plan *plan
+);
+
+static int insert_check_constraint_catalog_row(
+    mylite_db *database,
+    sqlite3_stmt *insert,
+    const char *schema_name,
+    const struct mylite_create_table_plan *plan,
+    const struct mylite_create_table_check *check,
+    size_t check_index
+);
+
 static int insert_column_catalog_row(
     mylite_db *database,
     sqlite3_stmt *insert,
@@ -70,6 +85,9 @@ int mylite_table_ddl_insert_create_table_catalog_rows(
     if (status == MYLITE_OK) {
         status =
             mylite_table_ddl_insert_create_table_index_catalog_rows(database, schema_name, plan);
+    }
+    if (status == MYLITE_OK) {
+        status = insert_check_constraint_catalog_rows(database, schema_name, plan);
     }
     if (status == MYLITE_OK) {
         status = refresh_create_table_statistics(database, schema_name, plan);
@@ -193,6 +211,97 @@ static int insert_column_catalog_rows(
 
     sqlite3_finalize(insert);
     return MYLITE_OK;
+}
+
+static int insert_check_constraint_catalog_rows(
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_create_table_plan *plan
+) {
+    sqlite3_stmt *insert = NULL;
+    char *sql = NULL;
+    int rc = SQLITE_OK;
+
+    if (plan->check_count == 0U) {
+        return MYLITE_OK;
+    }
+
+    sql = sqlite3_mprintf(
+        "INSERT INTO %s("
+        "constraint_catalog, constraint_schema, constraint_name, table_schema, table_name, "
+        "check_clause, enforced, ordinal_position)"
+        " VALUES('def', ?, ?, ?, ?, ?, ?, ?)",
+        mylite_catalog_check_constraint_catalog_name(plan->temporary)
+    );
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &insert, NULL);
+    sqlite3_free(sql);
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+
+    for (size_t index = 0U; index < plan->check_count; ++index) {
+        int status = insert_check_constraint_catalog_row(
+            database,
+            insert,
+            schema_name,
+            plan,
+            &plan->checks[index],
+            index
+        );
+
+        if (status != MYLITE_OK) {
+            sqlite3_finalize(insert);
+            return status;
+        }
+    }
+
+    sqlite3_finalize(insert);
+    return MYLITE_OK;
+}
+
+static int insert_check_constraint_catalog_row(
+    mylite_db *database,
+    sqlite3_stmt *insert,
+    const char *schema_name,
+    const struct mylite_create_table_plan *plan,
+    const struct mylite_create_table_check *check,
+    size_t check_index
+) {
+    enum {
+        bind_constraint_schema = 1,
+        bind_constraint_name = 2,
+        bind_table_schema = 3,
+        bind_table_name = 4,
+        bind_check_clause = 5,
+        bind_enforced = 6,
+        bind_ordinal_position = 7,
+    };
+
+    const char *enforced = check->enforced ? "YES" : "NO";
+    int rc = SQLITE_OK;
+
+    sqlite3_reset(insert);
+    sqlite3_clear_bindings(insert);
+    sqlite3_bind_text(
+        insert,
+        bind_constraint_schema,
+        schema_name,
+        -1,
+        sqlite_transient_destructor()
+    );
+    sqlite3_bind_text(insert, bind_constraint_name, check->name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(insert, bind_table_schema, schema_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(insert, bind_table_name, plan->table_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(insert, bind_check_clause, check->clause, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(insert, bind_enforced, enforced, -1, SQLITE_STATIC);
+    sqlite3_bind_int64(insert, bind_ordinal_position, (sqlite3_int64)check_index + 1);
+
+    rc = sqlite3_step(insert);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
 static int insert_column_catalog_row(

@@ -12,6 +12,7 @@ enum mylite_catalog_table_row_delete_flags {
     MYLITE_CATALOG_DELETE_TABLE_INDEXES = 1U << 0,
     MYLITE_CATALOG_DELETE_TABLE_COLUMNS = 1U << 1,
     MYLITE_CATALOG_DELETE_TABLE_ROW = 1U << 2,
+    MYLITE_CATALOG_DELETE_TABLE_CHECKS = 1U << 3,
 };
 
 struct mylite_catalog_table_metadata {
@@ -134,6 +135,7 @@ int mylite_catalog_delete_schema(mylite_db *database, const char *schema_name);
 const char *mylite_catalog_table_catalog_name(bool temporary);
 const char *mylite_catalog_column_catalog_name(bool temporary);
 const char *mylite_catalog_index_catalog_name(bool temporary);
+const char *mylite_catalog_check_constraint_catalog_name(bool temporary);
 char *mylite_catalog_physical_table_name(const char *schema_name, const char *table_name);
 
 #endif

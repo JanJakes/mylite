@@ -244,13 +244,26 @@ static const char information_schema_table_constraints_sql[] =
     "table_name AS TABLE_NAME,"
     "CASE WHEN index_name = 'PRIMARY' THEN 'PRIMARY KEY' ELSE 'UNIQUE' END AS CONSTRAINT_TYPE,"
     "'YES' AS ENFORCED,"
+    "0 AS constraint_family,"
     "CASE WHEN index_name = 'PRIMARY' THEN 0 ELSE 1 END AS constraint_order,"
     "MIN(rowid) AS first_rowid "
     "FROM __mylite_index_catalog "
     "WHERE non_unique = 0 "
-    "GROUP BY table_schema, table_name, index_name) "
+    "GROUP BY table_schema, table_name, index_name "
+    "UNION ALL "
+    "SELECT constraint_catalog AS CONSTRAINT_CATALOG,"
+    "constraint_schema AS CONSTRAINT_SCHEMA,"
+    "constraint_name AS CONSTRAINT_NAME,"
+    "table_schema AS TABLE_SCHEMA,"
+    "table_name AS TABLE_NAME,"
+    "'CHECK' AS CONSTRAINT_TYPE,"
+    "enforced AS ENFORCED,"
+    "1 AS constraint_family,"
+    "2 AS constraint_order,"
+    "ordinal_position AS first_rowid "
+    "FROM __mylite_check_constraint_catalog) "
     "ORDER BY TABLE_SCHEMA COLLATE BINARY, TABLE_NAME COLLATE BINARY, "
-    "CONSTRAINT_NAME COLLATE NOCASE, constraint_order, first_rowid";
+    "constraint_family, CONSTRAINT_NAME COLLATE NOCASE, constraint_order, first_rowid";
 
 static const char information_schema_key_column_usage_sql[] =
     "SELECT CONSTRAINT_CATALOG,"
@@ -293,11 +306,13 @@ static const char information_schema_key_column_usage_sql[] =
     "WHERE i.non_unique = 0 AND i.column_name IS NOT NULL) "
     "ORDER BY TABLE_SCHEMA COLLATE BINARY, TABLE_NAME COLLATE BINARY, "
     "constraint_order, first_rowid, ORDINAL_POSITION";
-static const char information_schema_check_constraints_sql[] = "SELECT 'def' AS CONSTRAINT_CATALOG,"
-                                                               "'' AS CONSTRAINT_SCHEMA,"
-                                                               "'' AS CONSTRAINT_NAME,"
-                                                               "'' AS CHECK_CLAUSE "
-                                                               "WHERE 0";
+static const char information_schema_check_constraints_sql[] =
+    "SELECT constraint_catalog AS CONSTRAINT_CATALOG,"
+    "constraint_schema AS CONSTRAINT_SCHEMA,"
+    "constraint_name AS CONSTRAINT_NAME,"
+    "check_clause AS CHECK_CLAUSE "
+    "FROM __mylite_check_constraint_catalog "
+    "ORDER BY rowid";
 static const char information_schema_referential_constraints_sql[] =
     "SELECT 'def' AS CONSTRAINT_CATALOG,"
     "'' AS CONSTRAINT_SCHEMA,"

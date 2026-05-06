@@ -3,6 +3,7 @@
 #include "mylite_span.h"
 #include "mylite_table_ddl.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -13,10 +14,27 @@ static int copy_create_table_column_type(
 
 static int copy_create_table_column_attributes(
     const struct mylite_sql_ast_node *attributes,
-    struct mylite_create_table_column *column
+    struct mylite_create_table_column *column,
+    struct mylite_create_table_plan *plan
 );
 
 static char *copy_expression_text(const struct mylite_sql_ast_node *node);
+static const struct mylite_sql_ast_node *check_constraint_expression_node(
+    const struct mylite_sql_ast_node *constraint_name,
+    const struct mylite_sql_ast_node *first_child
+);
+static char *copy_check_constraint_name(
+    const struct mylite_create_table_plan *plan,
+    const struct mylite_sql_ast_node *constraint_name
+);
+static char *copy_generated_check_constraint_name(const struct mylite_create_table_plan *plan);
+static char *copy_check_clause_text(const struct mylite_sql_ast_node *expression);
+static char *copy_check_binary_expression_text(const struct mylite_sql_ast_node *expression);
+static char *copy_check_operand_text(const struct mylite_sql_ast_node *expression);
+static char *copy_check_identifier_text(const struct mylite_sql_ast_node *expression);
+static char *copy_check_parenthesized_expression_text(const struct mylite_sql_ast_node *expression);
+static char *copy_check_fallback_expression_text(const struct mylite_sql_ast_node *expression);
+static const char *check_operator_symbol(enum mylite_sql_ast_operator operator_kind);
 
 int mylite_table_ddl_copy_create_table_column(
     const struct mylite_sql_ast_node *column_node,
@@ -35,7 +53,11 @@ int mylite_table_ddl_copy_create_table_column(
     }
     status = copy_create_table_column_type(mylite_ast_child_at(column_node, 1U), &column.type);
     if (status == MYLITE_OK) {
-        status = copy_create_table_column_attributes(mylite_ast_child_at(column_node, 2U), &column);
+        status = copy_create_table_column_attributes(
+            mylite_ast_child_at(column_node, 2U),
+            &column,
+            plan
+        );
     }
     if (status != MYLITE_OK) {
         mylite_table_ddl_create_table_column_deinit(&column);
@@ -50,6 +72,39 @@ int mylite_table_ddl_copy_create_table_column(
 
     plan->columns = columns;
     plan->columns[plan->column_count++] = column;
+    return MYLITE_OK;
+}
+
+int mylite_table_ddl_add_create_table_check(
+    struct mylite_create_table_plan *plan,
+    const struct mylite_sql_ast_node *constraint_name,
+    const struct mylite_sql_ast_node *expression,
+    enum mylite_sql_ast_constraint_enforcement enforcement
+) {
+    struct mylite_create_table_check check = {
+        .enforced = enforcement != MYLITE_SQL_AST_CONSTRAINT_ENFORCEMENT_NOT_ENFORCED,
+    };
+    struct mylite_create_table_check *checks = NULL;
+
+    check.name = copy_check_constraint_name(plan, constraint_name);
+    if (check.name == NULL) {
+        return MYLITE_NOMEM;
+    }
+    check.clause = copy_check_clause_text(expression);
+    if (check.clause == NULL) {
+        free(check.name);
+        return MYLITE_NOMEM;
+    }
+
+    checks = realloc(plan->checks, (plan->check_count + 1U) * sizeof(*plan->checks));
+    if (checks == NULL) {
+        free(check.name);
+        free(check.clause);
+        return MYLITE_NOMEM;
+    }
+
+    plan->checks = checks;
+    plan->checks[plan->check_count++] = check;
     return MYLITE_OK;
 }
 
@@ -109,7 +164,8 @@ static int copy_create_table_column_type(
 
 static int copy_create_table_column_attributes(
     const struct mylite_sql_ast_node *attributes,
-    struct mylite_create_table_column *column
+    struct mylite_create_table_column *column,
+    struct mylite_create_table_plan *plan
 ) {
     const struct mylite_sql_ast_node *attribute = NULL;
 
@@ -169,9 +225,19 @@ static int copy_create_table_column_attributes(
         case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_REFERENCES:
             /* MySQL accepts inline REFERENCES in CREATE TABLE but does not create FK metadata. */
             break;
-        case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_CHECK:
-            column->has_unsupported_check = true;
-            break;
+        case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_CHECK: {
+            const struct mylite_sql_ast_node *first_child = mylite_ast_child_at(attribute, 0U);
+            const struct mylite_sql_ast_node *constraint_name =
+                first_child != NULL && first_child->kind == MYLITE_SQL_AST_IDENTIFIER ? first_child
+                                                                                      : NULL;
+
+            return mylite_table_ddl_add_create_table_check(
+                plan,
+                constraint_name,
+                check_constraint_expression_node(constraint_name, first_child),
+                attribute->constraint_enforcement
+            );
+        }
         case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_GENERATED:
             copy = copy_expression_text(mylite_ast_child_at(attribute, 0U));
             if (copy == NULL) {
@@ -188,6 +254,192 @@ static int copy_create_table_column_attributes(
         }
     }
     return MYLITE_OK;
+}
+
+static const struct mylite_sql_ast_node *check_constraint_expression_node(
+    const struct mylite_sql_ast_node *constraint_name,
+    const struct mylite_sql_ast_node *first_child
+) {
+    if (constraint_name == NULL) {
+        return first_child;
+    }
+    return constraint_name->next_sibling;
+}
+
+static char *copy_check_constraint_name(
+    const struct mylite_create_table_plan *plan,
+    const struct mylite_sql_ast_node *constraint_name
+) {
+    if (constraint_name != NULL) {
+        return mylite_copy_identifier_span(constraint_name);
+    }
+    return copy_generated_check_constraint_name(plan);
+}
+
+static char *copy_generated_check_constraint_name(const struct mylite_create_table_plan *plan) {
+    size_t table_name_length = strlen(plan->table_name);
+    size_t length = table_name_length + strlen("_chk_") + 20U;
+    char *name = malloc(length + 1U);
+
+    if (name == NULL) {
+        return NULL;
+    }
+    (void)snprintf(name, length + 1U, "%s_chk_%zu", plan->table_name, plan->check_count + 1U);
+    return name;
+}
+
+static char *copy_check_clause_text(const struct mylite_sql_ast_node *expression) {
+    if (expression == NULL) {
+        return NULL;
+    }
+    if (expression->kind == MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        return copy_check_binary_expression_text(expression);
+    }
+    return copy_check_parenthesized_expression_text(expression);
+}
+
+static char *copy_check_binary_expression_text(const struct mylite_sql_ast_node *expression) {
+    const struct mylite_sql_ast_node *left_expression = mylite_ast_child_at(expression, 0U);
+    const struct mylite_sql_ast_node *right_expression = mylite_ast_child_at(expression, 1U);
+    const char *operator_text = check_operator_symbol(expression->operator_kind);
+    char *left_text = NULL;
+    char *right_text = NULL;
+    char *text = NULL;
+    size_t length = 0U;
+
+    if (operator_text == NULL || left_expression == NULL || right_expression == NULL) {
+        return copy_check_parenthesized_expression_text(expression);
+    }
+
+    left_text = copy_check_operand_text(left_expression);
+    right_text = copy_check_operand_text(right_expression);
+    if (left_text == NULL || right_text == NULL) {
+        free(left_text);
+        free(right_text);
+        return NULL;
+    }
+
+    length = strlen(left_text) + strlen(operator_text) + strlen(right_text) + 5U;
+    text = malloc(length + 1U);
+    if (text != NULL) {
+        (void)snprintf(text, length + 1U, "(%s %s %s)", left_text, operator_text, right_text);
+    }
+    free(left_text);
+    free(right_text);
+    return text;
+}
+
+static char *copy_check_operand_text(const struct mylite_sql_ast_node *expression) {
+    if (expression == NULL) {
+        return NULL;
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        return copy_check_identifier_text(expression);
+    }
+    if (expression->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
+        return copy_check_parenthesized_expression_text(expression);
+    }
+    return copy_check_fallback_expression_text(expression);
+}
+
+static char *copy_check_identifier_text(const struct mylite_sql_ast_node *expression) {
+    char *identifier = mylite_copy_identifier_span(expression);
+    char *text = NULL;
+    size_t length = 0U;
+
+    if (identifier == NULL) {
+        return NULL;
+    }
+    length = strlen(identifier) + 2U;
+    text = malloc(length + 1U);
+    if (text != NULL) {
+        (void)snprintf(text, length + 1U, "`%s`", identifier);
+    }
+    free(identifier);
+    return text;
+}
+
+static char *copy_check_parenthesized_expression_text(
+    const struct mylite_sql_ast_node *expression
+) {
+    char *inner_text = copy_check_fallback_expression_text(expression);
+    char *text = NULL;
+    size_t length = 0U;
+
+    if (inner_text == NULL) {
+        return NULL;
+    }
+    length = strlen(inner_text) + 2U;
+    text = malloc(length + 1U);
+    if (text != NULL) {
+        (void)snprintf(text, length + 1U, "(%s)", inner_text);
+    }
+    free(inner_text);
+    return text;
+}
+
+static char *copy_check_fallback_expression_text(const struct mylite_sql_ast_node *expression) {
+    return mylite_copy_span_text(expression->span.text, expression->span.length);
+}
+
+static const char *check_operator_symbol(enum mylite_sql_ast_operator operator_kind) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_EQUAL:
+        return "=";
+    case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
+        return "<>";
+    case MYLITE_SQL_AST_OPERATOR_LESS:
+        return "<";
+    case MYLITE_SQL_AST_OPERATOR_LESS_EQUAL:
+        return "<=";
+    case MYLITE_SQL_AST_OPERATOR_GREATER:
+        return ">";
+    case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
+        return ">=";
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_AND:
+        return "and";
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_OR:
+        return "or";
+    case MYLITE_SQL_AST_OPERATOR_NONE:
+    case MYLITE_SQL_AST_OPERATOR_POSITIVE:
+    case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
+    case MYLITE_SQL_AST_OPERATOR_ADD:
+    case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
+    case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
+    case MYLITE_SQL_AST_OPERATOR_DIVIDE:
+    case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_XOR:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_NOT:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_AND:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_XOR:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_OR:
+    case MYLITE_SQL_AST_OPERATOR_SHIFT_LEFT:
+    case MYLITE_SQL_AST_OPERATOR_SHIFT_RIGHT:
+    case MYLITE_SQL_AST_OPERATOR_IS_NULL:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL:
+    case MYLITE_SQL_AST_OPERATOR_IS_TRUE:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_TRUE:
+    case MYLITE_SQL_AST_OPERATOR_IS_FALSE:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_FALSE:
+    case MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN:
+    case MYLITE_SQL_AST_OPERATOR_BETWEEN:
+    case MYLITE_SQL_AST_OPERATOR_NOT_BETWEEN:
+    case MYLITE_SQL_AST_OPERATOR_LIKE:
+    case MYLITE_SQL_AST_OPERATOR_NOT_LIKE:
+    case MYLITE_SQL_AST_OPERATOR_IN:
+    case MYLITE_SQL_AST_OPERATOR_NOT_IN:
+    case MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE:
+    case MYLITE_SQL_AST_OPERATOR_MODULO:
+    case MYLITE_SQL_AST_OPERATOR_REGEXP:
+    case MYLITE_SQL_AST_OPERATOR_NOT_REGEXP:
+    case MYLITE_SQL_AST_OPERATOR_JSON_EXTRACT:
+    case MYLITE_SQL_AST_OPERATOR_JSON_UNQUOTE_EXTRACT:
+    case MYLITE_SQL_AST_OPERATOR_BINARY_CAST:
+        return NULL;
+    }
+    return NULL;
 }
 
 static char *copy_expression_text(const struct mylite_sql_ast_node *node) {

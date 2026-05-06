@@ -235,14 +235,12 @@ static int copy_create_table_elements(
 
     for (element = elements->first_child; element != NULL; element = element->next_sibling) {
         if (element->kind == MYLITE_SQL_AST_COLUMN_DEFINITION) {
-            size_t column_index = plan->column_count;
-
             status = mylite_table_ddl_copy_create_table_column(element, plan);
             if (status == MYLITE_OK) {
-                if (plan->columns[column_index].has_unsupported_check) {
-                    plan->has_unsupported_check = true;
-                }
-                status = add_inline_create_table_column_indexes(plan, &plan->columns[column_index]);
+                status = add_inline_create_table_column_indexes(
+                    plan,
+                    &plan->columns[plan->column_count - 1U]
+                );
             }
         } else if (
             element->kind == MYLITE_SQL_AST_PRIMARY_KEY_CONSTRAINT ||
@@ -254,7 +252,19 @@ static int copy_create_table_elements(
             element->kind == MYLITE_SQL_AST_ALTER_TABLE_ACTION &&
             element->alter_table_action == MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_CHECK
         ) {
-            plan->has_unsupported_check = true;
+            const struct mylite_sql_ast_node *first_child = mylite_ast_child_at(element, 0U);
+            const struct mylite_sql_ast_node *constraint_name =
+                first_child != NULL && first_child->kind == MYLITE_SQL_AST_IDENTIFIER ? first_child
+                                                                                      : NULL;
+            const struct mylite_sql_ast_node *expression =
+                constraint_name == NULL ? first_child : mylite_ast_child_at(element, 1U);
+
+            status = mylite_table_ddl_add_create_table_check(
+                plan,
+                constraint_name,
+                expression,
+                element->constraint_enforcement
+            );
         } else if (
             element->kind == MYLITE_SQL_AST_ALTER_TABLE_ACTION &&
             element->alter_table_action == MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_FOREIGN_KEY

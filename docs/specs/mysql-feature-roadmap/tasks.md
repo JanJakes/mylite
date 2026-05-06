@@ -266,8 +266,8 @@ level application surfaces.
        key ordinals, supported key-DDL side effects, and nonunique/
        expression-only exclusion. The first
        `INFORMATION_SCHEMA.CHECK_CONSTRAINTS` slice exposes the exact
-       four-column system-view shape and intentionally returns zero rows until
-       CHECK DDL/catalog/enforcement support exists. The first
+       four-column system-view shape and rows for CHECK metadata recorded by
+       `CREATE TABLE`. The first
        `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS` slice exposes the exact
        eleven-column system-view shape and intentionally returns zero rows
        until foreign-key DDL/catalog/enforcement support exists. Full

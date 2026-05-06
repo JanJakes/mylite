@@ -56,14 +56,6 @@ int mylite_table_ddl_execute_create_table_statement(
     bool skip_create = false;
     int status = MYLITE_OK;
 
-    if (plan->has_unsupported_check) {
-        (void)mylite_diagnostics_set_error_message(
-            database,
-            "Unsupported CHECK CREATE TABLE constraints"
-        );
-        return MYLITE_UNSUPPORTED;
-    }
-
     if (plan->has_unsupported_foreign_key) {
         (void)mylite_diagnostics_set_error_message(
             database,

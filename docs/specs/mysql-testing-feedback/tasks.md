@@ -39,10 +39,14 @@ MySQL 8.4.9 runtime before each item is marked complete.
       reports MySQL-compatible `Extra` values.
 - [x] Verify and complete `SHOW INDEX` parsing and metadata, including
       cardinality placeholders where MySQL reports `0`.
-- [ ] Align `information_schema.TABLE_CONSTRAINTS` ordering and content with
-      MySQL.
-- [ ] Complete check-constraint metadata needed by
-      `information_schema.CHECK_CONSTRAINTS`.
+- [x] Align `information_schema.TABLE_CONSTRAINTS` ordering and content with
+      MySQL for primary-key, unique, and CHECK rows. CHECK rows now report
+      MySQL-compatible generated names and enforcement values; foreign-key rows
+      remain tied to the deferred foreign-key catalog/enforcement work.
+- [x] Complete check-constraint metadata needed by
+      `information_schema.CHECK_CONSTRAINTS`. `CREATE TABLE ... CHECK` now
+      records catalog-backed rows with MySQL 8.4.9-verified names, clauses, and
+      enforcement flags.
 - [x] Normalize information-schema write-protection diagnostics to
       MySQL-style access-denied errors.
 - [x] Align dynamic database-name queries against
@@ -66,9 +70,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
       preservation behavior, and affected rows.
 - [x] Support or intentionally diagnose `ALTER TABLE ... ADD/DROP CHECK`.
 - [x] Complete `CREATE TABLE ... CHECK (...)` syntax forms. Inline and
-      table-level CHECK clauses parse and return a deterministic unsupported
-      diagnostic before catalog mutation until CHECK catalog/enforcement support
-      lands.
+      table-level CHECK clauses parse and record catalog-backed metadata for
+      `INFORMATION_SCHEMA.CHECK_CONSTRAINTS` and CHECK rows in
+      `INFORMATION_SCHEMA.TABLE_CONSTRAINTS`; CHECK enforcement remains
+      deferred.
 - [x] Complete inline and table-level foreign-key DDL syntax coverage. Inline
       `REFERENCES` is parsed and ignored like the verified MySQL 8.4.9 shape;
       table-level `FOREIGN KEY` clauses parse and return a deterministic

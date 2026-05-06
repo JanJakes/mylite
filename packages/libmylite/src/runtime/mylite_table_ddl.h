@@ -124,6 +124,7 @@ void mylite_table_ddl_alter_table_index_deinit(struct mylite_alter_table_index *
 void mylite_table_ddl_alter_table_index_part_deinit(struct mylite_alter_table_index_part *part);
 void mylite_table_ddl_create_table_column_deinit(struct mylite_create_table_column *column);
 void mylite_table_ddl_create_table_index_deinit(struct mylite_create_table_index *index);
+void mylite_table_ddl_create_table_check_deinit(struct mylite_create_table_check *check);
 void mylite_table_ddl_create_table_key_part_deinit(struct mylite_create_table_key_part *part);
 
 #endif

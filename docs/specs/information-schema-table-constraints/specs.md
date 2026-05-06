@@ -24,10 +24,11 @@ table is routed through the regular binder:
 - aggregate queries such as `COUNT(*)`
 
 This slice exposes primary-key and unique constraints by deriving rows from
-`__mylite_index_catalog`. MyLite must not create a parallel constraint catalog
-for primary and unique metadata. Nonunique indexes are excluded. CHECK and
-actual foreign-key constraint rows remain deferred until MyLite has catalogs
-and runtime semantics for those constraint families.
+`__mylite_index_catalog` and CHECK constraints by deriving rows from
+`__mylite_check_constraint_catalog`. MyLite must not create a parallel
+constraint catalog for primary and unique metadata. Nonunique indexes are
+excluded. Actual foreign-key constraint rows remain deferred until MyLite has
+catalogs and runtime semantics for that constraint family.
 
 ## Compatibility Sources
 
@@ -51,7 +52,8 @@ implementation sources.
 `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` reports constraints attached to tables.
 MySQL includes `UNIQUE`, `PRIMARY KEY`, `FOREIGN KEY`, and `CHECK` rows. The
 verified primary-key and unique-key behavior maps to the same logical metadata
-reported by `SHOW INDEX` rows whose `Non_unique` value is `0`.
+reported by `SHOW INDEX` rows whose `Non_unique` value is `0`; CHECK rows map
+to MyLite's CHECK catalog.
 
 The verified MySQL 8.4.9 runtime accepts case-insensitive references such as
 `information_schema.table_constraints`, mixed-case references, and quoted forms
@@ -138,22 +140,23 @@ Result columns:
 - The result set has exactly seven columns in the uppercase order documented
   above.
 - `CONSTRAINT_CATALOG` is the literal `def`.
-- `CONSTRAINT_SCHEMA` and `TABLE_SCHEMA` are the table schema from
-  `__mylite_index_catalog.table_schema`.
-- `TABLE_NAME` is `__mylite_index_catalog.table_name`.
+- `CONSTRAINT_SCHEMA` and `TABLE_SCHEMA` are the table schema.
+- `TABLE_NAME` is the constrained table name.
 - `CONSTRAINT_NAME` is `PRIMARY` for primary-key rows and the index name for
-  non-primary unique rows.
+  non-primary unique rows. CHECK rows use the explicit constraint name or the
+  generated `<table>_chk_<n>` name.
 - `CONSTRAINT_TYPE` is `PRIMARY KEY` for `index_name='PRIMARY'` and `UNIQUE`
-  for other unique rows.
-- `ENFORCED` is `YES` for every row in this slice.
+  for other unique rows. CHECK rows use `CHECK`.
+- `ENFORCED` is `YES` for primary and unique rows. CHECK rows use the
+  `ENFORCED` or `NOT ENFORCED` state captured from `CREATE TABLE`.
 - Successful execution is read-only, returns affected rows `-1`, and does not
   mutate diagnostics beyond the existing successful-prepare/step behavior for
   MyLite `SELECT` statements.
 
-Rows are derived from `__mylite_index_catalog` with `non_unique = 0`. Each
-logical index produces at most one table-constraint row, even when the index
-has multiple key parts. The row source should group by table schema, table
-name, and index name, using the earliest catalog row for deterministic order.
+Primary and unique rows are derived from `__mylite_index_catalog` with
+`non_unique = 0`. Each logical index produces at most one table-constraint row,
+even when the index has multiple key parts. CHECK rows are derived from
+`__mylite_check_constraint_catalog`.
 
 Rows are ordered deterministically by:
 
@@ -162,7 +165,7 @@ Rows are ordered deterministically by:
 3. `CONSTRAINT_NAME` using case-insensitive MySQL-compatible ordering
 4. primary-key constraints before unique constraints only as a tie-breaker for
    unusual duplicate catalog names
-5. first catalog row for the index
+5. first catalog row for the index or CHECK ordinal position
 
 This ordering keeps `SELECT *` stable without adding general `ORDER BY` support
 for information-schema queries and matches the MySQL 8.4.9 ordering observed
@@ -246,6 +249,8 @@ Runtime coverage:
 - empty database returns no rows with exact uppercase column names
 - primary key, inline unique, named unique, and nonunique index fixture returns
   exactly the primary and unique rows and excludes the nonunique index
+- inline and table-level CHECK constraints return CHECK rows with MySQL
+  8.4.9-verified generated names and enforcement values
 - row order follows the deterministic MyLite ordering documented above
 - lower-case, mixed-case, and quoted table references execute
 - `INFORMATION_SCHEMA.TABLES` exposes the `TABLE_CONSTRAINTS` system-view row
@@ -261,9 +266,6 @@ Runtime coverage:
 
 ## Known Gaps
 
-- CHECK constraint rows are omitted until MyLite has CHECK catalogs, expression
-  validation, enforcement flags, and catalog-backed
-  `INFORMATION_SCHEMA.CHECK_CONSTRAINTS` rows.
 - Foreign-key constraints are omitted until MyLite has foreign-key catalogs,
   referential actions, enforcement, and catalog-backed
   `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS` rows.

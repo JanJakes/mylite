@@ -6,12 +6,10 @@ This feature adds the first executable MyLite slice for:
 
 - `SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS`
 
-MyLite does not yet have executable CHECK-constraint DDL, a CHECK catalog, or
-CHECK expression enforcement. This slice therefore exposes the MySQL-compatible
-`INFORMATION_SCHEMA.CHECK_CONSTRAINTS` table shape as a read-only system view
-and returns zero rows for every current MyLite database. Rows for actual CHECK
-constraints are intentionally deferred until MyLite has CHECK DDL, catalog
-storage, expression validation, enforcement flags, and DML enforcement.
+MyLite records CHECK constraints accepted by `CREATE TABLE` in a CHECK catalog
+and exposes them through the MySQL-compatible
+`INFORMATION_SCHEMA.CHECK_CONSTRAINTS` read-only system view. CHECK expression
+enforcement and `ALTER TABLE ... ADD/DROP CHECK` remain deferred.
 
 Wildcard selection remains the baseline row-shape requirement for
 `INFORMATION_SCHEMA.CHECK_CONSTRAINTS`. Broader projections, filters, aliases,
@@ -94,9 +92,11 @@ The result columns are exactly:
 3. `CONSTRAINT_NAME`
 4. `CHECK_CLAUSE`
 
-The query returns no rows because no CHECK catalog exists yet. This is a
-deliberate empty static system view, not a placeholder catalog and not fake
-metadata.
+The query returns rows for CHECK constraints recorded by `CREATE TABLE`.
+`CONSTRAINT_CATALOG` is `def`, `CONSTRAINT_SCHEMA` is the table schema,
+`CONSTRAINT_NAME` is the explicit constraint name or the generated
+`<table>_chk_<n>` name, and `CHECK_CLAUSE` is MySQL-shaped expression text for
+the supported simple expression forms.
 
 `INFORMATION_SCHEMA.TABLES` exposes `CHECK_CONSTRAINTS` with
 `TABLE_SCHEMA='information_schema'`, `TABLE_NAME='CHECK_CONSTRAINTS'`, and
@@ -143,14 +143,13 @@ explicit duplicate modifier, no alias, and no additional SELECT clauses.
 
 ## Storage And Runtime
 
-This feature must not add `__mylite_check_constraint_catalog` or any other
-CHECK metadata table. Runtime lowering should use a static SQLite statement
-with the correct column aliases and an always-false row predicate.
+This feature adds `__mylite_check_constraint_catalog` and the temporary-table
+counterpart used by table-drop cleanup. Runtime lowering reads the persistent
+catalog for `INFORMATION_SCHEMA.CHECK_CONSTRAINTS`.
 
-When CHECK DDL is implemented later, the CHECK catalog should be designed once
-for DDL validation, DML enforcement, `INFORMATION_SCHEMA.CHECK_CONSTRAINTS`,
-and CHECK rows in `INFORMATION_SCHEMA.TABLE_CONSTRAINTS`. This empty static
-view should then be replaced by a catalog-backed query.
+The CHECK catalog is the shared source for
+`INFORMATION_SCHEMA.CHECK_CONSTRAINTS` and CHECK rows in
+`INFORMATION_SCHEMA.TABLE_CONSTRAINTS`.
 
 ## Tests
 
@@ -165,6 +164,9 @@ Runtime coverage:
 
 - empty database returns zero rows with the exact four uppercase column names
 - creating a normal table without CHECK constraints still returns zero rows
+- `CREATE TABLE` with inline and table-level CHECK constraints creates
+  `CHECK_CONSTRAINTS` rows with MySQL 8.4.9-verified generated names,
+  check-clause text, and enforcement flags
 - lower-case, mixed-case, and quoted table references execute
 - `INFORMATION_SCHEMA.TABLES` exposes the `CHECK_CONSTRAINTS` system-view row
 - `SHOW TABLES FROM information_schema LIKE 'check_constraints'` exposes the
@@ -174,15 +176,14 @@ Runtime coverage:
 - composable projections, `DISTINCT`/`ALL`, `WHERE`, `ORDER BY`, `LIMIT`,
   `COUNT(*)`, aliases, and qualified wildcard forms are covered by the shared
   system-view SELECT path
-- unsupported `ALTER TABLE ... ADD CHECK ...` and
-  `CREATE TABLE ... CHECK ...` DDL must not create `CHECK_CONSTRAINTS` rows
+- unsupported `ALTER TABLE ... ADD CHECK ...` DDL must not create
+  `CHECK_CONSTRAINTS` rows
 
 ## Known Gaps
 
-- Actual CHECK rows are omitted until MyLite has CHECK DDL, a CHECK catalog,
-  expression validation, enforcement state, and DML enforcement.
-- `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` still omits CHECK rows until the same
-  underlying CHECK catalog exists.
+- CHECK expression enforcement remains deferred.
+- `ALTER TABLE ... ADD/DROP/ALTER CHECK` remains unsupported and does not
+  mutate CHECK metadata.
 - Privilege filtering and exact MySQL field metadata remain deferred. General
   projection, filtering, ordering, limiting, alias, and aggregate behavior is
   covered by the composable information-schema SELECT path.

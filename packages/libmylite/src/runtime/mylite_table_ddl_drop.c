@@ -250,9 +250,9 @@ static int drop_table_transaction(mylite_db *database, const struct mylite_drop_
         }
         status = drop_physical_table(database, &plan->targets[index]);
         if (status == MYLITE_OK) {
-            unsigned int flags = MYLITE_CATALOG_DELETE_TABLE_INDEXES |
-                                 MYLITE_CATALOG_DELETE_TABLE_COLUMNS |
-                                 MYLITE_CATALOG_DELETE_TABLE_ROW;
+            unsigned int flags =
+                MYLITE_CATALOG_DELETE_TABLE_INDEXES | MYLITE_CATALOG_DELETE_TABLE_CHECKS |
+                MYLITE_CATALOG_DELETE_TABLE_COLUMNS | MYLITE_CATALOG_DELETE_TABLE_ROW;
 
             if (plan->targets[index].temporary) {
                 status = mylite_catalog_delete_temporary_table_rows(

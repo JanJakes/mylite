@@ -20,6 +20,10 @@ void mylite_table_ddl_create_table_plan_deinit(struct mylite_create_table_plan *
         mylite_table_ddl_create_table_index_deinit(&plan->indexes[index]);
     }
     free(plan->indexes);
+    for (size_t index = 0U; index < plan->check_count; ++index) {
+        mylite_table_ddl_create_table_check_deinit(&plan->checks[index]);
+    }
+    free(plan->checks);
     *plan = (struct mylite_create_table_plan){0};
 }
 
@@ -202,6 +206,16 @@ void mylite_table_ddl_create_table_index_deinit(struct mylite_create_table_index
     }
     free(index->parts);
     *index = (struct mylite_create_table_index){0};
+}
+
+void mylite_table_ddl_create_table_check_deinit(struct mylite_create_table_check *check) {
+    if (check == NULL) {
+        return;
+    }
+
+    free(check->name);
+    free(check->clause);
+    *check = (struct mylite_create_table_check){0};
 }
 
 void mylite_table_ddl_create_table_key_part_deinit(struct mylite_create_table_key_part *part) {

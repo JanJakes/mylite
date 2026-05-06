@@ -449,10 +449,10 @@ The following observations were verified against `mylite-mysql-849`:
     metadata exists
   - `STATISTICS` exposes the 18 MySQL column names and has no rows before
     index metadata exists
-  - `CHECK_CONSTRAINTS` exposes the four MySQL column names and returns no rows
-    until CHECK catalog support lands
+  - `CHECK_CONSTRAINTS` exposes the four MySQL column names and returns rows
+    from CHECK metadata recorded by `CREATE TABLE`
   - `TABLE_CONSTRAINTS` exposes primary and unique constraints from index
-    metadata
+    metadata and CHECK constraints from CHECK metadata
   - `KEY_COLUMN_USAGE` exposes primary and unique key-part rows from index
     metadata
   - `REFERENTIAL_CONSTRAINTS` exposes the eleven MySQL column names and returns

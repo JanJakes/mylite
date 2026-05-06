@@ -57,6 +57,19 @@ static struct mylite_sql_ast_node *make_checked_integer_literal(
     struct mylite_sql_token integer_token
 );
 
+static struct mylite_sql_ast_node *make_insert_row_list_from_select_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token select_token,
+    struct mylite_sql_token dual_token,
+    struct mylite_sql_ast_node *select_list
+);
+
+static struct mylite_sql_ast_node *make_insert_value_list_from_select_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token select_token,
+    struct mylite_sql_ast_node *select_list
+);
+
 static const char *column_type_descriptor_name(enum mylite_sql_ast_column_type column_type);
 
 static bool column_type_uses_string_binary_descriptor(enum mylite_sql_ast_column_type column_type);
@@ -2402,6 +2415,82 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_values_statement(
     mylite_sql_ast_node_append_child(statement, row_alias);
     mylite_sql_ast_node_append_child(statement, duplicate_update);
     return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_insert_select_dual_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_insert_tokens tokens,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *columns,
+    struct mylite_sql_parser_select_duplicate_mode duplicate_mode,
+    struct mylite_sql_token select_token,
+    struct mylite_sql_ast_node *select_list,
+    struct mylite_sql_token dual_token,
+    struct mylite_sql_ast_node *duplicate_update
+) {
+    struct mylite_sql_ast_node *rows = NULL;
+
+    if (duplicate_mode.explicit_mode || duplicate_mode.calc_found_rows) {
+        mylite_sql_parser_state_syntax_error(state, MYLITE_SQL_PARSE_SELECT, select_token);
+        return NULL;
+    }
+
+    rows = make_insert_row_list_from_select_list(state, select_token, dual_token, select_list);
+    return mylite_sql_parser_make_insert_values_statement(
+        state,
+        tokens,
+        table_name,
+        columns,
+        rows,
+        NULL,
+        duplicate_update
+    );
+}
+
+static struct mylite_sql_ast_node *make_insert_row_list_from_select_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token select_token,
+    struct mylite_sql_token dual_token,
+    struct mylite_sql_ast_node *select_list
+) {
+    struct mylite_sql_ast_node *values =
+        make_insert_value_list_from_select_list(state, select_token, select_list);
+    struct mylite_sql_ast_node *row = NULL;
+
+    if (values == NULL) {
+        return NULL;
+    }
+    row = mylite_sql_parser_make_insert_row(state, select_token, values, dual_token);
+    return mylite_sql_parser_make_insert_row_list(state, row);
+}
+
+static struct mylite_sql_ast_node *make_insert_value_list_from_select_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token select_token,
+    struct mylite_sql_ast_node *select_list
+) {
+    struct mylite_sql_ast_node *values = NULL;
+
+    if (select_list == NULL || select_list->first_child == NULL) {
+        mylite_sql_parser_state_syntax_error(state, MYLITE_SQL_PARSE_SELECT, select_token);
+        return NULL;
+    }
+
+    for (struct mylite_sql_ast_node *item = select_list->first_child; item != NULL;
+         item = item->next_sibling) {
+        struct mylite_sql_ast_node *value = item->first_child;
+
+        if (value == NULL || value->kind == MYLITE_SQL_AST_WILDCARD) {
+            mylite_sql_parser_state_syntax_error(state, MYLITE_SQL_PARSE_SELECT, select_token);
+            return NULL;
+        }
+        if (values == NULL) {
+            values = mylite_sql_parser_make_insert_value_list(state, value);
+        } else {
+            values = mylite_sql_parser_append_insert_value(state, values, value);
+        }
+    }
+    return values;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_insert_set_statement(

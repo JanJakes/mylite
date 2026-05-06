@@ -6329,6 +6329,38 @@ static int test_insert_values_syntax(void) {
     failures += expect_child_count(child_at(rows, 0U), 0U, "default row without column list");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql(
+        "INSERT INTO t (a, b) SELECT 1 AS one, 'two' FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    rows = child_at(statement, 2U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_INSERT_VALUES_STATEMENT, "insert select dual");
+    failures += expect_node(columns, MYLITE_SQL_AST_INSERT_COLUMN_LIST, "insert select columns");
+    failures += expect_child_count(columns, 2U, "insert select column count");
+    failures += expect_span_text(child_at(columns, 0U), "a", "insert select first column");
+    failures += expect_span_text(child_at(columns, 1U), "b", "insert select second column");
+    failures += expect_node(rows, MYLITE_SQL_AST_INSERT_ROW_LIST, "insert select row list");
+    failures += expect_child_count(rows, 1U, "insert select row count");
+    row = child_at(rows, 0U);
+    failures += expect_node(row, MYLITE_SQL_AST_INSERT_ROW, "insert select lowered row");
+    failures += expect_child_count(row, 2U, "insert select value count");
+    failures +=
+        expect_literal(child_at(row, 0U), MYLITE_SQL_AST_LITERAL_INTEGER, "insert select integer");
+    failures +=
+        expect_literal(child_at(row, 1U), MYLITE_SQL_AST_LITERAL_STRING, "insert select string");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT t SELECT 1 FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    rows = child_at(statement, 1U);
+    failures += expect_child_count(statement, 2U, "insert select without INTO children");
+    failures += expect_child_count(child_at(rows, 0U), 1U, "insert select without INTO values");
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("INSERT INTO t VALUES (1,);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 

@@ -906,6 +906,19 @@ insert_values_statement(A) ::= INSERT(T) opt_insert_ignore(I) opt_into table_nam
         E,
         F);
 }
+insert_values_statement(A) ::= INSERT(T) opt_insert_ignore(I) opt_into table_name(B) opt_insert_column_list(C)
+        SELECT(S) select_modifiers(M) select_item_list(D) FROM DUAL(U) opt_insert_duplicate_update(F). {
+    A = mylite_sql_parser_make_insert_select_dual_statement(
+        state,
+        (struct mylite_sql_parser_insert_tokens){.insert = T, .ignore = I},
+        B,
+        C,
+        M,
+        S,
+        D,
+        U,
+        F);
+}
 insert_set_statement(A) ::= INSERT(T) opt_insert_ignore(I) opt_into table_name(B) SET insert_set_assignment_list(C)
         opt_insert_row_alias(D) opt_insert_duplicate_update(E). {
     A = mylite_sql_parser_make_insert_set_statement(

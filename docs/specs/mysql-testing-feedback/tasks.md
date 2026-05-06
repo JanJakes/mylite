@@ -65,7 +65,7 @@ MySQL 8.4.9 runtime before each item is marked complete.
 - [ ] Verify and complete `UPDATE ... WHERE ... ORDER BY ... LIMIT`.
 - [ ] Fix joined `UPDATE ... JOIN ... ON ...` name resolution such as `t1.id`.
 - [ ] Complete more complex joined update forms.
-- [ ] Support `INSERT ... SELECT FROM DUAL`.
+- [x] Support `INSERT ... SELECT FROM DUAL`.
 - [ ] Verify and complete `INSERT ... SET ...` defaults and generated values.
 - [ ] Verify and complete `INSERT` without `INTO`.
 - [ ] Complete complex insert value expressions.

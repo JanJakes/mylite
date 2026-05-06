@@ -43192,7 +43192,7 @@ static int test_show_index_execution(void) {
 
 static int test_insert_values_execution(void) {
     enum {
-        insert_forms_row_count = 5,
+        insert_forms_row_count = 8,
         ai_first_insert_id = 10,
         ai_default_value_insert_id = 12,
         ai_empty_column_insert_id = 13,
@@ -43295,6 +43295,24 @@ static int test_insert_values_execution(void) {
     );
     failures += execute_sql(database, "INSERT INTO insert_forms VALUES ()", MYLITE_DONE);
     failures += execute_sql(database, "INSERT INTO insert_forms () VALUES ()", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO insert_forms (a, b) SELECT 6, 'six' FROM DUAL",
+        1,
+        "insert select from dual affected rows"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT insert_forms SELECT 7 AS a, 'seven' AS b FROM DUAL",
+        1,
+        "insert select from dual without INTO affected rows"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO insert_forms (b, a) SELECT 'eight', 8 FROM DUAL",
+        1,
+        "insert select from dual column order affected rows"
+    );
     failures += prepare_sql(database, "INSERT INTO insert_forms () VALUES (4)", MYLITE_OK, &stmt);
     failures += expect_status(
         mylite_step(stmt),
@@ -43325,6 +43343,22 @@ static int test_insert_values_execution(void) {
             "three",
             "ROW constructor insert value"
         );
+        failures += expect_sqlite_physical_text(
+            path,
+            forms_physical,
+            "b",
+            "WHERE a = 7",
+            "seven",
+            "INSERT SELECT alias ignored"
+        );
+        failures += expect_sqlite_physical_text(
+            path,
+            forms_physical,
+            "b",
+            "WHERE a = 8",
+            "eight",
+            "INSERT SELECT column order"
+        );
         failures += expect_sqlite_physical_null(
             path,
             forms_physical,
@@ -43333,6 +43367,50 @@ static int test_insert_values_execution(void) {
             "default row without column list"
         );
     }
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE insert_select_unique (a INT UNIQUE, b VARCHAR(10))",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO insert_select_unique SELECT 1, 'one' FROM DUAL",
+        1,
+        "insert select from dual unique setup affected rows"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT IGNORE INTO insert_select_unique SELECT 1, 'ignored' FROM DUAL",
+        0,
+        "insert ignore select from dual duplicate affected rows"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        1,
+        "insert ignore select from dual duplicate warning count"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_duplicate_entry,
+        "insert ignore select from dual duplicate warning code"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO insert_select_unique SELECT 1, 'updated' FROM DUAL "
+        "ON DUPLICATE KEY UPDATE b = 'updated'",
+        2,
+        "insert select from dual ODKU affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT a, b FROM insert_select_unique",
+        (const char *const[]){"a", "b"},
+        2,
+        (const char *const[]){"1", "updated"},
+        1,
+        "insert select from dual ODKU row"
+    );
 
     failures += test_insert_values_quoted_text_storage(database, path);
 

@@ -38,6 +38,7 @@ endif()
 add_library(mylite STATIC
   "${MYLITE_SQL_PARSE_C}"
   src/charset/mylite_charset.c
+  src/runtime/mylite_advisory_locks.c
   src/runtime/mylite_connection.c
   src/runtime/mylite_connection_statement.c
   src/runtime/mylite_catalog.c

@@ -434,6 +434,29 @@ static bool infer_session_function_descriptor(mylite_db *database,
         };
         return true;
     }
+    if (mylite_span_equal_ci(name->span, "GET_LOCK") ||
+        mylite_span_equal_ci(name->span, "IS_FREE_LOCK") ||
+        mylite_span_equal_ci(name->span, "RELEASE_LOCK")) {
+        *out_descriptor = mylite_expression_descriptor_signed_longlong(true);
+        out_descriptor->length = 1U;
+        return true;
+    }
+    if (mylite_span_equal_ci(name->span, "IS_USED_LOCK")) {
+        *out_descriptor = mylite_expression_descriptor_unsigned_longlong(true);
+        out_descriptor->length = mylite_mysql_session_integer_function_display_length;
+        return true;
+    }
+    if (mylite_span_equal_ci(name->span, "RELEASE_ALL_LOCKS")) {
+        *out_descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_LONGLONG,
+            .flags = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED |
+                     MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+            .length = mylite_mysql_session_integer_function_display_length,
+            .charset_id = mylite_mysql_binary_charset_id,
+            .nullable = false,
+        };
+        return true;
+    }
     if (mylite_span_equal_ci(name->span, "ROW_COUNT")) {
         *out_descriptor = (struct mylite_field_descriptor){
             .type = MYLITE_FIELD_TYPE_LONGLONG,

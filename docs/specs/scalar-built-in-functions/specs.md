@@ -99,11 +99,13 @@ In scope for the initial implementation:
 - miscellaneous functions:
   - `UUID`
   - `UUID_SHORT`
+  - `GET_LOCK`, `RELEASE_LOCK`, `IS_FREE_LOCK`, `IS_USED_LOCK`,
+    `RELEASE_ALL_LOCKS`
 
 Out of scope for the initial implementation:
 
 - aggregate, grouping, and window functions; Task 25 owns aggregate behavior
-- JSON, full-text, spatial, XML, encryption, compression, locking,
+- JSON, full-text, spatial, XML, encryption, compression,
   replication, performance-schema, loadable, and internal-only functions
 - regular expression functions and `SOUNDS LIKE`
 - `BINARY`, `COLLATE`, character-set introducer expansion, and full collation
@@ -232,6 +234,9 @@ by common scalar expressions:
   see `docs/specs/rand-function/specs.md` and
   `docs/specs/uuid-function/specs.md` and
   `docs/specs/uuid-short-function/specs.md`;
+- advisory lock functions: `GET_LOCK`, `RELEASE_LOCK`, `IS_FREE_LOCK`,
+  `IS_USED_LOCK`, and `RELEASE_ALL_LOCKS`; see
+  `docs/specs/advisory-lock-functions/specs.md`;
 - grammar-level cast expressions: `CAST(expr AS type)`, `CONVERT(expr, type)`,
   and `CONVERT(expr USING charset_name)` for the supported CAST target and
   charset-registry subsets; see `docs/specs/cast-expression/specs.md` and
@@ -268,6 +273,9 @@ IPv4 network-address conversion, short IPv4 forms, invalid IPv4 warnings,
 UUID text validation, UUID string-to-binary and binary-to-string conversion,
 optional UUID time-part swap flags, `UUID()` generated identifier shape,
 `UUID_SHORT()` unsigned generated identifier shape, per-call dynamic behavior,
+advisory lock acquisition, reentrant release counts, case-insensitive names,
+cross-handle nonblocking lock checks, lock cleanup on close, invalid advisory
+lock names, advisory lock metadata,
 metadata, and charset/collation introspection,
 `MOD(..., 0)` warnings, `EXP()` overflow behavior, logarithm invalid-domain
 warnings, `SQRT()` domain behavior, `SIN()` / `COS()` / `TAN()` radian
@@ -316,7 +324,8 @@ regular expressions, spatial, full-text, encryption, loadable functions,
 complete binary-string semantics for all scalar functions,
 exact-versus-approximate numeric preservation for every expression path, or
 exact MySQL error-code reporting for unsupported functions and argument-count
-mismatches.
+mismatches, blocking advisory lock waits, cross-process advisory locks,
+Performance Schema advisory lock visibility, or exact timeout coercion warnings.
 
 ## Sources
 
@@ -338,6 +347,8 @@ mismatches.
   https://dev.mysql.com/doc/refman/8.4/en/information-functions.html
 - MySQL 8.4 Reference Manual, Miscellaneous Functions:
   https://dev.mysql.com/doc/refman/8.4/en/miscellaneous-functions.html
+- MySQL 8.4 Reference Manual, Locking Functions:
+  https://dev.mysql.com/doc/refman/8.4/en/locking-functions.html
 - MySQL 8.4 Reference Manual, Type Conversion in Expression Evaluation:
   https://dev.mysql.com/doc/refman/8.4/en/type-conversion.html
 - MySQL 8.4 Reference Manual, Precision Math Rounding Behavior:

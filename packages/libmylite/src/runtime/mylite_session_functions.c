@@ -1,5 +1,6 @@
 #include "mylite_session_functions.h"
 
+#include "mylite_advisory_locks.h"
 #include "mylite_diagnostics.h"
 #include "mylite_error_codes.h"
 #include "mylite_expression.h"
@@ -51,6 +52,22 @@ evaluate_last_insert_id_function(mylite_stmt *stmt, const struct mylite_sql_ast_
                                  const struct mylite_expression_eval_context *expression_context,
                                  struct mylite_expression_warnings *warnings,
                                  struct mylite_expression_value *out_value);
+static int
+evaluate_advisory_lock_function(mylite_stmt *stmt, const struct mylite_sql_ast_node *function_call,
+                                const struct mylite_expression_eval_context *expression_context,
+                                struct mylite_expression_warnings *warnings,
+                                struct mylite_expression_value *out_value);
+static int evaluate_advisory_lock_name_argument(
+    const struct mylite_sql_ast_node *argument,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings, mylite_db *database,
+    struct mylite_advisory_lock_name *out_name);
+static int
+evaluate_get_lock_timeout_argument(const struct mylite_sql_ast_node *argument,
+                                   const struct mylite_expression_eval_context *expression_context,
+                                   struct mylite_expression_warnings *warnings);
+static void set_signed_lock_value(uint64_t value, struct mylite_expression_value *out_value);
+static void set_unsigned_lock_value(uint64_t value, struct mylite_expression_value *out_value);
 static int evaluate_unix_timestamp_function(mylite_stmt *stmt,
                                             struct mylite_expression_value *out_value);
 static int evaluate_rand_function(mylite_stmt *stmt,
@@ -135,6 +152,14 @@ int mylite_session_evaluate_core_function(
     if (mylite_span_equal_ci(name->span, "RAND")) {
         return evaluate_rand_function(stmt, function_call, expression_context, warnings, out_value);
     }
+    if (mylite_span_equal_ci(name->span, "GET_LOCK") ||
+        mylite_span_equal_ci(name->span, "RELEASE_LOCK") ||
+        mylite_span_equal_ci(name->span, "IS_FREE_LOCK") ||
+        mylite_span_equal_ci(name->span, "IS_USED_LOCK") ||
+        mylite_span_equal_ci(name->span, "RELEASE_ALL_LOCKS")) {
+        return evaluate_advisory_lock_function(stmt, function_call, expression_context, warnings,
+                                               out_value);
+    }
     if (mylite_span_equal_ci(name->span, "UUID")) {
         return evaluate_uuid_function(stmt, out_value);
     }
@@ -190,6 +215,126 @@ int mylite_session_set_text_function_value(mylite_db *database, const char *text
         return MYLITE_NOMEM;
     }
     return MYLITE_OK;
+}
+
+static int
+evaluate_advisory_lock_function(mylite_stmt *stmt, const struct mylite_sql_ast_node *function_call,
+                                const struct mylite_expression_eval_context *expression_context,
+                                struct mylite_expression_warnings *warnings,
+                                struct mylite_expression_value *out_value)
+{
+    mylite_db *database = stmt == NULL ? NULL : stmt->database;
+    const struct mylite_sql_ast_node *name_node = mylite_ast_child_at(function_call, 0U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(function_call, 1U);
+    const struct mylite_sql_ast_node *lock_name_argument = mylite_ast_child_at(arguments, 0U);
+    struct mylite_advisory_lock_name lock_name = {0};
+    struct mylite_advisory_lock_result result = {0};
+    uint64_t value = 0U;
+    int status = MYLITE_OK;
+
+    if (database == NULL || name_node == NULL || out_value == NULL) {
+        return -1;
+    }
+    if (mylite_span_equal_ci(name_node->span, "RELEASE_ALL_LOCKS")) {
+        set_unsigned_lock_value(mylite_advisory_locks_release_all(database), out_value);
+        return MYLITE_OK;
+    }
+
+    status = evaluate_advisory_lock_name_argument(lock_name_argument, expression_context, warnings,
+                                                  database, &lock_name);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    if (mylite_span_equal_ci(name_node->span, "GET_LOCK")) {
+        status = evaluate_get_lock_timeout_argument(mylite_ast_child_at(arguments, 1U),
+                                                    expression_context, warnings);
+        if (status == MYLITE_OK) {
+            status = mylite_advisory_lock_get(database, &lock_name, &value);
+        }
+        if (status == MYLITE_OK) {
+            set_signed_lock_value(value, out_value);
+        }
+    } else if (mylite_span_equal_ci(name_node->span, "RELEASE_LOCK")) {
+        status = mylite_advisory_lock_release(database, &lock_name, &result);
+        if (status == MYLITE_OK) {
+            if (result.is_null) {
+                *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+            } else {
+                set_signed_lock_value(result.value, out_value);
+            }
+        }
+    } else if (mylite_span_equal_ci(name_node->span, "IS_FREE_LOCK")) {
+        status = mylite_advisory_lock_is_free(database, &lock_name, &value);
+        if (status == MYLITE_OK) {
+            set_signed_lock_value(value, out_value);
+        }
+    } else if (mylite_span_equal_ci(name_node->span, "IS_USED_LOCK")) {
+        status = mylite_advisory_lock_is_used(database, &lock_name, &result);
+        if (status == MYLITE_OK) {
+            if (result.is_null) {
+                *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+            } else {
+                set_unsigned_lock_value(result.value, out_value);
+            }
+        }
+    } else {
+        status = -1;
+    }
+
+    mylite_advisory_lock_name_deinit(&lock_name);
+    return status;
+}
+
+static int evaluate_advisory_lock_name_argument(
+    const struct mylite_sql_ast_node *argument,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings, mylite_db *database,
+    struct mylite_advisory_lock_name *out_name)
+{
+    struct mylite_expression_value value = {0};
+    int status = MYLITE_OK;
+
+    if (argument == NULL) {
+        return -1;
+    }
+
+    status = mylite_expression_eval_with_context(argument, expression_context, warnings, &value);
+    if (status == MYLITE_OK) {
+        status = mylite_advisory_lock_name_from_value(database, &value, warnings, out_name);
+    }
+    mylite_expression_value_deinit(&value);
+    return status;
+}
+
+static int
+evaluate_get_lock_timeout_argument(const struct mylite_sql_ast_node *argument,
+                                   const struct mylite_expression_eval_context *expression_context,
+                                   struct mylite_expression_warnings *warnings)
+{
+    struct mylite_expression_value value = {0};
+    int status = MYLITE_OK;
+
+    if (argument == NULL) {
+        return -1;
+    }
+
+    status = mylite_expression_eval_with_context(argument, expression_context, warnings, &value);
+    mylite_expression_value_deinit(&value);
+    return status;
+}
+
+static void set_signed_lock_value(uint64_t value, struct mylite_expression_value *out_value)
+{
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_INT64,
+        .int64_value = value > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)value};
+}
+
+static void set_unsigned_lock_value(uint64_t value, struct mylite_expression_value *out_value)
+{
+    *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_UINT64,
+                                                  .uint64_value = value};
 }
 
 static int

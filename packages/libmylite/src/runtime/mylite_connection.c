@@ -1,5 +1,6 @@
 #include "mylite_connection.h"
 
+#include "mylite_advisory_locks.h"
 #include "mylite_catalog.h"
 #include "mylite_charset.h"
 #include "mylite_diagnostics.h"
@@ -102,6 +103,7 @@ void mylite_close(mylite_db *database)
     if (database->transaction_active) {
         (void)mylite_transaction_rollback_explicit(database);
     }
+    mylite_advisory_locks_release_handle(database);
     sqlite3_close(database->sqlite);
     free(database->error_message);
     mylite_expression_warnings_deinit(&database->warnings);

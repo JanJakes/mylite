@@ -135,10 +135,12 @@ enum {
     mysql_warning_duplicate_index = 1831,
     mysql_warning_legacy_syntax_converted = 3005,
     mysql_warning_invalid_argument_for_logarithm = 3020,
+    mysql_warning_user_lock_wrong_name = 3057,
     mysql_warning_field_in_order_not_select = 3065,
     mysql_warning_using_other_handler = 3502,
     mysql_warning_primary_invisible = 3522,
     mysql_warning_default_value_generated = 3773,
+    mysql_warning_user_lock_name_too_long = 4163,
     mysql_warning_illegal_regexp_argument = 3685,
     mysql_warning_regexp_error = 3691,
 };
@@ -285,6 +287,7 @@ static int test_date_format_function_execution(void);
 static int test_str_to_date_function_execution(void);
 static int test_time_format_function_execution(void);
 static int test_rand_function_execution(void);
+static int test_advisory_lock_functions_execution(void);
 static int test_default_function_execution(void);
 static int test_date_add_sub_functions_execution(void);
 static int test_round_scalar_function_execution(mylite_db *database);
@@ -520,6 +523,7 @@ int main(void)
     failures += test_str_to_date_function_execution();
     failures += test_time_format_function_execution();
     failures += test_rand_function_execution();
+    failures += test_advisory_lock_functions_execution();
     failures += test_default_function_execution();
     failures += test_date_add_sub_functions_execution();
     failures += test_inet_ipv4_functions_execution();
@@ -10362,6 +10366,243 @@ static int test_rand_function_execution(void)
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_advisory_lock_functions_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const struct expected_result_metadata metadata[] = {
+        {"get_lock_value", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"free_lock_value", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"used_lock_value", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"release_lock_value", NULL, NULL, NULL, NULL, NULL, 1U, MYLITE_FIELD_TYPE_LONGLONG, 0U,
+         63U, MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"release_all_value", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY |
+             MYLITE_FIELD_FLAG_NUM,
+         0U, 0},
+    };
+    static const char *const metadata_values[] = {"1", "0", "1", "1", "0"};
+    static const char *const scalar_columns[] = {
+        "get_a",     "get_a_again",    "free_a",    "used_a",        "cid",
+        "release_1", "free_after_one", "release_2", "release_empty", "release_all_empty",
+    };
+    static const char *const scalar_values[] = {
+        "1", "1", "0", "1", "1", "1", "0", "1", NULL, "0",
+    };
+    static const char *const numeric_columns[] = {"get_int", "used_int", "release_int"};
+    static const char *const numeric_values[] = {"1", "1", "1"};
+    static const char *const release_all_columns[] = {"a", "b", "release_same"};
+    static const char *const release_all_values[] = {"1", "1", "2"};
+    static const char *const cross_columns[] = {"free_cross", "used_cross", "get_cross",
+                                                "release_cross"};
+    static const char *const cross_values[] = {"0", "1", "0", "0"};
+    static const char *const cross_release_columns[] = {"release_cross", "release_empty"};
+    static const char *const cross_release_values[] = {"1", "0"};
+    static const char *const get_cross_columns[] = {"get_cross"};
+    static const char *const get_cross_values[] = {"1"};
+    static const char *const id_got_columns[] = {"id", "got"};
+    static const char *const id_got_values[] = {"1", "1", "2", "1"};
+    static const char *const id_columns[] = {"id"};
+    static const char *const both_id_values[] = {"1", "2"};
+    static const char *const second_id_values[] = {"2"};
+    static const char *const marker_columns[] = {"marker"};
+    static const char *const marker_values[] = {"1"};
+    mylite_db *database = NULL;
+    mylite_db *other_database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open advisory lock database");
+    failures += prepare_sql(database,
+                            "SELECT GET_LOCK('mylite_meta',0) AS get_lock_value, "
+                            "IS_FREE_LOCK('mylite_meta') AS free_lock_value, "
+                            "IS_USED_LOCK('mylite_meta') AS used_lock_value, "
+                            "RELEASE_LOCK('mylite_meta') AS release_lock_value, "
+                            "RELEASE_ALL_LOCKS() AS release_all_value",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "advisory lock metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "advisory lock metadata row");
+    for (int index = 0; index < 5; ++index) {
+        failures += expect_string(mylite_column_text(stmt, index), metadata_values[index],
+                                  "advisory lock metadata value");
+    }
+    failures += expect_int(mylite_warning_count(database), 0, "advisory lock metadata warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "advisory lock metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        expect_select_rows(database,
+                           "SELECT GET_LOCK('mylite_lock_a',0) AS get_a, "
+                           "GET_LOCK('MYLITE_LOCK_A',0) AS get_a_again, "
+                           "IS_FREE_LOCK('mylite_lock_a') AS free_a, "
+                           "IS_USED_LOCK('mylite_lock_a') AS used_a, "
+                           "CONNECTION_ID() AS cid, "
+                           "RELEASE_LOCK('mylite_lock_a') AS release_1, "
+                           "IS_FREE_LOCK('mylite_lock_a') AS free_after_one, "
+                           "RELEASE_LOCK('mylite_lock_a') AS release_2, "
+                           "RELEASE_LOCK('mylite_lock_a') AS release_empty, "
+                           "RELEASE_ALL_LOCKS() AS release_all_empty",
+                           scalar_columns, 10, scalar_values, 1, "advisory lock scalar values");
+    failures += expect_int(mylite_warning_count(database), 0, "advisory lock scalar warnings");
+
+    failures +=
+        expect_select_rows(database,
+                           "SELECT GET_LOCK(123,0) AS get_int, "
+                           "IS_USED_LOCK(123) AS used_int, "
+                           "RELEASE_LOCK(123) AS release_int",
+                           numeric_columns, 3, numeric_values, 1, "advisory lock numeric name");
+    failures += expect_select_rows(database,
+                                   "SELECT GET_LOCK('same_count',0) AS a, "
+                                   "GET_LOCK('SAME_COUNT',0) AS b, "
+                                   "RELEASE_ALL_LOCKS() AS release_same",
+                                   release_all_columns, 3, release_all_values, 1,
+                                   "advisory lock release all count");
+
+    failures +=
+        expect_status(mylite_open_memory(&other_database), MYLITE_OK, "open second lock database");
+    failures += expect_select_rows(database, "SELECT GET_LOCK('mylite_cross',0) AS get_cross",
+                                   get_cross_columns, 1, get_cross_values, 1,
+                                   "advisory lock cross owner acquire");
+    failures +=
+        expect_select_rows(other_database,
+                           "SELECT IS_FREE_LOCK('MYLITE_CROSS') AS free_cross, "
+                           "IS_USED_LOCK('mylite_cross') AS used_cross, "
+                           "GET_LOCK('mylite_cross',0) AS get_cross, "
+                           "RELEASE_LOCK('mylite_cross') AS release_cross",
+                           cross_columns, 4, cross_values, 1, "advisory lock cross handle blocked");
+    failures += expect_select_rows(database,
+                                   "SELECT RELEASE_LOCK('mylite_cross') AS release_cross, "
+                                   "RELEASE_ALL_LOCKS() AS release_empty",
+                                   cross_release_columns, 2, cross_release_values, 1,
+                                   "advisory lock cross owner release");
+    mylite_close(other_database);
+    other_database = NULL;
+
+    failures += execute_sql(database, "CREATE DATABASE advisory_lock_functions", MYLITE_DONE);
+    failures += execute_sql(database, "USE advisory_lock_functions", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE lock_sites ("
+                            "id INT PRIMARY KEY, name VARCHAR(32), marker INT NOT NULL)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO lock_sites VALUES "
+                            "(1, 'table_a', 0), (2, 'table_b', 0)",
+                            MYLITE_DONE);
+    failures +=
+        expect_select_rows(database,
+                           "SELECT id, GET_LOCK(name,0) AS got "
+                           "FROM lock_sites ORDER BY name",
+                           id_got_columns, 2, id_got_values, 2, "advisory lock table projection");
+    failures += expect_select_rows(database, "SELECT RELEASE_ALL_LOCKS() AS release_empty",
+                                   &cross_release_columns[1], 1, &release_all_values[2], 1,
+                                   "advisory lock table projection cleanup");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT id FROM lock_sites "
+                           "WHERE IS_FREE_LOCK(name)=1 ORDER BY id",
+                           id_columns, 1, both_id_values, 2, "advisory lock table predicate free");
+    failures +=
+        expect_select_rows(database, "SELECT GET_LOCK('table_a',0) AS get_a", &scalar_columns[0], 1,
+                           scalar_values, 1, "advisory lock predicate setup");
+    failures += expect_select_rows(database,
+                                   "SELECT id FROM lock_sites "
+                                   "WHERE IS_FREE_LOCK(name)=1 ORDER BY id",
+                                   id_columns, 1, second_id_values, 1,
+                                   "advisory lock table predicate held");
+    failures += expect_select_rows(database, "SELECT RELEASE_ALL_LOCKS() AS release_empty",
+                                   &cross_release_columns[1], 1, &cross_release_values[0], 1,
+                                   "advisory lock predicate cleanup");
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE lock_sites SET marker = marker + GET_LOCK(CONCAT(name,'_update'),0) WHERE id = 1",
+        1, "advisory lock update expression");
+    failures +=
+        expect_select_rows(database, "SELECT marker FROM lock_sites WHERE id = 1", marker_columns,
+                           1, marker_values, 1, "advisory lock update result");
+    failures += expect_select_rows(database, "SELECT RELEASE_ALL_LOCKS() AS release_empty",
+                                   &cross_release_columns[1], 1, &cross_release_values[0], 1,
+                                   "advisory lock update cleanup");
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM lock_sites WHERE id = 2 AND GET_LOCK(CONCAT(name,'_delete'),0)=1", 1,
+        "advisory lock delete predicate");
+    failures += expect_select_rows(database, "SELECT RELEASE_ALL_LOCKS() AS release_empty",
+                                   &cross_release_columns[1], 1, &cross_release_values[0], 1,
+                                   "advisory lock delete cleanup");
+
+    failures += prepare_sql(database, "SELECT GET_LOCK('',0)", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Incorrect user-level lock name",
+                                  "advisory lock empty name error");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "advisory lock empty name warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_user_lock_wrong_name,
+                   "advisory lock empty name warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT IS_FREE_LOCK(NULL)", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Incorrect user-level lock name 'NULL'",
+                                  "advisory lock null name error");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_user_lock_wrong_name,
+                   "advisory lock null name warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "SELECT IS_USED_LOCK(CHAR(65,0,66 USING binary))", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Incorrect user-level lock name",
+                                  "advisory lock embedded nul name error");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_user_lock_wrong_name,
+                   "advisory lock embedded nul warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT GET_LOCK(REPEAT('x',65),0)", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "should not exceed 64 characters",
+                                  "advisory lock long name error");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_user_lock_name_too_long,
+                   "advisory lock long name warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT GET_LOCK('a')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported get_lock one arity");
+    failures += prepare_sql(database, "SELECT GET_LOCK('a',0,1)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported get_lock three arity");
+    failures += prepare_sql(database, "SELECT RELEASE_LOCK()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported release_lock zero arity");
+    failures += prepare_sql(database, "SELECT RELEASE_LOCK('a','b')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported release_lock two arity");
+    failures += prepare_sql(database, "SELECT IS_FREE_LOCK()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported is_free_lock zero arity");
+    failures += prepare_sql(database, "SELECT IS_FREE_LOCK('a','b')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported is_free_lock two arity");
+    failures += prepare_sql(database, "SELECT IS_USED_LOCK()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported is_used_lock zero arity");
+    failures += prepare_sql(database, "SELECT IS_USED_LOCK('a','b')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported is_used_lock two arity");
+    failures += prepare_sql(database, "SELECT RELEASE_ALL_LOCKS(1)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported release_all_locks one arity");
+
+    mylite_close(other_database);
+    mylite_close(database);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
     return failures;
 }
 

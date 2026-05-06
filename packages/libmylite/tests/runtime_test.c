@@ -49973,6 +49973,10 @@ static int test_foreign_key_update_actions_execution(void) {
     static const char *const joined_parent_values[] = {"10"};
     static const char *const joined_child_values[] = {"1", "10"};
     static const char *const self_values[] = {"1", "1", "2", NULL};
+    static const char *const fk_rule_columns[] = {"UPDATE_RULE", "DELETE_RULE"};
+    static const char *const update_set_default_rule_values[] = {"SET DEFAULT", "NO ACTION"};
+    static const char *const set_default_parent_values[] = {"1", "7"};
+    static const char *const set_default_child_values[] = {"1", "1"};
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -50217,6 +50221,63 @@ static int test_foreign_key_update_actions_execution(void) {
         "foreign key self update cascade rows"
     );
 
+    failures +=
+        execute_sql(database, "CREATE TABLE parent_default_fk (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE child_update_default_fk ("
+        "id INT PRIMARY KEY, parent_id INT DEFAULT 7, "
+        "FOREIGN KEY (parent_id) REFERENCES parent_default_fk(id) ON UPDATE SET DEFAULT)",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT UPDATE_RULE, DELETE_RULE FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
+        "WHERE CONSTRAINT_SCHEMA = 'fk_update_actions_runtime' "
+        "AND TABLE_NAME = 'child_update_default_fk'",
+        fk_rule_columns,
+        2,
+        update_set_default_rule_values,
+        1,
+        "foreign key update set default metadata"
+    );
+    failures += execute_sql(database, "INSERT INTO parent_default_fk VALUES (1),(7)", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO child_update_default_fk VALUES (1,1)", MYLITE_DONE);
+    failures +=
+        prepare_sql(database, "UPDATE parent_default_fk SET id = 2 WHERE id = 1", MYLITE_OK, &stmt);
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Cannot delete or update a parent row",
+        "foreign key update set default rejects"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_row_is_referenced,
+        "foreign key update set default error code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM parent_default_fk ORDER BY id",
+        parent_columns,
+        1,
+        set_default_parent_values,
+        2,
+        "foreign key update set default parent rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, parent_id FROM child_update_default_fk ORDER BY id",
+        child_columns,
+        2,
+        set_default_child_values,
+        1,
+        "foreign key update set default child rows"
+    );
+
     mylite_close(database);
     return failures;
 }
@@ -50250,7 +50311,12 @@ static int test_foreign_key_delete_actions_execution(void) {
         "2",
         "2",
     };
+    static const char *const fk_rule_columns[] = {"UPDATE_RULE", "DELETE_RULE"};
+    static const char *const delete_set_default_rule_values[] = {"NO ACTION", "SET DEFAULT"};
+    static const char *const set_default_parent_values[] = {"1", "7"};
+    static const char *const set_default_child_values[] = {"1", "1"};
     mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
     int failures = 0;
 
     failures += expect_status(
@@ -50435,6 +50501,71 @@ static int test_foreign_key_delete_actions_execution(void) {
         multi_null_values,
         2,
         "foreign key multi delete set null rows"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE parent_delete_default_fk (id INT PRIMARY KEY)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE child_delete_default_fk ("
+        "id INT PRIMARY KEY, parent_id INT DEFAULT 7, "
+        "FOREIGN KEY (parent_id) REFERENCES parent_delete_default_fk(id) ON DELETE SET DEFAULT)",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT UPDATE_RULE, DELETE_RULE FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
+        "WHERE CONSTRAINT_SCHEMA = 'fk_delete_actions_runtime' "
+        "AND TABLE_NAME = 'child_delete_default_fk'",
+        fk_rule_columns,
+        2,
+        delete_set_default_rule_values,
+        1,
+        "foreign key delete set default metadata"
+    );
+    failures +=
+        execute_sql(database, "INSERT INTO parent_delete_default_fk VALUES (1),(7)", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO child_delete_default_fk VALUES (1,1)", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "DELETE FROM parent_delete_default_fk WHERE id = 1",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Cannot delete or update a parent row",
+        "foreign key delete set default rejects"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_row_is_referenced,
+        "foreign key delete set default error code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM parent_delete_default_fk ORDER BY id",
+        parent_columns,
+        1,
+        set_default_parent_values,
+        2,
+        "foreign key delete set default parent rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, parent_id FROM child_delete_default_fk ORDER BY id",
+        child_columns,
+        2,
+        set_default_child_values,
+        1,
+        "foreign key delete set default child rows"
     );
 
     mylite_close(database);

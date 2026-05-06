@@ -47,12 +47,14 @@ commit.
 - [x] Enforce child-row update checks for single-table and joined `UPDATE`.
 - [x] Enforce parent-row `ON UPDATE RESTRICT` and `NO ACTION`.
 - [x] Enforce parent-row `ON DELETE RESTRICT` and `NO ACTION`.
-- [ ] Implement `ON UPDATE CASCADE`.
+- [x] Implement `ON UPDATE CASCADE`.
 - [x] Implement direct `ON DELETE CASCADE` for supported `DELETE` paths.
-- [ ] Implement `ON UPDATE SET NULL`.
+- [x] Implement `ON UPDATE SET NULL`.
 - [x] Implement direct `ON DELETE SET NULL` for supported `DELETE` paths.
-- [ ] Verify and document `SET DEFAULT` behavior before enabling or rejecting
-      it with a MySQL-compatible diagnostic.
+- [x] Verify and document `SET DEFAULT` behavior before enabling or rejecting
+      it with a MySQL-compatible diagnostic. MyLite preserves `SET DEFAULT`
+      metadata and rejects covered parent updates/deletes with 1451, matching
+      observed MySQL 8.4.9 InnoDB behavior.
 - [x] Apply `foreign_key_checks` to implemented child-row insert/update and
       parent restrict checks without retroactive validation on re-enable.
 - [x] Apply `foreign_key_checks` to direct delete cascade and set-null

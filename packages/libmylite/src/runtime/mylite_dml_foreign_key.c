@@ -945,13 +945,13 @@ static int validate_parent_foreign_key_references(
         "SELECT constraint_schema, constraint_name, table_schema, table_name "
         "FROM __mylite_foreign_key_catalog "
         "WHERE referenced_table_schema = ? AND referenced_table_name = ? "
-        "AND ordinal_position = 1 AND update_rule IN ('RESTRICT', 'NO ACTION') "
+        "AND ordinal_position = 1 AND update_rule IN ('RESTRICT', 'NO ACTION', 'SET DEFAULT') "
         "ORDER BY rowid";
     static const char delete_sql[] =
         "SELECT constraint_schema, constraint_name, table_schema, table_name "
         "FROM __mylite_foreign_key_catalog "
         "WHERE referenced_table_schema = ? AND referenced_table_name = ? "
-        "AND ordinal_position = 1 AND delete_rule IN ('RESTRICT', 'NO ACTION') "
+        "AND ordinal_position = 1 AND delete_rule IN ('RESTRICT', 'NO ACTION', 'SET DEFAULT') "
         "ORDER BY rowid";
     sqlite3_stmt *constraint = NULL;
     const char *sql = action == MYLITE_PARENT_FOREIGN_KEY_UPDATE ? update_sql : delete_sql;

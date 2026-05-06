@@ -104,6 +104,10 @@ Observed rule and error details:
 - `CASCADE`, `SET NULL`, and default `NO ACTION` rules are reported in
   `REFERENTIAL_CONSTRAINTS`; `SHOW CREATE TABLE` omits explicit default
   `NO ACTION`.
+- `SET DEFAULT` rules are accepted and reported in `SHOW CREATE TABLE` and
+  `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS`, but parent updates/deletes are
+  rejected with error 1451 in the observed InnoDB behavior rather than applying
+  child-column defaults.
 
 ## MyLite Design
 
@@ -145,17 +149,17 @@ to the candidate row as satisfied, and demotes unmatched child rows to warning
 1452 for `INSERT IGNORE`. Child-row update enforcement covers supported
 single-table and joined `UPDATE` paths, validates only constraints whose child
 columns changed, and allows unrelated updates to orphaned child rows that were
-created while `foreign_key_checks=0`. Parent-side `RESTRICT` and `NO ACTION`
-enforcement rejects supported parent key updates, parent deletes, multi-table
-deletes, self-referential parent mutations, and `REPLACE` conflict deletes with
-error 1451 while `foreign_key_checks` is enabled. Direct parent updates apply
-`ON UPDATE CASCADE` and `ON UPDATE SET NULL` to matching child rows for
-supported single-table and joined `UPDATE` paths. Direct parent deletes apply
-`ON DELETE CASCADE` and `ON DELETE SET NULL` to matching child rows for
-supported single-table and multi-table `DELETE` paths. Covered parent update
-and delete actions are skipped while `foreign_key_checks=0`. Temporary-table
-foreign-key definitions are rejected with a deterministic `Cannot add foreign
-key constraint` diagnostic.
+created while `foreign_key_checks=0`. Parent-side `RESTRICT`, `NO ACTION`, and
+`SET DEFAULT` enforcement rejects supported parent key updates, parent deletes,
+multi-table deletes, self-referential parent mutations, and `REPLACE` conflict
+deletes with error 1451 while `foreign_key_checks` is enabled. Direct parent
+updates apply `ON UPDATE CASCADE` and `ON UPDATE SET NULL` to matching child
+rows for supported single-table and joined `UPDATE` paths. Direct parent
+deletes apply `ON DELETE CASCADE` and `ON DELETE SET NULL` to matching child
+rows for supported single-table and multi-table `DELETE` paths. Covered parent
+update and delete actions are skipped while `foreign_key_checks=0`.
+Temporary-table foreign-key definitions are rejected with a deterministic
+`Cannot add foreign key constraint` diagnostic.
 FK-only `ALTER TABLE ... ADD FOREIGN KEY` persists catalog metadata, creates or
 reuses the supporting child index, validates existing child rows while
 `foreign_key_checks=1`, skips existing-row validation while
@@ -246,11 +250,12 @@ When `foreign_key_checks` is enabled:
   rows exist
 - `CASCADE` updates or deletes matching child rows
 - `SET NULL` sets all child FK columns to `NULL`
+- `SET DEFAULT` is metadata-preserved and rejects matching parent mutations
+  with error 1451, matching MySQL 8.4.9 InnoDB behavior observed for covered
+  parent update/delete paths
 - self-referential `ON UPDATE CASCADE` and `ON UPDATE SET NULL` parent key
   mutations reject with 1451 in the covered MySQL 8.4.9-observed shape rather
   than recursively applying the action
-- `SET DEFAULT` remains unsupported until MySQL-observed behavior is designed
-  against MyLite default-expression support
 
 When `foreign_key_checks` is disabled, MySQL skips foreign-key validation and
 referential actions for covered DML. Existing rows are not retroactively

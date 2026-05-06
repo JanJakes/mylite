@@ -35,7 +35,13 @@ enum {
     tables_type_column = 3,
     tables_engine_column = 4,
     tables_version_column = 5,
+    tables_row_format_column = 6,
     tables_rows_column = 7,
+    tables_avg_row_length_column = 8,
+    tables_data_length_column = 9,
+    tables_max_data_length_column = 10,
+    tables_index_length_column = 11,
+    tables_data_free_column = 12,
     tables_auto_increment_column = 13,
     tables_collation_column = 17,
     tables_comment_column = 20,
@@ -33762,8 +33768,38 @@ static int expect_simple_create_table_row(mylite_db *database) {
             simple_create_table_version,
             "created table version"
         );
+        failures += expect_string(
+            mylite_column_text(stmt, tables_row_format_column),
+            "Dynamic",
+            "created table row format"
+        );
         failures +=
             expect_int64(mylite_column_int64(stmt, tables_rows_column), 0, "created table rows");
+        failures += expect_string(
+            mylite_column_text(stmt, tables_avg_row_length_column),
+            "0",
+            "created table average row length"
+        );
+        failures += expect_string(
+            mylite_column_text(stmt, tables_data_length_column),
+            "0",
+            "created table data length"
+        );
+        failures += expect_string(
+            mylite_column_text(stmt, tables_max_data_length_column),
+            "0",
+            "created table max data length"
+        );
+        failures += expect_string(
+            mylite_column_text(stmt, tables_index_length_column),
+            "0",
+            "created table index length"
+        );
+        failures += expect_string(
+            mylite_column_text(stmt, tables_data_free_column),
+            "0",
+            "created table data free"
+        );
         failures += expect_int64(
             mylite_column_int64(stmt, tables_auto_increment_column),
             simple_create_auto_increment,
@@ -55501,6 +55537,31 @@ static int expect_information_schema_tables_views(mylite_db *database) {
                 );
                 failures +=
                     expect_int64(mylite_column_int64(stmt, tables_rows_column), 0, "tables rows");
+                failures += expect_string(
+                    mylite_column_text(stmt, tables_avg_row_length_column),
+                    "0",
+                    "tables average row length"
+                );
+                failures += expect_string(
+                    mylite_column_text(stmt, tables_data_length_column),
+                    "0",
+                    "tables data length"
+                );
+                failures += expect_string(
+                    mylite_column_text(stmt, tables_max_data_length_column),
+                    "0",
+                    "tables max data length"
+                );
+                failures += expect_string(
+                    mylite_column_text(stmt, tables_index_length_column),
+                    "0",
+                    "tables index length"
+                );
+                failures += expect_string(
+                    mylite_column_text(stmt, tables_data_free_column),
+                    "0",
+                    "tables data free"
+                );
                 failures += expect_null_text(
                     mylite_column_text(stmt, tables_collation_column),
                     "tables table collation"

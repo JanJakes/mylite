@@ -14,7 +14,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
 ## Information schema and SHOW metadata
 
 - [ ] Align `SELECT * FROM information_schema.TABLES` metadata with MySQL for
-      row format, size fields, timestamps, and placeholder values.
+      row format, size fields, timestamps, and placeholder values. Row-format
+      and zero-placeholder fields are covered; live row counts and timestamps
+      remain open.
 - [ ] Align `USE information_schema; SELECT * FROM tables` with the same
       MySQL-compatible metadata rows.
 - [x] Verify and complete `SHOW DATABASES` parser and runtime coverage;

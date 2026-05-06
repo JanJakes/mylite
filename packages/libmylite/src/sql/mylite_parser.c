@@ -3491,13 +3491,23 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_delete_limit_clause(
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_schemas_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token show_token,
-    struct mylite_sql_token schemas_token
+    struct mylite_sql_token schemas_token,
+    struct mylite_sql_ast_node *filter
 ) {
-    return make_node(
-        state,
-        MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT,
-        span_join(span_from_token(&show_token), span_from_token(&schemas_token))
-    );
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&show_token), span_from_token(&schemas_token));
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (filter != NULL) {
+        span = span_join(span, filter->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+    mylite_sql_ast_node_append_child(statement, filter);
+    return statement;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_variables_statement(

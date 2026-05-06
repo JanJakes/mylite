@@ -293,7 +293,7 @@ static int prepare_parsed_statement(
                 callbacks
             );
         case MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT:
-            return mylite_show_prepare_schemas_statement(database, out_stmt);
+            return mylite_show_prepare_schemas_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
             return mylite_show_prepare_variables_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:

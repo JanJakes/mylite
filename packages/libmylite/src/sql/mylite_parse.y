@@ -56,6 +56,7 @@
 %type fulltext_index_option_list { struct mylite_sql_ast_node * }
 %type fulltext_index_option { struct mylite_sql_ast_node * }
 %type opt_like_escape { struct mylite_sql_ast_node * }
+%type opt_show_schemas_filter { struct mylite_sql_ast_node * }
 %type opt_show_variables_scope { struct mylite_sql_parser_show_variables_scope }
 %type opt_show_variables_filter { struct mylite_sql_ast_node * }
 %type opt_show_status_scope { struct mylite_sql_parser_show_status_scope }
@@ -1360,11 +1361,21 @@ opt_transaction_completion(A) ::= AND(T) NO CHAIN NO RELEASE(R). {
         MYLITE_SQL_AST_TRANSACTION_CHAIN_NO, MYLITE_SQL_AST_TRANSACTION_RELEASE_NO);
 }
 
-show_schemas_statement(A) ::= SHOW(T) DATABASES(D). {
-    A = mylite_sql_parser_make_show_schemas_statement(state, T, D);
+show_schemas_statement(A) ::= SHOW(T) DATABASES(D) opt_show_schemas_filter(F). {
+    A = mylite_sql_parser_make_show_schemas_statement(state, T, D, F);
 }
-show_schemas_statement(A) ::= SHOW(T) SCHEMAS(D). {
-    A = mylite_sql_parser_make_show_schemas_statement(state, T, D);
+show_schemas_statement(A) ::= SHOW(T) SCHEMAS(D) opt_show_schemas_filter(F). {
+    A = mylite_sql_parser_make_show_schemas_statement(state, T, D, F);
+}
+
+opt_show_schemas_filter(A) ::= . {
+    A = NULL;
+}
+opt_show_schemas_filter(A) ::= LIKE STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+opt_show_schemas_filter(A) ::= where_clause(B). {
+    A = B;
 }
 
 show_variables_statement(A) ::= SHOW(T) opt_show_variables_scope(S) VARIABLES(V)

@@ -1054,7 +1054,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_delete_limit_clause(
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_schemas_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token show_token,
-    struct mylite_sql_token schemas_token
+    struct mylite_sql_token schemas_token,
+    struct mylite_sql_ast_node *filter
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_variables_statement(
     struct mylite_sql_parser_state *state,

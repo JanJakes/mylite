@@ -993,6 +993,36 @@ static int test_schema_lifecycle(void) {
         MYLITE_DONE
     );
     failures += expect_show_database_rows(database, "mylite_schema_lifecycle_a", NULL);
+    failures += expect_select_rows(
+        database,
+        "SHOW DATABASES LIKE 'mylite_schema_lifecycle%'",
+        (const char *const[]){"Database (mylite_schema_lifecycle%)"},
+        1,
+        (const char *const[]){"mylite_schema_lifecycle_a"},
+        1,
+        "show databases like"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW SCHEMAS WHERE `Database` = 'mylite_schema_lifecycle_a'",
+        (const char *const[]){"Database"},
+        1,
+        (const char *const[]){"mylite_schema_lifecycle_a"},
+        1,
+        "show schemas where"
+    );
+    failures += expect_prepare_error(
+        database,
+        "SHOW DATABASES WHERE No_such_column = 1",
+        MYLITE_EXEC_ERROR,
+        "Unknown column 'No_such_column'",
+        "show databases where unknown column"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_unknown_column,
+        "show databases where unknown column code"
+    );
 
     failures +=
         prepare_sql(database, "CREATE DATABASE mylite_schema_lifecycle_a", MYLITE_OK, &stmt);

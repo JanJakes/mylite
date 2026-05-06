@@ -17,8 +17,8 @@ MySQL 8.4.9 runtime before each item is marked complete.
       row format, size fields, timestamps, and placeholder values.
 - [ ] Align `USE information_schema; SELECT * FROM tables` with the same
       MySQL-compatible metadata rows.
-- [ ] Verify and complete `SHOW DATABASES` and `SHOW TABLE SCHEMAS` parser and
-      runtime coverage.
+- [x] Verify and complete `SHOW DATABASES` parser and runtime coverage;
+      verify `SHOW TABLE SCHEMAS` remains a MySQL syntax error.
 - [ ] Align `SHOW TABLE STATUS` values, including row counts, data length,
       timestamps, and `AUTO_INCREMENT`.
 - [ ] Verify and complete `SHOW TABLE STATUS WHERE ...` filtering.

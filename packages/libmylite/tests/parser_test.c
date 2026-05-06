@@ -507,6 +507,7 @@ static int test_schema_lifecycle_statements(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
     const struct mylite_sql_ast_node *options = NULL;
+    const struct mylite_sql_ast_node *filter = NULL;
     int failures = 0;
 
     failures += parse_sql(
@@ -603,7 +604,24 @@ static int test_schema_lifecycle_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("SHOW DATABASES LIKE 'my%';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql(
+        "SHOW DATABASES LIKE 'my%'; SHOW SCHEMAS WHERE `Database` = 'mylite';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    filter = child_at(statement, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT, "show databases like");
+    failures +=
+        expect_literal(filter, MYLITE_SQL_AST_LITERAL_STRING, "show databases like pattern");
+    statement = child_at(result.root, 1U);
+    filter = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT, "show schemas where");
+    failures += expect_node(filter, MYLITE_SQL_AST_WHERE_CLAUSE, "show schemas where filter");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW TABLE SCHEMAS;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

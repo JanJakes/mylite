@@ -21,6 +21,16 @@ static struct mylite_field_descriptor show_engines_field_descriptor(uint64_t len
 
 static int show_engines_sql(mylite_db *database, char **out_sql);
 
+static int show_schemas_filtered_sql(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *filter,
+    char **out_sql
+);
+
+static const struct mylite_sql_ast_node *show_schemas_where_expression(
+    const struct mylite_sql_ast_node *filter
+);
+
 static int append_show_where_expression(
     mylite_db *database,
     sqlite3_str *sql,
@@ -98,12 +108,105 @@ int mylite_show_prepare_engines_statement(mylite_db *database, mylite_stmt **out
     return status;
 }
 
-int mylite_show_prepare_schemas_statement(mylite_db *database, mylite_stmt **out_stmt) {
-    return mylite_statement_prepare_sqlite(database, mylite_show_schemas_sql(), out_stmt);
+int mylite_show_prepare_schemas_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt
+) {
+    const struct mylite_sql_ast_node *filter = mylite_ast_child_at(statement, 0U);
+    char *sqlite_sql = NULL;
+    int status = show_schemas_filtered_sql(database, filter, &sqlite_sql);
+
+    if (status == MYLITE_OK) {
+        status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
+    }
+    if (status == MYLITE_NOMEM) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+    }
+    sqlite3_free(sqlite_sql);
+    return status;
 }
 
 static int show_engines_sql(mylite_db *database, char **out_sql) {
     return mylite_storage_engine_show_sql(database, out_sql);
+}
+
+static int show_schemas_filtered_sql(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *filter,
+    char **out_sql
+) {
+    static const char *const columns[] = {"Database"};
+    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
+    char *like_pattern = NULL;
+    char *display_column = NULL;
+    const struct mylite_sql_ast_node *where_expression = show_schemas_where_expression(filter);
+    int status = MYLITE_OK;
+
+    *out_sql = NULL;
+    if (sql == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    if (filter != NULL && filter->kind == MYLITE_SQL_AST_LITERAL) {
+        like_pattern = mylite_show_copy_like_pattern_span(filter);
+        if (like_pattern == NULL) {
+            status = MYLITE_NOMEM;
+        } else {
+            display_column = sqlite3_mprintf("Database (%s)", like_pattern);
+            if (display_column == NULL) {
+                status = MYLITE_NOMEM;
+            }
+        }
+    }
+
+    if (status == MYLITE_OK) {
+        sqlite3_str_appendf(
+            sql,
+            "SELECT name AS \"%w\" FROM __mylite_schema_catalog",
+            display_column == NULL ? "Database" : display_column
+        );
+        if (like_pattern != NULL) {
+            sqlite3_str_appendf(sql, " WHERE name LIKE %Q ESCAPE '\\'", like_pattern);
+        }
+        if (where_expression != NULL) {
+            sqlite3_str_appendall(sql, " WHERE ");
+            status = mylite_show_append_where_expression(
+                database,
+                sql,
+                where_expression,
+                columns,
+                sizeof(columns) / sizeof(columns[0])
+            );
+        }
+        sqlite3_str_appendall(sql, " ORDER BY name COLLATE BINARY");
+    }
+
+    *out_sql = sqlite3_str_finish(sql);
+    sqlite3_free(display_column);
+    free(like_pattern);
+
+    if (status != MYLITE_OK) {
+        sqlite3_free(*out_sql);
+        *out_sql = NULL;
+        if (status == MYLITE_UNSUPPORTED) {
+            (void)mylite_diagnostics_set_error_message(
+                database,
+                "SHOW DATABASES WHERE expression is not supported"
+            );
+        }
+        return status;
+    }
+    return *out_sql == NULL ? MYLITE_NOMEM : MYLITE_OK;
+}
+
+static const struct mylite_sql_ast_node *show_schemas_where_expression(
+    const struct mylite_sql_ast_node *filter
+) {
+    if (filter == NULL || filter->kind != MYLITE_SQL_AST_WHERE_CLAUSE) {
+        return NULL;
+    }
+    return mylite_ast_child_at(filter, 0U);
 }
 
 int mylite_show_columns_sql(

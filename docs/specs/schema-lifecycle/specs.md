@@ -227,17 +227,23 @@ Supported syntax:
 
 ```sql
 SHOW { DATABASES | SCHEMAS }
+SHOW { DATABASES | SCHEMAS } LIKE 'pattern'
+SHOW { DATABASES | SCHEMAS } WHERE expr
 ```
+
+`SHOW TABLE SCHEMAS` is not MySQL syntax and remains a syntax error.
 
 Behavior:
 
 - Returns one text column named `Database`.
+- `LIKE` returns one text column named `Database (pattern)` and filters using
+  MySQL wildcard semantics with backslash escapes.
+- `WHERE` filters over the displayed `Database` column.
 - Returns seeded system schemas and user-created schemas.
 - Sorts by schema name using bytewise order.
 
 Compatibility gaps:
 
-- `LIKE` and `WHERE` filtering are deferred.
 - Privilege filtering and `skip_show_database` behavior are not implemented.
 - The result is backed by the MyLite catalog rather than filesystem directory
   enumeration.
@@ -339,6 +345,8 @@ The following observations were verified against `mylite-mysql-849`:
 | `ALTER DATABASE mylite_schema_lifecycle_a READ ONLY = 2;` | Fails with a syntax error in MySQL. MyLite accepts the literal in the early grammar and reports an execution error. |
 | `SHOW DATABASES;` | Returns one column named `Database` and lists visible schemas. |
 | `SHOW SCHEMAS;` | Same result shape as `SHOW DATABASES`. |
+| `SHOW DATABASES LIKE 'mylite_schema_lifecycle%'` | Returns matching schemas with column name `Database (mylite_schema_lifecycle%)`. |
+| `SHOW SCHEMAS WHERE Database = 'mylite_schema_lifecycle_a'` | Filters over the displayed `Database` column. |
 | `DROP SCHEMA mylite_schema_lifecycle_a; SELECT DATABASE();` after selecting it | Drops the schema and clears the current default schema. |
 | `DROP DATABASE mylite_schema_lifecycle_missing;` | Fails with missing database error `1008`. |
 | `DROP DATABASE IF EXISTS mylite_schema_lifecycle_missing; SHOW COUNT(*) WARNINGS;` | Succeeds with warning count `0` in MySQL 8.4.9. |
@@ -350,13 +358,14 @@ The following observations were verified against `mylite-mysql-849`:
   - parse `CHARSET` and quoted character set/collation option values
   - parse `ALTER DATABASE` with explicit and omitted schema names
   - parse `DROP DATABASE IF EXISTS`
-  - parse `SHOW DATABASES` and `SHOW SCHEMAS`
+  - parse `SHOW DATABASES` and `SHOW SCHEMAS`, including `LIKE` and `WHERE`
   - preserve quoted schema spans
   - preserve nonreserved schema names such as `encryption`
-  - reject unsupported `SHOW DATABASES LIKE` until filtering is implemented
 - Runtime tests:
   - initial `SHOW DATABASES` includes seeded system schemas and has column name
     `Database`
+  - `SHOW DATABASES LIKE` and `SHOW SCHEMAS WHERE` filter catalog rows and
+    expose MySQL-compatible column labels
   - `CREATE DATABASE` adds a row and does not select it
   - duplicate create fails without `IF NOT EXISTS` and succeeds with it
   - `USE` succeeds for an existing schema and fails for a missing schema

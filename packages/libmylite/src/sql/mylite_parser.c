@@ -5708,6 +5708,26 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_unique_key_attribute(
     return attribute;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_references_attribute(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *reference
+) {
+    struct mylite_sql_ast_node *attribute = NULL;
+
+    if (reference == NULL) {
+        return NULL;
+    }
+
+    attribute = make_node(state, MYLITE_SQL_AST_COLUMN_ATTRIBUTE, reference->span);
+    if (attribute == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_column_attribute(attribute, MYLITE_SQL_AST_COLUMN_ATTRIBUTE_REFERENCES);
+    mylite_sql_ast_node_append_child(attribute, reference);
+    return attribute;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_generated_attribute(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token start_token,

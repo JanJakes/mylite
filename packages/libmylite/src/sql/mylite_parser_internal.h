@@ -1609,6 +1609,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_unique_key_attribute(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_parser_column_unique_key_attribute_tokens tokens
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_references_attribute(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *reference
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_generated_attribute(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token start_token,

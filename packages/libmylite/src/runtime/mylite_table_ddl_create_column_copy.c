@@ -166,6 +166,9 @@ static int copy_create_table_column_attributes(
         case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_UNIQUE_KEY:
             column->unique_key = true;
             break;
+        case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_REFERENCES:
+            /* MySQL accepts inline REFERENCES in CREATE TABLE but does not create FK metadata. */
+            break;
         case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_GENERATED:
             copy = copy_expression_text(mylite_ast_child_at(attribute, 0U));
             if (copy == NULL) {

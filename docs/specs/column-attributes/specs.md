@@ -325,6 +325,8 @@ prepare as `MYLITE_UNSUPPORTED` and leave `INFORMATION_SCHEMA.TABLES` and
 - Generated columns are accepted for base column metadata, `SHOW COLUMNS`,
   `DESCRIBE`, and `information_schema.COLUMNS`; generated-column value
   evaluation is deferred.
-- `AUTO_INCREMENT`, inline indexes and keys, foreign-key references, `CHECK`
-  constraints, `SERIAL DEFAULT VALUE`, and table options are deferred to later
-  roadmap tasks.
+- `AUTO_INCREMENT`, inline indexes and keys, `CHECK` constraints,
+  `SERIAL DEFAULT VALUE`, and table options are deferred to later roadmap
+  tasks. Inline foreign-key `REFERENCES` clauses are parsed by the foreign-key
+  syntax slice and ignored at execution, matching the verified MySQL 8.4.9
+  behavior where they do not create foreign-key metadata.

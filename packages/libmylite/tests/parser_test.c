@@ -26,6 +26,8 @@ static int test_create_table_primary_keys_auto_increment(void);
 
 static int test_create_table_unique_secondary_indexes(void);
 
+static int test_create_table_foreign_key_syntax(void);
+
 static int test_create_table_base_execution_syntax(void);
 
 static int test_create_drop_index_syntax(void);
@@ -391,6 +393,7 @@ int main(void) {
     failures += test_create_table_column_attributes();
     failures += test_create_table_primary_keys_auto_increment();
     failures += test_create_table_unique_secondary_indexes();
+    failures += test_create_table_foreign_key_syntax();
     failures += test_create_table_base_execution_syntax();
     failures += test_create_drop_index_syntax();
     failures += test_alter_table_column_operations_syntax();
@@ -3295,6 +3298,124 @@ static int test_create_table_unique_secondary_indexes(void) {
     failures += parse_sql(
         "CREATE TABLE bad_unique_engine_attribute_number "
         "(a INT, UNIQUE KEY uq (a) ENGINE_ATTRIBUTE 123);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_create_table_foreign_key_syntax(void) {
+    enum {
+        expected_element_count = 5,
+        inline_reference_column = 1,
+        unnamed_foreign_key = 3,
+        named_foreign_key = 4,
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *elements = NULL;
+    const struct mylite_sql_ast_node *attributes = NULL;
+    const struct mylite_sql_ast_node *attribute = NULL;
+    const struct mylite_sql_ast_node *reference = NULL;
+    const struct mylite_sql_ast_node *options = NULL;
+    const struct mylite_sql_ast_node *action = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "CREATE TABLE fk_child ("
+        "id INT PRIMARY KEY, "
+        "parent_id INT REFERENCES parent(id) MATCH SIMPLE ON DELETE CASCADE "
+        "ON UPDATE SET NULL, "
+        "other_id INT, "
+        "FOREIGN KEY fk_auto (parent_id) REFERENCES parent(id), "
+        "CONSTRAINT fk_pair FOREIGN KEY fk_pair_idx (parent_id, other_id) "
+        "REFERENCES parent (id, other_id) ON DELETE RESTRICT ON UPDATE NO ACTION);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    elements = child_at(child_at(result.root, 0U), 1U);
+    failures +=
+        expect_node(elements, MYLITE_SQL_AST_COLUMN_DEFINITION_LIST, "foreign key element list");
+    failures += expect_child_count(elements, expected_element_count, "foreign key element count");
+
+    attributes = child_at(child_at(elements, inline_reference_column), 2U);
+    attribute = child_at(attributes, 0U);
+    failures += expect_column_attribute(
+        attribute,
+        MYLITE_SQL_AST_COLUMN_ATTRIBUTE_REFERENCES,
+        "inline references attribute"
+    );
+    reference = child_at(attribute, 0U);
+    failures += expect_node(reference, MYLITE_SQL_AST_DDL_TABLE_OPTION, "inline references");
+    failures += expect_span_text(child_at(reference, 0U), "parent", "inline referenced table");
+    failures += expect_child_count(child_at(reference, 1U), 1U, "inline referenced columns");
+    options = child_at(reference, 2U);
+    failures += expect_child_count(options, 3U, "inline reference option count");
+    if (child_at(options, 0U) != NULL &&
+        child_at(options, 0U)->reference_match != MYLITE_SQL_AST_REFERENCE_MATCH_SIMPLE) {
+        fprintf(stderr, "inline foreign MATCH SIMPLE was not recorded\n");
+        failures = 1;
+    }
+    if (child_at(options, 1U) != NULL &&
+        child_at(options, 1U)->reference_action != MYLITE_SQL_AST_REFERENCE_ACTION_CASCADE) {
+        fprintf(stderr, "inline foreign ON DELETE CASCADE was not recorded\n");
+        failures = 1;
+    }
+    if (child_at(options, 2U) != NULL &&
+        child_at(options, 2U)->reference_action != MYLITE_SQL_AST_REFERENCE_ACTION_SET_NULL) {
+        fprintf(stderr, "inline foreign ON UPDATE SET NULL was not recorded\n");
+        failures = 1;
+    }
+
+    action = child_at(elements, unnamed_foreign_key);
+    failures += expect_alter_table_action(
+        action,
+        MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_FOREIGN_KEY,
+        false,
+        "create table foreign key action"
+    );
+    failures += expect_span_text(child_at(action, 0U), "fk_auto", "create foreign index name");
+    failures += expect_child_count(child_at(action, 1U), 1U, "create foreign child columns");
+    reference = child_at(action, 2U);
+    failures += expect_span_text(child_at(reference, 0U), "parent", "create referenced table");
+    failures += expect_child_count(child_at(reference, 1U), 1U, "create referenced columns");
+
+    action = child_at(elements, named_foreign_key);
+    failures += expect_alter_table_action(
+        action,
+        MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_FOREIGN_KEY,
+        false,
+        "create table named foreign key action"
+    );
+    failures += expect_span_text(child_at(action, 0U), "fk_pair", "create foreign constraint name");
+    failures += expect_span_text(child_at(action, 1U), "fk_pair_idx", "create foreign index");
+    failures += expect_child_count(child_at(action, 2U), 2U, "create foreign pair columns");
+    reference = child_at(action, 3U);
+    failures += expect_child_count(child_at(reference, 1U), 2U, "create referenced pair columns");
+    options = child_at(reference, 2U);
+    failures += expect_child_count(options, 2U, "create foreign pair option count");
+    if (child_at(options, 0U) != NULL &&
+        child_at(options, 0U)->reference_action != MYLITE_SQL_AST_REFERENCE_ACTION_RESTRICT) {
+        fprintf(stderr, "create foreign ON DELETE RESTRICT was not recorded\n");
+        failures = 1;
+    }
+    if (child_at(options, 1U) != NULL &&
+        child_at(options, 1U)->reference_action != MYLITE_SQL_AST_REFERENCE_ACTION_NO_ACTION) {
+        fprintf(stderr, "create foreign ON UPDATE NO ACTION was not recorded\n");
+        failures = 1;
+    }
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE bad_foreign_key_empty (a INT, FOREIGN KEY fk_a () REFERENCES parent(id));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE bad_inline_references_columns (a INT REFERENCES parent());",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

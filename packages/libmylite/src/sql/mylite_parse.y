@@ -172,6 +172,8 @@ static void mylite_sql_parser_stack_free(void *pointer, void *context)
 %right UPLUS UMINUS BIT_NOT.
 %right LOGICAL_NOT.
 %right KEY.
+%left REFERENCE_END.
+%left MATCH ON.
 %fallback IDENTIFIER ADDDATE AFTER AGGREGATE AT AUTO_INCREMENT BEGIN BOOL BOOLEAN BTREE CATALOG_NAME
     CHAIN CHARSET CLASS_ORIGIN COLLATION COLUMN_FORMAT COLUMN_NAME COMMENT COMMIT COMPLETION
     CONSISTENT CONSTRAINT_CATALOG CONSTRAINT_NAME CONSTRAINT_SCHEMA CONTAINS COUNT CURRENT
@@ -687,7 +689,7 @@ identifier_list(A) ::= identifier_list(B) COMMA identifier(C). {
     A = mylite_sql_parser_append_identifier(state, B, C);
 }
 
-reference_definition(A) ::= REFERENCES(T) table_name(B) LPAREN identifier_list(C) RPAREN reference_option_list(O). {
+reference_definition(A) ::= REFERENCES(T) table_name(B) LPAREN identifier_list(C) RPAREN reference_option_list(O). [REFERENCE_END] {
     A = mylite_sql_parser_make_reference_definition(state, T, B, C, O);
 }
 
@@ -2789,6 +2791,9 @@ table_element(A) ::= table_secondary_index(B). {
 table_element(A) ::= table_unique_index(B). {
     A = B;
 }
+table_element(A) ::= table_foreign_key_constraint(B). {
+    A = B;
+}
 
 column_definition(A) ::= identifier(B) column_type(C) column_attribute_list(D). {
     A = mylite_sql_parser_make_column_definition(state, B, C, D);
@@ -3335,6 +3340,9 @@ column_attribute(A) ::= UNIQUE(U) KEY(K). {
             .key_token = K,
         });
 }
+column_attribute(A) ::= reference_definition(B). {
+    A = mylite_sql_parser_make_column_references_attribute(state, B);
+}
 column_attribute(A) ::= opt_generated_always(G) AS(AK) LPAREN expression(E) RPAREN opt_generated_column_storage(S). {
     A = mylite_sql_parser_make_column_generated_attribute(state, G, AK, E, S);
 }
@@ -3386,6 +3394,13 @@ table_unique_index(A) ::= UNIQUE(T) opt_unique_index_keyword opt_index_name(B) o
 }
 table_unique_index(A) ::= CONSTRAINT(C) opt_constraint_name(B) UNIQUE opt_unique_index_keyword opt_index_name(D) opt_index_type(E) LPAREN key_part_list(F) RPAREN index_option_list(G). {
     A = mylite_sql_parser_make_unique_index(state, C, B, D, E, F, G);
+}
+
+table_foreign_key_constraint(A) ::= FOREIGN(F) KEY opt_index_name(B) LPAREN identifier_list(C) RPAREN reference_definition(D). {
+    A = mylite_sql_parser_make_alter_table_add_foreign_key_action(state, F, NULL, B, C, D);
+}
+table_foreign_key_constraint(A) ::= CONSTRAINT(C) opt_constraint_name(B) FOREIGN KEY opt_index_name(D) LPAREN identifier_list(E) RPAREN reference_definition(F). {
+    A = mylite_sql_parser_make_alter_table_add_foreign_key_action(state, C, B, D, E, F);
 }
 
 opt_constraint_name(A) ::= . {

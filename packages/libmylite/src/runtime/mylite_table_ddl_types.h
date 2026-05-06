@@ -71,6 +71,7 @@ struct mylite_create_table_plan {
     struct mylite_create_table_index *indexes;
     size_t index_count;
     bool temporary;
+    bool has_unsupported_foreign_key;
 };
 
 struct mylite_create_table_column_index_status {

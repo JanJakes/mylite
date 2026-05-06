@@ -218,8 +218,10 @@ Runtime coverage:
 - composable projections, `DISTINCT`/`ALL`, `WHERE`, `ORDER BY`, `LIMIT`,
   `COUNT(*)`, aliases, and qualified wildcard forms are covered by the shared
   system-view SELECT path
-- if foreign-key DDL parses in the current runtime, unsupported FK DDL must not
-  create `REFERENTIAL_CONSTRAINTS` rows
+- unsupported table-level `CREATE TABLE ... FOREIGN KEY ...` DDL parses but
+  must not create `REFERENTIAL_CONSTRAINTS` rows
+- inline `CREATE TABLE` column `REFERENCES` clauses parse and are ignored like
+  the verified MySQL 8.4.9 behavior; they must not create foreign-key metadata
 
 ## Known Gaps
 

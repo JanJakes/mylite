@@ -863,7 +863,8 @@ fixtures should create and drop isolated schemas.
   - `FULLTEXT`, `SPATIAL`, `WITH PARSER`, visibility, comments, prefix
     lengths, and order markers
   - `DROP CHECK`, `DROP CONSTRAINT`, `ALTER CHECK`, `ALTER CONSTRAINT`,
-    `DROP FOREIGN KEY`, and `reference_definition` actions
+    `DROP FOREIGN KEY`, `CREATE TABLE` inline `REFERENCES`, `CREATE TABLE`
+    table-level `FOREIGN KEY`, and `reference_definition` actions
   - malformed empty lists, trailing commas, missing `TO`, missing
     enforcement keywords, and invalid standalone `DROP KEY`
 - Analyzer tests:

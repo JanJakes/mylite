@@ -3070,6 +3070,45 @@ static int test_information_schema_referential_constraints_execution(void) {
         "information schema referential constraints count filter"
     );
 
+    failures += execute_sql(
+        database,
+        "CREATE TABLE referential_constraints_inline ("
+        "id INT PRIMARY KEY,"
+        "parent_id INT REFERENCES referential_constraints_parent(id) "
+        "ON UPDATE CASCADE ON DELETE SET NULL)",
+        MYLITE_DONE
+    );
+    failures += expect_empty_information_schema_table(
+        database,
+        "SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS",
+        columns,
+        referential_constraints_column_count
+    );
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE referential_constraints_create_child ("
+        "id INT PRIMARY KEY,"
+        "parent_id INT,"
+        "CONSTRAINT fk_create_parent FOREIGN KEY (parent_id) "
+        "REFERENCES referential_constraints_parent(id) ON UPDATE CASCADE "
+        "ON DELETE SET NULL)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_UNSUPPORTED,
+        "create foreign key does not create referential constraints rows"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_empty_information_schema_table(
+        database,
+        "SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS",
+        columns,
+        referential_constraints_column_count
+    );
+
     failures += expect_information_schema_tables_views(database);
     failures += expect_select_rows(
         database,
@@ -33788,6 +33827,54 @@ static int test_create_table_base_execution(void) {
     failures += expect_simple_create_table_row(database);
     failures += expect_simple_create_column_rows(database);
     failures += expect_simple_create_statistics_rows(database);
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE inline_references ("
+        "id INT PRIMARY KEY, "
+        "parent_id INT REFERENCES parent(id) MATCH SIMPLE ON DELETE CASCADE "
+        "ON UPDATE SET NULL)",
+        MYLITE_DONE
+    );
+    failures += expect_no_information_schema_statistics_index_row(
+        database,
+        "inline_references",
+        "parent_id"
+    );
+    failures += expect_no_information_schema_table_constraints_row(
+        database,
+        "inline_references",
+        "inline_references_ibfk_1"
+    );
+
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE table_foreign_key ("
+        "id INT PRIMARY KEY, parent_id INT, other_id INT, "
+        "CONSTRAINT fk_parent FOREIGN KEY fk_parent_idx (parent_id, other_id) "
+        "REFERENCES parent (id, other_id) MATCH SIMPLE ON DELETE CASCADE "
+        "ON UPDATE SET NULL)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_UNSUPPORTED,
+        "create table foreign key placeholder rejected"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "FOREIGN KEY",
+        "create table foreign key unsupported error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_table_name_row(database, "table_foreign_key");
+    failures += expect_no_information_schema_table_constraints_row(
+        database,
+        "table_foreign_key",
+        "fk_parent"
+    );
 
     failures += prepare_sql(database, "CREATE TABLE simple_create (a INT)", MYLITE_OK, &stmt);
     failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "duplicate table create");

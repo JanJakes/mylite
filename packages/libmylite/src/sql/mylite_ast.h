@@ -344,6 +344,7 @@ enum mylite_sql_ast_column_attribute {
     MYLITE_SQL_AST_COLUMN_ATTRIBUTE_PRIMARY_KEY = 11,
     MYLITE_SQL_AST_COLUMN_ATTRIBUTE_UNIQUE_KEY = 12,
     MYLITE_SQL_AST_COLUMN_ATTRIBUTE_GENERATED = 13,
+    MYLITE_SQL_AST_COLUMN_ATTRIBUTE_REFERENCES = 14,
 };
 
 enum mylite_sql_ast_generated_column_storage {

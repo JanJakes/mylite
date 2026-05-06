@@ -529,6 +529,8 @@ static int test_foreign_key_index_dependency_execution(void);
 
 static int test_foreign_key_drop_table_dependency_execution(void);
 
+static int test_foreign_key_rename_table_execution(void);
+
 static int test_select_table_core_execution(void);
 
 static int test_inner_join_execution(void);
@@ -991,6 +993,7 @@ int main(void) {
     failures += test_alter_table_foreign_key_execution();
     failures += test_foreign_key_index_dependency_execution();
     failures += test_foreign_key_drop_table_dependency_execution();
+    failures += test_foreign_key_rename_table_execution();
     failures += test_select_table_core_execution();
     failures += test_inner_join_execution();
     failures += test_outer_join_execution();
@@ -49784,6 +49787,203 @@ static int test_foreign_key_drop_table_dependency_execution(void) {
         zero_count_values,
         1,
         "foreign key checks off child drop removes metadata"
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_foreign_key_rename_table_execution(void) {
+    static const char *const fk_columns[] = {
+        "CONSTRAINT_SCHEMA",
+        "CONSTRAINT_NAME",
+        "TABLE_SCHEMA",
+        "TABLE_NAME",
+        "REFERENCED_TABLE_SCHEMA",
+        "REFERENCED_TABLE_NAME",
+    };
+    static const char *const parent_renamed_values[] = {
+        "fk_rename_runtime",
+        "fk_explicit",
+        "fk_rename_runtime",
+        "child_a",
+        "fk_rename_runtime",
+        "parent_b",
+    };
+    static const char *const child_renamed_values[] = {
+        "fk_rename_runtime",
+        "fk_explicit",
+        "fk_rename_runtime",
+        "child_b",
+        "fk_rename_runtime",
+        "parent_b",
+    };
+    static const char *const generated_child_renamed_values[] = {
+        "fk_rename_runtime",
+        "child_gen_new_ibfk_1",
+        "fk_rename_runtime",
+        "child_gen_new",
+        "fk_rename_runtime",
+        "parent_gen",
+    };
+    static const char *const checks_off_parent_renamed_values[] = {
+        "fk_rename_runtime",
+        "child_gen_new_ibfk_1",
+        "fk_rename_runtime",
+        "child_gen_new",
+        "fk_rename_runtime",
+        "parent_gen_new",
+    };
+    static const char *const child_cross_schema_values[] = {
+        "fk_rename_runtime_b",
+        "fk_explicit",
+        "fk_rename_runtime_b",
+        "child_cross",
+        "fk_rename_runtime",
+        "parent_b",
+    };
+    static const char *const parent_cross_schema_values[] = {
+        "fk_rename_runtime_b",
+        "fk_explicit",
+        "fk_rename_runtime_b",
+        "child_cross",
+        "fk_rename_runtime_b",
+        "parent_cross",
+    };
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open foreign key rename database");
+    failures += execute_sql(database, "CREATE DATABASE fk_rename_runtime", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE DATABASE fk_rename_runtime_b", MYLITE_DONE);
+    failures += execute_sql(database, "USE fk_rename_runtime", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE parent_a (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE child_a ("
+        "id INT PRIMARY KEY, "
+        "parent_id INT, "
+        "CONSTRAINT fk_explicit FOREIGN KEY (parent_id) REFERENCES parent_a(id)"
+        ")",
+        MYLITE_DONE
+    );
+
+    failures += execute_sql(database, "RENAME TABLE parent_a TO parent_b", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT CONSTRAINT_SCHEMA, CONSTRAINT_NAME, TABLE_SCHEMA, TABLE_NAME, "
+        "REFERENCED_TABLE_SCHEMA, REFERENCED_TABLE_NAME "
+        "FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE "
+        "WHERE TABLE_SCHEMA = 'fk_rename_runtime' AND TABLE_NAME = 'child_a' "
+        "AND REFERENCED_TABLE_NAME IS NOT NULL",
+        fk_columns,
+        6,
+        parent_renamed_values,
+        1,
+        "foreign key parent rename metadata"
+    );
+
+    failures += execute_sql(database, "RENAME TABLE child_a TO child_b", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT CONSTRAINT_SCHEMA, CONSTRAINT_NAME, TABLE_SCHEMA, TABLE_NAME, "
+        "REFERENCED_TABLE_SCHEMA, REFERENCED_TABLE_NAME "
+        "FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE "
+        "WHERE TABLE_SCHEMA = 'fk_rename_runtime' AND TABLE_NAME = 'child_b' "
+        "AND REFERENCED_TABLE_NAME IS NOT NULL",
+        fk_columns,
+        6,
+        child_renamed_values,
+        1,
+        "foreign key child rename metadata"
+    );
+
+    failures += execute_sql(database, "CREATE TABLE parent_gen (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE child_gen (id INT PRIMARY KEY, parent_id INT, "
+        "FOREIGN KEY (parent_id) REFERENCES parent_gen(id))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "ALTER TABLE child_gen RENAME child_gen_new", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT CONSTRAINT_SCHEMA, CONSTRAINT_NAME, TABLE_SCHEMA, TABLE_NAME, "
+        "REFERENCED_TABLE_SCHEMA, REFERENCED_TABLE_NAME "
+        "FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE "
+        "WHERE TABLE_SCHEMA = 'fk_rename_runtime' AND TABLE_NAME = 'child_gen_new' "
+        "AND REFERENCED_TABLE_NAME IS NOT NULL",
+        fk_columns,
+        6,
+        generated_child_renamed_values,
+        1,
+        "foreign key generated child rename metadata"
+    );
+
+    failures += execute_sql(database, "SET foreign_key_checks=0", MYLITE_DONE);
+    failures += execute_sql(database, "RENAME TABLE parent_gen TO parent_gen_new", MYLITE_DONE);
+    failures += execute_sql(database, "SET foreign_key_checks=1", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT CONSTRAINT_SCHEMA, CONSTRAINT_NAME, TABLE_SCHEMA, TABLE_NAME, "
+        "REFERENCED_TABLE_SCHEMA, REFERENCED_TABLE_NAME "
+        "FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE "
+        "WHERE TABLE_SCHEMA = 'fk_rename_runtime' AND TABLE_NAME = 'child_gen_new' "
+        "AND REFERENCED_TABLE_NAME IS NOT NULL",
+        fk_columns,
+        6,
+        checks_off_parent_renamed_values,
+        1,
+        "foreign key checks off parent rename metadata"
+    );
+
+    failures += execute_sql(
+        database,
+        "RENAME TABLE child_b TO fk_rename_runtime_b.child_cross",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT CONSTRAINT_SCHEMA, CONSTRAINT_NAME, TABLE_SCHEMA, TABLE_NAME, "
+        "REFERENCED_TABLE_SCHEMA, REFERENCED_TABLE_NAME "
+        "FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE "
+        "WHERE TABLE_SCHEMA = 'fk_rename_runtime_b' AND TABLE_NAME = 'child_cross' "
+        "AND REFERENCED_TABLE_NAME IS NOT NULL",
+        fk_columns,
+        6,
+        child_cross_schema_values,
+        1,
+        "foreign key child cross schema rename metadata"
+    );
+
+    failures += execute_sql(
+        database,
+        "RENAME TABLE parent_b TO fk_rename_runtime_b.parent_cross",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT CONSTRAINT_SCHEMA, CONSTRAINT_NAME, TABLE_SCHEMA, TABLE_NAME, "
+        "REFERENCED_TABLE_SCHEMA, REFERENCED_TABLE_NAME "
+        "FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE "
+        "WHERE TABLE_SCHEMA = 'fk_rename_runtime_b' AND TABLE_NAME = 'child_cross' "
+        "AND REFERENCED_TABLE_NAME IS NOT NULL",
+        fk_columns,
+        6,
+        parent_cross_schema_values,
+        1,
+        "foreign key parent cross schema rename metadata"
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO fk_rename_runtime_b.parent_cross VALUES (1)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO fk_rename_runtime_b.child_cross VALUES (1,1)",
+        MYLITE_DONE
     );
 
     mylite_close(database);

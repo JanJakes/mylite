@@ -96,6 +96,9 @@ Observed rule and error details:
   error 3730 while `foreign_key_checks=1`. Dropping parent and child together
   succeeds, and dropping the parent while `foreign_key_checks=0` leaves child
   foreign-key metadata in place.
+- Renaming a parent table rewrites the referenced table schema/name in child
+  foreign-key metadata. Renaming a child table rewrites the child table
+  schema/name and regenerates constraint names that match `old_table_ibfk_N`.
 - Updating or deleting parent rows that are referenced by `RESTRICT` or
   `NO ACTION` constraints fails with error 1451 / SQLSTATE `23000`.
 - `CASCADE`, `SET NULL`, and default `NO ACTION` rules are reported in
@@ -158,13 +161,16 @@ are disabled. FK-only `ALTER TABLE ... DROP FOREIGN KEY` removes only
 foreign-key metadata and leaves the supporting child index in place.
 `DROP INDEX` and `ALTER TABLE ... DROP INDEX` / `DROP PRIMARY KEY` reject
 child supporting indexes and parent primary/unique indexes required by foreign
-keys with error 1553, even while `foreign_key_checks=0`. `ON UPDATE CASCADE`,
-`ON UPDATE SET NULL`, mixed-action ALTER FK operations, recursive referential
-actions, and rename/truncate/column dependency restrictions remain follow-up
-slices. `DROP TABLE` rejects parent tables referenced by surviving child
-tables while `foreign_key_checks=1`, permits multi-table drops that remove the
-parent and all referencing children together, and allows checks-off parent
-drops while preserving child foreign-key metadata.
+keys with error 1553, even while `foreign_key_checks=0`. `RENAME TABLE` and
+`ALTER TABLE ... RENAME` rewrite foreign-key catalog metadata for child and
+parent tables, including cross-schema moves and MySQL-style regenerated
+`old_table_ibfk_N` child constraint names. `ON UPDATE CASCADE`, `ON UPDATE SET
+NULL`, mixed-action ALTER FK operations, recursive referential actions, and
+truncate/column dependency restrictions remain follow-up slices. `DROP TABLE`
+rejects parent tables referenced by surviving child tables while
+`foreign_key_checks=1`, permits multi-table drops that remove the parent and
+all referencing children together, and allows checks-off parent drops while
+preserving child foreign-key metadata.
 
 ## DDL Semantics
 
@@ -191,8 +197,8 @@ It must not remove the supporting child index.
 `DROP INDEX` and `ALTER TABLE ... DROP INDEX` / `DROP PRIMARY KEY` must reject
 indexes that are still required by a foreign key. MyLite enforces this for
 child supporting indexes and parent primary/unique indexes recorded in the
-foreign-key catalog. Broader rename, truncate, and column dependency rules
-remain follow-up slices.
+foreign-key catalog. Broader truncate and column dependency rules remain
+follow-up slices.
 
 `DROP TABLE` validates parent-table dependencies before mutating storage when
 `foreign_key_checks` is enabled. A referenced parent table can be dropped only
@@ -201,6 +207,13 @@ persistent target of the same `DROP TABLE` statement. When checks are disabled,
 MyLite follows MySQL by allowing the parent drop and keeping the child
 foreign-key catalog rows, so future checked child writes still fail until a
 matching parent table is restored or the foreign key is dropped.
+
+`RENAME TABLE` and `ALTER TABLE ... RENAME` rewrite catalog-backed foreign-key
+metadata in the same statement-atomic transaction as the physical table and
+table/index metadata rename. Child renames update `constraint_schema`,
+`table_schema`, `table_name`, and generated-pattern constraint names. Parent
+renames update `unique_constraint_schema`, `referenced_table_schema`, and
+`referenced_table_name`.
 
 ## DML Semantics
 

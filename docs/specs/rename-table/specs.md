@@ -15,12 +15,13 @@ and remains a syntax error.
 
 The first executable slice covers parser and AST support, selected-schema and
 schema-qualified name resolution, metadata table-name updates, physical SQLite
-table rename, internal index/statistics metadata rewrite, cross-schema moves,
-collision diagnostics, missing-table and missing-schema diagnostics, and
-statement atomicity for multi-table rename.
+table rename, internal index/statistics metadata rewrite, foreign-key catalog
+rewrite for child and parent tables, cross-schema moves, collision diagnostics,
+missing-table and missing-schema diagnostics, and statement atomicity for
+multi-table rename.
 
-Deferred behavior is explicit: temporary tables, views, triggers, foreign keys,
-CHECK constraints, privilege propagation, metadata locks, and implicit commit
+Deferred behavior is explicit: temporary tables, views, triggers, CHECK
+constraints, privilege propagation, metadata locks, and implicit commit
 boundaries are not modeled in this slice. MyLite does not yet implement
 temporary tables; top-level `RENAME TABLE` therefore looks only for base tables.
 `ALTER TABLE ... RENAME` over temporary tables is deferred with temporary-table
@@ -91,12 +92,21 @@ metadata in the same atomic scope:
 - `__mylite_table_catalog.table_schema/table_name`
 - `__mylite_column_catalog.table_schema/table_name`
 - `__mylite_index_catalog.table_schema/table_name/index_schema`
+- `__mylite_foreign_key_catalog` child-side
+  `constraint_schema/table_schema/table_name/constraint_name` and parent-side
+  `unique_constraint_schema/referenced_table_schema/referenced_table_name`
 
 `INFORMATION_SCHEMA.TABLES`, `INFORMATION_SCHEMA.COLUMNS`, and
 `INFORMATION_SCHEMA.STATISTICS` therefore expose the new table name after a
-successful rename. Data rows and index metadata are preserved. A failed
-multi-table rename leaves physical tables and metadata under their original
-names.
+successful rename. Foreign-key metadata views and `SHOW CREATE TABLE` expose
+the renamed child and parent references. Data rows and index metadata are
+preserved. A failed multi-table rename leaves physical tables and metadata
+under their original names.
+
+When a child table is renamed, MySQL-style generated constraint names matching
+`old_table_ibfk_N` are rewritten to `new_table_ibfk_N`; explicit names that do
+not match that generated-name pattern are preserved. Parent renames update the
+referenced table schema/name even when `foreign_key_checks=0`.
 
 `ALTER TABLE ... RENAME` is executed through the same single-pair runtime path
 as `RENAME TABLE`. Mixing table rename with other `ALTER TABLE` actions is not
@@ -153,6 +163,9 @@ Runtime tests cover:
 - physical SQLite table rename;
 - cross-schema `RENAME TABLE` moves;
 - cross-schema `ALTER TABLE ... RENAME` moves;
+- foreign-key metadata rewrites for parent renames, child renames, generated
+  child constraint names, cross-schema child/parent moves, and
+  `foreign_key_checks=0`;
 - selected-schema target resolution when the source is qualified;
 - swap via a temporary intermediary name;
 - existing-target, same-name, missing-source, and missing-target-schema errors;

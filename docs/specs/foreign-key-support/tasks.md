@@ -64,7 +64,7 @@ commit.
       needed by a foreign key.
 - [x] Reject or correctly handle dropping parent and child tables according to
       MySQL `foreign_key_checks` behavior.
-- [ ] Reject or correctly rewrite `RENAME TABLE` / `ALTER TABLE ... RENAME`
+- [x] Reject or correctly rewrite `RENAME TABLE` / `ALTER TABLE ... RENAME`
       for child and parent tables.
 - [ ] Apply MySQL-compatible foreign-key restrictions to `TRUNCATE TABLE`.
 - [ ] Preserve or reject column changes that affect FK child/parent columns

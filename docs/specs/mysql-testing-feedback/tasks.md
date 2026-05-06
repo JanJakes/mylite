@@ -21,7 +21,7 @@ MySQL 8.4.9 runtime before each item is marked complete.
       verify `SHOW TABLE SCHEMAS` remains a MySQL syntax error.
 - [ ] Align `SHOW TABLE STATUS` values, including row counts, data length,
       timestamps, and `AUTO_INCREMENT`.
-- [ ] Verify and complete `SHOW TABLE STATUS WHERE ...` filtering.
+- [x] Verify and complete `SHOW TABLE STATUS WHERE ...` filtering.
 - [ ] Align `CREATE TABLE ... AUTO_INCREMENT=100` metadata and status
       reporting with MySQL next-value expectations.
 - [ ] Align `SHOW CREATE TABLE` formatting and metadata, including index
@@ -47,29 +47,29 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `t` exists.
 - [x] Make `CREATE TEMPORARY TABLE IF NOT EXISTS t ...` a MySQL-compatible
       no-op when the temporary `t` exists.
-- [ ] Support or intentionally diagnose `CREATE FULLTEXT INDEX`.
-- [ ] Support or intentionally diagnose `ALTER TABLE ... ADD FULLTEXT INDEX`.
-- [ ] Support or intentionally diagnose `CREATE SPATIAL INDEX`.
+- [x] Support or intentionally diagnose `CREATE FULLTEXT INDEX`.
+- [x] Support or intentionally diagnose `ALTER TABLE ... ADD FULLTEXT INDEX`.
+- [x] Support or intentionally diagnose `CREATE SPATIAL INDEX`.
 - [ ] Complete `CREATE INDEX` forms with ordering, comments, and complex index
       options.
-- [ ] Verify and complete `DROP INDEX ...`.
+- [x] Verify and complete `DROP INDEX ...`.
 - [ ] Complete complex `ALTER TABLE ... MODIFY/CHANGE COLUMN` forms,
       preservation behavior, and affected rows.
-- [ ] Support or intentionally diagnose `ALTER TABLE ... ADD/DROP CHECK`.
+- [x] Support or intentionally diagnose `ALTER TABLE ... ADD/DROP CHECK`.
 - [ ] Complete `CREATE TABLE ... CHECK (...)` syntax forms.
 - [ ] Complete inline and table-level foreign-key DDL syntax coverage.
-- [ ] Support or intentionally diagnose `ALTER TABLE ... ADD/DROP FOREIGN KEY`.
+- [x] Support or intentionally diagnose `ALTER TABLE ... ADD/DROP FOREIGN KEY`.
 
 ## DML
 
-- [ ] Verify and complete `UPDATE ... WHERE ... ORDER BY ... LIMIT`.
+- [x] Verify and complete `UPDATE ... WHERE ... ORDER BY ... LIMIT`.
 - [ ] Fix joined `UPDATE ... JOIN ... ON ...` name resolution such as `t1.id`.
 - [ ] Complete more complex joined update forms.
 - [x] Support `INSERT ... SELECT FROM DUAL`.
-- [ ] Verify and complete `INSERT ... SET ...` defaults and generated values.
-- [ ] Verify and complete `INSERT` without `INTO`.
+- [x] Verify and complete `INSERT ... SET ...` defaults and generated values.
+- [x] Verify and complete `INSERT` without `INTO`.
 - [ ] Complete complex insert value expressions.
-- [ ] Align `ON DUPLICATE KEY UPDATE` affected-row semantics.
+- [x] Align `ON DUPLICATE KEY UPDATE` affected-row semantics.
 - [ ] Align composite primary-key duplicate handling.
 - [x] Make `FOUND_ROWS()` return `0` on a fresh connection before any prior
       successful `SELECT`.
@@ -88,7 +88,7 @@ MySQL 8.4.9 runtime before each item is marked complete.
 
 - [ ] Align `NO_BACKSLASH_ESCAPES` string and pattern escaping, including
       `\0` and pattern matching.
-- [ ] Fix binary literal evaluation such as `SELECT 0b000000001`.
+- [x] Fix binary literal evaluation such as `SELECT 0b000000001`.
 - [ ] Preserve string values containing null bytes instead of truncating at
       `\0`.
 - [ ] Make `FROM_BASE64(TO_BASE64('binary\\0data'))` preserve binary null
@@ -98,9 +98,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
 - [ ] Align non-strict `INSERT`/`UPDATE` behavior for missing and `NULL`
       `NOT NULL` values.
 - [ ] Align numeric/string casts in strict and non-strict modes.
-- [ ] Complete `CAST(...)` and `CONVERT(...)` syntax, including
+- [x] Complete `CAST(...)` and `CONVERT(...)` syntax, including
       `CONVERT ... USING utf8`.
-- [ ] Complete `SELECT DATE(...)` and date-function predicates.
+- [x] Complete `SELECT DATE(...)` and date-function predicates.
 - [ ] Align ambiguous-name handling in `GROUP BY`, `HAVING`, and `ORDER BY`.
 - [x] Align literal expression column labels, such as `SELECT 'abc'`.
 - [ ] Complete result column metadata for expressions that currently report no

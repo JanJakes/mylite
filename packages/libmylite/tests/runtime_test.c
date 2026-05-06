@@ -2362,6 +2362,9 @@ static int test_regexp_predicates_execution(void)
     static const char *const updated_notes[] = {"1", "valid", "2", "valid"};
     static const char *const short_circuit_columns[] = {"and_short", "or_short"};
     static const char *const short_circuit_values[] = {"0", "1"};
+    static const char *const binary_columns[] = {"regexp_pattern", "regexp_value", "rlike_pattern",
+                                                 "not_regexp", "like_pattern"};
+    static const char *const binary_values[] = {"0", "0", "0", "1", "0"};
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -2401,6 +2404,21 @@ static int test_regexp_predicates_execution(void)
                                    regexp_columns,
                                    (int)(sizeof(regexp_columns) / sizeof(regexp_columns[0])),
                                    regexp_values, 1, "regexp scalar values");
+
+    failures += expect_select_rows(database,
+                                   "SELECT 'abc' REGEXP BINARY 'A' AS regexp_pattern, "
+                                   "BINARY 'abc' REGEXP 'A' AS regexp_value, "
+                                   "'abc' RLIKE BINARY 'A' AS rlike_pattern, "
+                                   "'abc' NOT REGEXP BINARY 'A' AS not_regexp, "
+                                   "'abc' LIKE BINARY 'A%' AS like_pattern",
+                                   binary_columns,
+                                   (int)(sizeof(binary_columns) / sizeof(binary_columns[0])),
+                                   binary_values, 1, "binary string predicate values");
+    failures += expect_int(mylite_warning_count(database), 5, "binary expr warning count");
+    for (int warning = 0; warning < 5; ++warning) {
+        failures += expect_int((int)mylite_warning_code(database, warning),
+                               mysql_warning_deprecated_syntax, "binary expr warning code");
+    }
 
     failures += prepare_sql(database,
                             "SELECT 'abc' REGEXP 'a' AS r, "

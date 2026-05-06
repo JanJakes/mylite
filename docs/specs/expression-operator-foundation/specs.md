@@ -206,9 +206,11 @@ Task 16 should implement `%`, `_`, default backslash escaping, and
 connection collation. It must preserve `NULL` propagation when either operand
 is `NULL`.
 
-Full collation-aware pattern semantics, `BINARY expr`, `COLLATE`, character
-set introducers, and multibyte collation equivalence are deferred. Until those
-are implemented, non-ASCII and explicit-collation pattern tests should remain
+`BINARY expr` is accepted as a deprecated binary-string cast and forces
+case-sensitive `LIKE` evaluation for the covered ASCII-compatible string
+subset. Full collation-aware pattern semantics, `COLLATE`, character set
+introducers, and multibyte collation equivalence are deferred. Until those are
+implemented, non-ASCII and explicit-collation pattern tests should remain
 outside supported coverage.
 
 ### `IN`
@@ -638,7 +640,7 @@ their later tasks:
 | `SELECT (1,2) IN ((1,2),(3,4))` | returns `1` | unsupported row constructor |
 | `SELECT (1,2) = (1,2)` | returns `1` | unsupported row constructor |
 | `SELECT (1,2) = (1,2,3)` | error 1241 / `21000` | unsupported row constructor |
-| `SELECT 'abc' LIKE BINARY 'A%'` | returns `0`, warning 1287 | unsupported `BINARY expr` |
+| `SELECT 'abc' LIKE BINARY 'A%'` | returns `0`, warning 1287 | supported |
 | `SET sql_mode = CONCAT(@@sql_mode, ',PIPES_AS_CONCAT'); SELECT 'a' || 'b'` | returns `ab` | unsupported mode-sensitive concatenation |
 
 ## Known incompatibilities and deferred behavior

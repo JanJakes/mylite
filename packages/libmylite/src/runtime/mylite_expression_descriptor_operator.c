@@ -55,6 +55,23 @@ int mylite_expression_descriptor_infer_unary_expression(
         *out_descriptor = mylite_expression_descriptor_unsigned_longlong(
             mylite_expression_descriptor_is_nullable(&operand));
         return MYLITE_OK;
+    case MYLITE_SQL_AST_OPERATOR_BINARY_CAST:
+        status = callbacks->infer_expression_descriptor(
+            database, plan, mylite_ast_child_at(expression, 0U), value, &operand);
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        *out_descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_VAR_STRING,
+            .flags = MYLITE_FIELD_FLAG_BINARY,
+            .length = operand.length,
+            .decimals = mylite_mysql_not_fixed_decimals,
+            .charset_id = mylite_mysql_binary_charset_id,
+            .nullable = mylite_expression_descriptor_is_nullable(&operand),
+        };
+        mylite_field_descriptor_set_nullable(out_descriptor,
+                                             mylite_expression_descriptor_is_nullable(&operand));
+        return MYLITE_OK;
     case MYLITE_SQL_AST_OPERATOR_POSITIVE:
     case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
         status = callbacks->infer_expression_descriptor(
@@ -231,6 +248,7 @@ int mylite_expression_descriptor_infer_binary_expression(
     case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
     case MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT:
     case MYLITE_SQL_AST_OPERATOR_BITWISE_NOT:
+    case MYLITE_SQL_AST_OPERATOR_BINARY_CAST:
     case MYLITE_SQL_AST_OPERATOR_IS_NULL:
     case MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL:
     case MYLITE_SQL_AST_OPERATOR_IS_TRUE:
@@ -305,6 +323,7 @@ int mylite_expression_descriptor_infer_ternary_expression(
     case MYLITE_SQL_AST_OPERATOR_LOGICAL_XOR:
     case MYLITE_SQL_AST_OPERATOR_LOGICAL_OR:
     case MYLITE_SQL_AST_OPERATOR_BITWISE_NOT:
+    case MYLITE_SQL_AST_OPERATOR_BINARY_CAST:
     case MYLITE_SQL_AST_OPERATOR_BITWISE_AND:
     case MYLITE_SQL_AST_OPERATOR_BITWISE_XOR:
     case MYLITE_SQL_AST_OPERATOR_BITWISE_OR:

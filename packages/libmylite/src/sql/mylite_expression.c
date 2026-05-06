@@ -24,6 +24,7 @@ enum {
     MYLITE_WARNING_UNKNOWN = 1105,
     MYLITE_WARNING_INCORRECT_ESCAPE_ARGUMENTS = 1210,
     MYLITE_WARNING_INCORRECT_REGEXP_ARGUMENTS = 1210,
+    MYLITE_WARNING_WARN_DEPRECATED_SYNTAX = 1287,
     MYLITE_WARNING_TRUNCATED_WRONG_VALUE = 1292,
     MYLITE_WARNING_INVALID_CHARACTER_STRING = 1300,
     MYLITE_WARNING_DIVISION_BY_ZERO = 1365,
@@ -791,6 +792,9 @@ static int eval_cast_expression(const struct mylite_sql_ast_node *node,
                                 const struct mylite_expression_eval_context *context,
                                 struct mylite_expression_warnings *warnings,
                                 struct mylite_expression_value *out_value);
+static int eval_binary_prefix_cast(const struct mylite_expression_value *value,
+                                   struct mylite_expression_warnings *warnings,
+                                   struct mylite_expression_value *out_value);
 static int eval_signed_cast(const struct mylite_expression_value *value,
                             struct mylite_expression_warnings *warnings,
                             struct mylite_expression_value *out_value);
@@ -2164,6 +2168,7 @@ static size_t utf8_first_character_length(const char *text);
 static int64_t find_text_match_position(struct locate_search search);
 static int append_warning(struct mylite_expression_warnings *warnings, unsigned int code,
                           const char *message);
+static int append_binary_expr_deprecated_warning(struct mylite_expression_warnings *warnings);
 static int append_truncation_warning(struct mylite_expression_warnings *warnings, const char *text);
 static int append_cast_truncation_warning(struct mylite_expression_warnings *warnings,
                                           const char *type_name, const char *text);
@@ -2182,6 +2187,7 @@ static char *decode_string_literal(const struct mylite_sql_ast_node *node);
 static bool decode_string_escape(char escaped, char *out_character);
 static const struct mylite_sql_ast_node *
 unwrap_parenthesized_node(const struct mylite_sql_ast_node *node);
+static bool expression_is_binary_string_modifier(const struct mylite_sql_ast_node *node);
 static const struct mylite_sql_ast_node *child_at(const struct mylite_sql_ast_node *node,
                                                   size_t index);
 static size_t child_count(const struct mylite_sql_ast_node *node);
@@ -2201,8 +2207,10 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
 static bool ascii_span_equals(struct mylite_sql_source_span span, const char *text);
 static bool is_null(const struct mylite_expression_value *value);
 static bool is_numeric_kind(enum mylite_expression_value_kind kind);
-static bool like_match(const char *value, const char *pattern, char escape);
-static bool like_match_here(const char *value, const char *pattern, char escape);
+static bool like_match(const char *value, const char *pattern, char escape, bool case_sensitive);
+static bool like_match_here(const char *value, const char *pattern, char escape,
+                            bool case_sensitive);
+static bool like_char_equal(char value, char pattern, bool case_sensitive);
 static int ascii_case_fold(int character);
 
 void mylite_expression_value_deinit(struct mylite_expression_value *value)
@@ -2803,6 +2811,11 @@ static int eval_unary(const struct mylite_sql_ast_node *node,
     if (status != 0) {
         return status;
     }
+    if (node->operator_kind == MYLITE_SQL_AST_OPERATOR_BINARY_CAST) {
+        status = eval_binary_prefix_cast(&operand, warnings, out_value);
+        mylite_expression_value_deinit(&operand);
+        return status;
+    }
     status = eval_numeric_unary(node->operator_kind, &operand, warnings, out_value);
     mylite_expression_value_deinit(&operand);
     return status;
@@ -3307,6 +3320,22 @@ static int eval_cast_expression(const struct mylite_sql_ast_node *node,
 
     mylite_expression_value_deinit(&value);
     return status;
+}
+
+static int eval_binary_prefix_cast(const struct mylite_expression_value *value,
+                                   struct mylite_expression_warnings *warnings,
+                                   struct mylite_expression_value *out_value)
+{
+    int status = append_binary_expr_deprecated_warning(warnings);
+
+    if (status != 0) {
+        return status;
+    }
+    if (is_null(value)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        return 0;
+    }
+    return eval_binary_cast(value, out_value);
 }
 
 static int eval_signed_cast(const struct mylite_expression_value *value,
@@ -15698,6 +15727,7 @@ static bool trigonometric_pi_expression_value_impl(const struct mylite_sql_ast_n
     case MYLITE_SQL_AST_OPERATOR_BITWISE_OR:
     case MYLITE_SQL_AST_OPERATOR_BITWISE_XOR:
     case MYLITE_SQL_AST_OPERATOR_BITWISE_NOT:
+    case MYLITE_SQL_AST_OPERATOR_BINARY_CAST:
     case MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT:
     case MYLITE_SQL_AST_OPERATOR_LOGICAL_AND:
     case MYLITE_SQL_AST_OPERATOR_LOGICAL_OR:
@@ -17603,6 +17633,8 @@ static int eval_like(enum mylite_sql_ast_operator operator_kind,
     char *pattern_text = NULL;
     char *escape_text = NULL;
     char escape = '\\';
+    bool case_sensitive = expression_is_binary_string_modifier(child_at(node, 0U)) ||
+                          expression_is_binary_string_modifier(child_at(node, 1U));
     int status = eval_node(child_at(node, 0U), context, warnings, &value);
 
     if (status == 0) {
@@ -17638,7 +17670,7 @@ static int eval_like(enum mylite_sql_ast_operator operator_kind,
         }
     }
     if (status == 0) {
-        bool result = like_match(value_text, pattern_text, escape);
+        bool result = like_match(value_text, pattern_text, escape, case_sensitive);
         if (operator_kind == MYLITE_SQL_AST_OPERATOR_NOT_LIKE) {
             result = !result;
         }
@@ -17664,7 +17696,10 @@ static int eval_regexp(enum mylite_sql_ast_operator operator_kind,
 {
     struct mylite_expression_value value = {0};
     struct mylite_expression_value pattern = {0};
-    struct mylite_regexp_options options = {0};
+    struct mylite_regexp_options options = {
+        .case_sensitive = expression_is_binary_string_modifier(child_at(node, 0U)) ||
+                          expression_is_binary_string_modifier(child_at(node, 1U)),
+    };
     struct mylite_regexp_error error = {0};
     char *value_text = NULL;
     char *pattern_text = NULL;
@@ -18375,6 +18410,7 @@ row_subquery_comparison_operator_is_supported(enum mylite_sql_ast_operator opera
     case MYLITE_SQL_AST_OPERATOR_SHIFT_RIGHT:
     case MYLITE_SQL_AST_OPERATOR_POSITIVE:
     case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
+    case MYLITE_SQL_AST_OPERATOR_BINARY_CAST:
     case MYLITE_SQL_AST_OPERATOR_BETWEEN:
     case MYLITE_SQL_AST_OPERATOR_NOT_BETWEEN:
     case MYLITE_SQL_AST_OPERATOR_LIKE:
@@ -19645,6 +19681,13 @@ static int append_warning(struct mylite_expression_warnings *warnings, unsigned 
     return mylite_expression_warnings_append(warnings, code, message);
 }
 
+static int append_binary_expr_deprecated_warning(struct mylite_expression_warnings *warnings)
+{
+    return append_warning(warnings, MYLITE_WARNING_WARN_DEPRECATED_SYNTAX,
+                          "'BINARY expr' is deprecated and will be removed in a future release. "
+                          "Please use CAST instead");
+}
+
 static int append_truncation_warning(struct mylite_expression_warnings *warnings, const char *text)
 {
     char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
@@ -19839,6 +19882,26 @@ unwrap_parenthesized_node(const struct mylite_sql_ast_node *node)
         node = child_at(node, 0U);
     }
     return node;
+}
+
+static bool expression_is_binary_string_modifier(const struct mylite_sql_ast_node *node)
+{
+    const struct mylite_sql_ast_node *target = NULL;
+
+    node = unwrap_parenthesized_node(node);
+    if (node == NULL) {
+        return false;
+    }
+    if (node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION &&
+        node->operator_kind == MYLITE_SQL_AST_OPERATOR_BINARY_CAST) {
+        return true;
+    }
+    if (node->kind != MYLITE_SQL_AST_CAST_EXPRESSION) {
+        return false;
+    }
+    target = child_at(node, 1U);
+    return target != NULL && target->kind == MYLITE_SQL_AST_COLUMN_TYPE &&
+           target->column_type == MYLITE_SQL_AST_COLUMN_TYPE_BINARY;
 }
 
 static const struct mylite_sql_ast_node *child_at(const struct mylite_sql_ast_node *node,
@@ -20265,36 +20328,43 @@ static bool is_numeric_kind(enum mylite_expression_value_kind kind)
            kind == MYLITE_EXPRESSION_VALUE_REAL;
 }
 
-static bool like_match(const char *value, const char *pattern, char escape)
+static bool like_match(const char *value, const char *pattern, char escape, bool case_sensitive)
 {
-    return like_match_here(value == NULL ? "" : value, pattern == NULL ? "" : pattern, escape);
+    return like_match_here(value == NULL ? "" : value, pattern == NULL ? "" : pattern, escape,
+                           case_sensitive);
 }
 
-static bool like_match_here(const char *value, const char *pattern, char escape)
+static bool like_match_here(const char *value, const char *pattern, char escape,
+                            bool case_sensitive)
 {
     if (*pattern == '\0') {
         return *value == '\0';
     }
     if (*pattern == '%') {
         do {
-            if (like_match_here(value, pattern + 1, escape)) {
+            if (like_match_here(value, pattern + 1, escape, case_sensitive)) {
                 return true;
             }
         } while (*value++ != '\0');
         return false;
     }
     if (*pattern == escape && pattern[1] != '\0') {
-        return *value != '\0' &&
-               ascii_case_fold((unsigned char)*value) ==
-                   ascii_case_fold((unsigned char)pattern[1]) &&
-               like_match_here(value + 1, pattern + 2, escape);
+        return *value != '\0' && like_char_equal(*value, pattern[1], case_sensitive) &&
+               like_match_here(value + 1, pattern + 2, escape, case_sensitive);
     }
     if (*pattern == '_') {
-        return *value != '\0' && like_match_here(value + 1, pattern + 1, escape);
+        return *value != '\0' && like_match_here(value + 1, pattern + 1, escape, case_sensitive);
     }
-    return *value != '\0' &&
-           ascii_case_fold((unsigned char)*value) == ascii_case_fold((unsigned char)*pattern) &&
-           like_match_here(value + 1, pattern + 1, escape);
+    return *value != '\0' && like_char_equal(*value, *pattern, case_sensitive) &&
+           like_match_here(value + 1, pattern + 1, escape, case_sensitive);
+}
+
+static bool like_char_equal(char value, char pattern, bool case_sensitive)
+{
+    if (case_sensitive) {
+        return value == pattern;
+    }
+    return ascii_case_fold((unsigned char)value) == ascii_case_fold((unsigned char)pattern);
 }
 
 static int ascii_case_fold(int character)

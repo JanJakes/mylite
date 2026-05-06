@@ -1775,6 +1775,8 @@ const char *mylite_sql_ast_operator_name(enum mylite_sql_ast_operator operator_k
         return "json_extract";
     case MYLITE_SQL_AST_OPERATOR_JSON_UNQUOTE_EXTRACT:
         return "json_unquote_extract";
+    case MYLITE_SQL_AST_OPERATOR_BINARY_CAST:
+        return "binary_cast";
     case MYLITE_SQL_AST_OPERATOR_IN:
         return "in";
     case MYLITE_SQL_AST_OPERATOR_NOT_IN:

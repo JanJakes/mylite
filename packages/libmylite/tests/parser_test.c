@@ -5805,7 +5805,9 @@ static int test_expression_operator_foundation_syntax(void)
     failures += parse_sql("SELECT 1 IS NULL, 1 IS NOT TRUE, 2 BETWEEN 1 AND 3, "
                           "2 NOT BETWEEN 3 AND 1, 'a' LIKE 'a' ESCAPE '!', "
                           "'a' REGEXP 'a', 'a' RLIKE 'a', 'a' NOT REGEXP 'b', "
-                          "'a' NOT RLIKE 'b', 1 NOT IN (2,3), 5 DIV 2, 5 % 2, 5 MOD 2",
+                          "'a' NOT RLIKE 'b', 1 NOT IN (2,3), 5 DIV 2, 5 % 2, 5 MOD 2, "
+                          "BINARY 'a', 'a' REGEXP BINARY 'A', 'a' RLIKE BINARY 'A', "
+                          "'a' NOT REGEXP BINARY 'A', 'a' NOT RLIKE BINARY 'A'",
                           MYLITE_SQL_PARSE_OK, &result);
     select_list = child_at(child_at(result.root, 0U), 0U);
     failures += expect_operator(child_at(child_at(select_list, 0U), 0U),
@@ -5835,6 +5837,25 @@ static int test_expression_operator_foundation_syntax(void)
                                 MYLITE_SQL_AST_OPERATOR_MODULO, "percent");
     failures += expect_operator(child_at(child_at(select_list, 12U), 0U),
                                 MYLITE_SQL_AST_OPERATOR_MODULO, "mod");
+    failures += expect_operator(child_at(child_at(select_list, 13U), 0U),
+                                MYLITE_SQL_AST_OPERATOR_BINARY_CAST, "binary prefix");
+    expression = child_at(child_at(select_list, 14U), 0U);
+    failures += expect_operator(expression, MYLITE_SQL_AST_OPERATOR_REGEXP, "regexp binary");
+    failures += expect_operator(child_at(expression, 1U), MYLITE_SQL_AST_OPERATOR_BINARY_CAST,
+                                "regexp binary pattern");
+    expression = child_at(child_at(select_list, 15U), 0U);
+    failures += expect_operator(expression, MYLITE_SQL_AST_OPERATOR_REGEXP, "rlike binary");
+    failures += expect_operator(child_at(expression, 1U), MYLITE_SQL_AST_OPERATOR_BINARY_CAST,
+                                "rlike binary pattern");
+    expression = child_at(child_at(select_list, 16U), 0U);
+    failures +=
+        expect_operator(expression, MYLITE_SQL_AST_OPERATOR_NOT_REGEXP, "not regexp binary");
+    failures += expect_operator(child_at(expression, 1U), MYLITE_SQL_AST_OPERATOR_BINARY_CAST,
+                                "not regexp binary pattern");
+    expression = child_at(child_at(select_list, 17U), 0U);
+    failures += expect_operator(expression, MYLITE_SQL_AST_OPERATOR_NOT_REGEXP, "not rlike binary");
+    failures += expect_operator(child_at(expression, 1U), MYLITE_SQL_AST_OPERATOR_BINARY_CAST,
+                                "not rlike binary pattern");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT 1 IN ()", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

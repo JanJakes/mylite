@@ -4441,6 +4441,10 @@ unary_expression(A) ::= LOGICAL_NOT(T) unary_expression(B). {
     A = mylite_sql_parser_make_unary_expression(
         state, T, MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT, B);
 }
+unary_expression(A) ::= BINARY(T) unary_expression(B). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, T, MYLITE_SQL_AST_OPERATOR_BINARY_CAST, B);
+}
 
 primary_expression(A) ::= literal(B). {
     A = B;

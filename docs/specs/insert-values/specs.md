@@ -194,6 +194,9 @@ Verified MySQL 8.4.9 diagnostics for the scoped behavior:
 - explicit `NULL` into required non-auto column: 1048,
   `Column 'a' cannot be null`
 - duplicate primary key value: 1062, duplicate-entry diagnostic
+- composite primary or unique key duplicate value: 1062, duplicate-entry
+  diagnostic with key parts joined by `-`; nullable unique-key parts containing
+  `NULL` remain distinct and do not conflict
 
 For transactional InnoDB tables, a later row failure in a multi-row insert
 leaves no partial rows behind. MyLite must preserve this all-or-nothing behavior
@@ -384,6 +387,8 @@ Implementation tests should cover these MySQL 8.4.9 expectations:
 | `INSERT INTO ai VALUES (20,1),(NULL,1)` with unique `u` | Rolls back rows, consumes the generated id interval, and leaves the previous last insert id unchanged. |
 | `INSERT INTO ai VALUES (20,1),(NULL,2)` with `AUTO_INCREMENT=10` | Stores generated id `21`; the next generated value after the statement is `23`. |
 | `INSERT INTO ai_explicit VALUES (NULL,10),(0,20),(5,50),(NULL,60)` | Allocates generated ids around explicit value and records first generated id. |
+| `INSERT INTO composite_pk VALUES (1,2,'x')` followed by duplicate `(1,2)` | Fails with duplicate entry `1-2` for key `PRIMARY`; `INSERT IGNORE` demotes the duplicate to warning 1062 and leaves the row unchanged. |
+| composite nullable unique key with `(NULL,1)`, `(NULL,1)`, `(1,NULL)`, `(1,NULL)`, `(1,2)` | Accepts rows containing `NULL` key parts and rejects a duplicate `(1,2)` with duplicate entry `1-2`. |
 | `INSERT INTO dflt (nn,nd,nul,txt) VALUES (1, DEFAULT, DEFAULT, DEFAULT)` | Stores `(1,9,NULL,'hello')`. |
 | `INSERT INTO dflt (nn) VALUES (DEFAULT)` | Fails because `nn` has no default. |
 | `INSERT INTO scalar_insert (...) VALUES (CONCAT('a','b'), ABS(-3), ROUND(12.345,2), TIMESTAMP(...), RAND(7), UUID())` | Evaluates supported scalar expressions and stores MySQL-compatible values. |
@@ -424,6 +429,8 @@ Implementation tests should cover these MySQL 8.4.9 expectations:
     session last insert id
   - missing schema/table/system schema diagnostics
   - duplicate and unknown target-column diagnostics
+  - composite primary-key and unique-key duplicate diagnostics, including
+    nullable unique-key parts containing `NULL`
   - wrong row arity diagnostics with row number
   - required-column and explicit-null diagnostics
   - atomic multi-row rollback

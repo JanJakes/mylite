@@ -729,6 +729,7 @@ Implemented runtime tests:
 - mixed multi-row source with insert, update, and no-op update
 - conflict detection against primary key, single unique key, multiple unique
   keys in MyLite catalog order, and update-branch duplicate rollback
+- composite primary-key conflict detection
 - nullable unique-key parts containing `NULL`
 - assignment order, repeated target assignments, `DEFAULT`, target-column
   references, `VALUES(col)`, row aliases, and column aliases
@@ -746,8 +747,8 @@ Implemented runtime tests:
 
 Deferred runtime tests:
 
-- composite unique-key conflict surfaces beyond the current primary/single-key
-  and multiple-index coverage
+- composite unique-key ODKU conflict surfaces beyond the current primary,
+  single-key, and multiple-index coverage
 - generated-column validation and generated-column `DEFAULT` behavior
 - triggers, foreign keys, views, partitions, priority/delayed modifiers, and
   insert-from-query ODKU sources

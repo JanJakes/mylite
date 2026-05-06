@@ -44075,6 +44075,88 @@ static int test_insert_values_execution(void) {
 
     failures += execute_sql(
         database,
+        "CREATE TABLE composite_pk_insert ("
+        "a INT NOT NULL, b INT NOT NULL, v VARCHAR(10), PRIMARY KEY (a,b))",
+        MYLITE_DONE
+    );
+    failures +=
+        execute_sql(database, "INSERT INTO composite_pk_insert VALUES (1,2,'x')", MYLITE_DONE);
+    failures +=
+        prepare_sql(database, "INSERT INTO composite_pk_insert VALUES (1,2,'y')", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "composite primary duplicate");
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Duplicate entry '1-2' for key 'composite_pk_insert.PRIMARY'",
+        "composite primary duplicate error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT IGNORE INTO composite_pk_insert VALUES (1,2,'ignored')",
+        0,
+        "composite primary insert ignore affected rows"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "composite primary ignore warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_duplicate_entry,
+        "composite primary ignore warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "Duplicate entry '1-2' for key 'composite_pk_insert.PRIMARY'",
+        "composite primary ignore warning message"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT a, b, v FROM composite_pk_insert",
+        (const char *[]){"a", "b", "v"},
+        3,
+        (const char *[]){"1", "2", "x"},
+        1,
+        "composite primary duplicate row"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE composite_nullable_unique ("
+        "a INT NULL, b INT NULL, UNIQUE KEY uq_ab (a,b))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO composite_nullable_unique VALUES "
+        "(NULL,1),(NULL,1),(1,NULL),(1,NULL),(1,2)",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "INSERT INTO composite_nullable_unique VALUES (1,2)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "composite unique duplicate");
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Duplicate entry '1-2' for key 'composite_nullable_unique.uq_ab'",
+        "composite unique duplicate error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT a, b FROM composite_nullable_unique ORDER BY a IS NULL, a, b IS NULL, b",
+        (const char *[]){"a", "b"},
+        2,
+        (const char *[]){"1", "2", "1", NULL, "1", NULL, NULL, "1", NULL, "1"},
+        5,
+        "composite nullable unique rows"
+    );
+
+    failures += execute_sql(
+        database,
         "CREATE TABLE ai ("
         "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, "
         "v VARCHAR(10) DEFAULT 'd', "
@@ -47040,6 +47122,30 @@ static int test_insert_on_duplicate_key_update_execution(void) {
         (const char *[]){"1", NULL, "10", "2", NULL, "20"},
         2,
         "ODKU nullable unique NULL rows"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE odku_composite ("
+        "a INT NOT NULL, b INT NOT NULL, v INT, PRIMARY KEY (a,b))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "INSERT INTO odku_composite VALUES (1,2,10)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO odku_composite VALUES (1,2,20) AS n(x,y,z) "
+        "ON DUPLICATE KEY UPDATE v = z",
+        2,
+        "ODKU composite primary affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT a, b, v FROM odku_composite",
+        (const char *[]){"a", "b", "v"},
+        3,
+        (const char *[]){"1", "2", "20"},
+        1,
+        "ODKU composite primary row"
     );
 
     failures += execute_sql(

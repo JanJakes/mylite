@@ -79,7 +79,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
 - [x] Verify and complete `INSERT` without `INTO`.
 - [x] Complete complex insert value expressions.
 - [x] Align `ON DUPLICATE KEY UPDATE` affected-row semantics.
-- [ ] Align composite primary-key duplicate handling.
+- [x] Align composite primary-key duplicate handling. Composite primary-key
+      errors, `INSERT IGNORE` warnings, nullable composite unique-key behavior,
+      and composite primary-key ODKU updates are covered.
 - [x] Make `FOUND_ROWS()` return `0` on a fresh connection before any prior
       successful `SELECT`.
 

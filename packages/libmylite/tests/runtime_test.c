@@ -155,6 +155,8 @@ enum {
     mysql_warning_wrong_parameters_to_native_fct = 1583,
     mysql_warning_unknown_locale = 1649,
     mysql_warning_out_of_range = 1690,
+    mysql_warning_foreign_key_column_drop = 1828,
+    mysql_warning_foreign_key_parent_column_drop = 1829,
     mysql_warning_duplicate_index = 1831,
     mysql_warning_legacy_syntax_converted = 3005,
     mysql_warning_invalid_argument_for_logarithm = 3020,
@@ -170,6 +172,7 @@ enum {
     mysql_warning_using_other_handler = 3502,
     mysql_warning_primary_invisible = 3522,
     mysql_warning_foreign_key_drop_parent = 3730,
+    mysql_warning_foreign_key_incompatible_columns = 3780,
     mysql_warning_default_value_generated = 3773,
     mysql_warning_user_lock_name_too_long = 4163,
     mysql_warning_illegal_regexp_argument = 3685,
@@ -533,6 +536,8 @@ static int test_foreign_key_drop_table_dependency_execution(void);
 static int test_foreign_key_rename_table_execution(void);
 
 static int test_foreign_key_truncate_table_dependency_execution(void);
+
+static int test_foreign_key_alter_column_dependency_execution(void);
 
 static int test_select_table_core_execution(void);
 
@@ -998,6 +1003,7 @@ int main(void) {
     failures += test_foreign_key_drop_table_dependency_execution();
     failures += test_foreign_key_rename_table_execution();
     failures += test_foreign_key_truncate_table_dependency_execution();
+    failures += test_foreign_key_alter_column_dependency_execution();
     failures += test_select_table_core_execution();
     failures += test_inner_join_execution();
     failures += test_outer_join_execution();
@@ -50181,6 +50187,323 @@ static int test_foreign_key_truncate_table_dependency_execution(void) {
     );
     mylite_finalize(stmt);
     stmt = NULL;
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_foreign_key_alter_column_dependency_execution(void) {
+    static const char *const count_columns[] = {"c"};
+    static const char *const fk_columns[] = {
+        "CONSTRAINT_NAME",
+        "COLUMN_NAME",
+        "REFERENCED_COLUMN_NAME",
+    };
+    static const char *const child_renamed_values[] = {
+        "fk_child_parent",
+        "parent_ref",
+        "id",
+    };
+    static const char *const parent_renamed_values[] = {
+        "fk_child_parent",
+        "parent_ref",
+        "id_ref",
+    };
+    static const char *const child_changed_values[] = {
+        "fk_child_parent",
+        "parent_ref2",
+        "id_ref",
+    };
+    static const char *const parent_changed_values[] = {
+        "fk_child_parent",
+        "parent_ref2",
+        "id_ref2",
+    };
+    static const char *const self_child_values[] = {"fk_self_col", "parent_ref", "id"};
+    static const char *const self_parent_values[] = {"fk_self_col", "parent_ref", "id_ref"};
+    static const char *const one_count_values[] = {"1"};
+    static const char *const child_type_values[] = {"int"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(
+        mylite_open_memory(&database),
+        MYLITE_OK,
+        "open foreign key alter column database"
+    );
+    failures += execute_sql(database, "CREATE DATABASE fk_alter_column_runtime", MYLITE_DONE);
+    failures += execute_sql(database, "USE fk_alter_column_runtime", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE parent_col (id INT NOT NULL PRIMARY KEY, code INT UNIQUE, payload INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE child_col ("
+        "id INT PRIMARY KEY, "
+        "parent_id INT, "
+        "code INT, "
+        "label INT, "
+        "CONSTRAINT fk_child_parent FOREIGN KEY (parent_id) REFERENCES parent_col(id), "
+        "CONSTRAINT fk_child_code FOREIGN KEY (code) REFERENCES parent_col(code)"
+        ")",
+        MYLITE_DONE
+    );
+
+    failures +=
+        prepare_sql(database, "ALTER TABLE child_col DROP COLUMN parent_id", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "foreign key blocks child column drop");
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Cannot drop column 'parent_id': needed in a foreign key constraint 'fk_child_parent'",
+        "foreign key child column drop error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_foreign_key_column_drop,
+        "foreign key child column drop code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "ALTER TABLE parent_col DROP COLUMN id", MYLITE_OK, &stmt);
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "foreign key blocks parent column drop"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Cannot drop column 'id': needed in a foreign key constraint 'fk_child_parent' "
+        "of table 'child_col'",
+        "foreign key parent column drop error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_foreign_key_parent_column_drop,
+        "foreign key parent column drop code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(
+        database,
+        "ALTER TABLE child_col RENAME COLUMN parent_id TO parent_ref",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_COLUMN_NAME "
+        "FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE "
+        "WHERE CONSTRAINT_SCHEMA = 'fk_alter_column_runtime' "
+        "AND TABLE_NAME = 'child_col' "
+        "AND CONSTRAINT_NAME = 'fk_child_parent'",
+        fk_columns,
+        3,
+        child_renamed_values,
+        1,
+        "foreign key child rename metadata"
+    );
+
+    failures +=
+        execute_sql(database, "ALTER TABLE parent_col RENAME COLUMN id TO id_ref", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_COLUMN_NAME "
+        "FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE "
+        "WHERE CONSTRAINT_SCHEMA = 'fk_alter_column_runtime' "
+        "AND TABLE_NAME = 'child_col' "
+        "AND CONSTRAINT_NAME = 'fk_child_parent'",
+        fk_columns,
+        3,
+        parent_renamed_values,
+        1,
+        "foreign key parent rename column metadata"
+    );
+
+    failures += execute_sql(
+        database,
+        "ALTER TABLE child_col CHANGE COLUMN parent_ref parent_ref2 INT",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_COLUMN_NAME "
+        "FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE "
+        "WHERE CONSTRAINT_SCHEMA = 'fk_alter_column_runtime' "
+        "AND TABLE_NAME = 'child_col' "
+        "AND CONSTRAINT_NAME = 'fk_child_parent'",
+        fk_columns,
+        3,
+        child_changed_values,
+        1,
+        "foreign key child change metadata"
+    );
+
+    failures += execute_sql(
+        database,
+        "ALTER TABLE parent_col CHANGE COLUMN id_ref id_ref2 INT NOT NULL",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_COLUMN_NAME "
+        "FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE "
+        "WHERE CONSTRAINT_SCHEMA = 'fk_alter_column_runtime' "
+        "AND TABLE_NAME = 'child_col' "
+        "AND CONSTRAINT_NAME = 'fk_child_parent'",
+        fk_columns,
+        3,
+        parent_changed_values,
+        1,
+        "foreign key parent change metadata"
+    );
+
+    failures += execute_sql(
+        database,
+        "ALTER TABLE child_col MODIFY COLUMN parent_ref2 INT NOT NULL",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "INSERT INTO parent_col VALUES (1,10,5)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO child_col VALUES (1,1,10,7)", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM child_col",
+        count_columns,
+        1,
+        one_count_values,
+        1,
+        "foreign key altered columns enforce after insert"
+    );
+
+    failures += prepare_sql(
+        database,
+        "ALTER TABLE child_col MODIFY COLUMN parent_ref2 BIGINT",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "foreign key rejects incompatible child column modify"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Referencing column 'parent_ref2' and referenced column 'id_ref2' "
+        "in foreign key constraint 'fk_child_parent' are incompatible.",
+        "foreign key incompatible child modify error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_foreign_key_incompatible_columns,
+        "foreign key incompatible child modify code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = 'fk_alter_column_runtime' "
+        "AND TABLE_NAME = 'child_col' "
+        "AND COLUMN_NAME = 'parent_ref2'",
+        (const char *[]){"COLUMN_TYPE"},
+        1,
+        child_type_values,
+        1,
+        "foreign key failed child modify preserves type"
+    );
+
+    failures += prepare_sql(
+        database,
+        "ALTER TABLE parent_col MODIFY COLUMN id_ref2 BIGINT NOT NULL",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "foreign key rejects incompatible parent column modify"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Referencing column 'parent_ref2' and referenced column 'id_ref2' "
+        "in foreign key constraint 'fk_child_parent' are incompatible.",
+        "foreign key incompatible parent modify error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_foreign_key_incompatible_columns,
+        "foreign key incompatible parent modify code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "SET foreign_key_checks=0", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "ALTER TABLE child_col MODIFY COLUMN parent_ref2 BIGINT",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "foreign key checks off rejects incompatible child column modify"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_foreign_key_incompatible_columns,
+        "foreign key checks off incompatible child modify code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "SET foreign_key_checks=1", MYLITE_DONE);
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE self_col ("
+        "id INT NOT NULL PRIMARY KEY, "
+        "parent_id INT, "
+        "CONSTRAINT fk_self_col FOREIGN KEY (parent_id) REFERENCES self_col(id)"
+        ")",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "ALTER TABLE self_col RENAME COLUMN parent_id TO parent_ref",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_COLUMN_NAME "
+        "FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE "
+        "WHERE CONSTRAINT_SCHEMA = 'fk_alter_column_runtime' "
+        "AND TABLE_NAME = 'self_col' "
+        "AND CONSTRAINT_NAME = 'fk_self_col'",
+        fk_columns,
+        3,
+        self_child_values,
+        1,
+        "foreign key self child column rename metadata"
+    );
+    failures +=
+        execute_sql(database, "ALTER TABLE self_col RENAME COLUMN id TO id_ref", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_COLUMN_NAME "
+        "FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE "
+        "WHERE CONSTRAINT_SCHEMA = 'fk_alter_column_runtime' "
+        "AND TABLE_NAME = 'self_col' "
+        "AND CONSTRAINT_NAME = 'fk_self_col'",
+        fk_columns,
+        3,
+        self_parent_values,
+        1,
+        "foreign key self parent column rename metadata"
+    );
 
     mylite_close(database);
     return failures;

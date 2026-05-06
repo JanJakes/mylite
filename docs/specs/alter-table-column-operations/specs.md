@@ -322,16 +322,21 @@ operations. It should therefore reject adding or modifying into
 as part of Task 36. Dropping an existing auto column is a column operation and
 should be supported once the metadata cleanup path exists.
 
-### Generated columns, future constraints, triggers, and foreign keys
+### Generated columns, constraints, triggers, and foreign keys
 
 Generated columns introduce expression dependencies between columns. Verified
 MySQL behavior rejects dropping or renaming a base column used by a generated
 column with error 3108. Dropping a generated column that no other generated
 column references succeeds.
 
-Foreign keys are stricter for destructive actions than for renames. Verified
-MySQL behavior rejected dropping a child foreign-key column with error 1828,
-but allowed renaming the column and updated foreign-key metadata.
+Foreign keys are stricter for destructive actions and incompatible definition
+changes than for renames. Verified MySQL behavior rejected dropping a child
+foreign-key column with error 1828 and a referenced parent column with error
+1829, even while `foreign_key_checks=0`. Renaming child or parent columns and
+same-type `CHANGE COLUMN` operations are allowed and update
+`KEY_COLUMN_USAGE`. `MODIFY` or `CHANGE` operations that make child and parent
+column definitions incompatible fail with error 3780, also independent of
+`foreign_key_checks`.
 
 Triggers are different: MySQL does not rewrite trigger body text and does not
 block the column rename/drop solely because a trigger references that column.
@@ -485,8 +490,8 @@ Validation details:
 - `CHANGE` and `MODIFY` must treat the new column definition as complete.
 - position targets are resolved against the candidate table state at that point
   in the action sequence.
-- generated-column, check, trigger, and foreign-key dependency hooks should be
-  explicit even before those catalogs exist.
+- generated-column, check, and trigger dependency hooks should be explicit even
+  before those catalogs exist.
 - all unsupported first-slice behavior must fail before mutating storage or
   catalogs.
 
@@ -586,7 +591,9 @@ Required first-slice diagnostics include:
 | all columns invisible | 4028 / `HY000` |
 | invalid `AUTO_INCREMENT` shape | 1075 / `42000` |
 | generated-column dependency | 3108 / `HY000`, once generated columns exist |
-| foreign-key dependency | 1828 / `HY000`, once foreign keys exist |
+| child foreign-key column drop | 1828 / `HY000` |
+| referenced parent foreign-key column drop | 1829 / `HY000` |
+| incompatible child/parent foreign-key column definitions | 3780 / `HY000` |
 | duplicate index warning after index rewrite | warning 1831 |
 
 Where MyLite lacks the dependent feature, it should return a deterministic
@@ -620,7 +627,8 @@ own schema so results are isolated.
 | `ALTER TABLE err_ops DROP COLUMN missing_col` | Error 1091. |
 | drop an `AUTO_INCREMENT PRIMARY KEY` column while another column remains | Succeeds; primary index row disappears; no remaining column has `auto_increment`. |
 | drop a base column referenced by generated columns | Error 3108 once generated columns exist. |
-| drop a child foreign-key column | Error 1828 once foreign keys exist. |
+| drop a child foreign-key column | Error 1828. |
+| drop a referenced parent foreign-key column | Error 1829. |
 
 ### Rename, change, and modify
 
@@ -630,7 +638,9 @@ own schema so results are isolated.
 | rename a missing column | Error 1054. |
 | rename to an existing column name | Error 1060. |
 | rename a generated-column dependency | Error 3108 once generated columns exist. |
-| rename a foreign-key column | Succeeds once foreign keys exist; foreign-key metadata follows the new name. |
+| rename a foreign-key column | Succeeds; foreign-key metadata follows the new name. |
+| same-type `CHANGE` of a foreign-key column | Succeeds; foreign-key metadata follows the new name when renamed. |
+| incompatible `CHANGE` or `MODIFY` of a foreign-key column | Error 3780; physical rows and metadata remain unchanged. |
 | `ALTER TABLE dep_ops MODIFY COLUMN c VARCHAR(20) NOT NULL DEFAULT 'z' FIRST` | Succeeds; `c` moves to ordinal `1`, new metadata is used, existing values are preserved/converted. |
 | `ALTER TABLE dep_ops CHANGE COLUMN renamed_b b2 BIGINT NOT NULL DEFAULT 5 AFTER id` | Succeeds; name, type, default, nullability, order, and index metadata change together; verified OK affected rows were `2` for two copied rows. |
 | `MODIFY a BIGINT` where `a` used to be `NOT NULL DEFAULT 9` | Succeeds; new column is nullable with `DEFAULT NULL`. |
@@ -697,7 +707,6 @@ own schema so results are isolated.
   - full rollback on validation, conversion, and catalog-write failures
 - Future-feature tests to add when dependencies land:
   - generated-column dependency errors and permitted generated-column drops
-  - foreign-key drop errors and rename metadata propagation
   - trigger body non-rewrite and later execution-time missing-column errors
   - check-constraint dependency handling
   - `ALGORITHM` and `LOCK` compatibility
@@ -714,9 +723,8 @@ own schema so results are isolated.
   retrofit unless implemented before this feature lands.
 - New key and constraint creation through `ADD`, `CHANGE`, or `MODIFY` is
   deferred to Task 36.
-- Generated columns, foreign keys, triggers, and check constraints need
-  explicit hooks now but full behavior waits for their respective feature
-  catalogs and runtimes.
+- Generated columns, triggers, and check constraints need explicit hooks now but
+  full behavior waits for their respective feature catalogs and runtimes.
 - Broad type-conversion warning fidelity, non-strict SQL modes, charset
   conversion, row-size validation, and storage-engine-specific limits remain
   deferred unless already implemented by the shared conversion layer.

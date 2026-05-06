@@ -67,7 +67,7 @@ commit.
 - [x] Reject or correctly rewrite `RENAME TABLE` / `ALTER TABLE ... RENAME`
       for child and parent tables.
 - [x] Apply MySQL-compatible foreign-key restrictions to `TRUNCATE TABLE`.
-- [ ] Preserve or reject column changes that affect FK child/parent columns
+- [x] Preserve or reject column changes that affect FK child/parent columns
       with MySQL-compatible diagnostics.
 
 ## Follow-On Compatibility

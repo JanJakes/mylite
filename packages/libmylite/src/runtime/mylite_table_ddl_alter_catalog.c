@@ -3,6 +3,7 @@
 #include "mylite_catalog.h"
 #include "mylite_diagnostics.h"
 #include "mylite_runtime.h"
+#include "mylite_span.h"
 #include "mylite_table_ddl_types.h"
 #include "sqlite3.h"
 
@@ -43,6 +44,23 @@ static int insert_alter_table_index_catalog_part(
     size_t part_index
 );
 
+static int update_alter_table_foreign_key_column_names(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model
+);
+
+static int update_alter_table_foreign_key_child_column_name(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model,
+    const struct mylite_alter_table_column *column
+);
+
+static int update_alter_table_foreign_key_parent_column_name(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model,
+    const struct mylite_alter_table_column *column
+);
+
 static int update_alter_table_auto_increment(
     mylite_db *database,
     const struct mylite_alter_table_model *model
@@ -69,6 +87,9 @@ int mylite_table_ddl_rewrite_alter_table_catalog(
     }
     if (status == MYLITE_OK) {
         status = insert_alter_table_index_catalog_rows(database, model);
+    }
+    if (status == MYLITE_OK) {
+        status = update_alter_table_foreign_key_column_names(database, model);
     }
     if (status == MYLITE_OK) {
         status = update_alter_table_auto_increment(database, model);
@@ -481,6 +502,83 @@ static int insert_alter_table_index_catalog_part(
     );
 
     rc = sqlite3_step(insert);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
+}
+
+static int update_alter_table_foreign_key_column_names(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model
+) {
+    if (model->temporary) {
+        return MYLITE_OK;
+    }
+    for (size_t index = 0U; index < model->column_count; ++index) {
+        const struct mylite_alter_table_column *column = &model->columns[index];
+        int status = MYLITE_OK;
+
+        if (column->source_name == NULL ||
+            mylite_ascii_case_equal(column->source_name, column->name)) {
+            continue;
+        }
+        status = update_alter_table_foreign_key_child_column_name(database, model, column);
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        status = update_alter_table_foreign_key_parent_column_name(database, model, column);
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int update_alter_table_foreign_key_child_column_name(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model,
+    const struct mylite_alter_table_column *column
+) {
+    static const char sql[] = "UPDATE __mylite_foreign_key_catalog SET column_name = ? "
+                              "WHERE table_schema = ? AND table_name = ? "
+                              "AND column_name = ? COLLATE NOCASE";
+    sqlite3_stmt *update = NULL;
+    int rc =
+        sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &update, NULL);
+
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+    sqlite3_bind_text(update, 1, column->name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(update, 2, model->schema_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(update, 3, model->table_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(update, 4, column->source_name, -1, sqlite_transient_destructor());
+    rc = sqlite3_step(update);
+    sqlite3_finalize(update);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
+}
+
+static int update_alter_table_foreign_key_parent_column_name(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model,
+    const struct mylite_alter_table_column *column
+) {
+    static const char sql[] = "UPDATE __mylite_foreign_key_catalog "
+                              "SET referenced_column_name = ? "
+                              "WHERE referenced_table_schema = ? "
+                              "AND referenced_table_name = ? "
+                              "AND referenced_column_name = ? COLLATE NOCASE";
+    sqlite3_stmt *update = NULL;
+    int rc =
+        sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &update, NULL);
+
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+    sqlite3_bind_text(update, 1, column->name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(update, 2, model->schema_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(update, 3, model->table_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(update, 4, column->source_name, -1, sqlite_transient_destructor());
+    rc = sqlite3_step(update);
+    sqlite3_finalize(update);
     return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 

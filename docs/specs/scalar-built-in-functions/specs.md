@@ -71,7 +71,8 @@ In scope for the initial implementation:
   - `DATE_SUB`, `SUBDATE`
   - `TIMESTAMP`, `TIMESTAMPADD`, `TIMESTAMPDIFF`
   - `TO_DAYS`, `TO_SECONDS`, `FROM_DAYS`
-  - `TIME`, `TIME_TO_SEC`, `SEC_TO_TIME`, `TIMEDIFF`, `LAST_DAY`
+  - `TIME`, `TIME_TO_SEC`, `SEC_TO_TIME`, `TIMEDIFF`, `ADDTIME`, `SUBTIME`,
+    `LAST_DAY`
   - `UNIX_TIMESTAMP`, `FROM_UNIXTIME`, `DATE_FORMAT`, `STR_TO_DATE`, `TIME_FORMAT`
   - `EXTRACT`
 - conditional and comparison functions:
@@ -195,8 +196,9 @@ by common scalar expressions:
   `MONTH`, `YEAR`, `HOUR`, `MINUTE`, and `SECOND` units, and `TIMESTAMPDIFF`
   for the simple `DAY`, `WEEK`, `MONTH`, `YEAR`, `HOUR`, `MINUTE`, and
   `SECOND` units, plus `TO_DAYS`, `TO_SECONDS`, `FROM_DAYS`, `TIME`,
-  `TIME_TO_SEC`, `SEC_TO_TIME`, `TIMEDIFF`, `LAST_DAY`, `UNIX_TIMESTAMP`,
-  `FROM_UNIXTIME`, `DATE_FORMAT`, `STR_TO_DATE`, and `TIME_FORMAT`;
+  `TIME_TO_SEC`, `SEC_TO_TIME`, `TIMEDIFF`, `ADDTIME`, `SUBTIME`, `LAST_DAY`,
+  `UNIX_TIMESTAMP`, `FROM_UNIXTIME`, `DATE_FORMAT`, `STR_TO_DATE`, and
+  `TIME_FORMAT`;
   see
   `docs/specs/current-temporal-functions/specs.md` and
   `docs/specs/utc-temporal-functions/specs.md` and
@@ -213,6 +215,7 @@ by common scalar expressions:
   `docs/specs/time-to-sec-function/specs.md` and
   `docs/specs/sec-to-time-function/specs.md` and
   `docs/specs/timediff-function/specs.md` and
+  `docs/specs/addtime-subtime-functions/specs.md` and
   `docs/specs/last-day-function/specs.md` and
   `docs/specs/unix-timestamp-function/specs.md` and
   `docs/specs/from-unixtime-function/specs.md` and
@@ -278,6 +281,7 @@ TIME extraction/coercion over typed temporal and untyped inputs,
 TIME_TO_SEC conversion to signed whole seconds,
 SEC_TO_TIME conversion from seconds to TIME values,
 TIMEDIFF subtraction over typed and untyped time/datetime values,
+ADDTIME/SUBTIME arithmetic over typed and untyped time/datetime values,
 TIMESTAMP datetime conversion and date-plus-time addition,
 LAST_DAY month-end conversion,
 UNIX_TIMESTAMP timestamp conversion,
@@ -295,8 +299,8 @@ This checkpoint intentionally does not yet implement the full MySQL
 `INSERT ... VALUES` row-source column-reference model, scalar expressions in
 the `ON DUPLICATE KEY UPDATE` assignment list beyond the current scoped subset,
 temporal functions outside the implemented current, extraction/difference,
-date-arithmetic, temporal part, day-number, time extraction, UNIX timestamp,
-formatting, and month-end slices,
+date-arithmetic, temporal part, day-number, time extraction/arithmetic, UNIX
+timestamp, formatting, and month-end slices,
 information functions outside the session-state and session-identity slices,
 aggregate/window functions, JSON,
 regular expressions, spatial, full-text, encryption, loadable functions,
@@ -1148,9 +1152,9 @@ and `LIMIT 0` queries for:
 - conditional/comparison functions: `IF`, `IFNULL`, `COALESCE`, `GREATEST`,
   `LEAST`, `STRCMP`
 - temporal functions: `NOW(6)`, `CURDATE`, `DATEDIFF`, `DATE_ADD`,
-  `LAST_DAY`, `TIME`, `TIME_TO_SEC`, `SEC_TO_TIME`, `TIMEDIFF`, `TIMESTAMP`,
-  `FROM_UNIXTIME`, `DATE_FORMAT`, `STR_TO_DATE`, `TIME_FORMAT`, `UTC_TIMESTAMP(6)`,
-  `UTC_DATE`, `UTC_TIME`
+  `LAST_DAY`, `TIME`, `TIME_TO_SEC`, `SEC_TO_TIME`, `TIMEDIFF`, `ADDTIME`,
+  `SUBTIME`, `TIMESTAMP`, `FROM_UNIXTIME`, `DATE_FORMAT`, `STR_TO_DATE`,
+  `TIME_FORMAT`, `UTC_TIMESTAMP(6)`, `UTC_DATE`, `UTC_TIME`
 - information functions: `DATABASE`, `SCHEMA`, `VERSION`, `LAST_INSERT_ID`,
   `ROW_COUNT`, `CONNECTION_ID`
 

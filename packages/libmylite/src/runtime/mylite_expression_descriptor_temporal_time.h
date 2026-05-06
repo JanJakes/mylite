@@ -23,6 +23,11 @@ int mylite_expression_descriptor_infer_timediff_function(
     const struct mylite_sql_ast_node *expression, const struct mylite_expression_value *value,
     struct mylite_field_descriptor *out_descriptor,
     const struct mylite_expression_descriptor_temporal_callbacks *callbacks);
+int mylite_expression_descriptor_infer_addsubtime_function(
+    mylite_db *database, const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression, const struct mylite_expression_value *value,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_temporal_callbacks *callbacks);
 int mylite_expression_descriptor_infer_timestamp_function(
     mylite_db *database, const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *expression, const struct mylite_expression_value *value,

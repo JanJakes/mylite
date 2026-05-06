@@ -5738,6 +5738,8 @@ static int test_scalar_function_call_syntax(void)
                           "SEC_TO_TIME(45296), TIME_FORMAT('12:34:56', '%H:%i:%s'), "
                           "STR_TO_DATE('2024-02-29', '%Y-%m-%d'), "
                           "TIMEDIFF('12:00:00','11:30:00'), "
+                          "ADDTIME('12:00:00','01:00:00'), "
+                          "SUBTIME('12:00:00','01:00:00'), "
                           "TIMESTAMP('2024-01-02','03:04:05');",
                           MYLITE_SQL_PARSE_OK, &result);
     select_list = child_at(child_at(result.root, 0U), 0U);
@@ -5777,7 +5779,11 @@ static int test_scalar_function_call_syntax(void)
                                      "STR_TO_DATE function call");
     failures += expect_function_call(child_at(child_at(select_list, 17U), 0U), "TIMEDIFF", 2U,
                                      "TIMEDIFF function call");
-    failures += expect_function_call(child_at(child_at(select_list, 18U), 0U), "TIMESTAMP", 2U,
+    failures += expect_function_call(child_at(child_at(select_list, 18U), 0U), "ADDTIME", 2U,
+                                     "ADDTIME function call");
+    failures += expect_function_call(child_at(child_at(select_list, 19U), 0U), "SUBTIME", 2U,
+                                     "SUBTIME function call");
+    failures += expect_function_call(child_at(child_at(select_list, 20U), 0U), "TIMESTAMP", 2U,
                                      "TIMESTAMP function call");
     mylite_sql_parse_result_deinit(&result);
 
@@ -5805,6 +5811,10 @@ static int test_scalar_function_call_syntax(void)
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parse_sql("SELECT timediff FROM temporal_part_names;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT addtime FROM temporal_part_names;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT subtime FROM temporal_part_names;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parse_sql("SELECT timestamp FROM temporal_part_names;", MYLITE_SQL_PARSE_OK, &result);

@@ -274,6 +274,7 @@ static int test_time_function_execution(void);
 static int test_time_to_sec_function_execution(void);
 static int test_sec_to_time_function_execution(void);
 static int test_timediff_function_execution(void);
+static int test_addtime_subtime_function_execution(void);
 static int test_timestamp_function_execution(void);
 static int test_unix_timestamp_function_execution(void);
 static int test_from_unixtime_function_execution(void);
@@ -508,6 +509,7 @@ int main(void)
     failures += test_time_to_sec_function_execution();
     failures += test_sec_to_time_function_execution();
     failures += test_timediff_function_execution();
+    failures += test_addtime_subtime_function_execution();
     failures += test_timestamp_function_execution();
     failures += test_unix_timestamp_function_execution();
     failures += test_from_unixtime_function_execution();
@@ -8850,6 +8852,311 @@ static int test_timediff_function_execution(void)
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_addtime_subtime_function_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const struct expected_result_metadata scalar_metadata[] = {
+        {"add_plain", NULL, NULL, NULL, NULL, NULL, 116U, MYLITE_FIELD_TYPE_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"sub_frac", NULL, NULL, NULL, NULL, NULL, 116U, MYLITE_FIELD_TYPE_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"null_value", NULL, NULL, NULL, NULL, NULL, 116U, MYLITE_FIELD_TYPE_STRING, 31U, 255U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+    };
+    static const struct expected_result_metadata table_metadata[] = {
+        {"date_add", NULL, NULL, NULL, NULL, NULL, 19U, MYLITE_FIELD_TYPE_DATETIME, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"time_add", NULL, NULL, NULL, NULL, NULL, 17U, MYLITE_FIELD_TYPE_TIME, 6U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+        {"dt_sub", NULL, NULL, NULL, NULL, NULL, 26U, MYLITE_FIELD_TYPE_DATETIME, 6U, 63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED, 1},
+    };
+    static const char *const scalar_columns[] = {
+        "add_time", "sub_time", "add_dt",         "sub_dt",        "add_frac",
+        "sub_frac", "dt_arg",   "null_right_div", "null_left_div",
+    };
+    static const char *const scalar_values[] = {
+        "13:30:00",
+        "10:30:00",
+        "2024-01-01 13:02:03",
+        "2023-12-31 23:00:00",
+        "12:00:00.777777",
+        "11:59:59.469135",
+        NULL,
+        NULL,
+        NULL,
+    };
+    static const char *const null_bad_columns[] = {"add_left_null", "add_right_null",
+                                                   "sub_left_null", "sub_right_null"};
+    static const char *const null_bad_values[] = {NULL, NULL, NULL, NULL};
+    static const char *const warning_columns[] = {
+        "add_clip_input", "add_clip_result", "sub_clip_input", "sub_no_clip",
+        "date_text",      "dt_bad_interval", "upper_overflow", "lower_underflow",
+    };
+    static const char *const warning_values[] = {
+        "838:59:59", "838:59:59",           "-838:59:59", "-838:00:00",
+        "01:20:24",  "2024-02-04 22:59:59", NULL,         NULL,
+    };
+    static const char *const projection_columns[] = {"id", "date_add", "time_add", "dt_sub"};
+    static const char *const projection_values[] = {
+        "2", "2024-01-02 01:00:00", "03:30:00.100000", "2024-01-02 00:29:59.900000",
+        "1", "2024-01-01 01:00:00", "13:00:00.223456", "2024-01-01 11:00:00.023456",
+    };
+    static const char *const typed_mixed_columns[] = {"time_datetime", "datetime_datetime"};
+    static const char *const typed_mixed_values[] = {NULL, NULL};
+    static const char *const updated_columns[] = {"id", "out_t", "out_dt", "note"};
+    static const char *const updated_values[] = {"1", "12:00:01.123456",
+                                                 "2024-01-01 11:00:00.123456", "first"};
+    static const char *const write_columns[] = {"id", "t", "dt"};
+    static const char *const write_values[] = {
+        "1", "13:00:00", "2023-12-31 23:00:00", "2", "11:00:00", "2024-01-01 01:00:00",
+    };
+    static const char *const remaining_columns[] = {"id"};
+    static const char *const remaining_values[] = {"1", "3"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open ADDTIME/SUBTIME database");
+
+    failures += prepare_sql(database,
+                            "SELECT ADDTIME('12:00:00','01:00:00') AS add_plain, "
+                            "SUBTIME('12:00:00.123456','00:00:00.654321') AS sub_frac, "
+                            "ADDTIME(NULL,'01:00:00') AS null_value",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, scalar_metadata,
+                                       (int)(sizeof(scalar_metadata) / sizeof(scalar_metadata[0])),
+                                       "ADDTIME/SUBTIME scalar metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "ADDTIME/SUBTIME scalar metadata row");
+    failures += expect_string(mylite_column_text(stmt, 0), "13:00:00", "ADDTIME metadata value");
+    failures +=
+        expect_string(mylite_column_text(stmt, 1), "11:59:59.469135", "SUBTIME metadata value");
+    failures += expect_null_text(mylite_column_text(stmt, 2), "ADDTIME metadata null value");
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "ADDTIME/SUBTIME scalar metadata warnings");
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_DONE, "ADDTIME/SUBTIME scalar metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_select_rows(database,
+                                   "SELECT ADDTIME('12:00:00','01:30:00') AS add_time, "
+                                   "SUBTIME('12:00:00','01:30:00') AS sub_time, "
+                                   "ADDTIME('2024-01-01 12:00:00','01:02:03') AS add_dt, "
+                                   "SUBTIME('2024-01-01 00:00:00','01:00:00') AS sub_dt, "
+                                   "ADDTIME('12:00:00.123456','00:00:00.654321') AS add_frac, "
+                                   "SUBTIME('12:00:00.123456','00:00:00.654321') AS sub_frac, "
+                                   "ADDTIME('12:00:00','2024-01-01 01:02:03') AS dt_arg, "
+                                   "ADDTIME('12:00:00',1/0) AS null_right_div, "
+                                   "SUBTIME(NULL,1/0) AS null_left_div",
+                                   scalar_columns,
+                                   (int)(sizeof(scalar_columns) / sizeof(scalar_columns[0])),
+                                   scalar_values, 1, "ADDTIME/SUBTIME scalar values");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "ADDTIME/SUBTIME scalar warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_division_by_zero,
+                           "ADDTIME null right division warning");
+
+    failures += expect_select_rows(database,
+                                   "SELECT ADDTIME(NULL,'bad') AS add_left_null, "
+                                   "ADDTIME('bad',NULL) AS add_right_null, "
+                                   "SUBTIME(NULL,'bad') AS sub_left_null, "
+                                   "SUBTIME('bad',NULL) AS sub_right_null",
+                                   null_bad_columns,
+                                   (int)(sizeof(null_bad_columns) / sizeof(null_bad_columns[0])),
+                                   null_bad_values, 1, "ADDTIME/SUBTIME null bad values");
+    failures +=
+        expect_int(mylite_warning_count(database), 2, "ADDTIME/SUBTIME null bad warning count");
+    failures += expect_string(mylite_warning_message(database, 0),
+                              "Truncated incorrect time value: 'bad'", "ADDTIME left bad warning");
+    failures += expect_string(mylite_warning_message(database, 1),
+                              "Truncated incorrect time value: 'bad'", "SUBTIME left bad warning");
+
+    failures += expect_select_rows(database,
+                                   "SELECT ADDTIME('839:00:00','00:00:00') AS add_clip_input, "
+                                   "ADDTIME('838:00:00','01:00:00') AS add_clip_result, "
+                                   "SUBTIME('00:00:00','839:00:00') AS sub_clip_input, "
+                                   "SUBTIME('00:00:00','838:00:00') AS sub_no_clip, "
+                                   "ADDTIME('2024-01-01','01:00:00') AS date_text, "
+                                   "ADDTIME('2024-01-01 00:00:00','839:00:00') AS dt_bad_interval, "
+                                   "ADDTIME('9999-12-31 23:59:59','00:00:01') AS upper_overflow, "
+                                   "SUBTIME('0001-01-01 00:00:00','00:00:01') AS lower_underflow",
+                                   warning_columns,
+                                   (int)(sizeof(warning_columns) / sizeof(warning_columns[0])),
+                                   warning_values, 1, "ADDTIME/SUBTIME warning values");
+    failures += expect_int(mylite_warning_count(database), 6, "ADDTIME/SUBTIME warning count");
+    for (int index = 0; index < 5; ++index) {
+        failures +=
+            expect_int((int)mylite_warning_code(database, index),
+                       mysql_warning_truncated_wrong_value, "ADDTIME/SUBTIME time warning code");
+    }
+    failures +=
+        expect_int((int)mylite_warning_code(database, 5), mysql_warning_datetime_function_overflow,
+                   "ADDTIME upper overflow warning code");
+    failures += expect_string(mylite_warning_message(database, 0),
+                              "Truncated incorrect time value: '839:00:00'",
+                              "ADDTIME clipped input warning");
+    failures +=
+        expect_string(mylite_warning_message(database, 3),
+                      "Truncated incorrect time value: '2024-01-01'", "ADDTIME date text warning");
+    failures += expect_string(mylite_warning_message(database, 5),
+                              "Datetime function: add_time field overflow",
+                              "ADDTIME upper overflow warning");
+
+    failures += execute_sql(database, "CREATE DATABASE addsubtime_functions", MYLITE_DONE);
+    failures += execute_sql(database, "USE addsubtime_functions", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE temporal_addsubtime ("
+                            "id INT PRIMARY KEY, d DATE, t TIME(6), dt DATETIME(6), "
+                            "out_t TIME(6), out_dt DATETIME(6), note VARCHAR(16))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO temporal_addsubtime VALUES "
+                            "(1,'2024-01-01','12:00:00.123456',"
+                            "'2024-01-01 12:00:00.123456',NULL,NULL,'first'), "
+                            "(2,'2024-01-02','02:30:00.000000',"
+                            "'2024-01-02 01:30:00.000000',NULL,NULL,'second'), "
+                            "(3,NULL,NULL,NULL,NULL,NULL,'null')",
+                            MYLITE_DONE);
+
+    failures += prepare_sql(database,
+                            "SELECT ADDTIME(d,'01:00:00') AS date_add, "
+                            "ADDTIME(t,'01:00:00.1') AS time_add, "
+                            "SUBTIME(dt,'01:00:00.1') AS dt_sub "
+                            "FROM temporal_addsubtime WHERE id = 1",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, table_metadata,
+                                       (int)(sizeof(table_metadata) / sizeof(table_metadata[0])),
+                                       "ADDTIME/SUBTIME table metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "ADDTIME/SUBTIME table metadata row");
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_DONE, "ADDTIME/SUBTIME table metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_select_rows(
+        database,
+        "SELECT id, ADDTIME(d,'01:00:00') AS date_add, "
+        "ADDTIME(t,'01:00:00.1') AS time_add, "
+        "SUBTIME(dt,'01:00:00.1') AS dt_sub "
+        "FROM temporal_addsubtime "
+        "WHERE ADDTIME(t,'01:00:00') >= '03:00:00' "
+        "ORDER BY ADDTIME(dt,'00:30:00') DESC, id",
+        projection_columns, (int)(sizeof(projection_columns) / sizeof(projection_columns[0])),
+        projection_values, 2, "ADDTIME/SUBTIME table projection");
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "ADDTIME/SUBTIME table projection warnings");
+
+    failures += expect_select_rows(database,
+                                   "SELECT ADDTIME(t, dt) AS time_datetime, "
+                                   "ADDTIME(dt, dt) AS datetime_datetime "
+                                   "FROM temporal_addsubtime WHERE id = 1",
+                                   typed_mixed_columns, 2, typed_mixed_values, 1,
+                                   "ADDTIME typed datetime interval is invalid");
+    failures += expect_int(mylite_warning_count(database), 0,
+                           "ADDTIME typed datetime interval warning count");
+
+    failures += execute_sql_expect_done_affected(database,
+                                                 "UPDATE temporal_addsubtime "
+                                                 "SET out_t = ADDTIME(t,'00:00:01'), "
+                                                 "out_dt = SUBTIME(dt,'01:00:00') "
+                                                 "WHERE id = 1",
+                                                 1, "ADDTIME/SUBTIME update");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT id, out_t, out_dt, note "
+                           "FROM temporal_addsubtime WHERE id = 1",
+                           updated_columns, 4, updated_values, 1, "ADDTIME/SUBTIME updated row");
+
+    failures += execute_sql(database,
+                            "CREATE TABLE temporal_addsubtime_write ("
+                            "id INT PRIMARY KEY, t TIME, dt DATETIME)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO temporal_addsubtime_write VALUES "
+                            "(1, ADDTIME('12:00:00','01:00:00'), "
+                            "SUBTIME('2024-01-01 00:00:00','01:00:00'))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "REPLACE INTO temporal_addsubtime_write VALUES "
+                            "(2, SUBTIME('12:00:00','01:00:00'), "
+                            "ADDTIME('2024-01-01 00:00:00','01:00:00'))",
+                            MYLITE_DONE);
+    failures += expect_select_rows(
+        database, "SELECT id, t, dt FROM temporal_addsubtime_write ORDER BY id", write_columns, 3,
+        write_values, 2, "ADDTIME/SUBTIME insert replace values");
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "DELETE FROM temporal_addsubtime "
+        "WHERE ADDTIME(dt,'00:30:00') = '2024-01-02 02:00:00.000000'",
+        1, "ADDTIME/SUBTIME delete");
+    failures += expect_select_rows(database, "SELECT id FROM temporal_addsubtime ORDER BY id",
+                                   remaining_columns, 1, remaining_values, 2,
+                                   "ADDTIME/SUBTIME delete result");
+
+    failures += prepare_sql(database,
+                            "UPDATE temporal_addsubtime "
+                            "SET out_t = ADDTIME('bad','01:00:00') WHERE id = 1",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "ADDTIME invalid update promoted");
+    failures +=
+        expect_contains(mylite_error_message(database), "Truncated incorrect time value: 'bad'",
+                        "ADDTIME invalid update error");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "ADDTIME invalid update warning count");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database,
+                                   "SELECT id, out_t, out_dt, note "
+                                   "FROM temporal_addsubtime WHERE id = 1",
+                                   updated_columns, 4, updated_values, 1,
+                                   "ADDTIME invalid update unchanged");
+
+    failures += prepare_sql(database,
+                            "DELETE FROM temporal_addsubtime "
+                            "WHERE SUBTIME('12:00:00','bad') IS NULL",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "SUBTIME invalid delete promoted");
+    failures +=
+        expect_contains(mylite_error_message(database), "Truncated incorrect time value: 'bad'",
+                        "SUBTIME invalid delete error");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "SUBTIME invalid delete warning count");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id FROM temporal_addsubtime ORDER BY id",
+                                   remaining_columns, 1, remaining_values, 2,
+                                   "SUBTIME invalid delete unchanged");
+
+    failures += prepare_sql(database, "SELECT ADDTIME('12:00:00')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "ADDTIME missing argument rejected");
+    failures += prepare_sql(database, "SELECT ADDTIME('12:00:00','01:00:00','x')",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "ADDTIME extra argument rejected");
+    failures += prepare_sql(database, "SELECT SUBTIME('12:00:00')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "SUBTIME missing argument rejected");
+    failures += prepare_sql(database, "SELECT SUBTIME('12:00:00','01:00:00','x')",
+                            MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "SUBTIME extra argument rejected");
+
+    mylite_close(database);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
     return failures;
 }
 

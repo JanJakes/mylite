@@ -649,6 +649,8 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_UUID = 134,
     MYLITE_SCALAR_FUNCTION_UUID_SHORT = 135,
     MYLITE_SCALAR_FUNCTION_STR_TO_DATE = 136,
+    MYLITE_SCALAR_FUNCTION_ADDTIME = 137,
+    MYLITE_SCALAR_FUNCTION_SUBTIME = 138,
 };
 
 struct angle_conversion_input {
@@ -904,6 +906,11 @@ static int eval_timediff_function(const struct mylite_sql_ast_node *arguments,
                                   const struct mylite_expression_eval_context *context,
                                   struct mylite_expression_warnings *warnings,
                                   struct mylite_expression_value *out_value);
+static int eval_addsubtime_function(enum mylite_scalar_function_id function_id,
+                                    const struct mylite_sql_ast_node *arguments,
+                                    const struct mylite_expression_eval_context *context,
+                                    struct mylite_expression_warnings *warnings,
+                                    struct mylite_expression_value *out_value);
 static int eval_timestamp_function(const struct mylite_sql_ast_node *arguments,
                                    const struct mylite_expression_eval_context *context,
                                    struct mylite_expression_warnings *warnings,
@@ -924,6 +931,11 @@ static int timestamp_interval_from_expression(const struct mylite_expression_val
                                               struct mylite_expression_warnings *warnings,
                                               struct temporal_time_value *out_time,
                                               bool *out_valid);
+static int addsubtime_interval_from_expression(const struct mylite_expression_value *value,
+                                               struct mylite_expression_warnings *warnings,
+                                               struct temporal_time_value *out_time,
+                                               bool *out_valid);
+static bool addsubtime_untyped_datetime_interval(const struct mylite_expression_value *value);
 static bool timestamp_add_time(struct temporal_date_value *date,
                                const struct temporal_time_value *time, bool *out_upper_overflow);
 static int append_timestamp_add_overflow_warning(struct mylite_expression_warnings *warnings);
@@ -938,6 +950,17 @@ static int64_t timediff_datetime_microseconds(const struct temporal_date_value *
 static int timediff_result_from_microseconds(int64_t microseconds, unsigned int fraction_digits,
                                              struct mylite_expression_warnings *warnings,
                                              struct mylite_expression_value *out_value);
+static int addsubtime_datetime_result(struct temporal_date_value date,
+                                      const struct temporal_time_value *interval,
+                                      struct mylite_expression_warnings *warnings,
+                                      struct mylite_expression_value *out_value);
+static int addsubtime_time_result(const struct temporal_time_value *time,
+                                  const struct temporal_time_value *interval,
+                                  struct mylite_expression_warnings *warnings,
+                                  struct mylite_expression_value *out_value);
+static struct temporal_time_value
+addsubtime_effective_interval(enum mylite_scalar_function_id function_id,
+                              const struct temporal_time_value *interval);
 static int append_timediff_range_warning(struct mylite_expression_warnings *warnings,
                                          int64_t microseconds, unsigned int fraction_digits);
 static size_t timediff_format_microseconds(char *buffer, size_t buffer_size, int64_t microseconds,
@@ -2277,6 +2300,8 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_STR_TO_DATE:
     case MYLITE_SCALAR_FUNCTION_TIME_FORMAT:
     case MYLITE_SCALAR_FUNCTION_TIMEDIFF:
+    case MYLITE_SCALAR_FUNCTION_ADDTIME:
+    case MYLITE_SCALAR_FUNCTION_SUBTIME:
         return arity == 2U;
     case MYLITE_SCALAR_FUNCTION_TIMESTAMP:
         return arity == 1U || arity == 2U;
@@ -3217,6 +3242,9 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_sec_to_time_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_TIMEDIFF:
         return eval_timediff_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_ADDTIME:
+    case MYLITE_SCALAR_FUNCTION_SUBTIME:
+        return eval_addsubtime_function(function_id, arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_TIMESTAMP:
         return eval_timestamp_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
@@ -5258,6 +5286,94 @@ cleanup:
     return status;
 }
 
+static int eval_addsubtime_function(enum mylite_scalar_function_id function_id,
+                                    const struct mylite_sql_ast_node *arguments,
+                                    const struct mylite_expression_eval_context *context,
+                                    struct mylite_expression_warnings *warnings,
+                                    struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value left_value = {0};
+    struct mylite_expression_value right_value = {0};
+    struct timediff_operand left = {0};
+    struct temporal_time_value interval = {0};
+    bool left_valid = false;
+    bool right_valid = false;
+    int status = eval_node(child_at(arguments, 0U), context, warnings, &left_value);
+
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&left_value)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    status = timediff_operand_from_expression(&left_value, warnings, &left, &left_valid);
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (!left_valid) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    status = eval_node(child_at(arguments, 1U), context, warnings, &right_value);
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&right_value)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    status = addsubtime_interval_from_expression(&right_value, warnings, &interval, &right_valid);
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (!right_valid) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+
+    interval = addsubtime_effective_interval(function_id, &interval);
+    status = left.kind == TIMEDIFF_OPERAND_DATETIME
+                 ? addsubtime_datetime_result(left.date, &interval, warnings, out_value)
+                 : addsubtime_time_result(&left.time, &interval, warnings, out_value);
+
+cleanup:
+    mylite_expression_value_deinit(&right_value);
+    mylite_expression_value_deinit(&left_value);
+    return status;
+}
+
+static int addsubtime_interval_from_expression(const struct mylite_expression_value *value,
+                                               struct mylite_expression_warnings *warnings,
+                                               struct temporal_time_value *out_time,
+                                               bool *out_valid)
+{
+    if (value == NULL || out_time == NULL || out_valid == NULL) {
+        return -1;
+    }
+    *out_time = (struct temporal_time_value){0};
+    *out_valid = false;
+    if (value->temporal_type == MYLITE_EXPRESSION_TEMPORAL_DATE ||
+        value->temporal_type == MYLITE_EXPRESSION_TEMPORAL_DATETIME ||
+        value->temporal_type == MYLITE_EXPRESSION_TEMPORAL_TIMESTAMP) {
+        return 0;
+    }
+    if (value->temporal_type == MYLITE_EXPRESSION_TEMPORAL_NONE &&
+        addsubtime_untyped_datetime_interval(value)) {
+        return 0;
+    }
+    return time_value_from_expression(value, warnings, out_time, out_valid);
+}
+
+static bool addsubtime_untyped_datetime_interval(const struct mylite_expression_value *value)
+{
+    struct temporal_date_source source = {0};
+    struct temporal_date_value date = {0};
+
+    return temporal_date_source_from_value(value, &source) == 0 &&
+           parse_temporal_date_source(&source, true, false, &date) && date.has_time;
+}
+
 static int timediff_operand_from_expression(const struct mylite_expression_value *value,
                                             struct mylite_expression_warnings *warnings,
                                             struct timediff_operand *out_operand, bool *out_valid)
@@ -5370,6 +5486,53 @@ static int timediff_result_from_microseconds(int64_t microseconds, unsigned int 
     time.microsecond = (int)(magnitude % (uint64_t)MYLITE_TEMPORAL_MICROSECOND_LIMIT);
     time.fraction_digits = fraction_digits;
     return set_temporal_time_text_value(&time, out_value);
+}
+
+static int addsubtime_datetime_result(struct temporal_date_value date,
+                                      const struct temporal_time_value *interval,
+                                      struct mylite_expression_warnings *warnings,
+                                      struct mylite_expression_value *out_value)
+{
+    bool upper_overflow = false;
+    int status = 0;
+
+    if (!timestamp_add_time(&date, interval, &upper_overflow)) {
+        if (upper_overflow) {
+            status = append_timestamp_add_overflow_warning(warnings);
+            if (status != 0) {
+                return status;
+            }
+        }
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        return 0;
+    }
+    return set_temporal_datetime_text_value(&date, out_value);
+}
+
+static int addsubtime_time_result(const struct temporal_time_value *time,
+                                  const struct temporal_time_value *interval,
+                                  struct mylite_expression_warnings *warnings,
+                                  struct mylite_expression_value *out_value)
+{
+    int64_t microseconds = timediff_time_microseconds(time) + timediff_time_microseconds(interval);
+    unsigned int fraction_digits = time->fraction_digits > interval->fraction_digits
+                                       ? time->fraction_digits
+                                       : interval->fraction_digits;
+
+    return timediff_result_from_microseconds(microseconds, fraction_digits, warnings, out_value);
+}
+
+static struct temporal_time_value
+addsubtime_effective_interval(enum mylite_scalar_function_id function_id,
+                              const struct temporal_time_value *interval)
+{
+    struct temporal_time_value effective =
+        interval == NULL ? (struct temporal_time_value){0} : *interval;
+
+    if (function_id == MYLITE_SCALAR_FUNCTION_SUBTIME) {
+        effective.negative = !effective.negative;
+    }
+    return effective;
 }
 
 static int append_timediff_range_warning(struct mylite_expression_warnings *warnings,
@@ -6673,6 +6836,8 @@ static bool temporal_part_from_function(enum mylite_scalar_function_id function_
     case MYLITE_SCALAR_FUNCTION_DATE:
     case MYLITE_SCALAR_FUNCTION_DATEDIFF:
     case MYLITE_SCALAR_FUNCTION_TIMEDIFF:
+    case MYLITE_SCALAR_FUNCTION_ADDTIME:
+    case MYLITE_SCALAR_FUNCTION_SUBTIME:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_LAST_DAY:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF:
@@ -11051,6 +11216,8 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_DATE:
     case MYLITE_SCALAR_FUNCTION_DATEDIFF:
     case MYLITE_SCALAR_FUNCTION_TIMEDIFF:
+    case MYLITE_SCALAR_FUNCTION_ADDTIME:
+    case MYLITE_SCALAR_FUNCTION_SUBTIME:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_LAST_DAY:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF:
@@ -12928,6 +13095,8 @@ static int trigonometric_function_result(struct trigonometric_input input,
     case MYLITE_SCALAR_FUNCTION_DATE:
     case MYLITE_SCALAR_FUNCTION_DATEDIFF:
     case MYLITE_SCALAR_FUNCTION_TIMEDIFF:
+    case MYLITE_SCALAR_FUNCTION_ADDTIME:
+    case MYLITE_SCALAR_FUNCTION_SUBTIME:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_LAST_DAY:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF:
@@ -13250,6 +13419,8 @@ static int inverse_trigonometric_function_result(struct inverse_trigonometric_in
     case MYLITE_SCALAR_FUNCTION_DATE:
     case MYLITE_SCALAR_FUNCTION_DATEDIFF:
     case MYLITE_SCALAR_FUNCTION_TIMEDIFF:
+    case MYLITE_SCALAR_FUNCTION_ADDTIME:
+    case MYLITE_SCALAR_FUNCTION_SUBTIME:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_LAST_DAY:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF:
@@ -13482,6 +13653,8 @@ static int angle_conversion_result(struct angle_conversion_input conversion, dou
     case MYLITE_SCALAR_FUNCTION_DATE:
     case MYLITE_SCALAR_FUNCTION_DATEDIFF:
     case MYLITE_SCALAR_FUNCTION_TIMEDIFF:
+    case MYLITE_SCALAR_FUNCTION_ADDTIME:
+    case MYLITE_SCALAR_FUNCTION_SUBTIME:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_LAST_DAY:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF:
@@ -17574,6 +17747,8 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"STR_TO_DATE", MYLITE_SCALAR_FUNCTION_STR_TO_DATE},
         {"TIME_FORMAT", MYLITE_SCALAR_FUNCTION_TIME_FORMAT},
         {"TIMEDIFF", MYLITE_SCALAR_FUNCTION_TIMEDIFF},
+        {"ADDTIME", MYLITE_SCALAR_FUNCTION_ADDTIME},
+        {"SUBTIME", MYLITE_SCALAR_FUNCTION_SUBTIME},
         {"TIMESTAMP", MYLITE_SCALAR_FUNCTION_TIMESTAMP},
         {"FROM_UNIXTIME", MYLITE_SCALAR_FUNCTION_FROM_UNIXTIME},
         {"DEFAULT", MYLITE_SCALAR_FUNCTION_DEFAULT},
@@ -17725,6 +17900,8 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_DATE:
     case MYLITE_SCALAR_FUNCTION_DATEDIFF:
     case MYLITE_SCALAR_FUNCTION_TIMEDIFF:
+    case MYLITE_SCALAR_FUNCTION_ADDTIME:
+    case MYLITE_SCALAR_FUNCTION_SUBTIME:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_LAST_DAY:
     case MYLITE_SCALAR_FUNCTION_TIMESTAMPDIFF:

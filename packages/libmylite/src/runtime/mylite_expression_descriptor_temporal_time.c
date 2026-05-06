@@ -7,6 +7,7 @@
 #include "mylite_metadata_constants.h"
 #include "mylite_span.h"
 
+#include <stdint.h>
 #include <string.h>
 
 static unsigned int
@@ -23,6 +24,13 @@ static bool time_function_argument_is_approximate(const struct mylite_sql_ast_no
                                                   const struct mylite_field_descriptor *descriptor);
 static struct mylite_field_descriptor time_function_descriptor(unsigned int decimals);
 static struct mylite_field_descriptor timestamp_function_descriptor(unsigned int decimals);
+static struct mylite_field_descriptor addsubtime_string_descriptor(mylite_db *database);
+static unsigned int
+addsubtime_function_argument_decimals(const struct mylite_sql_ast_node *argument,
+                                      const struct mylite_field_descriptor *descriptor);
+static unsigned int
+addsubtime_interval_argument_decimals(const struct mylite_sql_ast_node *argument,
+                                      const struct mylite_field_descriptor *descriptor);
 static unsigned int time_function_value_decimals(const struct mylite_expression_value *value);
 
 int mylite_expression_descriptor_infer_time_function(
@@ -145,6 +153,53 @@ cleanup:
     mylite_expression_value_deinit(&evaluated_value);
     mylite_expression_warnings_deinit(&warnings);
     return status;
+}
+
+int mylite_expression_descriptor_infer_addsubtime_function(
+    mylite_db *database, const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression, const struct mylite_expression_value *value,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_temporal_callbacks *callbacks)
+{
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
+    const struct mylite_sql_ast_node *left = mylite_ast_child_at(arguments, 0U);
+    const struct mylite_sql_ast_node *right = mylite_ast_child_at(arguments, 1U);
+    struct mylite_field_descriptor left_descriptor = mylite_expression_descriptor_defaults();
+    struct mylite_field_descriptor right_descriptor = mylite_expression_descriptor_defaults();
+    unsigned int left_decimals = 0U;
+    unsigned int right_decimals = 0U;
+    unsigned int decimals = 0U;
+    int status = MYLITE_OK;
+    (void)value;
+
+    if (!mylite_function_name_is_addsubtime(name)) {
+        return MYLITE_UNSUPPORTED;
+    }
+    status = callbacks->infer_expression_descriptor(database, plan, left, NULL, &left_descriptor);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    status = callbacks->infer_expression_descriptor(database, plan, right, NULL, &right_descriptor);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    left_decimals = addsubtime_function_argument_decimals(left, &left_descriptor);
+    right_decimals = addsubtime_interval_argument_decimals(right, &right_descriptor);
+    decimals = left_decimals > right_decimals ? left_decimals : right_decimals;
+    if (left_descriptor.type == MYLITE_FIELD_TYPE_TIME) {
+        *out_descriptor = time_function_descriptor(decimals);
+        return MYLITE_OK;
+    }
+    if (left_descriptor.type == MYLITE_FIELD_TYPE_DATE ||
+        left_descriptor.type == MYLITE_FIELD_TYPE_DATETIME ||
+        left_descriptor.type == MYLITE_FIELD_TYPE_TIMESTAMP) {
+        *out_descriptor = timestamp_function_descriptor(decimals);
+        return MYLITE_OK;
+    }
+    *out_descriptor = addsubtime_string_descriptor(database);
+    return MYLITE_OK;
 }
 
 int mylite_expression_descriptor_infer_timestamp_function(
@@ -309,6 +364,71 @@ static struct mylite_field_descriptor timestamp_function_descriptor(unsigned int
 
     mylite_field_descriptor_set_nullable(&descriptor, true);
     return descriptor;
+}
+
+static struct mylite_field_descriptor addsubtime_string_descriptor(mylite_db *database)
+{
+    uint64_t max_bytes_per_character =
+        mylite_expression_descriptor_connection_character_max_length(database);
+    uint64_t length =
+        max_bytes_per_character > UINT64_MAX / mylite_mysql_date_arithmetic_string_result_chars
+            ? mylite_mysql_long_text_length
+            : mylite_mysql_date_arithmetic_string_result_chars * max_bytes_per_character;
+    struct mylite_field_descriptor descriptor = {
+        .type = MYLITE_FIELD_TYPE_STRING,
+        .length = length,
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = mylite_expression_descriptor_connection_charset_id(database),
+        .nullable = true,
+    };
+
+    mylite_field_descriptor_set_nullable(&descriptor, true);
+    return descriptor;
+}
+
+static unsigned int
+addsubtime_function_argument_decimals(const struct mylite_sql_ast_node *argument,
+                                      const struct mylite_field_descriptor *descriptor)
+{
+    if (descriptor != NULL && (descriptor->type == MYLITE_FIELD_TYPE_TIME ||
+                               descriptor->type == MYLITE_FIELD_TYPE_DATETIME ||
+                               descriptor->type == MYLITE_FIELD_TYPE_TIMESTAMP)) {
+        return descriptor->decimals;
+    }
+    if (descriptor != NULL && descriptor->type == MYLITE_FIELD_TYPE_DATE) {
+        return 0U;
+    }
+    return time_function_argument_decimals(argument, descriptor, NULL);
+}
+
+static unsigned int
+addsubtime_interval_argument_decimals(const struct mylite_sql_ast_node *argument,
+                                      const struct mylite_field_descriptor *descriptor)
+{
+    struct mylite_expression_value value = {0};
+    struct mylite_expression_warnings warnings = {0};
+    unsigned int decimals = 0U;
+
+    if (descriptor != NULL && (descriptor->type == MYLITE_FIELD_TYPE_TIME ||
+                               descriptor->type == MYLITE_FIELD_TYPE_DATETIME ||
+                               descriptor->type == MYLITE_FIELD_TYPE_TIMESTAMP)) {
+        return descriptor->decimals;
+    }
+    if (descriptor != NULL && (descriptor->type == MYLITE_FIELD_TYPE_DATE ||
+                               descriptor->type == MYLITE_FIELD_TYPE_NULL)) {
+        return 0U;
+    }
+    if (mylite_expression_descriptor_has_text_result(descriptor) &&
+        mylite_expression_is_cacheable_no_table(argument) &&
+        mylite_expression_eval(argument, &warnings, &value) == 0 &&
+        value.kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+        decimals = time_function_value_decimals(&value);
+    } else {
+        decimals = time_function_argument_decimals(argument, descriptor, NULL);
+    }
+    mylite_expression_value_deinit(&value);
+    mylite_expression_warnings_deinit(&warnings);
+    return decimals;
 }
 
 static unsigned int time_function_value_decimals(const struct mylite_expression_value *value)

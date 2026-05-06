@@ -100,6 +100,13 @@ bool mylite_function_name_is_timestamp(const struct mylite_sql_ast_node *name)
     return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }
 
+bool mylite_function_name_is_addsubtime(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"ADDTIME", "SUBTIME"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
 bool mylite_function_name_is_year_part(const struct mylite_sql_ast_node *name)
 {
     static const char *const names[] = {"YEAR"};

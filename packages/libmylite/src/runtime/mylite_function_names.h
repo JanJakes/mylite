@@ -39,6 +39,7 @@ bool mylite_function_name_is_time_to_sec(const struct mylite_sql_ast_node *name)
 bool mylite_function_name_is_sec_to_time(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_timediff(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_timestamp(const struct mylite_sql_ast_node *name);
+bool mylite_function_name_is_addsubtime(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_year_part(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_month_part(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_day_part(const struct mylite_sql_ast_node *name);

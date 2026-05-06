@@ -127,6 +127,11 @@ int mylite_expression_descriptor_infer_temporal_function(
     if (status != MYLITE_UNSUPPORTED) {
         return status;
     }
+    status = mylite_expression_descriptor_infer_addsubtime_function(
+        database, plan, expression, value, out_descriptor, callbacks);
+    if (status != MYLITE_UNSUPPORTED) {
+        return status;
+    }
     status = mylite_expression_descriptor_infer_timestamp_function(
         database, plan, expression, value, out_descriptor, callbacks);
     if (status != MYLITE_UNSUPPORTED) {

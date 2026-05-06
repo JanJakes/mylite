@@ -74,8 +74,10 @@ commit.
 
 ## Follow-On Compatibility
 
-- [ ] Verify temporary table foreign-key behavior against MySQL 8.4.9 and add
-      explicit diagnostics or support.
+- [x] Verify temporary table foreign-key behavior against MySQL 8.4.9 and add
+      explicit diagnostics or support. MyLite rejects temporary child foreign
+      keys with `Cannot add foreign key constraint` and treats temporary parent
+      tables as unavailable to persistent child foreign keys.
 - [ ] Add field-metadata coverage for FK information-schema rows when the
       unified information-schema metadata pass lands.
 - [ ] Revisit `INSERT IGNORE`, `UPDATE IGNORE`, and `REPLACE` after FK

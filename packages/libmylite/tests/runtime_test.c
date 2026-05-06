@@ -34149,6 +34149,32 @@ static int test_create_table_base_execution(void) {
         "temp_foreign_key",
         "temp_foreign_key_ibfk_1"
     );
+    failures += execute_sql(
+        database,
+        "CREATE TEMPORARY TABLE temp_parent (id INT PRIMARY KEY)",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE child_references_temp ("
+        "id INT PRIMARY KEY, parent_id INT, "
+        "FOREIGN KEY (parent_id) REFERENCES temp_parent(id))",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "persistent foreign key references temporary parent rejected"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Failed to open the referenced table 'temp_parent'",
+        "persistent foreign key temporary parent error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_table_name_row(database, "child_references_temp");
 
     failures += execute_sql(
         database,

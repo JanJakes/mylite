@@ -49,6 +49,7 @@ int mylite_dml_write_replace_candidate_row(
 
     for (;;) {
         struct mylite_insert_unique_conflict conflict = {0};
+        struct mylite_insert_bound_value *stored_values = NULL;
 
         status = mylite_dml_find_insert_unique_conflict(database, table, values, &conflict);
         if (status != MYLITE_OK) {
@@ -56,6 +57,26 @@ int mylite_dml_write_replace_candidate_row(
         }
         if (!conflict.conflicts) {
             break;
+        }
+        stored_values = calloc(table->column_count, sizeof(*stored_values));
+        if (stored_values == NULL) {
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+        status =
+            mylite_dml_load_insert_conflict_row(database, table, conflict.rowid, stored_values);
+        if (status == MYLITE_OK) {
+            status = mylite_dml_validate_replace_parent_delete_foreign_keys(
+                database,
+                schema_name,
+                table_name,
+                table,
+                stored_values
+            );
+        }
+        mylite_dml_insert_bound_values_deinit(stored_values, table->column_count);
+        if (status != MYLITE_OK) {
+            return status;
         }
         status = delete_replace_conflict_row(database, delete_stmt, conflict.rowid, state);
         if (status != MYLITE_OK) {

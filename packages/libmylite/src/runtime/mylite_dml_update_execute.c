@@ -157,6 +157,7 @@ static int execute_update_row(
     int64_t *affected_rows
 ) {
     struct mylite_update_row candidate = {0};
+    bool row_changed = false;
     int status = mylite_dml_copy_update_candidate_values(database, stored, &candidate);
 
     if (status == MYLITE_OK) {
@@ -174,7 +175,14 @@ static int execute_update_row(
         status =
             mylite_dml_validate_update_unique_indexes(database, table, write_table, &candidate);
     }
-    if (status == MYLITE_OK && mylite_dml_update_row_changed(stored, &candidate)) {
+    if (status == MYLITE_OK) {
+        row_changed = mylite_dml_update_row_changed(stored, &candidate);
+    }
+    if (status == MYLITE_OK && row_changed) {
+        status =
+            mylite_dml_validate_parent_update_foreign_keys(database, table, stored, &candidate);
+    }
+    if (status == MYLITE_OK && row_changed) {
         status = write_update_candidate(
             database,
             update,

@@ -6,11 +6,32 @@
 #include "mylite_dml_insert_column_reference.h"
 #include "mylite_dml_insert_sqlite_bind.h"
 #include "mylite_error_codes.h"
+#include "mylite_select_types.h"
 #include "mylite_span.h"
+#include "sql/mylite_expression.h"
 #include "sqlite3.h"
 
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+enum mylite_parent_foreign_key_action {
+    MYLITE_PARENT_FOREIGN_KEY_UPDATE,
+    MYLITE_PARENT_FOREIGN_KEY_DELETE,
+};
+
+enum mylite_parent_foreign_key_row_kind {
+    MYLITE_PARENT_FOREIGN_KEY_UPDATE_ROW,
+    MYLITE_PARENT_FOREIGN_KEY_INSERT_ROW,
+};
+
+struct mylite_parent_foreign_key_row {
+    enum mylite_parent_foreign_key_row_kind kind;
+    const struct mylite_select_table *select_table;
+    const struct mylite_update_row *update_row;
+    const struct mylite_insert_table *insert_table;
+    const struct mylite_insert_bound_value *insert_values;
+};
 
 static int validate_child_foreign_key_constraint(
     mylite_db *database,
@@ -70,6 +91,96 @@ static bool insert_bound_values_equal(
     const struct mylite_insert_bound_value *right
 );
 
+static int validate_parent_foreign_key_references(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    const struct mylite_parent_foreign_key_row *stored,
+    const struct mylite_parent_foreign_key_row *candidate,
+    enum mylite_parent_foreign_key_action action
+);
+
+static int validate_parent_foreign_key_constraint(
+    mylite_db *database,
+    const struct mylite_parent_foreign_key_row *stored,
+    const struct mylite_parent_foreign_key_row *candidate,
+    sqlite3_stmt *constraint,
+    enum mylite_parent_foreign_key_action action
+);
+
+static int parent_foreign_key_has_child(
+    mylite_db *database,
+    const struct mylite_parent_foreign_key_row *stored,
+    const struct mylite_parent_foreign_key_row *candidate,
+    sqlite3_stmt *constraint,
+    enum mylite_parent_foreign_key_action action,
+    bool *out_has_child
+);
+
+static int append_parent_foreign_key_part(
+    mylite_db *database,
+    sqlite3_str *sql,
+    const struct mylite_parent_foreign_key_row *stored,
+    const struct mylite_parent_foreign_key_row *candidate,
+    const char *child_column_name,
+    const char *referenced_column_name,
+    bool *referenced_key_changed,
+    size_t **parent_indexes,
+    size_t *parent_index_count,
+    bool *out_skip_constraint
+);
+
+static int parent_foreign_key_query_child(
+    mylite_db *database,
+    char *sql,
+    const size_t *parent_indexes,
+    size_t parent_index_count,
+    const struct mylite_parent_foreign_key_row *stored,
+    bool *out_has_child
+);
+
+static int set_parent_foreign_key_violation(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    const char *constraint_name
+);
+
+static size_t parent_foreign_key_row_column_index(
+    const struct mylite_parent_foreign_key_row *row,
+    const char *column_name
+);
+
+static bool parent_foreign_key_row_value_is_null(
+    const struct mylite_parent_foreign_key_row *row,
+    size_t column_index
+);
+
+static bool parent_foreign_key_row_values_equal(
+    const struct mylite_parent_foreign_key_row *left,
+    const struct mylite_parent_foreign_key_row *right,
+    size_t column_index
+);
+
+static int bind_parent_foreign_key_row_value(
+    mylite_db *database,
+    sqlite3_stmt *stmt,
+    int index,
+    const struct mylite_parent_foreign_key_row *row,
+    size_t column_index
+);
+
+static int bind_parent_update_row_value(
+    sqlite3_stmt *stmt,
+    int index,
+    const struct mylite_expression_value *value
+);
+
+static bool expression_values_equal(
+    const struct mylite_expression_value *left,
+    const struct mylite_expression_value *right
+);
+
 int mylite_dml_validate_insert_child_foreign_keys(
     mylite_db *database,
     const char *schema_name,
@@ -127,6 +238,98 @@ int mylite_dml_validate_insert_child_foreign_keys(
         return status;
     }
     return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
+}
+
+int mylite_dml_validate_parent_update_foreign_keys(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_update_row *stored,
+    const struct mylite_update_row *candidate
+) {
+    struct mylite_parent_foreign_key_row stored_row = {
+        .kind = MYLITE_PARENT_FOREIGN_KEY_UPDATE_ROW,
+        .select_table = table,
+        .update_row = stored,
+    };
+    struct mylite_parent_foreign_key_row candidate_row = {
+        .kind = MYLITE_PARENT_FOREIGN_KEY_UPDATE_ROW,
+        .select_table = table,
+        .update_row = candidate,
+    };
+
+    if (database == NULL || table == NULL || stored == NULL || candidate == NULL ||
+        table->schema_name == NULL || table->table_name == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (!mylite_connection_foreign_key_checks(database)) {
+        return MYLITE_OK;
+    }
+    return validate_parent_foreign_key_references(
+        database,
+        table->schema_name,
+        table->table_name,
+        &stored_row,
+        &candidate_row,
+        MYLITE_PARENT_FOREIGN_KEY_UPDATE
+    );
+}
+
+int mylite_dml_validate_parent_delete_foreign_keys(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_update_row *stored
+) {
+    struct mylite_parent_foreign_key_row stored_row = {
+        .kind = MYLITE_PARENT_FOREIGN_KEY_UPDATE_ROW,
+        .select_table = table,
+        .update_row = stored,
+    };
+
+    if (database == NULL || table == NULL || stored == NULL || table->schema_name == NULL ||
+        table->table_name == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (!mylite_connection_foreign_key_checks(database)) {
+        return MYLITE_OK;
+    }
+    return validate_parent_foreign_key_references(
+        database,
+        table->schema_name,
+        table->table_name,
+        &stored_row,
+        NULL,
+        MYLITE_PARENT_FOREIGN_KEY_DELETE
+    );
+}
+
+int mylite_dml_validate_replace_parent_delete_foreign_keys(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_bound_value *stored
+) {
+    struct mylite_parent_foreign_key_row stored_row = {
+        .kind = MYLITE_PARENT_FOREIGN_KEY_INSERT_ROW,
+        .insert_table = table,
+        .insert_values = stored,
+    };
+
+    if (database == NULL || schema_name == NULL || table_name == NULL || table == NULL ||
+        stored == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (!mylite_connection_foreign_key_checks(database)) {
+        return MYLITE_OK;
+    }
+    return validate_parent_foreign_key_references(
+        database,
+        schema_name,
+        table_name,
+        &stored_row,
+        NULL,
+        MYLITE_PARENT_FOREIGN_KEY_DELETE
+    );
 }
 
 static int validate_child_foreign_key_constraint(
@@ -451,6 +654,460 @@ static int set_child_foreign_key_violation(
         return status;
     }
     return ignore ? MYLITE_OK : MYLITE_EXEC_ERROR;
+}
+
+static int validate_parent_foreign_key_references(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    const struct mylite_parent_foreign_key_row *stored,
+    const struct mylite_parent_foreign_key_row *candidate,
+    enum mylite_parent_foreign_key_action action
+) {
+    static const char update_sql[] =
+        "SELECT constraint_schema, constraint_name, table_schema, table_name "
+        "FROM __mylite_foreign_key_catalog "
+        "WHERE referenced_table_schema = ? AND referenced_table_name = ? "
+        "AND ordinal_position = 1 AND update_rule IN ('RESTRICT', 'NO ACTION') "
+        "ORDER BY rowid";
+    static const char delete_sql[] =
+        "SELECT constraint_schema, constraint_name, table_schema, table_name "
+        "FROM __mylite_foreign_key_catalog "
+        "WHERE referenced_table_schema = ? AND referenced_table_name = ? "
+        "AND ordinal_position = 1 AND delete_rule IN ('RESTRICT', 'NO ACTION') "
+        "ORDER BY rowid";
+    sqlite3_stmt *constraint = NULL;
+    const char *sql = action == MYLITE_PARENT_FOREIGN_KEY_UPDATE ? update_sql : delete_sql;
+    int rc = SQLITE_OK;
+    int status = MYLITE_OK;
+
+    rc =
+        sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &constraint, NULL);
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+    sqlite3_bind_text(constraint, 1, schema_name, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(constraint, 2, table_name, -1, SQLITE_TRANSIENT);
+
+    while ((rc = sqlite3_step(constraint)) == SQLITE_ROW) {
+        status =
+            validate_parent_foreign_key_constraint(database, stored, candidate, constraint, action);
+        if (status != MYLITE_OK) {
+            break;
+        }
+    }
+
+    sqlite3_finalize(constraint);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
+}
+
+static int validate_parent_foreign_key_constraint(
+    mylite_db *database,
+    const struct mylite_parent_foreign_key_row *stored,
+    const struct mylite_parent_foreign_key_row *candidate,
+    sqlite3_stmt *constraint,
+    enum mylite_parent_foreign_key_action action
+) {
+    const char *constraint_name = (const char *)sqlite3_column_text(constraint, 1);
+    const char *child_schema = (const char *)sqlite3_column_text(constraint, 2);
+    const char *child_table = (const char *)sqlite3_column_text(constraint, 3);
+    bool has_child = false;
+    int status =
+        parent_foreign_key_has_child(database, stored, candidate, constraint, action, &has_child);
+
+    if (status != MYLITE_OK || !has_child) {
+        return status;
+    }
+    return set_parent_foreign_key_violation(database, child_schema, child_table, constraint_name);
+}
+
+static int parent_foreign_key_has_child(
+    mylite_db *database,
+    const struct mylite_parent_foreign_key_row *stored,
+    const struct mylite_parent_foreign_key_row *candidate,
+    sqlite3_stmt *constraint,
+    enum mylite_parent_foreign_key_action action,
+    bool *out_has_child
+) {
+    static const char part_sql[] =
+        "SELECT column_name, referenced_column_name "
+        "FROM __mylite_foreign_key_catalog "
+        "WHERE constraint_schema = ? AND table_schema = ? AND table_name = ? "
+        "AND constraint_name = ? "
+        "ORDER BY ordinal_position";
+    const char *constraint_schema = (const char *)sqlite3_column_text(constraint, 0);
+    const char *constraint_name = (const char *)sqlite3_column_text(constraint, 1);
+    const char *child_schema = (const char *)sqlite3_column_text(constraint, 2);
+    const char *child_table = (const char *)sqlite3_column_text(constraint, 3);
+    sqlite3_stmt *parts = NULL;
+    sqlite3_str *sql = NULL;
+    char *child_sql = NULL;
+    char *child_physical_name = NULL;
+    size_t *parent_indexes = NULL;
+    size_t parent_index_count = 0U;
+    bool child_exists = false;
+    bool referenced_key_changed = action == MYLITE_PARENT_FOREIGN_KEY_DELETE;
+    bool skipped_by_null = false;
+    int rc = SQLITE_OK;
+    int status = MYLITE_OK;
+
+    *out_has_child = false;
+    status =
+        mylite_catalog_persistent_table_exists(database, child_schema, child_table, &child_exists);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (!child_exists) {
+        return MYLITE_OK;
+    }
+
+    child_physical_name = mylite_catalog_physical_table_name(child_schema, child_table);
+    sql = sqlite3_str_new(database->sqlite);
+    if (child_physical_name == NULL || sql == NULL) {
+        free(child_physical_name);
+        if (sql != NULL) {
+            sqlite3_free(sqlite3_str_finish(sql));
+        }
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    sqlite3_str_appendf(sql, "SELECT 1 FROM \"%w\" WHERE ", child_physical_name);
+    free(child_physical_name);
+
+    rc =
+        sqlite3_prepare_v3(database->sqlite, part_sql, -1, SQLITE_PREPARE_PERSISTENT, &parts, NULL);
+    if (rc != SQLITE_OK) {
+        sqlite3_free(sqlite3_str_finish(sql));
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+    sqlite3_bind_text(parts, 1, constraint_schema, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(parts, 2, child_schema, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(parts, 3, child_table, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(parts, 4, constraint_name, -1, SQLITE_TRANSIENT);
+
+    while ((rc = sqlite3_step(parts)) == SQLITE_ROW) {
+        const char *child_column_name = (const char *)sqlite3_column_text(parts, 0);
+        const char *referenced_column_name = (const char *)sqlite3_column_text(parts, 1);
+        bool skip_constraint = false;
+
+        status = append_parent_foreign_key_part(
+            database,
+            sql,
+            stored,
+            candidate,
+            child_column_name,
+            referenced_column_name,
+            &referenced_key_changed,
+            &parent_indexes,
+            &parent_index_count,
+            &skip_constraint
+        );
+        if (skip_constraint) {
+            skipped_by_null = true;
+        }
+        if (status != MYLITE_OK || skip_constraint) {
+            break;
+        }
+    }
+    sqlite3_finalize(parts);
+
+    if (status == MYLITE_OK && (skipped_by_null || !referenced_key_changed)) {
+        sqlite3_free(sqlite3_str_finish(sql));
+        free(parent_indexes);
+        return MYLITE_OK;
+    }
+    if (status == MYLITE_OK && rc != SQLITE_DONE) {
+        status = mylite_diagnostics_set_sqlite_error(database);
+    }
+    if (status == MYLITE_OK && parent_index_count == 0U) {
+        (void)mylite_diagnostics_set_error_message(
+            database,
+            "Foreign key constraint has no column parts"
+        );
+        status = MYLITE_EXEC_ERROR;
+    }
+    if (status != MYLITE_OK) {
+        sqlite3_free(sqlite3_str_finish(sql));
+        free(parent_indexes);
+        return status;
+    }
+
+    sqlite3_str_appendall(sql, " LIMIT 1");
+    child_sql = sqlite3_str_finish(sql);
+    if (child_sql == NULL) {
+        free(parent_indexes);
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    status = parent_foreign_key_query_child(
+        database,
+        child_sql,
+        parent_indexes,
+        parent_index_count,
+        stored,
+        out_has_child
+    );
+    sqlite3_free(child_sql);
+    free(parent_indexes);
+    return status;
+}
+
+static int append_parent_foreign_key_part(
+    mylite_db *database,
+    sqlite3_str *sql,
+    const struct mylite_parent_foreign_key_row *stored,
+    const struct mylite_parent_foreign_key_row *candidate,
+    const char *child_column_name,
+    const char *referenced_column_name,
+    bool *referenced_key_changed,
+    size_t **parent_indexes,
+    size_t *parent_index_count,
+    bool *out_skip_constraint
+) {
+    size_t parent_index = parent_foreign_key_row_column_index(stored, referenced_column_name);
+    size_t *indexes = NULL;
+
+    *out_skip_constraint = false;
+    if (parent_index == SIZE_MAX) {
+        (void)mylite_diagnostics_set_error_message_parts(
+            database,
+            "Foreign key references unknown column '",
+            referenced_column_name,
+            "'"
+        );
+        return MYLITE_EXEC_ERROR;
+    }
+    if (parent_foreign_key_row_value_is_null(stored, parent_index)) {
+        *out_skip_constraint = true;
+        return MYLITE_OK;
+    }
+    if (candidate != NULL &&
+        !parent_foreign_key_row_values_equal(stored, candidate, parent_index)) {
+        *referenced_key_changed = true;
+    }
+
+    if (*parent_index_count != 0U) {
+        sqlite3_str_appendall(sql, " AND ");
+    }
+    sqlite3_str_appendf(sql, "\"%w\" = ?", child_column_name);
+
+    indexes = realloc(*parent_indexes, (*parent_index_count + 1U) * sizeof(**parent_indexes));
+    if (indexes == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    *parent_indexes = indexes;
+    (*parent_indexes)[(*parent_index_count)++] = parent_index;
+    if (sqlite3_str_errcode(sql) != SQLITE_OK) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    return MYLITE_OK;
+}
+
+static int parent_foreign_key_query_child(
+    mylite_db *database,
+    char *sql,
+    const size_t *parent_indexes,
+    size_t parent_index_count,
+    const struct mylite_parent_foreign_key_row *stored,
+    bool *out_has_child
+) {
+    sqlite3_stmt *check = NULL;
+    int rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &check, NULL);
+    int status = MYLITE_OK;
+
+    *out_has_child = false;
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+    for (size_t index = 0U; index < parent_index_count; ++index) {
+        status = bind_parent_foreign_key_row_value(
+            database,
+            check,
+            (int)index + 1,
+            stored,
+            parent_indexes[index]
+        );
+        if (status != MYLITE_OK) {
+            sqlite3_finalize(check);
+            return status;
+        }
+    }
+
+    rc = sqlite3_step(check);
+    if (rc == SQLITE_ROW) {
+        *out_has_child = true;
+    } else if (rc != SQLITE_DONE) {
+        status = mylite_diagnostics_set_sqlite_error(database);
+    }
+    sqlite3_finalize(check);
+    return status;
+}
+
+static int set_parent_foreign_key_violation(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    const char *constraint_name
+) {
+    char *message = sqlite3_mprintf(
+        "Cannot delete or update a parent row: a foreign key constraint fails "
+        "(`%q`.`%q`, CONSTRAINT `%q`)",
+        schema_name,
+        table_name,
+        constraint_name
+    );
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    status = mylite_diagnostics_set_error_message(database, message);
+    if (status == MYLITE_OK) {
+        status =
+            mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_ROW_IS_REFERENCED_2, message);
+    }
+    sqlite3_free(message);
+    return status == MYLITE_OK ? MYLITE_EXEC_ERROR : status;
+}
+
+static size_t parent_foreign_key_row_column_index(
+    const struct mylite_parent_foreign_key_row *row,
+    const char *column_name
+) {
+    size_t column_count = 0U;
+
+    if (row->kind == MYLITE_PARENT_FOREIGN_KEY_UPDATE_ROW) {
+        column_count = row->select_table->column_count;
+        for (size_t index = 0U; index < column_count; ++index) {
+            if (mylite_ascii_case_equal(row->select_table->columns[index].name, column_name)) {
+                return index;
+            }
+        }
+        return SIZE_MAX;
+    }
+
+    column_count = row->insert_table->column_count;
+    for (size_t index = 0U; index < column_count; ++index) {
+        if (mylite_ascii_case_equal(row->insert_table->columns[index].name, column_name)) {
+            return index;
+        }
+    }
+    return SIZE_MAX;
+}
+
+static bool parent_foreign_key_row_value_is_null(
+    const struct mylite_parent_foreign_key_row *row,
+    size_t column_index
+) {
+    if (row->kind == MYLITE_PARENT_FOREIGN_KEY_UPDATE_ROW) {
+        return row->update_row->values[column_index].kind == MYLITE_EXPRESSION_VALUE_NULL;
+    }
+    return row->insert_values[column_index].kind == MYLITE_INSERT_BOUND_NULL;
+}
+
+static bool parent_foreign_key_row_values_equal(
+    const struct mylite_parent_foreign_key_row *left,
+    const struct mylite_parent_foreign_key_row *right,
+    size_t column_index
+) {
+    if (left->kind != right->kind) {
+        return false;
+    }
+    if (left->kind == MYLITE_PARENT_FOREIGN_KEY_UPDATE_ROW) {
+        return expression_values_equal(
+            &left->update_row->values[column_index],
+            &right->update_row->values[column_index]
+        );
+    }
+    return insert_bound_values_equal(
+        &left->insert_values[column_index],
+        &right->insert_values[column_index]
+    );
+}
+
+static int bind_parent_foreign_key_row_value(
+    mylite_db *database,
+    sqlite3_stmt *stmt,
+    int index,
+    const struct mylite_parent_foreign_key_row *row,
+    size_t column_index
+) {
+    int rc = SQLITE_OK;
+
+    if (row->kind == MYLITE_PARENT_FOREIGN_KEY_UPDATE_ROW) {
+        rc = bind_parent_update_row_value(stmt, index, &row->update_row->values[column_index]);
+    } else {
+        rc = mylite_dml_bind_insert_bound_value(stmt, index, &row->insert_values[column_index]);
+    }
+    return rc == SQLITE_OK ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
+}
+
+static int bind_parent_update_row_value(
+    sqlite3_stmt *stmt,
+    int index,
+    const struct mylite_expression_value *value
+) {
+    if (stmt == NULL || value == NULL) {
+        return SQLITE_MISUSE;
+    }
+
+    switch (value->kind) {
+    case MYLITE_EXPRESSION_VALUE_NULL:
+        return sqlite3_bind_null(stmt, index);
+    case MYLITE_EXPRESSION_VALUE_INT64:
+        return sqlite3_bind_int64(stmt, index, value->int64_value);
+    case MYLITE_EXPRESSION_VALUE_UINT64:
+        if (value->uint64_value > (uint64_t)INT64_MAX) {
+            return SQLITE_RANGE;
+        }
+        return sqlite3_bind_int64(stmt, index, (sqlite3_int64)value->uint64_value);
+    case MYLITE_EXPRESSION_VALUE_REAL:
+        return sqlite3_bind_double(stmt, index, value->real_value);
+    case MYLITE_EXPRESSION_VALUE_TEXT:
+        return sqlite3_bind_text(
+            stmt,
+            index,
+            value->text_value,
+            (int)value->text_length,
+            SQLITE_TRANSIENT
+        );
+    }
+    return SQLITE_MISUSE;
+}
+
+static bool expression_values_equal(
+    const struct mylite_expression_value *left,
+    const struct mylite_expression_value *right
+) {
+    if (left->kind != right->kind) {
+        return false;
+    }
+    switch (left->kind) {
+    case MYLITE_EXPRESSION_VALUE_NULL:
+        return true;
+    case MYLITE_EXPRESSION_VALUE_INT64:
+        return left->int64_value == right->int64_value;
+    case MYLITE_EXPRESSION_VALUE_UINT64:
+        return left->uint64_value == right->uint64_value;
+    case MYLITE_EXPRESSION_VALUE_REAL:
+        return left->real_value == right->real_value;
+    case MYLITE_EXPRESSION_VALUE_TEXT:
+        if (left->text_value == NULL || right->text_value == NULL) {
+            return left->text_value == right->text_value;
+        }
+        return left->text_length == right->text_length &&
+               (left->text_length == 0U ||
+                memcmp(left->text_value, right->text_value, left->text_length) == 0);
+    }
+    return false;
 }
 
 static bool insert_bound_values_equal(

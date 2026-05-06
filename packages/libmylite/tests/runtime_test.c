@@ -146,6 +146,7 @@ enum {
     mysql_warning_division_by_zero = 1365,
     mysql_warning_incorrect_string_value = 1411,
     mysql_warning_datetime_function_overflow = 1441,
+    mysql_warning_row_is_referenced = 1451,
     mysql_warning_no_referenced_row = 1452,
     mysql_warning_wrong_paramcount_to_native_fct = 1582,
     mysql_warning_wrong_parameters_to_native_fct = 1583,
@@ -512,6 +513,8 @@ static int test_insert_ignore_execution(void);
 static int test_insert_on_duplicate_key_update_execution(void);
 
 static int test_foreign_key_insert_execution(void);
+
+static int test_foreign_key_parent_restrict_execution(void);
 
 static int test_select_table_core_execution(void);
 
@@ -969,6 +972,7 @@ int main(void) {
     failures += test_insert_ignore_execution();
     failures += test_insert_on_duplicate_key_update_execution();
     failures += test_foreign_key_insert_execution();
+    failures += test_foreign_key_parent_restrict_execution();
     failures += test_select_table_core_execution();
     failures += test_inner_join_execution();
     failures += test_outer_join_execution();
@@ -48347,6 +48351,330 @@ static int test_foreign_key_insert_execution(void) {
         1,
         "self foreign key rows"
     );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_foreign_key_parent_restrict_execution(void) {
+    static const char *const parent_columns[] = {"id", "payload"};
+    static const char *const parent_after_update_values[] = {
+        "1",
+        "11",
+        "2",
+        "20",
+        "3",
+        "30",
+    };
+    static const char *const parent_after_delete_values[] = {
+        "1",
+        "11",
+        "3",
+        "30",
+    };
+    static const char *const parent_after_checks_off_values[] = {"3", "30"};
+    static const char *const child_columns[] = {"id", "parent_id"};
+    static const char *const child_values[] = {
+        "1",
+        "1",
+        "2",
+        NULL,
+    };
+    static const char *const replace_values[] = {
+        "1",
+        "10",
+        "2",
+        "22",
+    };
+    static const char *const pair_columns[] = {"a", "b", "payload"};
+    static const char *const pair_values[] = {"1", "1", "11", "2", "2", "20"};
+    static const char *const self_columns[] = {"id", "parent_id"};
+    static const char *const self_values[] = {"1", "1", "2", NULL};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(
+        mylite_open_memory(&database),
+        MYLITE_OK,
+        "open foreign key parent restrict database"
+    );
+    failures += execute_sql(database, "CREATE DATABASE fk_parent_runtime", MYLITE_DONE);
+    failures += execute_sql(database, "USE fk_parent_runtime", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE parent_fk (id INT PRIMARY KEY, payload INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE child_fk ("
+        "id INT PRIMARY KEY, parent_id INT, "
+        "FOREIGN KEY (parent_id) REFERENCES parent_fk(id))",
+        MYLITE_DONE
+    );
+    failures +=
+        execute_sql(database, "INSERT INTO parent_fk VALUES (1,10),(2,20),(3,30)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO child_fk VALUES (1,1),(2,NULL)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE parent_fk SET payload = 11 WHERE id = 1",
+        1,
+        "foreign key parent non-key update affected rows"
+    );
+
+    failures +=
+        prepare_sql(database, "UPDATE parent_fk SET id = 10 WHERE id = 1", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "foreign key parent update rejects");
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Cannot delete or update a parent row",
+        "foreign key parent update error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_row_is_referenced,
+        "foreign key parent update error code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id, payload FROM parent_fk ORDER BY id",
+        parent_columns,
+        2,
+        parent_after_update_values,
+        3,
+        "foreign key parent update rolled back"
+    );
+
+    failures += prepare_sql(database, "DELETE FROM parent_fk WHERE id = 1", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "foreign key parent delete rejects");
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Cannot delete or update a parent row",
+        "foreign key parent delete error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql_expect_done_affected(
+        database,
+        "DELETE FROM parent_fk WHERE id = 2",
+        1,
+        "foreign key parent delete unreferenced affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, payload FROM parent_fk ORDER BY id",
+        parent_columns,
+        2,
+        parent_after_delete_values,
+        2,
+        "foreign key parent delete unreferenced row"
+    );
+    failures += execute_sql(database, "SET foreign_key_checks = 0", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "DELETE FROM parent_fk WHERE id = 1",
+        1,
+        "foreign key checks off parent delete affected rows"
+    );
+    failures += execute_sql(database, "SET foreign_key_checks = 1", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id, payload FROM parent_fk ORDER BY id",
+        parent_columns,
+        2,
+        parent_after_checks_off_values,
+        1,
+        "foreign key checks off permits parent orphan"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, parent_id FROM child_fk ORDER BY id",
+        child_columns,
+        2,
+        child_values,
+        2,
+        "foreign key checks off leaves child rows"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE replace_parent_fk (id INT PRIMARY KEY, payload INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE replace_child_fk ("
+        "id INT PRIMARY KEY, parent_id INT, "
+        "FOREIGN KEY (parent_id) REFERENCES replace_parent_fk(id))",
+        MYLITE_DONE
+    );
+    failures +=
+        execute_sql(database, "INSERT INTO replace_parent_fk VALUES (1,10),(2,20)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO replace_child_fk VALUES (1,1)", MYLITE_DONE);
+    failures +=
+        prepare_sql(database, "REPLACE INTO replace_parent_fk VALUES (1,11)", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "foreign key parent replace rejects");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql_expect_done_affected(
+        database,
+        "REPLACE INTO replace_parent_fk VALUES (2,22)",
+        2,
+        "foreign key parent replace unreferenced affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, payload FROM replace_parent_fk ORDER BY id",
+        parent_columns,
+        2,
+        replace_values,
+        2,
+        "foreign key parent replace rows"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE parent_pair_fk (a INT, b INT, payload INT, PRIMARY KEY(a,b))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE child_pair_fk ("
+        "id INT PRIMARY KEY, a INT, b INT, "
+        "FOREIGN KEY (a,b) REFERENCES parent_pair_fk(a,b))",
+        MYLITE_DONE
+    );
+    failures +=
+        execute_sql(database, "INSERT INTO parent_pair_fk VALUES (1,1,10),(2,2,20)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO child_pair_fk VALUES (1,1,1)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE parent_pair_fk SET payload = 11 WHERE a = 1 AND b = 1",
+        1,
+        "foreign key composite parent non-key update"
+    );
+    failures += prepare_sql(
+        database,
+        "UPDATE parent_pair_fk SET a = 10 WHERE a = 1 AND b = 1",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "foreign key composite parent update rejects"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        prepare_sql(database, "DELETE FROM parent_pair_fk WHERE a = 1 AND b = 1", MYLITE_OK, &stmt);
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "foreign key composite parent delete rejects"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT a, b, payload FROM parent_pair_fk ORDER BY a, b",
+        pair_columns,
+        3,
+        pair_values,
+        2,
+        "foreign key composite parent rows"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE self_parent_fk ("
+        "id INT PRIMARY KEY, parent_id INT, "
+        "FOREIGN KEY (parent_id) REFERENCES self_parent_fk(id))",
+        MYLITE_DONE
+    );
+    failures +=
+        execute_sql(database, "INSERT INTO self_parent_fk VALUES (1,1),(2,NULL)", MYLITE_DONE);
+    failures += prepare_sql(database, "DELETE FROM self_parent_fk WHERE id = 1", MYLITE_OK, &stmt);
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "foreign key self parent delete rejects"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        prepare_sql(database, "UPDATE self_parent_fk SET id = 10 WHERE id = 1", MYLITE_OK, &stmt);
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "foreign key self parent update rejects"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id, parent_id FROM self_parent_fk ORDER BY id",
+        self_columns,
+        2,
+        self_values,
+        2,
+        "foreign key self parent rows"
+    );
+
+    failures +=
+        execute_sql(database, "CREATE TABLE multi_parent_fk (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE multi_child_fk ("
+        "id INT PRIMARY KEY, parent_id INT, "
+        "FOREIGN KEY (parent_id) REFERENCES multi_parent_fk(id))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "INSERT INTO multi_parent_fk VALUES (1)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO multi_child_fk VALUES (1,1)", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "DELETE multi_child_fk, multi_parent_fk "
+        "FROM multi_parent_fk JOIN multi_child_fk "
+        "ON multi_child_fk.parent_id = multi_parent_fk.id "
+        "WHERE multi_parent_fk.id = 1",
+        MYLITE_OK,
+        &stmt
+    );
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "foreign key multi delete rejects");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        execute_sql(database, "CREATE TABLE joined_parent_fk (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE joined_child_fk ("
+        "id INT PRIMARY KEY, parent_id INT, "
+        "FOREIGN KEY (parent_id) REFERENCES joined_parent_fk(id))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "INSERT INTO joined_parent_fk VALUES (1)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO joined_child_fk VALUES (1,1)", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "UPDATE joined_parent_fk JOIN joined_child_fk "
+        "ON joined_child_fk.parent_id = joined_parent_fk.id "
+        "SET joined_parent_fk.id = 10, joined_child_fk.parent_id = 10 "
+        "WHERE joined_parent_fk.id = 1",
+        MYLITE_OK,
+        &stmt
+    );
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "foreign key joined update rejects");
+    mylite_finalize(stmt);
 
     mylite_close(database);
     return failures;

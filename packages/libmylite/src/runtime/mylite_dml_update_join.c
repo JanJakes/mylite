@@ -665,6 +665,7 @@ static int execute_joined_update_target_row(
     struct mylite_update_row stored = {0};
     struct mylite_update_row candidate = {0};
     sqlite3_int64 rowid = 0;
+    bool row_changed = false;
     int status = MYLITE_OK;
 
     if (!joined_update_target_row_is_present(joined_row, target->table_index, &rowid) ||
@@ -693,7 +694,18 @@ static int execute_joined_update_target_row(
             &candidate
         );
     }
-    if (status == MYLITE_OK && mylite_dml_update_row_changed(&stored, &candidate)) {
+    if (status == MYLITE_OK) {
+        row_changed = mylite_dml_update_row_changed(&stored, &candidate);
+    }
+    if (status == MYLITE_OK && row_changed) {
+        status = mylite_dml_validate_parent_update_foreign_keys(
+            database,
+            target->table,
+            &stored,
+            &candidate
+        );
+    }
+    if (status == MYLITE_OK && row_changed) {
         status = write_joined_update_candidate(database, target, &candidate);
     }
 

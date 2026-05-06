@@ -19,6 +19,12 @@ static int execute_delete_rowset(
     int64_t *affected_rows
 );
 
+static int validate_delete_rowset_parent_foreign_keys(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_update_rowset *rowset
+);
+
 static size_t multi_delete_row_count(
     const struct mylite_update_rowset *rowsets,
     size_t rowset_count
@@ -44,6 +50,11 @@ int mylite_dml_execute_delete_rows_transaction(
     *out_affected_rows = 0;
     if (rowset->row_count == 0U) {
         return MYLITE_OK;
+    }
+
+    status = validate_delete_rowset_parent_foreign_keys(database, table, rowset);
+    if (status != MYLITE_OK) {
+        return status;
     }
 
     status = mylite_transaction_begin_statement_atomicity(database, &atomicity);
@@ -129,6 +140,20 @@ int mylite_dml_execute_multi_delete_rows_transaction(
         return MYLITE_OK;
     }
 
+    for (size_t index = 0U; status == MYLITE_OK && index < target_count; ++index) {
+        const struct mylite_select_table *table =
+            mylite_select_plan_table_const(plan, target_table_indexes[index]);
+
+        if (table == NULL) {
+            status = MYLITE_UNSUPPORTED;
+            break;
+        }
+        status = validate_delete_rowset_parent_foreign_keys(database, table, &rowsets[index]);
+    }
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
     status = mylite_transaction_begin_statement_atomicity(database, &atomicity);
     if (status != MYLITE_OK) {
         return status;
@@ -209,6 +234,22 @@ static int execute_delete_rowset(
         );
     }
     return status;
+}
+
+static int validate_delete_rowset_parent_foreign_keys(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_update_rowset *rowset
+) {
+    for (size_t index = 0U; index < rowset->row_count; ++index) {
+        int status =
+            mylite_dml_validate_parent_delete_foreign_keys(database, table, &rowset->rows[index]);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
 }
 
 static size_t multi_delete_row_count(

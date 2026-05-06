@@ -26989,6 +26989,13 @@ static int test_select_distinct_execution(void)
     failures +=
         expect_int((int)mylite_warning_code(database, 0), mysql_warning_field_in_order_not_select,
                    "distinct hidden order warning code");
+    failures += expect_prepare_error(database, "SELECT DISTINCT t.a FROM d AS t ORDER BY t.b",
+                                     MYLITE_EXEC_ERROR,
+                                     "Expression #1 of ORDER BY clause is not in SELECT list",
+                                     "distinct table-qualified hidden order column");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_field_in_order_not_select,
+                   "distinct table-qualified hidden order warning code");
     failures += execute_sql(database,
                             "CREATE TABLE distinct_mode_t ("
                             "id INT PRIMARY KEY, a INT, sort_key INT)",

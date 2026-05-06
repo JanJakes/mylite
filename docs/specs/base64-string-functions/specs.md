@@ -237,6 +237,5 @@ Add C tests for:
 After this feature, `TO_BASE64()` and `FROM_BASE64()` are partially supported
 for the existing scalar expression call sites. The status remains partial
 because exact native arity diagnostics, `max_allowed_packet`, fully
-length-aware binary string semantics across all expression functions, hex/bit
-literal evaluation, and exact metadata in deferred expression contexts remain
-deferred.
+length-aware binary string semantics across all expression functions, and exact
+metadata in deferred expression contexts remain deferred.

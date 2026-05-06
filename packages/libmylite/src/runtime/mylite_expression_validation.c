@@ -82,9 +82,9 @@ bool mylite_expression_literal_is_supported(const struct mylite_sql_ast_node *ex
     case MYLITE_SQL_AST_LITERAL_FLOAT:
     case MYLITE_SQL_AST_LITERAL_STRING:
     case MYLITE_SQL_AST_LITERAL_NATIONAL_STRING:
-        return true;
     case MYLITE_SQL_AST_LITERAL_HEX:
     case MYLITE_SQL_AST_LITERAL_BIT:
+        return true;
     case MYLITE_SQL_AST_LITERAL_NONE:
         return false;
     }

@@ -17,6 +17,7 @@ In scope:
   assignment targets where MySQL accepts them
 - assignment values using the Task 16 expression subset or the `DEFAULT`
   keyword
+- uncorrelated scalar subquery assignment values
 - source-order assignment evaluation, including repeated assignment targets
 - row column references in assignment expressions, with earlier assignments
   visible to later assignments for the same row
@@ -44,9 +45,9 @@ Out of scope for Task 19:
 - partition clauses, optimizer hints, and locking modifiers; index hints are
   parsed and ignored by the separate placeholder slice
 - `ORDER BY` or `LIMIT` variants other than single `LIMIT row_count`
-- subqueries, `EXISTS`, row constructors, variables, parameters, function
-  calls, casts, `CASE`, collations, JSON operators, regular expressions, and
-  other expression shapes outside Task 16
+- correlated subqueries, `EXISTS`, quantified comparisons, row constructors,
+  parameters, and other expression shapes outside the current shared scalar
+  expression evaluator
 - `DEFAULT(col_name)` function syntax
 - generated-column runtime support until generated columns exist in MyLite's
   catalog and write path
@@ -194,6 +195,10 @@ Assignment targets identify columns in the target table. The right-hand side
 may be an expression or `DEFAULT`. MySQL evaluates single-table assignments in
 source order. Column references see the row's current candidate values, so
 earlier assignments are visible to later assignments for the same row.
+Uncorrelated scalar subquery assignment values follow the existing scalar
+subquery contract: the subquery must return one column, a one-row result assigns
+that value, an empty result assigns `NULL`, and more than one row is an
+execution error.
 
 Representative runtime results:
 
@@ -202,6 +207,7 @@ Representative runtime results:
 | `UPDATE t SET a = a + 1, b = a WHERE id = 10` | row `10` becomes `a=2`, `b=2` |
 | `UPDATE t SET a = 100, a = a + 1 WHERE id = 11` | duplicate target is accepted; row `11` becomes `a=101` |
 | `UPDATE t SET a = a WHERE id IN (10,11)` | matches two rows, changes zero rows |
+| `UPDATE t SET s = (SELECT label FROM lookup WHERE id = 1) WHERE id = 10` | assigns the scalar subquery value |
 
 Repeated assignment targets are not an error for `UPDATE`. This differs from
 `INSERT ... SET`, where duplicate target columns are rejected.
@@ -737,14 +743,16 @@ Use SQLite for durable storage, not as the semantic authority for Task 19.
 
 ## Explicit deferred behavior
 
-- CTEs, subqueries, and self-referencing subquery diagnostics are deferred.
-  Multiple-table joined updates are tracked separately in
+- CTEs, correlated subqueries, subquery predicates outside the currently
+  supported scalar-expression contexts, and self-referencing subquery
+  diagnostics are deferred. Multiple-table joined updates are tracked separately in
   [UPDATE JOIN](../update-join/specs.md).
 - `LOW_PRIORITY`, `IGNORE`, partition clauses, and optimizer hints are
   deferred. Index hints are parsed and ignored by
   [index hint parser placeholders](../index-hint-placeholders/specs.md).
-- Function calls, including `LAST_INSERT_ID(expr)` and `DEFAULT(col_name)`,
-  are deferred unless Task 24 or a narrower function subset lands first.
+- Remaining unsupported function calls, including `LAST_INSERT_ID(expr)` and
+  `DEFAULT(col_name)`, are deferred until their function slices land in DML
+  expression contexts.
 - Generated-column DDL/runtime behavior is deferred. Task 19 should include
   hooks and diagnostics rather than storing explicit values into generated
   columns.
@@ -776,6 +784,7 @@ these cases.
 | `UPDATE t tt SET tt.a = tt.a + 1 WHERE tt.id = 1` | accepted |
 | `UPDATE schema.t SET t.a = t.a + 1, schema.t.b = t.a WHERE id = 1` | accepted |
 | `UPDATE t SET a = DEFAULT, b = a + 1 WHERE id = 1 ORDER BY b DESC LIMIT 1` | accepted |
+| `UPDATE t SET a = (SELECT v FROM u WHERE id = 1) WHERE id = 1` | accepted |
 | `UPDATE t SET a = 1, a = a + 1 WHERE id = 1` | accepted; duplicate assignment targets are valid |
 | `UPDATE t SET a = 1 LIMIT 1` | accepted |
 | `UPDATE t SET a = 1 LIMIT 1 OFFSET 1` | syntax error 1064 |
@@ -799,6 +808,7 @@ these cases.
 | `UPDATE t SET a = a + 1, b = a WHERE id = 10` | stores updated `a` into `b` |
 | `UPDATE t SET a = 100, a = a + 1 WHERE id = 11` | accepts repeated target and stores `101` |
 | `UPDATE t SET b = a, a = a + 1 WHERE id = 10` | `b` sees the old `a` because assignment order is reversed |
+| `UPDATE t SET s = (SELECT label FROM lookup WHERE id = 1) WHERE id = 10` | assigns the scalar subquery value |
 
 ### Target aliases and column resolution
 

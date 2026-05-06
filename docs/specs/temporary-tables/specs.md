@@ -13,9 +13,11 @@ In scope:
 - temporary tables shadowing persistent tables with the same schema and name
 - `DROP TABLE` dropping a shadowing temporary table before the persistent table
 - `DROP TEMPORARY TABLE` targeting only temporary tables
-- `SELECT`, `INSERT`, `REPLACE`, `UPDATE`, `DELETE`, `SHOW COLUMNS`,
-  `DESCRIBE`, `SHOW INDEX`, and `SHOW CREATE TABLE` resolving the temporary
-  table while it shadows a persistent table
+- `SELECT`, `INSERT`, `REPLACE`, `UPDATE`, `DELETE`, `ALTER TABLE`,
+  `SHOW COLUMNS`, `DESCRIBE`, `SHOW INDEX`, and `SHOW CREATE TABLE` resolving
+  the temporary table while it shadows a persistent table
+- temporary `AUTO_INCREMENT` state independent from persistent tables with the
+  same name
 
 Out of scope:
 
@@ -23,8 +25,8 @@ Out of scope:
 - temporary views
 - temporary table privilege checks
 - implicit-commit differences between temporary and persistent DDL
-- temporary table support for all remaining `ALTER TABLE`, `CREATE INDEX`, and
-  `DROP INDEX` surfaces
+- temporary table support for standalone `CREATE INDEX` and `DROP INDEX`
+  surfaces outside the verified `ALTER TABLE` path
 
 ## Sources
 
@@ -61,6 +63,8 @@ unknown table 1051 when only a persistent table exists.
 Temporary tables do not appear in `INFORMATION_SCHEMA.TABLES` or `SHOW TABLES`.
 Metadata statements that target the table name, such as `SHOW COLUMNS` and
 `SHOW CREATE TABLE`, resolve the temporary table while it exists.
+`SHOW TABLE STATUS` and `INFORMATION_SCHEMA.TABLES` continue to report the
+persistent table row when a temporary table shadows it.
 
 ## MyLite behavior
 
@@ -125,6 +129,12 @@ MyLite.
 - otherwise drops the persistent table
 - cleans the matching temporary or persistent catalog rows
 
+`ALTER TABLE`:
+
+- resolves the temporary catalog before the persistent catalog
+- rebuilds the matching SQLite TEMP physical table for supported alter actions
+- rewrites only the matching temporary catalog rows
+
 ### Runtime and metadata statements
 
 Table-backed SELECT and DML use the same physical name as persistent tables, so
@@ -134,11 +144,13 @@ rows first.
 
 `SHOW COLUMNS`, `DESCRIBE`, `SHOW INDEX`, and `SHOW CREATE TABLE` resolve the
 temporary catalog first. `SHOW CREATE TABLE` emits `CREATE TEMPORARY TABLE` for
-temporary targets.
+temporary targets. `SHOW TABLE STATUS` and `INFORMATION_SCHEMA.TABLES` remain
+schema-wide persistent metadata surfaces and do not list temporary tables.
 
 ## Compatibility decisions
 
 MyLite intentionally does not list temporary tables in `SHOW TABLES` or
-`INFORMATION_SCHEMA.TABLES`, matching the observed MySQL behavior. This first
-slice also leaves broad temporary-table `ALTER TABLE` support deferred because
-the existing alter implementation rewrites persistent catalog rows directly.
+`INFORMATION_SCHEMA.TABLES`, matching the observed MySQL behavior. Temporary
+and persistent `AUTO_INCREMENT` state stay independent even when the names
+match; unqualified DML targets the temporary table, while schema-wide metadata
+continues to expose the persistent row.

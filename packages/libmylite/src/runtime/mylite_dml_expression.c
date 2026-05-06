@@ -96,6 +96,20 @@ int mylite_dml_evaluate_session_function(
                                             expression_context, warnings, out_value);
 }
 
+int mylite_dml_evaluate_subquery(void *user_data, const struct mylite_sql_ast_node *subquery,
+                                 struct mylite_expression_warnings *warnings,
+                                 struct mylite_expression_value *out_value)
+{
+    struct mylite_update_expression_context *context = user_data;
+    const struct mylite_dml_expression_callbacks *callbacks =
+        context == NULL ? NULL : context->callbacks;
+
+    if (callbacks == NULL || callbacks->eval_subquery == NULL) {
+        return -1;
+    }
+    return callbacks->eval_subquery(callbacks->user_data, subquery, warnings, out_value);
+}
+
 int mylite_dml_evaluate_default_function(void *user_data,
                                          const struct mylite_sql_ast_node *function_call,
                                          struct mylite_expression_value *out_value)

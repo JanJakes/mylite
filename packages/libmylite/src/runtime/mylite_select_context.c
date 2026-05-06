@@ -39,6 +39,10 @@ static int evaluate_dml_materialize_session_function(
     const struct mylite_sql_ast_node *function_call,
     const struct mylite_expression_eval_context *expression_context,
     struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value);
+static int evaluate_dml_materialize_subquery(void *user_data,
+                                             const struct mylite_sql_ast_node *subquery,
+                                             struct mylite_expression_warnings *warnings,
+                                             struct mylite_expression_value *out_value);
 static int set_dml_materialize_where_predicate_eval_error(void *user_data);
 static int evaluate_statement_session_function(
     mylite_stmt *stmt, const struct mylite_sql_ast_node *function_call,
@@ -185,6 +189,7 @@ static const struct mylite_statement_execute_callbacks statement_execute_callbac
     .scalar_callbacks = &select_scalar_eval_callbacks,
     .union_callbacks = &union_query_callbacks,
     .eval_dml_materialize_session_function = evaluate_dml_materialize_session_function,
+    .eval_dml_materialize_subquery = evaluate_dml_materialize_subquery,
     .set_dml_materialize_where_predicate_eval_error =
         set_dml_materialize_where_predicate_eval_error,
 };
@@ -265,6 +270,15 @@ static int evaluate_dml_materialize_session_function(
 {
     return evaluate_statement_session_function((mylite_stmt *)user_data, function_call,
                                                expression_context, warnings, table, out_value);
+}
+
+static int evaluate_dml_materialize_subquery(void *user_data,
+                                             const struct mylite_sql_ast_node *subquery,
+                                             struct mylite_expression_warnings *warnings,
+                                             struct mylite_expression_value *out_value)
+{
+    return evaluate_select_subquery_expression((mylite_stmt *)user_data, subquery, warnings,
+                                               out_value);
 }
 
 static int set_dml_materialize_where_predicate_eval_error(void *user_data)

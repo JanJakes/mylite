@@ -287,5 +287,6 @@ Add C tests for:
 After this feature, `BIN()`, `OCT()`, and `CONV()` are partially supported for
 the existing scalar expression call sites. The status remains partial because
 exact native arity diagnostics, `max_allowed_packet`, generated-column charset
-exceptions, hex/bit literal evaluation, and exact numeric category preservation
-outside the current scalar expression model remain deferred.
+exceptions, full numeric coercion of hex/bit literals, and exact numeric
+category preservation outside the current scalar expression model remain
+deferred.

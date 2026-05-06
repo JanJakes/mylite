@@ -87,10 +87,10 @@ int mylite_dml_bind_update_order_by_clause(mylite_db *database,
         return MYLITE_MISUSE;
     }
 
-    items = mylite_ast_child_at(plan->order_by_clause, 0U);
     if (plan->order_by_clause == NULL) {
         return MYLITE_OK;
     }
+    items = mylite_ast_child_at(plan->order_by_clause, 0U);
     if (plan->order_by_clause->kind != MYLITE_SQL_AST_ORDER_BY_CLAUSE || items == NULL ||
         items->kind != MYLITE_SQL_AST_ORDER_ITEM_LIST) {
         return mylite_dml_set_update_unsupported_clause_error(database);

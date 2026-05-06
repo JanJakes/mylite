@@ -226,6 +226,7 @@ struct mylite_alter_table_model {
     size_t index_count;
     bool clear_auto_increment;
     bool report_copied_rows;
+    bool temporary;
 };
 
 enum mylite_alter_table_column_catalog_field {

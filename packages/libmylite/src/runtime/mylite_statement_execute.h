@@ -21,6 +21,10 @@ struct mylite_statement_execute_callbacks {
         const struct mylite_sql_ast_node *function_call,
         const struct mylite_expression_eval_context *expression_context,
         struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value);
+    int (*eval_dml_materialize_subquery)(void *user_data,
+                                         const struct mylite_sql_ast_node *subquery,
+                                         struct mylite_expression_warnings *warnings,
+                                         struct mylite_expression_value *out_value);
     int (*set_dml_materialize_where_predicate_eval_error)(void *user_data);
 };
 

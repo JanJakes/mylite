@@ -219,6 +219,7 @@ static int evaluate_update_assignment_value(mylite_db *database,
         .user_data = &user_context,
         .resolve_identifier = mylite_dml_resolve_update_expression_identifier,
         .eval_session_function = mylite_dml_evaluate_session_function,
+        .eval_subquery = mylite_dml_evaluate_subquery,
         .eval_default_function = mylite_dml_evaluate_default_function,
     };
     int status = MYLITE_OK;

@@ -108,12 +108,16 @@ static char *build_alter_table_create_shadow_sql(mylite_db *database,
                                                  const char *shadow_name)
 {
     sqlite3_str *sql = sqlite3_str_new(database->sqlite);
+    const char *temporary_keyword = "";
 
     if (sql == NULL) {
         return NULL;
     }
+    if (model->temporary) {
+        temporary_keyword = "TEMPORARY ";
+    }
 
-    sqlite3_str_appendf(sql, "CREATE TABLE \"%w\"(", shadow_name);
+    sqlite3_str_appendf(sql, "CREATE %sTABLE \"%w\"(", temporary_keyword, shadow_name);
     for (size_t index = 0U; index < model->column_count; ++index) {
         if (index != 0U) {
             sqlite3_str_append(sql, ",", 1);
@@ -257,7 +261,9 @@ static char *alter_table_shadow_physical_name(mylite_db *database, const char *p
 static bool sqlite_table_name_exists(mylite_db *database, const char *name)
 {
     sqlite3_stmt *select = NULL;
-    static const char sql[] = "SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = ?";
+    static const char sql[] =
+        "SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = ? "
+        "UNION ALL SELECT 1 FROM sqlite_temp_schema WHERE type = 'table' AND name = ? LIMIT 1";
     int rc =
         sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select, NULL);
     bool exists = false;
@@ -266,6 +272,7 @@ static bool sqlite_table_name_exists(mylite_db *database, const char *name)
         return true;
     }
     sqlite3_bind_text(select, 1, name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(select, 2, name, -1, sqlite_transient_destructor());
     rc = sqlite3_step(select);
     exists = rc == SQLITE_ROW;
     sqlite3_finalize(select);

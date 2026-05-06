@@ -28,9 +28,10 @@
 static bool alter_table_has_table_rename_action(const mylite_stmt *stmt);
 static int execute_alter_table_rename_statement(mylite_stmt *stmt);
 static int add_alter_table_rename_target(mylite_stmt *stmt);
-static int validate_alter_table_plan(mylite_stmt *stmt, const char **out_schema_name);
+static int validate_alter_table_plan(mylite_stmt *stmt, const char **out_schema_name,
+                                     bool *out_temporary);
 static int resolve_alter_table_schema(mylite_stmt *stmt);
-static int validate_alter_table_target(mylite_stmt *stmt);
+static int validate_alter_table_target(mylite_stmt *stmt, bool *out_temporary);
 static int apply_alter_table_actions(mylite_stmt *stmt, struct mylite_alter_table_model *model);
 static int set_alter_table_unsupported_action_error(mylite_db *database, const char *feature);
 static int
@@ -45,6 +46,7 @@ int mylite_table_ddl_execute_alter_table_prepared_statement(mylite_stmt *stmt)
 {
     const char *schema_name = NULL;
     struct mylite_alter_table_model model = {0};
+    bool temporary = false;
     int status = MYLITE_OK;
 
     stmt->affected_rows = 0;
@@ -52,10 +54,10 @@ int mylite_table_ddl_execute_alter_table_prepared_statement(mylite_stmt *stmt)
         return execute_alter_table_rename_statement(stmt);
     }
 
-    status = validate_alter_table_plan(stmt, &schema_name);
+    status = validate_alter_table_plan(stmt, &schema_name, &temporary);
     if (status == MYLITE_OK) {
-        status = mylite_table_ddl_load_alter_table_model(stmt->database, schema_name,
-                                                         stmt->alter_table.table_name, &model);
+        status = mylite_table_ddl_load_alter_table_model(
+            stmt->database, schema_name, stmt->alter_table.table_name, temporary, &model);
     }
     if (status == MYLITE_OK) {
         status = apply_alter_table_actions(stmt, &model);
@@ -147,11 +149,13 @@ static int add_alter_table_rename_target(mylite_stmt *stmt)
     return status;
 }
 
-static int validate_alter_table_plan(mylite_stmt *stmt, const char **out_schema_name)
+static int validate_alter_table_plan(mylite_stmt *stmt, const char **out_schema_name,
+                                     bool *out_temporary)
 {
     int status = MYLITE_OK;
 
     *out_schema_name = NULL;
+    *out_temporary = false;
     if (stmt->alter_table.unsupported_algorithm != NULL) {
         return set_alter_table_unsupported_option_error(stmt->database, "ALGORITHM",
                                                         stmt->alter_table.unsupported_algorithm);
@@ -165,7 +169,7 @@ static int validate_alter_table_plan(mylite_stmt *stmt, const char **out_schema_
     if (status != MYLITE_OK) {
         return status;
     }
-    status = validate_alter_table_target(stmt);
+    status = validate_alter_table_target(stmt, out_temporary);
     if (status != MYLITE_OK) {
         return status;
     }
@@ -192,7 +196,7 @@ static int resolve_alter_table_schema(mylite_stmt *stmt)
     return MYLITE_OK;
 }
 
-static int validate_alter_table_target(mylite_stmt *stmt)
+static int validate_alter_table_target(mylite_stmt *stmt, bool *out_temporary)
 {
     struct mylite_schema_presence presence;
     bool exists = false;
@@ -214,8 +218,18 @@ static int validate_alter_table_target(mylite_stmt *stmt)
         return MYLITE_EXEC_ERROR;
     }
 
-    status = mylite_catalog_table_exists(stmt->database, stmt->alter_table.schema_name,
-                                         stmt->alter_table.table_name, &exists);
+    status = mylite_catalog_temporary_table_exists(stmt->database, stmt->alter_table.schema_name,
+                                                   stmt->alter_table.table_name, &exists);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (exists) {
+        *out_temporary = true;
+        return MYLITE_OK;
+    }
+
+    status = mylite_catalog_persistent_table_exists(stmt->database, stmt->alter_table.schema_name,
+                                                    stmt->alter_table.table_name, &exists);
     if (status != MYLITE_OK) {
         return status;
     }
@@ -223,6 +237,7 @@ static int validate_alter_table_target(mylite_stmt *stmt)
         return mylite_diagnostics_set_table_doesnt_exist_error(
             stmt->database, stmt->alter_table.schema_name, stmt->alter_table.table_name);
     }
+    *out_temporary = false;
     return MYLITE_OK;
 }
 

@@ -3,6 +3,8 @@
 #include "mylite_diagnostics.h"
 #include "mylite_expression_validation.h"
 #include "mylite_select.h"
+#include "mylite_select_context.h"
+#include "mylite_select_subquery.h"
 #include "mylite_select_types.h"
 #include "mylite_span.h"
 #include "mylite_system_variables.h"
@@ -83,6 +85,8 @@ int mylite_dml_bind_mutation_expression(
         }
         return MYLITE_OK;
     case MYLITE_SQL_AST_SUBQUERY_EXPRESSION:
+        return mylite_select_subquery_bind_select_expression(
+            database, expression, true, &mylite_select_context_subquery_bind_callbacks);
     case MYLITE_SQL_AST_EXISTS_EXPRESSION:
     case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
     case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:

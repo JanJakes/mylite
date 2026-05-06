@@ -6,10 +6,11 @@
 #include "mylite_table_ddl_types.h"
 #include "sqlite3.h"
 
+#include <stdbool.h>
 #include <stddef.h>
 
 static int delete_alter_table_catalog_rows(mylite_db *database, const char *schema_name,
-                                           const char *table_name);
+                                           const char *table_name, bool temporary);
 static int insert_alter_table_column_catalog_rows(mylite_db *database,
                                                   const struct mylite_alter_table_model *model);
 static int insert_alter_table_column_catalog_row(mylite_db *database, sqlite3_stmt *insert,
@@ -31,7 +32,8 @@ int mylite_table_ddl_rewrite_alter_table_catalog(mylite_db *database, const char
                                                  const char *table_name,
                                                  const struct mylite_alter_table_model *model)
 {
-    int status = delete_alter_table_catalog_rows(database, schema_name, table_name);
+    int status =
+        delete_alter_table_catalog_rows(database, schema_name, table_name, model->temporary);
 
     if (status == MYLITE_OK) {
         status = insert_alter_table_column_catalog_rows(database, model);
@@ -46,8 +48,13 @@ int mylite_table_ddl_rewrite_alter_table_catalog(mylite_db *database, const char
 }
 
 static int delete_alter_table_catalog_rows(mylite_db *database, const char *schema_name,
-                                           const char *table_name)
+                                           const char *table_name, bool temporary)
 {
+    if (temporary) {
+        return mylite_catalog_delete_temporary_table_rows(database, schema_name, table_name,
+                                                          MYLITE_CATALOG_DELETE_TABLE_INDEXES |
+                                                              MYLITE_CATALOG_DELETE_TABLE_COLUMNS);
+    }
     return mylite_catalog_delete_table_rows(database, schema_name, table_name,
                                             MYLITE_CATALOG_DELETE_TABLE_INDEXES |
                                                 MYLITE_CATALOG_DELETE_TABLE_COLUMNS);
@@ -57,18 +64,24 @@ static int insert_alter_table_column_catalog_rows(mylite_db *database,
                                                   const struct mylite_alter_table_model *model)
 {
     sqlite3_stmt *insert = NULL;
-    static const char sql[] =
-        "INSERT INTO __mylite_column_catalog("
+    char *sql = sqlite3_mprintf(
+        "INSERT INTO %s("
         "table_catalog, table_schema, table_name, column_name, ordinal_position, column_default, "
         "is_nullable, data_type, character_maximum_length, character_octet_length, "
         "numeric_precision, numeric_scale, datetime_precision, character_set_name, "
         "collation_name, column_type, column_key, extra, privileges, column_comment, "
         "generation_expression, srs_id)"
         " VALUES('def', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-        "'select,insert,update,references', ?, ?, ?)";
-    int rc =
-        sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &insert, NULL);
+        "'select,insert,update,references', ?, ?, ?)",
+        mylite_catalog_column_catalog_name(model->temporary));
+    int rc = SQLITE_OK;
 
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &insert, NULL);
+    sqlite3_free(sql);
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
     }
@@ -205,15 +218,21 @@ static int insert_alter_table_index_catalog_rows(mylite_db *database,
                                                  const struct mylite_alter_table_model *model)
 {
     sqlite3_stmt *insert = NULL;
-    static const char sql[] =
-        "INSERT INTO __mylite_index_catalog("
+    char *sql = sqlite3_mprintf(
+        "INSERT INTO %s("
         "table_catalog, table_schema, table_name, non_unique, index_schema, index_name, "
         "seq_in_index, column_name, collation, cardinality, sub_part, packed, nullable, "
         "index_type, comment, index_comment, is_visible, expression)"
-        " VALUES('def', ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, ?, ?, ?, ?, ?, NULL)";
-    int rc =
-        sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &insert, NULL);
+        " VALUES('def', ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, ?, ?, ?, ?, ?, NULL)",
+        mylite_catalog_index_catalog_name(model->temporary));
+    int rc = SQLITE_OK;
 
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &insert, NULL);
+    sqlite3_free(sql);
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
     }
@@ -299,14 +318,21 @@ static int update_alter_table_auto_increment(mylite_db *database,
                                              const struct mylite_alter_table_model *model)
 {
     sqlite3_stmt *update = NULL;
-    static const char sql[] = "UPDATE __mylite_table_catalog SET auto_increment = NULL "
-                              "WHERE table_schema = ? AND table_name = ?";
+    char *sql = NULL;
     int rc = SQLITE_OK;
 
     if (!model->clear_auto_increment) {
         return MYLITE_OK;
     }
+    sql = sqlite3_mprintf("UPDATE %s SET auto_increment = NULL "
+                          "WHERE table_schema = ? AND table_name = ?",
+                          mylite_catalog_table_catalog_name(model->temporary));
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
     rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &update, NULL);
+    sqlite3_free(sql);
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
     }

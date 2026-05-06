@@ -23,8 +23,6 @@ Out of scope:
 - exact DECIMAL-versus-DOUBLE rounding distinctions for numeric values after
   they have passed through MyLite expression paths that do not preserve exact
   numeric category metadata
-- hex and bit literal evaluation until those literal kinds are supported by the
-  shared scalar expression evaluator
 
 ## Sources
 
@@ -135,10 +133,9 @@ Observed examples:
 | `LENGTH(UNHEX('4100FF'))` | `3` | none |
 | `UNHEX('E78CAB')` | `猫` bytes | none |
 
-Current MyLite hex and bit literals are accepted by the parser but are not yet
-supported by scalar expression evaluation. `HEX(X'4100')`, `UNHEX(X'3431')`,
-and bit-literal equivalents remain deferred until that literal execution
-surface exists.
+Hex and bit literals are supported by the shared scalar expression evaluator,
+so `HEX(X'4100')`, `UNHEX(X'3431')`, and bit-literal equivalents operate on
+their decoded binary-string bytes.
 
 ## Result metadata
 
@@ -226,5 +223,5 @@ After this feature, `HEX()` and `UNHEX()` are partially supported for the
 existing scalar expression call sites. The status remains partial because exact
 native arity diagnostics, `max_allowed_packet`, generated-column charset
 exceptions, fully length-aware binary string semantics across all expression
-functions, hex/bit literal evaluation, and exact-versus-approximate numeric
-rounding outside preserved literal cases remain deferred.
+functions, and exact-versus-approximate numeric rounding outside preserved
+literal cases remain deferred.

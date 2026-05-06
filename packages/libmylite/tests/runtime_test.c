@@ -282,6 +282,7 @@ static int test_regexp_predicates_execution(void);
 static int test_regexp_scalar_functions_execution(void);
 static int test_json_scalar_foundation_execution(void);
 static int test_scalar_builtin_functions_execution(void);
+static int test_hex_bit_literal_execution(void);
 static int test_current_temporal_functions_execution(void);
 static int test_date_and_datediff_functions_execution(void);
 static int test_last_day_function_execution(void);
@@ -534,6 +535,7 @@ int main(void)
     failures += test_regexp_scalar_functions_execution();
     failures += test_json_scalar_foundation_execution();
     failures += test_scalar_builtin_functions_execution();
+    failures += test_hex_bit_literal_execution();
     failures += test_current_temporal_functions_execution();
     failures += test_date_and_datediff_functions_execution();
     failures += test_last_day_function_execution();
@@ -6472,6 +6474,49 @@ static int test_scalar_builtin_functions_execution(void)
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_hex_bit_literal_execution(void)
+{
+    static const char *const hex_literal_columns[] = {"prefixed_hex", "quoted_hex", "upper_hex"};
+    static const char *const hex_literal_values[] = {"Az", "Az", "Az"};
+    static const char *const bit_literal_columns[] = {"prefixed_bit", "quoted_bit", "upper_bit"};
+    static const char *const bit_literal_values[] = {"Az", "Az", "Az"};
+    static const char *const bit_padding_columns[] = {"one",   "two",         "three",
+                                                      "eight", "nine_length", "nine_hex"};
+    static const char *const bit_padding_values[] = {"01", "01", "01", "01", "2", "0001"};
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open hex bit literal database");
+    failures += expect_select_rows(
+        database,
+        "SELECT 0x417a AS prefixed_hex, "
+        "x'417a' AS quoted_hex, "
+        "X'417a' AS upper_hex",
+        hex_literal_columns, (int)(sizeof(hex_literal_columns) / sizeof(hex_literal_columns[0])),
+        hex_literal_values, 1, "hex literal binary values");
+    failures += expect_select_rows(
+        database,
+        "SELECT 0b0100000101111010 AS prefixed_bit, "
+        "b'0100000101111010' AS quoted_bit, "
+        "B'0100000101111010' AS upper_bit",
+        bit_literal_columns, (int)(sizeof(bit_literal_columns) / sizeof(bit_literal_columns[0])),
+        bit_literal_values, 1, "bit literal binary values");
+    failures += expect_select_rows(
+        database,
+        "SELECT HEX(0b1) AS one, "
+        "HEX(0b01) AS two, "
+        "HEX(0b001) AS three, "
+        "HEX(0b00000001) AS eight, "
+        "LENGTH(0b000000001) AS nine_length, "
+        "HEX(0b000000001) AS nine_hex",
+        bit_padding_columns, (int)(sizeof(bit_padding_columns) / sizeof(bit_padding_columns[0])),
+        bit_padding_values, 1, "bit literal byte padding");
+
+    mylite_close(database);
     return failures;
 }
 
@@ -19124,8 +19169,7 @@ static int test_unsupported_statement(void)
     int failures = 0;
 
     failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open memory database");
-    failures += prepare_sql(database, "SELECT x'0a'", MYLITE_UNSUPPORTED, &stmt);
-    failures += prepare_sql(database, "SELECT b'1010'", MYLITE_UNSUPPORTED, &stmt);
+    failures += prepare_sql(database, "SELECT ROW(1,2) IN ((1,2))", MYLITE_UNSUPPORTED, &stmt);
     if (stmt != NULL) {
         fprintf(stderr, "unsupported statement returned a statement handle\n");
         failures = 1;
@@ -20257,6 +20301,10 @@ static int test_temporary_table_execution(void)
     static const char *const temp_column_values[] = {
         "id", "int", "NO", "PRI", NULL, "", "temp_note", "varchar(20)", "YES", "", NULL, "",
     };
+    static const char *const temp_altered_column_values[] = {
+        "id", "int", "NO", "PRI",     NULL,  "",    "temp_note", "varchar(20)", "YES",
+        "",   NULL,  "",   "altered", "int", "YES", "",          NULL,          "",
+    };
     static const char *const base_column_values[] = {
         "id", "int", "NO", "PRI", NULL, "", "note", "varchar(20)", "YES", "", NULL, "",
     };
@@ -20280,6 +20328,32 @@ static int test_temporary_table_execution(void)
         "Tables_in_mylite_temp_tables (temp_only)"};
     static const char *const count_columns[] = {"COUNT(*)"};
     static const char *const zero_count[] = {"0"};
+    static const char *const temp_altered_columns[] = {"id", "temp_note", "altered"};
+    static const char *const temp_altered_values[] = {"3", "after alter", "9"};
+    static const char *const show_status_columns[] = {
+        "Name",           "Engine",         "Version",         "Row_format",   "Rows",
+        "Avg_row_length", "Data_length",    "Max_data_length", "Index_length", "Data_free",
+        "Auto_increment", "Create_time",    "Update_time",     "Check_time",   "Collation",
+        "Checksum",       "Create_options", "Comment",
+    };
+    static const char *const ai_status_values[] = {
+        "ai_shadow", "InnoDB", "10",
+        "Dynamic",   "0",      "0",
+        "0",         "0",      "0",
+        "0",         "11",     "1970-01-01 00:00:00",
+        NULL,        NULL,     "utf8mb4_0900_ai_ci",
+        NULL,        "",       "",
+    };
+    static const char *const ai_info_columns[] = {"TABLE_NAME", "AUTO_INCREMENT"};
+    static const char *const ai_info_values[] = {"ai_shadow", "11"};
+    static const char *const ai_columns[] = {"id", "note"};
+    static const char *const temp_ai_values[] = {"500", "temp"};
+    static const char *const persistent_ai_values[] = {
+        "10",
+        "persist",
+        "11",
+        "after",
+    };
     const char *path = MYLITE_RUNTIME_TEST_FILE_PATH;
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
@@ -20302,13 +20376,72 @@ static int test_temporary_table_execution(void)
     failures += execute_sql(database, "INSERT INTO shadowed VALUES (2,'temp')", MYLITE_DONE);
     failures += expect_select_rows(database, "SELECT id, temp_note FROM shadowed", selected_columns,
                                    2, temp_values, 1, "temporary table shadows base table");
+    failures += execute_sql(database,
+                            "CREATE TEMPORARY TABLE IF NOT EXISTS shadowed "
+                            "(id INT PRIMARY KEY, ignored INT)",
+                            MYLITE_DONE);
+    failures += prepare_sql(database,
+                            "CREATE TEMPORARY TABLE shadowed "
+                            "(id INT PRIMARY KEY, dup INT)",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "duplicate temporary table rejected");
+    failures += expect_contains(mylite_error_message(database), "already exists",
+                                "duplicate temporary table rejected");
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += expect_select_rows(database, "SHOW COLUMNS FROM shadowed", show_columns, 6,
                                    temp_column_values, 2, "show columns resolves temporary table");
+    failures += expect_select_rows(database, "DESCRIBE shadowed", show_columns, 6,
+                                   temp_column_values, 2, "describe resolves temporary table");
     failures += expect_select_rows(database, "SHOW INDEX FROM shadowed", show_index_columns, 15,
                                    show_index_values, 1, "show index resolves temporary table");
     failures +=
         expect_select_rows(database, "SHOW CREATE TABLE shadowed", show_create_columns, 2,
                            temp_create_values, 1, "show create table resolves temporary table");
+    failures +=
+        execute_sql(database, "ALTER TABLE shadowed ADD COLUMN altered INT NULL", MYLITE_DONE);
+    failures +=
+        expect_select_rows(database, "SHOW COLUMNS FROM shadowed", show_columns, 6,
+                           temp_altered_column_values, 3, "alter table resolves temporary table");
+    failures += execute_sql(database,
+                            "INSERT INTO shadowed (id, temp_note, altered) "
+                            "VALUES (3,'after alter',9)",
+                            MYLITE_DONE);
+    failures += expect_select_rows(
+        database, "SELECT id, temp_note, altered FROM shadowed WHERE id = 3", temp_altered_columns,
+        3, temp_altered_values, 1, "altered temporary table accepts DML");
+
+    failures += execute_sql(database,
+                            "CREATE TABLE ai_shadow ("
+                            "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, note VARCHAR(20)) "
+                            "AUTO_INCREMENT=10",
+                            MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO ai_shadow (note) VALUES ('persist')", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TEMPORARY TABLE ai_shadow ("
+                            "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, note VARCHAR(20)) "
+                            "AUTO_INCREMENT=500",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO ai_shadow (note) VALUES ('temp')", MYLITE_DONE);
+    failures +=
+        expect_select_rows(database, "SELECT id, note FROM ai_shadow", ai_columns, 2,
+                           temp_ai_values, 1, "temporary auto increment shadows persistent table");
+    failures +=
+        expect_select_rows(database, "SHOW TABLE STATUS LIKE 'ai_shadow'", show_status_columns, 18,
+                           ai_status_values, 1, "show table status reports persistent table");
+    failures +=
+        expect_select_rows(database,
+                           "SELECT TABLE_NAME, AUTO_INCREMENT FROM INFORMATION_SCHEMA.TABLES "
+                           "WHERE TABLE_SCHEMA = 'mylite_temp_tables' AND TABLE_NAME = 'ai_shadow'",
+                           ai_info_columns, 2, ai_info_values, 1,
+                           "information schema tables reports persistent auto increment");
+    failures += execute_sql(database, "DROP TEMPORARY TABLE ai_shadow", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO ai_shadow (note) VALUES ('after')", MYLITE_DONE);
+    failures += expect_select_rows(database, "SELECT id, note FROM ai_shadow ORDER BY id",
+                                   ai_columns, 2, persistent_ai_values, 2,
+                                   "persistent auto increment survives temporary shadow");
 
     failures += execute_sql(database, "CREATE TEMPORARY TABLE temp_only (id INT)", MYLITE_DONE);
     failures += expect_select_rows(database, "SHOW TABLES LIKE 'temp_only'", show_temp_only_columns,
@@ -26606,6 +26739,8 @@ static int test_select_table_core_execution(void)
     static const char *const expression_values[] = {"2", "3"};
     static const char *const literal_columns[] = {"1"};
     static const char *const literal_values[] = {"1", "1"};
+    static const char *const binary_literal_columns[] = {"hex_bytes", "bit_bytes"};
+    static const char *const binary_literal_values[] = {"0A", "0A", "0A", "0A"};
     static const struct expected_column_metadata alias_metadata[] = {
         {"x", "mylite_select15", "alias", "t", "a"},
         {"a", "mylite_select15", "alias", "t", "a"},
@@ -26728,12 +26863,11 @@ static int test_select_table_core_execution(void)
                                    expression_values, 2, "select expression projection");
     failures += expect_select_rows(database, "SELECT 1 FROM t", literal_columns, 1, literal_values,
                                    2, "select literal projection");
-    failures +=
-        expect_prepare_error(database, "SELECT x'0a' FROM t", MYLITE_UNSUPPORTED,
-                             "Unsupported SELECT projection", "unsupported hex literal projection");
-    failures +=
-        expect_prepare_error(database, "SELECT b'1010' FROM t", MYLITE_UNSUPPORTED,
-                             "Unsupported SELECT projection", "unsupported bit literal projection");
+    failures += expect_select_rows(database,
+                                   "SELECT HEX(x'0a') AS hex_bytes, "
+                                   "HEX(b'1010') AS bit_bytes FROM t",
+                                   binary_literal_columns, 2, binary_literal_values, 2,
+                                   "select binary literal projections");
 
     failures += prepare_sql(database, "SELECT * FROM t", MYLITE_OK, &stmt);
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "select side effect first row");
@@ -29740,6 +29874,13 @@ static int test_update_single_table_execution(void)
     static const char *const limited_values[] = {
         "10", "alpha", "11", "beta", "12", "limited", "13", "limited",
     };
+    static const char *const named_limit_columns[] = {"id", "value"};
+    static const char *const named_limit_order_values[] = {
+        "1", "ordered", "2", "two", "3", "three",
+    };
+    static const char *const scalar_subquery_values[] = {"scalar"};
+    static const char *const count_columns[] = {"COUNT(*)"};
+    static const char *const one_count[] = {"1"};
     static const char *const u_columns[] = {"id", "u"};
     static const char *const u_values[] = {
         "10", "1", "11", "2", "12", "3", "13", "4",
@@ -29872,6 +30013,60 @@ static int test_update_single_table_execution(void)
     stmt = NULL;
     failures += expect_select_rows(database, "SELECT id, s FROM t ORDER BY id", limited_columns, 2,
                                    limited_values, 4, "update order limit values");
+
+    failures += execute_sql(database,
+                            "CREATE TABLE update_limit_named ("
+                            "id INT PRIMARY KEY, name VARCHAR(20), value VARCHAR(20))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE update_limit_source ("
+                            "name VARCHAR(20) PRIMARY KEY, value VARCHAR(20))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO update_limit_named VALUES "
+                            "(1,'one','one'),(2,'two','two'),(3,'three','three')",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO update_limit_source VALUES "
+                            "('pick','scalar'),('other','unused')",
+                            MYLITE_DONE);
+    failures += prepare_sql(database,
+                            "UPDATE update_limit_named SET value = 'ordered' "
+                            "WHERE name = 'one' ORDER BY name LIMIT 1",
+                            MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_DONE, "update order by keyword-named column limit");
+    failures += expect_int64(mylite_affected_rows(stmt), 1,
+                             "update order by keyword-named column limit affected");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id, value FROM update_limit_named ORDER BY id",
+                                   named_limit_columns, 2, named_limit_order_values, 3,
+                                   "update order by keyword-named column limit values");
+    failures += prepare_sql(database, "UPDATE update_limit_named SET value = 'plain-limit' LIMIT 1",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "update limit without order");
+    failures += expect_int64(mylite_affected_rows(stmt), 1, "update limit without order affected");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database,
+                                   "SELECT COUNT(*) FROM update_limit_named "
+                                   "WHERE value = 'plain-limit'",
+                                   count_columns, 1, one_count, 1,
+                                   "update limit without order changes one row");
+    failures += prepare_sql(database,
+                            "UPDATE update_limit_named SET value = "
+                            "(SELECT value FROM update_limit_source WHERE name = 'pick') "
+                            "WHERE id = 2",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "update scalar subquery assignment");
+    failures +=
+        expect_int64(mylite_affected_rows(stmt), 1, "update scalar subquery assignment affected");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT value FROM update_limit_named WHERE id = 2",
+                                   (const char *[]){"value"}, 1, scalar_subquery_values, 1,
+                                   "update scalar subquery assignment value");
 
     failures += execute_sql(database,
                             "CREATE TABLE joined_update_main ("

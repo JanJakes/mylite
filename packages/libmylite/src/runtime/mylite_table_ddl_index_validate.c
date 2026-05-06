@@ -25,6 +25,7 @@ int mylite_table_ddl_validate_create_index_plan(mylite_db *database, const char 
                                                 struct mylite_index_ddl_plan *plan,
                                                 struct mylite_alter_table_model *model)
 {
+    bool temporary = false;
     int status = resolve_index_ddl_schema(database, selected_schema, plan);
 
     if (status != MYLITE_OK) {
@@ -34,8 +35,13 @@ int mylite_table_ddl_validate_create_index_plan(mylite_db *database, const char 
     if (status != MYLITE_OK) {
         return status;
     }
+    status = mylite_catalog_temporary_table_exists(database, plan->schema_name, plan->table_name,
+                                                   &temporary);
+    if (status != MYLITE_OK) {
+        return status;
+    }
     status = mylite_table_ddl_load_alter_table_model(database, plan->schema_name, plan->table_name,
-                                                     model);
+                                                     temporary, model);
     if (status != MYLITE_OK) {
         return status;
     }
@@ -51,6 +57,7 @@ int mylite_table_ddl_validate_drop_index_plan(mylite_db *database, const char *s
 {
     char *canonical_name = NULL;
     size_t index = 0U;
+    bool temporary = false;
     int status = resolve_index_ddl_schema(database, selected_schema, plan);
 
     if (status != MYLITE_OK) {
@@ -60,8 +67,13 @@ int mylite_table_ddl_validate_drop_index_plan(mylite_db *database, const char *s
     if (status != MYLITE_OK) {
         return status;
     }
+    status = mylite_catalog_temporary_table_exists(database, plan->schema_name, plan->table_name,
+                                                   &temporary);
+    if (status != MYLITE_OK) {
+        return status;
+    }
     status = mylite_table_ddl_load_alter_table_model(database, plan->schema_name, plan->table_name,
-                                                     model);
+                                                     temporary, model);
     if (status != MYLITE_OK) {
         return status;
     }

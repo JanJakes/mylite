@@ -109,6 +109,7 @@ static int evaluate_update_row_matches(mylite_db *database, const struct mylite_
         .user_data = &user_context,
         .resolve_identifier = mylite_dml_resolve_update_expression_identifier,
         .eval_session_function = mylite_dml_evaluate_session_function,
+        .eval_subquery = mylite_dml_evaluate_subquery,
         .eval_default_function = mylite_dml_evaluate_default_function,
     };
     struct mylite_expression_value value = {0};
@@ -186,6 +187,7 @@ static int evaluate_update_order_key(mylite_db *database, const struct mylite_se
         .user_data = &user_context,
         .resolve_identifier = mylite_dml_resolve_update_expression_identifier,
         .eval_session_function = mylite_dml_evaluate_session_function,
+        .eval_subquery = mylite_dml_evaluate_subquery,
         .eval_default_function = mylite_dml_evaluate_default_function,
     };
     size_t warning_start = database->warnings.count;
@@ -270,6 +272,7 @@ static int evaluate_delete_row_matches(mylite_db *database, const struct mylite_
         .user_data = &user_context,
         .resolve_identifier = mylite_dml_resolve_update_expression_identifier,
         .eval_session_function = mylite_dml_evaluate_session_function,
+        .eval_subquery = mylite_dml_evaluate_subquery,
         .eval_default_function = mylite_dml_evaluate_default_function,
     };
     struct mylite_expression_value value = {0};
@@ -347,6 +350,7 @@ static int evaluate_delete_order_key(mylite_db *database, const struct mylite_se
         .user_data = &user_context,
         .resolve_identifier = mylite_dml_resolve_update_expression_identifier,
         .eval_session_function = mylite_dml_evaluate_session_function,
+        .eval_subquery = mylite_dml_evaluate_subquery,
         .eval_default_function = mylite_dml_evaluate_default_function,
     };
     size_t warning_start = database->warnings.count;

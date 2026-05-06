@@ -33,6 +33,7 @@ int mylite_statement_execute_custom_with_callbacks(
         callbacks->execute_table_select == NULL || callbacks->union_callbacks == NULL ||
         callbacks->scalar_callbacks == NULL ||
         callbacks->eval_dml_materialize_session_function == NULL ||
+        callbacks->eval_dml_materialize_subquery == NULL ||
         callbacks->set_dml_materialize_where_predicate_eval_error == NULL) {
         return MYLITE_MISUSE;
     }
@@ -40,6 +41,7 @@ int mylite_statement_execute_custom_with_callbacks(
     const struct mylite_dml_expression_callbacks dml_expression_callbacks = {
         .user_data = stmt,
         .eval_session_function = callbacks->eval_dml_materialize_session_function,
+        .eval_subquery = callbacks->eval_dml_materialize_subquery,
         .set_where_predicate_eval_error = callbacks->set_dml_materialize_where_predicate_eval_error,
     };
     int status = MYLITE_OK;

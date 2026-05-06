@@ -1864,6 +1864,14 @@ static int eval_isnull_function(const struct mylite_sql_ast_node *arguments,
                                 struct mylite_expression_value *out_value);
 static int eval_literal(const struct mylite_sql_ast_node *node,
                         struct mylite_expression_value *out_value);
+static int eval_hex_literal(const struct mylite_sql_ast_node *node,
+                            struct mylite_expression_value *out_value);
+static int eval_bit_literal(const struct mylite_sql_ast_node *node,
+                            struct mylite_expression_value *out_value);
+static bool hex_literal_digits(const struct mylite_sql_ast_node *node, const char **out_digits,
+                               size_t *out_length);
+static bool bit_literal_digits(const struct mylite_sql_ast_node *node, const char **out_digits,
+                               size_t *out_length);
 static int eval_is_expression(enum mylite_sql_ast_operator operator_kind,
                               const struct mylite_sql_ast_node *operand,
                               const struct mylite_expression_eval_context *context,
@@ -2399,9 +2407,9 @@ static bool expression_is_supported_no_table(const struct mylite_sql_ast_node *e
         case MYLITE_SQL_AST_LITERAL_FLOAT:
         case MYLITE_SQL_AST_LITERAL_STRING:
         case MYLITE_SQL_AST_LITERAL_NATIONAL_STRING:
-            return true;
         case MYLITE_SQL_AST_LITERAL_HEX:
         case MYLITE_SQL_AST_LITERAL_BIT:
+            return true;
         case MYLITE_SQL_AST_LITERAL_NONE:
             return false;
         }
@@ -17485,11 +17493,154 @@ static int eval_literal(const struct mylite_sql_ast_node *node,
         out_value->text_length = out_value->text_value == NULL ? 0U : strlen(out_value->text_value);
         return out_value->text_value == NULL ? -1 : 0;
     case MYLITE_SQL_AST_LITERAL_HEX:
+        return eval_hex_literal(node, out_value);
     case MYLITE_SQL_AST_LITERAL_BIT:
+        return eval_bit_literal(node, out_value);
     case MYLITE_SQL_AST_LITERAL_NONE:
         return -1;
     }
     return -1;
+}
+
+static int eval_hex_literal(const struct mylite_sql_ast_node *node,
+                            struct mylite_expression_value *out_value)
+{
+    const char *digits = NULL;
+    size_t digit_count = 0U;
+    size_t result_length = 0U;
+    size_t input = 0U;
+    size_t output = 0U;
+    char *result = NULL;
+    unsigned char *result_bytes = NULL;
+
+    if (!hex_literal_digits(node, &digits, &digit_count)) {
+        return -1;
+    }
+
+    result_length = (digit_count / 2U) + (digit_count % 2U);
+    result = malloc(result_length + 1U);
+    if (result == NULL) {
+        return -1;
+    }
+    result_bytes = (unsigned char *)result;
+
+    if ((digit_count % 2U) != 0U) {
+        int digit = hex_digit_value((unsigned char)digits[input++]);
+
+        if (digit < 0) {
+            free(result);
+            return -1;
+        }
+        result_bytes[output++] = (unsigned char)digit;
+    }
+    while (input < digit_count) {
+        int high = hex_digit_value((unsigned char)digits[input]);
+        int low = hex_digit_value((unsigned char)digits[input + 1U]);
+
+        if (high < 0 || low < 0) {
+            free(result);
+            return -1;
+        }
+        result_bytes[output++] = (unsigned char)((high << 4U) | low);
+        input += 2U;
+    }
+
+    result[result_length] = '\0';
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_TEXT, .text_value = result, .text_length = result_length};
+    return 0;
+}
+
+static int eval_bit_literal(const struct mylite_sql_ast_node *node,
+                            struct mylite_expression_value *out_value)
+{
+    const char *digits = NULL;
+    size_t digit_count = 0U;
+    size_t result_length = 0U;
+    size_t leading_pad = 0U;
+    char *result = NULL;
+    unsigned char *result_bytes = NULL;
+
+    if (!bit_literal_digits(node, &digits, &digit_count)) {
+        return -1;
+    }
+
+    result_length =
+        (digit_count + (MYLITE_EXPRESSION_BITS_PER_BYTE - 1U)) / MYLITE_EXPRESSION_BITS_PER_BYTE;
+    leading_pad = (result_length * MYLITE_EXPRESSION_BITS_PER_BYTE) - digit_count;
+    result = calloc(result_length + 1U, sizeof(*result));
+    if (result == NULL) {
+        return -1;
+    }
+    result_bytes = (unsigned char *)result;
+
+    for (size_t index = 0U; index < digit_count; ++index) {
+        size_t bit_position = leading_pad + index;
+        unsigned char mask =
+            (unsigned char)(1U << ((MYLITE_EXPRESSION_BITS_PER_BYTE - 1U) -
+                                   (bit_position % MYLITE_EXPRESSION_BITS_PER_BYTE)));
+
+        if (digits[index] == '0') {
+            continue;
+        }
+        if (digits[index] != '1') {
+            free(result);
+            return -1;
+        }
+        size_t byte_index = bit_position / MYLITE_EXPRESSION_BITS_PER_BYTE;
+
+        result_bytes[byte_index] = (unsigned char)(result_bytes[byte_index] | mask);
+    }
+
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_TEXT, .text_value = result, .text_length = result_length};
+    return 0;
+}
+
+static bool hex_literal_digits(const struct mylite_sql_ast_node *node, const char **out_digits,
+                               size_t *out_length)
+{
+    const char *text = node == NULL ? NULL : node->span.text;
+    size_t length = node == NULL ? 0U : node->span.length;
+
+    if (text == NULL || out_digits == NULL || out_length == NULL) {
+        return false;
+    }
+    if (length >= 2U && text[0] == '0' && (text[1] == 'x' || text[1] == 'X')) {
+        *out_digits = text + 2U;
+        *out_length = length - 2U;
+        return true;
+    }
+    if (length >= 3U && (text[0] == 'x' || text[0] == 'X') && text[1] == '\'' &&
+        text[length - 1U] == '\'') {
+        *out_digits = text + 2U;
+        *out_length = length - 3U;
+        return true;
+    }
+    return false;
+}
+
+static bool bit_literal_digits(const struct mylite_sql_ast_node *node, const char **out_digits,
+                               size_t *out_length)
+{
+    const char *text = node == NULL ? NULL : node->span.text;
+    size_t length = node == NULL ? 0U : node->span.length;
+
+    if (text == NULL || out_digits == NULL || out_length == NULL) {
+        return false;
+    }
+    if (length >= 2U && text[0] == '0' && (text[1] == 'b' || text[1] == 'B')) {
+        *out_digits = text + 2U;
+        *out_length = length - 2U;
+        return true;
+    }
+    if (length >= 3U && (text[0] == 'b' || text[0] == 'B') && text[1] == '\'' &&
+        text[length - 1U] == '\'') {
+        *out_digits = text + 2U;
+        *out_length = length - 3U;
+        return true;
+    }
+    return false;
 }
 
 static int eval_is_expression(enum mylite_sql_ast_operator operator_kind,

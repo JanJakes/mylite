@@ -17,8 +17,8 @@ Out of scope:
 - aggregate bit functions such as `BIT_AND()`, `BIT_OR()`, and `BIT_XOR()`
 - exact native error-code exposure for unsupported arity beyond the existing
   scalar-function binding diagnostic
-- `_binary` introducers and hex/bit literal evaluation in all expression paths
-  where the broader parser/runtime has not yet implemented those literal forms
+- `_binary` introducers and full numeric coercion of hex/bit literals in every
+  MySQL expression path
 - full binary-string `BIT_COUNT()` dispatch for table columns until expression
   values carry enough type information through runtime evaluation
 

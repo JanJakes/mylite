@@ -7374,6 +7374,59 @@ static int test_update_single_table_syntax(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures +=
+        parse_sql("UPDATE t, u SET t.a = u.a WHERE t.id = u.id", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    from_clause = child_at(statement, 0U);
+    references = child_at(from_clause, 0U);
+    failures +=
+        expect_node(from_clause, MYLITE_SQL_AST_FROM_TABLE_REFERENCES, "comma update from clause");
+    failures += expect_child_count(references, 2U, "comma update references");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "UPDATE t JOIN u USING (id) SET t.a = u.a WHERE u.keep = 1",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    references = child_at(child_at(statement, 0U), 0U);
+    failures += expect_node(
+        child_at(references, 0U),
+        MYLITE_SQL_AST_JOIN_EXPRESSION,
+        "using update join expression"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "UPDATE t RIGHT JOIN u ON t.id = u.id SET u.a = 1 WHERE t.id IS NULL",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    references = child_at(child_at(statement, 0U), 0U);
+    failures += expect_node(
+        child_at(references, 0U),
+        MYLITE_SQL_AST_JOIN_EXPRESSION,
+        "right update join expression"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "UPDATE t AS child JOIN t AS parent ON child.parent_id = parent.id "
+        "SET child.a = parent.a + child.id",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    references = child_at(child_at(statement, 0U), 0U);
+    failures += expect_node(
+        child_at(references, 0U),
+        MYLITE_SQL_AST_JOIN_EXPRESSION,
+        "self update join expression"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql(
         "UPDATE t JOIN u ON t.id = u.id SET t.a = u.a ORDER BY t.id",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,

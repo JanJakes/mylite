@@ -54144,6 +54144,35 @@ static int test_update_single_table_execution(void) {
         "3",
         "30",
     };
+    static const char *const joined_complex_a_columns[] = {"id", "v", "label"};
+    static const char *const joined_complex_a_values[] = {
+        "1",
+        "100",
+        "b1",
+        "2",
+        "200",
+        "b2",
+        "3",
+        "30",
+        "a3",
+    };
+    static const char *const joined_complex_b_columns[] = {"id", "label"};
+    static const char *const joined_complex_b_values[] = {
+        "1",
+        "b1",
+        "2",
+        "b2",
+        "4",
+        "missing",
+    };
+    static const char *const joined_self_values[] = {
+        "1",
+        "5",
+        "2",
+        "7",
+        "3",
+        "8",
+    };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     uint64_t last_insert_id = 0U;
@@ -54582,6 +54611,116 @@ static int test_update_single_table_execution(void) {
         joined_base_name_values,
         3,
         "joined update base-name qualifier values"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE joined_update_a ("
+        "id INT PRIMARY KEY, v INT, label VARCHAR(20))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE joined_update_b ("
+        "id INT PRIMARY KEY, a_id INT, v INT, label VARCHAR(20))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO joined_update_a VALUES (1,10,'a1'),(2,20,'a2'),(3,30,'a3')",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO joined_update_b VALUES "
+        "(1,1,100,'b1'),(2,2,200,'b2'),(4,4,400,'orphan')",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "UPDATE joined_update_a, joined_update_b "
+        "SET joined_update_a.v = joined_update_b.v "
+        "WHERE joined_update_a.id = joined_update_b.a_id",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "joined update comma join");
+    failures += expect_int64(mylite_affected_rows(stmt), 2, "joined update comma join affected");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(
+        database,
+        "UPDATE joined_update_a JOIN joined_update_b USING (id) "
+        "SET joined_update_a.label = joined_update_b.label WHERE joined_update_b.v >= 100",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "joined update using join");
+    failures += expect_int64(mylite_affected_rows(stmt), 2, "joined update using join affected");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(
+        database,
+        "UPDATE joined_update_a RIGHT JOIN joined_update_b "
+        "ON joined_update_a.id = joined_update_b.a_id "
+        "SET joined_update_b.label = 'missing' WHERE joined_update_a.id IS NULL",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "joined update right join");
+    failures += expect_int64(mylite_affected_rows(stmt), 1, "joined update right join affected");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id, v, label FROM joined_update_a ORDER BY id",
+        joined_complex_a_columns,
+        3,
+        joined_complex_a_values,
+        3,
+        "joined update complex a values"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, label FROM joined_update_b ORDER BY id",
+        joined_complex_b_columns,
+        2,
+        joined_complex_b_values,
+        3,
+        "joined update complex b values"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE joined_update_self (id INT PRIMARY KEY, parent_id INT, v INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO joined_update_self VALUES (1,NULL,5),(2,1,0),(3,1,0)",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "UPDATE joined_update_self AS child "
+        "JOIN joined_update_self AS parent ON child.parent_id = parent.id "
+        "SET child.v = parent.v + child.id",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "joined update self join aliases");
+    failures +=
+        expect_int64(mylite_affected_rows(stmt), 2, "joined update self join aliases affected");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id, v FROM joined_update_self ORDER BY id",
+        shift_columns,
+        2,
+        joined_self_values,
+        3,
+        "joined update self join aliases values"
     );
 
     failures += prepare_sql(

@@ -2,6 +2,7 @@
 
 #include "mylite_catalog.h"
 #include "mylite_diagnostics.h"
+#include "mylite_error_codes.h"
 #include "mylite_field_descriptor.h"
 #include "mylite_metadata.h"
 #include "mylite_runtime.h"
@@ -18,18 +19,24 @@
 
 static struct mylite_field_descriptor show_engines_field_descriptor(uint64_t length, bool nullable);
 static int show_engines_sql(mylite_db *database, char **out_sql);
-static int append_show_index_where_expression(mylite_db *database, sqlite3_str *sql,
-                                              const struct mylite_sql_ast_node *expression);
-static int append_show_index_expression_list(mylite_db *database, sqlite3_str *sql,
-                                             const struct mylite_sql_ast_node *list);
-static int append_show_index_identifier(sqlite3_str *sql,
-                                        const struct mylite_sql_ast_node *expression);
-static int append_show_index_literal(mylite_db *database, sqlite3_str *sql,
+static int append_show_where_expression(mylite_db *database, sqlite3_str *sql,
+                                        const struct mylite_sql_ast_node *expression,
+                                        const char *const *column_names, size_t column_count);
+static int append_show_where_expression_list(mylite_db *database, sqlite3_str *sql,
+                                             const struct mylite_sql_ast_node *list,
+                                             const char *const *column_names, size_t column_count);
+static int append_show_where_identifier(mylite_db *database, sqlite3_str *sql,
+                                        const struct mylite_sql_ast_node *expression,
+                                        const char *const *column_names, size_t column_count);
+static int append_show_where_literal(mylite_db *database, sqlite3_str *sql,
                                      const struct mylite_sql_ast_node *expression);
-static int append_show_index_raw_span(sqlite3_str *sql,
+static int append_show_where_raw_span(sqlite3_str *sql,
                                       const struct mylite_sql_ast_node *expression);
-static const char *show_index_column_name(const struct mylite_sql_ast_node *expression);
-static const char *show_index_binary_operator_sql(enum mylite_sql_ast_operator operator_kind);
+static int show_where_column_name(mylite_db *database, const struct mylite_sql_ast_node *expression,
+                                  const char *const *column_names, size_t column_count,
+                                  const char **out_column_name);
+static int set_show_unknown_column_error(mylite_db *database, const char *column_name);
+static const char *show_where_binary_operator_sql(enum mylite_sql_ast_operator operator_kind);
 static const unsigned int mylite_show_latin1_swedish_ci_charset_id = 8U;
 static const unsigned int mylite_show_not_fixed_decimals = 31U;
 
@@ -72,12 +79,25 @@ static int show_engines_sql(mylite_db *database, char **out_sql)
     return mylite_storage_engine_show_sql(database, out_sql);
 }
 
-char *mylite_show_columns_sql(mylite_db *database, const struct mylite_show_columns_query *query)
+int mylite_show_columns_sql(mylite_db *database, const struct mylite_show_columns_query *query,
+                            char **out_sql)
 {
+    static const char *const standard_columns[] = {
+        "Field", "Type", "Null", "Key", "Default", "Extra",
+    };
+    static const char *const full_columns[] = {
+        "Field", "Type", "Collation", "Null", "Key", "Default", "Extra", "Privileges", "Comment",
+    };
+    const char *const *where_columns = query->full ? full_columns : standard_columns;
+    size_t where_column_count = query->full
+                                    ? sizeof(full_columns) / sizeof(full_columns[0])
+                                    : sizeof(standard_columns) / sizeof(standard_columns[0]);
     sqlite3_str *sql = sqlite3_str_new(database->sqlite);
+    int status = MYLITE_OK;
 
+    *out_sql = NULL;
     if (sql == NULL) {
-        return NULL;
+        return MYLITE_NOMEM;
     }
 
     sqlite3_str_appendf(sql, "SELECT column_name AS \"Field\", column_type AS \"Type\"");
@@ -95,13 +115,35 @@ char *mylite_show_columns_sql(mylite_db *database, const struct mylite_show_colu
     if (query->like_pattern != NULL) {
         sqlite3_str_appendf(sql, " AND column_name LIKE %Q ESCAPE '\\'", query->like_pattern);
     }
+    if (query->where_expression != NULL) {
+        sqlite3_str_appendall(sql, " AND ");
+        status = mylite_show_append_where_expression(database, sql, query->where_expression,
+                                                     where_columns, where_column_count);
+    }
     sqlite3_str_appendf(sql, " ORDER BY ordinal_position");
-    return sqlite3_str_finish(sql);
+
+    *out_sql = sqlite3_str_finish(sql);
+
+    if (status != MYLITE_OK) {
+        sqlite3_free(*out_sql);
+        *out_sql = NULL;
+        if (status == MYLITE_UNSUPPORTED) {
+            (void)mylite_diagnostics_set_error_message(
+                database, "SHOW COLUMNS WHERE expression is not supported");
+        }
+        return status;
+    }
+    return *out_sql == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
 
 int mylite_show_index_sql(mylite_db *database, const struct mylite_show_index_query *query,
                           char **out_sql)
 {
+    static const char *const columns[] = {
+        "Table",      "Non_unique",  "Key_name",      "Seq_in_index", "Column_name",
+        "Collation",  "Cardinality", "Sub_part",      "Packed",       "Null",
+        "Index_type", "Comment",     "Index_comment", "Visible",      "Expression",
+    };
     sqlite3_str *sql = sqlite3_str_new(database->sqlite);
     char *finished_sql = NULL;
     int status = MYLITE_OK;
@@ -130,7 +172,8 @@ int mylite_show_index_sql(mylite_db *database, const struct mylite_show_index_qu
                         query->table_name);
     if (status == MYLITE_OK && query->where_expression != NULL) {
         sqlite3_str_appendall(sql, " WHERE ");
-        status = append_show_index_where_expression(database, sql, query->where_expression);
+        status = mylite_show_append_where_expression(database, sql, query->where_expression,
+                                                     columns, sizeof(columns) / sizeof(columns[0]));
     }
     if (status == MYLITE_OK) {
         sqlite3_str_appendall(sql, " ORDER BY \"__mylite_order\"");
@@ -153,23 +196,48 @@ int mylite_show_index_sql(mylite_db *database, const struct mylite_show_index_qu
     return MYLITE_OK;
 }
 
-static int append_show_index_where_expression(mylite_db *database, sqlite3_str *sql,
-                                              const struct mylite_sql_ast_node *expression)
+int mylite_show_append_where_expression(mylite_db *database, sqlite3_str *sql,
+                                        const struct mylite_sql_ast_node *expression,
+                                        const char *const *column_names, size_t column_count)
+{
+    if (database == NULL || sql == NULL || column_names == NULL || column_count == 0U) {
+        return MYLITE_UNSUPPORTED;
+    }
+    sqlite3_str_appendall(sql, "(");
+    int status =
+        append_show_where_expression(database, sql, expression, column_names, column_count);
+
+    if (status == MYLITE_OK) {
+        sqlite3_str_appendall(sql, ")");
+    }
+    return status;
+}
+
+static int append_show_where_expression(mylite_db *database, sqlite3_str *sql,
+                                        const struct mylite_sql_ast_node *expression,
+                                        const char *const *column_names, size_t column_count)
 {
     const char *operator_sql = NULL;
+    const char *column_name = NULL;
 
     expression = mylite_sql_ast_unwrap_parenthesized_expression(expression);
     if (expression == NULL) {
         return MYLITE_UNSUPPORTED;
     }
 
-    if (show_index_column_name(expression) != NULL) {
-        return append_show_index_identifier(sql, expression);
+    int column_status =
+        show_where_column_name(database, expression, column_names, column_count, &column_name);
+
+    if (column_status != MYLITE_UNSUPPORTED) {
+        if (column_status != MYLITE_OK) {
+            return column_status;
+        }
+        return append_show_where_identifier(database, sql, expression, column_names, column_count);
     }
 
     switch (expression->kind) {
     case MYLITE_SQL_AST_LITERAL:
-        return append_show_index_literal(database, sql, expression);
+        return append_show_where_literal(database, sql, expression);
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
         if (expression->operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ||
             expression->operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE ||
@@ -182,14 +250,14 @@ static int append_show_index_where_expression(mylite_db *database, sqlite3_str *
             } else if (expression->operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE) {
                 sqlite3_str_appendall(sql, "+");
             }
-            return append_show_index_where_expression(database, sql,
-                                                      mylite_ast_child_at(expression, 0U));
+            return append_show_where_expression(database, sql, mylite_ast_child_at(expression, 0U),
+                                                column_names, column_count);
         }
         if (expression->operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NULL ||
             expression->operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL) {
             sqlite3_str_appendall(sql, "(");
-            int status = append_show_index_where_expression(database, sql,
-                                                            mylite_ast_child_at(expression, 0U));
+            int status = append_show_where_expression(
+                database, sql, mylite_ast_child_at(expression, 0U), column_names, column_count);
 
             if (status == MYLITE_OK) {
                 sqlite3_str_appendall(sql, expression->operator_kind ==
@@ -204,15 +272,15 @@ static int append_show_index_where_expression(mylite_db *database, sqlite3_str *
         if (expression->operator_kind == MYLITE_SQL_AST_OPERATOR_IN ||
             expression->operator_kind == MYLITE_SQL_AST_OPERATOR_NOT_IN) {
             sqlite3_str_appendall(sql, "(");
-            int status = append_show_index_where_expression(database, sql,
-                                                            mylite_ast_child_at(expression, 0U));
+            int status = append_show_where_expression(
+                database, sql, mylite_ast_child_at(expression, 0U), column_names, column_count);
 
             if (status == MYLITE_OK) {
                 sqlite3_str_appendall(
                     sql, expression->operator_kind == MYLITE_SQL_AST_OPERATOR_NOT_IN ? " NOT IN ("
                                                                                      : " IN (");
-                status = append_show_index_expression_list(database, sql,
-                                                           mylite_ast_child_at(expression, 1U));
+                status = append_show_where_expression_list(
+                    database, sql, mylite_ast_child_at(expression, 1U), column_names, column_count);
             }
             if (status == MYLITE_OK) {
                 sqlite3_str_appendall(sql, "))");
@@ -220,32 +288,42 @@ static int append_show_index_where_expression(mylite_db *database, sqlite3_str *
             return status;
         }
 
-        operator_sql = show_index_binary_operator_sql(expression->operator_kind);
+        operator_sql = show_where_binary_operator_sql(expression->operator_kind);
         if (operator_sql == NULL) {
             return MYLITE_UNSUPPORTED;
         }
         sqlite3_str_appendall(sql, "(");
-        int status =
-            append_show_index_where_expression(database, sql, mylite_ast_child_at(expression, 0U));
+        int status = append_show_where_expression(
+            database, sql, mylite_ast_child_at(expression, 0U), column_names, column_count);
 
         if (status == MYLITE_OK) {
             sqlite3_str_appendf(sql, " %s ", operator_sql);
-            status = append_show_index_where_expression(database, sql,
-                                                        mylite_ast_child_at(expression, 1U));
+            status = append_show_where_expression(
+                database, sql, mylite_ast_child_at(expression, 1U), column_names, column_count);
+        }
+        if (status == MYLITE_OK &&
+            (expression->operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE ||
+             expression->operator_kind == MYLITE_SQL_AST_OPERATOR_NOT_LIKE) &&
+            mylite_sql_ast_node_child_count(expression) == 3U) {
+            sqlite3_str_appendall(sql, " ESCAPE ");
+            status = append_show_where_expression(
+                database, sql, mylite_ast_child_at(expression, 2U), column_names, column_count);
         }
         if (status == MYLITE_OK) {
             sqlite3_str_appendall(sql, ")");
         }
         return status;
     case MYLITE_SQL_AST_EXPRESSION_LIST:
-        return append_show_index_expression_list(database, sql, expression);
+        return append_show_where_expression_list(database, sql, expression, column_names,
+                                                 column_count);
     default:
         return MYLITE_UNSUPPORTED;
     }
 }
 
-static int append_show_index_expression_list(mylite_db *database, sqlite3_str *sql,
-                                             const struct mylite_sql_ast_node *list)
+static int append_show_where_expression_list(mylite_db *database, sqlite3_str *sql,
+                                             const struct mylite_sql_ast_node *list,
+                                             const char *const *column_names, size_t column_count)
 {
     bool appended = false;
 
@@ -258,7 +336,7 @@ static int append_show_index_expression_list(mylite_db *database, sqlite3_str *s
         if (appended) {
             sqlite3_str_appendall(sql, ", ");
         }
-        int status = append_show_index_where_expression(database, sql, item);
+        int status = append_show_where_expression(database, sql, item, column_names, column_count);
 
         if (status != MYLITE_OK) {
             return status;
@@ -268,19 +346,22 @@ static int append_show_index_expression_list(mylite_db *database, sqlite3_str *s
     return appended ? MYLITE_OK : MYLITE_UNSUPPORTED;
 }
 
-static int append_show_index_identifier(sqlite3_str *sql,
-                                        const struct mylite_sql_ast_node *expression)
+static int append_show_where_identifier(mylite_db *database, sqlite3_str *sql,
+                                        const struct mylite_sql_ast_node *expression,
+                                        const char *const *column_names, size_t column_count)
 {
-    const char *column_name = show_index_column_name(expression);
+    const char *column_name = NULL;
+    int status =
+        show_where_column_name(database, expression, column_names, column_count, &column_name);
 
-    if (column_name == NULL) {
-        return MYLITE_UNSUPPORTED;
+    if (status != MYLITE_OK) {
+        return status;
     }
     sqlite3_str_appendf(sql, "\"%w\"", column_name);
     return MYLITE_OK;
 }
 
-static int append_show_index_literal(mylite_db *database, sqlite3_str *sql,
+static int append_show_where_literal(mylite_db *database, sqlite3_str *sql,
                                      const struct mylite_sql_ast_node *expression)
 {
     char *text = NULL;
@@ -298,7 +379,7 @@ static int append_show_index_literal(mylite_db *database, sqlite3_str *sql,
     case MYLITE_SQL_AST_LITERAL_INTEGER:
     case MYLITE_SQL_AST_LITERAL_DECIMAL:
     case MYLITE_SQL_AST_LITERAL_FLOAT:
-        return append_show_index_raw_span(sql, expression);
+        return append_show_where_raw_span(sql, expression);
     case MYLITE_SQL_AST_LITERAL_STRING:
     case MYLITE_SQL_AST_LITERAL_NATIONAL_STRING:
         text = mylite_copy_string_literal_span(expression);
@@ -317,7 +398,7 @@ static int append_show_index_literal(mylite_db *database, sqlite3_str *sql,
     return MYLITE_UNSUPPORTED;
 }
 
-static int append_show_index_raw_span(sqlite3_str *sql,
+static int append_show_where_raw_span(sqlite3_str *sql,
                                       const struct mylite_sql_ast_node *expression)
 {
     if (expression == NULL || expression->span.length > (size_t)INT_MAX) {
@@ -327,63 +408,53 @@ static int append_show_index_raw_span(sqlite3_str *sql,
     return MYLITE_OK;
 }
 
-static const char *show_index_column_name(const struct mylite_sql_ast_node *expression)
+static int show_where_column_name(mylite_db *database, const struct mylite_sql_ast_node *expression,
+                                  const char *const *column_names, size_t column_count,
+                                  const char **out_column_name)
 {
+    char *name = NULL;
+
+    *out_column_name = NULL;
     if (expression != NULL && expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
         expression = mylite_ast_child_at(expression, 1U);
     }
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_IDENTIFIER) {
-        return NULL;
+        return MYLITE_UNSUPPORTED;
     }
-    if (mylite_span_equal_ci(expression->span, "Table")) {
-        return "Table";
+
+    name = mylite_copy_identifier_span(expression);
+    if (name == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
     }
-    if (mylite_span_equal_ci(expression->span, "Non_unique")) {
-        return "Non_unique";
+    for (size_t index = 0U; index < column_count; ++index) {
+        if (column_names[index] != NULL && mylite_ascii_case_equal(name, column_names[index])) {
+            *out_column_name = column_names[index];
+            free(name);
+            return MYLITE_OK;
+        }
     }
-    if (mylite_span_equal_ci(expression->span, "Key_name")) {
-        return "Key_name";
-    }
-    if (mylite_span_equal_ci(expression->span, "Seq_in_index")) {
-        return "Seq_in_index";
-    }
-    if (mylite_span_equal_ci(expression->span, "Column_name")) {
-        return "Column_name";
-    }
-    if (mylite_span_equal_ci(expression->span, "Collation")) {
-        return "Collation";
-    }
-    if (mylite_span_equal_ci(expression->span, "Cardinality")) {
-        return "Cardinality";
-    }
-    if (mylite_span_equal_ci(expression->span, "Sub_part")) {
-        return "Sub_part";
-    }
-    if (mylite_span_equal_ci(expression->span, "Packed")) {
-        return "Packed";
-    }
-    if (mylite_span_equal_ci(expression->span, "Null")) {
-        return "Null";
-    }
-    if (mylite_span_equal_ci(expression->span, "Index_type")) {
-        return "Index_type";
-    }
-    if (mylite_span_equal_ci(expression->span, "Comment")) {
-        return "Comment";
-    }
-    if (mylite_span_equal_ci(expression->span, "Index_comment")) {
-        return "Index_comment";
-    }
-    if (mylite_span_equal_ci(expression->span, "Visible")) {
-        return "Visible";
-    }
-    if (mylite_span_equal_ci(expression->span, "Expression")) {
-        return "Expression";
-    }
-    return NULL;
+
+    int status = set_show_unknown_column_error(database, name);
+
+    free(name);
+    return status;
 }
 
-static const char *show_index_binary_operator_sql(enum mylite_sql_ast_operator operator_kind)
+static int set_show_unknown_column_error(mylite_db *database, const char *column_name)
+{
+    int status = mylite_diagnostics_set_error_message_parts(database, "Unknown column '",
+                                                            column_name, "' in 'where clause'");
+
+    if (status == MYLITE_NOMEM) {
+        return MYLITE_NOMEM;
+    }
+    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
+                                             mylite_error_message(database));
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static const char *show_where_binary_operator_sql(enum mylite_sql_ast_operator operator_kind)
 {
     switch (operator_kind) {
     case MYLITE_SQL_AST_OPERATOR_EQUAL:
@@ -446,12 +517,17 @@ static const char *show_index_binary_operator_sql(enum mylite_sql_ast_operator o
     return NULL;
 }
 
-char *mylite_show_tables_sql(mylite_db *database, const struct mylite_show_tables_query *query)
+int mylite_show_tables_sql(mylite_db *database, const struct mylite_show_tables_query *query,
+                           char **out_sql)
 {
+    const char *const columns[] = {query->column_name, "Table_type"};
+    size_t column_count = query->full ? 2U : 1U;
     sqlite3_str *sql = sqlite3_str_new(database->sqlite);
+    int status = MYLITE_OK;
 
+    *out_sql = NULL;
     if (sql == NULL) {
-        return NULL;
+        return MYLITE_NOMEM;
     }
 
     sqlite3_str_appendf(sql, "SELECT TABLE_NAME AS \"%w\"", query->column_name);
@@ -484,17 +560,40 @@ char *mylite_show_tables_sql(mylite_db *database, const struct mylite_show_table
     if (query->glob_pattern != NULL) {
         sqlite3_str_appendf(sql, " AND TABLE_NAME GLOB %Q", query->glob_pattern);
     }
+    if (query->where_expression != NULL) {
+        sqlite3_str_appendall(sql, " AND ");
+        status = mylite_show_append_where_expression(database, sql, query->where_expression,
+                                                     columns, column_count);
+    }
     sqlite3_str_appendf(sql, " ORDER BY TABLE_NAME COLLATE BINARY");
-    return sqlite3_str_finish(sql);
+    *out_sql = sqlite3_str_finish(sql);
+    if (status != MYLITE_OK) {
+        sqlite3_free(*out_sql);
+        *out_sql = NULL;
+        if (status == MYLITE_UNSUPPORTED) {
+            (void)mylite_diagnostics_set_error_message(
+                database, "SHOW TABLES WHERE expression is not supported");
+        }
+        return status;
+    }
+    return *out_sql == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
 
-char *mylite_show_table_status_sql(mylite_db *database,
-                                   const struct mylite_show_table_status_query *query)
+int mylite_show_table_status_sql(mylite_db *database,
+                                 const struct mylite_show_table_status_query *query, char **out_sql)
 {
+    static const char *const columns[] = {
+        "Name",           "Engine",         "Version",         "Row_format",   "Rows",
+        "Avg_row_length", "Data_length",    "Max_data_length", "Index_length", "Data_free",
+        "Auto_increment", "Create_time",    "Update_time",     "Check_time",   "Collation",
+        "Checksum",       "Create_options", "Comment",
+    };
     sqlite3_str *sql = sqlite3_str_new(database->sqlite);
+    int status = MYLITE_OK;
 
+    *out_sql = NULL;
     if (sql == NULL) {
-        return NULL;
+        return MYLITE_NOMEM;
     }
 
     sqlite3_str_appendall(
@@ -534,8 +633,23 @@ char *mylite_show_table_status_sql(mylite_db *database,
     if (query->glob_pattern != NULL) {
         sqlite3_str_appendf(sql, " AND Name GLOB %Q", query->glob_pattern);
     }
+    if (query->where_expression != NULL) {
+        sqlite3_str_appendall(sql, " AND ");
+        status = mylite_show_append_where_expression(database, sql, query->where_expression,
+                                                     columns, sizeof(columns) / sizeof(columns[0]));
+    }
     sqlite3_str_appendall(sql, " ORDER BY Name COLLATE BINARY");
-    return sqlite3_str_finish(sql);
+    *out_sql = sqlite3_str_finish(sql);
+    if (status != MYLITE_OK) {
+        sqlite3_free(*out_sql);
+        *out_sql = NULL;
+        if (status == MYLITE_UNSUPPORTED) {
+            (void)mylite_diagnostics_set_error_message(
+                database, "SHOW TABLE STATUS WHERE expression is not supported");
+        }
+        return status;
+    }
+    return *out_sql == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
 
 const char *mylite_show_schemas_sql(void)

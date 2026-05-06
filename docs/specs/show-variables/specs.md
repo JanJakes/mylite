@@ -67,7 +67,7 @@ The following behavior was verified against MySQL 8.4.9:
 | `SET NAMES utf8mb4 COLLATE utf8mb4_bin; SHOW VARIABLES LIKE 'collation_connection'` | Returns `utf8mb4_bin`. |
 | `SET CHARACTER SET utf8mb4; SHOW VARIABLES LIKE 'collation_connection'` | Resets `collation_connection` to the selected database default, `utf8mb4_0900_ai_ci` in the no-selected-database verification case. |
 | `SHOW VARIABLES LIKE 'no_such_variable'` | Returns no rows with stable two-column metadata. |
-| `SHOW VARIABLES WHERE Variable_name = 'autocommit'` | Filters rows in MySQL and returns `autocommit`, `ON`; MyLite parses it but rejects execution until shared SHOW filtering exists. |
+| `SHOW VARIABLES WHERE Variable_name = 'autocommit'` | Returns `autocommit`, `ON`. |
 | `SHOW VARIABLES WHERE Value = 'ON'` | Filters against displayed column names and returns many rows, including `autocommit` and `sql_notes`. |
 | `SHOW VARIABLES WHERE Variable_name LIKE 'character\_set\_%'` | Filters through the general `WHERE` path and returns the literal-underscore `character_set_*` rows. |
 | `SHOW VARIABLES LIMIT 1` | Syntax error `1064`; `LIMIT` is not part of the statement syntax. |
@@ -169,11 +169,13 @@ LIKE filtering:
 
 WHERE filtering:
 
-- The parser accepts `WHERE expr` because MySQL supports general SHOW filters
-  over the displayed result columns.
-- Execution returns `MYLITE_UNSUPPORTED` with message
-  `SHOW VARIABLES WHERE is not supported` until shared SHOW result-set
-  filtering lands.
+- `WHERE expr` is evaluated over the displayed `Variable_name` and `Value`
+  columns.
+- The shared SHOW filter supports displayed-column identifiers, literals,
+  comparison operators, `AND`/`OR`/`NOT`, `LIKE`, `IN`, unary signs,
+  `IS NULL`, `IS NOT NULL`, and parentheses.
+- Unknown displayed-column identifiers return MySQL error `1054`.
+- Broader SHOW `WHERE` expressions remain deferred.
 
 ## Storage And Performance
 
@@ -217,7 +219,7 @@ Runtime coverage:
   `collation_database`
 - `SET SESSION group_concat_max_len` changes the session row without changing
   the global/default row
-- `WHERE` returns the clear unsupported diagnostic
+- `WHERE` filters displayed columns and reports unknown-column diagnostics
 - `LIMIT` remains a syntax error
 - `SHOW VARIABLES` clears prior diagnostics before reporting `warning_count`
   and `error_count` as `0`
@@ -225,7 +227,7 @@ Runtime coverage:
 ## Deferred Work
 
 - Full MySQL system-variable catalog and metadata.
-- General `SHOW ... WHERE` filtering.
+- Broader SHOW `WHERE` expressions beyond the shared filter subset.
 - General system-variable assignment and validation beyond `sql_mode` and
   `group_concat_max_len`.
 - SQL system-variable expression forms through `@@`.

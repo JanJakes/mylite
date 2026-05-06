@@ -3,6 +3,7 @@
 #include "mylite_catalog.h"
 #include "mylite_charset.h"
 #include "mylite_connection.h"
+#include "mylite_diagnostics.h"
 #include "mylite_runtime.h"
 #include "mylite_show_types.h"
 #include "sqlite3.h"
@@ -16,6 +17,7 @@ static void append_show_variable_row(sqlite3_str *sql, bool *first, const char *
 int mylite_show_variables_sql(mylite_db *database, const struct mylite_show_variables_query *query,
                               char **out_sql)
 {
+    static const char *const columns[] = {"Variable_name", "Value"};
     struct mylite_schema_default schema_default = {
         .character_set = mylite_charset_default_name(),
         .collation = mylite_charset_default_collation_name(),
@@ -92,10 +94,24 @@ int mylite_show_variables_sql(mylite_db *database, const struct mylite_show_vari
     if (query->like_pattern != NULL) {
         sqlite3_str_appendf(sql, " WHERE Variable_name LIKE %Q ESCAPE '\\'", query->like_pattern);
     }
+    if (status == MYLITE_OK && query->where_expression != NULL) {
+        sqlite3_str_appendall(sql, query->like_pattern == NULL ? " WHERE " : " AND ");
+        status = mylite_show_append_where_expression(database, sql, query->where_expression,
+                                                     columns, sizeof(columns) / sizeof(columns[0]));
+    }
     sqlite3_str_appendall(sql,
                           " ORDER BY Variable_name COLLATE NOCASE, Variable_name COLLATE BINARY");
 
     *out_sql = sqlite3_str_finish(sql);
+    if (status != MYLITE_OK) {
+        sqlite3_free(*out_sql);
+        *out_sql = NULL;
+        if (status == MYLITE_UNSUPPORTED) {
+            (void)mylite_diagnostics_set_error_message(
+                database, "SHOW VARIABLES WHERE expression is not supported");
+        }
+        return status;
+    }
     return *out_sql == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
 

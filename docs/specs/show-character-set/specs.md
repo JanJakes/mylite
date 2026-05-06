@@ -156,14 +156,13 @@ LIKE filtering:
 
 WHERE filtering:
 
-- The parser accepts `WHERE expr` because MySQL supports general SHOW filters
-  over the displayed result columns.
-- Execution returns `MYLITE_UNSUPPORTED` with message
-  `SHOW CHARACTER SET WHERE is not supported` until shared SHOW result-set
-  filtering lands.
-- The true MySQL behavior is to evaluate the expression against displayed
-  column names, including backtick-quoted `Default collation`, and to return
-  unknown-column diagnostics for invalid names.
+- `WHERE expr` is evaluated over displayed result columns, including
+  backtick-quoted `Default collation`.
+- The shared SHOW filter supports displayed-column identifiers, literals,
+  comparison operators, `AND`/`OR`/`NOT`, `LIKE`, `IN`, unary signs,
+  `IS NULL`, `IS NOT NULL`, and parentheses.
+- Unknown displayed-column identifiers return MySQL error `1054`.
+- Broader SHOW `WHERE` expressions remain deferred.
 
 ## Storage And Performance
 

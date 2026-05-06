@@ -484,7 +484,8 @@ optimizer features.
 - Joins and ambiguous predicate references are deferred.
 - `ON` and `HAVING` predicates are deferred.
 - `WHERE` for `UPDATE` and `DELETE` is deferred to their statement tasks.
-- `SHOW ... WHERE` filtering is deferred to SHOW statement work.
+- `SHOW ... WHERE` filtering is handled by the shared SHOW filter for supported
+  SHOW metadata statements; broader SHOW predicate expressions remain deferred.
 - Predicate subqueries, `EXISTS`, row constructors, quantified comparisons,
   variables, parameters, functions, casts, collations, regular expressions,
   JSON operators, and aggregate functions are deferred.

@@ -9,11 +9,13 @@
 struct mylite_show_variables_query {
     enum mylite_sql_ast_show_variables_scope scope;
     const char *like_pattern;
+    const struct mylite_sql_ast_node *where_expression;
 };
 
 struct mylite_show_status_query {
     enum mylite_sql_ast_show_status_scope scope;
     const char *like_pattern;
+    const struct mylite_sql_ast_node *where_expression;
 };
 
 struct mylite_show_engines_metadata_column {
@@ -24,22 +26,26 @@ struct mylite_show_engines_metadata_column {
 
 struct mylite_show_character_set_query {
     const char *like_pattern;
+    const struct mylite_sql_ast_node *where_expression;
 };
 
 struct mylite_show_collation_query {
     const char *like_pattern;
+    const struct mylite_sql_ast_node *where_expression;
 };
 
 struct mylite_show_tables_query {
     const char *schema_name;
     const char *column_name;
     const char *glob_pattern;
+    const struct mylite_sql_ast_node *where_expression;
     bool full;
 };
 
 struct mylite_show_table_status_query {
     const char *schema_name;
     const char *glob_pattern;
+    const struct mylite_sql_ast_node *where_expression;
 };
 
 struct mylite_show_columns_target {
@@ -57,6 +63,7 @@ struct mylite_show_columns_query {
     const char *schema_name;
     const char *table_name;
     const char *like_pattern;
+    const struct mylite_sql_ast_node *where_expression;
     bool full;
     bool temporary;
 };

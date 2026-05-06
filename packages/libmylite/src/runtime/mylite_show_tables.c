@@ -16,6 +16,10 @@ static int copy_show_tables_schema_name(mylite_db *database,
                                         char **out_schema_name);
 static int validate_show_tables_schema(mylite_db *database, const char *schema_name);
 static char *copy_show_tables_like_pattern(const struct mylite_sql_ast_node *statement);
+static const struct mylite_sql_ast_node *
+show_tables_filter(const struct mylite_sql_ast_node *statement);
+static const struct mylite_sql_ast_node *
+show_tables_where_expression(const struct mylite_sql_ast_node *statement);
 static char *copy_show_tables_display_pattern(const char *like_pattern, bool uppercase_pattern);
 static char *show_tables_column_name(const char *schema_name, const char *like_pattern);
 static char *show_tables_glob_pattern(const char *like_pattern);
@@ -37,15 +41,11 @@ int mylite_show_prepare_tables_statement(mylite_db *database,
     if (status == MYLITE_OK) {
         status = validate_show_tables_schema(database, schema_name);
     }
-    if (status == MYLITE_OK &&
-        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "SHOW TABLES WHERE is not supported");
-        status = MYLITE_UNSUPPORTED;
-    }
     if (status == MYLITE_OK) {
         like_pattern = copy_show_tables_like_pattern(statement);
-        if (mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_LITERAL) != NULL &&
-            like_pattern == NULL) {
+        const struct mylite_sql_ast_node *filter = show_tables_filter(statement);
+
+        if (filter != NULL && filter->kind == MYLITE_SQL_AST_LITERAL && like_pattern == NULL) {
             status = MYLITE_NOMEM;
         }
     }
@@ -69,15 +69,16 @@ int mylite_show_prepare_tables_statement(mylite_db *database,
         }
     }
     if (status == MYLITE_OK) {
-        sqlite_sql = mylite_show_tables_sql(database, &(const struct mylite_show_tables_query){
-                                                          .schema_name = schema_name,
-                                                          .column_name = column_name,
-                                                          .glob_pattern = glob_pattern,
-                                                          .full = statement->show_tables_full,
-                                                      });
-        if (sqlite_sql == NULL) {
-            status = MYLITE_NOMEM;
-        }
+        status =
+            mylite_show_tables_sql(database,
+                                   &(const struct mylite_show_tables_query){
+                                       .schema_name = schema_name,
+                                       .column_name = column_name,
+                                       .glob_pattern = glob_pattern,
+                                       .where_expression = show_tables_where_expression(statement),
+                                       .full = statement->show_tables_full,
+                                   },
+                                   &sqlite_sql);
     }
     if (status == MYLITE_OK) {
         status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
@@ -109,16 +110,11 @@ int mylite_show_prepare_table_status_statement(mylite_db *database,
     if (status == MYLITE_OK) {
         status = validate_show_tables_schema(database, schema_name);
     }
-    if (status == MYLITE_OK &&
-        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) != NULL) {
-        (void)mylite_diagnostics_set_error_message(database,
-                                                   "SHOW TABLE STATUS WHERE is not supported");
-        status = MYLITE_UNSUPPORTED;
-    }
     if (status == MYLITE_OK) {
         like_pattern = copy_show_tables_like_pattern(statement);
-        if (mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_LITERAL) != NULL &&
-            like_pattern == NULL) {
+        const struct mylite_sql_ast_node *filter = show_tables_filter(statement);
+
+        if (filter != NULL && filter->kind == MYLITE_SQL_AST_LITERAL && like_pattern == NULL) {
             status = MYLITE_NOMEM;
         }
     }
@@ -136,14 +132,14 @@ int mylite_show_prepare_table_status_statement(mylite_db *database,
         }
     }
     if (status == MYLITE_OK) {
-        sqlite_sql =
-            mylite_show_table_status_sql(database, &(const struct mylite_show_table_status_query){
-                                                       .schema_name = schema_name,
-                                                       .glob_pattern = glob_pattern,
-                                                   });
-        if (sqlite_sql == NULL) {
-            status = MYLITE_NOMEM;
-        }
+        status = mylite_show_table_status_sql(
+            database,
+            &(const struct mylite_show_table_status_query){
+                .schema_name = schema_name,
+                .glob_pattern = glob_pattern,
+                .where_expression = show_tables_where_expression(statement),
+            },
+            &sqlite_sql);
     }
     if (status == MYLITE_OK) {
         status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
@@ -164,11 +160,10 @@ static int copy_show_tables_schema_name(mylite_db *database,
                                         const struct mylite_sql_ast_node *statement,
                                         char **out_schema_name)
 {
-    const struct mylite_sql_ast_node *schema_name =
-        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_IDENTIFIER);
+    const struct mylite_sql_ast_node *schema_name = mylite_ast_child_at(statement, 0U);
 
     *out_schema_name = NULL;
-    if (schema_name != NULL) {
+    if (schema_name != NULL && schema_name->kind == MYLITE_SQL_AST_IDENTIFIER) {
         *out_schema_name = mylite_copy_identifier_span(schema_name);
         if (*out_schema_name == NULL) {
             return MYLITE_NOMEM;
@@ -205,13 +200,34 @@ static int validate_show_tables_schema(mylite_db *database, const char *schema_n
 
 static char *copy_show_tables_like_pattern(const struct mylite_sql_ast_node *statement)
 {
-    const struct mylite_sql_ast_node *literal =
-        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_LITERAL);
+    const struct mylite_sql_ast_node *literal = show_tables_filter(statement);
 
-    if (literal == NULL) {
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
         return NULL;
     }
     return mylite_show_copy_like_pattern_span(literal);
+}
+
+static const struct mylite_sql_ast_node *
+show_tables_filter(const struct mylite_sql_ast_node *statement)
+{
+    const struct mylite_sql_ast_node *first = mylite_ast_child_at(statement, 0U);
+
+    if (first == NULL || first->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        return first;
+    }
+    return mylite_ast_child_at(statement, 1U);
+}
+
+static const struct mylite_sql_ast_node *
+show_tables_where_expression(const struct mylite_sql_ast_node *statement)
+{
+    const struct mylite_sql_ast_node *filter = show_tables_filter(statement);
+
+    if (filter == NULL || filter->kind != MYLITE_SQL_AST_WHERE_CLAUSE) {
+        return NULL;
+    }
+    return mylite_ast_child_at(filter, 0U);
 }
 
 static char *copy_show_tables_display_pattern(const char *like_pattern, bool uppercase_pattern)

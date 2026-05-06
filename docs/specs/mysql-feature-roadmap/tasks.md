@@ -172,25 +172,25 @@ level application surfaces.
        implemented for supported
        MyLite base tables and existing `information_schema` metadata views,
        including `EXTENDED`, `FULL`, `FROM`/`IN`, `LIKE`, `WHERE` grammar,
-       result column names, table type, empty results, and
-       selected/missing-schema diagnostics. `EXTENDED` is currently a no-op
-       because MyLite has no hidden failed-ALTER table catalog; `WHERE`
-       filtering is parsed and rejected as unsupported until SHOW expression
-       filtering lands. The first `SHOW TABLE STATUS` slice is specified and
+       result column names, table type, empty results, `WHERE` filtering over
+       displayed columns, and selected/missing-schema diagnostics. `EXTENDED`
+       is currently a no-op because MyLite has no hidden failed-ALTER table
+       catalog. The first `SHOW TABLE STATUS` slice is specified and
        implemented for supported persistent MyLite base tables and existing
        `information_schema` metadata views, including `FROM`/`IN`, `LIKE`,
        `WHERE` grammar, exact MySQL status columns, catalog-backed table
        metadata, deterministic `0` placeholders for user base-table storage
        counters until physical statistics are maintained, empty results,
        information-schema pattern normalization, and selected/missing-schema
-       diagnostics. `SHOW TABLE STATUS WHERE` is parsed but currently returns
-       an unsupported diagnostic. The first `SHOW COLUMNS` / `SHOW FIELDS` slice is also
+       diagnostics. `SHOW TABLE STATUS WHERE` filters over displayed columns.
+       The first `SHOW COLUMNS` / `SHOW FIELDS` slice is also
        specified and implemented for supported persistent base tables, including
        `EXTENDED`, `FULL`, `FROM`/`IN`, `db.table`, `LIKE`, `WHERE` grammar,
        `FIELDS` synonym support, non-`FULL` and `FULL` result-set shapes,
        catalog-backed column metadata, and selected-schema, missing-schema, and
-       missing-table diagnostics. `SHOW COLUMNS WHERE` and system-view column
-       descriptions are parsed but currently return unsupported diagnostics.
+       missing-table diagnostics. `SHOW COLUMNS WHERE` filters over displayed
+       columns; system-view column descriptions are parsed but currently return
+       unsupported diagnostics.
        The first `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS` slice is specified
        and implemented for persistent base-table indexes in
        `__mylite_index_catalog`, including `EXTENDED`, `FROM`/`IN`, `db.table`,
@@ -303,35 +303,36 @@ level application surfaces.
        synonym, case-insensitive `LIKE` filtering with escapes, a practical
        catalog of charset/collation, diagnostics, autocommit, transaction,
        SQL-mode, `group_concat_max_len`, and version variables,
-       session/default scope behavior, and a clear unsupported diagnostic for
-       parsed `WHERE` filters until shared SHOW filtering lands. The first
+       session/default scope behavior, and `WHERE` filtering over displayed
+       columns. The first
        `SHOW STATUS` slice is specified for
        `SHOW [GLOBAL|SESSION|LOCAL] STATUS [LIKE 'pattern' | WHERE expr]`,
        including `Variable_name` / `Value` metadata, `LOCAL` as a session
        synonym, case-insensitive `LIKE` filtering with escapes, embedded
        connection/thread/uptime rows, documented zero placeholders for common
        `Questions` and `Com_*` counters, same-value session/global behavior
-       where MyLite has no separate mutable global state, and a clear
-       unsupported diagnostic for parsed `WHERE` filters. The first
+       where MyLite has no separate mutable global state, and `WHERE` filtering
+       over displayed columns. The first
        `SHOW CHARACTER SET` / `SHOW CHARSET` slice is specified for
        `SHOW {CHARACTER SET|CHARSET}` plus the MySQL-runtime-accepted
        `SHOW CHAR SET` spelling, including exact `Charset` / `Description` /
        `Default collation` / `Maxlen` metadata, supported MyLite charset
        registry rows, case-insensitive `LIKE` filtering with escapes, numeric
-       `Maxlen`, nondiagnostic clearing, and a clear unsupported diagnostic
-       for parsed `WHERE` filters. The first `SHOW COLLATION` slice is
+       `Maxlen`, nondiagnostic clearing, and `WHERE` filtering over displayed
+       columns. The first `SHOW COLLATION` slice is
        specified for `SHOW COLLATION [LIKE 'pattern' | WHERE expr]`, including
        exact `Collation` / `Charset` / `Id` / `Default` / `Compiled` /
        `Sortlen` / `Pad_attribute` metadata, supported MyLite collation
        registry rows, MySQL-verified default flags, sort lengths, pad
        attributes, case-insensitive `LIKE` filtering with escapes, numeric
-       `Id` and `Sortlen`, nondiagnostic clearing, and a clear unsupported
-       diagnostic for parsed `WHERE` filters. Specs:
+       `Id` and `Sortlen`, nondiagnostic clearing, and `WHERE` filtering over
+       displayed columns. Specs:
        [SHOW diagnostics](../show-diagnostics/specs.md),
        [SHOW VARIABLES](../show-variables/specs.md),
        [SHOW STATUS](../show-status/specs.md),
        [SHOW CHARACTER SET](../show-character-set/specs.md),
-       [SHOW COLLATION](../show-collation/specs.md).
+       [SHOW COLLATION](../show-collation/specs.md), and
+       [SHOW WHERE filtering](../show-where-filtering/specs.md).
 41. [ ] User and system variables: `SET`, user-variable storage, system-variable
        validation, scope, charset/collation metadata, and expression use.
        Focused session-variable slices are specified and implemented for

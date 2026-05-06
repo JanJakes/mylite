@@ -12,12 +12,10 @@ This feature implements the first executable `SHOW TABLE STATUS` slice:
 
 The slice lists supported persistent MyLite base tables and the existing
 `information_schema` system views with the MySQL-compatible status result
-shape. `WHERE` is parser-supported but execution is deferred until shared SHOW
-filtering exists.
+shape, including `WHERE` filtering over displayed status columns.
 
 Deferred surfaces:
 
-- `SHOW TABLE STATUS ... WHERE expr` execution
 - `SHOW FULL TABLE STATUS` and `SHOW EXTENDED TABLE STATUS`, which are not part
   of the MySQL 8.4 syntax
 - temporary tables
@@ -52,7 +50,7 @@ The following behavior was verified against MySQL 8.4.9:
 | `SHOW TABLE STATUS FROM db` / `SHOW TABLE STATUS IN db` | Both forms return the same rows. |
 | `SHOW TABLE STATUS FROM information_schema LIKE 'tables'` | Returns a row named `TABLES`. |
 | `SHOW TABLE STATUS FROM Information_Schema LIKE 'tables'` | Returns a row named `TABLES`. |
-| `SHOW TABLE STATUS WHERE Name = 'simple'` | MySQL filters rows; MyLite parses this and returns an unsupported diagnostic for this slice. |
+| `SHOW TABLE STATUS WHERE Name = 'simple'` | Filters rows by the displayed `Name` column. |
 | `SHOW TABLE STATUS LIKE 1` | Syntax error. |
 | `SHOW TABLE STATUS LIKE 'a%' WHERE Name = 'a'` | Syntax error. |
 | `SHOW FULL TABLE STATUS` | Syntax error. |
@@ -113,8 +111,10 @@ Rows:
   `COLUMNS`, `ENGINES`, `KEYWORDS`, `KEY_COLUMN_USAGE`,
   `REFERENTIAL_CONSTRAINTS`, `STATISTICS`, and `TABLE_CONSTRAINTS`.
 - Rows are ordered by table name using bytewise order.
-- `SHOW TABLE STATUS ... WHERE expr` returns `MYLITE_UNSUPPORTED` with
-  `SHOW TABLE STATUS WHERE is not supported` after target schema validation.
+- `SHOW TABLE STATUS ... WHERE expr` is evaluated over displayed status
+  columns.
+- Unknown displayed-column identifiers return MySQL error `1054`.
+- Broader SHOW `WHERE` expressions remain deferred to the shared filter.
 
 Column mapping:
 

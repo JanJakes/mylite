@@ -59,7 +59,7 @@ The following behavior was verified against MySQL 8.4.9:
 | `SHOW COLUMNS FROM meta LIKE 'name'` | Returns column `name`. |
 | `SHOW COLUMNS FROM meta LIKE 'Name'` | Also returns column `name` on the verified runtime. |
 | `SHOW COLUMNS FROM meta LIKE 'a\_%'` | Backslash escapes `_`, so only literal-underscore names such as `a_1` match. |
-| `SHOW COLUMNS FROM meta WHERE Field = 'name'` | Parses and filters rows in MySQL; MyLite parses it but rejects execution until shared SHOW filtering lands. |
+| `SHOW COLUMNS FROM meta WHERE Field = 'name'` | Filters rows by the displayed `Field` column. |
 | `SHOW EXTENDED COLUMNS FROM meta` | Includes internal hidden storage-engine columns in MySQL; MyLite currently has no equivalent hidden-column catalog. |
 | `SHOW FULL COLUMNS FROM information_schema.COLUMNS LIKE 'COLUMN_NAME'` | Returns `COLUMN_NAME` with the `FULL` result shape; MyLite defers system-view column descriptions for this slice. |
 | `SHOW COLUMNS FROM missing_info FROM information_schema` | Error `1109`, SQLSTATE `42S02`, message `Unknown table 'MISSING_INFO' in information_schema`. |
@@ -141,9 +141,11 @@ Rows:
 - `SHOW EXTENDED COLUMNS` is accepted and currently returns the same user
   columns as `SHOW COLUMNS`; MyLite has no hidden storage-engine column catalog
   for this slice.
-- `SHOW COLUMNS ... WHERE expr` is accepted by the parser but returns
-  `MYLITE_UNSUPPORTED` with message `SHOW COLUMNS WHERE is not supported` after
-  target schema and table validation.
+- `SHOW COLUMNS ... WHERE expr` is evaluated over displayed result columns.
+  `FULL`-only columns such as `Collation`, `Privileges`, and `Comment` are only
+  valid when `FULL` is present.
+- Unknown displayed-column identifiers return MySQL error `1054`.
+- Broader SHOW `WHERE` expressions remain deferred to the shared filter.
 - `information_schema` table-column introspection is parsed, validates the
   system table name where possible, and returns a deterministic unsupported
   diagnostic until MyLite has system-view column descriptions.

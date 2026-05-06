@@ -182,11 +182,13 @@ LIKE filtering:
 
 WHERE filtering:
 
-- The parser accepts `WHERE expr` because MySQL supports general SHOW filters
-  over the displayed result columns.
-- Execution returns `MYLITE_UNSUPPORTED` with message
-  `SHOW STATUS WHERE is not supported` until shared SHOW result-set filtering
-  lands.
+- `WHERE expr` is evaluated over the displayed `Variable_name` and `Value`
+  columns.
+- The shared SHOW filter supports displayed-column identifiers, literals,
+  comparison operators, `AND`/`OR`/`NOT`, `LIKE`, `IN`, unary signs,
+  `IS NULL`, `IS NOT NULL`, and parentheses.
+- Unknown displayed-column identifiers return MySQL error `1054`.
+- Broader SHOW `WHERE` expressions remain deferred.
 
 ## Storage And Performance
 
@@ -221,7 +223,7 @@ Runtime coverage:
   filtering
 - `SESSION`, omitted scope, and `LOCAL` return session values
 - `GLOBAL` returns the same embedded process/default values for this slice
-- `WHERE` returns the clear unsupported diagnostic
+- `WHERE` filters displayed columns and reports unknown-column diagnostics
 - `LIMIT` remains a syntax error
 - `Uptime` and `Uptime_since_flush_status` are numeric strings
 - `SHOW STATUS` clears prior diagnostics before reporting
@@ -229,7 +231,7 @@ Runtime coverage:
 ## Deferred Work
 
 - Full MySQL status-variable catalog.
-- General `SHOW ... WHERE` filtering.
+- Broader SHOW `WHERE` expressions beyond the shared filter subset.
 - Accurate `Questions`, `Queries`, and `Com_*` command counters.
 - Global status aggregation across multiple MyLite handles.
 - `FLUSH STATUS` and resettable session/global counter lifetimes.

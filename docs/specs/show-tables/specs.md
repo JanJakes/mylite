@@ -22,7 +22,6 @@ deterministic diagnostics for missing schema context.
 
 Deferred surfaces:
 
-- `SHOW TABLES ... WHERE expr` execution
 - temporary tables and temporary-table shadowing
 - ordinary user views, until `CREATE VIEW` exists
 - privilege filtering
@@ -131,10 +130,10 @@ Rows:
 - `SHOW FULL TABLES` returns names plus table type.
 - `SHOW EXTENDED TABLES` is accepted and currently returns the same rows as
   `SHOW TABLES`; MyLite has no hidden failed-ALTER table catalog yet.
-- `SHOW TABLES ... WHERE expr` is accepted by the parser but returns
-  `MYLITE_UNSUPPORTED` with message `SHOW TABLES WHERE is not supported` after
-  target schema validation. Expression filtering should be added when SHOW
-  result-set predicates are shared across metadata statements.
+- `SHOW TABLES ... WHERE expr` is evaluated over displayed result columns:
+  `Tables_in_<schema>` and, for `FULL`, `Table_type`.
+- Unknown displayed-column identifiers return MySQL error `1054`.
+- Broader SHOW `WHERE` expressions remain deferred to the shared filter.
 - Rows are ordered by table name using MyLite's current case-sensitive catalog
   order.
 
@@ -210,6 +209,8 @@ Runtime coverage:
 - `LIKE` column-label suffix and wildcard filtering
 - escaped `_` in `LIKE`
 - empty result with stable metadata
+- `WHERE` filtering over `Tables_in_<schema>` and `Table_type`
+- unknown-column diagnostics for invalid SHOW `WHERE` identifiers
 - no selected schema diagnostic
 - missing schema diagnostic
 - keyword interaction for base tables named `tables`, `extended`, and `full`

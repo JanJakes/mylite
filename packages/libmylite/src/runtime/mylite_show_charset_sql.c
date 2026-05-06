@@ -1,6 +1,7 @@
 #include "mylite_show.h"
 
 #include "mylite_charset.h"
+#include "mylite_diagnostics.h"
 #include "mylite_runtime.h"
 #include "mylite_show_types.h"
 #include "sqlite3.h"
@@ -16,8 +17,10 @@ int mylite_show_character_set_sql(mylite_db *database,
                                   const struct mylite_show_character_set_query *query,
                                   char **out_sql)
 {
+    static const char *const columns[] = {"Charset", "Description", "Default collation", "Maxlen"};
     sqlite3_str *sql = sqlite3_str_new(database->sqlite);
     bool first = true;
+    int status = MYLITE_OK;
 
     *out_sql = NULL;
     if (sql == NULL) {
@@ -33,17 +36,34 @@ int mylite_show_character_set_sql(mylite_db *database,
     if (query->like_pattern != NULL) {
         sqlite3_str_appendf(sql, " WHERE Charset LIKE %Q ESCAPE '\\'", query->like_pattern);
     }
+    if (query->where_expression != NULL) {
+        sqlite3_str_appendall(sql, query->like_pattern == NULL ? " WHERE " : " AND ");
+        status = mylite_show_append_where_expression(database, sql, query->where_expression,
+                                                     columns, sizeof(columns) / sizeof(columns[0]));
+    }
     sqlite3_str_appendall(sql, " ORDER BY Charset COLLATE NOCASE, Charset COLLATE BINARY");
 
     *out_sql = sqlite3_str_finish(sql);
+    if (status != MYLITE_OK) {
+        sqlite3_free(*out_sql);
+        *out_sql = NULL;
+        if (status == MYLITE_UNSUPPORTED) {
+            (void)mylite_diagnostics_set_error_message(
+                database, "SHOW CHARACTER SET WHERE expression is not supported");
+        }
+        return status;
+    }
     return *out_sql == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
 
 int mylite_show_collation_sql(mylite_db *database, const struct mylite_show_collation_query *query,
                               char **out_sql)
 {
+    static const char *const columns[] = {"Collation", "Charset", "Id",           "Default",
+                                          "Compiled",  "Sortlen", "Pad_attribute"};
     sqlite3_str *sql = sqlite3_str_new(database->sqlite);
     bool first = true;
+    int status = MYLITE_OK;
 
     *out_sql = NULL;
     if (sql == NULL) {
@@ -60,9 +80,23 @@ int mylite_show_collation_sql(mylite_db *database, const struct mylite_show_coll
     if (query->like_pattern != NULL) {
         sqlite3_str_appendf(sql, " WHERE Collation LIKE %Q ESCAPE '\\'", query->like_pattern);
     }
+    if (query->where_expression != NULL) {
+        sqlite3_str_appendall(sql, query->like_pattern == NULL ? " WHERE " : " AND ");
+        status = mylite_show_append_where_expression(database, sql, query->where_expression,
+                                                     columns, sizeof(columns) / sizeof(columns[0]));
+    }
     sqlite3_str_appendall(sql, " ORDER BY Collation COLLATE NOCASE, Collation COLLATE BINARY");
 
     *out_sql = sqlite3_str_finish(sql);
+    if (status != MYLITE_OK) {
+        sqlite3_free(*out_sql);
+        *out_sql = NULL;
+        if (status == MYLITE_UNSUPPORTED) {
+            (void)mylite_diagnostics_set_error_message(
+                database, "SHOW COLLATION WHERE expression is not supported");
+        }
+        return status;
+    }
     return *out_sql == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
 

@@ -22029,9 +22029,17 @@ static int test_show_tables_execution(void)
     failures +=
         expect_select_rows(database, "SHOW TABLES FROM mylite_show_tables_a LIKE 'beta\\_%'",
                            beta_columns, 1, beta_values, 1, "show tables escaped underscore");
-    failures += expect_prepare_error(database, "SHOW FULL TABLES WHERE Table_type = 'BASE TABLE'",
-                                     MYLITE_UNSUPPORTED, "SHOW TABLES WHERE is not supported",
-                                     "show tables where is parsed but unsupported");
+    failures += expect_select_rows(database, "SHOW FULL TABLES WHERE Table_type = 'BASE TABLE'",
+                                   show_full_a_columns, 2, show_full_a_values, 3,
+                                   "show full tables where table type");
+    failures += expect_select_rows(
+        database, "SHOW TABLES WHERE Tables_in_mylite_show_tables_a = 'alpha'", show_a_columns, 1,
+        (const char *const[]){"alpha"}, 1, "show tables where generated column");
+    failures +=
+        expect_prepare_error(database, "SHOW TABLES WHERE No_such_column = 1", MYLITE_EXEC_ERROR,
+                             "Unknown column 'No_such_column'", "show tables where unknown column");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_unknown_column,
+                           "show tables where unknown column code");
 
     failures += execute_sql(database, "CREATE TABLE CamelCase (id INT)", MYLITE_DONE);
     failures += expect_select_rows(database, "SHOW TABLES LIKE 'camel%'", camel_lower_columns, 1,
@@ -22169,9 +22177,13 @@ static int test_show_table_status_execution(void)
                                    0, "show table status like is case-sensitive");
     failures += expect_select_rows(database, "SHOW TABLE STATUS LIKE 'Camel%'", columns, 18,
                                    camel_values, 1, "show table status like uppercase pattern");
-    failures += expect_prepare_error(database, "SHOW TABLE STATUS WHERE Name = 'alpha'",
-                                     MYLITE_UNSUPPORTED, "SHOW TABLE STATUS WHERE is not supported",
-                                     "show table status where is parsed but unsupported");
+    failures += expect_select_rows(database, "SHOW TABLE STATUS WHERE Name = 'alpha'", columns, 18,
+                                   alpha_values, 1, "show table status where name");
+    failures += expect_prepare_error(database, "SHOW TABLE STATUS WHERE No_such_column = 1",
+                                     MYLITE_EXEC_ERROR, "Unknown column 'No_such_column'",
+                                     "show table status where unknown column");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_unknown_column,
+                           "show table status where unknown column code");
 
     failures += execute_sql(database, "CREATE TABLE mylite_show_table_status_b.in_table (id INT)",
                             MYLITE_DONE);
@@ -22200,7 +22212,7 @@ static int test_show_table_status_execution(void)
     failures += expect_prepare_error(
         database, "SHOW TABLE STATUS FROM missing_show_table_status WHERE Name = 'x'",
         MYLITE_EXEC_ERROR, "Unknown database 'missing_show_table_status'",
-        "show table status validates schema before where unsupported");
+        "show table status validates schema before where filtering");
 
     mylite_close(database);
 
@@ -22213,6 +22225,7 @@ static int test_show_variables_execution(void)
     // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
     static const char *const columns[] = {"Variable_name", "Value"};
     static const char *const autocommit_values[] = {"autocommit", "ON"};
+    static const char *const on_variable_values[] = {"autocommit", "ON", "sql_notes", "ON"};
     static const char *const initial_charset_values[] = {
         "character_set_client",   "utf8mb4", "character_set_connection", "utf8mb4",
         "character_set_database", "utf8mb4", "character_set_filesystem", "binary",
@@ -22549,12 +22562,16 @@ static int test_show_variables_execution(void)
     failures +=
         expect_int((int)mylite_warning_code(database, 0), mysql_warning_incorrect_global_local_var,
                    "session global-only system variable error code");
-    failures += expect_prepare_error(database, "SHOW VARIABLES WHERE Variable_name = 'autocommit'",
-                                     MYLITE_UNSUPPORTED, "SHOW VARIABLES WHERE is not supported",
-                                     "show variables where is parsed but unsupported");
-    failures += expect_prepare_error(database, "SHOW VARIABLES WHERE Value = 'ON'",
-                                     MYLITE_UNSUPPORTED, "SHOW VARIABLES WHERE is not supported",
-                                     "show variables where value column is parsed but unsupported");
+    failures +=
+        expect_select_rows(database, "SHOW VARIABLES WHERE Variable_name = 'autocommit'", columns,
+                           2, autocommit_values, 1, "show variables where variable name");
+    failures += expect_select_rows(database, "SHOW VARIABLES WHERE Value = 'ON'", columns, 2,
+                                   on_variable_values, 2, "show variables where value column");
+    failures += expect_prepare_error(database, "SHOW VARIABLES WHERE No_such_column = 1",
+                                     MYLITE_EXEC_ERROR, "Unknown column 'No_such_column'",
+                                     "show variables where unknown column");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_unknown_column,
+                           "show variables where unknown column code");
     failures += expect_prepare_error(database, "SHOW VARIABLES LIMIT 1", MYLITE_PARSE_ERROR,
                                      "syntax_error", "show variables limit syntax");
 
@@ -22696,6 +22713,10 @@ static int test_show_status_execution(void)
         "Threads_created", "1", "Threads_running",   "1",
     };
     static const char *const connections_values[] = {"Connections", "1"};
+    static const char *const one_status_values[] = {
+        "Connections",     "1", "Threads_connected", "1",
+        "Threads_created", "1", "Threads_running",   "1",
+    };
     static const char *const questions_values[] = {"Questions", "0"};
     static const char *const com_select_values[] = {"Com_select", "0"};
     static const char *const com_show_values[] = {
@@ -22783,12 +22804,20 @@ static int test_show_status_execution(void)
     failures += expect_select_rows(database, "SHOW STATUS LIKE 'no_such_status'", columns, 2, NULL,
                                    0, "show status empty like result");
 
-    failures += expect_prepare_error(database, "SHOW STATUS WHERE Variable_name = 'Uptime'",
-                                     MYLITE_UNSUPPORTED, "SHOW STATUS WHERE is not supported",
-                                     "show status where is parsed but unsupported");
-    failures += expect_prepare_error(database, "SHOW STATUS WHERE Value = '0'", MYLITE_UNSUPPORTED,
-                                     "SHOW STATUS WHERE is not supported",
-                                     "show status where value is parsed but unsupported");
+    failures += expect_show_status_numeric_rows(
+        database, &(const struct show_status_numeric_expectation){
+                      .sql = "SHOW STATUS WHERE Variable_name = 'Uptime'",
+                      .variable_names = uptime_names,
+                      .row_count = 1,
+                      .context = "show status where variable name",
+                  });
+    failures += expect_select_rows(database, "SHOW STATUS WHERE Value = '1'", columns, 2,
+                                   one_status_values, 4, "show status where value column");
+    failures +=
+        expect_prepare_error(database, "SHOW STATUS WHERE No_such_column = 1", MYLITE_EXEC_ERROR,
+                             "Unknown column 'No_such_column'", "show status where unknown column");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_unknown_column,
+                           "show status where unknown column code");
     failures += expect_prepare_error(database, "SHOW STATUS LIMIT 1", MYLITE_PARSE_ERROR,
                                      "syntax_error", "show status limit syntax");
 
@@ -22989,6 +23018,8 @@ static int test_show_character_set_execution(void)
         "utf8mb3", "UTF-8 Unicode", "utf8mb3_general_ci", "3",
         "utf8mb4", "UTF-8 Unicode", "utf8mb4_0900_ai_ci", "4",
     };
+    static const char *const utf8mb4_values[] = {"utf8mb4", "UTF-8 Unicode", "utf8mb4_0900_ai_ci",
+                                                 "4"};
     static const char *const binary_values[] = {"binary", "Binary pseudo charset", "binary", "1"};
     static const char *const latin1_values[] = {"latin1", "cp1252 West European",
                                                 "latin1_swedish_ci", "1"};
@@ -23025,13 +23056,16 @@ static int test_show_character_set_execution(void)
                                                        1, "show character set maxlen is integer");
 
     failures +=
-        expect_prepare_error(database, "SHOW CHARACTER SET WHERE Charset = 'utf8mb4'",
-                             MYLITE_UNSUPPORTED, "SHOW CHARACTER SET WHERE is not supported",
-                             "show character set where is parsed but unsupported");
-    failures +=
-        expect_prepare_error(database, "SHOW CHARACTER SET WHERE `Default collation` = 'binary'",
-                             MYLITE_UNSUPPORTED, "SHOW CHARACTER SET WHERE is not supported",
-                             "show character set where default collation unsupported");
+        expect_select_rows(database, "SHOW CHARACTER SET WHERE Charset = 'utf8mb4'", columns, 4,
+                           utf8mb4_values, 1, "show character set where charset");
+    failures += expect_select_rows(
+        database, "SHOW CHARACTER SET WHERE `Default collation` = 'binary'", columns, 4,
+        binary_values, 1, "show character set where default collation");
+    failures += expect_prepare_error(database, "SHOW CHARACTER SET WHERE No_such_column = 1",
+                                     MYLITE_EXEC_ERROR, "Unknown column 'No_such_column'",
+                                     "show character set where unknown column");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_unknown_column,
+                           "show character set where unknown column code");
     failures += expect_prepare_error(database, "SHOW CHARACTER SET LIKE 1", MYLITE_PARSE_ERROR,
                                      "syntax_error", "show character set non-string like syntax");
     failures += expect_prepare_error(database, "SHOW CHARACTER SET LIMIT 1", MYLITE_PARSE_ERROR,
@@ -23182,6 +23216,39 @@ static int test_show_collation_execution(void)
         "latin1_bin",        "latin1", "47", "",    "Yes", "1", "PAD SPACE",
         "latin1_swedish_ci", "latin1", "8",  "Yes", "Yes", "1", "PAD SPACE",
     };
+    static const char *const default_values[] = {
+        "binary",
+        "binary",
+        "63",
+        "Yes",
+        "Yes",
+        "1",
+        "NO PAD",
+        "latin1_swedish_ci",
+        "latin1",
+        "8",
+        "Yes",
+        "Yes",
+        "1",
+        "PAD SPACE",
+        "utf8mb3_general_ci",
+        "utf8mb3",
+        "33",
+        "Yes",
+        "Yes",
+        "1",
+        "PAD SPACE",
+        "utf8mb4_0900_ai_ci",
+        "utf8mb4",
+        "255",
+        "Yes",
+        "Yes",
+        "0",
+        "NO PAD",
+    };
+    static const char *const utf8mb4_no_pad_values[] = {
+        "utf8mb4_0900_ai_ci", "utf8mb4", "255", "Yes", "Yes", "0", "NO PAD",
+    };
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -23217,21 +23284,24 @@ static int test_show_collation_execution(void)
         database, "SHOW COLLATION LIKE 'utf8mb4\\_unicode\\_ci'", 224, 8,
         "show collation unicode id and sortlen are integers");
 
-    failures += expect_prepare_error(database, "SHOW COLLATION WHERE Charset = 'latin1'",
-                                     MYLITE_UNSUPPORTED, "SHOW COLLATION WHERE is not supported",
-                                     "show collation where charset unsupported");
-    failures += expect_prepare_error(database,
-                                     "SHOW COLLATION WHERE `Default` = 'Yes' AND Charset IN "
-                                     "('binary','latin1','utf8mb3','utf8mb4')",
-                                     MYLITE_UNSUPPORTED, "SHOW COLLATION WHERE is not supported",
-                                     "show collation where default unsupported");
-    failures += expect_prepare_error(
-        database, "SHOW COLLATION WHERE Pad_attribute = 'NO PAD' AND Charset = 'utf8mb4'",
-        MYLITE_UNSUPPORTED, "SHOW COLLATION WHERE is not supported",
-        "show collation where pad attribute unsupported");
-    failures += expect_prepare_error(
-        database, "SHOW COLLATION WHERE Sortlen > 1 AND Charset = 'latin1'", MYLITE_UNSUPPORTED,
-        "SHOW COLLATION WHERE is not supported", "show collation where sortlen unsupported");
+    failures += expect_select_rows(database, "SHOW COLLATION WHERE Charset = 'latin1'", columns, 7,
+                                   latin1_values, 2, "show collation where charset");
+    failures += expect_select_rows(database,
+                                   "SHOW COLLATION WHERE `Default` = 'Yes' AND Charset IN "
+                                   "('binary','latin1','utf8mb3','utf8mb4')",
+                                   columns, 7, default_values, 4, "show collation where default");
+    failures += expect_select_rows(
+        database, "SHOW COLLATION WHERE Pad_attribute = 'NO PAD' AND Charset = 'utf8mb4'", columns,
+        7, utf8mb4_no_pad_values, 1, "show collation where pad attribute");
+    failures += expect_select_rows(database,
+                                   "SHOW COLLATION WHERE Sortlen > 1 AND Charset = "
+                                   "'latin1'",
+                                   columns, 7, NULL, 0, "show collation where sortlen empty");
+    failures += expect_prepare_error(database, "SHOW COLLATION WHERE No_such_column = 1",
+                                     MYLITE_EXEC_ERROR, "Unknown column 'No_such_column'",
+                                     "show collation where unknown column");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_unknown_column,
+                           "show collation where unknown column code");
     failures += expect_prepare_error(database, "SHOW COLLATION LIKE 1", MYLITE_PARSE_ERROR,
                                      "syntax_error", "show collation non-string like syntax");
     failures += expect_prepare_error(database, "SHOW COLLATION LIMIT 1", MYLITE_PARSE_ERROR,
@@ -23350,6 +23420,17 @@ static int test_show_columns_execution(void)
         "",
     };
     static const char *const name_values[] = {"name", "varchar(20)", "NO", "MUL", "", ""};
+    static const char *const full_name_values[] = {
+        "name",
+        "varchar(20)",
+        "utf8mb4_0900_ai_ci",
+        "NO",
+        "MUL",
+        "",
+        "",
+        "select,insert,update,references",
+        "Name comment",
+    };
     static const char *const escaped_values[] = {"a_1", "int", "YES", "", NULL, ""};
     static const char *const b_values[] = {"code", "int", "YES", "", NULL, ""};
     static const char *const override_values[] = {"override_col", "int", "YES", "", NULL, ""};
@@ -23398,9 +23479,18 @@ static int test_show_columns_execution(void)
                            escaped_values, 1, "show columns escaped underscore");
     failures += expect_select_rows(database, "SHOW COLUMNS FROM meta LIKE 'missing%'",
                                    standard_columns, 6, NULL, 0, "show columns empty like result");
-    failures += expect_prepare_error(database, "SHOW COLUMNS FROM meta WHERE Field = 'name'",
-                                     MYLITE_UNSUPPORTED, "SHOW COLUMNS WHERE is not supported",
-                                     "show columns where is parsed but unsupported");
+    failures += expect_select_rows(database, "SHOW COLUMNS FROM meta WHERE Field = 'name'",
+                                   standard_columns, 6, name_values, 1, "show columns where field");
+    failures += expect_select_rows(database,
+                                   "SHOW FULL COLUMNS FROM meta WHERE Collation = "
+                                   "'utf8mb4_0900_ai_ci'",
+                                   full_columns, 9, full_name_values, 1,
+                                   "show full columns where collation");
+    failures += expect_prepare_error(database, "SHOW COLUMNS FROM meta WHERE No_such_column = 1",
+                                     MYLITE_EXEC_ERROR, "Unknown column 'No_such_column'",
+                                     "show columns where unknown column");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_unknown_column,
+                           "show columns where unknown column code");
 
     failures += execute_sql(database, "CREATE TABLE mylite_show_columns_b.in_table (code INT)",
                             MYLITE_DONE);

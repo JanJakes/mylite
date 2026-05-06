@@ -21,11 +21,13 @@ This slice implements the table-description form of MySQL's `DESCRIBE`,
 The result set is the non-`FULL` `SHOW COLUMNS` shape:
 `Field`, `Type`, `Null`, `Key`, `Default`, `Extra`.
 
-Deferred surfaces:
+Deferred or separate surfaces:
 
 - `DESCRIBE`/`DESC`/`EXPLAIN` query-plan forms for `SELECT`, `TABLE`,
   `INSERT`, `REPLACE`, `UPDATE`, `DELETE`, `FOR CONNECTION`, `FORMAT`, and
-  `ANALYZE`
+  `ANALYZE` are accepted as no-op parser placeholders in the separate
+  [EXPLAIN statement parser placeholders spec](../explain-statement-placeholders/specs.md);
+  real plan output remains deferred
 - information-schema table descriptions, matching the current `SHOW COLUMNS`
   unsupported policy for system-view column metadata
 - user views and temporary tables
@@ -68,7 +70,7 @@ The following behavior was verified against MySQL 8.4.9:
 | `DESCRIBE information_schema.TABLES TABLE_NAME` | MySQL returns system-view metadata using the same six result columns; MyLite explicitly defers this surface for now. |
 | `DESCRIBE information_schema.missing_info` | Error `1109`, SQLSTATE `42S02`, message `Unknown table 'MISSING_INFO' in information_schema`. |
 | `DESCRIBE meta WHERE Field = 'name'` | Syntax error; the table-description form does not accept `WHERE`. |
-| `EXPLAIN FORMAT=TREE SELECT 1` | Query-plan output; it is separate from the table-description form and remains out of scope. |
+| `EXPLAIN FORMAT=TREE SELECT 1` | Query-plan output; it is separate from the table-description form and now parses as a no-op parser placeholder in MyLite. |
 
 ## Syntax
 
@@ -92,9 +94,10 @@ opt_describe_column_filter ::= STRING.
 The top-level `DESC` production must not affect `DESC` as an order direction in
 `ORDER BY`, `GROUP BY`, or index key parts.
 
-This slice intentionally does not add grammar for query-plan `EXPLAIN`.
-`EXPLAIN FORMAT=TREE SELECT 1`, `EXPLAIN ANALYZE SELECT ...`, and
-`EXPLAIN SELECT ...` remain future parser/runtime work.
+This slice intentionally keeps query-plan `EXPLAIN` outside the
+`describe_table_statement` AST. `EXPLAIN FORMAT=TREE SELECT 1`,
+`EXPLAIN ANALYZE SELECT ...`, and `EXPLAIN SELECT ...` are handled by
+the parser-placeholder EXPLAIN slice instead.
 
 ## AST
 
@@ -146,7 +149,8 @@ Unsupported surfaces:
   then return `MYLITE_UNSUPPORTED` with a deterministic diagnostic.
 - Unknown `information_schema` table names return MySQL-style
   `Unknown table '<UPPERCASE_NAME>' in information_schema`.
-- Query-plan `EXPLAIN` syntax is not parsed in this slice.
+- Query-plan `EXPLAIN` syntax is parsed by the separate placeholder slice and
+  is not executed by this table-metadata runtime path.
 
 Warnings and affected rows:
 
@@ -173,7 +177,8 @@ Parser coverage:
 - `EXPLAIN t 'a\_%'`
 - syntax rejection for missing table name
 - syntax rejection for `DESCRIBE t WHERE Field = 'name'`
-- syntax rejection for `EXPLAIN FORMAT=TREE SELECT 1`
+- parser-placeholder coverage for `EXPLAIN FORMAT=TREE SELECT 1` in the
+  separate EXPLAIN placeholder tests
 - regression coverage for `DESC` order direction in `SELECT`, DDL key parts,
   `UPDATE`, and `DELETE`
 

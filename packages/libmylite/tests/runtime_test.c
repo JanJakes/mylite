@@ -346,6 +346,9 @@ static int test_mylite_file_preamble_and_vfs_payload(void);
 static int test_mylite_open_rejects_plain_sqlite(void);
 static int test_unsupported_statement(void);
 static int test_stored_program_placeholder_execution(void);
+static int test_explain_statement_placeholder_execution(void);
+static int test_account_privilege_placeholder_execution(void);
+static int test_table_partitioning_placeholder_execution(void);
 static int test_create_table_base_execution(void);
 static int test_create_table_prepare_has_no_side_effects(void);
 static int test_drop_table_base_execution(void);
@@ -574,6 +577,9 @@ int main(void)
     failures += test_mylite_open_rejects_plain_sqlite();
     failures += test_unsupported_statement();
     failures += test_stored_program_placeholder_execution();
+    failures += test_explain_statement_placeholder_execution();
+    failures += test_account_privilege_placeholder_execution();
+    failures += test_table_partitioning_placeholder_execution();
     failures += test_create_table_base_execution();
     failures += test_create_table_prepare_has_no_side_effects();
     failures += test_drop_table_base_execution();
@@ -19047,6 +19053,95 @@ static int test_stored_program_placeholder_execution(void)
     failures += expect_parser_placeholder_execution(
         database, "SIGNAL SQLSTATE '01000' SET MESSAGE_TEXT = 'ignored'", "SIGNAL statement",
         "SIGNAL placeholder");
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_explain_statement_placeholder_execution(void)
+{
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK,
+                              "open explain placeholder database");
+    failures += expect_parser_placeholder_execution(
+        database, "EXPLAIN SELECT 1", "EXPLAIN statement", "EXPLAIN SELECT placeholder");
+    failures += expect_parser_placeholder_execution(
+        database, "DESCRIBE SELECT 1", "EXPLAIN statement", "DESCRIBE SELECT placeholder");
+    failures +=
+        expect_parser_placeholder_execution(database, "EXPLAIN FORMAT=TREE SELECT 1",
+                                            "EXPLAIN statement", "EXPLAIN FORMAT placeholder");
+    failures += expect_parser_placeholder_execution(database, "EXPLAIN FOR CONNECTION 123",
+                                                    "EXPLAIN statement",
+                                                    "EXPLAIN FOR CONNECTION placeholder");
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_account_privilege_placeholder_execution(void)
+{
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK,
+                              "open account placeholder database");
+    failures += expect_parser_placeholder_execution(
+        database, "CREATE USER IF NOT EXISTS 'u'@'localhost' IDENTIFIED BY 'x' ACCOUNT LOCK",
+        "CREATE USER", "CREATE USER placeholder");
+    failures += expect_parser_placeholder_execution(
+        database, "ALTER USER IF EXISTS 'u'@'localhost' IDENTIFIED BY 'y' PASSWORD EXPIRE",
+        "ALTER USER", "ALTER USER placeholder");
+    failures += expect_parser_placeholder_execution(database, "CREATE ROLE IF NOT EXISTS 'r'",
+                                                    "CREATE ROLE", "CREATE ROLE placeholder");
+    failures += expect_parser_placeholder_execution(
+        database, "GRANT SELECT ON app.* TO 'u'@'localhost' WITH GRANT OPTION", "GRANT statement",
+        "GRANT placeholder");
+    failures +=
+        expect_parser_placeholder_execution(database, "REVOKE SELECT ON app.* FROM 'u'@'localhost'",
+                                            "REVOKE statement", "REVOKE placeholder");
+    failures +=
+        expect_parser_placeholder_execution(database, "SET DEFAULT ROLE ALL TO 'u'@'localhost'",
+                                            "SET DEFAULT ROLE", "SET DEFAULT ROLE placeholder");
+    failures +=
+        expect_parser_placeholder_execution(database, "SET PASSWORD FOR 'u'@'localhost' = 'secret'",
+                                            "SET PASSWORD", "SET PASSWORD placeholder");
+    failures += expect_parser_placeholder_execution(database, "SET ROLE DEFAULT", "SET ROLE",
+                                                    "SET ROLE placeholder");
+    failures +=
+        expect_parser_placeholder_execution(database, "SHOW GRANTS FOR 'u'@'localhost' USING 'r'",
+                                            "SHOW GRANTS", "SHOW GRANTS placeholder");
+    failures += expect_parser_placeholder_execution(database, "SHOW PRIVILEGES", "SHOW PRIVILEGES",
+                                                    "SHOW PRIVILEGES placeholder");
+    failures += expect_parser_placeholder_execution(database, "DROP ROLE IF EXISTS 'r'",
+                                                    "DROP ROLE", "DROP ROLE placeholder");
+    failures += expect_parser_placeholder_execution(database, "DROP USER IF EXISTS 'u'@'localhost'",
+                                                    "DROP USER", "DROP USER placeholder");
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_table_partitioning_placeholder_execution(void)
+{
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK,
+                              "open partition placeholder database");
+    failures += execute_sql(database, "CREATE DATABASE partition_placeholder", MYLITE_DONE);
+    failures += execute_sql(database, "USE partition_placeholder", MYLITE_DONE);
+    failures += expect_parser_placeholder_execution(
+        database, "CREATE TABLE p (id INT) PARTITION BY HASH(id) PARTITIONS 2",
+        "table partitioning syntax", "CREATE partition placeholder");
+    failures += execute_sql(database, "CREATE TABLE p (id INT)", MYLITE_DONE);
+    failures += expect_parser_placeholder_execution(
+        database, "ALTER TABLE p ADD PARTITION PARTITIONS 1", "table partitioning syntax",
+        "ALTER add partition placeholder");
+    failures += expect_parser_placeholder_execution(database, "ALTER TABLE p REMOVE PARTITIONING",
+                                                    "table partitioning syntax",
+                                                    "ALTER remove partitioning placeholder");
 
     mylite_close(database);
     return failures;

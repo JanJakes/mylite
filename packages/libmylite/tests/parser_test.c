@@ -34,6 +34,7 @@ static int test_show_create_database_syntax(void);
 static int test_show_create_table_syntax(void);
 static int test_show_diagnostics_syntax(void);
 static int test_describe_table_syntax(void);
+static int test_explain_statement_placeholder_syntax(void);
 static int test_drop_table_syntax(void);
 static int test_insert_values_syntax(void);
 static int test_insert_set_syntax(void);
@@ -45,6 +46,8 @@ static int test_transaction_statement_syntax(void);
 static int test_savepoint_statement_syntax(void);
 static int test_user_variable_and_prepared_statement_syntax(void);
 static int test_stored_program_placeholder_syntax(void);
+static int test_account_privilege_placeholder_syntax(void);
+static int test_partitioning_placeholder_syntax(void);
 static int test_select_expression_list(void);
 static int test_expression_operator_foundation_syntax(void);
 static int test_scalar_function_call_syntax(void);
@@ -198,6 +201,7 @@ int main(void)
     failures += test_show_create_table_syntax();
     failures += test_show_diagnostics_syntax();
     failures += test_describe_table_syntax();
+    failures += test_explain_statement_placeholder_syntax();
     failures += test_drop_table_syntax();
     failures += test_insert_values_syntax();
     failures += test_insert_set_syntax();
@@ -209,6 +213,8 @@ int main(void)
     failures += test_savepoint_statement_syntax();
     failures += test_user_variable_and_prepared_statement_syntax();
     failures += test_stored_program_placeholder_syntax();
+    failures += test_account_privilege_placeholder_syntax();
+    failures += test_partitioning_placeholder_syntax();
     failures += test_select_expression_list();
     failures += test_expression_operator_foundation_syntax();
     failures += test_scalar_function_call_syntax();
@@ -4044,9 +4050,6 @@ static int test_describe_table_syntax(void)
         parse_sql("DESCRIBE t WHERE Field = 'name';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("EXPLAIN FORMAT=TREE SELECT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-
     failures += parse_sql("SELECT a FROM t ORDER BY a DESC; "
                           "CREATE TABLE order_desc (a INT, KEY idx_a (a DESC)); "
                           "UPDATE t SET a = 1 ORDER BY a DESC LIMIT 1; "
@@ -4056,6 +4059,75 @@ static int test_describe_table_syntax(void)
     mylite_sql_parse_result_deinit(&result);
 
     // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_explain_statement_placeholder_syntax(void)
+{
+    enum {
+        explain_select_statement_index = 0,
+        describe_select_statement_index = 1,
+        desc_select_statement_index = 2,
+        explain_format_statement_index = 3,
+        explain_into_statement_index = 4,
+        explain_analyze_statement_index = 5,
+        explain_schema_statement_index = 6,
+        explain_connection_statement_index = 7,
+        explain_update_statement_index = 8,
+        explain_table_statement_index = 9,
+        statement_count = 10,
+    };
+    struct mylite_sql_parse_result result;
+    int failures = 0;
+
+    failures += parse_sql("EXPLAIN SELECT 1; "
+                          "DESCRIBE SELECT 1; "
+                          "DESC SELECT 1; "
+                          "EXPLAIN FORMAT=TREE SELECT 1; "
+                          "EXPLAIN FORMAT=JSON INTO @plan SELECT 1; "
+                          "EXPLAIN ANALYZE FORMAT=TREE SELECT 1; "
+                          "EXPLAIN FOR DATABASE app SELECT * FROM t; "
+                          "EXPLAIN FOR CONNECTION 123; "
+                          "EXPLAIN UPDATE t SET a = 1; "
+                          "EXPLAIN TABLE t ORDER BY a LIMIT 1;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_child_count(result.root, statement_count, "explain placeholder count");
+    failures += expect_placeholder_statement(child_at(result.root, explain_select_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_EXPLAIN,
+                                             "EXPLAIN SELECT placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, describe_select_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_EXPLAIN,
+                                             "DESCRIBE SELECT placeholder");
+    failures +=
+        expect_placeholder_statement(child_at(result.root, desc_select_statement_index),
+                                     MYLITE_SQL_AST_PLACEHOLDER_EXPLAIN, "DESC SELECT placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, explain_format_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_EXPLAIN,
+                                             "EXPLAIN FORMAT placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, explain_into_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_EXPLAIN,
+                                             "EXPLAIN INTO placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, explain_analyze_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_EXPLAIN,
+                                             "EXPLAIN ANALYZE placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, explain_schema_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_EXPLAIN,
+                                             "EXPLAIN schema placeholder");
+    failures += expect_placeholder_statement(
+        child_at(result.root, explain_connection_statement_index),
+        MYLITE_SQL_AST_PLACEHOLDER_EXPLAIN, "EXPLAIN FOR CONNECTION placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, explain_update_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_EXPLAIN,
+                                             "EXPLAIN UPDATE placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, explain_table_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_EXPLAIN,
+                                             "EXPLAIN TABLE placeholder");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("EXPLAIN FOR CONNECTION CONNECTION_ID();", MYLITE_SQL_PARSE_SYNTAX_ERROR,
+                          &result);
+    mylite_sql_parse_result_deinit(&result);
+
     return failures;
 }
 
@@ -5348,6 +5420,230 @@ static int test_stored_program_placeholder_syntax(void)
     failures += parse_sql("CREATE EVENT ev DO SELECT 1", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SIGNAL SQLSTATE", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_account_privilege_placeholder_syntax(void)
+{
+    enum {
+        alter_user_statement_index = 0,
+        create_user_statement_index = 1,
+        create_role_statement_index = 2,
+        drop_user_statement_index = 3,
+        drop_role_statement_index = 4,
+        grant_privilege_statement_index = 5,
+        grant_role_statement_index = 6,
+        rename_user_statement_index = 7,
+        revoke_statement_index = 8,
+        set_default_role_statement_index = 9,
+        set_password_statement_index = 10,
+        set_role_statement_index = 11,
+        show_grants_statement_index = 12,
+        show_privileges_statement_index = 13,
+        statement_count = 14,
+    };
+    struct mylite_sql_parse_result result;
+    int failures = 0;
+
+    failures +=
+        parse_sql("ALTER USER IF EXISTS 'u'@'localhost' IDENTIFIED BY 'x' PASSWORD EXPIRE; "
+                  "CREATE USER IF NOT EXISTS 'u'@'localhost' IDENTIFIED BY 'x' ACCOUNT LOCK; "
+                  "CREATE ROLE IF NOT EXISTS 'r', 'r2'; "
+                  "DROP USER IF EXISTS 'u'@'localhost'; "
+                  "DROP ROLE IF EXISTS 'r'; "
+                  "GRANT SELECT, INSERT ON app.* TO 'u'@'localhost' WITH GRANT OPTION; "
+                  "GRANT 'r' TO 'u'@'localhost' WITH ADMIN OPTION; "
+                  "RENAME USER 'u'@'localhost' TO 'v'@'localhost'; "
+                  "REVOKE SELECT ON app.* FROM 'v'@'localhost'; "
+                  "SET DEFAULT ROLE ALL TO 'v'@'localhost'; "
+                  "SET PASSWORD FOR 'v'@'localhost' = 'secret'; "
+                  "SET ROLE DEFAULT; "
+                  "SHOW GRANTS FOR 'v'@'localhost' USING 'r'; "
+                  "SHOW PRIVILEGES;",
+                  MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_child_count(result.root, statement_count, "account placeholder count");
+    failures += expect_placeholder_statement(child_at(result.root, alter_user_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_ALTER_USER,
+                                             "ALTER USER placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, create_user_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_CREATE_USER,
+                                             "CREATE USER placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, create_role_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_CREATE_ROLE,
+                                             "CREATE ROLE placeholder");
+    failures +=
+        expect_placeholder_statement(child_at(result.root, drop_user_statement_index),
+                                     MYLITE_SQL_AST_PLACEHOLDER_DROP_USER, "DROP USER placeholder");
+    failures +=
+        expect_placeholder_statement(child_at(result.root, drop_role_statement_index),
+                                     MYLITE_SQL_AST_PLACEHOLDER_DROP_ROLE, "DROP ROLE placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, grant_privilege_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_GRANT,
+                                             "GRANT privilege placeholder");
+    failures +=
+        expect_placeholder_statement(child_at(result.root, grant_role_statement_index),
+                                     MYLITE_SQL_AST_PLACEHOLDER_GRANT, "GRANT role placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, rename_user_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_RENAME_USER,
+                                             "RENAME USER placeholder");
+    failures +=
+        expect_placeholder_statement(child_at(result.root, revoke_statement_index),
+                                     MYLITE_SQL_AST_PLACEHOLDER_REVOKE, "REVOKE placeholder");
+    failures += expect_placeholder_statement(
+        child_at(result.root, set_default_role_statement_index),
+        MYLITE_SQL_AST_PLACEHOLDER_SET_DEFAULT_ROLE, "SET DEFAULT ROLE placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, set_password_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_SET_PASSWORD,
+                                             "SET PASSWORD placeholder");
+    failures +=
+        expect_placeholder_statement(child_at(result.root, set_role_statement_index),
+                                     MYLITE_SQL_AST_PLACEHOLDER_SET_ROLE, "SET ROLE placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, show_grants_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_SHOW_GRANTS,
+                                             "SHOW GRANTS placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, show_privileges_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_SHOW_PRIVILEGES,
+                                             "SHOW PRIVILEGES placeholder");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_partitioning_placeholder_syntax(void)
+{
+    enum {
+        create_hash_statement_index = 0,
+        create_key_statement_index = 1,
+        create_range_statement_index = 2,
+        create_range_columns_statement_index = 3,
+        create_list_statement_index = 4,
+        create_list_columns_statement_index = 5,
+        create_subpartition_statement_index = 6,
+        alter_partition_by_statement_index = 7,
+        alter_add_statement_index = 8,
+        alter_drop_statement_index = 9,
+        alter_discard_statement_index = 10,
+        alter_import_statement_index = 11,
+        alter_truncate_statement_index = 12,
+        alter_coalesce_statement_index = 13,
+        alter_reorganize_statement_index = 14,
+        alter_exchange_statement_index = 15,
+        alter_analyze_statement_index = 16,
+        alter_check_statement_index = 17,
+        alter_optimize_statement_index = 18,
+        alter_rebuild_statement_index = 19,
+        alter_repair_statement_index = 20,
+        alter_remove_statement_index = 21,
+        statement_count = 22,
+    };
+    struct mylite_sql_parse_result result;
+    int failures = 0;
+
+    failures += parse_sql("CREATE TABLE p_hash (id INT) PARTITION BY HASH(id) PARTITIONS 2; "
+                          "CREATE TABLE p_key (id INT, KEY id_idx (id)) "
+                          "PARTITION BY LINEAR KEY ALGORITHM=1 (id) PARTITIONS 2; "
+                          "CREATE TABLE p_range (id INT) PARTITION BY RANGE (id) "
+                          "(PARTITION p0 VALUES LESS THAN (10), "
+                          "PARTITION p1 VALUES LESS THAN MAXVALUE); "
+                          "CREATE TABLE p_range_cols (id INT, d DATE) "
+                          "PARTITION BY RANGE COLUMNS (id, d) "
+                          "(PARTITION p0 VALUES LESS THAN (10, '2024-01-01')); "
+                          "CREATE TABLE p_list (id INT) PARTITION BY LIST (id) "
+                          "(PARTITION p0 VALUES IN (1, 2)); "
+                          "CREATE TABLE p_list_cols (id INT, status VARCHAR(10)) "
+                          "PARTITION BY LIST COLUMNS (id, status) "
+                          "(PARTITION p0 VALUES IN ((1, 'a'), (2, 'b'))); "
+                          "CREATE TABLE p_sub (id INT) PARTITION BY RANGE (id) "
+                          "SUBPARTITION BY HASH(id) SUBPARTITIONS 2 "
+                          "(PARTITION p0 VALUES LESS THAN (10)); "
+                          "ALTER TABLE p_hash PARTITION BY HASH(id) PARTITIONS 2; "
+                          "ALTER TABLE p_hash ADD PARTITION PARTITIONS 1; "
+                          "ALTER TABLE p_hash DROP PARTITION p0; "
+                          "ALTER TABLE p_hash DISCARD PARTITION p0 TABLESPACE; "
+                          "ALTER TABLE p_hash IMPORT PARTITION p0 TABLESPACE; "
+                          "ALTER TABLE p_hash TRUNCATE PARTITION ALL; "
+                          "ALTER TABLE p_hash COALESCE PARTITION 1; "
+                          "ALTER TABLE p_hash REORGANIZE PARTITION p0 INTO "
+                          "(PARTITION p0 VALUES LESS THAN (5)); "
+                          "ALTER TABLE p_hash EXCHANGE PARTITION p0 WITH TABLE staging "
+                          "WITHOUT VALIDATION; "
+                          "ALTER TABLE p_hash ANALYZE PARTITION p0; "
+                          "ALTER TABLE p_hash CHECK PARTITION p0; "
+                          "ALTER TABLE p_hash OPTIMIZE PARTITION p0; "
+                          "ALTER TABLE p_hash REBUILD PARTITION p0; "
+                          "ALTER TABLE p_hash REPAIR PARTITION p0; "
+                          "ALTER TABLE p_hash REMOVE PARTITIONING;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_child_count(result.root, statement_count, "partition placeholder count");
+    failures += expect_placeholder_statement(child_at(result.root, create_hash_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING,
+                                             "CREATE hash partition placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, create_key_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING,
+                                             "CREATE key partition placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, create_range_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING,
+                                             "CREATE range partition placeholder");
+    failures +=
+        expect_placeholder_statement(child_at(result.root, create_range_columns_statement_index),
+                                     MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING,
+                                     "CREATE range columns partition placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, create_list_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING,
+                                             "CREATE list partition placeholder");
+    failures += expect_placeholder_statement(
+        child_at(result.root, create_list_columns_statement_index),
+        MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING, "CREATE list columns partition placeholder");
+    failures += expect_placeholder_statement(
+        child_at(result.root, create_subpartition_statement_index),
+        MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING, "CREATE subpartition placeholder");
+    failures += expect_placeholder_statement(
+        child_at(result.root, alter_partition_by_statement_index),
+        MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING, "ALTER partition by placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, alter_add_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING,
+                                             "ALTER add partition placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, alter_drop_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING,
+                                             "ALTER drop partition placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, alter_discard_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING,
+                                             "ALTER discard partition placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, alter_import_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING,
+                                             "ALTER import partition placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, alter_truncate_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING,
+                                             "ALTER truncate partition placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, alter_coalesce_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING,
+                                             "ALTER coalesce partition placeholder");
+    failures += expect_placeholder_statement(
+        child_at(result.root, alter_reorganize_statement_index),
+        MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING, "ALTER reorganize partition placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, alter_exchange_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING,
+                                             "ALTER exchange partition placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, alter_analyze_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING,
+                                             "ALTER analyze partition placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, alter_check_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING,
+                                             "ALTER check partition placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, alter_optimize_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING,
+                                             "ALTER optimize partition placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, alter_rebuild_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING,
+                                             "ALTER rebuild partition placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, alter_repair_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING,
+                                             "ALTER repair partition placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, alter_remove_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING,
+                                             "ALTER remove partitioning placeholder");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

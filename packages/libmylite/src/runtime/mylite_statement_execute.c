@@ -163,6 +163,21 @@ int mylite_statement_execute_custom_with_callbacks(
     case MYLITE_STMT_DROP_TRIGGER_PLACEHOLDER:
     case MYLITE_STMT_DROP_EVENT_PLACEHOLDER:
     case MYLITE_STMT_SIGNAL_PLACEHOLDER:
+    case MYLITE_STMT_EXPLAIN_PLACEHOLDER:
+    case MYLITE_STMT_ALTER_USER_PLACEHOLDER:
+    case MYLITE_STMT_CREATE_USER_PLACEHOLDER:
+    case MYLITE_STMT_CREATE_ROLE_PLACEHOLDER:
+    case MYLITE_STMT_DROP_USER_PLACEHOLDER:
+    case MYLITE_STMT_DROP_ROLE_PLACEHOLDER:
+    case MYLITE_STMT_GRANT_PLACEHOLDER:
+    case MYLITE_STMT_RENAME_USER_PLACEHOLDER:
+    case MYLITE_STMT_REVOKE_PLACEHOLDER:
+    case MYLITE_STMT_SET_DEFAULT_ROLE_PLACEHOLDER:
+    case MYLITE_STMT_SET_PASSWORD_PLACEHOLDER:
+    case MYLITE_STMT_SET_ROLE_PLACEHOLDER:
+    case MYLITE_STMT_SHOW_GRANTS_PLACEHOLDER:
+    case MYLITE_STMT_SHOW_PRIVILEGES_PLACEHOLDER:
+    case MYLITE_STMT_TABLE_PARTITIONING_PLACEHOLDER:
         status = execute_parser_placeholder_statement(stmt);
         break;
     case MYLITE_STMT_SCALAR_SELECT:
@@ -210,6 +225,37 @@ static const char *parser_placeholder_warning_message(enum mylite_stmt_kind kind
         return "DROP EVENT is accepted as a MyLite parser placeholder and is not executed";
     case MYLITE_STMT_SIGNAL_PLACEHOLDER:
         return "SIGNAL statement is accepted as a MyLite parser placeholder and is not executed";
+    case MYLITE_STMT_EXPLAIN_PLACEHOLDER:
+        return "EXPLAIN statement is accepted as a MyLite parser placeholder and is not executed";
+    case MYLITE_STMT_ALTER_USER_PLACEHOLDER:
+        return "ALTER USER is accepted as a MyLite parser placeholder and is not executed";
+    case MYLITE_STMT_CREATE_USER_PLACEHOLDER:
+        return "CREATE USER is accepted as a MyLite parser placeholder and is not executed";
+    case MYLITE_STMT_CREATE_ROLE_PLACEHOLDER:
+        return "CREATE ROLE is accepted as a MyLite parser placeholder and is not executed";
+    case MYLITE_STMT_DROP_USER_PLACEHOLDER:
+        return "DROP USER is accepted as a MyLite parser placeholder and is not executed";
+    case MYLITE_STMT_DROP_ROLE_PLACEHOLDER:
+        return "DROP ROLE is accepted as a MyLite parser placeholder and is not executed";
+    case MYLITE_STMT_GRANT_PLACEHOLDER:
+        return "GRANT statement is accepted as a MyLite parser placeholder and is not executed";
+    case MYLITE_STMT_RENAME_USER_PLACEHOLDER:
+        return "RENAME USER is accepted as a MyLite parser placeholder and is not executed";
+    case MYLITE_STMT_REVOKE_PLACEHOLDER:
+        return "REVOKE statement is accepted as a MyLite parser placeholder and is not executed";
+    case MYLITE_STMT_SET_DEFAULT_ROLE_PLACEHOLDER:
+        return "SET DEFAULT ROLE is accepted as a MyLite parser placeholder and is not executed";
+    case MYLITE_STMT_SET_PASSWORD_PLACEHOLDER:
+        return "SET PASSWORD is accepted as a MyLite parser placeholder and is not executed";
+    case MYLITE_STMT_SET_ROLE_PLACEHOLDER:
+        return "SET ROLE is accepted as a MyLite parser placeholder and is not executed";
+    case MYLITE_STMT_SHOW_GRANTS_PLACEHOLDER:
+        return "SHOW GRANTS is accepted as a MyLite parser placeholder and is not executed";
+    case MYLITE_STMT_SHOW_PRIVILEGES_PLACEHOLDER:
+        return "SHOW PRIVILEGES is accepted as a MyLite parser placeholder and is not executed";
+    case MYLITE_STMT_TABLE_PARTITIONING_PLACEHOLDER:
+        return "table partitioning syntax is accepted as a MyLite parser placeholder and is not "
+               "executed";
     case MYLITE_STMT_SQLITE:
     case MYLITE_STMT_CREATE_SCHEMA:
     case MYLITE_STMT_ALTER_SCHEMA:

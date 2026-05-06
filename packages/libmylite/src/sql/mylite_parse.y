@@ -89,6 +89,17 @@
 %type opt_show_diagnostics_limit { struct mylite_sql_ast_node * }
 %type describe_table_keyword { struct mylite_sql_token }
 %type opt_describe_column_filter { struct mylite_sql_ast_node * }
+%type explain_statement_tail { struct mylite_sql_ast_node * }
+%type opt_explain_type { struct mylite_sql_ast_node * }
+%type opt_explain_into { struct mylite_sql_ast_node * }
+%type opt_explain_schema { struct mylite_sql_ast_node * }
+%type opt_explain_analyze_format { struct mylite_sql_ast_node * }
+%type explainable_statement { struct mylite_sql_ast_node * }
+%type table_query_statement { struct mylite_sql_ast_node * }
+%type partition_options { struct mylite_sql_ast_node * }
+%type parser_placeholder_tail { struct mylite_sql_ast_node * }
+%type parser_placeholder_item { struct mylite_sql_ast_node * }
+%type parser_placeholder_keyword { struct mylite_sql_token }
 %extra_argument { struct mylite_sql_parser_state *state }
 
 %include {
@@ -191,6 +202,9 @@ statement(A) ::= create_schema_statement(B). {
 statement(A) ::= alter_schema_statement(B). {
     A = B;
 }
+statement(A) ::= alter_table_partition_statement(B). {
+    A = B;
+}
 statement(A) ::= alter_table_statement(B). {
     A = B;
 }
@@ -287,6 +301,9 @@ statement(A) ::= show_diagnostics_statement(B). {
 statement(A) ::= describe_table_statement(B). {
     A = B;
 }
+statement(A) ::= explain_statement(B). {
+    A = B;
+}
 statement(A) ::= set_names_statement(B). {
     A = B;
 }
@@ -336,6 +353,48 @@ statement(A) ::= drop_event_statement(B). {
     A = B;
 }
 statement(A) ::= signal_statement(B). {
+    A = B;
+}
+statement(A) ::= alter_user_statement(B). {
+    A = B;
+}
+statement(A) ::= create_user_statement(B). {
+    A = B;
+}
+statement(A) ::= create_role_statement(B). {
+    A = B;
+}
+statement(A) ::= drop_user_statement(B). {
+    A = B;
+}
+statement(A) ::= drop_role_statement(B). {
+    A = B;
+}
+statement(A) ::= grant_statement(B). {
+    A = B;
+}
+statement(A) ::= rename_user_statement(B). {
+    A = B;
+}
+statement(A) ::= revoke_statement(B). {
+    A = B;
+}
+statement(A) ::= set_default_role_statement(B). {
+    A = B;
+}
+statement(A) ::= set_password_statement(B). {
+    A = B;
+}
+statement(A) ::= set_role_statement(B). {
+    A = B;
+}
+statement(A) ::= show_grants_statement(B). {
+    A = B;
+}
+statement(A) ::= show_privileges_statement(B). {
+    A = B;
+}
+statement(A) ::= create_partitioned_table_statement(B). {
     A = B;
 }
 statement(A) ::= create_table_statement(B). {
@@ -1411,6 +1470,97 @@ opt_describe_column_filter(A) ::= STRING(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
 }
 
+explain_statement(A) ::= EXPLAIN(T) explain_statement_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_EXPLAIN, T, B);
+}
+explain_statement(A) ::= DESCRIBE(T) explain_statement_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_EXPLAIN, T, B);
+}
+explain_statement(A) ::= DESC(T) explain_statement_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_EXPLAIN, T, B);
+}
+
+explain_statement_tail(A) ::= opt_explain_type opt_explain_into opt_explain_schema
+        explainable_statement(B). {
+    A = B;
+}
+explain_statement_tail(A) ::= opt_explain_type opt_explain_into FOR CONNECTION INTEGER(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
+}
+explain_statement_tail(A) ::= ANALYZE opt_explain_analyze_format opt_explain_schema
+        select_statement(B). {
+    A = B;
+}
+
+opt_explain_type(A) ::= . {
+    A = NULL;
+}
+opt_explain_type(A) ::= FORMAT(T) opt_equal identifier(B). {
+    (void)T;
+    A = B;
+}
+
+opt_explain_into(A) ::= . {
+    A = NULL;
+}
+opt_explain_into(A) ::= INTO USER_VARIABLE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+
+opt_explain_schema(A) ::= . {
+    A = NULL;
+}
+opt_explain_schema(A) ::= FOR SCHEMA identifier(B). {
+    A = B;
+}
+opt_explain_schema(A) ::= FOR DATABASE identifier(B). {
+    A = B;
+}
+
+opt_explain_analyze_format(A) ::= . {
+    A = NULL;
+}
+opt_explain_analyze_format(A) ::= FORMAT(T) opt_equal identifier(B). {
+    (void)T;
+    A = B;
+}
+
+explainable_statement(A) ::= select_statement(B). {
+    A = B;
+}
+explainable_statement(A) ::= union_query_expression(B). {
+    A = B;
+}
+explainable_statement(A) ::= table_query_statement(B). {
+    A = B;
+}
+explainable_statement(A) ::= insert_values_statement(B). {
+    A = B;
+}
+explainable_statement(A) ::= insert_set_statement(B). {
+    A = B;
+}
+explainable_statement(A) ::= replace_values_statement(B). {
+    A = B;
+}
+explainable_statement(A) ::= replace_set_statement(B). {
+    A = B;
+}
+explainable_statement(A) ::= update_statement(B). {
+    A = B;
+}
+explainable_statement(A) ::= delete_statement(B). {
+    A = B;
+}
+
+table_query_statement(A) ::= TABLE(T) table_name(B) opt_order_by_clause opt_limit_clause. {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_EXPLAIN, T, B);
+}
+
 show_index_keyword(A) ::= INDEX(T). {
     A = T;
 }
@@ -1962,6 +2112,398 @@ signal_simple_value(A) ::= USER_VARIABLE(T). {
 }
 signal_simple_value(A) ::= SYSTEM_VARIABLE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
+}
+
+alter_user_statement(A) ::= ALTER(T) USER parser_placeholder_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_ALTER_USER, T, B);
+}
+alter_user_statement(A) ::= ALTER(T) USER IF EXISTS parser_placeholder_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_ALTER_USER, T, B);
+}
+
+create_user_statement(A) ::= CREATE(T) USER parser_placeholder_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_CREATE_USER, T, B);
+}
+create_user_statement(A) ::= CREATE(T) USER IF NOT EXISTS parser_placeholder_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_CREATE_USER, T, B);
+}
+
+create_role_statement(A) ::= CREATE(T) ROLE parser_placeholder_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_CREATE_ROLE, T, B);
+}
+create_role_statement(A) ::= CREATE(T) ROLE IF NOT EXISTS parser_placeholder_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_CREATE_ROLE, T, B);
+}
+
+drop_user_statement(A) ::= DROP(T) USER parser_placeholder_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_DROP_USER, T, B);
+}
+drop_user_statement(A) ::= DROP(T) USER IF EXISTS parser_placeholder_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_DROP_USER, T, B);
+}
+
+drop_role_statement(A) ::= DROP(T) ROLE parser_placeholder_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_DROP_ROLE, T, B);
+}
+drop_role_statement(A) ::= DROP(T) ROLE IF EXISTS parser_placeholder_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_DROP_ROLE, T, B);
+}
+
+grant_statement(A) ::= GRANT(T) parser_placeholder_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_GRANT, T, B);
+}
+
+rename_user_statement(A) ::= RENAME(T) USER parser_placeholder_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_RENAME_USER, T, B);
+}
+
+revoke_statement(A) ::= REVOKE(T) parser_placeholder_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_REVOKE, T, B);
+}
+
+set_default_role_statement(A) ::= SET(T) DEFAULT ROLE parser_placeholder_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_SET_DEFAULT_ROLE, T, B);
+}
+
+set_password_statement(A) ::= SET(T) PASSWORD parser_placeholder_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_SET_PASSWORD, T, B);
+}
+
+set_role_statement(A) ::= SET(T) ROLE parser_placeholder_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_SET_ROLE, T, B);
+}
+
+show_grants_statement(A) ::= SHOW(T) GRANTS(G). {
+    A = mylite_sql_parser_make_placeholder_statement_with_end_token(
+        state, MYLITE_SQL_AST_PLACEHOLDER_SHOW_GRANTS, T, G);
+}
+show_grants_statement(A) ::= SHOW(T) GRANTS parser_placeholder_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_SHOW_GRANTS, T, B);
+}
+
+show_privileges_statement(A) ::= SHOW(T) PRIVILEGES(P). {
+    A = mylite_sql_parser_make_placeholder_statement_with_end_token(
+        state, MYLITE_SQL_AST_PLACEHOLDER_SHOW_PRIVILEGES, T, P);
+}
+
+parser_placeholder_tail(A) ::= parser_placeholder_item(B). {
+    A = B;
+}
+parser_placeholder_tail(A) ::= parser_placeholder_tail parser_placeholder_item(B). {
+    A = B;
+}
+
+parser_placeholder_item(A) ::= identifier(B). {
+    A = B;
+}
+parser_placeholder_item(A) ::= literal(B). {
+    A = B;
+}
+parser_placeholder_item(A) ::= USER_VARIABLE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+parser_placeholder_item(A) ::= SYSTEM_VARIABLE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+parser_placeholder_item(A) ::= LPAREN(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+parser_placeholder_item(A) ::= RPAREN(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+parser_placeholder_item(A) ::= COMMA(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+parser_placeholder_item(A) ::= DOT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+parser_placeholder_item(A) ::= STAR(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+parser_placeholder_item(A) ::= EQ(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+parser_placeholder_item(A) ::= ASSIGN(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+parser_placeholder_item(A) ::= PLUS(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+parser_placeholder_item(A) ::= MINUS(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+parser_placeholder_item(A) ::= SLASH(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+parser_placeholder_item(A) ::= PERCENT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+parser_placeholder_item(A) ::= LT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+parser_placeholder_item(A) ::= LE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+parser_placeholder_item(A) ::= GT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+parser_placeholder_item(A) ::= GE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+parser_placeholder_item(A) ::= NE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+parser_placeholder_item(A) ::= parser_placeholder_keyword(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+
+parser_placeholder_keyword(A) ::= ALL(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= ALTER(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= ANALYZE(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= AND(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= AS(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= BY(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= CHECK(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= CREATE(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= CURRENT_USER(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= DATABASE(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= DEFAULT(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= DELETE(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= DROP(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= EXCEPT(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= EXECUTE(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= FOR(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= FROM(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= FUNCTION(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= GRANT(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= IN(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= INDEX(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= INSERT(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= INTO(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= INTERVAL(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= KEY(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= LINEAR(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= LOCK(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= MAXVALUE(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= NOT(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= ON(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= OPTION(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= OPTIMIZE(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= OR(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= PARTITION(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= PROCEDURE(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= RANGE(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= REFERENCES(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= REPLACE(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= REQUIRE(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= REVOKE(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= SELECT(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= SET(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= SHOW(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= SSL(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= TABLE(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= TO(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= TRIGGER(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= UNLOCK(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= UPDATE(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= USAGE(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= USING(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= VALUES(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= WITH(T). {
+    A = T;
+}
+
+alter_table_partition_statement(A) ::= ALTER(T) TABLE table_name partition_options(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING, T, B);
+}
+alter_table_partition_statement(A) ::= ALTER(T) TABLE table_name ADD PARTITION parser_placeholder_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING, T, B);
+}
+alter_table_partition_statement(A) ::= ALTER(T) TABLE table_name DROP PARTITION parser_placeholder_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING, T, B);
+}
+alter_table_partition_statement(A) ::= ALTER(T) TABLE table_name DISCARD PARTITION parser_placeholder_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING, T, B);
+}
+alter_table_partition_statement(A) ::= ALTER(T) TABLE table_name IMPORT PARTITION parser_placeholder_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING, T, B);
+}
+alter_table_partition_statement(A) ::= ALTER(T) TABLE table_name TRUNCATE PARTITION parser_placeholder_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING, T, B);
+}
+alter_table_partition_statement(A) ::= ALTER(T) TABLE table_name COALESCE PARTITION parser_placeholder_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING, T, B);
+}
+alter_table_partition_statement(A) ::= ALTER(T) TABLE table_name REORGANIZE PARTITION parser_placeholder_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING, T, B);
+}
+alter_table_partition_statement(A) ::= ALTER(T) TABLE table_name EXCHANGE PARTITION parser_placeholder_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING, T, B);
+}
+alter_table_partition_statement(A) ::= ALTER(T) TABLE table_name ANALYZE PARTITION parser_placeholder_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING, T, B);
+}
+alter_table_partition_statement(A) ::= ALTER(T) TABLE table_name CHECK PARTITION parser_placeholder_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING, T, B);
+}
+alter_table_partition_statement(A) ::= ALTER(T) TABLE table_name OPTIMIZE PARTITION parser_placeholder_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING, T, B);
+}
+alter_table_partition_statement(A) ::= ALTER(T) TABLE table_name REBUILD PARTITION parser_placeholder_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING, T, B);
+}
+alter_table_partition_statement(A) ::= ALTER(T) TABLE table_name REPAIR PARTITION parser_placeholder_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING, T, B);
+}
+alter_table_partition_statement(A) ::= ALTER(T) TABLE table_name REMOVE PARTITIONING(P). {
+    A = mylite_sql_parser_make_placeholder_statement_with_end_token(
+        state, MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING, T, P);
+}
+
+partition_options(A) ::= PARTITION(P) BY parser_placeholder_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING, P, B);
+}
+
+create_partitioned_table_statement(A) ::= CREATE(T) TABLE opt_if_not_exists table_name
+        LPAREN table_element_list RPAREN table_option_list partition_options(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING, T, B);
 }
 
 create_table_statement(A) ::= CREATE(T) TABLE opt_if_not_exists(B) table_name(C) LPAREN table_element_list(D) RPAREN table_option_list(E). {
@@ -4175,6 +4717,9 @@ function_name(A) ::= DATE(T). {
 function_name(A) ::= DATABASE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+function_name(A) ::= FORMAT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 function_name(A) ::= INSERT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
@@ -4292,6 +4837,18 @@ nonreserved_identifier_keyword(A) ::= COPY(T). {
 nonreserved_identifier_keyword(A) ::= COLUMNS(T). {
     A = T;
 }
+nonreserved_identifier_keyword(A) ::= COALESCE(T). {
+    A = T;
+}
+nonreserved_identifier_keyword(A) ::= CONNECTION(T). {
+    A = T;
+}
+nonreserved_identifier_keyword(A) ::= DISCARD(T). {
+    A = T;
+}
+nonreserved_identifier_keyword(A) ::= EXCHANGE(T). {
+    A = T;
+}
 nonreserved_identifier_keyword(A) ::= EXCLUSIVE(T). {
     A = T;
 }
@@ -4308,6 +4865,12 @@ nonreserved_identifier_keyword(A) ::= FULL(T). {
     A = T;
 }
 nonreserved_identifier_keyword(A) ::= GLOBAL(T). {
+    A = T;
+}
+nonreserved_identifier_keyword(A) ::= GRANTS(T). {
+    A = T;
+}
+nonreserved_identifier_keyword(A) ::= IMPORT(T). {
     A = T;
 }
 nonreserved_identifier_keyword(A) ::= INPLACE(T). {
@@ -4331,6 +4894,30 @@ nonreserved_identifier_keyword(A) ::= NONE(T). {
 nonreserved_identifier_keyword(A) ::= PARSER(T). {
     A = T;
 }
+nonreserved_identifier_keyword(A) ::= PARTITIONING(T). {
+    A = T;
+}
+nonreserved_identifier_keyword(A) ::= PASSWORD(T). {
+    A = T;
+}
+nonreserved_identifier_keyword(A) ::= PRIVILEGES(T). {
+    A = T;
+}
+nonreserved_identifier_keyword(A) ::= REBUILD(T). {
+    A = T;
+}
+nonreserved_identifier_keyword(A) ::= REORGANIZE(T). {
+    A = T;
+}
+nonreserved_identifier_keyword(A) ::= REPAIR(T). {
+    A = T;
+}
+nonreserved_identifier_keyword(A) ::= REMOVE(T). {
+    A = T;
+}
+nonreserved_identifier_keyword(A) ::= ROLE(T). {
+    A = T;
+}
 nonreserved_identifier_keyword(A) ::= SHARED(T). {
     A = T;
 }
@@ -4347,6 +4934,9 @@ nonreserved_identifier_keyword(A) ::= TIME(T). {
     A = T;
 }
 nonreserved_identifier_keyword(A) ::= TRUNCATE(T). {
+    A = T;
+}
+nonreserved_identifier_keyword(A) ::= USER(T). {
     A = T;
 }
 nonreserved_identifier_keyword(A) ::= VALUE(T). {

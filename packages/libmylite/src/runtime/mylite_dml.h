@@ -125,6 +125,13 @@ int mylite_dml_validate_replace_parent_delete_foreign_keys(
     const struct mylite_insert_table *table,
     const struct mylite_insert_bound_value *stored
 );
+int mylite_dml_apply_replace_parent_delete_foreign_key_actions(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_bound_value *stored
+);
 int mylite_dml_validate_update_child_foreign_keys(
     mylite_db *database,
     const struct mylite_select_table *table,

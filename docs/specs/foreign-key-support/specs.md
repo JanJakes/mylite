@@ -159,12 +159,12 @@ multi-table deletes, self-referential parent mutations, and `REPLACE` conflict
 deletes with error 1451 while `foreign_key_checks` is enabled. Direct parent
 updates apply `ON UPDATE CASCADE` and `ON UPDATE SET NULL` to matching child
 rows for supported single-table and joined `UPDATE` paths. Direct parent
-deletes apply `ON DELETE CASCADE` and `ON DELETE SET NULL` to matching child
-rows for supported single-table and multi-table `DELETE` paths. Covered parent
-update and delete actions are skipped while `foreign_key_checks=0`. Temporary
-child foreign-key definitions are rejected with a deterministic `Cannot add
-foreign key constraint` diagnostic, and persistent child definitions do not
-resolve temporary parent tables.
+deletes and `REPLACE` conflict deletes apply `ON DELETE CASCADE` and
+`ON DELETE SET NULL` to matching child rows for supported paths. Covered
+parent update and delete actions are skipped while `foreign_key_checks=0`.
+Temporary child foreign-key definitions are rejected with a deterministic
+`Cannot add foreign key constraint` diagnostic, and persistent child
+definitions do not resolve temporary parent tables.
 FK-only `ALTER TABLE ... ADD FOREIGN KEY` persists catalog metadata, creates or
 reuses the supporting child index, validates existing child rows while
 `foreign_key_checks=1`, skips existing-row validation while

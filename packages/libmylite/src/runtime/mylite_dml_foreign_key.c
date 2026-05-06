@@ -528,6 +528,59 @@ int mylite_dml_validate_replace_parent_delete_foreign_keys(
     );
 }
 
+int mylite_dml_apply_replace_parent_delete_foreign_key_actions(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_bound_value *stored
+) {
+    static const char sql[] =
+        "SELECT constraint_schema, constraint_name, table_schema, table_name, delete_rule "
+        "FROM __mylite_foreign_key_catalog "
+        "WHERE referenced_table_schema = ? AND referenced_table_name = ? "
+        "AND ordinal_position = 1 AND delete_rule IN ('CASCADE', 'SET NULL') "
+        "ORDER BY rowid";
+    struct mylite_parent_foreign_key_row stored_row = {
+        .kind = MYLITE_PARENT_FOREIGN_KEY_INSERT_ROW,
+        .insert_table = table,
+        .insert_values = stored,
+    };
+    sqlite3_stmt *constraint = NULL;
+    int rc = SQLITE_OK;
+    int status = MYLITE_OK;
+
+    if (database == NULL || schema_name == NULL || table_name == NULL || table == NULL ||
+        stored == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (!mylite_connection_foreign_key_checks(database)) {
+        return MYLITE_OK;
+    }
+
+    rc =
+        sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &constraint, NULL);
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+    sqlite3_bind_text(constraint, 1, schema_name, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(constraint, 2, table_name, -1, SQLITE_TRANSIENT);
+
+    while ((rc = sqlite3_step(constraint)) == SQLITE_ROW) {
+        status =
+            apply_parent_delete_foreign_key_action_constraint(database, &stored_row, constraint);
+        if (status != MYLITE_OK) {
+            break;
+        }
+    }
+
+    sqlite3_finalize(constraint);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
+}
+
 int mylite_dml_validate_update_child_foreign_keys(
     mylite_db *database,
     const struct mylite_select_table *table,

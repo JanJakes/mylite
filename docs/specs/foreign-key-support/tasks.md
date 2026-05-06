@@ -82,5 +82,9 @@ commit.
       tables as unavailable to persistent child foreign keys.
 - [ ] Add field-metadata coverage for FK information-schema rows when the
       unified information-schema metadata pass lands.
-- [ ] Revisit `INSERT IGNORE`, `UPDATE IGNORE`, and `REPLACE` after FK
-      enforcement to align warning demotion and delete-plus-insert behavior.
+- [x] Revisit `REPLACE` after FK enforcement to align delete-plus-insert
+      behavior. Conflict deletes now apply covered `ON DELETE CASCADE` and
+      `ON DELETE SET NULL` actions without adding child side effects to
+      affected rows.
+- [ ] Revisit `INSERT IGNORE` and `UPDATE IGNORE` after FK enforcement to align
+      warning demotion behavior.

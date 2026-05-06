@@ -390,7 +390,8 @@ rollback.
 
 ### Triggers, foreign keys, and generated columns
 
-These behaviors are deferred for MyLite, but they shape the runtime design.
+These behaviors shape the runtime design. MyLite implements the covered
+foreign-key subset; triggers and generated-column execution remain deferred.
 
 Triggers:
 
@@ -655,8 +656,8 @@ MyLite intentionally documents these first-slice boundaries:
 - `DELAYED` warning 3005 is implemented for the executable `VALUES` and `SET`
   sources.
 - Trigger execution waits for trigger DDL and runtime support.
-- Foreign-key cascades and restrict/no-action behavior wait for foreign-key
-  metadata and enforcement.
+- Foreign-key `ON DELETE CASCADE`, `ON DELETE SET NULL`, `RESTRICT`, and
+  `NO ACTION` behavior is implemented for supported conflict deletes.
 - Generated-column conflict detection and explicit generated-column validation
   wait for generated-column execution.
 - Full conversion, range, truncation, temporal, charset, and collation fidelity
@@ -700,8 +701,9 @@ Implementation tests should cover these MySQL 8.4.9 expectations:
 | `NO_AUTO_VALUE_ON_ZERO` disabled; explicit `0` in auto column | Generates next id and sets last insert id. |
 | `NO_AUTO_VALUE_ON_ZERO` enabled; explicit `0` in auto column | Stores id `0`; does not set last insert id. Deferred until SQL-mode work. |
 | fatal error in later source row after earlier row mutation | Rolls back all statement row changes; consumed generated ids remain consumed according to MyLite insert policy. |
-| replacing parent row with `ON DELETE CASCADE` child | Child is cascaded; parent replace affected rows `2`. Deferred. |
-| replacing parent row with `ON DELETE RESTRICT` child | Error 1451; parent and child unchanged. Deferred. |
+| replacing parent row with `ON DELETE CASCADE` child | Child is cascaded; parent replace affected rows `2`. |
+| replacing parent row with `ON DELETE SET NULL` child | Child FK columns become `NULL`; parent replace affected rows `2`. |
+| replacing parent row with `ON DELETE RESTRICT` child | Error 1451; parent and child unchanged. |
 | triggers on replacing row | Fires `BEFORE INSERT`, `BEFORE DELETE`, `AFTER DELETE`, `AFTER INSERT`; no update triggers. Deferred. |
 | generated unique column conflict | Generated value can be the conflict key. Deferred. |
 | explicit generated column value other than `DEFAULT` | Error 3105. Deferred. |
@@ -739,15 +741,13 @@ Runtime tests for first executable slice:
 - auto-increment omitted, `NULL`, `0`, `DEFAULT`, explicit low, explicit high,
   duplicate replacement, sequence consumption, and session last insert id
 - fatal error rollback after earlier inserted/deleted rows
-- deterministic unsupported diagnostics for deferred trigger/FK/generated
-  surfaces
+- deterministic unsupported diagnostics for deferred trigger/generated surfaces
 
 Deferred runtime tests:
 
 - `REPLACE ... SELECT` and `REPLACE ... TABLE` source ordering and metadata
 - partition routing and partition mismatch diagnostics
 - trigger order and trigger side effects
-- foreign-key cascade, restrict, set-null, and no-action behavior
 - generated-column default and conflict behavior
 - type conversion, range clipping, truncation, invalid temporal values, and
   SQL-mode warning/error variants

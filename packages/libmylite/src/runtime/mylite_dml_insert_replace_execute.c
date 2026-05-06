@@ -74,6 +74,15 @@ int mylite_dml_write_replace_candidate_row(
                 stored_values
             );
         }
+        if (status == MYLITE_OK) {
+            status = mylite_dml_apply_replace_parent_delete_foreign_key_actions(
+                database,
+                schema_name,
+                table_name,
+                table,
+                stored_values
+            );
+        }
         mylite_dml_insert_bound_values_deinit(stored_values, table->column_count);
         if (status != MYLITE_OK) {
             return status;

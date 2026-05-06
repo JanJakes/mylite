@@ -50313,6 +50313,7 @@ static int test_foreign_key_delete_actions_execution(void) {
     static const char *const parent_after_delete_values[] = {"2", "3"};
     static const char *const parent_after_checks_off_values[] = {"3"};
     static const char *const child_columns[] = {"id", "parent_id"};
+    static const char *const parent_payload_columns[] = {"id", "payload"};
     static const char *const cascade_after_delete_values[] = {
         "2",
         "2",
@@ -50341,6 +50342,9 @@ static int test_foreign_key_delete_actions_execution(void) {
     static const char *const delete_set_default_rule_values[] = {"NO ACTION", "SET DEFAULT"};
     static const char *const set_default_parent_values[] = {"1", "7"};
     static const char *const set_default_child_values[] = {"1", "1"};
+    static const char *const replace_parent_values[] = {"1", "11", "2", "20"};
+    static const char *const replace_cascade_values[] = {"2", "2"};
+    static const char *const replace_set_null_values[] = {"1", NULL, "2", "2"};
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -50592,6 +50596,97 @@ static int test_foreign_key_delete_actions_execution(void) {
         set_default_child_values,
         1,
         "foreign key delete set default child rows"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE replace_parent_cascade_fk (id INT PRIMARY KEY, payload INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE replace_child_cascade_fk ("
+        "id INT PRIMARY KEY, parent_id INT, "
+        "FOREIGN KEY (parent_id) REFERENCES replace_parent_cascade_fk(id) ON DELETE CASCADE)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO replace_parent_cascade_fk VALUES (1,10),(2,20)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO replace_child_cascade_fk VALUES (1,1),(2,2)",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "REPLACE INTO replace_parent_cascade_fk VALUES (1,11)",
+        2,
+        "foreign key replace cascade affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, payload FROM replace_parent_cascade_fk ORDER BY id",
+        parent_payload_columns,
+        2,
+        replace_parent_values,
+        2,
+        "foreign key replace cascade parent rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, parent_id FROM replace_child_cascade_fk ORDER BY id",
+        child_columns,
+        2,
+        replace_cascade_values,
+        1,
+        "foreign key replace cascade child rows"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE replace_parent_null_fk (id INT PRIMARY KEY, payload INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE replace_child_null_fk ("
+        "id INT PRIMARY KEY, parent_id INT, "
+        "FOREIGN KEY (parent_id) REFERENCES replace_parent_null_fk(id) ON DELETE SET NULL)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO replace_parent_null_fk VALUES (1,10),(2,20)",
+        MYLITE_DONE
+    );
+    failures +=
+        execute_sql(database, "INSERT INTO replace_child_null_fk VALUES (1,1),(2,2)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "REPLACE INTO replace_parent_null_fk SET id = 1, payload = 11",
+        2,
+        "foreign key replace set null affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, payload FROM replace_parent_null_fk ORDER BY id",
+        parent_payload_columns,
+        2,
+        replace_parent_values,
+        2,
+        "foreign key replace set null parent rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, parent_id FROM replace_child_null_fk ORDER BY id",
+        child_columns,
+        2,
+        replace_set_null_values,
+        2,
+        "foreign key replace set null child rows"
     );
 
     mylite_close(database);

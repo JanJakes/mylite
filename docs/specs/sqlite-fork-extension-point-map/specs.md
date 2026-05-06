@@ -14,6 +14,7 @@ Implemented fork points:
 - MyLite column descriptors stored on SQLite `Column` objects
 - VDBE write-time type checking through `OP_MyliteTypeCheck`
 - update-mask-aware descriptor checking for SQLite `UPDATE` record creation
+- structured fork diagnostics for MyLite-owned VDBE type-check failures
 - public MyLite DML write-table loading that applies catalog descriptors before
   physical SQLite write statements are prepared
 
@@ -37,6 +38,8 @@ Implemented fork points:
   `docs/specs/sqlite-source-tree-fork/specs.md`,
   `docs/specs/sqlite-fork-column-type-extension-points/specs.md`, and
   `docs/specs/sqlite-fork-type-coercion/specs.md`
+- SQLite fork diagnostics bridge:
+  `docs/specs/sqlite-fork-diagnostics-bridge/specs.md`
 
 This specification is independently authored from SQLite public documentation,
 official MySQL 8.4 documentation already cited in the feature specs, observed
@@ -120,7 +123,8 @@ from VDBE opcodes and functions into a MyLite connection diagnostics area.
 
 Required fork direction:
 
-- conversion opcodes report structured MySQL conditions, not only SQLite text
+- conversion opcodes report structured MySQL conditions, not only SQLite text;
+  implemented first for `OP_MyliteTypeCheck`
 - `IGNORE` and non-strict SQL modes can demote selected write errors to warnings
 - VDBE statement completion can expose MySQL affected-row and warning metadata
 

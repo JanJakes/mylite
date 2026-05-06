@@ -50,6 +50,8 @@ Deferred scope:
   `docs/specs/sqlite-fork-column-type-extension-points/specs.md`
 - SQLite fork extension point map:
   `docs/specs/sqlite-fork-extension-point-map/specs.md`
+- SQLite fork diagnostics bridge:
+  `docs/specs/sqlite-fork-diagnostics-bridge/specs.md`
 
 This specification is independently authored from official SQLite source-tree
 layout, observed MyLite build behavior, and the current MyLite codebase.
@@ -93,6 +95,8 @@ parser execution still needs its own schema-builder and catalog-reload path.
 The fork's `UPDATE` record-building path uses SQLite's changed-column mask for
 MyLite descriptor checks, so assignment coercion applies to assigned columns
 without revalidating unrelated stored values.
+Fork-owned VDBE failures can also publish a structured MySQL condition through
+the diagnostics bridge before SQLite reports the statement error.
 
 ## Tests
 

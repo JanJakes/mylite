@@ -19,14 +19,16 @@ Implemented scope:
 - SQLite-fork `UPDATE` type checks use SQLite's changed-column mask, so
   explicitly assigned columns are coerced without revalidating unchanged stored
   values
+- fork type-check failures publish the first structured MySQL condition codes
+  through the SQLite diagnostics bridge
 - MySQL 8.4.9 verified success fixture covering numeric strings, numeric-to-text
   conversion, multi-byte `VARCHAR` length, update assignment coercion,
   duplicate-key update coercion, and replacement-row coercion
 
 Deferred scope:
 
-- exact MySQL error codes, SQLSTATE, warning records, and `IGNORE` demotion for
-  every conversion failure
+- exact MySQL error messages, row interpolation, complete warning records, and
+  `IGNORE` demotion for every conversion failure
 - full unsigned `BIGINT` above `INT64_MAX`
 - `DECIMAL`, temporal, JSON, `ENUM`, `SET`, bit, binary string, and spatial
   assignment conversion
@@ -92,8 +94,9 @@ Additional strict-mode probes establish the first failure categories:
 | `DOUBLE` assignment of `'bad'` | error 1265, SQLSTATE `01000` under the default strict DML path |
 
 This slice records the strict failure as a SQLite execution error from the
-native hook. Exact MySQL diagnostic codes and warning promotion remain a later
-diagnostics slice.
+native hook. The first fork diagnostics bridge now publishes MySQL condition
+codes and SQLSTATE values for these failures; exact MySQL message text and
+warning demotion remain later diagnostics work.
 
 ## Runtime Design
 

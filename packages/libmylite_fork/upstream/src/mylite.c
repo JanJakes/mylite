@@ -49,6 +49,59 @@ int mylite_sqlite_fork_clear_column_type(
   return myliteSetColumnType(db, zSchema, zTable, zColumn, &sqliteType);
 }
 
+int mylite_sqlite_fork_last_condition(
+  sqlite3 *db,
+  struct mylite_sqlite_fork_condition *pOut
+){
+  if( db==0 || pOut==0 ) return SQLITE_MISUSE;
+
+  sqlite3_mutex_enter(db->mutex);
+  pOut->level =
+      (enum mylite_sqlite_fork_condition_level)db->myliteCondition.eLevel;
+  pOut->mysql_errno = db->myliteCondition.iMyErrno;
+  memcpy(pOut->sqlstate, db->myliteCondition.zSqlState,
+         sizeof(pOut->sqlstate));
+  sqlite3_mutex_leave(db->mutex);
+  return SQLITE_OK;
+}
+
+int mylite_sqlite_fork_clear_condition(sqlite3 *db){
+  if( db==0 ) return SQLITE_MISUSE;
+  sqlite3_mutex_enter(db->mutex);
+  sqlite3MyliteClearCondition(db);
+  sqlite3_mutex_leave(db->mutex);
+  return SQLITE_OK;
+}
+
+void sqlite3MyliteSetCondition(
+  sqlite3 *db,
+  u8 eLevel,
+  u32 iMyErrno,
+  const char *zSqlState
+){
+  static const char zDefaultSqlState[] = "HY000";
+  int i;
+
+  if( db==0 ) return;
+  db->myliteCondition.eLevel = eLevel;
+  db->myliteCondition.iMyErrno = iMyErrno;
+  if( zSqlState==0 || zSqlState[0]==0 ) zSqlState = zDefaultSqlState;
+  for(i=0; i<5 && zSqlState[i]!=0; i++){
+    db->myliteCondition.zSqlState[i] = zSqlState[i];
+  }
+  while( i<5 ){
+    db->myliteCondition.zSqlState[i++] = '0';
+  }
+  db->myliteCondition.zSqlState[5] = 0;
+}
+
+void sqlite3MyliteClearCondition(sqlite3 *db){
+  if( db==0 ) return;
+  db->myliteCondition.eLevel = MYLITE_CONDITION_NONE;
+  db->myliteCondition.iMyErrno = 0;
+  db->myliteCondition.zSqlState[0] = 0;
+}
+
 static int myliteSetColumnType(
   sqlite3 *db,
   const char *zSchema,

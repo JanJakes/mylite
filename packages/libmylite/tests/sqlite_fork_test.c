@@ -27,6 +27,12 @@ struct expected_sqlite_error {
     const char *context;
 };
 
+struct expected_fork_condition {
+    unsigned int mysql_errno;
+    const char *sqlstate;
+    const char *context;
+};
+
 static int test_registered_functions(void);
 
 static int test_mysql_collations(void);
@@ -47,9 +53,17 @@ static int exec_mylite_sql(mylite_db *database, const char *sql, const char *con
 
 static int expect_sqlite_exec_error(sqlite3 *database, struct expected_sqlite_error expectation);
 
+static int expect_fork_condition(sqlite3 *database, struct expected_fork_condition expectation);
+
 static int expect_text(sqlite3 *database, struct expected_text_row expectation);
 
 static int expect_mylite_rows(mylite_db *database, struct expected_mylite_rows expectation);
+
+static int expect_mylite_error_condition(
+    mylite_db *database,
+    unsigned int mysql_errno,
+    const char *context
+);
 
 static int expect_int64(
     sqlite3 *database,
@@ -173,6 +187,7 @@ static int test_native_type_coercion(void) {
         expected_unsigned_integer = 42,
         legacy_update_type_minimum = 0,
         legacy_update_type_maximum = 10,
+        legacy_update_out_of_range_error = 1264,
     };
 
     sqlite3 *database = NULL;
@@ -319,6 +334,19 @@ static int test_native_type_coercion(void) {
             .message_fragment = "integer value is out of range",
             .context = "update checks explicitly assigned legacy value",
         }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = legacy_update_out_of_range_error,
+            .sqlstate = "22003",
+            .context = "assigned legacy value exposes MySQL condition",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear fork condition"
     );
 
     sqlite3_close(database);
@@ -672,7 +700,12 @@ static int test_mylite_wordpress_like_crud(void) {
 }
 
 static int test_mylite_basic_type_coercion(void) {
-    enum { type_coercion_column_count = 6 };
+    enum {
+        type_coercion_column_count = 6,
+        type_coercion_out_of_range_error = 1264,
+        type_coercion_truncated_error = 1265,
+        type_coercion_too_long_error = 1406,
+    };
 
     static const char *const after_insert[] = {
         "1",
@@ -840,11 +873,21 @@ static int test_mylite_basic_type_coercion(void) {
         MYLITE_SQLITE_ERROR,
         "MyLite insert coercion rejects out-of-range tinyint"
     );
+    failures += expect_mylite_error_condition(
+        database,
+        type_coercion_out_of_range_error,
+        "MyLite out-of-range tinyint condition"
+    );
     failures += expect_mylite_sql_status(
         database,
         "INSERT INTO coercion_basic VALUES (4, 1, -1, 'ok', 1, NULL)",
         MYLITE_SQLITE_ERROR,
         "MyLite insert coercion rejects negative unsigned integer"
+    );
+    failures += expect_mylite_error_condition(
+        database,
+        type_coercion_out_of_range_error,
+        "MyLite negative unsigned integer condition"
     );
     failures += expect_mylite_sql_status(
         database,
@@ -852,11 +895,21 @@ static int test_mylite_basic_type_coercion(void) {
         MYLITE_SQLITE_ERROR,
         "MyLite insert coercion rejects over-length varchar"
     );
+    failures += expect_mylite_error_condition(
+        database,
+        type_coercion_too_long_error,
+        "MyLite over-length varchar condition"
+    );
     failures += expect_mylite_sql_status(
         database,
         "INSERT INTO coercion_basic VALUES (4, 1, 1, 'ok', 'bad', NULL)",
         MYLITE_SQLITE_ERROR,
         "MyLite insert coercion rejects invalid double"
+    );
+    failures += expect_mylite_error_condition(
+        database,
+        type_coercion_truncated_error,
+        "MyLite invalid double condition"
     );
 
     mylite_close(database);
@@ -930,6 +983,44 @@ static int expect_sqlite_exec_error(sqlite3 *database, struct expected_sqlite_er
         ++failures;
     }
     sqlite3_free(message);
+    return failures;
+}
+
+static int expect_fork_condition(sqlite3 *database, struct expected_fork_condition expectation) {
+    struct mylite_sqlite_fork_condition condition = {0};
+    int failures = expect_sqlite_ok(
+        mylite_sqlite_fork_last_condition(database, &condition),
+        database,
+        expectation.context
+    );
+
+    if (failures != 0) {
+        return failures;
+    }
+    if (condition.level != MYLITE_SQLITE_FORK_CONDITION_ERROR) {
+        fprintf(stderr, "%s: expected fork error condition\n", expectation.context);
+        ++failures;
+    }
+    if (condition.mysql_errno != expectation.mysql_errno) {
+        fprintf(
+            stderr,
+            "%s: expected MySQL errno %u, got %u\n",
+            expectation.context,
+            expectation.mysql_errno,
+            condition.mysql_errno
+        );
+        ++failures;
+    }
+    if (strcmp(condition.sqlstate, expectation.sqlstate) != 0) {
+        fprintf(
+            stderr,
+            "%s: expected SQLSTATE %s, got %s\n",
+            expectation.context,
+            expectation.sqlstate,
+            condition.sqlstate
+        );
+        ++failures;
+    }
     return failures;
 }
 
@@ -1009,6 +1100,33 @@ static int expect_mylite_rows(mylite_db *database, struct expected_mylite_rows e
 
     mylite_finalize(statement);
     return failures;
+}
+
+static int expect_mylite_error_condition(
+    mylite_db *database,
+    unsigned int mysql_errno,
+    const char *context
+) {
+    if (mylite_warning_count(database) != 1) {
+        fprintf(
+            stderr,
+            "%s: expected one MyLite condition, got %d\n",
+            context,
+            mylite_warning_count(database)
+        );
+        return 1;
+    }
+    if (mylite_warning_code(database, 0) != mysql_errno) {
+        fprintf(
+            stderr,
+            "%s: expected MySQL errno %u, got %u\n",
+            context,
+            mysql_errno,
+            mylite_warning_code(database, 0)
+        );
+        return 1;
+    }
+    return 0;
 }
 
 static int expect_int64(

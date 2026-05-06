@@ -1748,6 +1748,13 @@ struct sqlite3 {
   void(*xCollNeeded16)(void*,sqlite3*,int eTextRep,const void*);
   void *pCollNeededArg;
   sqlite3_value *pErr;          /* Most recent error message */
+#ifdef SQLITE_ENABLE_MYLITE
+  struct MyliteCondition {
+    u8 eLevel;                  /* One of MYLITE_CONDITION_* */
+    u32 iMyErrno;               /* MySQL condition code */
+    char zSqlState[6];          /* Five-character SQLSTATE plus NUL */
+  } myliteCondition;
+#endif
   union {
     volatile int isInterrupted; /* True if sqlite3_interrupt has been called */
     double notUsed1;            /* Spacer */
@@ -2261,6 +2268,10 @@ struct MyliteColumnType {
 # define MYLITE_COLTYPE_UNSIGNED_INTEGER 2
 # define MYLITE_COLTYPE_DOUBLE           3
 # define MYLITE_COLTYPE_VARCHAR          4
+
+# define MYLITE_CONDITION_NONE           0
+# define MYLITE_CONDITION_ERROR          1
+# define MYLITE_CONDITION_WARNING        2
 #endif
 
 struct Column {
@@ -5382,6 +5393,8 @@ char *sqlite3TableAffinityStr(sqlite3*,const Table*);
 void sqlite3TableAffinity(Vdbe*, Table*, int);
 #ifdef SQLITE_ENABLE_MYLITE
 void sqlite3MyliteUpdateAffinity(Vdbe*, Table*, int, int*);
+void sqlite3MyliteSetCondition(sqlite3*, u8, u32, const char*);
+void sqlite3MyliteClearCondition(sqlite3*);
 #endif
 char sqlite3CompareAffinity(const Expr *pExpr, char aff2);
 int sqlite3IndexAffinityOk(const Expr *pExpr, char idx_affinity);

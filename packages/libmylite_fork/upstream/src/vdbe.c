@@ -432,7 +432,9 @@ static int myliteApplyColumnType(
   Mem *pMem,
   const Column *pCol,
   u8 enc,
-  const char **pzErr
+  const char **pzErr,
+  u32 *pMyErrno,
+  const char **pzSqlState
 );
 static void myliteApplyOrdinaryAffinity(Mem *pMem, char affinity, u8 enc);
 static int myliteCoerceInteger(
@@ -451,8 +453,11 @@ static int myliteApplyColumnType(
   Mem *pMem,
   const Column *pCol,
   u8 enc,
-  const char **pzErr
+  const char **pzErr,
+  u32 *pMyErrno,
+  const char **pzSqlState
 ){
+  int rc;
   if( pCol->myliteType.eType==MYLITE_COLTYPE_NONE ){
     myliteApplyOrdinaryAffinity(pMem, pCol->affinity, enc);
     return SQLITE_OK;
@@ -461,21 +466,43 @@ static int myliteApplyColumnType(
 
   switch( pCol->myliteType.eType ){
     case MYLITE_COLTYPE_SIGNED_INTEGER:
-      return myliteCoerceInteger(
+      rc = myliteCoerceInteger(
           pMem, pCol->myliteType.iMin, pCol->myliteType.iMax,
           "integer value is out of range", pzErr
       );
+      if( rc!=SQLITE_OK ){
+        *pMyErrno = 1264;
+        *pzSqlState = "22003";
+      }
+      return rc;
     case MYLITE_COLTYPE_UNSIGNED_INTEGER:
-      return myliteCoerceInteger(
+      rc = myliteCoerceInteger(
           pMem, 0, pCol->myliteType.iMax,
           "unsigned integer value is out of range", pzErr
       );
+      if( rc!=SQLITE_OK ){
+        *pMyErrno = 1264;
+        *pzSqlState = "22003";
+      }
+      return rc;
     case MYLITE_COLTYPE_DOUBLE:
-      return myliteCoerceDouble(pMem, pzErr);
+      rc = myliteCoerceDouble(pMem, pzErr);
+      if( rc!=SQLITE_OK ){
+        *pMyErrno = 1265;
+        *pzSqlState = "01000";
+      }
+      return rc;
     case MYLITE_COLTYPE_VARCHAR:
-      return myliteCoerceVarchar(pMem, pCol->myliteType.nChar, pzErr);
+      rc = myliteCoerceVarchar(pMem, pCol->myliteType.nChar, pzErr);
+      if( rc!=SQLITE_OK ){
+        *pMyErrno = 1406;
+        *pzSqlState = "22001";
+      }
+      return rc;
     default:
       *pzErr = "invalid MyLite column type";
+      *pMyErrno = 1105;
+      *pzSqlState = "HY000";
       return SQLITE_MISMATCH;
   }
 }
@@ -3477,15 +3504,24 @@ case OP_MyliteTypeCheck: {
   }
   for(; i<nCol; i++){
     const char *zErr = 0;
+    const char *zSqlState = 0;
+    u32 iMyErrno = 0;
     int rc2;
     if( (aCol[i].colFlags & COLFLAG_GENERATED)!=0 && pOp->p3<2 ){
       if( (aCol[i].colFlags & COLFLAG_VIRTUAL)!=0 ) continue;
       if( pOp->p3 ){ pIn1++; continue; }
     }
     assert( pIn1 < &aMem[pOp->p1+pOp->p2] );
-    rc2 = myliteApplyColumnType(pIn1, &aCol[i], encoding, &zErr);
+    rc2 = myliteApplyColumnType(
+        pIn1, &aCol[i], encoding, &zErr, &iMyErrno, &zSqlState
+    );
     if( rc2==SQLITE_NOMEM ) goto no_mem;
     if( rc2!=SQLITE_OK ){
+      if( iMyErrno!=0 ){
+        sqlite3MyliteSetCondition(
+            p->db, MYLITE_CONDITION_ERROR, iMyErrno, zSqlState
+        );
+      }
       sqlite3VdbeError(p, "%s for column %s.%s",
          zErr ? zErr : "invalid MyLite value", pTab->zName, aCol[i].zCnName);
       rc = SQLITE_CONSTRAINT_DATATYPE;

@@ -1,0 +1,117 @@
+# SQLite Fork Diagnostics Bridge
+
+## Status
+
+This slice adds the first structured diagnostics bridge from MyLite-owned
+SQLite-fork bytecode to the public MyLite diagnostics area. It is intentionally
+small: fork opcodes can publish a MySQL condition for the most recent
+fork-owned VDBE failure, and MyLite consumes that condition when mapping the
+SQLite error back to its own warning/error list.
+
+Implemented scope:
+
+- connection-local fork condition storage on the private SQLite handle
+- public fork APIs to read and clear the most recent fork condition
+- `OP_MyliteTypeCheck` publishes MySQL condition codes and SQLSTATE values for
+  the first strict assignment failures
+- MyLite's SQLite-error mapping consumes the fork condition and appends a MySQL
+  error condition instead of falling back to generic error 1105
+- direct fork and public MyLite tests cover out-of-range integer, over-length
+  `VARCHAR`, and invalid `DOUBLE` assignment conditions
+
+Deferred scope:
+
+- full diagnostics-area shape, including row numbers, column names in MySQL text
+  form, condition item fields, and stacked diagnostics
+- warning demotion for `IGNORE` and non-strict SQL modes
+- multiple warning records from one SQLite statement
+- SQLSTATE exposure through the public MyLite API and wire protocol
+- structured conditions for non-type SQLite constraints, parser errors, foreign
+  keys, triggers, and future fork opcodes
+
+## Sources
+
+- MySQL 8.4 Reference Manual, Server Error Message Reference:
+  `https://dev.mysql.com/doc/mysql-errors/8.4/en/server-error-reference.html`
+- MySQL 8.4 Reference Manual, `SHOW WARNINGS`:
+  `https://dev.mysql.com/doc/refman/8.4/en/show-warnings.html`
+- MySQL 8.4 Reference Manual, Diagnostics Area:
+  `https://dev.mysql.com/doc/refman/8.4/en/diagnostics-area.html`
+- SQLite result codes:
+  `https://www.sqlite.org/rescode.html`
+- SQLite VDBE execution model from the vendored SQLite source tree
+
+This specification is independently authored from official MySQL and SQLite
+documentation, observed MySQL 8.4.9 runtime behavior, and the current MyLite
+codebase.
+
+## MySQL 8.4.9 Behavior Baseline
+
+Runtime probes for this slice were executed on 2026-05-06 against the official
+`mysql:8.4.9` Docker image in container `mylite-mysql-849`, using MySQL's
+default strict SQL mode.
+
+```text
+INSERT INTO t(i TINYINT NOT NULL) VALUES (128)
+ERROR 1264 (22003): Out of range value for column 'i' at row 1
+SHOW WARNINGS: Error 1264
+
+INSERT INTO t(s VARCHAR(4) NOT NULL) VALUES ('abcde')
+ERROR 1406 (22001): Data too long for column 's' at row 1
+SHOW WARNINGS: Error 1406
+
+INSERT INTO t(d DOUBLE NOT NULL) VALUES ('bad')
+ERROR 1265 (01000): Data truncated for column 'd' at row 1
+SHOW WARNINGS: Error 1265
+```
+
+## Design
+
+SQLite's public error surface is text plus SQLite result code. That is not
+enough for MySQL compatibility because MySQL behavior depends on the structured
+condition code, SQLSTATE, severity, SQL mode, and `IGNORE` handling. Public
+SQLite hooks also run too late or not at all for VDBE opcode failures.
+
+The fork therefore owns a small connection-local condition slot:
+
+- `mylite_sqlite_fork_last_condition()` copies the most recent fork condition.
+- `mylite_sqlite_fork_clear_condition()` clears it after the caller consumes it.
+- internal fork code calls `sqlite3MyliteSetCondition()` immediately before
+  raising the SQLite error.
+
+For this first slice, the condition slot contains one condition. This matches
+the current type-check path, where the VDBE aborts on the first strict
+assignment failure. Later `IGNORE` and non-strict SQL mode work should replace
+the single slot with a statement-owned condition collector that can append
+multiple warnings without aborting execution.
+
+## Initial Semantics
+
+`OP_MyliteTypeCheck` now publishes:
+
+| Failure | MySQL code | SQLSTATE |
+| --- | ---: | --- |
+| signed or supported unsigned integer out of range | 1264 | `22003` |
+| `VARCHAR(n)` value too long | 1406 | `22001` |
+| invalid `DOUBLE` assignment text | 1265 | `01000` |
+| invalid internal MyLite descriptor | 1105 | `HY000` |
+
+MyLite still uses SQLite's error message as the public text in this slice. The
+structured code is now correct for the covered failures, while exact MySQL text
+and row-number interpolation remain deferred.
+
+## Tests
+
+The executable tests must cover:
+
+- direct fork condition readback after a descriptor-owned VDBE assignment error
+- clearing the fork condition after it is consumed
+- public MyLite diagnostics receiving error codes 1264, 1265, and 1406 from
+  fork type-check failures
+- existing type-coercion success and failure behavior continuing to pass
+
+## Compatibility Status
+
+This feature is `🟡` because the first structured bridge exists for fork-owned
+type-check failures, but the full MySQL diagnostics area, warning demotion, and
+wire-protocol condition metadata remain incomplete.

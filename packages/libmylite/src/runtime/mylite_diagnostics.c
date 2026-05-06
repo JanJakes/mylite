@@ -2,6 +2,7 @@
 
 #include "mylite_error_codes.h"
 #include "sqlite3.h"
+#include <mylite_fork/mylite_sqlite_fork.h>
 
 #include <stdlib.h>
 #include <string.h>
@@ -78,6 +79,35 @@ void mylite_diagnostics_clear_warnings(mylite_db *database) {
     }
 
     mylite_expression_warnings_deinit(&database->warnings);
+}
+
+int mylite_diagnostics_set_sqlite_error(mylite_db *database) {
+    struct mylite_sqlite_fork_condition condition = {0};
+    const char *message = NULL;
+    int status = MYLITE_OK;
+
+    if (database == NULL) {
+        return MYLITE_MISUSE;
+    }
+    message = sqlite3_errmsg(database->sqlite);
+    status = mylite_diagnostics_set_error_message(database, message);
+    if (status == MYLITE_NOMEM) {
+        return MYLITE_NOMEM;
+    }
+    if (mylite_sqlite_fork_last_condition(database->sqlite, &condition) == SQLITE_OK) {
+        if (condition.level == MYLITE_SQLITE_FORK_CONDITION_ERROR && condition.mysql_errno != 0U) {
+            status = mylite_diagnostics_append_error(
+                database,
+                condition.mysql_errno,
+                mylite_error_message(database)
+            );
+        }
+        (void)mylite_sqlite_fork_clear_condition(database->sqlite);
+        if (status == MYLITE_NOMEM) {
+            return MYLITE_NOMEM;
+        }
+    }
+    return MYLITE_SQLITE_ERROR;
 }
 
 int mylite_diagnostics_set_error_message(mylite_db *database, const char *message) {

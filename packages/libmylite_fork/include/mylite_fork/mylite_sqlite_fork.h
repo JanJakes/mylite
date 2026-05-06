@@ -22,7 +22,28 @@ struct mylite_sqlite_fork_column_type {
     sqlite3_uint64 character_maximum_length;
 };
 
+enum mylite_sqlite_fork_condition_level {
+    MYLITE_SQLITE_FORK_CONDITION_NONE = 0,
+    MYLITE_SQLITE_FORK_CONDITION_ERROR = 1,
+    MYLITE_SQLITE_FORK_CONDITION_WARNING = 2,
+};
+
+enum {
+    MYLITE_SQLITE_FORK_SQLSTATE_SIZE = 6,
+};
+
+struct mylite_sqlite_fork_condition {
+    enum mylite_sqlite_fork_condition_level level;
+    unsigned int mysql_errno;
+    char sqlstate[MYLITE_SQLITE_FORK_SQLSTATE_SIZE];
+};
+
 int mylite_sqlite_fork_configure(sqlite3 *database);
+int mylite_sqlite_fork_last_condition(
+    sqlite3 *database,
+    struct mylite_sqlite_fork_condition *out_condition
+);
+int mylite_sqlite_fork_clear_condition(sqlite3 *database);
 int mylite_sqlite_fork_set_column_type(
     sqlite3 *database,
     const char *schema_name,

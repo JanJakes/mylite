@@ -23,6 +23,8 @@ Implemented scope:
   new descriptor path without SQL wrapper functions
 - make `UPDATE` descriptor checks assignment-aware by using SQLite's
   changed-column mask instead of rechecking the whole row
+- publish structured MySQL condition codes for descriptor-owned VDBE failures
+  through the fork diagnostics bridge
 - load MyLite catalog column metadata into those descriptors before public
   MyLite write statements prepare their physical SQLite `INSERT`, `UPDATE`,
   `REPLACE`, and duplicate-key update SQL
@@ -34,8 +36,8 @@ Deferred scope:
   MyLite's current statement layer
 - full unsigned `BIGINT` values above SQLite's signed 64-bit integer storage
   range
-- exact MySQL diagnostic codes, SQLSTATE values, warning records, and `IGNORE`
-  demotion
+- exact MySQL diagnostic messages, row interpolation, complete warning records,
+  and `IGNORE` demotion
 - non-strict SQL mode clipping and string truncation behavior
 - `DECIMAL`, temporal, JSON, `ENUM`, `SET`, bit, binary string, and spatial
   assignment conversion
@@ -109,8 +111,9 @@ SQLite already uses for table affinity. For each target column:
   and enforce a UTF-8 character-count maximum.
 
 On failure, SQLite aborts the statement with `SQLITE_CONSTRAINT_DATATYPE` and a
-message naming the failed conversion and target column. Exact MySQL diagnostics
-remain a later MyLite diagnostics layer.
+message naming the failed conversion and target column. The fork diagnostics
+bridge exposes the first MySQL condition codes and SQLSTATE values for these
+failures, while exact MySQL text and warning demotion remain later work.
 
 For `UPDATE`, descriptor checks are emitted only for logical columns marked as
 changed by SQLite's update planner. Unchanged columns still participate in the

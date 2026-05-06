@@ -17,7 +17,9 @@ Implemented scope:
 - MyLite's SQLite-error mapping consumes the fork condition and appends a MySQL
   error condition instead of falling back to generic error 1105
 - direct fork and public MyLite tests cover out-of-range integer, over-length
-  `VARCHAR`, and invalid `DOUBLE` assignment conditions
+  `VARCHAR`, invalid `DOUBLE`, over-length binary string, invalid decimal,
+  out-of-range decimal, invalid temporal, and datetime overflow assignment
+  conditions
 
 Deferred scope:
 
@@ -94,6 +96,11 @@ multiple warnings without aborting execution.
 | signed or supported unsigned integer out of range | 1264 | `22003` |
 | `VARCHAR(n)` value too long | 1406 | `22001` |
 | invalid `DOUBLE` assignment text | 1265 | `01000` |
+| over-length `BINARY(n)` or `VARBINARY(n)` | 1406 | `22001` |
+| invalid `DECIMAL(p,s)` assignment text | 1366 | `HY000` |
+| out-of-range `DECIMAL(p,s)` assignment | 1264 | `22003` |
+| invalid `DATE` or `DATETIME(fsp)` assignment | 1292 | `22007` |
+| post-round `DATETIME(fsp)` overflow | 1441 | `22008` |
 | invalid internal MyLite descriptor | 1105 | `HY000` |
 
 MyLite still uses SQLite's error message as the public text in this slice. The
@@ -106,8 +113,8 @@ The executable tests must cover:
 
 - direct fork condition readback after a descriptor-owned VDBE assignment error
 - clearing the fork condition after it is consumed
-- public MyLite diagnostics receiving error codes 1264, 1265, and 1406 from
-  fork type-check failures
+- public MyLite diagnostics receiving covered MySQL error codes from fork
+  type-check failures
 - existing type-coercion success and failure behavior continuing to pass
 
 ## Compatibility Status

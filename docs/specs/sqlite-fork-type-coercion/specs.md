@@ -12,7 +12,7 @@ Implemented scope:
   supported unsigned integer, `DOUBLE`, and `VARCHAR`
 - native SQLite column descriptor hooks that emit VDBE write-time coercion for
   signed integer, supported unsigned integer, `DOUBLE`, `VARCHAR`, `BINARY`,
-  `VARBINARY`, and `DECIMAL`
+  `VARBINARY`, `DECIMAL`, `DATE`, and `DATETIME`
 - MyLite public write-table loading attaches catalog-derived descriptors before
   preparing physical SQLite writes
 - MyLite `INSERT`, `UPDATE`, `REPLACE`, and duplicate-key update lowering uses
@@ -31,7 +31,7 @@ Deferred scope:
 - exact MySQL error messages, row interpolation, complete warning records, and
   `IGNORE` demotion for every conversion failure
 - full unsigned `BIGINT` above `INT64_MAX`
-- temporal, JSON, `ENUM`, `SET`, bit, blob-family, and spatial
+- `TIME`, `TIMESTAMP`, `YEAR`, JSON, `ENUM`, `SET`, bit, blob-family, and spatial
   assignment conversion
 - decimal-aware comparison/index ordering, compact decimal storage, and direct
   SQLite parser numeric-literal preservation
@@ -60,6 +60,8 @@ Deferred scope:
   `docs/specs/sqlite-fork-binary-string-types/specs.md`
 - SQLite fork decimal type descriptors:
   `docs/specs/sqlite-fork-decimal-type-descriptors/specs.md`
+- SQLite fork temporal type descriptors:
+  `docs/specs/sqlite-fork-temporal-type-descriptors/specs.md`
 
 This specification is independently authored from official documentation,
 observed MySQL 8.4.9 runtime behavior, and the current MyLite codebase. It does
@@ -110,6 +112,13 @@ The fixture in
 establishes the first supported exact fixed-point assignment behavior:
 half-away rounding to scale, post-round overflow errors, unsigned-negative
 errors, and canonical fixed-scale display text.
+
+The fixture in
+`docs/specs/sqlite-fork-temporal-type-descriptors/mysql-temporal-coercion.sql`
+establishes the first supported temporal assignment behavior: canonical and
+compact `DATE`/`DATETIME` inputs, two-digit year expansion, fractional-second
+rounding to declared `DATETIME(fsp)` precision, date/time carry, invalid
+temporal errors, and post-round datetime overflow errors.
 
 ## Runtime Design
 
@@ -184,6 +193,19 @@ fixed-scale text. Direct SQLite numeric literals may already be approximate by
 the time the hook runs; full direct-parser fidelity requires a later
 numeric-literal preservation hook in the SQLite parser/code generator.
 
+### `DATE` and `DATETIME` assignment
+
+The `DATE` descriptor validates supported date and datetime-shaped inputs and
+stores canonical `YYYY-MM-DD` text. The `DATETIME` descriptor carries
+fractional seconds precision `0..6`, validates supported date/time inputs,
+rounds fractional seconds to the declared precision, applies carries, rejects
+post-round overflow, and stores canonical text with the declared fractional
+scale.
+
+Zero-date and zero-in-date behavior currently follows the MySQL default strict
+mode fixture and rejects those values. Non-strict SQL modes and warning records
+for accepted date truncation remain deferred.
+
 ## Lemon Grammar Direction
 
 No new MyLite grammar is introduced in this slice. The long-term fork grammar
@@ -208,17 +230,21 @@ The executable tests must cover:
 - native SQLite failure behavior for invalid decimal text, post-round decimal
   overflow, and unsigned-negative decimal assignment through the decimal
   descriptor slice
+- native SQLite failure behavior for invalid dates, invalid datetimes, and
+  post-round datetime overflow through the temporal descriptor slice
 - direct SQLite `INSERT` and `UPDATE` behavior through MyLite column descriptors
   without SQL wrapper functions
 - direct SQLite `UPDATE` behavior that coerces assigned descriptor columns
   without revalidating unchanged legacy stored values
-- MySQL fixture diff against `mysql-basic-type-coercion.expected.tsv`
+- MySQL fixture diffs against `mysql-basic-type-coercion.expected.tsv`,
+  `mysql-decimal-coercion.expected.tsv`, and
+  `mysql-temporal-coercion.expected.tsv`
 
 ## Compatibility Status
 
 This feature is `🟡` because it establishes the first native assignment
 coercion primitive and now uses direct VDBE write-time coercion through MyLite
 column descriptors for the common public write paths. Full MySQL assignment
-conversion, decimal-aware comparison/index ordering, blob-family coverage,
-direct SQLite parser/catalog descriptor reload, and exact diagnostics remain
-deferred.
+conversion, temporal SQL-mode/warning coverage, decimal-aware comparison/index
+ordering, blob-family coverage, direct SQLite parser/catalog descriptor reload,
+and exact diagnostics remain deferred.

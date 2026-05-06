@@ -16,10 +16,13 @@ enum mylite_sqlite_fork_column_type_kind {
     MYLITE_SQLITE_FORK_COLUMN_TYPE_BINARY = 5,
     MYLITE_SQLITE_FORK_COLUMN_TYPE_VARBINARY = 6,
     MYLITE_SQLITE_FORK_COLUMN_TYPE_DECIMAL = 7,
+    MYLITE_SQLITE_FORK_COLUMN_TYPE_DATE = 8,
+    MYLITE_SQLITE_FORK_COLUMN_TYPE_DATETIME = 9,
 };
 
 enum mylite_sqlite_fork_column_type_flags {
     MYLITE_SQLITE_FORK_COLUMN_TYPE_UNSIGNED = 1U << 0U,
+    MYLITE_SQLITE_FORK_COLUMN_TYPE_ALLOW_ZERO_TEMPORAL = 1U << 1U,
 };
 
 struct mylite_sqlite_fork_column_type {
@@ -30,6 +33,7 @@ struct mylite_sqlite_fork_column_type {
     sqlite3_uint64 byte_maximum_length;
     sqlite3_uint64 numeric_precision;
     sqlite3_uint64 numeric_scale;
+    sqlite3_uint64 datetime_precision;
     unsigned int flags;
 };
 

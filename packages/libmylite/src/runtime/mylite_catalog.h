@@ -29,8 +29,10 @@ struct mylite_catalog_column_row {
     bool has_character_maximum_length;
     uint64_t numeric_precision;
     uint64_t numeric_scale;
+    uint64_t datetime_precision;
     bool has_numeric_precision;
     bool has_numeric_scale;
+    bool has_datetime_precision;
     const char *extra;
 };
 

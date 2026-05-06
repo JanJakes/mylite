@@ -43,6 +43,8 @@ static int test_native_binary_type_coercion(void);
 
 static int test_native_decimal_type_coercion(void);
 
+static int test_native_temporal_type_coercion(void);
+
 static int test_wordpress_like_crud(void);
 
 static int test_mylite_wordpress_like_crud(void);
@@ -52,6 +54,8 @@ static int test_mylite_basic_type_coercion(void);
 static int test_mylite_binary_type_coercion(void);
 
 static int test_mylite_decimal_type_coercion(void);
+
+static int test_mylite_temporal_type_coercion(void);
 
 static int open_configured_database(sqlite3 **out_database);
 
@@ -110,11 +114,13 @@ int main(void) {
     failures += test_native_type_coercion();
     failures += test_native_binary_type_coercion();
     failures += test_native_decimal_type_coercion();
+    failures += test_native_temporal_type_coercion();
     failures += test_wordpress_like_crud();
     failures += test_mylite_wordpress_like_crud();
     failures += test_mylite_basic_type_coercion();
     failures += test_mylite_binary_type_coercion();
     failures += test_mylite_decimal_type_coercion();
+    failures += test_mylite_temporal_type_coercion();
 
     return failures == 0 ? 0 : 1;
 }
@@ -645,6 +651,262 @@ static int test_native_decimal_type_coercion(void) {
             .mysql_errno = decimal_out_of_range_error,
             .sqlstate = "22003",
             .context = "unsigned negative decimal exposes MySQL condition",
+        }
+    );
+
+    sqlite3_close(database);
+    return failures;
+}
+
+static int test_native_temporal_type_coercion(void) {
+    enum {
+        invalid_temporal_error = 1292,
+        datetime_overflow_error = 1441,
+        datetime_millisecond_precision = 3,
+        datetime_microsecond_precision = 6,
+    };
+
+    sqlite3 *database = NULL;
+    int failures = 0;
+
+    failures += open_configured_database(&database);
+    if (failures != 0) {
+        return failures;
+    }
+
+    failures += exec_sql(
+        database,
+        "CREATE TABLE temporal_direct("
+        "id INTEGER PRIMARY KEY, d TEXT, dt TEXT, dt3 TEXT, dt6 TEXT)",
+        "create direct temporal descriptor fixture"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_column_type(
+            database,
+            NULL,
+            "temporal_direct",
+            "d",
+            &(const struct mylite_sqlite_fork_column_type){
+                .kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_DATE,
+            }
+        ),
+        database,
+        "set direct date descriptor"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_column_type(
+            database,
+            NULL,
+            "temporal_direct",
+            "dt",
+            &(const struct mylite_sqlite_fork_column_type){
+                .kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_DATETIME,
+            }
+        ),
+        database,
+        "set direct datetime descriptor"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_column_type(
+            database,
+            NULL,
+            "temporal_direct",
+            "dt3",
+            &(const struct mylite_sqlite_fork_column_type){
+                .kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_DATETIME,
+                .datetime_precision = datetime_millisecond_precision,
+            }
+        ),
+        database,
+        "set direct datetime(3) descriptor"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_column_type(
+            database,
+            NULL,
+            "temporal_direct",
+            "dt6",
+            &(const struct mylite_sqlite_fork_column_type){
+                .kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_DATETIME,
+                .datetime_precision = datetime_microsecond_precision,
+            }
+        ),
+        database,
+        "set direct datetime(6) descriptor"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO temporal_direct VALUES "
+        "(1, '2024-02-29', '2024-02-29 12:34:56', "
+        "'2024-02-29 12:34:56.7896', '2024-02-29 12:34:56.1234567'),"
+        "(2, '20240229', '20240229123456', '20240229123456.1', "
+        "'20240229123456.123'),"
+        "(3, 20240229, 20240229123456, '20240229123456.789', "
+        "'20240229123456.123456')",
+        "insert direct temporal descriptor values"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT group_concat(id || ':' || d || ':' || dt || ':' || dt3 || ':' || "
+                   "dt6, '|') FROM ("
+                   "SELECT id, d, dt, dt3, dt6 FROM temporal_direct ORDER BY id)",
+            .expected = "1:2024-02-29:2024-02-29 12:34:56:"
+                        "2024-02-29 12:34:56.790:2024-02-29 12:34:56.123457|"
+                        "2:2024-02-29:2024-02-29 12:34:56:"
+                        "2024-02-29 12:34:56.100:2024-02-29 12:34:56.123000|"
+                        "3:2024-02-29:2024-02-29 12:34:56:"
+                        "2024-02-29 12:34:56.789:2024-02-29 12:34:56.123456",
+            .context = "direct temporal descriptors normalize stored text",
+        }
+    );
+    failures += exec_sql(
+        database,
+        "UPDATE temporal_direct SET d = '2024-03-01', dt = '2024-03-01', "
+        "dt3 = '2024-03-01 01:02:03.9999', "
+        "dt6 = '2024-03-01 01:02:03.0000019' WHERE id = 1",
+        "update direct temporal descriptor values"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT d || ':' || dt || ':' || dt3 || ':' || dt6 "
+                   "FROM temporal_direct WHERE id = 1",
+            .expected = "2024-03-01:2024-03-01 00:00:00:"
+                        "2024-03-01 01:02:04.000:2024-03-01 01:02:03.000002",
+            .context = "direct temporal update coerces assigned values",
+        }
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO temporal_direct VALUES "
+                   "(4, '2024-02-30', '2024-01-01', '2024-01-01', '2024-01-01')",
+            .message_fragment = "invalid date value",
+            .context = "direct temporal descriptor rejects invalid dates",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = invalid_temporal_error,
+            .sqlstate = "22007",
+            .context = "invalid date exposes MySQL condition",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear invalid date fork condition"
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO temporal_direct VALUES "
+                   "(4, '0000-00-00', '2024-01-01', '2024-01-01', '2024-01-01')",
+            .message_fragment = "invalid date value",
+            .context = "direct temporal descriptor rejects zero date without allow flag",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = invalid_temporal_error,
+            .sqlstate = "22007",
+            .context = "zero date exposes MySQL condition without allow flag",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear zero date fork condition"
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO temporal_direct VALUES "
+                   "(4, '2024-01-01', '2024-01-01 24:00:00', "
+                   "'2024-01-01', '2024-01-01')",
+            .message_fragment = "invalid datetime value",
+            .context = "direct temporal descriptor rejects invalid datetimes",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = invalid_temporal_error,
+            .sqlstate = "22007",
+            .context = "invalid datetime exposes MySQL condition",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear invalid datetime fork condition"
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO temporal_direct VALUES "
+                   "(4, '2024-01-01', '9999-12-31 23:59:59.5', "
+                   "'2024-01-01', '2024-01-01')",
+            .message_fragment = "datetime field overflow",
+            .context = "direct temporal descriptor rejects post-round overflow",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = datetime_overflow_error,
+            .sqlstate = "22008",
+            .context = "datetime overflow exposes MySQL condition",
+        }
+    );
+    failures += exec_sql(
+        database,
+        "CREATE TABLE temporal_zero_direct(id INTEGER PRIMARY KEY, d TEXT, dt TEXT)",
+        "create direct temporal zero descriptor fixture"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_column_type(
+            database,
+            NULL,
+            "temporal_zero_direct",
+            "d",
+            &(const struct mylite_sqlite_fork_column_type){
+                .kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_DATE,
+                .flags = MYLITE_SQLITE_FORK_COLUMN_TYPE_ALLOW_ZERO_TEMPORAL,
+            }
+        ),
+        database,
+        "set direct zero-date descriptor"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_column_type(
+            database,
+            NULL,
+            "temporal_zero_direct",
+            "dt",
+            &(const struct mylite_sqlite_fork_column_type){
+                .kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_DATETIME,
+                .flags = MYLITE_SQLITE_FORK_COLUMN_TYPE_ALLOW_ZERO_TEMPORAL,
+            }
+        ),
+        database,
+        "set direct zero-datetime descriptor"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO temporal_zero_direct VALUES "
+        "(1, '0000-00-00', '0000-00-00 00:00:00')",
+        "insert direct temporal zero descriptor values"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT d || ':' || dt FROM temporal_zero_direct WHERE id = 1",
+            .expected = "0000-00-00:0000-00-00 00:00:00",
+            .context = "direct temporal descriptors can allow zero sentinels",
         }
     );
 
@@ -1588,6 +1850,230 @@ static int test_mylite_decimal_type_coercion(void) {
         database,
         decimal_out_of_range_error,
         "MyLite unsigned negative decimal condition"
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_mylite_temporal_type_coercion(void) {
+    enum {
+        temporal_column_count = 5,
+        invalid_temporal_error = 1292,
+        datetime_overflow_error = 1441,
+    };
+
+    static const char *const after_insert[] = {
+        "1",
+        "2024-02-29",
+        "2024-02-29 12:34:56",
+        "2024-02-29 12:34:56.790",
+        "2024-02-29 12:34:56.123457",
+        "2",
+        "2024-02-29",
+        "2024-02-29 12:34:56",
+        "2024-02-29 12:34:56.100",
+        "2024-02-29 12:34:56.123000",
+        "3",
+        "2024-02-29",
+        "2024-02-29 12:34:56",
+        "2024-02-29 12:34:56.789",
+        "2024-02-29 12:34:56.123456",
+    };
+    static const char *const after_update[] = {
+        "1",
+        "2024-03-01",
+        "2024-03-01 00:00:00",
+        "2024-03-01 01:02:04.000",
+        "2024-03-01 01:02:03.000002",
+        "2",
+        "2024-02-29",
+        "2024-02-29 12:34:56",
+        "2024-02-29 12:34:56.100",
+        "2024-02-29 12:34:56.123000",
+        "3",
+        "2024-02-29",
+        "2024-02-29 12:34:56",
+        "2024-02-29 12:34:56.789",
+        "2024-02-29 12:34:56.123456",
+    };
+    static const char *const after_duplicate_update[] = {
+        "1",
+        "2024-03-01",
+        "2024-03-01 00:00:00",
+        "2024-03-01 01:02:04.000",
+        "2024-03-01 01:02:03.000002",
+        "2",
+        "2024-04-05",
+        "2024-04-05 06:07:09",
+        "2024-04-05 06:07:08.988",
+        "2024-04-05 06:07:08.987654",
+        "3",
+        "2024-02-29",
+        "2024-02-29 12:34:56",
+        "2024-02-29 12:34:56.789",
+        "2024-02-29 12:34:56.123456",
+    };
+    static const char *const after_replace[] = {
+        "1",
+        "2024-03-01",
+        "2024-03-01 00:00:00",
+        "2024-03-01 01:02:04.000",
+        "2024-03-01 01:02:03.000002",
+        "2",
+        "2024-04-05",
+        "2024-04-05 06:07:09",
+        "2024-04-05 06:07:08.988",
+        "2024-04-05 06:07:08.987654",
+        "3",
+        "2024-02-29",
+        "2024-02-29 12:34:56",
+        "2024-02-29 12:34:56.789",
+        "2024-02-29 12:34:56.123456",
+        "4",
+        "1999-12-31",
+        "2000-01-01 00:00:00",
+        "1999-12-31 23:59:59.877",
+        "1999-12-31 23:59:59.876543",
+    };
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_mylite_ok(mylite_open_memory(&database), database, "open MyLite temporal coercion");
+    if (failures != 0) {
+        return failures;
+    }
+
+    failures += exec_mylite_sql(
+        database,
+        "CREATE DATABASE mylite_temporal_coercion CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+        "create MyLite temporal coercion schema"
+    );
+    failures +=
+        exec_mylite_sql(database, "USE mylite_temporal_coercion", "use temporal coercion schema");
+    failures += exec_mylite_sql(
+        database,
+        "CREATE TABLE temporal_basic ("
+        "id INT PRIMARY KEY,"
+        "d DATE NOT NULL,"
+        "dt DATETIME NOT NULL,"
+        "dt3 DATETIME(3) NOT NULL,"
+        "dt6 DATETIME(6) NOT NULL"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "create MyLite temporal coercion table"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT INTO temporal_basic VALUES "
+        "(1, '2024-02-29', '2024-02-29 12:34:56', "
+        "'2024-02-29 12:34:56.7896', '2024-02-29 12:34:56.1234567'),"
+        "(2, '20240229', '20240229123456', '20240229123456.1', "
+        "'20240229123456.123'),"
+        "(3, 20240229, 20240229123456, '20240229123456.789', "
+        "'20240229123456.123456')",
+        "insert MyLite temporal coercion rows"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT id, d, dt, dt3, dt6 FROM temporal_basic ORDER BY id",
+            .values = after_insert,
+            .column_count = temporal_column_count,
+            .row_count = 3,
+            .context = "MyLite temporal insert coercion matches MySQL fixture",
+        }
+    );
+    failures += exec_mylite_sql(
+        database,
+        "UPDATE temporal_basic SET d = '2024-03-01', dt = '2024-03-01', "
+        "dt3 = '2024-03-01 01:02:03.9999', "
+        "dt6 = '2024-03-01 01:02:03.0000019' WHERE id = 1",
+        "update MyLite temporal coercion row"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT id, d, dt, dt3, dt6 FROM temporal_basic ORDER BY id",
+            .values = after_update,
+            .column_count = temporal_column_count,
+            .row_count = 3,
+            .context = "MyLite temporal update coercion matches MySQL fixture",
+        }
+    );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT INTO temporal_basic VALUES "
+        "(2, '2024-04-05 06:07:08', '2024-04-05 06:07:08.9', "
+        "'2024-04-05 06:07:08.9876', '2024-04-05 06:07:08.987654') "
+        "ON DUPLICATE KEY UPDATE d = VALUES(d), dt = VALUES(dt), "
+        "dt3 = VALUES(dt3), dt6 = VALUES(dt6)",
+        "insert duplicate update MyLite temporal coercion row"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT id, d, dt, dt3, dt6 FROM temporal_basic ORDER BY id",
+            .values = after_duplicate_update,
+            .column_count = temporal_column_count,
+            .row_count = 3,
+            .context = "MyLite temporal duplicate update coercion matches MySQL fixture",
+        }
+    );
+    failures += exec_mylite_sql(
+        database,
+        "REPLACE INTO temporal_basic VALUES "
+        "(4, '1999-12-31', '1999-12-31 23:59:59.8', "
+        "'1999-12-31 23:59:59.8765', '1999-12-31 23:59:59.876543')",
+        "replace MyLite temporal coercion row"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT id, d, dt, dt3, dt6 FROM temporal_basic ORDER BY id",
+            .values = after_replace,
+            .column_count = temporal_column_count,
+            .row_count = 4,
+            .context = "MyLite temporal replace coercion matches MySQL fixture",
+        }
+    );
+
+    failures += expect_mylite_sql_status(
+        database,
+        "INSERT INTO temporal_basic VALUES "
+        "(5, '2024-02-30', '2024-01-01', '2024-01-01', '2024-01-01')",
+        MYLITE_SQLITE_ERROR,
+        "MyLite temporal coercion rejects invalid dates"
+    );
+    failures += expect_mylite_error_condition(
+        database,
+        invalid_temporal_error,
+        "MyLite invalid date condition"
+    );
+    failures += expect_mylite_sql_status(
+        database,
+        "INSERT INTO temporal_basic VALUES "
+        "(5, '2024-01-01', '2024-01-01 24:00:00', '2024-01-01', '2024-01-01')",
+        MYLITE_SQLITE_ERROR,
+        "MyLite temporal coercion rejects invalid datetimes"
+    );
+    failures += expect_mylite_error_condition(
+        database,
+        invalid_temporal_error,
+        "MyLite invalid datetime condition"
+    );
+    failures += expect_mylite_sql_status(
+        database,
+        "INSERT INTO temporal_basic VALUES "
+        "(5, '2024-01-01', '9999-12-31 23:59:59.5', "
+        "'2024-01-01', '2024-01-01')",
+        MYLITE_SQLITE_ERROR,
+        "MyLite temporal coercion rejects post-round overflow"
+    );
+    failures += expect_mylite_error_condition(
+        database,
+        datetime_overflow_error,
+        "MyLite datetime overflow condition"
     );
 
     mylite_close(database);

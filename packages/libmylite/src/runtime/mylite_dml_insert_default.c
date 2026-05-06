@@ -31,6 +31,10 @@ static bool insert_column_uses_numeric_implicit_default(
 
 static bool insert_column_uses_decimal_storage(const struct mylite_insert_table_column *column);
 
+static bool insert_column_uses_temporal_text_storage(
+    const struct mylite_insert_table_column *column
+);
+
 static bool insert_column_uses_text_storage(const struct mylite_insert_table_column *column);
 
 static char *insert_current_timestamp_text(void);
@@ -240,7 +244,8 @@ int mylite_dml_resolve_insert_text_value(
         *out_value = (struct mylite_insert_bound_value){.kind = MYLITE_INSERT_BOUND_NULL};
         return MYLITE_OK;
     }
-    if (insert_column_uses_decimal_storage(column)) {
+    if (insert_column_uses_decimal_storage(column) ||
+        insert_column_uses_temporal_text_storage(column)) {
         return set_insert_bound_text_value(database, text, out_value);
     }
     if (mylite_dml_parse_insert_integer_text(text, &integer_value)) {
@@ -403,6 +408,16 @@ static bool insert_column_uses_decimal_storage(const struct mylite_insert_table_
             mylite_ascii_case_equal(column->data_type, "decimal")) != 0;
 }
 
+static bool insert_column_uses_temporal_text_storage(
+    const struct mylite_insert_table_column *column
+) {
+    if (column == NULL || column->data_type == NULL) {
+        return false;
+    }
+    return (mylite_ascii_case_equal(column->data_type, "date") ||
+            mylite_ascii_case_equal(column->data_type, "datetime")) != 0;
+}
+
 static bool insert_column_uses_text_storage(const struct mylite_insert_table_column *column) {
     static const char *const text_types[] = {
         "char",
@@ -417,6 +432,8 @@ static bool insert_column_uses_text_storage(const struct mylite_insert_table_col
         "blob",
         "mediumblob",
         "longblob",
+        "date",
+        "datetime",
     };
 
     if (column == NULL || column->data_type == NULL) {

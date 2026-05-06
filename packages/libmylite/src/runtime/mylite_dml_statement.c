@@ -102,6 +102,7 @@ int mylite_dml_execute_insert_values_statement(
     struct mylite_insert_transaction_result result = {0};
     size_t *column_indexes = NULL;
     size_t *update_column_indexes = NULL;
+    unsigned int write_table_flags = 0U;
     int status = mylite_dml_validate_insert_target(
         stmt->database,
         stmt->database->selected_schema,
@@ -114,10 +115,14 @@ int mylite_dml_execute_insert_values_statement(
         return status;
     }
 
+    if (stmt->insert_values.ignore) {
+        write_table_flags |= MYLITE_DML_WRITE_TABLE_ALLOW_ZERO_TEMPORAL;
+    }
     status = mylite_dml_load_write_table(
         stmt->database,
         schema_name,
         stmt->insert_values.table_name,
+        write_table_flags,
         &table
     );
     if (status == MYLITE_OK) {
@@ -194,6 +199,7 @@ int mylite_dml_execute_insert_set_statement(
     size_t *column_indexes = NULL;
     size_t *update_column_indexes = NULL;
     size_t column_index_count = 0U;
+    unsigned int write_table_flags = 0U;
     int status = mylite_dml_validate_insert_target(
         stmt->database,
         stmt->database->selected_schema,
@@ -206,10 +212,14 @@ int mylite_dml_execute_insert_set_statement(
         return status;
     }
 
+    if (stmt->insert_values.ignore) {
+        write_table_flags |= MYLITE_DML_WRITE_TABLE_ALLOW_ZERO_TEMPORAL;
+    }
     status = mylite_dml_load_write_table(
         stmt->database,
         schema_name,
         stmt->insert_values.table_name,
+        write_table_flags,
         &table
     );
     if (status == MYLITE_OK) {
@@ -309,6 +319,7 @@ int mylite_dml_execute_replace_values_statement(
         stmt->database,
         schema_name,
         stmt->insert_values.table_name,
+        0U,
         &table
     );
     if (status == MYLITE_OK) {
@@ -369,6 +380,7 @@ int mylite_dml_execute_replace_set_statement(
         stmt->database,
         schema_name,
         stmt->insert_values.table_name,
+        0U,
         &table
     );
     if (status == MYLITE_OK) {
@@ -441,6 +453,7 @@ int mylite_dml_execute_update_statement(
             stmt->database,
             table.schema_name,
             table.table_name,
+            0U,
             &write_table
         );
     }

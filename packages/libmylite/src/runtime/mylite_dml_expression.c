@@ -174,6 +174,7 @@ static int resolve_update_default_column(
             context->database,
             context->table->schema_name,
             context->table->table_name,
+            0U,
             loaded_table
         );
         if (status != MYLITE_OK) {

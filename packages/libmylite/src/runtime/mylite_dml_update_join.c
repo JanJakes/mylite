@@ -607,6 +607,7 @@ static int initialize_joined_update_target(
         database,
         target->table->schema_name,
         target->table->table_name,
+        0U,
         &target->write_table
     );
     if (status != MYLITE_OK) {

@@ -2264,6 +2264,7 @@ struct MyliteColumnType {
   u64 nByte;             /* Byte-count limit for binary strings */
   u8 nPrecision;         /* DECIMAL precision */
   u8 nScale;             /* DECIMAL scale */
+  u8 nFsp;               /* Temporal fractional seconds precision */
 };
 
 # define MYLITE_COLTYPE_NONE             0
@@ -2274,8 +2275,11 @@ struct MyliteColumnType {
 # define MYLITE_COLTYPE_BINARY           5
 # define MYLITE_COLTYPE_VARBINARY        6
 # define MYLITE_COLTYPE_DECIMAL          7
+# define MYLITE_COLTYPE_DATE             8
+# define MYLITE_COLTYPE_DATETIME         9
 
 # define MYLITE_COLTYPE_FLAG_UNSIGNED    0x0001
+# define MYLITE_COLTYPE_FLAG_ALLOW_ZERO  0x0002
 
 # define MYLITE_CONDITION_NONE           0
 # define MYLITE_CONDITION_ERROR          1

@@ -157,9 +157,11 @@ struct mylite_insert_table_column {
     uint64_t character_maximum_length;
     uint64_t numeric_precision;
     uint64_t numeric_scale;
+    uint64_t datetime_precision;
     bool has_character_maximum_length;
     bool has_numeric_precision;
     bool has_numeric_scale;
+    bool has_datetime_precision;
     bool nullable;
     bool auto_increment;
     bool generated_default;
@@ -188,6 +190,7 @@ struct mylite_insert_table {
     size_t auto_increment_column_index;
     uint64_t next_auto_increment;
     bool has_auto_increment;
+    bool allow_zero_temporal;
 };
 
 struct mylite_insert_bound_value {

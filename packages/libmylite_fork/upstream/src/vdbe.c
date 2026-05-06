@@ -457,6 +457,21 @@ static int myliteCoerceDecimal(
   u32 *pMyErrno,
   const char **pzSqlState
 );
+static int myliteCoerceDate(
+  Mem *pMem,
+  int bAllowZero,
+  const char **pzErr,
+  u32 *pMyErrno,
+  const char **pzSqlState
+);
+static int myliteCoerceDateTime(
+  Mem *pMem,
+  u8 nFsp,
+  int bAllowZero,
+  const char **pzErr,
+  u32 *pMyErrno,
+  const char **pzSqlState
+);
 static int myliteDecimalText(
   const char *zText,
   int nText,
@@ -489,6 +504,102 @@ static char *myliteDecimalFormat(
   int nScaled,
   u8 nScale,
   int bNegative,
+  int *pnOut
+);
+typedef struct MyliteTemporalParts MyliteTemporalParts;
+struct MyliteTemporalParts {
+  int y;
+  int m;
+  int d;
+  int h;
+  int min;
+  int s;
+  int us;
+};
+# define MYLITE_TEMPORAL_OK       0
+# define MYLITE_TEMPORAL_INVALID  1
+# define MYLITE_TEMPORAL_OVERFLOW 2
+static int myliteTemporalText(Mem *pMem);
+static int myliteParseTemporalText(
+  const char *zText,
+  int nText,
+  int bDateTime,
+  u8 nFsp,
+  int bAllowZero,
+  MyliteTemporalParts *pOut
+);
+static int myliteParseSeparatedTemporal(
+  const char *zText,
+  int i,
+  int nText,
+  int bDateTime,
+  u8 nFsp,
+  int bAllowZero,
+  MyliteTemporalParts *pOut
+);
+static int myliteParseCompactTemporal(
+  const char *zText,
+  int i,
+  int nText,
+  int bDateTime,
+  u8 nFsp,
+  int bAllowZero,
+  MyliteTemporalParts *pOut
+);
+static int myliteParseTemporalDate(
+  const char *zText,
+  int *pi,
+  int nText,
+  int bSeparated,
+  int bShortYear,
+  int bAllowZero,
+  MyliteTemporalParts *pOut
+);
+static int myliteParseTemporalTime(
+  const char *zText,
+  int *pi,
+  int nText,
+  u8 nFsp,
+  MyliteTemporalParts *pOut
+);
+static int myliteParseTemporalFraction(
+  const char *zText,
+  int *pi,
+  int nText,
+  u8 nFsp,
+  int *pUs
+);
+static int myliteTemporalAddSecond(MyliteTemporalParts *pOut);
+static int myliteTemporalDigitRun(const char *zText, int i, int nText);
+static int myliteTemporalReadDigits(
+  const char *zText,
+  int *pi,
+  int nText,
+  int nDigit,
+  int *pValue
+);
+static int myliteTemporalReadVariableDigits(
+  const char *zText,
+  int *pi,
+  int nText,
+  int nMin,
+  int nMax,
+  int *pValue
+);
+static int myliteTemporalValidDate(int y, int m, int d, int bAllowZero);
+static int myliteTemporalZeroDate(const MyliteTemporalParts *pOut);
+static int myliteTemporalValidTime(int h, int min, int s);
+static int myliteTemporalDaysInMonth(int y, int m);
+static int myliteTemporalLeapYear(int y);
+static void myliteTemporalFormatDate(
+  const MyliteTemporalParts *pParts,
+  char *zOut,
+  int *pnOut
+);
+static void myliteTemporalFormatDateTime(
+  const MyliteTemporalParts *pParts,
+  u8 nFsp,
+  char *zOut,
   int *pnOut
 );
 static u64 myliteUtf8CharCount(const unsigned char *zText, int nText);
@@ -561,6 +672,17 @@ static int myliteApplyColumnType(
       return myliteCoerceDecimal(
           pMem, pCol->myliteType.nPrecision, pCol->myliteType.nScale,
           (pCol->myliteType.mFlags & MYLITE_COLTYPE_FLAG_UNSIGNED)!=0,
+          pzErr, pMyErrno, pzSqlState
+      );
+    case MYLITE_COLTYPE_DATE:
+      return myliteCoerceDate(
+          pMem, (pCol->myliteType.mFlags & MYLITE_COLTYPE_FLAG_ALLOW_ZERO)!=0,
+          pzErr, pMyErrno, pzSqlState
+      );
+    case MYLITE_COLTYPE_DATETIME:
+      return myliteCoerceDateTime(
+          pMem, pCol->myliteType.nFsp,
+          (pCol->myliteType.mFlags & MYLITE_COLTYPE_FLAG_ALLOW_ZERO)!=0,
           pzErr, pMyErrno, pzSqlState
       );
     default:
@@ -988,6 +1110,423 @@ static char *myliteDecimalFormat(
   zOut[iOut] = 0;
   *pnOut = iOut;
   return zOut;
+}
+
+static int myliteCoerceDate(
+  Mem *pMem,
+  int bAllowZero,
+  const char **pzErr,
+  u32 *pMyErrno,
+  const char **pzSqlState
+){
+  MyliteTemporalParts parts;
+  char zOut[32];
+  int nOut = 0;
+  int rc;
+
+  rc = myliteTemporalText(pMem);
+  if( rc!=SQLITE_OK ) return rc;
+  rc = myliteParseTemporalText(pMem->z, pMem->n, 0, 0, bAllowZero, &parts);
+  if( rc!=MYLITE_TEMPORAL_OK ){
+    *pzErr = "invalid date value";
+    *pMyErrno = rc==MYLITE_TEMPORAL_OVERFLOW ? 1441 : 1292;
+    *pzSqlState = rc==MYLITE_TEMPORAL_OVERFLOW ? "22008" : "22007";
+    return SQLITE_MISMATCH;
+  }
+  myliteTemporalFormatDate(&parts, zOut, &nOut);
+  return sqlite3VdbeMemSetStr(pMem, zOut, nOut, SQLITE_UTF8, SQLITE_TRANSIENT);
+}
+
+static int myliteCoerceDateTime(
+  Mem *pMem,
+  u8 nFsp,
+  int bAllowZero,
+  const char **pzErr,
+  u32 *pMyErrno,
+  const char **pzSqlState
+){
+  MyliteTemporalParts parts;
+  char zOut[32];
+  int nOut = 0;
+  int rc;
+
+  rc = myliteTemporalText(pMem);
+  if( rc!=SQLITE_OK ) return rc;
+  rc = myliteParseTemporalText(pMem->z, pMem->n, 1, nFsp, bAllowZero, &parts);
+  if( rc!=MYLITE_TEMPORAL_OK ){
+    *pzErr = rc==MYLITE_TEMPORAL_OVERFLOW ?
+        "datetime field overflow" : "invalid datetime value";
+    *pMyErrno = rc==MYLITE_TEMPORAL_OVERFLOW ? 1441 : 1292;
+    *pzSqlState = rc==MYLITE_TEMPORAL_OVERFLOW ? "22008" : "22007";
+    return SQLITE_MISMATCH;
+  }
+  myliteTemporalFormatDateTime(&parts, nFsp, zOut, &nOut);
+  return sqlite3VdbeMemSetStr(pMem, zOut, nOut, SQLITE_UTF8, SQLITE_TRANSIENT);
+}
+
+static int myliteTemporalText(Mem *pMem){
+  if( (pMem->flags & (MEM_Str|MEM_Blob))==0 ){
+    if( sqlite3VdbeMemStringify(pMem, SQLITE_UTF8, 1)!=SQLITE_OK ){
+      return SQLITE_NOMEM;
+    }
+  }
+  return ExpandBlob(pMem);
+}
+
+static int myliteParseTemporalText(
+  const char *zText,
+  int nText,
+  int bDateTime,
+  u8 nFsp,
+  int bAllowZero,
+  MyliteTemporalParts *pOut
+){
+  int i = 0;
+
+  *pOut = (MyliteTemporalParts){0};
+  while( i<nText && sqlite3Isspace(zText[i]) ) i++;
+  while( nText>i && sqlite3Isspace(zText[nText-1]) ) nText--;
+  if( i>=nText ) return MYLITE_TEMPORAL_INVALID;
+  if( myliteTemporalDigitRun(zText, i, nText)>=4 &&
+      i+4<nText && zText[i+4]=='-' ){
+    return myliteParseSeparatedTemporal(
+        zText, i, nText, bDateTime, nFsp, bAllowZero, pOut
+    );
+  }
+  return myliteParseCompactTemporal(zText, i, nText, bDateTime, nFsp, bAllowZero, pOut);
+}
+
+static int myliteParseSeparatedTemporal(
+  const char *zText,
+  int i,
+  int nText,
+  int bDateTime,
+  u8 nFsp,
+  int bAllowZero,
+  MyliteTemporalParts *pOut
+){
+  int rc;
+
+  rc = myliteParseTemporalDate(zText, &i, nText, 1, 0, bAllowZero, pOut);
+  if( rc!=MYLITE_TEMPORAL_OK ) return rc;
+  if( i==nText ) return MYLITE_TEMPORAL_OK;
+  if( zText[i]!=' ' && zText[i]!='T' ) return MYLITE_TEMPORAL_INVALID;
+  if( zText[i]==' ' ){
+    while( i<nText && sqlite3Isspace(zText[i]) ) i++;
+  }else{
+    i++;
+  }
+  rc = myliteParseTemporalTime(zText, &i, nText, bDateTime ? nFsp : 0, pOut);
+  if( rc!=MYLITE_TEMPORAL_OK ) return rc;
+  if( myliteTemporalZeroDate(pOut) &&
+      (pOut->h!=0 || pOut->min!=0 || pOut->s!=0 || pOut->us!=0) ){
+    return MYLITE_TEMPORAL_INVALID;
+  }
+  while( i<nText && sqlite3Isspace(zText[i]) ) i++;
+  return i==nText ? MYLITE_TEMPORAL_OK : MYLITE_TEMPORAL_INVALID;
+}
+
+static int myliteParseCompactTemporal(
+  const char *zText,
+  int i,
+  int nText,
+  int bDateTime,
+  u8 nFsp,
+  int bAllowZero,
+  MyliteTemporalParts *pOut
+){
+  int nDigit = myliteTemporalDigitRun(zText, i, nText);
+  int bShortYear = nDigit==6 || nDigit==12;
+  int bHasTime = nDigit==12 || nDigit==14;
+  int rc;
+
+  if( nDigit!=6 && nDigit!=8 && nDigit!=12 && nDigit!=14 ){
+    return MYLITE_TEMPORAL_INVALID;
+  }
+  rc = myliteParseTemporalDate(zText, &i, nText, 0, bShortYear, bAllowZero, pOut);
+  if( rc!=MYLITE_TEMPORAL_OK ) return rc;
+  if( bHasTime ){
+    rc = myliteTemporalReadDigits(zText, &i, nText, 2, &pOut->h);
+    if( rc!=MYLITE_TEMPORAL_OK ) return rc;
+    rc = myliteTemporalReadDigits(zText, &i, nText, 2, &pOut->min);
+    if( rc!=MYLITE_TEMPORAL_OK ) return rc;
+    rc = myliteTemporalReadDigits(zText, &i, nText, 2, &pOut->s);
+    if( rc!=MYLITE_TEMPORAL_OK ) return rc;
+    if( !myliteTemporalValidTime(pOut->h, pOut->min, pOut->s) ){
+      return MYLITE_TEMPORAL_INVALID;
+    }
+  }
+  if( i<nText && zText[i]=='.' ){
+    if( !bHasTime ){
+      int bNonzero = 0;
+      i++;
+      if( i>=nText || !sqlite3Isdigit(zText[i]) ){
+        return MYLITE_TEMPORAL_INVALID;
+      }
+      while( i<nText && sqlite3Isdigit(zText[i]) ){
+        if( zText[i]!='0' ) bNonzero = 1;
+        i++;
+      }
+      if( bNonzero ) return MYLITE_TEMPORAL_INVALID;
+    }else{
+      rc = myliteParseTemporalFraction(
+          zText, &i, nText, bDateTime ? nFsp : 0, &pOut->us
+      );
+      if( rc!=MYLITE_TEMPORAL_OK ) return rc;
+      if( pOut->us>=1000000 ){
+        pOut->us = 0;
+        rc = myliteTemporalAddSecond(pOut);
+        if( rc!=MYLITE_TEMPORAL_OK ) return rc;
+      }
+      if( myliteTemporalZeroDate(pOut) &&
+          (pOut->h!=0 || pOut->min!=0 || pOut->s!=0 || pOut->us!=0) ){
+        return MYLITE_TEMPORAL_INVALID;
+      }
+    }
+  }
+  while( i<nText && sqlite3Isspace(zText[i]) ) i++;
+  return i==nText ? MYLITE_TEMPORAL_OK : MYLITE_TEMPORAL_INVALID;
+}
+
+static int myliteParseTemporalDate(
+  const char *zText,
+  int *pi,
+  int nText,
+  int bSeparated,
+  int bShortYear,
+  int bAllowZero,
+  MyliteTemporalParts *pOut
+){
+  int rc;
+
+  if( bShortYear ){
+    rc = myliteTemporalReadDigits(zText, pi, nText, 2, &pOut->y);
+    if( rc!=MYLITE_TEMPORAL_OK ) return rc;
+    pOut->y += pOut->y<=69 ? 2000 : 1900;
+  }else{
+    rc = myliteTemporalReadDigits(zText, pi, nText, 4, &pOut->y);
+    if( rc!=MYLITE_TEMPORAL_OK ) return rc;
+  }
+  if( bSeparated ){
+    if( *pi>=nText || zText[*pi]!='-' ) return MYLITE_TEMPORAL_INVALID;
+    (*pi)++;
+  }
+  rc = myliteTemporalReadDigits(zText, pi, nText, 2, &pOut->m);
+  if( rc!=MYLITE_TEMPORAL_OK ) return rc;
+  if( bSeparated ){
+    if( *pi>=nText || zText[*pi]!='-' ) return MYLITE_TEMPORAL_INVALID;
+    (*pi)++;
+  }
+  rc = myliteTemporalReadDigits(zText, pi, nText, 2, &pOut->d);
+  if( rc!=MYLITE_TEMPORAL_OK ) return rc;
+  return myliteTemporalValidDate(pOut->y, pOut->m, pOut->d, bAllowZero) ?
+      MYLITE_TEMPORAL_OK : MYLITE_TEMPORAL_INVALID;
+}
+
+static int myliteParseTemporalTime(
+  const char *zText,
+  int *pi,
+  int nText,
+  u8 nFsp,
+  MyliteTemporalParts *pOut
+){
+  int rc;
+
+  rc = myliteTemporalReadVariableDigits(zText, pi, nText, 1, 2, &pOut->h);
+  if( rc!=MYLITE_TEMPORAL_OK ) return rc;
+  if( *pi>=nText || zText[*pi]!=':' ) return MYLITE_TEMPORAL_INVALID;
+  (*pi)++;
+  rc = myliteTemporalReadVariableDigits(zText, pi, nText, 1, 2, &pOut->min);
+  if( rc!=MYLITE_TEMPORAL_OK ) return rc;
+  pOut->s = 0;
+  if( *pi<nText && zText[*pi]==':' ){
+    (*pi)++;
+    rc = myliteTemporalReadVariableDigits(zText, pi, nText, 1, 2, &pOut->s);
+    if( rc!=MYLITE_TEMPORAL_OK ) return rc;
+    if( *pi<nText && zText[*pi]=='.' ){
+      rc = myliteParseTemporalFraction(zText, pi, nText, nFsp, &pOut->us);
+      if( rc!=MYLITE_TEMPORAL_OK ) return rc;
+    }
+  }
+  if( !myliteTemporalValidTime(pOut->h, pOut->min, pOut->s) ){
+    return MYLITE_TEMPORAL_INVALID;
+  }
+  if( pOut->us>=1000000 ){
+    pOut->us = 0;
+    return myliteTemporalAddSecond(pOut);
+  }
+  return MYLITE_TEMPORAL_OK;
+}
+
+static int myliteParseTemporalFraction(
+  const char *zText,
+  int *pi,
+  int nText,
+  u8 nFsp,
+  int *pUs
+){
+  int i = *pi + 1;
+  int nKept = 0;
+  int nDigit = 0;
+  int iRound = -1;
+  int iValue = 0;
+  int iIncrement = 1;
+  int j;
+
+  if( i>=nText || !sqlite3Isdigit(zText[i]) ){
+    return MYLITE_TEMPORAL_INVALID;
+  }
+  while( i<nText && sqlite3Isdigit(zText[i]) ){
+    if( nKept<(int)nFsp ){
+      iValue = iValue*10 + (zText[i] - '0');
+      nKept++;
+    }else if( iRound<0 ){
+      iRound = zText[i] - '0';
+    }
+    nDigit++;
+    i++;
+  }
+  if( nDigit==0 ) return MYLITE_TEMPORAL_INVALID;
+  while( nKept<6 ){
+    iValue *= 10;
+    nKept++;
+  }
+  if( iRound>=5 ){
+    for(j=0; j<6-(int)nFsp; j++) iIncrement *= 10;
+    iValue += iIncrement;
+  }
+  *pi = i;
+  *pUs = iValue;
+  return MYLITE_TEMPORAL_OK;
+}
+
+static int myliteTemporalAddSecond(MyliteTemporalParts *pOut){
+  if( myliteTemporalZeroDate(pOut) ) return MYLITE_TEMPORAL_INVALID;
+  pOut->s++;
+  if( pOut->s<60 ) return MYLITE_TEMPORAL_OK;
+  pOut->s = 0;
+  pOut->min++;
+  if( pOut->min<60 ) return MYLITE_TEMPORAL_OK;
+  pOut->min = 0;
+  pOut->h++;
+  if( pOut->h<24 ) return MYLITE_TEMPORAL_OK;
+  pOut->h = 0;
+  pOut->d++;
+  if( pOut->d<=myliteTemporalDaysInMonth(pOut->y, pOut->m) ){
+    return MYLITE_TEMPORAL_OK;
+  }
+  pOut->d = 1;
+  pOut->m++;
+  if( pOut->m<=12 ) return MYLITE_TEMPORAL_OK;
+  pOut->m = 1;
+  pOut->y++;
+  return pOut->y<=9999 ? MYLITE_TEMPORAL_OK : MYLITE_TEMPORAL_OVERFLOW;
+}
+
+static int myliteTemporalDigitRun(const char *zText, int i, int nText){
+  int nDigit = 0;
+  while( i+nDigit<nText && sqlite3Isdigit(zText[i+nDigit]) ){
+    nDigit++;
+  }
+  return nDigit;
+}
+
+static int myliteTemporalReadDigits(
+  const char *zText,
+  int *pi,
+  int nText,
+  int nDigit,
+  int *pValue
+){
+  int i = *pi;
+  int value = 0;
+  int j;
+
+  if( i+nDigit>nText ) return MYLITE_TEMPORAL_INVALID;
+  for(j=0; j<nDigit; j++){
+    if( !sqlite3Isdigit(zText[i+j]) ) return MYLITE_TEMPORAL_INVALID;
+    value = value*10 + (zText[i+j] - '0');
+  }
+  *pi = i + nDigit;
+  *pValue = value;
+  return MYLITE_TEMPORAL_OK;
+}
+
+static int myliteTemporalReadVariableDigits(
+  const char *zText,
+  int *pi,
+  int nText,
+  int nMin,
+  int nMax,
+  int *pValue
+){
+  int i = *pi;
+  int value = 0;
+  int nDigit = 0;
+
+  while( i<nText && nDigit<nMax && sqlite3Isdigit(zText[i]) ){
+    value = value*10 + (zText[i] - '0');
+    i++;
+    nDigit++;
+  }
+  if( nDigit<nMin ) return MYLITE_TEMPORAL_INVALID;
+  *pi = i;
+  *pValue = value;
+  return MYLITE_TEMPORAL_OK;
+}
+
+static int myliteTemporalValidDate(int y, int m, int d, int bAllowZero){
+  if( bAllowZero && y==0 && m==0 && d==0 ) return 1;
+  return y>=1 && y<=9999 && m>=1 && m<=12 &&
+      d>=1 && d<=myliteTemporalDaysInMonth(y, m);
+}
+
+static int myliteTemporalZeroDate(const MyliteTemporalParts *pOut){
+  return pOut->y==0 && pOut->m==0 && pOut->d==0;
+}
+
+static int myliteTemporalValidTime(int h, int min, int s){
+  return h>=0 && h<=23 && min>=0 && min<=59 && s>=0 && s<=59;
+}
+
+static int myliteTemporalDaysInMonth(int y, int m){
+  static const int aDays[] = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+  if( m==2 && myliteTemporalLeapYear(y) ) return 29;
+  return aDays[m-1];
+}
+
+static int myliteTemporalLeapYear(int y){
+  return (y%4)==0 && ((y%100)!=0 || (y%400)==0);
+}
+
+static void myliteTemporalFormatDate(
+  const MyliteTemporalParts *pParts,
+  char *zOut,
+  int *pnOut
+){
+  sqlite3_snprintf(32, zOut, "%04d-%02d-%02d", pParts->y, pParts->m, pParts->d);
+  *pnOut = 10;
+}
+
+static void myliteTemporalFormatDateTime(
+  const MyliteTemporalParts *pParts,
+  u8 nFsp,
+  char *zOut,
+  int *pnOut
+){
+  char zFraction[8];
+  sqlite3_snprintf(
+      32, zOut, "%04d-%02d-%02d %02d:%02d:%02d",
+      pParts->y, pParts->m, pParts->d, pParts->h, pParts->min, pParts->s
+  );
+  *pnOut = 19;
+  if( nFsp>0 ){
+    sqlite3_snprintf(sizeof(zFraction), zFraction, "%06d", pParts->us);
+    zOut[(*pnOut)++] = '.';
+    memcpy(&zOut[*pnOut], zFraction, nFsp);
+    *pnOut += nFsp;
+    zOut[*pnOut] = 0;
+  }
 }
 
 static u64 myliteUtf8CharCount(const unsigned char *zText, int nText){

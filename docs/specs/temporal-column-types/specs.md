@@ -14,11 +14,13 @@ with MySQL temporal declarations:
   range text, and `DATETIME_PRECISION`
 - parser acceptance and validation for valid declarations
 
-Table DDL execution, catalog writes, default/nullability behavior,
-`CURRENT_TIMESTAMP`, `ON UPDATE`, time zone conversion, SQL mode behavior,
-zero-value insertion, value conversion, casts, functions, storage, warning
-records, and protocol metadata remain later roadmap work. Valid declarations
-prepare as `MYLITE_UNSUPPORTED`; malformed declarations fail during parsing.
+Later executable `CREATE TABLE` work uses these descriptors for metadata and
+physical text storage. The SQLite-fork temporal descriptor slice now implements
+basic write-time `DATE` and `DATETIME(fsp)` assignment conversion for public
+MyLite DML and direct annotated SQLite writes. `TIME`, `TIMESTAMP`, `YEAR`,
+`CURRENT_TIMESTAMP`, `ON UPDATE`, time zone conversion, SQL-mode variants,
+zero-value insertion modes, casts, functions, warning records, and protocol
+metadata remain later roadmap work.
 
 ## Sources
 
@@ -196,14 +198,17 @@ normalized exactly like `TIME(0)`, `DATETIME(6)`, `TIMESTAMP(0)`, and `YEAR(4)`.
 
 ## Compatibility gaps
 
-- Table DDL execution, catalog writes, storage layout, warnings, implicit
-  commits, and SHOW CREATE formatting are deferred.
+- Full temporal DDL formatting, warnings, implicit commits, and SHOW CREATE
+  edge cases are deferred.
 - `TIMESTAMP` default/nullability/on-update behavior is deferred to the column
   attributes and table DDL tasks.
 - Time zone conversion, session time zone state, and `explicit_defaults_for_timestamp`
   are deferred.
-- Zero date/time/year insertion, invalid-date handling, SQL modes such as
-  `NO_ZERO_DATE`, `NO_ZERO_IN_DATE`, `ALLOW_INVALID_DATES`, and
-  `TIME_TRUNCATE_FRACTIONAL` are deferred.
-- Temporal literals, casts, functions, arithmetic, result metadata, and
-  protocol flags are deferred.
+- Zero date/time/year insertion modes, SQL modes such as `NO_ZERO_DATE`,
+  `NO_ZERO_IN_DATE`, `ALLOW_INVALID_DATES`, and `TIME_TRUNCATE_FRACTIONAL`
+  are deferred.
+- Temporal literals, casts, functions, arithmetic, result metadata, protocol
+  flags, and `TIME`/`TIMESTAMP`/`YEAR` assignment descriptors are deferred.
+- Basic `DATE` and `DATETIME(fsp)` assignment conversion is implemented in the
+  SQLite fork; see
+  `docs/specs/sqlite-fork-temporal-type-descriptors/specs.md`.

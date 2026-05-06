@@ -68,6 +68,7 @@ static int configure_write_table_column_types(
 
 static bool write_table_column_fork_type(
     const struct mylite_insert_table_column *column,
+    bool allow_zero_temporal,
     struct mylite_sqlite_fork_column_type *out_type
 );
 
@@ -90,6 +91,10 @@ static bool write_table_column_uses_binary_type(const struct mylite_insert_table
 static bool write_table_column_uses_varbinary_type(const struct mylite_insert_table_column *column);
 
 static bool write_table_column_uses_decimal_type(const struct mylite_insert_table_column *column);
+
+static bool write_table_column_uses_date_type(const struct mylite_insert_table_column *column);
+
+static bool write_table_column_uses_datetime_type(const struct mylite_insert_table_column *column);
 
 static int set_write_table_descriptor_error(
     mylite_db *database,
@@ -132,6 +137,7 @@ int mylite_dml_load_write_table(
     mylite_db *database,
     const char *schema_name,
     const char *table_name,
+    unsigned int flags,
     struct mylite_insert_table *out_table
 ) {
     struct mylite_catalog_table_metadata metadata = {0};
@@ -142,6 +148,7 @@ int mylite_dml_load_write_table(
     }
 
     *out_table = (struct mylite_insert_table){0};
+    out_table->allow_zero_temporal = (flags & MYLITE_DML_WRITE_TABLE_ALLOW_ZERO_TEMPORAL) != 0U;
     status = mylite_catalog_load_table_metadata(database, schema_name, table_name, &metadata);
     if (status != MYLITE_OK) {
         return status;
@@ -237,6 +244,8 @@ static int load_insert_column_from_catalog_row(
     column.numeric_precision = row->numeric_precision;
     column.has_numeric_scale = row->has_numeric_scale;
     column.numeric_scale = row->numeric_scale;
+    column.has_datetime_precision = row->has_datetime_precision;
+    column.datetime_precision = row->datetime_precision;
     column.auto_increment = mylite_text_contains_word(column.extra, "auto_increment");
     column.generated_default = mylite_text_contains_word(column.extra, "DEFAULT_GENERATED");
     if (column.auto_increment) {
@@ -404,7 +413,7 @@ static int configure_write_table_column_types(
         const struct mylite_insert_table_column *column = &table->columns[index];
         int rc = SQLITE_OK;
 
-        if (write_table_column_fork_type(column, &type)) {
+        if (write_table_column_fork_type(column, table->allow_zero_temporal, &type)) {
             rc = mylite_sqlite_fork_set_column_type(
                 database->sqlite,
                 NULL,
@@ -429,6 +438,7 @@ static int configure_write_table_column_types(
 
 static bool write_table_column_fork_type(
     const struct mylite_insert_table_column *column,
+    bool allow_zero_temporal,
     struct mylite_sqlite_fork_column_type *out_type
 ) {
     struct write_table_integer_bounds signed_bounds = {0};
@@ -475,6 +485,21 @@ static bool write_table_column_fork_type(
         out_type->numeric_scale = column->numeric_scale;
         if (mylite_text_contains_word(column->column_type, "unsigned")) {
             out_type->flags |= MYLITE_SQLITE_FORK_COLUMN_TYPE_UNSIGNED;
+        }
+        return true;
+    }
+    if (write_table_column_uses_date_type(column)) {
+        out_type->kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_DATE;
+        if (allow_zero_temporal) {
+            out_type->flags |= MYLITE_SQLITE_FORK_COLUMN_TYPE_ALLOW_ZERO_TEMPORAL;
+        }
+        return true;
+    }
+    if (write_table_column_uses_datetime_type(column)) {
+        out_type->kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_DATETIME;
+        out_type->datetime_precision = column->datetime_precision;
+        if (allow_zero_temporal) {
+            out_type->flags |= MYLITE_SQLITE_FORK_COLUMN_TYPE_ALLOW_ZERO_TEMPORAL;
         }
         return true;
     }
@@ -584,6 +609,20 @@ static bool write_table_column_uses_decimal_type(const struct mylite_insert_tabl
         return false;
     }
     return mylite_ascii_case_equal(column->data_type, "decimal");
+}
+
+static bool write_table_column_uses_date_type(const struct mylite_insert_table_column *column) {
+    if (column == NULL) {
+        return false;
+    }
+    return mylite_ascii_case_equal(column->data_type, "date");
+}
+
+static bool write_table_column_uses_datetime_type(const struct mylite_insert_table_column *column) {
+    if (column == NULL || !column->has_datetime_precision) {
+        return false;
+    }
+    return mylite_ascii_case_equal(column->data_type, "datetime");
 }
 
 static int set_write_table_descriptor_error(

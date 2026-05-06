@@ -42,7 +42,7 @@ int mylite_sqlite_fork_clear_column_type(
   const char *zColumn
 ){
   const MyliteColumnType sqliteType = {
-    MYLITE_COLTYPE_NONE, 0, 0, 0, 0, 0, 0, 0, 0
+    MYLITE_COLTYPE_NONE, 0, 0, 0, 0, 0, 0, 0, 0, 0
   };
 
   if( db==0 ) return SQLITE_MISUSE;
@@ -192,6 +192,27 @@ static int myliteMakeColumnType(
       pOut->nScale = (u8)pType->numeric_scale;
       if( pType->flags & MYLITE_SQLITE_FORK_COLUMN_TYPE_UNSIGNED ){
         pOut->mFlags |= MYLITE_COLTYPE_FLAG_UNSIGNED;
+      }
+      return SQLITE_OK;
+    case MYLITE_SQLITE_FORK_COLUMN_TYPE_DATE:
+      if( pType->flags & ~MYLITE_SQLITE_FORK_COLUMN_TYPE_ALLOW_ZERO_TEMPORAL ){
+        return SQLITE_MISUSE;
+      }
+      if( pType->datetime_precision!=0 ) return SQLITE_MISUSE;
+      pOut->eType = MYLITE_COLTYPE_DATE;
+      if( pType->flags & MYLITE_SQLITE_FORK_COLUMN_TYPE_ALLOW_ZERO_TEMPORAL ){
+        pOut->mFlags |= MYLITE_COLTYPE_FLAG_ALLOW_ZERO;
+      }
+      return SQLITE_OK;
+    case MYLITE_SQLITE_FORK_COLUMN_TYPE_DATETIME:
+      if( pType->flags & ~MYLITE_SQLITE_FORK_COLUMN_TYPE_ALLOW_ZERO_TEMPORAL ){
+        return SQLITE_MISUSE;
+      }
+      if( pType->datetime_precision>6 ) return SQLITE_MISUSE;
+      pOut->eType = MYLITE_COLTYPE_DATETIME;
+      pOut->nFsp = (u8)pType->datetime_precision;
+      if( pType->flags & MYLITE_SQLITE_FORK_COLUMN_TYPE_ALLOW_ZERO_TEMPORAL ){
+        pOut->mFlags |= MYLITE_COLTYPE_FLAG_ALLOW_ZERO;
       }
       return SQLITE_OK;
   }

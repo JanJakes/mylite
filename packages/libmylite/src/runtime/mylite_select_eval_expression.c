@@ -320,6 +320,7 @@ static int evaluate_table_select_default_function(
         context->stmt->database,
         table->schema_name,
         table->table_name,
+        0U,
         &write_table
     );
     if (status == MYLITE_OK && table_column_index >= write_table.column_count) {

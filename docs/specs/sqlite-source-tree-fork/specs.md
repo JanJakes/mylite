@@ -27,7 +27,7 @@ Deferred scope:
 
 - direct SQLite parser grammar changes for MySQL syntax
 - broader VDBE-native assignment coercion beyond the first MyLite descriptor
-  extension point
+  extension point families
 - direct SQLite parser/catalog descriptor reload without MyLite's current
   statement layer
 - `.mylite` shifted-file-offset pager/VFS patches
@@ -56,6 +56,8 @@ Deferred scope:
   `docs/specs/sqlite-fork-binary-string-types/specs.md`
 - SQLite fork decimal type descriptors:
   `docs/specs/sqlite-fork-decimal-type-descriptors/specs.md`
+- SQLite fork temporal type descriptors:
+  `docs/specs/sqlite-fork-temporal-type-descriptors/specs.md`
 
 This specification is independently authored from official SQLite source-tree
 layout, observed MyLite build behavior, and the current MyLite codebase.
@@ -100,7 +102,7 @@ The fork's `UPDATE` record-building path uses SQLite's changed-column mask for
 MyLite descriptor checks, so assignment coercion applies to assigned columns
 without revalidating unrelated stored values.
 The current descriptor families cover strict integer, `DOUBLE`, `VARCHAR`,
-`BINARY`, `VARBINARY`, and `DECIMAL` assignment behavior.
+`BINARY`, `VARBINARY`, `DECIMAL`, `DATE`, and `DATETIME` assignment behavior.
 Fork-owned VDBE failures can also publish a structured MySQL condition through
 the diagnostics bridge before SQLite reports the statement error.
 

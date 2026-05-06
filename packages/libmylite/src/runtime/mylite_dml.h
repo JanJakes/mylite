@@ -74,10 +74,16 @@ int mylite_dml_validate_insert_set_assignments(
     size_t **out_column_indexes,
     size_t *out_column_index_count
 );
+
+enum mylite_dml_write_table_flags {
+    MYLITE_DML_WRITE_TABLE_ALLOW_ZERO_TEMPORAL = 1U << 0U,
+};
+
 int mylite_dml_load_write_table(
     mylite_db *database,
     const char *schema_name,
     const char *table_name,
+    unsigned int flags,
     struct mylite_insert_table *out_table
 );
 int mylite_dml_initialize_insert_ignore_warning_state(

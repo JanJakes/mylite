@@ -42,11 +42,13 @@ char *mylite_dml_build_update_scan_sql(
 
 char *mylite_dml_build_update_physical_sql(
     mylite_db *database,
-    const struct mylite_select_table *table
+    const struct mylite_select_table *table,
+    const size_t *column_indexes,
+    size_t column_index_count
 ) {
     sqlite3_str *sql = NULL;
 
-    if (database == NULL || table == NULL) {
+    if (database == NULL || table == NULL || column_indexes == NULL || column_index_count == 0U) {
         return NULL;
     }
 
@@ -56,11 +58,17 @@ char *mylite_dml_build_update_physical_sql(
     }
 
     sqlite3_str_appendf(sql, "UPDATE \"%w\" SET ", table->physical_name);
-    for (size_t index = 0U; index < table->column_count; ++index) {
+    for (size_t index = 0U; index < column_index_count; ++index) {
+        size_t column_index = column_indexes[index];
+
+        if (column_index >= table->column_count) {
+            sqlite3_free(sqlite3_str_finish(sql));
+            return NULL;
+        }
         if (index != 0U) {
             sqlite3_str_append(sql, ",", 1);
         }
-        sqlite3_str_appendf(sql, "\"%w\" = ?", table->columns[index].name);
+        sqlite3_str_appendf(sql, "\"%w\" = ?", table->columns[column_index].name);
     }
     sqlite3_str_append(sql, " WHERE rowid = ?", (int)strlen(" WHERE rowid = ?"));
     return sqlite3_str_finish(sql);
@@ -155,6 +163,24 @@ int mylite_dml_bind_update_row_values(
         }
     }
     return MYLITE_OK;
+}
+
+int mylite_dml_bind_update_row_column_value(
+    mylite_db *database,
+    sqlite3_stmt *update,
+    int parameter_index,
+    const struct mylite_update_row *candidate,
+    size_t column_index
+) {
+    int rc = SQLITE_OK;
+
+    if (database == NULL || update == NULL || candidate == NULL ||
+        column_index >= candidate->value_count) {
+        return MYLITE_MISUSE;
+    }
+
+    rc = bind_update_value(update, parameter_index, &candidate->values[column_index]);
+    return rc == SQLITE_OK ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
 static int bind_update_value(

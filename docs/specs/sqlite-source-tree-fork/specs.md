@@ -28,8 +28,8 @@ Deferred scope:
 - direct SQLite parser grammar changes for MySQL syntax
 - broader VDBE-native assignment coercion beyond the first MyLite descriptor
   extension point
-- persistent SQLite schema objects carrying MySQL column descriptors without
-  MyLite reattachment
+- direct SQLite parser/catalog descriptor reload without MyLite's current
+  statement layer
 - `.mylite` shifted-file-offset pager/VFS patches
 - removal of the old amalgamation snapshot under `third_party/sqlite`
 - direct MySQL DDL/DML execution through the fork parser
@@ -48,6 +48,8 @@ Deferred scope:
   `docs/specs/sqlite-fork-type-coercion/specs.md`
 - SQLite fork column type extension points:
   `docs/specs/sqlite-fork-column-type-extension-points/specs.md`
+- SQLite fork extension point map:
+  `docs/specs/sqlite-fork-extension-point-map/specs.md`
 
 This specification is independently authored from official SQLite source-tree
 layout, observed MyLite build behavior, and the current MyLite codebase.
@@ -85,6 +87,13 @@ descriptors to SQLite schema objects through
 hooks live next to a private SQLite source-tree build where parser, VDBE, pager,
 and file-format changes can be made directly.
 
+Public MyLite write statements now load supported descriptors from the MyLite
+catalog and attach them before preparing physical SQLite writes. Direct SQLite
+parser execution still needs its own schema-builder and catalog-reload path.
+The fork's `UPDATE` record-building path uses SQLite's changed-column mask for
+MyLite descriptor checks, so assignment coercion applies to assigned columns
+without revalidating unrelated stored values.
+
 ## Tests
 
 The fork package test must verify:
@@ -101,5 +110,5 @@ MyLite behavior still works through the new fork package boundary.
 
 This feature is `🟡` because MyLite now has a real source-tree SQLite fork
 package and build boundary, plus the first VDBE-native MyLite column type
-extension point. MySQL syntax, persistent descriptor reload, and broader
-parser/VDBE/pager behavior remain incomplete.
+extension point. MySQL syntax, direct parser/catalog descriptor reload, and
+broader parser/VDBE/pager behavior remain incomplete.

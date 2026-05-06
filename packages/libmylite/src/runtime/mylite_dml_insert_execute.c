@@ -4,30 +4,10 @@
 #include "mylite_dml_insert_conflict.h"
 #include "mylite_dml_insert_set_row_resolve.h"
 #include "mylite_dml_insert_sqlite_bind.h"
-#include "mylite_span.h"
 #include "sqlite3.h"
 
-#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-
-struct mylite_insert_integer_range {
-    sqlite3_int64 minimum;
-    sqlite3_int64 maximum;
-};
-
-static const sqlite3_int64 mylite_tinyint_signed_minimum = -128;
-static const sqlite3_int64 mylite_tinyint_signed_maximum = 127;
-static const sqlite3_int64 mylite_tinyint_unsigned_maximum = 255;
-static const sqlite3_int64 mylite_smallint_signed_minimum = -32768;
-static const sqlite3_int64 mylite_smallint_signed_maximum = 32767;
-static const sqlite3_int64 mylite_smallint_unsigned_maximum = 65535;
-static const sqlite3_int64 mylite_mediumint_signed_minimum = -8388608;
-static const sqlite3_int64 mylite_mediumint_signed_maximum = 8388607;
-static const sqlite3_int64 mylite_mediumint_unsigned_maximum = 16777215;
-static const sqlite3_int64 mylite_int_signed_minimum = -2147483647 - 1;
-static const sqlite3_int64 mylite_int_signed_maximum = 2147483647;
-static const sqlite3_int64 mylite_int_unsigned_maximum = 4294967295LL;
 
 static void record_insert_row_auto_increment_id(
     const struct mylite_insert_table *table,
@@ -39,25 +19,6 @@ static char *build_insert_update_physical_sql(
     mylite_db *database,
     const struct mylite_insert_table *table
 );
-
-static void append_insert_value_placeholder(
-    sqlite3_str *sql,
-    const struct mylite_insert_table_column *column
-);
-
-static bool insert_column_signed_integer_bounds(
-    const struct mylite_insert_table_column *column,
-    struct mylite_insert_integer_range *out_range
-);
-
-static bool insert_column_unsigned_integer_maximum(
-    const struct mylite_insert_table_column *column,
-    sqlite3_int64 *out_maximum
-);
-
-static bool insert_column_uses_double_coercion(const struct mylite_insert_table_column *column);
-
-static bool insert_column_uses_varchar_coercion(const struct mylite_insert_table_column *column);
 
 static bool insert_bound_values_equal(
     const struct mylite_insert_bound_value *left,
@@ -126,7 +87,7 @@ char *mylite_dml_build_insert_physical_sql(
         if (index != 0U) {
             sqlite3_str_append(sql, ",", 1);
         }
-        append_insert_value_placeholder(sql, &table->columns[index]);
+        sqlite3_str_append(sql, "?", 1);
     }
     sqlite3_str_append(sql, ")", 1);
     return sqlite3_str_finish(sql);
@@ -396,136 +357,10 @@ static char *build_insert_update_physical_sql(
             sqlite3_str_append(sql, ",", 1);
         }
         sqlite3_str_appendf(sql, "\"%w\" = ", table->columns[index].name);
-        append_insert_value_placeholder(sql, &table->columns[index]);
+        sqlite3_str_append(sql, "?", 1);
     }
     sqlite3_str_append(sql, " WHERE rowid = ?", (int)strlen(" WHERE rowid = ?"));
     return sqlite3_str_finish(sql);
-}
-
-static void append_insert_value_placeholder(
-    sqlite3_str *sql,
-    const struct mylite_insert_table_column *column
-) {
-    struct mylite_insert_integer_range range = {0};
-    sqlite3_int64 maximum = 0;
-
-    if (insert_column_unsigned_integer_maximum(column, &maximum)) {
-        sqlite3_str_appendf(sql, "_mylite_coerce_unsigned_integer(?,%lld)", (long long)maximum);
-        return;
-    }
-    if (insert_column_signed_integer_bounds(column, &range)) {
-        sqlite3_str_appendf(
-            sql,
-            "_mylite_coerce_signed_integer(?,%lld,%lld)",
-            (long long)range.minimum,
-            (long long)range.maximum
-        );
-        return;
-    }
-    if (insert_column_uses_double_coercion(column)) {
-        sqlite3_str_appendall(sql, "_mylite_coerce_double(?)");
-        return;
-    }
-    if (insert_column_uses_varchar_coercion(column)) {
-        sqlite3_str_appendf(
-            sql,
-            "_mylite_coerce_varchar(?,%llu)",
-            (unsigned long long)column->character_maximum_length
-        );
-        return;
-    }
-    sqlite3_str_append(sql, "?", 1);
-}
-
-static bool insert_column_signed_integer_bounds(
-    const struct mylite_insert_table_column *column,
-    struct mylite_insert_integer_range *out_range
-) {
-    if (column == NULL || mylite_text_contains_word(column->column_type, "unsigned")) {
-        return false;
-    }
-    if (mylite_ascii_case_equal(column->data_type, "tinyint")) {
-        *out_range = (struct mylite_insert_integer_range){
-            .minimum = mylite_tinyint_signed_minimum,
-            .maximum = mylite_tinyint_signed_maximum,
-        };
-        return true;
-    }
-    if (mylite_ascii_case_equal(column->data_type, "smallint")) {
-        *out_range = (struct mylite_insert_integer_range){
-            .minimum = mylite_smallint_signed_minimum,
-            .maximum = mylite_smallint_signed_maximum,
-        };
-        return true;
-    }
-    if (mylite_ascii_case_equal(column->data_type, "mediumint")) {
-        *out_range = (struct mylite_insert_integer_range){
-            .minimum = mylite_mediumint_signed_minimum,
-            .maximum = mylite_mediumint_signed_maximum,
-        };
-        return true;
-    }
-    if (mylite_ascii_case_equal(column->data_type, "int")) {
-        *out_range = (struct mylite_insert_integer_range){
-            .minimum = mylite_int_signed_minimum,
-            .maximum = mylite_int_signed_maximum,
-        };
-        return true;
-    }
-    if (mylite_ascii_case_equal(column->data_type, "bigint")) {
-        *out_range = (struct mylite_insert_integer_range){
-            .minimum = INT64_MIN,
-            .maximum = INT64_MAX,
-        };
-        return true;
-    }
-    return false;
-}
-
-static bool insert_column_unsigned_integer_maximum(
-    const struct mylite_insert_table_column *column,
-    sqlite3_int64 *out_maximum
-) {
-    if (column == NULL || !mylite_text_contains_word(column->column_type, "unsigned")) {
-        return false;
-    }
-    if (mylite_ascii_case_equal(column->data_type, "tinyint")) {
-        *out_maximum = mylite_tinyint_unsigned_maximum;
-        return true;
-    }
-    if (mylite_ascii_case_equal(column->data_type, "smallint")) {
-        *out_maximum = mylite_smallint_unsigned_maximum;
-        return true;
-    }
-    if (mylite_ascii_case_equal(column->data_type, "mediumint")) {
-        *out_maximum = mylite_mediumint_unsigned_maximum;
-        return true;
-    }
-    if (mylite_ascii_case_equal(column->data_type, "int")) {
-        *out_maximum = mylite_int_unsigned_maximum;
-        return true;
-    }
-    if (mylite_ascii_case_equal(column->data_type, "bigint")) {
-        *out_maximum = INT64_MAX;
-        return true;
-    }
-    return false;
-}
-
-static bool insert_column_uses_double_coercion(const struct mylite_insert_table_column *column) {
-    if (column == NULL) {
-        return false;
-    }
-    return (mylite_ascii_case_equal(column->data_type, "float") ||
-            mylite_ascii_case_equal(column->data_type, "double")) != 0;
-}
-
-static bool insert_column_uses_varchar_coercion(const struct mylite_insert_table_column *column) {
-    if (column == NULL || !column->has_character_maximum_length) {
-        return false;
-    }
-    return (mylite_ascii_case_equal(column->data_type, "char") ||
-            mylite_ascii_case_equal(column->data_type, "varchar")) != 0;
 }
 
 static bool insert_bound_values_equal(

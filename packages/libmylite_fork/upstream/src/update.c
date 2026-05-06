@@ -980,7 +980,11 @@ void sqlite3Update(
   ** verified. One could argue that this is wrong.
   */
   if( tmask&TRIGGER_BEFORE ){
+#ifdef SQLITE_ENABLE_MYLITE
+    sqlite3MyliteUpdateAffinity(v, pTab, regNew, aXRef);
+#else
     sqlite3TableAffinity(v, pTab, regNew);
+#endif
     sqlite3CodeRowTrigger(pParse, pTrigger, TK_UPDATE, pChanges,
         TRIGGER_BEFORE, pTab, regOldRowid, onError, labelContinue);
 

@@ -12,10 +12,16 @@ Implemented scope:
   supported unsigned integer, `DOUBLE`, and `VARCHAR`
 - native SQLite column descriptor hooks that emit VDBE write-time coercion for
   signed integer, supported unsigned integer, `DOUBLE`, and `VARCHAR`
-- MyLite `INSERT` lowering wraps supported target-column placeholders with those
-  hooks
+- MyLite public write-table loading attaches catalog-derived descriptors before
+  preparing physical SQLite writes
+- MyLite `INSERT`, `UPDATE`, `REPLACE`, and duplicate-key update lowering uses
+  raw physical placeholders and relies on the native descriptor opcode
+- SQLite-fork `UPDATE` type checks use SQLite's changed-column mask, so
+  explicitly assigned columns are coerced without revalidating unchanged stored
+  values
 - MySQL 8.4.9 verified success fixture covering numeric strings, numeric-to-text
-  conversion, multi-byte `VARCHAR` length, and update assignment coercion
+  conversion, multi-byte `VARCHAR` length, update assignment coercion,
+  duplicate-key update coercion, and replacement-row coercion
 
 Deferred scope:
 
@@ -24,10 +30,8 @@ Deferred scope:
 - full unsigned `BIGINT` above `INT64_MAX`
 - `DECIMAL`, temporal, JSON, `ENUM`, `SET`, bit, binary string, and spatial
   assignment conversion
-- assignment-aware `UPDATE` lowering that can coerce only changed target columns
-  without revalidating unchanged legacy stored values
-- automatic MyLite catalog reload into SQLite descriptors for reopened
-  connections
+- direct SQLite parser/catalog reload into descriptors for SQL executed without
+  MyLite's current statement layer
 - non-strict SQL mode clipping/truncation behavior
 - direct SQLite parser execution of MySQL DDL/DML without MyLite lowering
 
@@ -71,6 +75,11 @@ after-insert	1	42	7	123	3.25	1
 after-insert	2	-5	0	éé	4	0
 after-update	1	42	7	123	3.25	1
 after-update	2	12	8	99	6.5	0
+after-duplicate-update	1	42	7	123	3.25	1
+after-duplicate-update	2	9	10	77	8.75	1
+after-replace	1	42	7	123	3.25	1
+after-replace	2	9	10	77	8.75	1
+after-replace	3	11	12	456	9.25	0
 ```
 
 Additional strict-mode probes establish the first failure categories:
@@ -93,21 +102,22 @@ storage and bytecode executor. The DML lowering layer must therefore emit
 target-type coercion at each assignment boundary rather than trusting SQLite
 affinity.
 
-For supported `INSERT` assignments, MyLite emits:
+For supported assignments, MyLite attaches descriptors to SQLite's in-memory
+table metadata and emits ordinary physical placeholders:
 
 ```sql
 INSERT INTO "physical_table"("i","s","d")
-VALUES(
-    _mylite_coerce_signed_integer(?, -2147483648, 2147483647),
-    _mylite_coerce_varchar(?, 4),
-    _mylite_coerce_double(?)
-)
+VALUES(?, ?, ?)
 ```
 
-The current `UPDATE` executor rewrites complete physical rows. Automatic update
-coercion is therefore deferred until the lowering layer can wrap only the
-changed assignment targets. This avoids revalidating unrelated stored values
-when an older table was produced before a given type conversion rule existed.
+SQLite's code generator sees the table descriptors and emits
+`OP_MyliteTypeCheck` before record creation. This applies to public MyLite
+`INSERT`, single-table `UPDATE`, `REPLACE`, and `ON DUPLICATE KEY UPDATE`
+paths that prepare physical SQLite writes after loading the target table.
+For `UPDATE`, the fork uses SQLite's existing changed-column map to emit
+descriptor checks only for columns in the assignment set. This matches the
+assignment boundary: unchanged stored values are copied into the new record but
+are not re-coerced solely because another column is updated.
 
 The functions are private SQLite-fork primitives. They are not MySQL user
 functions. They are deterministic for a given value and argument list, and they
@@ -163,18 +173,20 @@ The executable tests must cover:
 - direct native SQLite calls to the coercion hooks
 - successful MyLite public API `INSERT` coercion for numeric strings,
   numeric-to-`VARCHAR`, UTF-8 character-count length, `DOUBLE`, and `NULL`
-- successful MyLite public API `UPDATE` behavior for the same fixture shape,
-  while assignment-aware native update coercion remains deferred
+- successful MyLite public API `UPDATE`, `ON DUPLICATE KEY UPDATE`, and
+  `REPLACE` behavior for the same fixture shape
 - native SQLite failure behavior for out-of-range integer, negative unsigned,
   over-length `VARCHAR`, and invalid `DOUBLE`
 - direct SQLite `INSERT` and `UPDATE` behavior through MyLite column descriptors
   without SQL wrapper functions
+- direct SQLite `UPDATE` behavior that coerces assigned descriptor columns
+  without revalidating unchanged legacy stored values
 - MySQL fixture diff against `mysql-basic-type-coercion.expected.tsv`
 
 ## Compatibility Status
 
 This feature is `🟡` because it establishes the first native assignment
-coercion primitive, uses it from supported MyLite `INSERT` lowering, and now
-adds direct VDBE write-time coercion through MyLite column descriptors. Full
-MySQL assignment conversion, automatic descriptor reload, and exact diagnostics
-remain deferred.
+coercion primitive and now uses direct VDBE write-time coercion through MyLite
+column descriptors for the common public write paths. Full MySQL assignment
+conversion, direct SQLite parser/catalog descriptor reload, and exact
+diagnostics remain deferred.

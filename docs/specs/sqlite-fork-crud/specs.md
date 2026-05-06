@@ -57,6 +57,8 @@ eventually execute unchanged through the forked SQLite parser.
   https://www.sqlite.org/c3ref/create_function.html
 - SQLite collating sequences:
   https://www.sqlite.org/c3ref/create_collation.html
+- SQLite fork extension point map:
+  `docs/specs/sqlite-fork-extension-point-map/specs.md`
 
 This specification is independently authored from official documentation,
 observed MySQL 8.4.9 runtime behavior, and SQLite's public documentation. It
@@ -315,7 +317,10 @@ This metadata should be updated by SQLite DDL paths, not a parallel DDL engine.
    SQLite grammar for `TRUNCATE TABLE`, MySQL table options, secondary-key
    table elements, and `AUTO_INCREMENT`.
 8. Then move type descriptors into SQLite column metadata and enforce MySQL
-   conversion/range/length rules in SQLite's insert/update path.
+   conversion/range/length rules in SQLite's insert/update path. Implemented
+   for the first signed integer, supported unsigned integer, `DOUBLE`, and
+   `VARCHAR` subset, with MyLite's public write paths now loading descriptors
+   from the catalog before preparing physical writes.
 
 ## Lemon Grammar Direction
 

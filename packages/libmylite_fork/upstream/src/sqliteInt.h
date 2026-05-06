@@ -5380,6 +5380,9 @@ int sqlite3VarintLen(u64 v);
 const char *sqlite3IndexAffinityStr(sqlite3*, Index*);
 char *sqlite3TableAffinityStr(sqlite3*,const Table*);
 void sqlite3TableAffinity(Vdbe*, Table*, int);
+#ifdef SQLITE_ENABLE_MYLITE
+void sqlite3MyliteUpdateAffinity(Vdbe*, Table*, int, int*);
+#endif
 char sqlite3CompareAffinity(const Expr *pExpr, char aff2);
 int sqlite3IndexAffinityOk(const Expr *pExpr, char idx_affinity);
 char sqlite3TableColumnAffinity(const Table*,int);

@@ -26,3 +26,21 @@ WHERE id = '2';
 SELECT 'after-update', id, tiny, unsigned_id, label, score + 0, optional IS NULL
 FROM coercion_basic
 ORDER BY id;
+
+INSERT INTO coercion_basic VALUES (2, '9', '10', 77, '8.75', NULL)
+ON DUPLICATE KEY UPDATE
+    tiny = VALUES(tiny),
+    unsigned_id = VALUES(unsigned_id),
+    label = VALUES(label),
+    score = VALUES(score),
+    optional = VALUES(optional);
+
+SELECT 'after-duplicate-update', id, tiny, unsigned_id, label, score + 0, optional IS NULL
+FROM coercion_basic
+ORDER BY id;
+
+REPLACE INTO coercion_basic VALUES (3, '11', '12', 456, '9.25', 'zz');
+
+SELECT 'after-replace', id, tiny, unsigned_id, label, score + 0, optional IS NULL
+FROM coercion_basic
+ORDER BY id;

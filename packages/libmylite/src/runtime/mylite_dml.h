@@ -477,7 +477,9 @@ char *mylite_dml_build_update_scan_sql(
 );
 char *mylite_dml_build_update_physical_sql(
     mylite_db *database,
-    const struct mylite_select_table *table
+    const struct mylite_select_table *table,
+    const size_t *column_indexes,
+    size_t column_index_count
 );
 char *mylite_dml_build_update_unique_check_sql(
     mylite_db *database,
@@ -495,6 +497,13 @@ int mylite_dml_bind_update_row_values(
     mylite_db *database,
     sqlite3_stmt *update,
     const struct mylite_update_row *candidate
+);
+int mylite_dml_bind_update_row_column_value(
+    mylite_db *database,
+    sqlite3_stmt *update,
+    int parameter_index,
+    const struct mylite_update_row *candidate,
+    size_t column_index
 );
 void mylite_dml_insert_values_plan_deinit(struct mylite_insert_values_plan *plan);
 void mylite_dml_insert_set_plan_deinit(struct mylite_insert_set_plan *plan);

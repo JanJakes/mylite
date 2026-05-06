@@ -2,3 +2,8 @@ after-insert	1	42	7	123	3.25	1
 after-insert	2	-5	0	éé	4	0
 after-update	1	42	7	123	3.25	1
 after-update	2	12	8	99	6.5	0
+after-duplicate-update	1	42	7	123	3.25	1
+after-duplicate-update	2	9	10	77	8.75	1
+after-replace	1	42	7	123	3.25	1
+after-replace	2	9	10	77	8.75	1
+after-replace	3	11	12	456	9.25	0

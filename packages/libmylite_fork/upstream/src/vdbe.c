@@ -3449,7 +3449,8 @@ op_column_corrupt:
 ** affinity.  If a value cannot be coerced into the target MyLite type, raise
 ** an error.
 **
-** P3 has the same generated-column skip semantics as OP_TypeCheck.
+** P3 has the same generated-column skip semantics as OP_TypeCheck except
+** that P3>=2 may target any single MyLite table column.
 */
 #ifdef SQLITE_ENABLE_MYLITE
 case OP_MyliteTypeCheck: {
@@ -3472,7 +3473,6 @@ case OP_MyliteTypeCheck: {
     i = pOp->p3-2;
     nCol = i+1;
     assert( i<pTab->nCol );
-    assert( aCol[i].colFlags & COLFLAG_VIRTUAL );
     assert( pOp->p2==1 );
   }
   for(; i<nCol; i++){

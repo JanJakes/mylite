@@ -243,6 +243,30 @@ void sqlite3TableAffinity(Vdbe *v, Table *pTab, int iReg){
   }
 }
 
+#ifdef SQLITE_ENABLE_MYLITE
+/*
+** Apply MyLite assignment coercion to only those columns changed by an
+** UPDATE statement.  This keeps descriptor checks aligned with MySQL
+** assignment semantics while preserving normal SQLite affinity handling for
+** tables without MyLite descriptors.
+*/
+void sqlite3MyliteUpdateAffinity(Vdbe *v, Table *pTab, int iReg, int *aiChng){
+  int i;
+  if( aiChng==0 || (pTab->tabFlags & TF_MyliteTypes)==0 ){
+    sqlite3TableAffinity(v, pTab, iReg);
+    return;
+  }
+  for(i=0; i<pTab->nCol; i++){
+    int iRegCol;
+    if( aiChng[i]<0 ) continue;
+    if( pTab->aCol[i].colFlags & COLFLAG_VIRTUAL ) continue;
+    iRegCol = sqlite3TableColumnToStorage(pTab, i) + iReg;
+    sqlite3VdbeAddOp3(v, OP_MyliteTypeCheck, iRegCol, 1, i+2);
+    sqlite3VdbeAppendP4(v, pTab, P4_TABLE);
+  }
+}
+#endif
+
 /*
 ** Return non-zero if the table pTab in database iDb or any of its indices
 ** have been opened at any point in the VDBE program. This is used to see if
@@ -340,7 +364,11 @@ void sqlite3ComputeGeneratedColumns(
         }
         jj++;
       }
-    }else if( pOp->opcode==OP_TypeCheck ){
+    }else if( pOp->opcode==OP_TypeCheck
+#ifdef SQLITE_ENABLE_MYLITE
+           || pOp->opcode==OP_MyliteTypeCheck
+#endif
+    ){
       /* If an OP_TypeCheck was generated because the table is STRICT,
       ** then set the P3 operand to indicate that generated columns should
       ** not be checked */
@@ -2097,7 +2125,11 @@ void sqlite3GenerateConstraintChecks(
         continue;
       }
       if( bAffinityDone==0 ){
+#ifdef SQLITE_ENABLE_MYLITE
+        sqlite3MyliteUpdateAffinity(v, pTab, regNewData+1, aiChng);
+#else
         sqlite3TableAffinity(v, pTab, regNewData+1);
+#endif
         bAffinityDone = 1;
       }
       allOk = sqlite3VdbeMakeLabel(pParse);
@@ -2425,7 +2457,11 @@ void sqlite3GenerateConstraintChecks(
     }
     addrUniqueOk = sqlite3VdbeMakeLabel(pParse);
     if( bAffinityDone==0 ){
+#ifdef SQLITE_ENABLE_MYLITE
+      sqlite3MyliteUpdateAffinity(v, pTab, regNewData+1, aiChng);
+#else
       sqlite3TableAffinity(v, pTab, regNewData+1);
+#endif
       bAffinityDone = 1;
     }
     VdbeNoopComment((v, "prep index %s", pIdx->zName));
@@ -2731,6 +2767,12 @@ void sqlite3GenerateConstraintChecks(
   /* Generate the table record */
   if( HasRowid(pTab) ){
     int regRec = aRegIdx[ix];
+#ifdef SQLITE_ENABLE_MYLITE
+    if( !bAffinityDone && aiChng!=0 ){
+      sqlite3MyliteUpdateAffinity(v, pTab, regNewData+1, aiChng);
+      bAffinityDone = 1;
+    }
+#endif
     sqlite3VdbeAddOp3(v, OP_MakeRecord, regNewData+1, pTab->nNVCol, regRec);
     sqlite3SetMakeRecordP5(v, pTab);
     if( !bAffinityDone ){

@@ -169,7 +169,11 @@ static int test_mysql_collations(void) {
 }
 
 static int test_native_type_coercion(void) {
-    enum { expected_unsigned_integer = 42 };
+    enum {
+        expected_unsigned_integer = 42,
+        legacy_update_type_minimum = 0,
+        legacy_update_type_maximum = 10,
+    };
 
     sqlite3 *database = NULL;
     int failures = 0;
@@ -222,6 +226,60 @@ static int test_native_type_coercion(void) {
         }
     );
 
+    failures += exec_sql(
+        database,
+        "CREATE TABLE legacy_update(id INTEGER PRIMARY KEY, legacy TEXT, changed INTEGER)",
+        "create legacy update type-check fixture"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO legacy_update VALUES (1, 'bad', 1)",
+        "insert legacy update fixture"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_column_type(
+            database,
+            NULL,
+            "legacy_update",
+            "legacy",
+            &(const struct mylite_sqlite_fork_column_type){
+                .kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_SIGNED_INTEGER,
+                .integer_minimum = legacy_update_type_minimum,
+                .integer_maximum = legacy_update_type_maximum,
+            }
+        ),
+        database,
+        "set legacy descriptor"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_column_type(
+            database,
+            NULL,
+            "legacy_update",
+            "changed",
+            &(const struct mylite_sqlite_fork_column_type){
+                .kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_SIGNED_INTEGER,
+                .integer_minimum = legacy_update_type_minimum,
+                .integer_maximum = legacy_update_type_maximum,
+            }
+        ),
+        database,
+        "set changed descriptor"
+    );
+    failures += exec_sql(
+        database,
+        "UPDATE legacy_update SET changed = '2' WHERE id = 1",
+        "update checks assigned MyLite descriptor only"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT legacy || ':' || changed FROM legacy_update",
+            .expected = "bad:2",
+            .context = "update preserves unchecked legacy value",
+        }
+    );
+
     failures += expect_sqlite_exec_error(
         database,
         (struct expected_sqlite_error){
@@ -252,6 +310,14 @@ static int test_native_type_coercion(void) {
             .sql = "SELECT _mylite_coerce_double('bad')",
             .message_fragment = "invalid double value",
             .context = "double coercion rejects invalid text",
+        }
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "UPDATE legacy_update SET legacy = 'bad' WHERE id = 1",
+            .message_fragment = "integer value is out of range",
+            .context = "update checks explicitly assigned legacy value",
         }
     );
 
@@ -636,6 +702,40 @@ static int test_mylite_basic_type_coercion(void) {
         "6.5000",
         "0",
     };
+    static const char *const after_duplicate_update[] = {
+        "1",
+        "42",
+        "7",
+        "123",
+        "3.2500",
+        "1",
+        "2",
+        "9",
+        "10",
+        "77",
+        "8.7500",
+        "1",
+    };
+    static const char *const after_replace[] = {
+        "1",
+        "42",
+        "7",
+        "123",
+        "3.2500",
+        "1",
+        "2",
+        "9",
+        "10",
+        "77",
+        "8.7500",
+        "1",
+        "3",
+        "11",
+        "12",
+        "456",
+        "9.2500",
+        "0",
+    };
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -699,28 +799,62 @@ static int test_mylite_basic_type_coercion(void) {
             .context = "MyLite update coercion matches MySQL fixture",
         }
     );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT INTO coercion_basic VALUES (2, '9', '10', 77, '8.75', NULL) "
+        "ON DUPLICATE KEY UPDATE tiny = VALUES(tiny), unsigned_id = VALUES(unsigned_id), "
+        "label = VALUES(label), score = VALUES(score), optional = VALUES(optional)",
+        "insert duplicate update MyLite type coercion row"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT id, tiny, unsigned_id, label, score + 0, optional IS NULL "
+                   "FROM coercion_basic ORDER BY id",
+            .values = after_duplicate_update,
+            .column_count = type_coercion_column_count,
+            .row_count = 2,
+            .context = "MyLite duplicate update coercion matches MySQL fixture",
+        }
+    );
+    failures += exec_mylite_sql(
+        database,
+        "REPLACE INTO coercion_basic VALUES (3, '11', '12', 456, '9.25', 'zz')",
+        "replace MyLite type coercion row"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT id, tiny, unsigned_id, label, score + 0, optional IS NULL "
+                   "FROM coercion_basic ORDER BY id",
+            .values = after_replace,
+            .column_count = type_coercion_column_count,
+            .row_count = 3,
+            .context = "MyLite replace coercion matches MySQL fixture",
+        }
+    );
 
     failures += expect_mylite_sql_status(
         database,
-        "INSERT INTO coercion_basic VALUES (3, 128, 1, 'ok', 1, NULL)",
+        "INSERT INTO coercion_basic VALUES (4, 128, 1, 'ok', 1, NULL)",
         MYLITE_SQLITE_ERROR,
         "MyLite insert coercion rejects out-of-range tinyint"
     );
     failures += expect_mylite_sql_status(
         database,
-        "INSERT INTO coercion_basic VALUES (3, 1, -1, 'ok', 1, NULL)",
+        "INSERT INTO coercion_basic VALUES (4, 1, -1, 'ok', 1, NULL)",
         MYLITE_SQLITE_ERROR,
         "MyLite insert coercion rejects negative unsigned integer"
     );
     failures += expect_mylite_sql_status(
         database,
-        "INSERT INTO coercion_basic VALUES (3, 1, 1, 'abcde', 1, NULL)",
+        "INSERT INTO coercion_basic VALUES (4, 1, 1, 'abcde', 1, NULL)",
         MYLITE_SQLITE_ERROR,
         "MyLite insert coercion rejects over-length varchar"
     );
     failures += expect_mylite_sql_status(
         database,
-        "INSERT INTO coercion_basic VALUES (3, 1, 1, 'ok', 'bad', NULL)",
+        "INSERT INTO coercion_basic VALUES (4, 1, 1, 'ok', 'bad', NULL)",
         MYLITE_SQLITE_ERROR,
         "MyLite insert coercion rejects invalid double"
     );

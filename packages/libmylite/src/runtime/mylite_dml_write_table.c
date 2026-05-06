@@ -156,17 +156,23 @@ static int load_insert_column_from_catalog_row(
         row->data_type == NULL ? "" : row->data_type,
         row->data_type == NULL ? 0U : strlen(row->data_type)
     );
+    column.column_type = mylite_copy_span_text(
+        row->column_type == NULL ? "" : row->column_type,
+        row->column_type == NULL ? 0U : strlen(row->column_type)
+    );
     column.extra = mylite_copy_span_text(
         row->extra == NULL ? "" : row->extra,
         row->extra == NULL ? 0U : strlen(row->extra)
     );
     if (column.name == NULL || (row->default_text != NULL && column.default_text == NULL) ||
-        column.data_type == NULL || column.extra == NULL) {
+        column.data_type == NULL || column.column_type == NULL || column.extra == NULL) {
         mylite_dml_insert_table_column_deinit(&column);
         (void)mylite_diagnostics_set_error_message(load_context->database, "out of memory");
         return MYLITE_NOMEM;
     }
 
+    column.has_character_maximum_length = row->has_character_maximum_length;
+    column.character_maximum_length = row->character_maximum_length;
     column.auto_increment = mylite_text_contains_word(column.extra, "auto_increment");
     column.generated_default = mylite_text_contains_word(column.extra, "DEFAULT_GENERATED");
     if (column.auto_increment) {

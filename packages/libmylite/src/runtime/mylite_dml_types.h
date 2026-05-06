@@ -152,7 +152,10 @@ struct mylite_insert_table_column {
     char *name;
     char *default_text;
     char *data_type;
+    char *column_type;
     char *extra;
+    uint64_t character_maximum_length;
+    bool has_character_maximum_length;
     bool nullable;
     bool auto_increment;
     bool generated_default;

@@ -21,19 +21,31 @@ struct expected_mylite_rows {
     const char *context;
 };
 
+struct expected_sqlite_error {
+    const char *sql;
+    const char *message_fragment;
+    const char *context;
+};
+
 static int test_registered_functions(void);
 
 static int test_mysql_collations(void);
 
+static int test_native_type_coercion(void);
+
 static int test_wordpress_like_crud(void);
 
 static int test_mylite_wordpress_like_crud(void);
+
+static int test_mylite_basic_type_coercion(void);
 
 static int open_configured_database(sqlite3 **out_database);
 
 static int exec_sql(sqlite3 *database, const char *sql, const char *context);
 
 static int exec_mylite_sql(mylite_db *database, const char *sql, const char *context);
+
+static int expect_sqlite_exec_error(sqlite3 *database, struct expected_sqlite_error expectation);
 
 static int expect_text(sqlite3 *database, struct expected_text_row expectation);
 
@@ -61,13 +73,22 @@ static int expect_mylite_ok(int status, mylite_db *database, const char *context
 
 static int expect_mylite_status(int status, int expected, mylite_db *database, const char *context);
 
+static int expect_mylite_sql_status(
+    mylite_db *database,
+    const char *sql,
+    int expected,
+    const char *context
+);
+
 int main(void) {
     int failures = 0;
 
     failures += test_registered_functions();
     failures += test_mysql_collations();
+    failures += test_native_type_coercion();
     failures += test_wordpress_like_crud();
     failures += test_mylite_wordpress_like_crud();
+    failures += test_mylite_basic_type_coercion();
 
     return failures == 0 ? 0 : 1;
 }
@@ -141,6 +162,97 @@ static int test_mysql_collations(void) {
         "SELECT COUNT(*) FROM collated_names WHERE binary_name = 'hello'",
         0,
         "binary MySQL collation remains byte-sensitive"
+    );
+
+    sqlite3_close(database);
+    return failures;
+}
+
+static int test_native_type_coercion(void) {
+    enum { expected_unsigned_integer = 42 };
+
+    sqlite3 *database = NULL;
+    int failures = 0;
+
+    failures += open_configured_database(&database);
+    if (failures != 0) {
+        return failures;
+    }
+
+    failures += expect_int64(
+        database,
+        "SELECT _mylite_coerce_signed_integer('3.5', -128, 127)",
+        4,
+        "signed integer coercion rounds positive half"
+    );
+    failures += expect_int64(
+        database,
+        "SELECT _mylite_coerce_signed_integer('-3.5', -128, 127)",
+        -4,
+        "signed integer coercion rounds negative half"
+    );
+    failures += expect_int64(
+        database,
+        "SELECT _mylite_coerce_unsigned_integer('42', 4294967295)",
+        expected_unsigned_integer,
+        "unsigned integer coercion accepts numeric text"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT _mylite_coerce_varchar(123, 4)",
+            .expected = "123",
+            .context = "varchar coercion converts numeric values to text",
+        }
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT _mylite_coerce_varchar('éé', 2)",
+            .expected = "éé",
+            .context = "varchar coercion counts UTF-8 characters",
+        }
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT _mylite_coerce_double('3.25') || ''",
+            .expected = "3.25",
+            .context = "double coercion accepts numeric text",
+        }
+    );
+
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "SELECT _mylite_coerce_signed_integer(128, -128, 127)",
+            .message_fragment = "integer value is out of range",
+            .context = "signed integer coercion rejects out-of-range value",
+        }
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "SELECT _mylite_coerce_unsigned_integer(-1, 4294967295)",
+            .message_fragment = "unsigned integer value is out of range",
+            .context = "unsigned integer coercion rejects negative value",
+        }
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "SELECT _mylite_coerce_varchar('abcde', 4)",
+            .message_fragment = "varchar value is too long",
+            .context = "varchar coercion rejects over-length text",
+        }
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "SELECT _mylite_coerce_double('bad')",
+            .message_fragment = "invalid double value",
+            .context = "double coercion rejects invalid text",
+        }
     );
 
     sqlite3_close(database);
@@ -493,6 +605,130 @@ static int test_mylite_wordpress_like_crud(void) {
     return failures;
 }
 
+static int test_mylite_basic_type_coercion(void) {
+    enum { type_coercion_column_count = 6 };
+
+    static const char *const after_insert[] = {
+        "1",
+        "42",
+        "7",
+        "123",
+        "3.2500",
+        "1",
+        "2",
+        "-5",
+        "0",
+        "éé",
+        "4.0000",
+        "0",
+    };
+    static const char *const after_update[] = {
+        "1",
+        "42",
+        "7",
+        "123",
+        "3.2500",
+        "1",
+        "2",
+        "12",
+        "8",
+        "99",
+        "6.5000",
+        "0",
+    };
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_mylite_ok(mylite_open_memory(&database), database, "open MyLite type coercion");
+    if (failures != 0) {
+        return failures;
+    }
+
+    failures += exec_mylite_sql(
+        database,
+        "CREATE DATABASE mylite_type_coercion CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+        "create MyLite type coercion schema"
+    );
+    failures += exec_mylite_sql(database, "USE mylite_type_coercion", "use type coercion schema");
+    failures += exec_mylite_sql(
+        database,
+        "CREATE TABLE coercion_basic ("
+        "id INT PRIMARY KEY,"
+        "tiny TINYINT NOT NULL,"
+        "unsigned_id INT UNSIGNED NOT NULL,"
+        "label VARCHAR(4) NOT NULL,"
+        "score DOUBLE NOT NULL,"
+        "optional VARCHAR(4) NULL"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "create MyLite type coercion table"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT INTO coercion_basic VALUES "
+        "(1, '42', '7', 123, '3.25', NULL),"
+        "('2', -5, 0, 'éé', 4, 'ok')",
+        "insert MyLite type coercion rows"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT id, tiny, unsigned_id, label, score + 0, optional IS NULL "
+                   "FROM coercion_basic ORDER BY id",
+            .values = after_insert,
+            .column_count = type_coercion_column_count,
+            .row_count = 2,
+            .context = "MyLite insert coercion matches MySQL fixture",
+        }
+    );
+    failures += exec_mylite_sql(
+        database,
+        "UPDATE coercion_basic "
+        "SET tiny = '12', unsigned_id = '8', label = 99, score = '6.5' "
+        "WHERE id = '2'",
+        "update MyLite type coercion row"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT id, tiny, unsigned_id, label, score + 0, optional IS NULL "
+                   "FROM coercion_basic ORDER BY id",
+            .values = after_update,
+            .column_count = type_coercion_column_count,
+            .row_count = 2,
+            .context = "MyLite update coercion matches MySQL fixture",
+        }
+    );
+
+    failures += expect_mylite_sql_status(
+        database,
+        "INSERT INTO coercion_basic VALUES (3, 128, 1, 'ok', 1, NULL)",
+        MYLITE_SQLITE_ERROR,
+        "MyLite insert coercion rejects out-of-range tinyint"
+    );
+    failures += expect_mylite_sql_status(
+        database,
+        "INSERT INTO coercion_basic VALUES (3, 1, -1, 'ok', 1, NULL)",
+        MYLITE_SQLITE_ERROR,
+        "MyLite insert coercion rejects negative unsigned integer"
+    );
+    failures += expect_mylite_sql_status(
+        database,
+        "INSERT INTO coercion_basic VALUES (3, 1, 1, 'abcde', 1, NULL)",
+        MYLITE_SQLITE_ERROR,
+        "MyLite insert coercion rejects over-length varchar"
+    );
+    failures += expect_mylite_sql_status(
+        database,
+        "INSERT INTO coercion_basic VALUES (3, 1, 1, 'ok', 'bad', NULL)",
+        MYLITE_SQLITE_ERROR,
+        "MyLite insert coercion rejects invalid double"
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
 static int open_configured_database(sqlite3 **out_database) {
     sqlite3 *database = NULL;
     int rc = SQLITE_OK;
@@ -535,6 +771,31 @@ static int exec_mylite_sql(mylite_db *database, const char *sql, const char *con
     if (statement != NULL) {
         mylite_finalize(statement);
     }
+    return failures;
+}
+
+static int expect_sqlite_exec_error(sqlite3 *database, struct expected_sqlite_error expectation) {
+    char *message = NULL;
+    int rc = sqlite3_exec(database, expectation.sql, NULL, NULL, &message);
+    int failures = 0;
+
+    if (rc == SQLITE_OK) {
+        fprintf(stderr, "%s: expected sqlite execution error\n", expectation.context);
+        sqlite3_free(message);
+        return 1;
+    }
+    if (expectation.message_fragment != NULL &&
+        (message == NULL || strstr(message, expectation.message_fragment) == NULL)) {
+        fprintf(
+            stderr,
+            "%s: expected sqlite error containing \"%s\", got \"%s\"\n",
+            expectation.context,
+            expectation.message_fragment,
+            message == NULL ? "(null)" : message
+        );
+        ++failures;
+    }
+    sqlite3_free(message);
     return failures;
 }
 
@@ -725,4 +986,23 @@ static int expect_mylite_status(
         database == NULL ? "(no database)" : mylite_error_message(database)
     );
     return 1;
+}
+
+static int expect_mylite_sql_status(
+    mylite_db *database,
+    const char *sql,
+    int expected,
+    const char *context
+) {
+    mylite_stmt *statement = NULL;
+    int failures =
+        expect_mylite_ok(mylite_prepare(database, sql, strlen(sql), &statement), database, context);
+
+    if (failures == 0) {
+        failures += expect_mylite_status(mylite_step(statement), expected, database, context);
+    }
+    if (statement != NULL) {
+        mylite_finalize(statement);
+    }
+    return failures;
 }

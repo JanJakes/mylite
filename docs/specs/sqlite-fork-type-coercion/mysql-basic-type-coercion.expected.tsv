@@ -1,0 +1,4 @@
+after-insert	1	42	7	123	3.25	1
+after-insert	2	-5	0	éé	4	0
+after-update	1	42	7	123	3.25	1
+after-update	2	12	8	99	6.5	0

@@ -2,7 +2,11 @@
 
 #include "mylite_charset.h"
 
+#include <ctype.h>
+#include <math.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 enum mylite_sqlite_collation_flags {
@@ -25,6 +29,13 @@ struct mylite_sqlite_pad_trim_request {
     int length;
     unsigned int flags;
 };
+
+struct mylite_sqlite_int64_range {
+    sqlite3_int64 minimum;
+    sqlite3_int64 maximum;
+};
+
+static const double mylite_sqlite_integer_round_half = 0.5;
 
 static const unsigned int mylite_sqlite_collation_flag_contexts[] = {
     0U,
@@ -54,7 +65,51 @@ static void mysql_char_length(
     sqlite3_value **arguments
 );
 
+static void mysql_coerce_signed_integer(
+    sqlite3_context *context,
+    int argument_count,
+    sqlite3_value **arguments
+);
+
+static void mysql_coerce_unsigned_integer(
+    sqlite3_context *context,
+    int argument_count,
+    sqlite3_value **arguments
+);
+
+static void mysql_coerce_double(
+    sqlite3_context *context,
+    int argument_count,
+    sqlite3_value **arguments
+);
+
+static void mysql_coerce_varchar(
+    sqlite3_context *context,
+    int argument_count,
+    sqlite3_value **arguments
+);
+
 static sqlite3_int64 count_utf8_characters(const unsigned char *text, int length);
+
+static bool coerce_value_to_rounded_int64(
+    sqlite3_value *value,
+    struct mylite_sqlite_int64_range range,
+    sqlite3_int64 *out_value
+);
+
+static bool double_to_rounded_int64(
+    double value,
+    struct mylite_sqlite_int64_range range,
+    sqlite3_int64 *out_value
+);
+
+static bool coerce_value_to_double(sqlite3_value *value, double *out_value);
+
+static bool parse_complete_double(sqlite3_value *value, double *out_value);
+
+static void result_coercion_error(sqlite3_context *context, const char *message);
+
+static sqlite3_destructor_type sqlite_transient_destructor(void);
 
 static int compare_mysql_collation(
     void *context,
@@ -184,6 +239,28 @@ static int register_mysql_functions(sqlite3 *database) {
     if (rc == SQLITE_OK) {
         rc = register_scalar_function(database, "CHARACTER_LENGTH", 1, mysql_char_length);
     }
+    if (rc == SQLITE_OK) {
+        rc = register_scalar_function(
+            database,
+            "_mylite_coerce_signed_integer",
+            3,
+            mysql_coerce_signed_integer
+        );
+    }
+    if (rc == SQLITE_OK) {
+        rc = register_scalar_function(
+            database,
+            "_mylite_coerce_unsigned_integer",
+            2,
+            mysql_coerce_unsigned_integer
+        );
+    }
+    if (rc == SQLITE_OK) {
+        rc = register_scalar_function(database, "_mylite_coerce_double", 1, mysql_coerce_double);
+    }
+    if (rc == SQLITE_OK) {
+        rc = register_scalar_function(database, "_mylite_coerce_varchar", 2, mysql_coerce_varchar);
+    }
     return rc;
 }
 
@@ -294,6 +371,122 @@ static void mysql_char_length(
     sqlite3_result_int64(context, count_utf8_characters(text, bytes));
 }
 
+static void mysql_coerce_signed_integer(
+    sqlite3_context *context,
+    int argument_count,
+    sqlite3_value **arguments
+) {
+    sqlite3_int64 value = 0;
+    sqlite3_int64 minimum = 0;
+    sqlite3_int64 maximum = 0;
+
+    (void)argument_count;
+    if (sqlite3_value_type(arguments[0]) == SQLITE_NULL) {
+        sqlite3_result_null(context);
+        return;
+    }
+
+    minimum = sqlite3_value_int64(arguments[1]);
+    maximum = sqlite3_value_int64(arguments[2]);
+    if (minimum > maximum) {
+        result_coercion_error(context, "invalid integer range");
+        return;
+    }
+    if (!coerce_value_to_rounded_int64(
+            arguments[0],
+            (struct mylite_sqlite_int64_range){.minimum = minimum, .maximum = maximum},
+            &value
+        )) {
+        result_coercion_error(context, "integer value is out of range");
+        return;
+    }
+    sqlite3_result_int64(context, value);
+}
+
+static void mysql_coerce_unsigned_integer(
+    sqlite3_context *context,
+    int argument_count,
+    sqlite3_value **arguments
+) {
+    sqlite3_int64 value = 0;
+    sqlite3_int64 maximum = 0;
+
+    (void)argument_count;
+    if (sqlite3_value_type(arguments[0]) == SQLITE_NULL) {
+        sqlite3_result_null(context);
+        return;
+    }
+
+    maximum = sqlite3_value_int64(arguments[1]);
+    if (maximum < 0) {
+        result_coercion_error(context, "invalid unsigned integer range");
+        return;
+    }
+    if (!coerce_value_to_rounded_int64(
+            arguments[0],
+            (struct mylite_sqlite_int64_range){.minimum = 0, .maximum = maximum},
+            &value
+        )) {
+        result_coercion_error(context, "unsigned integer value is out of range");
+        return;
+    }
+    sqlite3_result_int64(context, value);
+}
+
+static void mysql_coerce_double(
+    sqlite3_context *context,
+    int argument_count,
+    sqlite3_value **arguments
+) {
+    double value = 0.0;
+
+    (void)argument_count;
+    if (sqlite3_value_type(arguments[0]) == SQLITE_NULL) {
+        sqlite3_result_null(context);
+        return;
+    }
+
+    if (!coerce_value_to_double(arguments[0], &value)) {
+        result_coercion_error(context, "invalid double value");
+        return;
+    }
+    sqlite3_result_double(context, value);
+}
+
+static void mysql_coerce_varchar(
+    sqlite3_context *context,
+    int argument_count,
+    sqlite3_value **arguments
+) {
+    const unsigned char *text = NULL;
+    sqlite3_int64 maximum_length = 0;
+    int bytes = 0;
+
+    (void)argument_count;
+    if (sqlite3_value_type(arguments[0]) == SQLITE_NULL) {
+        sqlite3_result_null(context);
+        return;
+    }
+
+    maximum_length = sqlite3_value_int64(arguments[1]);
+    if (maximum_length < 0) {
+        result_coercion_error(context, "invalid varchar length");
+        return;
+    }
+
+    text = sqlite3_value_text(arguments[0]);
+    bytes = sqlite3_value_bytes(arguments[0]);
+    if (text == NULL && bytes > 0) {
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+    if (count_utf8_characters(text, bytes) > maximum_length) {
+        result_coercion_error(context, "varchar value is too long");
+        return;
+    }
+    sqlite3_result_text(context, (const char *)text, bytes, sqlite_transient_destructor());
+}
+
 static sqlite3_int64 count_utf8_characters(const unsigned char *text, int length) {
     sqlite3_int64 count = 0;
 
@@ -324,6 +517,117 @@ static sqlite3_int64 count_utf8_characters(const unsigned char *text, int length
         ++count;
     }
     return count;
+}
+
+static bool coerce_value_to_rounded_int64(
+    sqlite3_value *value,
+    struct mylite_sqlite_int64_range range,
+    sqlite3_int64 *out_value
+) {
+    if (sqlite3_value_type(value) == SQLITE_INTEGER) {
+        sqlite3_int64 integer = sqlite3_value_int64(value);
+
+        if (integer < range.minimum || integer > range.maximum) {
+            return false;
+        }
+        *out_value = integer;
+        return true;
+    }
+
+    {
+        double number = 0.0;
+
+        if (!coerce_value_to_double(value, &number)) {
+            return false;
+        }
+        return double_to_rounded_int64(number, range, out_value);
+    }
+}
+
+static bool double_to_rounded_int64(
+    double value,
+    struct mylite_sqlite_int64_range range,
+    sqlite3_int64 *out_value
+) {
+    double lower = (double)range.minimum - mylite_sqlite_integer_round_half;
+    double upper = (double)range.maximum + mylite_sqlite_integer_round_half;
+    double adjusted = 0.0;
+    sqlite3_int64 integer = 0;
+
+    if (!isfinite(value) || value <= lower || value >= upper) {
+        return false;
+    }
+
+    adjusted = value < 0.0 ? value - mylite_sqlite_integer_round_half
+                           : value + mylite_sqlite_integer_round_half;
+    if (adjusted < (double)INT64_MIN || adjusted > (double)INT64_MAX) {
+        return false;
+    }
+
+    integer = (sqlite3_int64)adjusted;
+    if (integer < range.minimum || integer > range.maximum) {
+        return false;
+    }
+    *out_value = integer;
+    return true;
+}
+
+static bool coerce_value_to_double(sqlite3_value *value, double *out_value) {
+    int type = sqlite3_value_type(value);
+    double number = 0.0;
+
+    if (type == SQLITE_INTEGER || type == SQLITE_FLOAT) {
+        number = sqlite3_value_double(value);
+        if (!isfinite(number)) {
+            return false;
+        }
+        *out_value = number;
+        return true;
+    }
+    return parse_complete_double(value, out_value);
+}
+
+static bool parse_complete_double(sqlite3_value *value, double *out_value) {
+    const unsigned char *text = sqlite3_value_text(value);
+    int bytes = sqlite3_value_bytes(value);
+    const char *start = (const char *)text;
+    const char *cursor = start;
+    char *end = NULL;
+    double number = 0.0;
+
+    if (text == NULL) {
+        return false;
+    }
+
+    while (cursor < start + bytes && isspace((unsigned char)*cursor)) {
+        ++cursor;
+    }
+    if (cursor == start + bytes) {
+        return false;
+    }
+
+    number = strtod(cursor, &end);
+    if (end == cursor || !isfinite(number)) {
+        return false;
+    }
+
+    while (end < start + bytes && isspace((unsigned char)*end)) {
+        ++end;
+    }
+    if (end != start + bytes) {
+        return false;
+    }
+
+    *out_value = number;
+    return true;
+}
+
+static void result_coercion_error(sqlite3_context *context, const char *message) {
+    sqlite3_result_error(context, message, -1);
+}
+
+static sqlite3_destructor_type sqlite_transient_destructor(void) {
+    return SQLITE_TRANSIENT; // NOLINT(performance-no-int-to-ptr)
 }
 
 static int compare_mysql_collation(

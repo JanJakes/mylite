@@ -168,6 +168,7 @@ enum {
     mysql_warning_json_document_null_key = 3158,
     mysql_warning_using_other_handler = 3502,
     mysql_warning_primary_invisible = 3522,
+    mysql_warning_foreign_key_drop_parent = 3730,
     mysql_warning_default_value_generated = 3773,
     mysql_warning_user_lock_name_too_long = 4163,
     mysql_warning_illegal_regexp_argument = 3685,
@@ -525,6 +526,8 @@ static int test_foreign_key_delete_actions_execution(void);
 static int test_alter_table_foreign_key_execution(void);
 
 static int test_foreign_key_index_dependency_execution(void);
+
+static int test_foreign_key_drop_table_dependency_execution(void);
 
 static int test_select_table_core_execution(void);
 
@@ -987,6 +990,7 @@ int main(void) {
     failures += test_foreign_key_delete_actions_execution();
     failures += test_alter_table_foreign_key_execution();
     failures += test_foreign_key_index_dependency_execution();
+    failures += test_foreign_key_drop_table_dependency_execution();
     failures += test_select_table_core_execution();
     failures += test_inner_join_execution();
     failures += test_outer_join_execution();
@@ -49633,6 +49637,153 @@ static int test_foreign_key_index_dependency_execution(void) {
         one_count_values,
         1,
         "foreign key blocked parent unique index remains"
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_foreign_key_drop_table_dependency_execution(void) {
+    static const char *const count_columns[] = {"c"};
+    static const char *const zero_count_values[] = {"0"};
+    static const char *const two_count_values[] = {"2"};
+    static const char *const missing_parent_fk_values[] = {"fk_checks_off_drop", "parent_drop_off"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open foreign key drop database");
+    failures += execute_sql(database, "CREATE DATABASE fk_drop_table_deps", MYLITE_DONE);
+    failures += execute_sql(database, "USE fk_drop_table_deps", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "CREATE TABLE parent_drop_ref (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE child_drop_ref ("
+        "id INT PRIMARY KEY, "
+        "parent_id INT, "
+        "CONSTRAINT fk_drop_ref FOREIGN KEY (parent_id) REFERENCES parent_drop_ref(id)"
+        ")",
+        MYLITE_DONE
+    );
+
+    failures += prepare_sql(database, "DROP TABLE parent_drop_ref", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "foreign key blocks drop parent table");
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Cannot drop table 'parent_drop_ref' referenced by a foreign key constraint "
+        "'fk_drop_ref' on table 'child_drop_ref'.",
+        "foreign key drop parent table error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_foreign_key_drop_parent,
+        "foreign key drop parent table code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.TABLES "
+        "WHERE TABLE_SCHEMA = 'fk_drop_table_deps' "
+        "AND TABLE_NAME IN ('parent_drop_ref', 'child_drop_ref')",
+        count_columns,
+        1,
+        two_count_values,
+        1,
+        "foreign key blocked drop table keeps both tables"
+    );
+
+    failures += execute_sql(database, "DROP TABLE child_drop_ref", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
+        "WHERE CONSTRAINT_SCHEMA = 'fk_drop_table_deps' "
+        "AND TABLE_NAME = 'child_drop_ref'",
+        count_columns,
+        1,
+        zero_count_values,
+        1,
+        "foreign key child drop removes metadata"
+    );
+
+    failures +=
+        execute_sql(database, "CREATE TABLE parent_drop_multi (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE child_drop_multi ("
+        "id INT PRIMARY KEY, "
+        "parent_id INT, "
+        "CONSTRAINT fk_drop_multi FOREIGN KEY (parent_id) REFERENCES parent_drop_multi(id)"
+        ")",
+        MYLITE_DONE
+    );
+    failures +=
+        execute_sql(database, "DROP TABLE parent_drop_multi, child_drop_multi", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.TABLES "
+        "WHERE TABLE_SCHEMA = 'fk_drop_table_deps' "
+        "AND TABLE_NAME IN ('parent_drop_multi', 'child_drop_multi')",
+        count_columns,
+        1,
+        zero_count_values,
+        1,
+        "foreign key multi drop removes parent and child"
+    );
+
+    failures +=
+        execute_sql(database, "CREATE TABLE parent_drop_off (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE child_drop_off ("
+        "id INT PRIMARY KEY, "
+        "parent_id INT, "
+        "CONSTRAINT fk_checks_off_drop FOREIGN KEY (parent_id) REFERENCES parent_drop_off(id)"
+        ")",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "SET foreign_key_checks=0", MYLITE_DONE);
+    failures += execute_sql(database, "DROP TABLE parent_drop_off", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT CONSTRAINT_NAME, REFERENCED_TABLE_NAME "
+        "FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
+        "WHERE CONSTRAINT_SCHEMA = 'fk_drop_table_deps' "
+        "AND TABLE_NAME = 'child_drop_off'",
+        (const char *[]){"CONSTRAINT_NAME", "REFERENCED_TABLE_NAME"},
+        2,
+        missing_parent_fk_values,
+        1,
+        "foreign key checks off parent drop keeps metadata"
+    );
+    failures += execute_sql(database, "SET foreign_key_checks=1", MYLITE_DONE);
+    failures += prepare_sql(database, "INSERT INTO child_drop_off VALUES (1,1)", MYLITE_OK, &stmt);
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "foreign key missing dropped parent rejects future insert"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_no_referenced_row,
+        "foreign key missing dropped parent insert code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "DROP TABLE child_drop_off", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
+        "WHERE CONSTRAINT_SCHEMA = 'fk_drop_table_deps' "
+        "AND TABLE_NAME = 'child_drop_off'",
+        count_columns,
+        1,
+        zero_count_values,
+        1,
+        "foreign key checks off child drop removes metadata"
     );
 
     mylite_close(database);

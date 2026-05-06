@@ -92,6 +92,10 @@ Observed rule and error details:
   referenced parent unique index while the foreign key exists fails with error
   1553, including when `foreign_key_checks=0`; an `AUTO_INCREMENT` primary key
   still fails first with error 1075.
+- Dropping a parent table referenced by a surviving child table fails with
+  error 3730 while `foreign_key_checks=1`. Dropping parent and child together
+  succeeds, and dropping the parent while `foreign_key_checks=0` leaves child
+  foreign-key metadata in place.
 - Updating or deleting parent rows that are referenced by `RESTRICT` or
   `NO ACTION` constraints fails with error 1451 / SQLSTATE `23000`.
 - `CASCADE`, `SET NULL`, and default `NO ACTION` rules are reported in
@@ -156,8 +160,11 @@ foreign-key metadata and leaves the supporting child index in place.
 child supporting indexes and parent primary/unique indexes required by foreign
 keys with error 1553, even while `foreign_key_checks=0`. `ON UPDATE CASCADE`,
 `ON UPDATE SET NULL`, mixed-action ALTER FK operations, recursive referential
-actions, and table/rename/truncate/column dependency restrictions remain
-follow-up slices.
+actions, and rename/truncate/column dependency restrictions remain follow-up
+slices. `DROP TABLE` rejects parent tables referenced by surviving child
+tables while `foreign_key_checks=1`, permits multi-table drops that remove the
+parent and all referencing children together, and allows checks-off parent
+drops while preserving child foreign-key metadata.
 
 ## DDL Semantics
 
@@ -184,8 +191,16 @@ It must not remove the supporting child index.
 `DROP INDEX` and `ALTER TABLE ... DROP INDEX` / `DROP PRIMARY KEY` must reject
 indexes that are still required by a foreign key. MyLite enforces this for
 child supporting indexes and parent primary/unique indexes recorded in the
-foreign-key catalog. Broader table, rename, truncate, and column dependency
-rules remain follow-up slices.
+foreign-key catalog. Broader rename, truncate, and column dependency rules
+remain follow-up slices.
+
+`DROP TABLE` validates parent-table dependencies before mutating storage when
+`foreign_key_checks` is enabled. A referenced parent table can be dropped only
+when every cataloged child table that references it is also an existing
+persistent target of the same `DROP TABLE` statement. When checks are disabled,
+MyLite follows MySQL by allowing the parent drop and keeping the child
+foreign-key catalog rows, so future checked child writes still fail until a
+matching parent table is restored or the foreign key is dropped.
 
 ## DML Semantics
 
@@ -231,6 +246,7 @@ Required diagnostics include:
 | parent-row update/delete violation | 1451 / `23000` |
 | missing dropped foreign key | 1091 / `42000` |
 | dropping an index needed by a foreign key | 1553 / `HY000` |
+| dropping a parent table referenced by a surviving child | 3730 / `HY000` |
 | malformed or invalid FK definition | MySQL-compatible validation error where verified |
 
 Exact messages should include the schema, table, constraint name, child columns,

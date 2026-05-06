@@ -99,6 +99,14 @@ Metadata and side effects:
 
 - Dropping a base table removes its rows from `INFORMATION_SCHEMA.TABLES`,
   `COLUMNS`, and `STATISTICS`.
+- With `foreign_key_checks=1`, dropping a parent table referenced by a
+  surviving child table fails with error 3730 and no table is dropped. A
+  multi-table `DROP TABLE` that includes the referenced parent and every
+  referencing child succeeds.
+- With `foreign_key_checks=0`, dropping the referenced parent succeeds and
+  preserves the surviving child table's foreign-key metadata; future checked
+  child writes still fail until a matching parent is restored or the foreign
+  key is dropped.
 - MySQL performs implicit commits around non-temporary `DROP TABLE`. MyLite
   documents this as deferred because transaction statements do not exist yet.
 
@@ -149,6 +157,10 @@ Normal base-table drops:
 - Missing targets fail the statement unless `IF EXISTS` is present. With
   `IF EXISTS`, they are skipped and warning/note records are deferred.
 - `RESTRICT` and `CASCADE` are accepted and ignored.
+- Foreign-key parent-table dependencies are validated before storage mutation
+  when `foreign_key_checks` is enabled. Referenced parents can be dropped only
+  when all referencing child tables are also existing persistent targets in the
+  same statement.
 
 Temporary drops:
 
@@ -221,6 +233,9 @@ Implementation tests should cover these MySQL 8.4.9 expectations:
 | `DROP TABLE d, missing, e` | Fails and leaves `d` and `e` intact. |
 | `DROP TABLE dup, dup` | Fails as duplicate target and leaves `dup` intact. |
 | `DROP TABLE IF EXISTS dup, dup` | Fails as duplicate target and leaves `dup` intact. |
+| `DROP TABLE parent` when surviving child table references it | Error 3730; parent and child remain. |
+| `DROP TABLE parent, child` for a referenced parent and its child | Succeeds; both table rows and the child FK metadata are removed. |
+| `SET foreign_key_checks=0; DROP TABLE parent` for a referenced parent | Succeeds; child table and FK metadata remain. |
 | `DROP TEMPORARY TABLE base_table` | Does not drop base table; deterministic execution error. |
 | `DROP TEMPORARY TABLE IF EXISTS base_table` | Succeeds without dropping base table. |
 | `DROP TABLE IF EXISTS x, y RESTRICT` | Accepts modifier, drops existing targets. |

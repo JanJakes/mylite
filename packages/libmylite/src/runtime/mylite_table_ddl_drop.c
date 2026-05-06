@@ -1,6 +1,7 @@
 #include "mylite_table_ddl.h"
 
 #include "mylite_catalog.h"
+#include "mylite_connection.h"
 #include "mylite_diagnostics.h"
 #include "mylite_error_codes.h"
 #include "mylite_runtime.h"
@@ -37,6 +38,23 @@ static bool drop_table_target_is_duplicate(
     size_t target_index
 );
 
+static int validate_drop_table_foreign_key_dependencies(
+    mylite_db *database,
+    const struct mylite_drop_table_plan *plan
+);
+
+static int validate_drop_table_target_foreign_key_dependencies(
+    mylite_db *database,
+    const struct mylite_drop_table_plan *plan,
+    const struct mylite_drop_table_target *target
+);
+
+static bool drop_table_plan_drops_persistent_table(
+    const struct mylite_drop_table_plan *plan,
+    const char *schema_name,
+    const char *table_name
+);
+
 static int drop_table_transaction(mylite_db *database, const struct mylite_drop_table_plan *plan);
 
 static int drop_physical_table(mylite_db *database, const struct mylite_drop_table_target *target);
@@ -45,6 +63,13 @@ static int set_unknown_table_error(
     mylite_db *database,
     const char *schema_name,
     const char *table_name
+);
+
+static int set_drop_table_foreign_key_dependency_error(
+    mylite_db *database,
+    const char *table_name,
+    const char *constraint_name,
+    const char *child_table_name
 );
 
 static int append_unknown_table_note(
@@ -120,7 +145,7 @@ static int validate_drop_table_plan(
             return status;
         }
     }
-    return MYLITE_OK;
+    return validate_drop_table_foreign_key_dependencies(database, plan);
 }
 
 static int validate_drop_table_temporary_target(
@@ -237,6 +262,87 @@ static bool drop_table_target_is_duplicate(
     return false;
 }
 
+static int validate_drop_table_foreign_key_dependencies(
+    mylite_db *database,
+    const struct mylite_drop_table_plan *plan
+) {
+    if (!mylite_connection_foreign_key_checks(database)) {
+        return MYLITE_OK;
+    }
+    for (size_t index = 0U; index < plan->target_count; ++index) {
+        const struct mylite_drop_table_target *target = &plan->targets[index];
+        int status = MYLITE_OK;
+
+        if (!target->exists || target->temporary) {
+            continue;
+        }
+        status = validate_drop_table_target_foreign_key_dependencies(database, plan, target);
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int validate_drop_table_target_foreign_key_dependencies(
+    mylite_db *database,
+    const struct mylite_drop_table_plan *plan,
+    const struct mylite_drop_table_target *target
+) {
+    static const char sql[] = "SELECT constraint_schema, table_name, constraint_name "
+                              "FROM __mylite_foreign_key_catalog "
+                              "WHERE referenced_table_schema = ? COLLATE NOCASE "
+                              "AND referenced_table_name = ? COLLATE NOCASE "
+                              "GROUP BY constraint_schema, table_name, constraint_name "
+                              "ORDER BY constraint_schema, table_name, constraint_name";
+    sqlite3_stmt *select = NULL;
+    int rc =
+        sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select, NULL);
+
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+    sqlite3_bind_text(select, 1, target->schema_name, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(select, 2, target->table_name, -1, SQLITE_TRANSIENT);
+
+    while ((rc = sqlite3_step(select)) == SQLITE_ROW) {
+        const char *child_schema_name = (const char *)sqlite3_column_text(select, 0);
+        const char *child_table_name = (const char *)sqlite3_column_text(select, 1);
+        const char *constraint_name = (const char *)sqlite3_column_text(select, 2);
+
+        if (!drop_table_plan_drops_persistent_table(plan, child_schema_name, child_table_name)) {
+            int status = set_drop_table_foreign_key_dependency_error(
+                database,
+                target->table_name,
+                constraint_name,
+                child_table_name
+            );
+
+            sqlite3_finalize(select);
+            return status;
+        }
+    }
+    sqlite3_finalize(select);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
+}
+
+static bool drop_table_plan_drops_persistent_table(
+    const struct mylite_drop_table_plan *plan,
+    const char *schema_name,
+    const char *table_name
+) {
+    for (size_t index = 0U; index < plan->target_count; ++index) {
+        const struct mylite_drop_table_target *target = &plan->targets[index];
+
+        if (target->exists && !target->temporary &&
+            mylite_ascii_case_equal(target->schema_name, schema_name) &&
+            mylite_ascii_case_equal(target->table_name, table_name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static int drop_table_transaction(mylite_db *database, const struct mylite_drop_table_plan *plan) {
     int status = mylite_transaction_begin_storage(database);
 
@@ -336,6 +442,36 @@ static int set_unknown_table_error(
     if (status == MYLITE_OK) {
         status =
             mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_BAD_TABLE_ERROR, message);
+    }
+    sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int set_drop_table_foreign_key_dependency_error(
+    mylite_db *database,
+    const char *table_name,
+    const char *constraint_name,
+    const char *child_table_name
+) {
+    char *message = sqlite3_mprintf(
+        "Cannot drop table '%q' referenced by a foreign key constraint '%q' on table '%q'.",
+        table_name,
+        constraint_name,
+        child_table_name
+    );
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    status = mylite_diagnostics_set_error_message(database, message);
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(
+            database,
+            MYLITE_MYSQL_ER_FK_CANNOT_DROP_PARENT,
+            message
+        );
     }
     sqlite3_free(message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;

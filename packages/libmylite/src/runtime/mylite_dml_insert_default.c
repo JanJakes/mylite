@@ -1,5 +1,6 @@
 #include "mylite_dml_insert_default.h"
 
+#include "mylite_connection.h"
 #include "mylite_diagnostics.h"
 #include "mylite_dml.h"
 #include "mylite_dml_insert_diagnostics.h"
@@ -196,7 +197,8 @@ int mylite_dml_resolve_insert_text_value(mylite_db *database,
         return MYLITE_OK;
     }
     if (mylite_dml_parse_insert_integer_text(text, &integer_value)) {
-        if (column->auto_increment && integer_value == 0) {
+        if (integer_value == 0 &&
+            mylite_dml_insert_auto_increment_zero_generates(database, column)) {
             return mylite_dml_allocate_insert_auto_increment(database, statement_row_count, state,
                                                              out_value);
         }
@@ -231,6 +233,13 @@ int mylite_dml_resolve_insert_quoted_text_value(mylite_db *database,
                                                     state, out_value);
     }
     return set_insert_bound_text_value(database, text, out_value);
+}
+
+bool mylite_dml_insert_auto_increment_zero_generates(
+    const mylite_db *database, const struct mylite_insert_table_column *column)
+{
+    return (column != NULL && column->auto_increment &&
+            !mylite_connection_sql_mode_has_no_auto_value_on_zero(database)) != 0;
 }
 
 int mylite_dml_allocate_insert_auto_increment(mylite_db *database, uint64_t statement_row_count,

@@ -332,7 +332,9 @@ MyLite intentionally documents these Task 14 boundaries:
   column-reference lookup required for assignment order.
 - Generated-column validation and generated-column `DEFAULT` behavior are
   deferred until generated columns exist.
-- SQL-mode variants such as `NO_AUTO_VALUE_ON_ZERO` are deferred.
+- `NO_AUTO_VALUE_ON_ZERO` is handled by the separate SQL-mode slice: explicit
+  numeric `0` is stored as `0`, while `NULL`, omitted values, and `DEFAULT`
+  continue to allocate generated values.
 
 ## MySQL-runtime-verified expectations
 

@@ -377,6 +377,7 @@ static int test_show_diagnostics_execution(void);
 static int test_describe_table_execution(void);
 static int test_insert_values_execution(void);
 static int test_insert_values_quoted_text_storage(mylite_db *database, const char *path);
+static int test_no_auto_value_on_zero_execution(void);
 static int test_insert_set_execution(void);
 static int test_replace_execution(void);
 static int test_insert_ignore_execution(void);
@@ -612,6 +613,7 @@ int main(void)
     failures += test_show_diagnostics_execution();
     failures += test_describe_table_execution();
     failures += test_insert_values_execution();
+    failures += test_no_auto_value_on_zero_execution();
     failures += test_insert_set_execution();
     failures += test_replace_execution();
     failures += test_insert_ignore_execution();
@@ -25168,6 +25170,96 @@ static int test_insert_values_quoted_text_storage(mylite_db *database, const cha
     failures += expect_sqlite_physical_int64(path, quoted_physical, "n", "WHERE id = 1", 1,
                                              "quoted numeric insert converts for INT");
     free(quoted_physical);
+    return failures;
+}
+
+static int test_no_auto_value_on_zero_execution(void)
+{
+    enum {
+        generated_default_zero_id = 5,
+        generated_after_values_zero_id = 6,
+        generated_after_values_default_id = 7,
+        generated_set_null_id = 8,
+        generated_set_default_id = 9,
+        generated_after_restore_id = 10,
+    };
+    static const char *const sql_mode_columns[] = {"sm"};
+    static const char *const no_auto_mode_values[] = {"NO_AUTO_VALUE_ON_ZERO,STRICT_TRANS_TABLES"};
+    static const char *const value_columns[] = {"id", "v"};
+    static const char *const values_rows[] = {"5", "10", "0", "20", "6", "30", "7", "40"};
+    static const char *const set_rows[] = {"0", "100", "8", "200", "9", "300", "10", "500"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK,
+                              "open NO_AUTO_VALUE_ON_ZERO database");
+    failures += execute_sql(database, "CREATE DATABASE mylite_no_auto_zero", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_no_auto_zero", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "CREATE TABLE value_zero ("
+                            "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, v INT) "
+                            "AUTO_INCREMENT=5",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO value_zero VALUES (0,10)", MYLITE_DONE);
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), generated_default_zero_id,
+                             "default sql mode zero value generates last insert id");
+
+    failures += execute_sql(database,
+                            "SET SESSION sql_mode = "
+                            "'strict_trans_tables,no_auto_value_on_zero,NO_AUTO_VALUE_ON_ZERO'",
+                            MYLITE_DONE);
+    failures +=
+        expect_select_rows(database, "SELECT @@sql_mode AS sm", sql_mode_columns, 1,
+                           no_auto_mode_values, 1, "NO_AUTO_VALUE_ON_ZERO canonical sql mode");
+    failures += execute_sql(database, "INSERT INTO value_zero VALUES (0,20)", MYLITE_DONE);
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), generated_default_zero_id,
+                             "NO_AUTO_VALUE_ON_ZERO explicit zero leaves last insert id");
+    failures += execute_sql(database, "INSERT INTO value_zero VALUES (NULL,30)", MYLITE_DONE);
+    failures +=
+        expect_int64((int64_t)mylite_last_insert_id(database), generated_after_values_zero_id,
+                     "NO_AUTO_VALUE_ON_ZERO null still generates last insert id");
+    failures += execute_sql(database, "INSERT INTO value_zero VALUES (DEFAULT,40)", MYLITE_DONE);
+    failures +=
+        expect_int64((int64_t)mylite_last_insert_id(database), generated_after_values_default_id,
+                     "NO_AUTO_VALUE_ON_ZERO default still generates last insert id");
+    failures +=
+        expect_select_rows(database, "SELECT id, v FROM value_zero ORDER BY v", value_columns, 2,
+                           values_rows, 4, "NO_AUTO_VALUE_ON_ZERO VALUES rows");
+
+    failures += execute_sql(database,
+                            "CREATE TABLE set_zero ("
+                            "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, v INT) "
+                            "AUTO_INCREMENT=8",
+                            MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO set_zero SET id = 0, v = 100", MYLITE_DONE);
+    failures +=
+        expect_int64((int64_t)mylite_last_insert_id(database), generated_after_values_default_id,
+                     "NO_AUTO_VALUE_ON_ZERO SET zero leaves last insert id");
+    failures += execute_sql(database, "INSERT INTO set_zero SET id = NULL, v = 200", MYLITE_DONE);
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), generated_set_null_id,
+                             "NO_AUTO_VALUE_ON_ZERO SET null generates last insert id");
+    failures +=
+        execute_sql(database, "REPLACE INTO set_zero SET id = DEFAULT, v = 300", MYLITE_DONE);
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), generated_set_default_id,
+                             "NO_AUTO_VALUE_ON_ZERO REPLACE default generates last insert id");
+
+    failures += prepare_sql(database, "INSERT INTO set_zero SET id = 0, v = 400", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Duplicate entry '0'",
+                                  "NO_AUTO_VALUE_ON_ZERO duplicate explicit zero");
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), generated_set_default_id,
+                             "NO_AUTO_VALUE_ON_ZERO duplicate zero leaves last insert id");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO set_zero SET id = 0, v = 500", MYLITE_DONE);
+    failures += expect_int64((int64_t)mylite_last_insert_id(database), generated_after_restore_id,
+                             "default sql mode restored zero generates last insert id");
+    failures += expect_select_rows(database, "SELECT id, v FROM set_zero ORDER BY v", value_columns,
+                                   2, set_rows, 4, "NO_AUTO_VALUE_ON_ZERO SET rows");
+
+    mylite_close(database);
     return failures;
 }
 

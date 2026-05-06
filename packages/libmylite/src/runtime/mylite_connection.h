@@ -42,6 +42,7 @@ const char *mylite_connection_collation_connection(const mylite_db *database);
 const char *mylite_connection_default_sql_mode(void);
 const char *mylite_connection_sql_mode(const mylite_db *database);
 bool mylite_connection_sql_mode_has_only_full_group_by(const mylite_db *database);
+bool mylite_connection_sql_mode_has_no_auto_value_on_zero(const mylite_db *database);
 const char *mylite_connection_default_storage_engine(void);
 const char *mylite_connection_storage_engine(const mylite_db *database);
 const char *mylite_connection_default_time_zone(void);

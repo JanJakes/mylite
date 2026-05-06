@@ -244,8 +244,11 @@ static int evaluate_insert_set_assignment_value(
     }
 
     if (column->auto_increment) {
+        bool zero_generates = mylite_dml_insert_auto_increment_zero_generates(database, column);
+
         if (out_value->kind == MYLITE_INSERT_BOUND_NULL ||
-            (out_value->kind == MYLITE_INSERT_BOUND_INTEGER && out_value->integer_value == 0)) {
+            (zero_generates && out_value->kind == MYLITE_INSERT_BOUND_INTEGER &&
+             out_value->integer_value == 0)) {
             mylite_dml_insert_bound_value_deinit(out_value);
             *out_generate_auto_increment = true;
             return set_insert_set_candidate_auto_value(out_value);

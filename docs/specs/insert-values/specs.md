@@ -43,9 +43,8 @@ Out of scope:
   behavior
 - full unique/index enforcement beyond the deterministic primary/unique checks
   implemented for inserted values in this task
-- `NO_AUTO_VALUE_ON_ZERO`, `auto_increment_increment`,
-  `auto_increment_offset`, overflow behavior, and replication-specific
-  auto-increment locking semantics
+- `auto_increment_increment`, `auto_increment_offset`, overflow behavior, and
+  replication-specific auto-increment locking semantics
 
 ## Sources
 
@@ -146,6 +145,11 @@ connection-local and records the first automatically generated value from a row
 accepted by the statement. Explicit nonzero values do not set it, and a
 generated value allocated for a row that fails duplicate validation before being
 inserted does not replace the previous session value.
+
+When `NO_AUTO_VALUE_ON_ZERO` is enabled, explicit numeric `0` is stored as `0`
+instead of allocating a generated value. `NULL`, omitted values, and `DEFAULT`
+continue to allocate. See
+[NO_AUTO_VALUE_ON_ZERO SQL mode](../no-auto-value-on-zero/specs.md).
 
 With `AUTO_INCREMENT=3`, this probe:
 

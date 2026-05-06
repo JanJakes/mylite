@@ -50,6 +50,7 @@ enum mylite_sql_mode_mask {
     MYLITE_SQL_MODE_NO_ENGINE_SUBSTITUTION = 1U << 16U,
     MYLITE_SQL_MODE_PAD_CHAR_TO_FULL_LENGTH = 1U << 17U,
     MYLITE_SQL_MODE_TIME_TRUNCATE_FRACTIONAL = 1U << 18U,
+    MYLITE_SQL_MODE_NO_AUTO_VALUE_ON_ZERO = 1U << 19U,
 };
 
 struct mylite_sql_mode_entry {
@@ -373,6 +374,14 @@ bool mylite_connection_sql_mode_has_only_full_group_by(const mylite_db *database
     });
 }
 
+bool mylite_connection_sql_mode_has_no_auto_value_on_zero(const mylite_db *database)
+{
+    return sql_mode_contains_token((struct mylite_sql_mode_token_search){
+        .sql_mode = mylite_connection_sql_mode(database),
+        .expected = "NO_AUTO_VALUE_ON_ZERO",
+    });
+}
+
 const char *mylite_connection_default_storage_engine(void)
 {
     return mylite_default_storage_engine;
@@ -546,6 +555,7 @@ static int copy_canonical_sql_mode(mylite_db *database, const char *sql_mode, ch
         {"ONLY_FULL_GROUP_BY", MYLITE_SQL_MODE_ONLY_FULL_GROUP_BY},
         {"NO_UNSIGNED_SUBTRACTION", MYLITE_SQL_MODE_NO_UNSIGNED_SUBTRACTION},
         {"ANSI", MYLITE_SQL_MODE_ANSI},
+        {"NO_AUTO_VALUE_ON_ZERO", MYLITE_SQL_MODE_NO_AUTO_VALUE_ON_ZERO},
         {"NO_BACKSLASH_ESCAPES", MYLITE_SQL_MODE_NO_BACKSLASH_ESCAPES},
         {"STRICT_TRANS_TABLES", MYLITE_SQL_MODE_STRICT_TRANS_TABLES},
         {"STRICT_ALL_TABLES", MYLITE_SQL_MODE_STRICT_ALL_TABLES},
@@ -673,6 +683,7 @@ static const struct mylite_sql_mode_entry *find_sql_mode_entry(const char *text,
         {"HIGH_NOT_PRECEDENCE", MYLITE_SQL_MODE_HIGH_NOT_PRECEDENCE},
         {"IGNORE_SPACE", MYLITE_SQL_MODE_IGNORE_SPACE},
         {"NO_BACKSLASH_ESCAPES", MYLITE_SQL_MODE_NO_BACKSLASH_ESCAPES},
+        {"NO_AUTO_VALUE_ON_ZERO", MYLITE_SQL_MODE_NO_AUTO_VALUE_ON_ZERO},
         {"NO_ENGINE_SUBSTITUTION", MYLITE_SQL_MODE_NO_ENGINE_SUBSTITUTION},
         {"NO_UNSIGNED_SUBTRACTION", MYLITE_SQL_MODE_NO_UNSIGNED_SUBTRACTION},
         {"NO_ZERO_DATE", MYLITE_SQL_MODE_NO_ZERO_DATE},

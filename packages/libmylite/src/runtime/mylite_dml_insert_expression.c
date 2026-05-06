@@ -153,7 +153,8 @@ static int resolve_insert_expression_bound_value(
         return resolve_insert_expression_null_value(database, plan, table, column,
                                                     statement_row_count, state, out_value);
     case MYLITE_EXPRESSION_VALUE_INT64:
-        if (column->auto_increment && value->int64_value == 0) {
+        if (value->int64_value == 0 &&
+            mylite_dml_insert_auto_increment_zero_generates(database, column)) {
             return mylite_dml_allocate_insert_auto_increment(database, statement_row_count, state,
                                                              out_value);
         }
@@ -166,7 +167,8 @@ static int resolve_insert_expression_bound_value(
         return resolve_insert_expression_uint64_value(database, column, value, statement_row_count,
                                                       state, out_value);
     case MYLITE_EXPRESSION_VALUE_REAL:
-        if (column->auto_increment && value->real_value == 0.0) {
+        if (value->real_value == 0.0 &&
+            mylite_dml_insert_auto_increment_zero_generates(database, column)) {
             return mylite_dml_allocate_insert_auto_increment(database, statement_row_count, state,
                                                              out_value);
         }
@@ -227,7 +229,8 @@ static int resolve_insert_expression_uint64_value(mylite_db *database,
     if (value->uint64_value <= (uint64_t)INT64_MAX) {
         int64_t integer_value = (int64_t)value->uint64_value;
 
-        if (column->auto_increment && integer_value == 0) {
+        if (integer_value == 0 &&
+            mylite_dml_insert_auto_increment_zero_generates(database, column)) {
             return mylite_dml_allocate_insert_auto_increment(database, statement_row_count, state,
                                                              out_value);
         }

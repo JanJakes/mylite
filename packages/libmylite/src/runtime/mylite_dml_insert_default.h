@@ -38,6 +38,8 @@ int mylite_dml_resolve_insert_quoted_text_value(mylite_db *database,
                                                 const char *text, uint64_t statement_row_count,
                                                 struct mylite_insert_execution_state *state,
                                                 struct mylite_insert_bound_value *out_value);
+bool mylite_dml_insert_auto_increment_zero_generates(
+    const mylite_db *database, const struct mylite_insert_table_column *column);
 int mylite_dml_allocate_insert_auto_increment(mylite_db *database, uint64_t statement_row_count,
                                               struct mylite_insert_execution_state *state,
                                               struct mylite_insert_bound_value *out_value);

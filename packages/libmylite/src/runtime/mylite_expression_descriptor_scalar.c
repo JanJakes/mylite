@@ -260,6 +260,24 @@ static bool infer_session_function_descriptor(mylite_db *database,
         };
         return true;
     }
+    if (mylite_span_equal_ci(name->span, "CURRENT_ROLE")) {
+        uint64_t max_bytes_per_character =
+            mylite_expression_descriptor_connection_character_max_length(database);
+        uint64_t length =
+            max_bytes_per_character > UINT64_MAX / mylite_mysql_current_role_function_display_chars
+                ? mylite_mysql_long_text_length
+                : mylite_mysql_current_role_function_display_chars * max_bytes_per_character;
+
+        *out_descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_BLOB,
+            .flags = 0U,
+            .length = length,
+            .decimals = mylite_mysql_not_fixed_decimals,
+            .charset_id = mylite_expression_descriptor_connection_charset_id(database),
+            .nullable = true,
+        };
+        return true;
+    }
     if (mylite_span_equal_ci(name->span, "LAST_INSERT_ID")) {
         *out_descriptor = (struct mylite_field_descriptor){
             .type = MYLITE_FIELD_TYPE_LONGLONG,

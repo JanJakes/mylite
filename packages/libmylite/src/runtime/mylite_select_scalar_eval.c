@@ -53,6 +53,8 @@ static int append_scalar_group_concat_value(mylite_stmt *stmt, char **result, si
 static int append_scalar_group_concat_truncation_warning(mylite_stmt *stmt);
 static size_t scalar_group_concat_value_text_length(const struct mylite_expression_value *value,
                                                     const char *text);
+static int set_scalar_unknown_field_column_error(mylite_stmt *stmt,
+                                                 const struct mylite_sql_ast_node *expression);
 static int evaluate_scalar_numeric_aggregate_expression(
     mylite_stmt *stmt, enum mylite_sql_ast_aggregate_kind aggregate_kind,
     const struct mylite_expression_value *argument, struct mylite_expression_value *out_value);
@@ -148,7 +150,37 @@ int mylite_select_scalar_evaluate_expression(
             return error_status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
         }
     }
+    if (expression != NULL && (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+                               expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
+        return set_scalar_unknown_field_column_error(stmt, expression);
+    }
     return MYLITE_UNSUPPORTED;
+}
+
+static int set_scalar_unknown_field_column_error(mylite_stmt *stmt,
+                                                 const struct mylite_sql_ast_node *expression)
+{
+    char *reference = mylite_select_copy_reference_name(expression);
+    char *message = NULL;
+    int status = MYLITE_OK;
+
+    if (reference == NULL) {
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    message = sqlite3_mprintf("Unknown column '%q' in 'field list'", reference);
+    free(reference);
+    if (message == NULL) {
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    status = mylite_diagnostics_set_error_message(stmt->database, message);
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(stmt->database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
+                                                 message);
+    }
+    sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int

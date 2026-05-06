@@ -70,7 +70,8 @@ int mylite_expression_infer_function_collation_info( // NOLINT(misc-no-recursion
     if (name != NULL && (mylite_span_equal_ci(name->span, "USER") ||
                          mylite_span_equal_ci(name->span, "SESSION_USER") ||
                          mylite_span_equal_ci(name->span, "SYSTEM_USER") ||
-                         mylite_span_equal_ci(name->span, "CURRENT_USER"))) {
+                         mylite_span_equal_ci(name->span, "CURRENT_USER") ||
+                         mylite_span_equal_ci(name->span, "CURRENT_ROLE"))) {
         *out_info = mylite_expression_utf8mb3_general_collation_info(
             mylite_mysql_coercibility_system_constant);
         return MYLITE_OK;

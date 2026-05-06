@@ -46,6 +46,7 @@ const uint64_t mylite_mysql_schema_function_display_length = 256U;
 const uint64_t mylite_mysql_version_function_display_length = 20U;
 const uint64_t mylite_mysql_session_integer_function_display_length = 21U;
 const uint64_t mylite_mysql_identity_function_display_chars = 288U;
+const uint64_t mylite_mysql_current_role_function_display_chars = UINT64_C(50331648);
 const uint64_t mylite_mysql_charset_collation_function_display_chars = 64U;
 const uint64_t mylite_mysql_coercibility_function_display_length = 10U;
 const uint64_t mylite_mysql_pi_function_display_length = 8U;

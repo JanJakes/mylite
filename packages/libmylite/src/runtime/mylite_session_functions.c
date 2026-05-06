@@ -164,6 +164,9 @@ int mylite_session_evaluate_core_function(
                                                       .uint64_value = database->connection_id};
         return 0;
     }
+    if (mylite_span_equal_ci(name->span, "CURRENT_ROLE")) {
+        return mylite_session_set_text_function_value(database, "NONE", out_value);
+    }
     if (mylite_span_equal_ci(name->span, "USER") ||
         mylite_span_equal_ci(name->span, "SESSION_USER") ||
         mylite_span_equal_ci(name->span, "SYSTEM_USER") ||

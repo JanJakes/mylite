@@ -18,6 +18,10 @@ function calls: no-table `SELECT`, table-backed `SELECT` projection, `WHERE`,
 paths. `CURRENT_USER` without parentheses is accepted where an ordinary scalar
 primary expression is accepted.
 
+`CURRENT_ROLE()` is specified separately because role state has different
+compatibility and metadata requirements; see
+[`../current-role-function/specs.md`](../current-role-function/specs.md).
+
 Out of scope:
 
 - Server authentication, grant-table lookup, anonymous-account matching, proxy

@@ -15610,25 +15610,28 @@ static int test_session_information_functions_execution(void)
     static const char *const table_projection_columns[] = {"id", "db_name", "version_text",
                                                            "last_id", "row_count"};
     static const char *const identity_columns[] = {
-        "cid", "user_name", "session_name", "system_name", "current_name", "bare_current_name"};
+        "cid",          "user_name",         "session_name", "system_name",
+        "current_name", "bare_current_name", "role_name"};
     static const char *const identity_values[] = {"1",
                                                   "mylite@localhost",
                                                   "mylite@localhost",
                                                   "mylite@localhost",
                                                   "mylite@localhost",
-                                                  "mylite@localhost"};
+                                                  "mylite@localhost",
+                                                  "NONE"};
     static const char *const identity_context_columns[] = {"id", "user_name", "current_name",
-                                                           "cid"};
+                                                           "role_name", "cid"};
     static const char *const identity_context_values[] = {"1", "mylite@localhost",
-                                                          "mylite@localhost", "1"};
+                                                          "mylite@localhost", "NONE", "1"};
     static const char *const identity_introspection_columns[] = {
-        "user_charset", "current_charset", "session_collation", "system_coercibility"};
-    static const char *const identity_introspection_values[] = {"utf8mb3", "utf8mb3",
-                                                                "utf8mb3_general_ci", "3"};
-    static const char *const metadata_columns[] = {"db_name", "schema_name", "version_text",
-                                                   "last_id", "set_id",      "row_count",
-                                                   "cid",     "user_name",   "current_name"};
-    static const char *const latin1_metadata_columns[] = {"user_name", "current_name"};
+        "user_charset", "current_charset", "session_collation", "system_coercibility",
+        "role_charset", "role_collation",  "role_coercibility"};
+    static const char *const identity_introspection_values[] = {
+        "utf8mb3", "utf8mb3", "utf8mb3_general_ci", "3", "utf8mb3", "utf8mb3_general_ci", "3"};
+    static const char *const metadata_columns[] = {
+        "db_name",   "schema_name", "version_text", "last_id",      "set_id",
+        "row_count", "cid",         "user_name",    "current_name", "role_name"};
+    static const char *const latin1_metadata_columns[] = {"user_name", "current_name", "role_name"};
     static const char *const initial_values[] = {NULL, NULL, NULL, "0", "0"};
     static const char *const schema_values[] = {"mylite_info_funcs", "mylite_info_funcs", "0"};
     static const char *const prepared_schema_values[] = {"mylite_info_funcs_2"};
@@ -15672,12 +15675,16 @@ static int test_session_information_functions_execution(void)
          0U, MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, 1},
         {"current_name", NULL, NULL, NULL, NULL, NULL, 1152U, MYLITE_FIELD_TYPE_VAR_STRING, 31U,
          255U, 0U, MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, 1},
+        {"role_name", NULL, NULL, NULL, NULL, NULL, 201326592U, MYLITE_FIELD_TYPE_BLOB, 31U, 255U,
+         0U, MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_BLOB, 1},
     };
     static const struct expected_result_metadata latin1_metadata[] = {
         {"user_name", NULL, NULL, NULL, NULL, NULL, 288U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, 1},
         {"current_name", NULL, NULL, NULL, NULL, NULL, 288U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U,
          0U, MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, 1},
+        {"role_name", NULL, NULL, NULL, NULL, NULL, 50331648U, MYLITE_FIELD_TYPE_BLOB, 31U, 8U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_BLOB, 1},
     };
     static const struct expected_result_metadata found_rows_metadata[] = {
         {"found_rows", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
@@ -15714,15 +15721,17 @@ static int test_session_information_functions_execution(void)
                            "SESSION_USER() AS session_name, "
                            "SYSTEM_USER() AS system_name, "
                            "CURRENT_USER() AS current_name, "
-                           "CURRENT_USER AS bare_current_name",
-                           identity_columns, 6, identity_values, 1, "identity function values");
+                           "CURRENT_USER AS bare_current_name, "
+                           "CURRENT_ROLE() AS role_name",
+                           identity_columns, 7, identity_values, 1, "identity function values");
     failures += expect_select_rows(database,
                                    "SELECT connection_id() AS cid, user() AS user_name, "
                                    "session_user() AS session_name, "
                                    "system_user() AS system_name, "
                                    "current_user() AS current_name, "
-                                   "current_user AS bare_current_name",
-                                   identity_columns, 6, identity_values, 1,
+                                   "current_user AS bare_current_name, "
+                                   "current_role() AS role_name",
+                                   identity_columns, 7, identity_values, 1,
                                    "case-insensitive identity function values");
 
     failures += execute_sql(database, "CREATE DATABASE mylite_info_funcs", MYLITE_DONE);
@@ -15885,17 +15894,21 @@ static int test_session_information_functions_execution(void)
 
     failures += expect_select_rows(
         database,
-        "SELECT id, USER() AS user_name, CURRENT_USER AS current_name, CONNECTION_ID() AS cid "
+        "SELECT id, USER() AS user_name, CURRENT_USER AS current_name, "
+        "CURRENT_ROLE() AS role_name, CONNECTION_ID() AS cid "
         "FROM ai WHERE USER() = 'mylite@localhost' "
-        "ORDER BY CURRENT_USER(), CONNECTION_ID(), id LIMIT 1",
-        identity_context_columns, 4, identity_context_values, 1, "identity table contexts");
+        "ORDER BY CURRENT_USER(), CURRENT_ROLE(), CONNECTION_ID(), id LIMIT 1",
+        identity_context_columns, 5, identity_context_values, 1, "identity table contexts");
     failures += execute_sql_expect_done_affected(
         database,
-        "UPDATE ai SET v = CONNECTION_ID() WHERE CURRENT_USER = 'mylite@localhost' AND id = 1", 1,
-        "identity update expression");
-    failures += execute_sql_expect_done_affected(
-        database, "DELETE FROM ai WHERE SYSTEM_USER() = 'mylite@localhost' AND id = 10", 1,
-        "identity delete expression");
+        "UPDATE ai SET v = CONNECTION_ID() "
+        "WHERE CURRENT_USER = 'mylite@localhost' AND CURRENT_ROLE() = 'NONE' AND id = 1",
+        1, "identity update expression");
+    failures +=
+        execute_sql_expect_done_affected(database,
+                                         "DELETE FROM ai WHERE SYSTEM_USER() = 'mylite@localhost' "
+                                         "AND CURRENT_ROLE() = 'NONE' AND id = 10",
+                                         1, "identity delete expression");
 
     failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
     failures += prepare_sql(database,
@@ -15903,10 +15916,10 @@ static int test_session_information_functions_execution(void)
                             "VERSION() AS version_text, LAST_INSERT_ID() AS last_id, "
                             "LAST_INSERT_ID(NULL) AS set_id, ROW_COUNT() AS row_count, "
                             "CONNECTION_ID() AS cid, USER() AS user_name, "
-                            "CURRENT_USER AS current_name",
+                            "CURRENT_USER AS current_name, CURRENT_ROLE() AS role_name",
                             MYLITE_OK, &stmt);
-    failures += expect_column_names(stmt, metadata_columns, 9, "session metadata columns");
-    failures += expect_result_metadata(stmt, metadata, 9, "session function metadata");
+    failures += expect_column_names(stmt, metadata_columns, 10, "session metadata columns");
+    failures += expect_result_metadata(stmt, metadata, 10, "session function metadata");
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "session metadata row");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "session metadata done");
     mylite_finalize(stmt);
@@ -15916,16 +15929,21 @@ static int test_session_information_functions_execution(void)
         database,
         "SELECT CHARSET(USER()) AS user_charset, CHARSET(CURRENT_USER()) AS current_charset, "
         "COLLATION(SESSION_USER()) AS session_collation, "
-        "COERCIBILITY(SYSTEM_USER()) AS system_coercibility",
-        identity_introspection_columns, 4, identity_introspection_values, 1,
+        "COERCIBILITY(SYSTEM_USER()) AS system_coercibility, "
+        "CHARSET(CURRENT_ROLE()) AS role_charset, "
+        "COLLATION(CURRENT_ROLE()) AS role_collation, "
+        "COERCIBILITY(CURRENT_ROLE()) AS role_coercibility",
+        identity_introspection_columns, 7, identity_introspection_values, 1,
         "identity charset introspection utf8mb4");
 
     failures += execute_sql(database, "SET NAMES latin1", MYLITE_DONE);
-    failures += prepare_sql(database, "SELECT USER() AS user_name, CURRENT_USER AS current_name",
+    failures += prepare_sql(database,
+                            "SELECT USER() AS user_name, CURRENT_USER AS current_name, "
+                            "CURRENT_ROLE() AS role_name",
                             MYLITE_OK, &stmt);
     failures +=
-        expect_column_names(stmt, latin1_metadata_columns, 2, "latin1 identity metadata columns");
-    failures += expect_result_metadata(stmt, latin1_metadata, 2, "latin1 identity metadata");
+        expect_column_names(stmt, latin1_metadata_columns, 3, "latin1 identity metadata columns");
+    failures += expect_result_metadata(stmt, latin1_metadata, 3, "latin1 identity metadata");
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "latin1 identity metadata row");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "latin1 identity metadata done");
     mylite_finalize(stmt);
@@ -15934,8 +15952,11 @@ static int test_session_information_functions_execution(void)
         database,
         "SELECT CHARSET(USER()) AS user_charset, CHARSET(CURRENT_USER()) AS current_charset, "
         "COLLATION(SESSION_USER()) AS session_collation, "
-        "COERCIBILITY(SYSTEM_USER()) AS system_coercibility",
-        identity_introspection_columns, 4, identity_introspection_values, 1,
+        "COERCIBILITY(SYSTEM_USER()) AS system_coercibility, "
+        "CHARSET(CURRENT_ROLE()) AS role_charset, "
+        "COLLATION(CURRENT_ROLE()) AS role_collation, "
+        "COERCIBILITY(CURRENT_ROLE()) AS role_coercibility",
+        identity_introspection_columns, 7, identity_introspection_values, 1,
         "identity charset introspection latin1");
 
     failures += prepare_sql(database, "SELECT DATABASE(1)", MYLITE_UNSUPPORTED, &stmt);
@@ -15960,6 +15981,11 @@ static int test_session_information_functions_execution(void)
     failures += expect_no_stmt_handle(&stmt, "system user arity rejected");
     failures += prepare_sql(database, "SELECT CURRENT_USER(1)", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "current user arity rejected");
+    failures += prepare_sql(database, "SELECT CURRENT_ROLE(1)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "current role arity rejected");
+    failures += expect_prepare_error(database, "SELECT CURRENT_ROLE", MYLITE_EXEC_ERROR,
+                                     "Unknown column 'CURRENT_ROLE' in 'field list'",
+                                     "bare current role remains identifier");
 
     failures += execute_sql(database, "DROP DATABASE mylite_info_funcs", MYLITE_DONE);
     failures += expect_select_rows(database, "SELECT DATABASE() AS db_name",

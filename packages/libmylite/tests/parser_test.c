@@ -5318,7 +5318,7 @@ static int test_scalar_function_call_syntax(void)
 {
     // NOLINTBEGIN(readability-magic-numbers)
     enum {
-        expected_select_item_count = 41,
+        expected_select_item_count = 42,
         string_function_item_count = 17,
         padding_function_item_count = 6,
         quote_function_item_count = 2,
@@ -5342,8 +5342,8 @@ static int test_scalar_function_call_syntax(void)
                           "LOG2(8), LOG10(1000), POW(2, 10), Power(2, -2), Sqrt(9), "
                           "Sin(1), COS(1), Tan(1), AtAn(1), ATAN(1, 2), ATAN2(1), "
                           "AtAn2(1, 2), Greatest(1, 2), least(1, 2, 3), "
-                          "StRcMp('a', 'b'), FORMAT(1234.56, 2, 'de_DE'), DEFAULT(t.col) "
-                          "FROM DUAL;",
+                          "StRcMp('a', 'b'), FORMAT(1234.56, 2, 'de_DE'), DEFAULT(t.col), "
+                          "CURRENT_ROLE() FROM DUAL;",
                           MYLITE_SQL_PARSE_OK, &result);
     select_list = child_at(child_at(result.root, 0U), 0U);
     failures += expect_child_count(select_list, expected_select_item_count, "function select list");
@@ -5439,6 +5439,8 @@ static int test_scalar_function_call_syntax(void)
         expect_function_call(child_at(child_at(select_list, 39U), 0U), "FORMAT", 3U, "FORMAT call");
     failures += expect_function_call(child_at(child_at(select_list, 40U), 0U), "DEFAULT", 1U,
                                      "DEFAULT call");
+    failures += expect_function_call(child_at(child_at(select_list, 41U), 0U), "CURRENT_ROLE", 0U,
+                                     "CURRENT_ROLE call");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT DEFAULT(1) FROM t", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
@@ -5737,28 +5739,39 @@ static int test_scalar_function_call_syntax(void)
     failures += expect_span_text(child_at(item, 1U), "'left alias'", "string function alias");
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("SELECT CURRENT_USER(), CURRENT_DATE(), CURRENT_TIME(), LOCALTIME(), "
-                          "LOCALTIMESTAMP(), UTC_DATE(), UTC_TIME(), UTC_TIMESTAMP(), MOD(7,3);",
+    failures += parse_sql("SELECT CURRENT_USER(), CURRENT_ROLE(), CURRENT_DATE(), CURRENT_TIME(), "
+                          "LOCALTIME(), LOCALTIMESTAMP(), UTC_DATE(), UTC_TIME(), "
+                          "UTC_TIMESTAMP(), MOD(7,3);",
                           MYLITE_SQL_PARSE_OK, &result);
     select_list = child_at(child_at(result.root, 0U), 0U);
     failures += expect_function_call(child_at(child_at(select_list, 0U), 0U), "CURRENT_USER", 0U,
                                      "CURRENT_USER call");
-    failures += expect_function_call(child_at(child_at(select_list, 1U), 0U), "CURRENT_DATE", 0U,
+    failures += expect_function_call(child_at(child_at(select_list, 1U), 0U), "CURRENT_ROLE", 0U,
+                                     "CURRENT_ROLE call");
+    failures += expect_function_call(child_at(child_at(select_list, 2U), 0U), "CURRENT_DATE", 0U,
                                      "CURRENT_DATE call");
-    failures += expect_function_call(child_at(child_at(select_list, 2U), 0U), "CURRENT_TIME", 0U,
+    failures += expect_function_call(child_at(child_at(select_list, 3U), 0U), "CURRENT_TIME", 0U,
                                      "CURRENT_TIME call");
-    failures += expect_function_call(child_at(child_at(select_list, 3U), 0U), "LOCALTIME", 0U,
+    failures += expect_function_call(child_at(child_at(select_list, 4U), 0U), "LOCALTIME", 0U,
                                      "LOCALTIME call");
-    failures += expect_function_call(child_at(child_at(select_list, 4U), 0U), "LOCALTIMESTAMP", 0U,
+    failures += expect_function_call(child_at(child_at(select_list, 5U), 0U), "LOCALTIMESTAMP", 0U,
                                      "LOCALTIMESTAMP call");
-    failures += expect_function_call(child_at(child_at(select_list, 5U), 0U), "UTC_DATE", 0U,
+    failures += expect_function_call(child_at(child_at(select_list, 6U), 0U), "UTC_DATE", 0U,
                                      "UTC_DATE call");
-    failures += expect_function_call(child_at(child_at(select_list, 6U), 0U), "UTC_TIME", 0U,
+    failures += expect_function_call(child_at(child_at(select_list, 7U), 0U), "UTC_TIME", 0U,
                                      "UTC_TIME call");
-    failures += expect_function_call(child_at(child_at(select_list, 7U), 0U), "UTC_TIMESTAMP", 0U,
+    failures += expect_function_call(child_at(child_at(select_list, 8U), 0U), "UTC_TIMESTAMP", 0U,
                                      "UTC_TIMESTAMP call");
     failures +=
-        expect_function_call(child_at(child_at(select_list, 8U), 0U), "MOD", 2U, "MOD call");
+        expect_function_call(child_at(child_at(select_list, 9U), 0U), "MOD", 2U, "MOD call");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT CURRENT_ROLE;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_node(child_at(child_at(select_list, 0U), 0U), MYLITE_SQL_AST_IDENTIFIER,
+                            "bare CURRENT_ROLE identifier");
+    failures += expect_span_text(child_at(child_at(select_list, 0U), 0U), "CURRENT_ROLE",
+                                 "bare CURRENT_ROLE span");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT DATE('2024-02-29 12:34:56'), "

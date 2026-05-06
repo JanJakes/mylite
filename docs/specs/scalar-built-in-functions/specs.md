@@ -89,6 +89,7 @@ In scope for the initial implementation:
   - `VERSION`
   - `USER`, `SESSION_USER`, `SYSTEM_USER`
   - `CURRENT_USER`
+  - `CURRENT_ROLE`
   - `CONNECTION_ID`
   - `LAST_INSERT_ID`
   - `ROW_COUNT`
@@ -184,6 +185,8 @@ by common scalar expressions:
 - session identity functions: `CONNECTION_ID`, `USER`, `SESSION_USER`,
   `SYSTEM_USER`, and `CURRENT_USER` / bare `CURRENT_USER`; see
   `docs/specs/session-identity-functions/specs.md`
+- role information function: `CURRENT_ROLE`; see
+  `docs/specs/current-role-function/specs.md`
 - column default introspection: `DEFAULT(col_name)` for table-backed scalar
   expression contexts; see `docs/specs/default-function/specs.md`
 - temporal functions: `NOW`, `CURRENT_TIMESTAMP`, `LOCALTIME`,
@@ -614,6 +617,7 @@ Representative runtime results:
 | `SESSION_USER()` | synonym for `USER()` |
 | `SYSTEM_USER()` | synonym for `USER()` |
 | `CURRENT_USER()`, `CURRENT_USER` | MyLite embedded authenticated identity; currently same value as `USER()` |
+| `CURRENT_ROLE()` | `NONE` until MyLite has active role state |
 | `LAST_INSERT_ID()` | first automatically generated id from the most recent successful insert |
 | `CONNECTION_ID() IS NOT NULL` | `1` |
 | `ROW_COUNT()` after the fixture insert | `3` |
@@ -706,6 +710,7 @@ Verified `mysql --column-type-info -vvv` examples:
 | `CONNECTION_ID() AS connection_id_value` | `LONGLONG` | `21` | `0` | `binary` | `NOT_NULL UNSIGNED BINARY NUM` |
 | `USER() AS user_value` | `VAR_STRING` | `1152` | `31` | `utf8mb4_0900_ai_ci` | nullable |
 | `CURRENT_USER AS current_user_value` | `VAR_STRING` | `1152` | `31` | `utf8mb4_0900_ai_ci` | nullable |
+| `CURRENT_ROLE() AS current_role_value` | `BLOB` | `201326592` | `31` | `utf8mb4_0900_ai_ci` | nullable, no flags |
 
 Implementation should assert metadata through symbolic MyLite/MySQL field
 types, flags, decimals, charset id, and nullability rather than relying on raw
@@ -884,6 +889,10 @@ for results, metadata, warnings, errors, type conversion, and edge cases.
   embedded identity until MyLite has authentication, definer, and invoker
   state. The distinction remains modeled in the function registry for future
   protocol/auth work.
+- `CURRENT_ROLE()` returns `NONE` until MyLite grows role grants, `SET ROLE`,
+  default roles, and privilege-state tracking. It remains modeled as a
+  session-dependent system constant so prepared statements can observe future
+  role state.
 - `CHARSET()`, `COLLATION()`, and `COERCIBILITY()` are implemented by the
   dedicated charset/collation introspection slice for the current descriptor
   and AST-visible subset. Full collation coercion, introducers, and explicit
@@ -1088,14 +1097,14 @@ in-scope strict temporal arithmetic should follow.
 ```sql
 USE mylite_task24_functions;
 SELECT DATABASE(), SCHEMA(), VERSION(), USER(), CURRENT_USER(),
-       LAST_INSERT_ID(), CONNECTION_ID() IS NOT NULL;
+       CURRENT_ROLE(), LAST_INSERT_ID(), CONNECTION_ID() IS NOT NULL;
 ```
 
 Expected values on the verified container:
 
 ```text
 mylite_task24_functions, mylite_task24_functions, 8.4.9,
-root@localhost, root@localhost, 1, 1
+root@localhost, root@localhost, NONE, 1, 1
 ```
 
 Implementation tests should avoid hard-coding the MySQL container's exact user
@@ -1156,7 +1165,7 @@ and `LIMIT 0` queries for:
   `SUBTIME`, `TIMESTAMP`, `FROM_UNIXTIME`, `DATE_FORMAT`, `STR_TO_DATE`,
   `TIME_FORMAT`, `UTC_TIMESTAMP(6)`, `UTC_DATE`, `UTC_TIME`
 - information functions: `DATABASE`, `SCHEMA`, `VERSION`, `LAST_INSERT_ID`,
-  `ROW_COUNT`, `CONNECTION_ID`
+  `ROW_COUNT`, `CONNECTION_ID`, `CURRENT_ROLE`
 
 Expected metadata is listed in the result metadata section above.
 

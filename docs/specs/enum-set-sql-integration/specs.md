@@ -192,6 +192,8 @@ Fast tests must cover:
   quoted numeric, NULL, and empty values;
 - descriptor-backed readback through `SELECT col` and numeric context through
   `SELECT col + 0`;
+- value-list `ORDER BY` and aggregate-local `GROUP_CONCAT(... ORDER BY ...)`
+  through the follow-up ordering semantics slice;
 - duplicate value DDL rejection and `SET` comma-member rejection;
 - `DELETE`, `TRUNCATE`, and `DROP TABLE` around value-list tables to keep the
   foundation CRUD script broad.
@@ -209,5 +211,5 @@ The MySQL fixture records the comparable metadata and CRUD behavior from MySQL
   create-column descriptor path;
 - richer charset byte-length accounting beyond the current supported charset
   registry.
-- enum/set comparison, sorting, grouping, and aggregate type aggregation beyond
-  the current display and numeric-context foundation.
+- collation-aware enum/set string comparison and optimizer/index ordering
+  beyond the current materialized SELECT ordering foundation.

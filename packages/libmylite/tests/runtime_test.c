@@ -437,6 +437,8 @@ static int test_create_table_base_execution(void);
 
 static int test_enum_set_sql_integration_execution(void);
 
+static int test_enum_set_ordering_semantics_execution(void);
+
 static int test_create_table_prepare_has_no_side_effects(void);
 
 static int test_drop_table_base_execution(void);
@@ -926,6 +928,7 @@ int main(void) {
     failures += test_window_function_placeholder_execution();
     failures += test_create_table_base_execution();
     failures += test_enum_set_sql_integration_execution();
+    failures += test_enum_set_ordering_semantics_execution();
     failures += test_create_table_prepare_has_no_side_effects();
     failures += test_drop_table_base_execution();
     failures += test_temporary_table_execution();
@@ -33900,6 +33903,302 @@ static int test_enum_set_sql_integration_execution(void) {
         empty_count_values,
         1,
         "enum set drop clears metadata"
+    );
+
+    mylite_close(database);
+    remove_runtime_test_files();
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_enum_set_ordering_semantics_execution(void) {
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const char *const value_columns[] = {"id", "e", "e_index", "s", "s_bits"};
+    static const char *const order_enum_values[] = {
+        "2", "zeta",  "1", "zeta",  "1", "5", "zeta",  "1", "alpha,beta", "6",
+        "1", "alpha", "2", "alpha", "2", "4", "alpha", "2", "zeta,beta",  "5",
+        "3", "beta",  "3", "beta",  "4", "6", "beta",  "3", "zeta,alpha", "3",
+    };
+    static const char *const order_set_values[] = {
+        "2", "zeta",  "1", "zeta",       "1", "1", "alpha", "2", "alpha",      "2",
+        "6", "beta",  "3", "zeta,alpha", "3", "3", "beta",  "3", "beta",       "4",
+        "4", "alpha", "2", "zeta,beta",  "5", "5", "zeta",  "1", "alpha,beta", "6",
+    };
+    static const char *const enum_group_columns[] = {"e", "e_index", "row_count"};
+    static const char *const enum_group_values[] = {
+        "zeta",
+        "1",
+        "2",
+        "alpha",
+        "2",
+        "2",
+        "beta",
+        "3",
+        "2",
+    };
+    static const char *const set_group_columns[] = {"s", "s_bits", "row_count"};
+    static const char *const set_group_values[] = {
+        "zeta",
+        "1",
+        "1",
+        "alpha",
+        "2",
+        "1",
+        "zeta,alpha",
+        "3",
+        "1",
+        "beta",
+        "4",
+        "1",
+        "zeta,beta",
+        "5",
+        "1",
+        "alpha,beta",
+        "6",
+        "1",
+    };
+    static const char *const enum_where_columns[] = {"id", "e", "e_index"};
+    static const char *const enum_where_values[] = {
+        "2",
+        "zeta",
+        "1",
+        "3",
+        "beta",
+        "3",
+        "5",
+        "zeta",
+        "1",
+        "6",
+        "beta",
+        "3",
+    };
+    static const char *const enum_numeric_where_values[] = {
+        "1",
+        "alpha",
+        "2",
+        "3",
+        "beta",
+        "3",
+        "4",
+        "alpha",
+        "2",
+        "6",
+        "beta",
+        "3",
+    };
+    static const char *const set_where_columns[] = {"id", "s", "s_bits"};
+    static const char *const set_where_values[] = {
+        "2",
+        "zeta",
+        "1",
+        "3",
+        "beta",
+        "4",
+        "4",
+        "zeta,beta",
+        "5",
+        "5",
+        "alpha,beta",
+        "6",
+        "6",
+        "zeta,alpha",
+        "3",
+    };
+    static const char *const set_numeric_where_values[] = {
+        "3",
+        "beta",
+        "4",
+        "4",
+        "zeta,beta",
+        "5",
+        "5",
+        "alpha,beta",
+        "6",
+        "6",
+        "zeta,alpha",
+        "3",
+    };
+    static const char *const comparison_columns[] = {
+        "id",
+        "e_is_zeta",
+        "e_is_one",
+        "e_gt_alpha",
+        "e_gt_one",
+        "s_is_zeta",
+        "s_is_one",
+        "s_gt_alpha",
+        "s_gt_one",
+    };
+    static const char *const comparison_values[] = {
+        "1", "0", "0", "0", "1", "0", "0", "0", "1", "2", "1", "1", "1", "0", "1", "1", "1", "0",
+        "3", "0", "0", "1", "1", "0", "0", "1", "1", "4", "0", "0", "0", "1", "0", "0", "1", "1",
+        "5", "1", "1", "1", "0", "0", "0", "1", "1", "6", "0", "0", "1", "1", "0", "0", "1", "1",
+    };
+    static const char *const extrema_columns[] = {
+        "min_e",
+        "min_e_index",
+        "max_e",
+        "max_e_index",
+        "min_s",
+        "min_s_bits",
+        "max_s",
+        "max_s_bits",
+    };
+    static const char *const extrema_values[] =
+        {"alpha", "1", "zeta", "3", "alpha", "1", "zeta,beta", "6"};
+    static const char *const concat_columns[] = {"enum_concat", "set_concat"};
+    static const char *const concat_values[] = {
+        "zeta|zeta|alpha|alpha|beta|beta",
+        "zeta|alpha|zeta,alpha|beta|zeta,beta|alpha,beta",
+    };
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    remove_runtime_test_files();
+    failures += expect_status(
+        mylite_open(MYLITE_RUNTIME_TEST_FILE_PATH, &database),
+        MYLITE_OK,
+        "open enum set ordering database"
+    );
+    failures += execute_sql(
+        database,
+        "CREATE DATABASE mylite_enum_set_ordering DEFAULT CHARACTER SET utf8mb4 "
+        "COLLATE utf8mb4_unicode_ci",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "USE mylite_enum_set_ordering", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE value_lists ("
+        "id INT PRIMARY KEY AUTO_INCREMENT,"
+        "e ENUM('zeta','alpha','beta') NOT NULL,"
+        "s SET('zeta','alpha','beta') DEFAULT NULL"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO value_lists (e,s) VALUES "
+        "('alpha','alpha'),"
+        "('zeta','zeta'),"
+        "('beta','beta'),"
+        "('alpha','zeta,beta'),"
+        "('zeta','alpha,beta'),"
+        "('beta','zeta,alpha')",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, e, e + 0 AS e_index, s, s + 0 AS s_bits "
+        "FROM value_lists ORDER BY e, id",
+        value_columns,
+        5,
+        order_enum_values,
+        6,
+        "enum order by numeric context"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, e, e + 0 AS e_index, s, s + 0 AS s_bits "
+        "FROM value_lists ORDER BY s, id",
+        value_columns,
+        5,
+        order_set_values,
+        6,
+        "set order by numeric context"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT e, e + 0 AS e_index, COUNT(*) AS row_count "
+        "FROM value_lists GROUP BY e ORDER BY e",
+        enum_group_columns,
+        3,
+        enum_group_values,
+        3,
+        "enum group by order"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT s, s + 0 AS s_bits, COUNT(*) AS row_count "
+        "FROM value_lists GROUP BY s ORDER BY s",
+        set_group_columns,
+        3,
+        set_group_values,
+        6,
+        "set group by order"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, e, e + 0 AS e_index FROM value_lists WHERE e > 'alpha' ORDER BY id",
+        enum_where_columns,
+        3,
+        enum_where_values,
+        4,
+        "enum string comparison"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, e, e + 0 AS e_index FROM value_lists WHERE e > 1 ORDER BY id",
+        enum_where_columns,
+        3,
+        enum_numeric_where_values,
+        4,
+        "enum numeric comparison"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, s, s + 0 AS s_bits FROM value_lists WHERE s > 'alpha' ORDER BY id",
+        set_where_columns,
+        3,
+        set_where_values,
+        5,
+        "set string comparison"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, s, s + 0 AS s_bits FROM value_lists WHERE s > 2 ORDER BY id",
+        set_where_columns,
+        3,
+        set_numeric_where_values,
+        4,
+        "set numeric comparison"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, e = 'zeta' AS e_is_zeta, e = 1 AS e_is_one, "
+        "e > 'alpha' AS e_gt_alpha, e > 1 AS e_gt_one, "
+        "s = 'zeta' AS s_is_zeta, s = 1 AS s_is_one, "
+        "s > 'alpha' AS s_gt_alpha, s > 1 AS s_gt_one "
+        "FROM value_lists ORDER BY id",
+        comparison_columns,
+        9,
+        comparison_values,
+        6,
+        "enum set mixed comparison contexts"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT MIN(e) AS min_e, MIN(e + 0) AS min_e_index, "
+        "MAX(e) AS max_e, MAX(e + 0) AS max_e_index, "
+        "MIN(s) AS min_s, MIN(s + 0) AS min_s_bits, "
+        "MAX(s) AS max_s, MAX(s + 0) AS max_s_bits "
+        "FROM value_lists",
+        extrema_columns,
+        8,
+        extrema_values,
+        1,
+        "enum set extrema context"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT GROUP_CONCAT(e ORDER BY e SEPARATOR '|') AS enum_concat, "
+        "GROUP_CONCAT(s ORDER BY s SEPARATOR '|') AS set_concat "
+        "FROM value_lists",
+        concat_columns,
+        2,
+        concat_values,
+        1,
+        "enum set group concat order"
     );
 
     mylite_close(database);

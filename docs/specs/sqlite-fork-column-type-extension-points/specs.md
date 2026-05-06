@@ -278,6 +278,10 @@ The MySQL 8.4.9 fixture in
 `docs/specs/sqlite-fork-set-type-descriptors/mysql-set-coercion.sql` is the
 runtime baseline for the first supported `SET` assignment and readback
 behavior.
+The MySQL 8.4.9 fixture in
+`docs/specs/enum-set-ordering-semantics/mysql-enum-set-ordering.sql` is the
+runtime baseline for the first value-list ordering, comparison-context, and
+aggregate-extrema behavior.
 
 ## Compatibility Status
 

@@ -2,8 +2,8 @@
 
 ## Status
 
-Started as the next value-list foundation slice after SQL-level `ENUM` and
-`SET` declaration integration.
+Implemented as the first value-list read-side ordering slice after SQL-level
+`ENUM` and `SET` declaration integration.
 
 ## References
 
@@ -76,13 +76,15 @@ The fixture verifies:
 - `MIN()` and `MAX()` over enum/set return lexical string extrema, while
   `MIN(col + 0)` and `MAX(col + 0)` expose numeric extrema
 
-## Implementation Plan
+## Implementation
 
-1. Add a value-order comparator in the SELECT comparison module.
-2. Use it only for SELECT result ordering and aggregate `ORDER BY` paths.
-3. Keep group equality, distinct equality, scalar comparisons, and aggregate
-   extrema on the existing generic comparator.
-4. Extend the enum/set CRUD runtime test with ordering, distinct/grouping, and
-   comparison probes verified by the MySQL fixture.
-5. Update compatibility and extension-point docs to mark this read-side
-   semantic foundation as implemented.
+- `mylite_select_compare_order_values()` compares non-NULL values by numeric
+  context when both sides carry one, then falls back to the generic SELECT
+  comparator.
+- SELECT result sorting and aggregate-local `GROUP_CONCAT(... ORDER BY ...)`
+  use the order comparator.
+- Group equality, distinct equality, scalar comparisons, `MIN()`, and `MAX()`
+  remain on the generic comparator.
+- The runtime test suite covers ordering, grouping, string comparison, numeric
+  comparison, aggregate extrema, and aggregate-local ordering with outputs
+  verified against the MySQL 8.4.9 fixture.

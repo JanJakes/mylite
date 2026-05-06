@@ -18,6 +18,12 @@
 
 enum { mylite_group_concat_warning_size = 64U };
 
+struct group_concat_piece {
+    const char *text;
+    size_t length;
+    size_t row_number;
+};
+
 static int update_table_select_count_distinct_state(
     mylite_stmt *stmt,
     struct mylite_select_aggregate_state *state,
@@ -124,9 +130,7 @@ static int append_group_concat_piece(
     mylite_stmt *stmt,
     char **result,
     size_t *result_length,
-    const char *piece,
-    size_t piece_length,
-    size_t row_number,
+    struct group_concat_piece piece,
     bool *truncated
 );
 
@@ -464,9 +468,11 @@ static int finalize_table_select_group_concat_state(
                 stmt,
                 &result,
                 &result_length,
-                separator_text,
-                separator_length,
-                row_number,
+                (struct group_concat_piece){
+                    .text = separator_text,
+                    .length = separator_length,
+                    .row_number = row_number,
+                },
                 &truncated
             );
         }
@@ -475,9 +481,11 @@ static int finalize_table_select_group_concat_state(
                 stmt,
                 &result,
                 &result_length,
-                item->text,
-                item->text_length,
-                row_number,
+                (struct group_concat_piece){
+                    .text = item->text,
+                    .length = item->text_length,
+                    .row_number = row_number,
+                },
                 &truncated
             );
         }
@@ -740,7 +748,7 @@ static int evaluate_table_select_group_concat_order_item(
 }
 
 static int make_group_concat_item_text(mylite_stmt *stmt, struct mylite_group_concat_item *item) {
-    char **texts = calloc(item->argument_count, sizeof(*texts));
+    char **texts = (char **)calloc(item->argument_count, sizeof(*texts));
     size_t *lengths = calloc(item->argument_count, sizeof(*lengths));
     char *text = NULL;
     size_t text_length = 0U;
@@ -793,7 +801,7 @@ cleanup:
             free(texts[index]);
         }
     }
-    free(texts);
+    free((void *)texts);
     free(lengths);
     return status;
 }
@@ -902,22 +910,20 @@ static int append_group_concat_piece(
     mylite_stmt *stmt,
     char **result,
     size_t *result_length,
-    const char *piece,
-    size_t piece_length,
-    size_t row_number,
+    struct group_concat_piece piece,
     bool *truncated
 ) {
     size_t remaining = 0U;
     size_t max_len = mylite_connection_group_concat_max_len_size(stmt->database);
-    size_t append_length = piece_length;
+    size_t append_length = piece.length;
     char *buffer = NULL;
 
-    if (*truncated || piece_length == 0U) {
+    if (*truncated || piece.length == 0U) {
         return MYLITE_OK;
     }
     if (*result_length >= max_len) {
         *truncated = true;
-        return append_group_concat_truncation_warning(stmt, row_number);
+        return append_group_concat_truncation_warning(stmt, piece.row_number);
     }
 
     remaining = max_len - *result_length;
@@ -933,13 +939,13 @@ static int append_group_concat_piece(
     }
     *result = buffer;
     if (append_length > 0U) {
-        memcpy(*result + *result_length, piece, append_length);
+        memcpy(*result + *result_length, piece.text, append_length);
         *result_length += append_length;
     }
     (*result)[*result_length] = '\0';
 
     if (*truncated) {
-        return append_group_concat_truncation_warning(stmt, row_number);
+        return append_group_concat_truncation_warning(stmt, piece.row_number);
     }
     return MYLITE_OK;
 }
@@ -1018,8 +1024,10 @@ static int compare_group_concat_items(
 
     while (order_item != NULL && index < left->order_value_count &&
            index < right->order_value_count) {
-        int comparison =
-            mylite_select_compare_values(&left->order_values[index], &right->order_values[index]);
+        int comparison = mylite_select_compare_order_values(
+            &left->order_values[index],
+            &right->order_values[index]
+        );
 
         if (comparison != 0) {
             return order_item->key_part_order == MYLITE_SQL_AST_KEY_PART_ORDER_DESC ? -comparison
@@ -1106,8 +1114,10 @@ static size_t group_concat_text_length(
 }
 
 static bool group_concat_is_distinct(const struct mylite_select_aggregate_binding *binding) {
-    return binding != NULL &&
-           binding->argument_kind == MYLITE_SQL_AST_AGGREGATE_ARGUMENT_DISTINCT_EXPRESSION_LIST;
+    if (binding == NULL) {
+        return false;
+    }
+    return binding->argument_kind == MYLITE_SQL_AST_AGGREGATE_ARGUMENT_DISTINCT_EXPRESSION_LIST;
 }
 
 static void count_distinct_tuple_deinit(struct mylite_count_distinct_tuple *tuple) {

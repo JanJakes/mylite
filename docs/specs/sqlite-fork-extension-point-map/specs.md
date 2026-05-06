@@ -38,6 +38,9 @@ Implemented fork points:
 - MyLite expression values with a MySQL numeric-context side channel for fork
   results such as `ENUM` and `SET`, where direct display and arithmetic context
   intentionally differ
+- materialized SELECT order-key comparison that uses value-list numeric context
+  for `ENUM`/`SET` while leaving generic string comparisons and aggregate
+  extrema lexical
 
 ## Sources
 
@@ -154,21 +157,22 @@ Next likely descriptor families:
 - `TIMESTAMP` temporal values with SQL-mode and time-zone behavior
 - JSON and bit values
 
-`ENUM` establishes a new descriptor-payload and read-type boundary: physical
+`ENUM` establishes a descriptor-payload and read-type boundary: physical
 storage can be compact while selected values expose MySQL's string display and
 numeric index behavior. `SET` reuses that payload ownership pattern with
 bit-mask assignment and comma-list display semantics, including the 64th MySQL
-member bit.
+member bit. MyLite's materialized SELECT layer now consumes that numeric
+context for value-list order keys while preserving lexical behavior for
+string-context comparisons and aggregate extrema.
 
 The next temporal-specific fork points are accepted-assignment warnings,
 SQL-mode-sensitive zero date handling, `TIME_TRUNCATE_FRACTIONAL`,
 `TIMESTAMP` time-zone conversion, `YEAR(4)` declaration warnings, and direct
 SQLite parser/catalog descriptor loading. The next decimal-specific fork points
 are comparison/index ordering and direct SQLite parser numeric-literal
-preservation. The expression side also needs continued MySQL numeric-context
-coercion work because text-backed and descriptor-backed storage values must
-behave like MySQL when used in arithmetic, comparison, grouping, and ordering
-expressions.
+preservation. The expression side still needs continued MySQL numeric-context
+coercion work for collation-aware value-list string comparisons, cross-column
+descriptor comparisons, and optimizer/index ordering.
 
 ### Diagnostics and warnings
 

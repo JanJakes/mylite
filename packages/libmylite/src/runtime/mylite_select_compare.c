@@ -79,6 +79,29 @@ int mylite_select_compare_values(
     return (left->int64_value > right->int64_value) - (left->int64_value < right->int64_value);
 }
 
+int mylite_select_compare_order_values(
+    const struct mylite_expression_value *left,
+    const struct mylite_expression_value *right
+) {
+    bool left_null = left->kind == MYLITE_EXPRESSION_VALUE_NULL;
+    bool right_null = right->kind == MYLITE_EXPRESSION_VALUE_NULL;
+
+    if (left_null || right_null) {
+        if (left_null == right_null) {
+            return 0;
+        }
+        if (left_null) {
+            return -1;
+        }
+        return 1;
+    }
+    if (left->has_numeric_context_value && right->has_numeric_context_value) {
+        return (left->numeric_context_value > right->numeric_context_value) -
+               (left->numeric_context_value < right->numeric_context_value);
+    }
+    return mylite_select_compare_values(left, right);
+}
+
 int mylite_select_compare_binary_text_values(
     const char *left,
     size_t left_length,

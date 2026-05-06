@@ -114,8 +114,10 @@ static int compare_table_select_rows(
     const struct mylite_select_plan *plan
 ) {
     for (size_t index = 0U; index < plan->order_key_count; ++index) {
-        int comparison =
-            mylite_select_compare_values(&left->order_values[index], &right->order_values[index]);
+        int comparison = mylite_select_compare_order_values(
+            &left->order_values[index],
+            &right->order_values[index]
+        );
 
         if (comparison != 0) {
             if (plan->order_keys[index].direction == MYLITE_SQL_AST_KEY_PART_ORDER_DESC) {

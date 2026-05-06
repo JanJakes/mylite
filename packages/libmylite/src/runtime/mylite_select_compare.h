@@ -9,6 +9,10 @@ int mylite_select_compare_values(
     const struct mylite_expression_value *left,
     const struct mylite_expression_value *right
 );
+int mylite_select_compare_order_values(
+    const struct mylite_expression_value *left,
+    const struct mylite_expression_value *right
+);
 int mylite_select_compare_binary_text_values(
     const char *left,
     size_t left_length,

@@ -5,8 +5,12 @@
 #include "mylite_metadata_constants.h"
 #include "mylite_span.h"
 #include "sql/mylite_ast.h"
+#include "sql/mylite_digest.h"
+#include "sql/mylite_expression.h"
 
+#include <errno.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 static bool infer_session_function_descriptor(mylite_db *database,
                                               const struct mylite_sql_ast_node *name,
@@ -14,6 +18,13 @@ static bool infer_session_function_descriptor(mylite_db *database,
 static bool infer_inet_function_descriptor(mylite_db *database,
                                            const struct mylite_sql_ast_node *name,
                                            struct mylite_field_descriptor *out_descriptor);
+static uint64_t hash_function_result_chars(const struct mylite_sql_ast_node *expression,
+                                           const struct mylite_expression_value *value);
+static uint64_t sha2_function_result_chars(const struct mylite_sql_ast_node *expression,
+                                           const struct mylite_expression_value *value);
+static bool sha2_literal_hash_length(const struct mylite_sql_ast_node *argument,
+                                     uint64_t *out_bits);
+static uint64_t sha2_result_chars_from_bits(uint64_t bits);
 
 bool mylite_expression_descriptor_function_result_nullable(
     bool arguments_nullable, const struct mylite_expression_value *value)
@@ -70,6 +81,37 @@ bool mylite_expression_descriptor_infer_base_conversion_function(
         .length = length,
         .decimals = mylite_mysql_not_fixed_decimals,
         .charset_id = mylite_expression_descriptor_connection_charset_id(database),
+        .nullable = true,
+    };
+    mylite_field_descriptor_set_nullable(out_descriptor, true);
+    return true;
+}
+
+bool mylite_expression_descriptor_infer_hash_function(
+    mylite_db *database, const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *value, struct mylite_field_descriptor *out_descriptor)
+{
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
+    uint64_t max_bytes_per_character =
+        mylite_expression_descriptor_connection_character_max_length(database);
+    uint64_t result_chars = 0U;
+    uint64_t length = 0U;
+    unsigned int charset_id = mylite_expression_descriptor_connection_charset_id(database);
+
+    if (!mylite_function_name_is_hash(name)) {
+        return false;
+    }
+
+    result_chars = hash_function_result_chars(expression, value);
+    length = max_bytes_per_character > UINT64_MAX / result_chars
+                 ? mylite_mysql_long_text_length
+                 : result_chars * max_bytes_per_character;
+    *out_descriptor = (struct mylite_field_descriptor){
+        .type = MYLITE_FIELD_TYPE_VAR_STRING,
+        .flags = charset_id == mylite_mysql_binary_charset_id ? MYLITE_FIELD_FLAG_BINARY : 0U,
+        .length = length,
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = charset_id,
         .nullable = true,
     };
     mylite_field_descriptor_set_nullable(out_descriptor, true);
@@ -178,6 +220,87 @@ bool mylite_expression_descriptor_infer_code_search_function(
         return true;
     }
     return false;
+}
+
+static uint64_t hash_function_result_chars(const struct mylite_sql_ast_node *expression,
+                                           const struct mylite_expression_value *value)
+{
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
+
+    if (mylite_function_name_is_md5(name)) {
+        return MYLITE_DIGEST_MD5_HEX_LENGTH;
+    }
+    if (mylite_function_name_is_sha1(name)) {
+        return MYLITE_DIGEST_SHA1_HEX_LENGTH;
+    }
+    return sha2_function_result_chars(expression, value);
+}
+
+static uint64_t sha2_function_result_chars(const struct mylite_sql_ast_node *expression,
+                                           const struct mylite_expression_value *value)
+{
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
+    const struct mylite_sql_ast_node *length_argument = mylite_ast_child_at(arguments, 1U);
+    uint64_t bits = 0U;
+
+    if (value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+        return value->text_length;
+    }
+    if (sha2_literal_hash_length(length_argument, &bits)) {
+        return sha2_result_chars_from_bits(bits);
+    }
+    if (length_argument != NULL && length_argument->kind == MYLITE_SQL_AST_LITERAL) {
+        return MYLITE_DIGEST_SHA2_256_HEX_LENGTH;
+    }
+    return MYLITE_DIGEST_SHA2_512_HEX_LENGTH;
+}
+
+static bool sha2_literal_hash_length(const struct mylite_sql_ast_node *argument, uint64_t *out_bits)
+{
+    char *text = NULL;
+    char *end = NULL;
+    uint64_t bits = 0U;
+
+    if (argument == NULL || argument->kind != MYLITE_SQL_AST_LITERAL || out_bits == NULL) {
+        return false;
+    }
+    if (argument->literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        *out_bits = UINT64_MAX;
+        return true;
+    }
+    if (argument->literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        return false;
+    }
+    text = mylite_copy_span_text(argument->span.text, argument->span.length);
+    if (text == NULL) {
+        return false;
+    }
+    errno = 0;
+    bits = strtoull(text, &end, 10);
+    if (errno != 0 || end == text || (end != NULL && *end != '\0')) {
+        free(text);
+        return false;
+    }
+    free(text);
+    *out_bits = bits;
+    return true;
+}
+
+static uint64_t sha2_result_chars_from_bits(uint64_t bits)
+{
+    switch (bits) {
+    case 224U:
+        return MYLITE_DIGEST_SHA2_224_HEX_LENGTH;
+    case 0U:
+    case 256U:
+        return MYLITE_DIGEST_SHA2_256_HEX_LENGTH;
+    case 384U:
+        return MYLITE_DIGEST_SHA2_384_HEX_LENGTH;
+    case 512U:
+        return MYLITE_DIGEST_SHA2_512_HEX_LENGTH;
+    default:
+        return MYLITE_DIGEST_SHA2_256_HEX_LENGTH;
+    }
 }
 
 static bool infer_session_function_descriptor(mylite_db *database,

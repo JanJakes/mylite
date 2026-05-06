@@ -36,6 +36,7 @@ In scope for the initial implementation:
   - `TO_BASE64`, `FROM_BASE64`
   - `BIN`, `OCT`
   - `CRC32`
+  - `MD5`, `SHA`, `SHA1`, `SHA2`
   - `FORMAT`
   - `IS_UUID`, `UUID_TO_BIN`, `BIN_TO_UUID`
 - numeric functions:
@@ -158,7 +159,8 @@ by common scalar expressions:
   `ROUND`, `TRUNCATE`, `EXP`, `LN`, `LOG`, `LOG2`, `LOG10`, `POW`, `POWER`,
   `SQRT`, `SIN`, `COS`, `TAN`, `COT`, `ACOS`, `ASIN`, `ATAN`, `ATAN2`,
   `DEGREES`, `RADIANS`,
-  `CONV`, `BIT_COUNT`, `BIT_LENGTH`, `CRC32`, `INET_ATON`, `INET_NTOA`, and
+  `CONV`, `BIT_COUNT`, `BIT_LENGTH`, `CRC32`, `MD5`, `SHA`, `SHA1`, `SHA2`,
+  `INET_ATON`, `INET_NTOA`, and
   `PI`; see
   `docs/specs/round-function/specs.md` and
   `docs/specs/truncate-function/specs.md` and
@@ -174,6 +176,7 @@ by common scalar expressions:
   `docs/specs/numeric-base-conversion-functions/specs.md` and
   `docs/specs/bit-utility-functions/specs.md` and
   `docs/specs/crc32-function/specs.md` and
+  `docs/specs/hash-functions/specs.md` and
   `docs/specs/inet-ipv4-functions/specs.md`
 - conditional/comparison functions: `IF`, `IFNULL`, `NULLIF`, `COALESCE`,
   `GREATEST`, `LEAST`, `STRCMP`, and `ISNULL`; see
@@ -253,6 +256,9 @@ whitespace, invalid `FROM_BASE64()` `NULL` results without warnings,
 binary/octal/arbitrary-base conversion, invalid base ranges, base-conversion
 string parsing warnings,
 CRC-32 checksum values, `CRC32()` string/numeric/NULL/binary-byte conversion,
+MD5, SHA-1, and SHA-2 checksum values, hash function
+string/numeric/NULL/binary-byte conversion, hash-length warnings, hash
+metadata,
 `FORMAT()` scalar numeric formatting, rounded and padded fractional digits,
 western/Indian/no-grouping locale separators, unknown-locale warnings,
 `FORMAT()` warning-sensitive NULL short-circuiting,

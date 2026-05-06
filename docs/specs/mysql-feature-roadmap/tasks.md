@@ -70,6 +70,7 @@ level application surfaces.
        [scalar built-in functions](../scalar-built-in-functions/specs.md).
        [INSERT/REPLACE scalar expression values](../insert-scalar-expression-values/specs.md).
        [ADDTIME and SUBTIME functions](../addtime-subtime-functions/specs.md).
+       [MD5, SHA, SHA1, and SHA2 hash functions](../hash-functions/specs.md).
 25. [x] Aggregate functions and grouping: `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`,
        `GROUP_CONCAT`, `GROUP BY`, `HAVING`, aliases, ordinals,
        `ONLY_FULL_GROUP_BY`, and grouped joined row sources. Specs:

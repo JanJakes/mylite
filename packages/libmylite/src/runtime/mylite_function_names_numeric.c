@@ -31,6 +31,27 @@ bool mylite_function_name_is_crc32(const struct mylite_sql_ast_node *name)
     return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }
 
+bool mylite_function_name_is_hash(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"MD5", "SHA", "SHA1", "SHA2"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+bool mylite_function_name_is_md5(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"MD5"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+bool mylite_function_name_is_sha1(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"SHA", "SHA1"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
 bool mylite_function_name_is_exp(const struct mylite_sql_ast_node *name)
 {
     static const char *const names[] = {"EXP"};

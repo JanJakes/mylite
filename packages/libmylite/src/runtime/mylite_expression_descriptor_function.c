@@ -78,6 +78,10 @@ int mylite_expression_descriptor_infer_function_expression(
     }
     result_nullable = mylite_expression_descriptor_function_result_nullable(nullable, value);
 
+    if (mylite_expression_descriptor_infer_hash_function(database, expression, value,
+                                                         out_descriptor)) {
+        return MYLITE_OK;
+    }
     if (infer_common_scalar_function_descriptor(database, name, nullable, result_nullable,
                                                 out_descriptor)) {
         return MYLITE_OK;

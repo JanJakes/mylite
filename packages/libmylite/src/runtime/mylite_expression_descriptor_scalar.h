@@ -19,6 +19,9 @@ bool mylite_expression_descriptor_infer_text_function(
 bool mylite_expression_descriptor_infer_base_conversion_function(
     mylite_db *database, const struct mylite_sql_ast_node *name,
     struct mylite_field_descriptor *out_descriptor);
+bool mylite_expression_descriptor_infer_hash_function(
+    mylite_db *database, const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *value, struct mylite_field_descriptor *out_descriptor);
 bool mylite_expression_descriptor_infer_session_or_inet_function(
     mylite_db *database, const struct mylite_sql_ast_node *name,
     struct mylite_field_descriptor *out_descriptor);

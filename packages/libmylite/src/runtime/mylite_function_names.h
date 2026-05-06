@@ -62,6 +62,9 @@ bool mylite_function_name_is_charset_collation_introspection(
 bool mylite_function_name_has_length_result(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_bit_count(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_crc32(const struct mylite_sql_ast_node *name);
+bool mylite_function_name_is_hash(const struct mylite_sql_ast_node *name);
+bool mylite_function_name_is_md5(const struct mylite_sql_ast_node *name);
+bool mylite_function_name_is_sha1(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_inet_aton(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_inet_ntoa(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_is_uuid(const struct mylite_sql_ast_node *name);

@@ -1,5 +1,6 @@
 #include "mylite_expression.h"
 
+#include "mylite_digest.h"
 #include "mylite_regexp.h"
 
 #include <mylite/mylite.h>
@@ -27,6 +28,7 @@ enum {
     MYLITE_WARNING_DIVISION_BY_ZERO = 1365,
     MYLITE_WARNING_INCORRECT_STRING_VALUE = 1411,
     MYLITE_WARNING_DATETIME_FUNCTION_OVERFLOW = 1441,
+    MYLITE_WARNING_WRONG_PARAMETERS_TO_NATIVE_FCT = 1583,
     MYLITE_WARNING_UNKNOWN_LOCALE = 1649,
     MYLITE_WARNING_OUT_OF_RANGE = 1690,
     MYLITE_WARNING_INVALID_ARGUMENT_FOR_LOGARITHM = 3020,
@@ -652,6 +654,9 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_ADDTIME = 137,
     MYLITE_SCALAR_FUNCTION_SUBTIME = 138,
     MYLITE_SCALAR_FUNCTION_CURRENT_ROLE = 139,
+    MYLITE_SCALAR_FUNCTION_MD5 = 140,
+    MYLITE_SCALAR_FUNCTION_SHA1 = 141,
+    MYLITE_SCALAR_FUNCTION_SHA2 = 142,
 };
 
 struct angle_conversion_input {
@@ -1404,13 +1409,27 @@ static int eval_crc32_function(const struct mylite_sql_ast_node *arguments,
                                const struct mylite_expression_eval_context *context,
                                struct mylite_expression_warnings *warnings,
                                struct mylite_expression_value *out_value);
-static int crc32_argument_to_text(const struct mylite_expression_value *value,
-                                  const struct mylite_sql_ast_node *argument, char **out_text,
-                                  size_t *out_length);
-static void normalize_crc32_exact_decimal_text(char *text, size_t *length);
-static int crc32_real_to_text(double value, char **out_text, size_t *out_length);
+static int eval_hash_function(enum mylite_scalar_function_id function_id,
+                              const struct mylite_sql_ast_node *arguments,
+                              const struct mylite_expression_eval_context *context,
+                              struct mylite_expression_warnings *warnings,
+                              struct mylite_expression_value *out_value);
+static int eval_sha2_function(const struct mylite_sql_ast_node *arguments,
+                              const struct mylite_expression_eval_context *context,
+                              struct mylite_expression_warnings *warnings,
+                              struct mylite_expression_value *out_value);
+static int checksum_argument_to_text(const struct mylite_expression_value *value,
+                                     const struct mylite_sql_ast_node *argument, char **out_text,
+                                     size_t *out_length);
+static void normalize_checksum_exact_decimal_text(char *text, size_t *length);
+static int checksum_real_to_text(double value, char **out_text, size_t *out_length);
 static void remove_positive_exponent_marker(char *text, size_t *length);
 static uint32_t crc32_bytes(const char *text, size_t text_length);
+static int sha2_hash_length_from_value(const struct mylite_expression_value *value,
+                                       struct mylite_expression_warnings *warnings,
+                                       unsigned int *out_bits);
+static bool sha2_hash_length_is_supported(unsigned int bits);
+static int append_sha2_wrong_parameters_warning(struct mylite_expression_warnings *warnings);
 static int eval_inet_aton_function(const struct mylite_sql_ast_node *arguments,
                                    const struct mylite_expression_eval_context *context,
                                    struct mylite_expression_warnings *warnings,
@@ -2240,6 +2259,8 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_BIT_COUNT:
     case MYLITE_SCALAR_FUNCTION_BIT_LENGTH:
     case MYLITE_SCALAR_FUNCTION_CRC32:
+    case MYLITE_SCALAR_FUNCTION_MD5:
+    case MYLITE_SCALAR_FUNCTION_SHA1:
     case MYLITE_SCALAR_FUNCTION_INET_ATON:
     case MYLITE_SCALAR_FUNCTION_INET_NTOA:
     case MYLITE_SCALAR_FUNCTION_IS_UUID:
@@ -2303,6 +2324,7 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_TIMEDIFF:
     case MYLITE_SCALAR_FUNCTION_ADDTIME:
     case MYLITE_SCALAR_FUNCTION_SUBTIME:
+    case MYLITE_SCALAR_FUNCTION_SHA2:
         return arity == 2U;
     case MYLITE_SCALAR_FUNCTION_TIMESTAMP:
         return arity == 1U || arity == 2U;
@@ -3176,6 +3198,11 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_bit_length_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_CRC32:
         return eval_crc32_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_MD5:
+    case MYLITE_SCALAR_FUNCTION_SHA1:
+        return eval_hash_function(function_id, arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_SHA2:
+        return eval_sha2_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_INET_ATON:
         return eval_inet_aton_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_INET_NTOA:
@@ -6802,6 +6829,9 @@ static bool temporal_part_from_function(enum mylite_scalar_function_id function_
     case MYLITE_SCALAR_FUNCTION_INET_ATON:
     case MYLITE_SCALAR_FUNCTION_INET_NTOA:
     case MYLITE_SCALAR_FUNCTION_CRC32:
+    case MYLITE_SCALAR_FUNCTION_MD5:
+    case MYLITE_SCALAR_FUNCTION_SHA1:
+    case MYLITE_SCALAR_FUNCTION_SHA2:
     case MYLITE_SCALAR_FUNCTION_IS_UUID:
     case MYLITE_SCALAR_FUNCTION_UUID_TO_BIN:
     case MYLITE_SCALAR_FUNCTION_BIN_TO_UUID:
@@ -11341,6 +11371,9 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_BIT_COUNT:
     case MYLITE_SCALAR_FUNCTION_BIT_LENGTH:
     case MYLITE_SCALAR_FUNCTION_CRC32:
+    case MYLITE_SCALAR_FUNCTION_MD5:
+    case MYLITE_SCALAR_FUNCTION_SHA1:
+    case MYLITE_SCALAR_FUNCTION_SHA2:
     case MYLITE_SCALAR_FUNCTION_INET_ATON:
     case MYLITE_SCALAR_FUNCTION_INET_NTOA:
     case MYLITE_SCALAR_FUNCTION_IS_UUID:
@@ -11500,7 +11533,7 @@ static int eval_crc32_function(const struct mylite_sql_ast_node *arguments,
         return 0;
     }
 
-    status = crc32_argument_to_text(&value, argument, &text, &text_length);
+    status = checksum_argument_to_text(&value, argument, &text, &text_length);
     if (status == 0) {
         *out_value = (struct mylite_expression_value){
             .kind = MYLITE_EXPRESSION_VALUE_UINT64,
@@ -11513,9 +11546,97 @@ static int eval_crc32_function(const struct mylite_sql_ast_node *arguments,
     return status;
 }
 
-static int crc32_argument_to_text(const struct mylite_expression_value *value,
-                                  const struct mylite_sql_ast_node *argument, char **out_text,
-                                  size_t *out_length)
+static int eval_hash_function(enum mylite_scalar_function_id function_id,
+                              const struct mylite_sql_ast_node *arguments,
+                              const struct mylite_expression_eval_context *context,
+                              struct mylite_expression_warnings *warnings,
+                              struct mylite_expression_value *out_value)
+{
+    const struct mylite_sql_ast_node *argument = child_at(arguments, 0U);
+    struct mylite_expression_value value = {0};
+    char *text = NULL;
+    size_t text_length = 0U;
+    char hex[MYLITE_DIGEST_SHA1_HEX_LENGTH + 1U] = {0};
+    size_t hex_length = 0U;
+    int status = eval_node(argument, context, warnings, &value);
+
+    if (status != 0) {
+        return status;
+    }
+    if (is_null(&value)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        mylite_expression_value_deinit(&value);
+        return 0;
+    }
+
+    status = checksum_argument_to_text(&value, argument, &text, &text_length);
+    if (status == 0 && function_id == MYLITE_SCALAR_FUNCTION_MD5) {
+        mylite_digest_md5_hex((const unsigned char *)(text == NULL ? "" : text), text_length, hex);
+        hex_length = MYLITE_DIGEST_MD5_HEX_LENGTH;
+    } else if (status == 0) {
+        mylite_digest_sha1_hex((const unsigned char *)(text == NULL ? "" : text), text_length, hex);
+        hex_length = MYLITE_DIGEST_SHA1_HEX_LENGTH;
+    }
+    if (status == 0) {
+        status = set_text_value(hex, hex_length, out_value);
+    }
+
+    free(text);
+    mylite_expression_value_deinit(&value);
+    return status;
+}
+
+static int eval_sha2_function(const struct mylite_sql_ast_node *arguments,
+                              const struct mylite_expression_eval_context *context,
+                              struct mylite_expression_warnings *warnings,
+                              struct mylite_expression_value *out_value)
+{
+    const struct mylite_sql_ast_node *text_argument = child_at(arguments, 0U);
+    struct mylite_expression_value text_value = {0};
+    struct mylite_expression_value length_value = {0};
+    char *text = NULL;
+    size_t text_length = 0U;
+    unsigned int bits = 0U;
+    char hex[MYLITE_DIGEST_SHA2_512_HEX_LENGTH + 1U] = {0};
+    size_t hex_length = 0U;
+    int status = eval_node(text_argument, context, warnings, &text_value);
+
+    if (status == 0) {
+        status = eval_node(child_at(arguments, 1U), context, warnings, &length_value);
+    }
+    if (status != 0) {
+        mylite_expression_value_deinit(&length_value);
+        mylite_expression_value_deinit(&text_value);
+        return status;
+    }
+
+    status = sha2_hash_length_from_value(&length_value, warnings, &bits);
+    if (status == 0 && !sha2_hash_length_is_supported(bits)) {
+        status = append_sha2_wrong_parameters_warning(warnings);
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+    } else if (status == 0 && is_null(&text_value)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+    } else if (status == 0) {
+        status = checksum_argument_to_text(&text_value, text_argument, &text, &text_length);
+        if (status == 0 &&
+            !mylite_digest_sha2_hex((const unsigned char *)(text == NULL ? "" : text), text_length,
+                                    bits, hex, &hex_length)) {
+            status = -1;
+        }
+        if (status == 0) {
+            status = set_text_value(hex, hex_length, out_value);
+        }
+    }
+
+    free(text);
+    mylite_expression_value_deinit(&length_value);
+    mylite_expression_value_deinit(&text_value);
+    return status;
+}
+
+static int checksum_argument_to_text(const struct mylite_expression_value *value,
+                                     const struct mylite_sql_ast_node *argument, char **out_text,
+                                     size_t *out_length)
 {
     bool matched_literal = false;
     int status = 0;
@@ -11537,19 +11658,19 @@ static int crc32_argument_to_text(const struct mylite_expression_value *value,
                 memmove(*out_text, *out_text + 1U, *out_length);
                 --*out_length;
             }
-            normalize_crc32_exact_decimal_text(*out_text, out_length);
+            normalize_checksum_exact_decimal_text(*out_text, out_length);
         }
         if (status != 0 || *out_text != NULL) {
             return status;
         }
     }
     if (value->kind == MYLITE_EXPRESSION_VALUE_REAL) {
-        return crc32_real_to_text(value->real_value, out_text, out_length);
+        return checksum_real_to_text(value->real_value, out_text, out_length);
     }
     return value_to_string_with_length(value, out_text, out_length);
 }
 
-static void normalize_crc32_exact_decimal_text(char *text, size_t *length)
+static void normalize_checksum_exact_decimal_text(char *text, size_t *length)
 {
     char *decimal = NULL;
     size_t sign_length = 0U;
@@ -11577,7 +11698,7 @@ static void normalize_crc32_exact_decimal_text(char *text, size_t *length)
     }
 }
 
-static int crc32_real_to_text(double value, char **out_text, size_t *out_length)
+static int checksum_real_to_text(double value, char **out_text, size_t *out_length)
 {
     char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE] = {0};
     int length = 0;
@@ -11622,6 +11743,37 @@ static uint32_t crc32_bytes(const char *text, size_t text_length)
         }
     }
     return crc ^ mylite_expression_crc32_initial;
+}
+
+static int sha2_hash_length_from_value(const struct mylite_expression_value *value,
+                                       struct mylite_expression_warnings *warnings,
+                                       unsigned int *out_bits)
+{
+    int64_t bits = 0;
+
+    if (value == NULL || out_bits == NULL) {
+        return -1;
+    }
+    if (is_null(value)) {
+        *out_bits = UINT_MAX;
+        return 0;
+    }
+    if (cast_value_to_signed_integer(value, warnings, &bits) != 0) {
+        return -1;
+    }
+    *out_bits = bits < 0 ? UINT_MAX : (unsigned int)bits;
+    return 0;
+}
+
+static bool sha2_hash_length_is_supported(unsigned int bits)
+{
+    return bits == 0U || bits == 224U || bits == 256U || bits == 384U || bits == 512U;
+}
+
+static int append_sha2_wrong_parameters_warning(struct mylite_expression_warnings *warnings)
+{
+    return append_warning(warnings, MYLITE_WARNING_WRONG_PARAMETERS_TO_NATIVE_FCT,
+                          "Incorrect parameters in the call to native function 'sha2'");
 }
 
 static int eval_inet_aton_function(const struct mylite_sql_ast_node *arguments,
@@ -13216,6 +13368,9 @@ static int trigonometric_function_result(struct trigonometric_input input,
     case MYLITE_SCALAR_FUNCTION_BIT_COUNT:
     case MYLITE_SCALAR_FUNCTION_BIT_LENGTH:
     case MYLITE_SCALAR_FUNCTION_CRC32:
+    case MYLITE_SCALAR_FUNCTION_MD5:
+    case MYLITE_SCALAR_FUNCTION_SHA1:
+    case MYLITE_SCALAR_FUNCTION_SHA2:
     case MYLITE_SCALAR_FUNCTION_INET_ATON:
     case MYLITE_SCALAR_FUNCTION_INET_NTOA:
     case MYLITE_SCALAR_FUNCTION_IS_UUID:
@@ -13545,6 +13700,9 @@ static int inverse_trigonometric_function_result(struct inverse_trigonometric_in
     case MYLITE_SCALAR_FUNCTION_BIT_COUNT:
     case MYLITE_SCALAR_FUNCTION_BIT_LENGTH:
     case MYLITE_SCALAR_FUNCTION_CRC32:
+    case MYLITE_SCALAR_FUNCTION_MD5:
+    case MYLITE_SCALAR_FUNCTION_SHA1:
+    case MYLITE_SCALAR_FUNCTION_SHA2:
     case MYLITE_SCALAR_FUNCTION_INET_ATON:
     case MYLITE_SCALAR_FUNCTION_INET_NTOA:
     case MYLITE_SCALAR_FUNCTION_IS_UUID:
@@ -13782,6 +13940,9 @@ static int angle_conversion_result(struct angle_conversion_input conversion, dou
     case MYLITE_SCALAR_FUNCTION_BIT_COUNT:
     case MYLITE_SCALAR_FUNCTION_BIT_LENGTH:
     case MYLITE_SCALAR_FUNCTION_CRC32:
+    case MYLITE_SCALAR_FUNCTION_MD5:
+    case MYLITE_SCALAR_FUNCTION_SHA1:
+    case MYLITE_SCALAR_FUNCTION_SHA2:
     case MYLITE_SCALAR_FUNCTION_INET_ATON:
     case MYLITE_SCALAR_FUNCTION_INET_NTOA:
     case MYLITE_SCALAR_FUNCTION_IS_UUID:
@@ -17781,6 +17942,10 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"BIT_COUNT", MYLITE_SCALAR_FUNCTION_BIT_COUNT},
         {"BIT_LENGTH", MYLITE_SCALAR_FUNCTION_BIT_LENGTH},
         {"CRC32", MYLITE_SCALAR_FUNCTION_CRC32},
+        {"MD5", MYLITE_SCALAR_FUNCTION_MD5},
+        {"SHA", MYLITE_SCALAR_FUNCTION_SHA1},
+        {"SHA1", MYLITE_SCALAR_FUNCTION_SHA1},
+        {"SHA2", MYLITE_SCALAR_FUNCTION_SHA2},
         {"INET_ATON", MYLITE_SCALAR_FUNCTION_INET_ATON},
         {"INET_NTOA", MYLITE_SCALAR_FUNCTION_INET_NTOA},
         {"IS_UUID", MYLITE_SCALAR_FUNCTION_IS_UUID},
@@ -17866,6 +18031,9 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_BIT_COUNT:
     case MYLITE_SCALAR_FUNCTION_BIT_LENGTH:
     case MYLITE_SCALAR_FUNCTION_CRC32:
+    case MYLITE_SCALAR_FUNCTION_MD5:
+    case MYLITE_SCALAR_FUNCTION_SHA1:
+    case MYLITE_SCALAR_FUNCTION_SHA2:
     case MYLITE_SCALAR_FUNCTION_INET_ATON:
     case MYLITE_SCALAR_FUNCTION_INET_NTOA:
     case MYLITE_SCALAR_FUNCTION_IS_UUID:

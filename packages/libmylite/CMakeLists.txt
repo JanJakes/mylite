@@ -279,6 +279,7 @@ add_library(mylite STATIC
   src/runtime/mylite_transaction_savepoint.c
   src/runtime/mylite_transactions.c
   src/sql/mylite_ast.c
+  src/sql/mylite_digest.c
   src/sql/mylite_expression.c
   src/sql/mylite_lexer.c
   src/sql/mylite_parser.c

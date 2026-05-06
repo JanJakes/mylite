@@ -129,6 +129,7 @@ enum {
     mysql_warning_division_by_zero = 1365,
     mysql_warning_incorrect_string_value = 1411,
     mysql_warning_datetime_function_overflow = 1441,
+    mysql_warning_wrong_parameters_to_native_fct = 1583,
     mysql_warning_unknown_locale = 1649,
     mysql_warning_out_of_range = 1690,
     mysql_warning_duplicate_index = 1831,
@@ -2682,6 +2683,28 @@ static int test_scalar_builtin_functions_execution(void)
              MYLITE_FIELD_FLAG_NUM,
          0U, 0},
     };
+    static const struct expected_result_metadata hash_metadata[] = {
+        {"md5_value", NULL, NULL, NULL, NULL, NULL, 128U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U, MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 1},
+        {"sha1_value", NULL, NULL, NULL, NULL, NULL, 160U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U, MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 1},
+        {"sha_value", NULL, NULL, NULL, NULL, NULL, 160U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U, MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 1},
+        {"sha2_224", NULL, NULL, NULL, NULL, NULL, 224U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U, MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 1},
+        {"sha2_256", NULL, NULL, NULL, NULL, NULL, 256U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U, MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 1},
+        {"sha2_384", NULL, NULL, NULL, NULL, NULL, 384U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U, MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 1},
+        {"sha2_512", NULL, NULL, NULL, NULL, NULL, 512U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U, MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 1},
+        {"sha2_bad", NULL, NULL, NULL, NULL, NULL, 256U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U, MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 1},
+        {"md5_null", NULL, NULL, NULL, NULL, NULL, 128U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U, MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 1},
+        {"sha2_null", NULL, NULL, NULL, NULL, NULL, 256U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         0U, MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 1},
+    };
     static const struct expected_result_metadata nullable_search_metadata[] = {
         {"ascii_null", NULL, NULL, NULL, NULL, NULL, 3U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
          MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
@@ -2853,6 +2876,16 @@ static int test_scalar_builtin_functions_execution(void)
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
              MYLITE_FIELD_FLAG_UNSIGNED,
          1},
+    };
+    static const struct expected_result_metadata hash_latin1_metadata[] = {
+        {"md5_value", NULL, NULL, NULL, NULL, NULL, 32U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 1},
+        {"sha1_value", NULL, NULL, NULL, NULL, NULL, 40U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 1},
+        {"sha2_256", NULL, NULL, NULL, NULL, NULL, 64U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 1},
+        {"sha2_512", NULL, NULL, NULL, NULL, NULL, 128U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 8U, 0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 1},
     };
     static const struct expected_result_metadata quote_table_metadata[] = {
         {"quote_n", NULL, NULL, NULL, NULL, NULL, 96U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U, 0U,
@@ -3613,6 +3646,48 @@ static int test_scalar_builtin_functions_execution(void)
         "3061501937", "1330857165", "1733606989", "1733606989", "1733606989",
         "3110305273", "3966119374", "844230266",  "1826356594",
     };
+    static const char *const hash_columns[] = {
+        "md5_testing",  "md5_empty",   "md5_null",      "md5_int",       "md5_decimal",
+        "md5_float",    "md5_leading", "md5_binary",    "sha_alias",     "sha1_abc",
+        "sha1_null",    "sha2_224",    "sha2_256",      "sha2_zero",     "sha2_384",
+        "sha2_512",     "sha2_bad",    "sha2_null_arg", "sha2_null_len", "sha2_len_trail",
+        "sha2_len_bad",
+    };
+    static const char *const hash_values[] = {
+        "ae2b1fca515949e5d54fb22b8ed95575",
+        "d41d8cd98f00b204e9800998ecf8427e",
+        NULL,
+        "202cb962ac59075b964b07152d234b70",
+        "4bc129be882d904ee70110a444945e9a",
+        "cf3e481a44141cabd4e9d46cfbb1f899",
+        "4bc129be882d904ee70110a444945e9a",
+        "d07d34efac6328007ad67c7e0a985e00",
+        "a9993e364706816aba3e25717850c26c9cd0d89d",
+        "a9993e364706816aba3e25717850c26c9cd0d89d",
+        NULL,
+        "23097d223405d8228642a477bda255b32aadbce4bda0b3f7e36c9da7",
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+        "cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7"
+        "cc2358baeca134c825a7",
+        "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274f"
+        "c1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f",
+        NULL,
+        NULL,
+        NULL,
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+    };
+    static const char *const hash_charset_columns[] = {
+        "md5_charset",
+        "sha1_collation",
+        "sha2_coercibility",
+    };
+    static const char *const hash_charset_values[] = {
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        "4",
+    };
     static const char *const bit_site_projection_columns[] = {"id", "bc_s", "bc_n", "bl_s"};
     static const char *const bit_site_projection_values[] = {
         "2", "4", "64", "16", "1", "2", "8", "16",
@@ -3620,6 +3695,18 @@ static int test_scalar_builtin_functions_execution(void)
     static const char *const crc32_site_projection_columns[] = {"id", "crc_s", "crc_n"};
     static const char *const crc32_site_projection_values[] = {
         "2", "235179326", "808273962", "1", "409728153", "2658551721",
+    };
+    static const char *const hash_site_projection_columns[] = {"id", "md5_s", "sha1_s", "sha2_n"};
+    static const char *const hash_site_projection_values[] = {
+        "2",
+        "3c9547d2fcb523a7ae5681eedde43fb6",
+        "11d1bf272c85166064dc293aee08e01772bbe27b",
+        ("b862018b2ae5757e33c3e65e6d16d54cb88beea4ef61e921a56b3c884ab674a6676c463b3a0"
+         "dbe043dc922f12912be38be2c5a548a22cfd2cf88944061d3170c"),
+        "1",
+        "6163d4d147449f6d66d997b68a412a5a",
+        "9a0bfcaf729c85f0a59dbb45fbf4f06d6f1cf072",
+        "c55e3e31d6fb6949d98f78ff6d4bdbdfae9e544b65bd000724f26d8b74b649ea",
     };
     static const char *const substring_site_projection_columns[] = {"id", "part"};
     static const char *const substring_site_projection_values[] = {
@@ -3655,6 +3742,9 @@ static int test_scalar_builtin_functions_execution(void)
     static const char *const updated_crc32_values[] = {"1", "Az", "409728153"};
     static const char *const crc32_order_values[] = {"2", "ordered", "-1"};
     static const char *const crc32_remaining_values[] = {"1"};
+    static const char *const updated_hash_values[] = {"1", "Az", "64"};
+    static const char *const hash_order_values[] = {"2", "ordered", "512"};
+    static const char *const hash_remaining_values[] = {"1"};
     static const char *const updated_make_order_values[] = {"2", "a", "99"};
     static const char *const updated_hex_order_values[] = {"2", "61", "99"};
     static const char *const make_order_remaining_values[] = {"1", "3"};
@@ -3884,6 +3974,32 @@ static int test_scalar_builtin_functions_execution(void)
     stmt = NULL;
 
     failures += prepare_sql(database,
+                            "SELECT MD5('abc') AS md5_value, "
+                            "SHA1('abc') AS sha1_value, "
+                            "SHA('abc') AS sha_value, "
+                            "SHA2('abc',224) AS sha2_224, "
+                            "SHA2('abc',256) AS sha2_256, "
+                            "SHA2('abc',384) AS sha2_384, "
+                            "SHA2('abc',512) AS sha2_512, "
+                            "SHA2('abc',128) AS sha2_bad, "
+                            "MD5(NULL) AS md5_null, "
+                            "SHA2('abc',NULL) AS sha2_null",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, hash_metadata,
+                                       (int)(sizeof(hash_metadata) / sizeof(hash_metadata[0])),
+                                       "hash utf8mb4 metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "hash utf8mb4 metadata row");
+    failures += expect_int(mylite_warning_count(database), 2, "hash utf8mb4 metadata warnings");
+    for (int index = 0; index < 2; ++index) {
+        failures += expect_int((int)mylite_warning_code(database, index),
+                               mysql_warning_wrong_parameters_to_native_fct,
+                               "hash utf8mb4 metadata warning code");
+    }
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "hash utf8mb4 metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database,
                             "SELECT ASCII(NULL) AS ascii_null, "
                             "LOCATE('a', NULL) AS locate_null, "
                             "INSERT('abc', NULL, 1, 'x') AS insert_null, "
@@ -4035,6 +4151,21 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CRC32 latin1 metadata done");
     mylite_finalize(stmt);
     stmt = NULL;
+    failures += prepare_sql(database,
+                            "SELECT MD5('abc') AS md5_value, "
+                            "SHA1('abc') AS sha1_value, "
+                            "SHA2('abc',256) AS sha2_256, "
+                            "SHA2('abc',512) AS sha2_512",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, hash_latin1_metadata,
+        (int)(sizeof(hash_latin1_metadata) / sizeof(hash_latin1_metadata[0])),
+        "hash latin1 metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "hash latin1 metadata row");
+    failures += expect_int(mylite_warning_count(database), 0, "hash latin1 metadata warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "hash latin1 metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
 
     failures += expect_select_rows(database,
@@ -4089,6 +4220,54 @@ static int test_scalar_builtin_functions_execution(void)
                            crc32_columns, (int)(sizeof(crc32_columns) / sizeof(crc32_columns[0])),
                            crc32_values, 1, "CRC32 scalar values");
     failures += expect_int(mylite_warning_count(database), 0, "CRC32 scalar warning count");
+
+    failures +=
+        expect_select_rows(database,
+                           "SELECT MD5('testing') AS md5_testing, "
+                           "MD5('') AS md5_empty, "
+                           "MD5(NULL) AS md5_null, "
+                           "MD5(123) AS md5_int, "
+                           "MD5(12.50) AS md5_decimal, "
+                           "MD5(12.5E0) AS md5_float, "
+                           "MD5(0012.50) AS md5_leading, "
+                           "MD5(CHAR(0,255 USING binary)) AS md5_binary, "
+                           "SHA('abc') AS sha_alias, "
+                           "SHA1('abc') AS sha1_abc, "
+                           "SHA1(NULL) AS sha1_null, "
+                           "SHA2('abc',224) AS sha2_224, "
+                           "SHA2('abc',256) AS sha2_256, "
+                           "SHA2('abc',0) AS sha2_zero, "
+                           "SHA2('abc',384) AS sha2_384, "
+                           "SHA2('abc',512) AS sha2_512, "
+                           "SHA2('abc',128) AS sha2_bad, "
+                           "SHA2(NULL,256) AS sha2_null_arg, "
+                           "SHA2('abc',NULL) AS sha2_null_len, "
+                           "SHA2('abc','256x') AS sha2_len_trail, "
+                           "SHA2('abc','abc') AS sha2_len_bad",
+                           hash_columns, (int)(sizeof(hash_columns) / sizeof(hash_columns[0])),
+                           hash_values, 1, "hash scalar values");
+    failures += expect_int(mylite_warning_count(database), 4, "hash scalar warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0),
+                   mysql_warning_wrong_parameters_to_native_fct, "hash scalar bad length warning");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 1),
+                   mysql_warning_wrong_parameters_to_native_fct, "hash scalar NULL length warning");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 2), mysql_warning_truncated_wrong_value,
+                   "hash scalar trailing length warning");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 3), mysql_warning_truncated_wrong_value,
+                   "hash scalar bad string length warning");
+
+    failures += expect_select_rows(
+        database,
+        "SELECT CHARSET(MD5('a')) AS md5_charset, "
+        "COLLATION(SHA1('a')) AS sha1_collation, "
+        "COERCIBILITY(SHA2('a',256)) AS sha2_coercibility",
+        hash_charset_columns, (int)(sizeof(hash_charset_columns) / sizeof(hash_charset_columns[0])),
+        hash_charset_values, 1, "hash charset introspection");
+    failures += expect_int(mylite_warning_count(database), 0, "hash charset warning count");
 
     failures += test_round_scalar_function_execution(database);
 
@@ -4990,6 +5169,33 @@ static int test_scalar_builtin_functions_execution(void)
     failures +=
         expect_select_rows(database, "SELECT id FROM crc32_sites WHERE CRC32(s)=CRC32('Az')",
                            id_column, 1, n_1, 1, "CRC32 function where");
+    failures += execute_sql(database,
+                            "CREATE TABLE hash_sites "
+                            "(id INT PRIMARY KEY, s VARCHAR(20), n BIGINT)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO hash_sites VALUES "
+                            "(1,'Az',256),(2,'Be',512),(3,NULL,128)",
+                            MYLITE_DONE);
+    failures += expect_select_rows(database,
+                                   "SELECT id, MD5(s) AS md5_s, SHA1(s) AS sha1_s, "
+                                   "SHA2(s,n) AS sha2_n "
+                                   "FROM hash_sites WHERE s IS NOT NULL ORDER BY MD5(s), id",
+                                   hash_site_projection_columns, 4, hash_site_projection_values, 2,
+                                   "table hash projection where and order");
+    failures += expect_select_rows(database, "SELECT id FROM hash_sites WHERE MD5(s)=MD5('Az')",
+                                   id_column, 1, n_1, 1, "hash function where");
+    failures += prepare_sql(database, "UPDATE hash_sites SET n = 5 WHERE SHA2('x',128) IS NULL",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "update SHA2 warning promoted");
+    failures += expect_contains(mylite_error_message(database), "function 'sha2'",
+                                "update SHA2 warning error");
+    failures += expect_int(mylite_warning_count(database), 1, "update SHA2 warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0),
+                   mysql_warning_wrong_parameters_to_native_fct, "update SHA2 warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += expect_select_rows(database, "SELECT id FROM t WHERE LPAD(s, 5, '.')='alpha'",
                                    id_column, 1, n_1, 1, "lpad function where");
     failures += expect_select_rows(database, "SELECT id FROM t WHERE REVERSE(s)='ateB'", id_column,
@@ -5321,6 +5527,27 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_select_rows(database, "SELECT id FROM crc32_sites ORDER BY id", id_column, 1,
                                    crc32_remaining_values, 1, "delete CRC32 remaining rows");
 
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE hash_sites SET n = LENGTH(SHA2(s,256)) WHERE MD5(s) = MD5('Az')", 1,
+        "update hash assignment and predicate");
+    failures +=
+        expect_select_rows(database, "SELECT id, s, n FROM hash_sites WHERE id = 1", id_s_n_columns,
+                           3, updated_hash_values, 1, "updated hash values");
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE hash_sites SET s = 'ordered' WHERE s IS NOT NULL ORDER BY SHA1(s), id LIMIT 1", 1,
+        "update hash order key");
+    failures +=
+        expect_select_rows(database, "SELECT id, s, n FROM hash_sites WHERE id = 2", id_s_n_columns,
+                           3, hash_order_values, 1, "hash order update values");
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM hash_sites WHERE SHA2(s,256) = SHA2('ordered',256)", 1,
+        "delete hash predicate");
+    failures += execute_sql_expect_done_affected(
+        database, "DELETE FROM hash_sites ORDER BY MD5(s), id LIMIT 1", 1, "delete hash order key");
+    failures += expect_select_rows(database, "SELECT id FROM hash_sites ORDER BY id", id_column, 1,
+                                   hash_remaining_values, 1, "delete hash remaining rows");
+
     failures += execute_sql(database,
                             "CREATE TABLE make_order "
                             "(id INT PRIMARY KEY, s VARCHAR(20), n INT)",
@@ -5544,6 +5771,22 @@ static int test_scalar_builtin_functions_execution(void)
     failures += expect_no_stmt_handle(&stmt, "unsupported crc32 zero arity");
     failures += prepare_sql(database, "SELECT CRC32('a','b')", MYLITE_UNSUPPORTED, &stmt);
     failures += expect_no_stmt_handle(&stmt, "unsupported crc32 two arity");
+    failures += prepare_sql(database, "SELECT MD5()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported md5 zero arity");
+    failures += prepare_sql(database, "SELECT MD5('a','b')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported md5 two arity");
+    failures += prepare_sql(database, "SELECT SHA()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported sha zero arity");
+    failures += prepare_sql(database, "SELECT SHA('a','b')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported sha two arity");
+    failures += prepare_sql(database, "SELECT SHA1()", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported sha1 zero arity");
+    failures += prepare_sql(database, "SELECT SHA1('a','b')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported sha1 two arity");
+    failures += prepare_sql(database, "SELECT SHA2('a')", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported sha2 one arity");
+    failures += prepare_sql(database, "SELECT SHA2('a',256,1)", MYLITE_UNSUPPORTED, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "unsupported sha2 three arity");
     failures += prepare_sql(database, "SELECT POSITION('a')", MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "position ordinary syntax");
     failures += prepare_sql(database, "SELECT LTRIM()", MYLITE_UNSUPPORTED, &stmt);

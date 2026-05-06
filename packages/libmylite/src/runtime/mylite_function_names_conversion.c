@@ -13,7 +13,8 @@ bool mylite_function_name_has_binary_string_result(const struct mylite_sql_ast_n
 bool mylite_function_name_has_connection_string_result(const struct mylite_sql_ast_node *name)
 {
     if (mylite_function_name_is_hex(name) || mylite_function_name_is_to_base64(name) ||
-        mylite_function_name_is_bin_to_uuid(name) || mylite_function_name_is_format(name)) {
+        mylite_function_name_is_bin_to_uuid(name) || mylite_function_name_is_format(name) ||
+        mylite_function_name_is_hash(name)) {
         return true;
     }
     return mylite_function_name_has_base_conversion_result(name);

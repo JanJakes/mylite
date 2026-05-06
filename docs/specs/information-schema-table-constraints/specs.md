@@ -27,8 +27,9 @@ This slice exposes primary-key and unique constraints by deriving rows from
 `__mylite_index_catalog` and CHECK constraints by deriving rows from
 `__mylite_check_constraint_catalog`. MyLite must not create a parallel
 constraint catalog for primary and unique metadata. Nonunique indexes are
-excluded. Actual foreign-key constraint rows remain deferred until MyLite has
-catalogs and runtime semantics for that constraint family.
+excluded. Table-level `CREATE TABLE ... FOREIGN KEY` definitions now produce
+foreign-key rows from MyLite's foreign-key catalog. ALTER foreign keys and
+referential enforcement remain deferred.
 
 ## Compatibility Sources
 
@@ -145,8 +146,9 @@ Result columns:
 - `CONSTRAINT_NAME` is `PRIMARY` for primary-key rows and the index name for
   non-primary unique rows. CHECK rows use the explicit constraint name or the
   generated `<table>_chk_<n>` name.
-- `CONSTRAINT_TYPE` is `PRIMARY KEY` for `index_name='PRIMARY'` and `UNIQUE`
-  for other unique rows. CHECK rows use `CHECK`.
+- `CONSTRAINT_TYPE` is `PRIMARY KEY` for `index_name='PRIMARY'`, `UNIQUE` for
+  other unique rows, `CHECK` for CHECK rows, and `FOREIGN KEY` for cataloged
+  foreign-key rows.
 - `ENFORCED` is `YES` for primary and unique rows. CHECK rows use the
   `ENFORCED` or `NOT ENFORCED` state captured from `CREATE TABLE`.
 - Successful execution is read-only, returns affected rows `-1`, and does not
@@ -156,7 +158,8 @@ Result columns:
 Primary and unique rows are derived from `__mylite_index_catalog` with
 `non_unique = 0`. Each logical index produces at most one table-constraint row,
 even when the index has multiple key parts. CHECK rows are derived from
-`__mylite_check_constraint_catalog`.
+`__mylite_check_constraint_catalog`. Foreign-key rows are derived from
+`__mylite_foreign_key_catalog`, grouped by logical constraint.
 
 Rows are ordered deterministically by:
 
@@ -251,6 +254,8 @@ Runtime coverage:
   exactly the primary and unique rows and excludes the nonunique index
 - inline and table-level CHECK constraints return CHECK rows with MySQL
   8.4.9-verified generated names and enforcement values
+- table-level `CREATE TABLE ... FOREIGN KEY` returns `FOREIGN KEY` rows from
+  the foreign-key catalog
 - row order follows the deterministic MyLite ordering documented above
 - lower-case, mixed-case, and quoted table references execute
 - `INFORMATION_SCHEMA.TABLES` exposes the `TABLE_CONSTRAINTS` system-view row
@@ -266,9 +271,9 @@ Runtime coverage:
 
 ## Known Gaps
 
-- Foreign-key constraints are omitted until MyLite has foreign-key catalogs,
-  referential actions, enforcement, and catalog-backed
-  `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS` rows.
+- Foreign-key constraints currently come from table-level `CREATE TABLE`
+  definitions only. ALTER foreign keys, referential actions, and enforcement
+  are deferred.
 - Key-part ordinals for primary and unique constraints are exposed by
   [INFORMATION_SCHEMA.KEY_COLUMN_USAGE](../information-schema-key-column-usage/specs.md).
 - Privilege filtering and exact MySQL field metadata remain deferred. General

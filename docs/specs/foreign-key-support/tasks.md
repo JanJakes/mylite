@@ -7,25 +7,25 @@ commit.
 
 ## Foundation
 
-- [ ] Add a persistent foreign-key catalog with one row per child column part.
+- [x] Add a persistent foreign-key catalog with one row per child column part.
 - [ ] Add catalog helper APIs for FK catalog names, cleanup, rename rewrites,
       and lookup by child constraint or parent unique index.
-- [ ] Update `INFORMATION_SCHEMA.TABLE_CONSTRAINTS`,
+- [x] Update `INFORMATION_SCHEMA.TABLE_CONSTRAINTS`,
       `INFORMATION_SCHEMA.KEY_COLUMN_USAGE`, and
       `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS` to read from the FK catalog.
-- [ ] Render catalog-backed foreign-key lines in `SHOW CREATE TABLE`.
+- [x] Render catalog-backed foreign-key lines in `SHOW CREATE TABLE`.
 
 ## `CREATE TABLE`
 
-- [ ] Copy table-level `FOREIGN KEY` clauses into create-table plans with
+- [x] Copy table-level `FOREIGN KEY` clauses into create-table plans with
       constraint name, optional supporting-index name, child columns,
       referenced table, referenced columns, match option, and referential
       actions.
-- [ ] Generate MySQL-style unnamed FK constraint names.
-- [ ] Create or reuse supporting child indexes during `CREATE TABLE`.
-- [ ] Validate child columns, parent table, referenced columns, and referenced
+- [x] Generate MySQL-style unnamed FK constraint names.
+- [x] Create or reuse supporting child indexes during `CREATE TABLE`.
+- [x] Validate child columns, parent table, referenced columns, and referenced
       unique/primary key metadata.
-- [ ] Atomically insert FK catalog rows with the table, column, and index
+- [x] Atomically insert FK catalog rows with the table, column, and index
       catalog rows.
 
 ## `ALTER TABLE`
@@ -73,4 +73,3 @@ commit.
       unified information-schema metadata pass lands.
 - [ ] Revisit `INSERT IGNORE`, `UPDATE IGNORE`, and `REPLACE` after FK
       enforcement to align warning demotion and delete-plus-insert behavior.
-

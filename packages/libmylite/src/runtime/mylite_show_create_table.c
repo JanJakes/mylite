@@ -4,6 +4,7 @@
 #include "mylite_runtime.h"
 #include "mylite_show_create_common.h"
 #include "mylite_show_create_table_columns.h"
+#include "mylite_show_create_table_foreign_keys.h"
 #include "mylite_show_create_table_indexes.h"
 #include "mylite_show_create_table_info.h"
 #include "mylite_show_create_table_options.h"
@@ -78,6 +79,10 @@ static int show_create_table_sql(
         mylite_show_create_table_append_columns(database, create_sql, target, &info, &first_line);
     if (status == MYLITE_OK) {
         status = mylite_show_create_table_append_indexes(database, create_sql, target, &first_line);
+    }
+    if (status == MYLITE_OK) {
+        status =
+            mylite_show_create_table_append_foreign_keys(database, create_sql, target, &first_line);
     }
     if (status == MYLITE_OK) {
         sqlite3_str_appendall(create_sql, "\n)");

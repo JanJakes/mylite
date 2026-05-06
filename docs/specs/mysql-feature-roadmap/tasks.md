@@ -269,12 +269,12 @@ level application surfaces.
        four-column system-view shape and rows for CHECK metadata recorded by
        `CREATE TABLE`. The first
        `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS` slice exposes the exact
-       eleven-column system-view shape and intentionally returns zero rows
-       until foreign-key DDL/catalog/enforcement support exists. Full
+       eleven-column system-view shape and now returns catalog-backed rows for
+       table-level `CREATE TABLE ... FOREIGN KEY` definitions. Full
        build-dependent engine catalog breadth, full MySQL character-set
        catalog breadth, full MySQL collation catalog breadth, exact MySQL
-       keyword catalog completeness, actual CHECK rows, actual foreign-key
-       constraint rows, privilege filtering, exact MySQL field metadata, and
+       keyword catalog completeness, ALTER foreign-key rows, DML foreign-key
+       enforcement, privilege filtering, exact MySQL field metadata, and
        unknown information-schema tables remain deferred. Specs:
        [SHOW TABLES](../show-tables/specs.md),
        [SHOW TABLE STATUS](../show-table-status/specs.md),

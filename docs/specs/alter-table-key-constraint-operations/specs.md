@@ -30,8 +30,8 @@ MyLite:
 - metadata updates in the internal column/index catalogs,
   `INFORMATION_SCHEMA.STATISTICS`, `INFORMATION_SCHEMA.TABLE_CONSTRAINTS`, and
   `INFORMATION_SCHEMA.KEY_COLUMN_USAGE`, with `INFORMATION_SCHEMA.CHECK_CONSTRAINTS`
-  and `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS` exposed as empty system-view
-  shapes until CHECK and foreign-key catalogs exist
+  exposed from the CHECK catalog and `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS`
+  exposed from the foreign-key catalog for supported `CREATE TABLE` metadata
 - duplicate validation, dependency validation, warning records, affected rows,
   diagnostics, statement atomicity, and deferred implicit-commit boundaries
 
@@ -700,29 +700,26 @@ Future constraint catalogs:
 - `__mylite_check_constraint_catalog` should store schema, table, constraint
   name, normalized expression text, parsed expression, enforcement flag,
   creation order, and source span or normalized source range where useful.
-- `__mylite_foreign_key_catalog` should store schema, child table, constraint
-  name, supporting index name, parent schema/table, action rules, match kind,
-  enforcement/checks state as needed, and creation order.
-- `__mylite_foreign_key_column_catalog` should store child and referenced
-  column pairs with one-based ordinal positions.
+- `__mylite_foreign_key_catalog` stores one row per child column part,
+  including schema, child table, constraint name, supporting index name,
+  parent schema/table, child and referenced column names, ordinal positions,
+  action rules, and match kind for table-level `CREATE TABLE` foreign keys.
 
 Information schema:
 
 - `INFORMATION_SCHEMA.STATISTICS` should reflect all supported index changes
   immediately.
 - `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` exposes primary and unique constraints
-  from `__mylite_index_catalog` for supported key DDL. CHECK and foreign-key
-  rows should be added when those underlying catalogs exist.
+  from `__mylite_index_catalog`, CHECK rows from the CHECK catalog, and
+  table-level `CREATE TABLE` foreign-key rows from the foreign-key catalog.
 - `INFORMATION_SCHEMA.KEY_COLUMN_USAGE` exposes primary and unique key parts
-  from `__mylite_index_catalog` for supported key DDL. Foreign-key rows should
-  be added when those underlying catalogs exist.
-- `INFORMATION_SCHEMA.CHECK_CONSTRAINTS` exposes the MySQL-compatible
-  four-column system-view shape and currently returns zero rows. CHECK
-  constraint names and clauses should be added when CHECK catalog support
-  lands.
-- `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS` exposes the MySQL-compatible
-  eleven-column system-view shape and currently returns zero rows. Foreign-key
-  rows should be added when foreign-key catalog and enforcement support lands.
+  from `__mylite_index_catalog` and table-level `CREATE TABLE` foreign-key
+  child-column rows from the foreign-key catalog.
+- `INFORMATION_SCHEMA.CHECK_CONSTRAINTS` exposes CHECK names and clauses from
+  the CHECK catalog.
+- `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS` exposes table-level
+  `CREATE TABLE` foreign-key rows from the foreign-key catalog. ALTER
+  foreign-key rows should be added with the ALTER ADD FOREIGN KEY slice.
 
 ### Affected rows, diagnostics, and warnings
 

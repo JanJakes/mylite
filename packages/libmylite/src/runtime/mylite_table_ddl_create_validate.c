@@ -1,6 +1,7 @@
 #include "mylite_table_ddl_create_validate.h"
 
 #include "mylite_catalog.h"
+#include "mylite_connection.h"
 #include "mylite_diagnostics.h"
 #include "mylite_error_codes.h"
 #include "mylite_span.h"
@@ -11,6 +12,8 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdlib.h>
+#include <string.h>
 
 static bool validate_create_table_column_names(
     mylite_db *database,
@@ -20,6 +23,45 @@ static bool validate_create_table_column_names(
 static bool validate_create_table_indexes(
     mylite_db *database,
     const struct mylite_create_table_plan *plan
+);
+
+static bool validate_create_table_foreign_keys(
+    mylite_db *database,
+    const char *schema_name,
+    struct mylite_create_table_plan *plan
+);
+
+static bool validate_create_table_foreign_key(
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_create_table_plan *plan,
+    struct mylite_create_table_foreign_key *foreign_key
+);
+
+static bool create_table_foreign_key_name_exists(
+    const struct mylite_create_table_plan *plan,
+    const char *name,
+    size_t before_index
+);
+
+static bool create_table_foreign_key_columns_exist(
+    mylite_db *database,
+    const struct mylite_create_table_plan *plan,
+    const struct mylite_create_table_foreign_key *foreign_key
+);
+
+static int resolve_referenced_unique_constraint(
+    mylite_db *database,
+    const struct mylite_create_table_foreign_key *foreign_key,
+    char **out_constraint_name,
+    bool *out_found
+);
+
+static int referenced_unique_candidate_matches(
+    mylite_db *database,
+    const char *candidate_name,
+    const struct mylite_create_table_foreign_key *foreign_key,
+    bool *out_matches
 );
 
 static int append_create_table_exists_note(mylite_db *database, const char *table_name);
@@ -116,6 +158,9 @@ int mylite_table_ddl_validate_create_table_plan(
     if (!validate_create_table_indexes(database, plan)) {
         return MYLITE_EXEC_ERROR;
     }
+    if (!validate_create_table_foreign_keys(database, schema_name, plan)) {
+        return MYLITE_EXEC_ERROR;
+    }
     apply_create_table_primary_key_nullability(plan);
     return MYLITE_OK;
 }
@@ -191,6 +236,232 @@ static bool validate_create_table_indexes(
         }
     }
     return true;
+}
+
+static bool validate_create_table_foreign_keys(
+    mylite_db *database,
+    const char *schema_name,
+    struct mylite_create_table_plan *plan
+) {
+    if (plan->temporary && plan->foreign_key_count > 0U) {
+        (void)mylite_diagnostics_set_error_message(database, "Cannot add foreign key constraint");
+        return false;
+    }
+    for (size_t index = 0U; index < plan->foreign_key_count; ++index) {
+        if (create_table_foreign_key_name_exists(
+                plan,
+                plan->foreign_keys[index].constraint_name,
+                index
+            )) {
+            (void)mylite_diagnostics_set_error_message_parts(
+                database,
+                "Duplicate foreign key constraint name '",
+                plan->foreign_keys[index].constraint_name,
+                "'"
+            );
+            return false;
+        }
+        if (!validate_create_table_foreign_key(
+                database,
+                schema_name,
+                plan,
+                &plan->foreign_keys[index]
+            )) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool validate_create_table_foreign_key(
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_create_table_plan *plan,
+    struct mylite_create_table_foreign_key *foreign_key
+) {
+    bool parent_exists = false;
+    bool found_unique_constraint = false;
+    char *unique_constraint_name = NULL;
+    int status = MYLITE_OK;
+
+    if (foreign_key->referenced_schema_name == NULL) {
+        foreign_key->referenced_schema_name =
+            mylite_copy_span_text(schema_name, strlen(schema_name));
+        if (foreign_key->referenced_schema_name == NULL) {
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
+            return false;
+        }
+    }
+    if (!create_table_foreign_key_columns_exist(database, plan, foreign_key)) {
+        return false;
+    }
+    status = mylite_catalog_persistent_table_exists(
+        database,
+        foreign_key->referenced_schema_name,
+        foreign_key->referenced_table_name,
+        &parent_exists
+    );
+    if (status != MYLITE_OK) {
+        return false;
+    }
+    if (!parent_exists && !mylite_connection_foreign_key_checks(database)) {
+        return true;
+    }
+    if (!parent_exists) {
+        (void)mylite_diagnostics_set_error_message_parts(
+            database,
+            "Failed to open the referenced table '",
+            foreign_key->referenced_table_name,
+            "'"
+        );
+        return false;
+    }
+
+    status = resolve_referenced_unique_constraint(
+        database,
+        foreign_key,
+        &unique_constraint_name,
+        &found_unique_constraint
+    );
+    if (status != MYLITE_OK) {
+        free(unique_constraint_name);
+        return false;
+    }
+    if (!found_unique_constraint) {
+        (void)mylite_diagnostics_set_error_message(database, "Cannot add foreign key constraint");
+        free(unique_constraint_name);
+        return false;
+    }
+    foreign_key->unique_constraint_name = unique_constraint_name;
+    return true;
+}
+
+static bool create_table_foreign_key_name_exists(
+    const struct mylite_create_table_plan *plan,
+    const char *name,
+    size_t before_index
+) {
+    for (size_t index = 0U; index < before_index; ++index) {
+        if (mylite_ascii_case_equal(plan->foreign_keys[index].constraint_name, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool create_table_foreign_key_columns_exist(
+    mylite_db *database,
+    const struct mylite_create_table_plan *plan,
+    const struct mylite_create_table_foreign_key *foreign_key
+) {
+    for (size_t index = 0U; index < foreign_key->column_count; ++index) {
+        if (mylite_table_ddl_find_create_table_column(plan, foreign_key->column_names[index]) ==
+            NULL) {
+            (void)mylite_diagnostics_set_error_message_parts(
+                database,
+                "Key column '",
+                foreign_key->column_names[index],
+                "' doesn't exist in table"
+            );
+            return false;
+        }
+    }
+    return true;
+}
+
+static int resolve_referenced_unique_constraint(
+    mylite_db *database,
+    const struct mylite_create_table_foreign_key *foreign_key,
+    char **out_constraint_name,
+    bool *out_found
+) {
+    static const char sql[] =
+        "SELECT index_name FROM __mylite_index_catalog "
+        "WHERE table_schema = ? AND table_name = ? AND non_unique = 0 "
+        "GROUP BY index_name "
+        "ORDER BY CASE WHEN index_name = 'PRIMARY' THEN 0 ELSE 1 END, MIN(rowid)";
+    sqlite3_stmt *select = NULL;
+    int rc = SQLITE_OK;
+
+    *out_constraint_name = NULL;
+    *out_found = false;
+    rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select, NULL);
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+    sqlite3_bind_text(select, 1, foreign_key->referenced_schema_name, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(select, 2, foreign_key->referenced_table_name, -1, SQLITE_TRANSIENT);
+
+    while ((rc = sqlite3_step(select)) == SQLITE_ROW) {
+        const char *candidate_name = (const char *)sqlite3_column_text(select, 0);
+        bool matches = false;
+        int status = MYLITE_OK;
+
+        if (candidate_name != NULL && (status = referenced_unique_candidate_matches(
+                                           database,
+                                           candidate_name,
+                                           foreign_key,
+                                           &matches
+                                       )) != MYLITE_OK) {
+            sqlite3_finalize(select);
+            return status;
+        }
+        if (candidate_name != NULL && matches) {
+            *out_constraint_name = mylite_copy_span_text(candidate_name, strlen(candidate_name));
+            if (*out_constraint_name == NULL) {
+                sqlite3_finalize(select);
+                return MYLITE_NOMEM;
+            }
+            *out_found = true;
+            break;
+        }
+    }
+
+    sqlite3_finalize(select);
+    return rc == SQLITE_DONE || *out_found ? MYLITE_OK
+                                           : mylite_diagnostics_set_sqlite_error(database);
+}
+
+static int referenced_unique_candidate_matches(
+    mylite_db *database,
+    const char *candidate_name,
+    const struct mylite_create_table_foreign_key *foreign_key,
+    bool *out_matches
+) {
+    static const char sql[] = "SELECT column_name FROM __mylite_index_catalog "
+                              "WHERE table_schema = ? AND table_name = ? AND index_name = ? "
+                              "ORDER BY seq_in_index";
+    sqlite3_stmt *select = NULL;
+    size_t matched = 0U;
+    int rc = SQLITE_OK;
+
+    *out_matches = false;
+    rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select, NULL);
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+    sqlite3_bind_text(select, 1, foreign_key->referenced_schema_name, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(select, 2, foreign_key->referenced_table_name, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(select, 3, candidate_name, -1, SQLITE_TRANSIENT);
+
+    while ((rc = sqlite3_step(select)) == SQLITE_ROW) {
+        const char *column_name = (const char *)sqlite3_column_text(select, 0);
+
+        if (matched >= foreign_key->referenced_column_count || column_name == NULL ||
+            !mylite_ascii_case_equal(column_name, foreign_key->referenced_column_names[matched])) {
+            sqlite3_finalize(select);
+            return MYLITE_OK;
+        }
+        ++matched;
+    }
+
+    if (rc != SQLITE_DONE) {
+        sqlite3_finalize(select);
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+    *out_matches = matched == foreign_key->referenced_column_count;
+    sqlite3_finalize(select);
+    return MYLITE_OK;
 }
 
 static int append_create_table_exists_note(mylite_db *database, const char *table_name) {

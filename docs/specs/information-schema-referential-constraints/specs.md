@@ -7,13 +7,12 @@ constraint metadata table:
 
 - `SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS`
 
-MyLite does not yet have executable foreign-key DDL, a foreign-key catalog,
-referential-action storage, or referential enforcement. This slice therefore
-exposes the MySQL-compatible `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS` table
-shape as a read-only system view and returns zero rows for every current MyLite
-database. Rows for actual foreign keys are intentionally deferred until MyLite
-has foreign-key DDL, catalog storage, supporting-index dependency checks,
-referential validation, cascading actions, and DML enforcement.
+MyLite now has catalog-backed rows for table-level `CREATE TABLE ... FOREIGN
+KEY` definitions on persistent base tables. This slice exposes the
+MySQL-compatible `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS` table shape as a
+read-only system view and returns one row per recorded foreign-key constraint.
+ALTER-table foreign keys, referential validation, cascading actions, dependency
+checks, and DML enforcement remain deferred to later foreign-key slices.
 
 Wildcard selection remains the baseline row-shape requirement for
 `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS`. Broader projections, filters,
@@ -91,8 +90,9 @@ Runtime probes:
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `def` | `mylite_ref_rows_codex` | `fk_parent` | `def` | `mylite_ref_rows_codex` | `PRIMARY` | `NONE` | `CASCADE` | `SET NULL` | `child` | `parent` |
 
-The actual foreign-key row above is future MyLite behavior, not part of this
-first slice.
+MySQL also allows creating a foreign key that references a missing table while
+`foreign_key_checks=0`; the row reports `UNIQUE_CONSTRAINT_NAME=NULL` while
+still reporting the child and referenced table names.
 
 ## MyLite Behavior
 
@@ -123,9 +123,13 @@ The result columns are exactly:
 10. `TABLE_NAME`
 11. `REFERENCED_TABLE_NAME`
 
-The query returns no rows because no foreign-key catalog exists yet. This is a
-deliberate empty static system view, not a placeholder catalog and not fake
-metadata.
+Rows are derived from MyLite's foreign-key catalog. A table-level
+`CREATE TABLE ... FOREIGN KEY` definition produces one logical
+`REFERENTIAL_CONSTRAINTS` row with the recorded constraint name, referenced
+unique constraint name, match option, update rule, delete rule, child table,
+and referenced table. Parent tables created with `foreign_key_checks=0` and no
+referenced table use `NULL` for `UNIQUE_CONSTRAINT_NAME`, matching the observed
+MySQL behavior.
 
 `INFORMATION_SCHEMA.TABLES` exposes `REFERENTIAL_CONSTRAINTS` with
 `TABLE_SCHEMA='information_schema'`,
@@ -175,17 +179,11 @@ clauses.
 
 ## Storage And Runtime
 
-This feature must not add `__mylite_foreign_key_catalog`,
-`__mylite_referential_constraint_catalog`, or any other foreign-key metadata
-table. Runtime lowering should use a static SQLite statement with the correct
-column aliases and an always-false row predicate.
-
-When foreign-key support is implemented later, the foreign-key catalog should
-be designed once for DDL validation, dependency checks, DML enforcement,
-referential actions, `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS`, foreign-key
-rows in `INFORMATION_SCHEMA.TABLE_CONSTRAINTS`, and referenced-column rows in
-`INFORMATION_SCHEMA.KEY_COLUMN_USAGE`. This empty static view should then be
-replaced by a catalog-backed query.
+Runtime lowering uses `__mylite_foreign_key_catalog`, one row per child-column
+part, and groups rows by constraint for this information-schema table. The
+catalog is shared with `INFORMATION_SCHEMA.TABLE_CONSTRAINTS`,
+`INFORMATION_SCHEMA.KEY_COLUMN_USAGE`, and `SHOW CREATE TABLE` so metadata
+surfaces stay in sync.
 
 Existing `INFORMATION_SCHEMA` `SELECT` execution prepares SQLite-backed
 statements directly and does not attach full MySQL field metadata for any
@@ -208,6 +206,11 @@ Runtime coverage:
 - empty database returns zero rows with the exact eleven uppercase column names
 - creating normal parent and child tables without foreign keys still returns
   zero rows
+- table-level `CREATE TABLE ... FOREIGN KEY` returns MySQL-compatible rows
+  for the constraint name, referenced unique constraint, match option, update
+  rule, delete rule, child table, and referenced table
+- `foreign_key_checks=0` permits a missing referenced table and reports
+  `UNIQUE_CONSTRAINT_NAME=NULL`
 - lower-case, mixed-case, and quoted table references execute
 - `INFORMATION_SCHEMA.TABLES` exposes the `REFERENTIAL_CONSTRAINTS`
   system-view row
@@ -218,20 +221,16 @@ Runtime coverage:
 - composable projections, `DISTINCT`/`ALL`, `WHERE`, `ORDER BY`, `LIMIT`,
   `COUNT(*)`, aliases, and qualified wildcard forms are covered by the shared
   system-view SELECT path
-- unsupported table-level `CREATE TABLE ... FOREIGN KEY ...` DDL parses but
-  must not create `REFERENTIAL_CONSTRAINTS` rows
+- malformed or semantically invalid table-level `CREATE TABLE ... FOREIGN KEY`
+  definitions must not create partial `REFERENTIAL_CONSTRAINTS` rows
 - inline `CREATE TABLE` column `REFERENCES` clauses parse and are ignored like
   the verified MySQL 8.4.9 behavior; they must not create foreign-key metadata
 
 ## Known Gaps
 
-- Actual foreign-key rows are omitted until MyLite has foreign-key DDL, a
-  foreign-key catalog, referenced-index validation, dependency checks,
-  referential actions, and DML enforcement.
-- `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` still omits `FOREIGN KEY` rows until
-  the same underlying foreign-key catalog exists.
-- `INFORMATION_SCHEMA.KEY_COLUMN_USAGE` still omits foreign-key referenced
-  table and column rows until the same underlying foreign-key catalog exists.
+- Rows currently come from table-level `CREATE TABLE ... FOREIGN KEY`
+  definitions only. `ALTER TABLE ... ADD FOREIGN KEY`, `DROP FOREIGN KEY`,
+  dependency checks, referential actions, and DML enforcement are deferred.
 - Privilege filtering and exact MySQL field metadata remain deferred. General
   projection, filtering, ordering, limiting, alias, and aggregate behavior is
   covered by the composable information-schema SELECT path.

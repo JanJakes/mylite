@@ -3,6 +3,7 @@
 #include "mylite_span.h"
 #include "mylite_table_ddl_create_column_copy.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -19,6 +20,55 @@ static int copy_create_table_options(
 static int add_create_table_index(
     struct mylite_create_table_plan *plan,
     struct mylite_create_table_index index
+);
+
+static int copy_create_table_foreign_key(
+    const struct mylite_sql_ast_node *action_node,
+    struct mylite_create_table_plan *plan
+);
+
+static bool create_table_foreign_key_has_constraint_prefix(
+    const struct mylite_sql_ast_node *action_node
+);
+
+static int add_create_table_foreign_key(
+    struct mylite_create_table_plan *plan,
+    struct mylite_create_table_foreign_key foreign_key
+);
+
+static int copy_foreign_key_identifier_list(
+    const struct mylite_sql_ast_node *list,
+    char ***out_names,
+    size_t *out_count
+);
+
+static int copy_foreign_key_reference_options(
+    const struct mylite_sql_ast_node *options,
+    struct mylite_create_table_foreign_key *foreign_key
+);
+
+static char *copy_generated_foreign_key_constraint_name(
+    const struct mylite_create_table_plan *plan
+);
+
+static const char *create_table_supporting_foreign_key_index_name(
+    const struct mylite_create_table_plan *plan,
+    const struct mylite_create_table_foreign_key *foreign_key
+);
+
+static bool create_table_index_supports_foreign_key(
+    const struct mylite_create_table_index *index,
+    const struct mylite_create_table_foreign_key *foreign_key
+);
+
+static bool create_table_has_supporting_foreign_key_index(
+    const struct mylite_create_table_plan *plan,
+    const struct mylite_create_table_foreign_key *foreign_key
+);
+
+static int add_create_table_foreign_key_index(
+    struct mylite_create_table_plan *plan,
+    const struct mylite_create_table_foreign_key *foreign_key
 );
 
 static int add_inline_create_table_column_indexes(
@@ -269,7 +319,7 @@ static int copy_create_table_elements(
             element->kind == MYLITE_SQL_AST_ALTER_TABLE_ACTION &&
             element->alter_table_action == MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_FOREIGN_KEY
         ) {
-            plan->has_unsupported_foreign_key = true;
+            status = copy_create_table_foreign_key(element, plan);
         } else {
             status = MYLITE_UNSUPPORTED;
         }
@@ -362,6 +412,331 @@ static int add_create_table_index(
     plan->indexes = indexes;
     plan->indexes[plan->index_count++] = index;
     return MYLITE_OK;
+}
+
+static int copy_create_table_foreign_key(
+    const struct mylite_sql_ast_node *action_node,
+    struct mylite_create_table_plan *plan
+) {
+    struct mylite_create_table_foreign_key foreign_key = {
+        .match = MYLITE_SQL_AST_REFERENCE_MATCH_NONE,
+        .on_update = MYLITE_SQL_AST_REFERENCE_ACTION_NO_ACTION,
+        .on_delete = MYLITE_SQL_AST_REFERENCE_ACTION_NO_ACTION,
+    };
+    const struct mylite_sql_ast_node *child = action_node->first_child;
+    const struct mylite_sql_ast_node *constraint_name = NULL;
+    const struct mylite_sql_ast_node *index_name = NULL;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *reference = NULL;
+    const struct mylite_sql_ast_node *referenced_table = NULL;
+    const struct mylite_sql_ast_node *referenced_columns = NULL;
+    const struct mylite_sql_ast_node *reference_options = NULL;
+    int status = MYLITE_OK;
+
+    if (create_table_foreign_key_has_constraint_prefix(action_node) && child != NULL &&
+        child->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        constraint_name = child;
+        child = child->next_sibling;
+    }
+    if (child != NULL && child->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        index_name = child;
+        child = child->next_sibling;
+    }
+    columns = child;
+    reference = columns == NULL ? NULL : columns->next_sibling;
+    referenced_table = mylite_ast_child_at(reference, 0U);
+    referenced_columns = mylite_ast_child_at(reference, 1U);
+    reference_options = mylite_ast_child_at(reference, 2U);
+
+    if (constraint_name != NULL) {
+        foreign_key.constraint_name = mylite_copy_identifier_span(constraint_name);
+    } else {
+        foreign_key.constraint_name = copy_generated_foreign_key_constraint_name(plan);
+    }
+    if (foreign_key.constraint_name == NULL) {
+        status = MYLITE_NOMEM;
+    }
+    if (status == MYLITE_OK) {
+        status = copy_foreign_key_identifier_list(
+            columns,
+            &foreign_key.column_names,
+            &foreign_key.column_count
+        );
+    }
+    if (status == MYLITE_OK) {
+        if (index_name != NULL) {
+            foreign_key.supporting_index_name = mylite_copy_identifier_span(index_name);
+        } else if (constraint_name != NULL) {
+            foreign_key.supporting_index_name = mylite_copy_span_text(
+                foreign_key.constraint_name,
+                strlen(foreign_key.constraint_name)
+            );
+        } else {
+            const char *existing_index =
+                create_table_supporting_foreign_key_index_name(plan, &foreign_key);
+            const char *supporting_name =
+                existing_index == NULL ? foreign_key.column_names[0] : existing_index;
+
+            foreign_key.supporting_index_name =
+                mylite_copy_span_text(supporting_name, strlen(supporting_name));
+        }
+        if (foreign_key.supporting_index_name == NULL) {
+            status = MYLITE_NOMEM;
+        }
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_table_ddl_copy_table_name_parts(
+            referenced_table,
+            &foreign_key.referenced_schema_name,
+            &foreign_key.referenced_table_name
+        );
+    }
+    if (status == MYLITE_OK) {
+        status = copy_foreign_key_identifier_list(
+            referenced_columns,
+            &foreign_key.referenced_column_names,
+            &foreign_key.referenced_column_count
+        );
+    }
+    if (status == MYLITE_OK) {
+        status = copy_foreign_key_reference_options(reference_options, &foreign_key);
+    }
+    if (status == MYLITE_OK && foreign_key.column_count != foreign_key.referenced_column_count) {
+        status = MYLITE_UNSUPPORTED;
+    }
+    if (status == MYLITE_OK && !create_table_has_supporting_foreign_key_index(plan, &foreign_key)) {
+        status = add_create_table_foreign_key_index(plan, &foreign_key);
+    }
+    if (status == MYLITE_OK) {
+        status = add_create_table_foreign_key(plan, foreign_key);
+    }
+    if (status != MYLITE_OK) {
+        mylite_table_ddl_create_table_foreign_key_deinit(&foreign_key);
+    }
+    return status;
+}
+
+static bool create_table_foreign_key_has_constraint_prefix(
+    const struct mylite_sql_ast_node *action_node
+) {
+    const char constraint_keyword[] = "CONSTRAINT";
+    size_t keyword_length = strlen(constraint_keyword);
+
+    if (action_node == NULL || action_node->span.text == NULL ||
+        action_node->span.length < keyword_length) {
+        return false;
+    }
+    for (size_t index = 0U; index < keyword_length; ++index) {
+        char actual = action_node->span.text[index];
+        char expected = constraint_keyword[index];
+
+        if (actual >= 'a' && actual <= 'z') {
+            actual = (char)(actual - 'a' + 'A');
+        }
+        if (actual != expected) {
+            return false;
+        }
+    }
+    return action_node->span.length == keyword_length ||
+           action_node->span.text[keyword_length] == ' ' ||
+           action_node->span.text[keyword_length] == '\t' ||
+           action_node->span.text[keyword_length] == '\n' ||
+           action_node->span.text[keyword_length] == '\r';
+}
+
+static int add_create_table_foreign_key(
+    struct mylite_create_table_plan *plan,
+    struct mylite_create_table_foreign_key foreign_key
+) {
+    struct mylite_create_table_foreign_key *foreign_keys =
+        realloc(plan->foreign_keys, (plan->foreign_key_count + 1U) * sizeof(*plan->foreign_keys));
+
+    if (foreign_keys == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    plan->foreign_keys = foreign_keys;
+    plan->foreign_keys[plan->foreign_key_count++] = foreign_key;
+    return MYLITE_OK;
+}
+
+static int copy_foreign_key_identifier_list(
+    const struct mylite_sql_ast_node *list,
+    char ***out_names,
+    size_t *out_count
+) {
+    *out_names = NULL;
+    *out_count = 0U;
+    for (const struct mylite_sql_ast_node *node = list == NULL ? NULL : list->first_child;
+         node != NULL;
+         node = node->next_sibling) {
+        char **names = realloc(*out_names, (*out_count + 1U) * sizeof(**out_names));
+        char *name = NULL;
+
+        if (names == NULL) {
+            return MYLITE_NOMEM;
+        }
+        *out_names = names;
+        name = mylite_copy_identifier_span(node);
+        if (name == NULL) {
+            return MYLITE_NOMEM;
+        }
+        (*out_names)[(*out_count)++] = name;
+    }
+    return *out_count == 0U ? MYLITE_UNSUPPORTED : MYLITE_OK;
+}
+
+static int copy_foreign_key_reference_options(
+    const struct mylite_sql_ast_node *options,
+    struct mylite_create_table_foreign_key *foreign_key
+) {
+    for (const struct mylite_sql_ast_node *option = options == NULL ? NULL : options->first_child;
+         option != NULL;
+         option = option->next_sibling) {
+        switch (option->reference_option) {
+        case MYLITE_SQL_AST_REFERENCE_OPTION_ON_DELETE:
+            foreign_key->on_delete = option->reference_action;
+            break;
+        case MYLITE_SQL_AST_REFERENCE_OPTION_ON_UPDATE:
+            foreign_key->on_update = option->reference_action;
+            break;
+        case MYLITE_SQL_AST_REFERENCE_OPTION_MATCH:
+            foreign_key->match = option->reference_match;
+            break;
+        case MYLITE_SQL_AST_REFERENCE_OPTION_NONE:
+            break;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static char *copy_generated_foreign_key_constraint_name(
+    const struct mylite_create_table_plan *plan
+) {
+    size_t prefix_length = strlen(plan->table_name) + strlen("_ibfk_");
+    size_t generated_count = 0U;
+    char *name = NULL;
+    int written = 0;
+
+    for (size_t index = 0U; index < plan->foreign_key_count; ++index) {
+        char *prefix = NULL;
+        bool generated = false;
+
+        prefix = malloc(prefix_length + 1U);
+        if (prefix == NULL) {
+            return NULL;
+        }
+        (void)snprintf(prefix, prefix_length + 1U, "%s_ibfk_", plan->table_name);
+        generated = strncmp(plan->foreign_keys[index].constraint_name, prefix, prefix_length) == 0;
+        free(prefix);
+        if (generated) {
+            ++generated_count;
+        }
+    }
+
+    name = malloc(prefix_length + 20U + 1U);
+    if (name == NULL) {
+        return NULL;
+    }
+    written = snprintf(
+        name,
+        prefix_length + 20U + 1U,
+        "%s_ibfk_%zu",
+        plan->table_name,
+        generated_count + 1U
+    );
+    if (written < 0) {
+        free(name);
+        return NULL;
+    }
+    return name;
+}
+
+static const char *create_table_supporting_foreign_key_index_name(
+    const struct mylite_create_table_plan *plan,
+    const struct mylite_create_table_foreign_key *foreign_key
+) {
+    for (size_t index = 0U; index < plan->index_count; ++index) {
+        if (create_table_index_supports_foreign_key(&plan->indexes[index], foreign_key)) {
+            return plan->indexes[index].name;
+        }
+    }
+    return NULL;
+}
+
+static bool create_table_index_supports_foreign_key(
+    const struct mylite_create_table_index *index,
+    const struct mylite_create_table_foreign_key *foreign_key
+) {
+    if (index->part_count < foreign_key->column_count) {
+        return false;
+    }
+    for (size_t part = 0U; part < foreign_key->column_count; ++part) {
+        if (!mylite_ascii_case_equal(
+                index->parts[part].column_name,
+                foreign_key->column_names[part]
+            )) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool create_table_has_supporting_foreign_key_index(
+    const struct mylite_create_table_plan *plan,
+    const struct mylite_create_table_foreign_key *foreign_key
+) {
+    for (size_t index = 0U; index < plan->index_count; ++index) {
+        if (create_table_index_supports_foreign_key(&plan->indexes[index], foreign_key)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static int add_create_table_foreign_key_index(
+    struct mylite_create_table_plan *plan,
+    const struct mylite_create_table_foreign_key *foreign_key
+) {
+    struct mylite_create_table_index index = {
+        .name = mylite_copy_span_text(
+            foreign_key->supporting_index_name,
+            strlen(foreign_key->supporting_index_name)
+        ),
+        .algorithm = MYLITE_SQL_AST_INDEX_ALGORITHM_BTREE,
+        .is_visible = true,
+        .explicit_name = true,
+    };
+    int status = MYLITE_OK;
+
+    if (index.name == NULL) {
+        return MYLITE_NOMEM;
+    }
+    for (size_t part_index = 0U; part_index < foreign_key->column_count; ++part_index) {
+        struct mylite_create_table_key_part *parts =
+            realloc(index.parts, (index.part_count + 1U) * sizeof(*index.parts));
+        struct mylite_create_table_key_part part = {
+            .column_name = mylite_copy_span_text(
+                foreign_key->column_names[part_index],
+                strlen(foreign_key->column_names[part_index])
+            ),
+            .order = MYLITE_SQL_AST_KEY_PART_ORDER_NONE,
+        };
+
+        if (parts == NULL || part.column_name == NULL) {
+            free(part.column_name);
+            mylite_table_ddl_create_table_index_deinit(&index);
+            return MYLITE_NOMEM;
+        }
+        index.parts = parts;
+        index.parts[index.part_count++] = part;
+    }
+
+    status = add_create_table_index(plan, index);
+    if (status != MYLITE_OK) {
+        mylite_table_ddl_create_table_index_deinit(&index);
+    }
+    return status;
 }
 
 static int add_inline_create_table_column_indexes(

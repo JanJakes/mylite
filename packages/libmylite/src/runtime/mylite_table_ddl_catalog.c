@@ -32,6 +32,12 @@ static int insert_check_constraint_catalog_rows(
     const struct mylite_create_table_plan *plan
 );
 
+static int insert_foreign_key_catalog_rows(
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_create_table_plan *plan
+);
+
 static int insert_check_constraint_catalog_row(
     mylite_db *database,
     sqlite3_stmt *insert,
@@ -51,6 +57,15 @@ static int insert_column_catalog_row(
     size_t column_index
 );
 
+static int insert_foreign_key_catalog_row(
+    mylite_db *database,
+    sqlite3_stmt *insert,
+    const char *schema_name,
+    const struct mylite_create_table_plan *plan,
+    const struct mylite_create_table_foreign_key *foreign_key,
+    size_t column_index
+);
+
 static const char *create_table_column_key(
     const struct mylite_create_table_plan *plan,
     const char *column_name
@@ -66,6 +81,10 @@ static int refresh_create_table_statistics(
     const char *schema_name,
     const struct mylite_create_table_plan *plan
 );
+
+static const char *foreign_key_match_text(enum mylite_sql_ast_reference_match match);
+
+static const char *foreign_key_action_text(enum mylite_sql_ast_reference_action action);
 
 static char *create_table_current_timestamp_text(void);
 
@@ -88,6 +107,9 @@ int mylite_table_ddl_insert_create_table_catalog_rows(
     }
     if (status == MYLITE_OK) {
         status = insert_check_constraint_catalog_rows(database, schema_name, plan);
+    }
+    if (status == MYLITE_OK) {
+        status = insert_foreign_key_catalog_rows(database, schema_name, plan);
     }
     if (status == MYLITE_OK) {
         status = refresh_create_table_statistics(database, schema_name, plan);
@@ -299,6 +321,185 @@ static int insert_check_constraint_catalog_row(
     sqlite3_bind_text(insert, bind_check_clause, check->clause, -1, sqlite_transient_destructor());
     sqlite3_bind_text(insert, bind_enforced, enforced, -1, SQLITE_STATIC);
     sqlite3_bind_int64(insert, bind_ordinal_position, (sqlite3_int64)check_index + 1);
+
+    rc = sqlite3_step(insert);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
+}
+
+static int insert_foreign_key_catalog_rows(
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_create_table_plan *plan
+) {
+    sqlite3_stmt *insert = NULL;
+    char *sql = NULL;
+    int rc = SQLITE_OK;
+
+    if (plan->foreign_key_count == 0U) {
+        return MYLITE_OK;
+    }
+
+    sql = sqlite3_mprintf(
+        "INSERT INTO %s("
+        "constraint_catalog, constraint_schema, constraint_name, table_schema, table_name, "
+        "column_name, ordinal_position, supporting_index_name, unique_constraint_catalog, "
+        "unique_constraint_schema, unique_constraint_name, match_option, update_rule, "
+        "delete_rule, referenced_table_schema, referenced_table_name, referenced_column_name, "
+        "position_in_unique_constraint)"
+        " VALUES('def', ?, ?, ?, ?, ?, ?, ?, 'def', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        mylite_catalog_foreign_key_catalog_name(plan->temporary)
+    );
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &insert, NULL);
+    sqlite3_free(sql);
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+
+    for (size_t index = 0U; index < plan->foreign_key_count; ++index) {
+        for (size_t column = 0U; column < plan->foreign_keys[index].column_count; ++column) {
+            int status = insert_foreign_key_catalog_row(
+                database,
+                insert,
+                schema_name,
+                plan,
+                &plan->foreign_keys[index],
+                column
+            );
+
+            if (status != MYLITE_OK) {
+                sqlite3_finalize(insert);
+                return status;
+            }
+        }
+    }
+
+    sqlite3_finalize(insert);
+    return MYLITE_OK;
+}
+
+static int insert_foreign_key_catalog_row(
+    mylite_db *database,
+    sqlite3_stmt *insert,
+    const char *schema_name,
+    const struct mylite_create_table_plan *plan,
+    const struct mylite_create_table_foreign_key *foreign_key,
+    size_t column_index
+) {
+    enum {
+        bind_constraint_schema = 1,
+        bind_constraint_name = 2,
+        bind_table_schema = 3,
+        bind_table_name = 4,
+        bind_column_name = 5,
+        bind_ordinal_position = 6,
+        bind_supporting_index_name = 7,
+        bind_unique_constraint_schema = 8,
+        bind_unique_constraint_name = 9,
+        bind_match_option = 10,
+        bind_update_rule = 11,
+        bind_delete_rule = 12,
+        bind_referenced_table_schema = 13,
+        bind_referenced_table_name = 14,
+        bind_referenced_column_name = 15,
+        bind_position_in_unique_constraint = 16,
+    };
+
+    int rc = SQLITE_OK;
+
+    sqlite3_reset(insert);
+    sqlite3_clear_bindings(insert);
+    sqlite3_bind_text(
+        insert,
+        bind_constraint_schema,
+        schema_name,
+        -1,
+        sqlite_transient_destructor()
+    );
+    sqlite3_bind_text(
+        insert,
+        bind_constraint_name,
+        foreign_key->constraint_name,
+        -1,
+        sqlite_transient_destructor()
+    );
+    sqlite3_bind_text(insert, bind_table_schema, schema_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(insert, bind_table_name, plan->table_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(
+        insert,
+        bind_column_name,
+        foreign_key->column_names[column_index],
+        -1,
+        sqlite_transient_destructor()
+    );
+    sqlite3_bind_int64(insert, bind_ordinal_position, (sqlite3_int64)column_index + 1);
+    sqlite3_bind_text(
+        insert,
+        bind_supporting_index_name,
+        foreign_key->supporting_index_name,
+        -1,
+        sqlite_transient_destructor()
+    );
+    sqlite3_bind_text(
+        insert,
+        bind_unique_constraint_schema,
+        foreign_key->referenced_schema_name,
+        -1,
+        sqlite_transient_destructor()
+    );
+    sqlite3_bind_text(
+        insert,
+        bind_unique_constraint_name,
+        foreign_key->unique_constraint_name,
+        -1,
+        sqlite_transient_destructor()
+    );
+    sqlite3_bind_text(
+        insert,
+        bind_match_option,
+        foreign_key_match_text(foreign_key->match),
+        -1,
+        SQLITE_STATIC
+    );
+    sqlite3_bind_text(
+        insert,
+        bind_update_rule,
+        foreign_key_action_text(foreign_key->on_update),
+        -1,
+        SQLITE_STATIC
+    );
+    sqlite3_bind_text(
+        insert,
+        bind_delete_rule,
+        foreign_key_action_text(foreign_key->on_delete),
+        -1,
+        SQLITE_STATIC
+    );
+    sqlite3_bind_text(
+        insert,
+        bind_referenced_table_schema,
+        foreign_key->referenced_schema_name,
+        -1,
+        sqlite_transient_destructor()
+    );
+    sqlite3_bind_text(
+        insert,
+        bind_referenced_table_name,
+        foreign_key->referenced_table_name,
+        -1,
+        sqlite_transient_destructor()
+    );
+    sqlite3_bind_text(
+        insert,
+        bind_referenced_column_name,
+        foreign_key->referenced_column_names[column_index],
+        -1,
+        sqlite_transient_destructor()
+    );
+    sqlite3_bind_int64(insert, bind_position_in_unique_constraint, (sqlite3_int64)column_index + 1);
 
     rc = sqlite3_step(insert);
     return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
@@ -526,6 +727,34 @@ static int refresh_create_table_statistics(
     );
     free(physical_name);
     return status;
+}
+
+static const char *foreign_key_match_text(enum mylite_sql_ast_reference_match match) {
+    switch (match) {
+    case MYLITE_SQL_AST_REFERENCE_MATCH_NONE:
+    case MYLITE_SQL_AST_REFERENCE_MATCH_SIMPLE:
+    case MYLITE_SQL_AST_REFERENCE_MATCH_FULL:
+    case MYLITE_SQL_AST_REFERENCE_MATCH_PARTIAL:
+        return "NONE";
+    }
+    return "NONE";
+}
+
+static const char *foreign_key_action_text(enum mylite_sql_ast_reference_action action) {
+    switch (action) {
+    case MYLITE_SQL_AST_REFERENCE_ACTION_RESTRICT:
+        return "RESTRICT";
+    case MYLITE_SQL_AST_REFERENCE_ACTION_CASCADE:
+        return "CASCADE";
+    case MYLITE_SQL_AST_REFERENCE_ACTION_SET_NULL:
+        return "SET NULL";
+    case MYLITE_SQL_AST_REFERENCE_ACTION_SET_DEFAULT:
+        return "SET DEFAULT";
+    case MYLITE_SQL_AST_REFERENCE_ACTION_NONE:
+    case MYLITE_SQL_AST_REFERENCE_ACTION_NO_ACTION:
+        return "NO ACTION";
+    }
+    return "NO ACTION";
 }
 
 static char *create_table_current_timestamp_text(void) {

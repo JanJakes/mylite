@@ -3079,6 +3079,19 @@ static int test_information_schema_referential_constraints_execution(void) {
     static const char *const show_tables_values[] = {"REFERENTIAL_CONSTRAINTS", "SYSTEM VIEW"};
     static const char *const count_columns[] = {"c"};
     static const char *const count_values[] = {"0"};
+    static const char *const create_fk_values[] = {
+        "def",
+        "mylite_referential_constraints",
+        "fk_create_parent",
+        "def",
+        "mylite_referential_constraints",
+        "PRIMARY",
+        "NONE",
+        "CASCADE",
+        "SET NULL",
+        "referential_constraints_create_child",
+        "referential_constraints_parent",
+    };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -3175,16 +3188,19 @@ static int test_information_schema_referential_constraints_execution(void) {
     );
     failures += expect_status(
         mylite_step(stmt),
-        MYLITE_UNSUPPORTED,
-        "create foreign key does not create referential constraints rows"
+        MYLITE_DONE,
+        "create foreign key creates referential constraints rows"
     );
     mylite_finalize(stmt);
     stmt = NULL;
-    failures += expect_empty_information_schema_table(
+    failures += expect_select_rows(
         database,
         "SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS",
         columns,
-        referential_constraints_column_count
+        referential_constraints_column_count,
+        create_fk_values,
+        1,
+        "create foreign key referential constraints rows"
     );
 
     failures += expect_information_schema_tables_views(database);
@@ -3223,11 +3239,14 @@ static int test_information_schema_referential_constraints_execution(void) {
     );
     mylite_finalize(stmt);
     stmt = NULL;
-    failures += expect_empty_information_schema_table(
+    failures += expect_select_rows(
         database,
         "SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS",
         columns,
-        referential_constraints_column_count
+        referential_constraints_column_count,
+        create_fk_values,
+        1,
+        "alter foreign key leaves existing referential constraints rows"
     );
 
     mylite_close(database);
@@ -33854,6 +33873,66 @@ static int test_window_function_placeholder_execution(void) {
 }
 
 static int test_create_table_base_execution(void) {
+    static const char *const fk_referential_columns[] = {
+        "CONSTRAINT_NAME",
+        "UNIQUE_CONSTRAINT_NAME",
+        "UPDATE_RULE",
+        "DELETE_RULE",
+        "TABLE_NAME",
+        "REFERENCED_TABLE_NAME",
+    };
+    static const char *const fk_referential_values[] = {
+        "fk_parent",
+        "uq_parent_pair",
+        "SET NULL",
+        "CASCADE",
+        "table_foreign_key",
+        "parent",
+    };
+    static const char *const fk_missing_parent_referential_columns[] = {
+        "CONSTRAINT_NAME",
+        "UNIQUE_CONSTRAINT_NAME",
+        "MATCH_OPTION",
+        "UPDATE_RULE",
+        "DELETE_RULE",
+        "TABLE_NAME",
+        "REFERENCED_TABLE_NAME",
+    };
+    static const char *const fk_missing_parent_referential_values[] = {
+        "fk_missing_parent",
+        NULL,
+        "NONE",
+        "NO ACTION",
+        "NO ACTION",
+        "missing_parent_fk",
+        "missing_parent",
+    };
+    static const char *const fk_key_usage_columns[] = {
+        "COLUMN_NAME",
+        "ORDINAL_POSITION",
+        "POSITION_IN_UNIQUE_CONSTRAINT",
+        "REFERENCED_TABLE_NAME",
+        "REFERENCED_COLUMN_NAME",
+    };
+    static const char *const fk_key_usage_values[] = {
+        "parent_id",
+        "1",
+        "1",
+        "parent",
+        "id",
+        "other_id",
+        "2",
+        "2",
+        "parent",
+        "other_id",
+    };
+    static const char *const fk_missing_parent_key_usage_values[] = {
+        "parent_id",
+        "1",
+        "1",
+        "missing_parent",
+        "id",
+    };
     const char *path = MYLITE_RUNTIME_TEST_FILE_PATH;
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
@@ -33956,6 +34035,36 @@ static int test_create_table_base_execution(void) {
             .constraint_type = "CHECK",
         }
     );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE parent ("
+        "id INT PRIMARY KEY, "
+        "other_id INT, "
+        "UNIQUE KEY uq_parent_pair (id, other_id))",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "CREATE TEMPORARY TABLE temp_foreign_key ("
+        "id INT PRIMARY KEY, parent_id INT, "
+        "FOREIGN KEY (parent_id) REFERENCES parent(id))",
+        MYLITE_OK,
+        &stmt
+    );
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "temporary foreign key rejected");
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Cannot add foreign key constraint",
+        "temporary foreign key error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_table_constraints_row(
+        database,
+        "temp_foreign_key",
+        "temp_foreign_key_ibfk_1"
+    );
 
     failures += execute_sql(
         database,
@@ -33986,24 +34095,94 @@ static int test_create_table_base_execution(void) {
         MYLITE_OK,
         &stmt
     );
-    failures += expect_status(
-        mylite_step(stmt),
-        MYLITE_UNSUPPORTED,
-        "create table foreign key placeholder rejected"
-    );
-    failures += expect_contains(
-        mylite_error_message(database),
-        "FOREIGN KEY",
-        "create table foreign key unsupported error"
-    );
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_DONE, "create table foreign key creates metadata");
     mylite_finalize(stmt);
     stmt = NULL;
-    failures += expect_no_information_schema_table_name_row(database, "table_foreign_key");
-    failures += expect_no_information_schema_table_constraints_row(
+    failures += expect_information_schema_table_constraints_row(
         database,
-        "table_foreign_key",
-        "fk_parent"
+        &(const struct expected_table_constraints_row){
+            .schema_name = "mylite_ct11",
+            .table_name = "table_foreign_key",
+            .constraint_name = "fk_parent",
+            .constraint_type = "FOREIGN KEY",
+        }
     );
+    failures += expect_information_schema_statistics_row(
+        database,
+        &(const struct expected_statistics_row){
+            .table_name = "table_foreign_key",
+            .index_name = "fk_parent_idx",
+            .seq_in_index = 1,
+            .column_name = "parent_id",
+            .non_unique = 1,
+            .collation = "A",
+            .sub_part = NULL,
+            .index_comment = "",
+            .visible = "YES",
+        }
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT CONSTRAINT_NAME, UNIQUE_CONSTRAINT_NAME, UPDATE_RULE, DELETE_RULE, "
+        "TABLE_NAME, REFERENCED_TABLE_NAME "
+        "FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
+        "WHERE CONSTRAINT_SCHEMA = 'mylite_ct11' AND CONSTRAINT_NAME = 'fk_parent'",
+        fk_referential_columns,
+        6,
+        fk_referential_values,
+        1,
+        "create table foreign key referential constraints row"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COLUMN_NAME, ORDINAL_POSITION, POSITION_IN_UNIQUE_CONSTRAINT, "
+        "REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME "
+        "FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE "
+        "WHERE CONSTRAINT_SCHEMA = 'mylite_ct11' AND TABLE_NAME = 'table_foreign_key' "
+        "AND CONSTRAINT_NAME = 'fk_parent' ORDER BY ORDINAL_POSITION",
+        fk_key_usage_columns,
+        5,
+        fk_key_usage_values,
+        2,
+        "create table foreign key key column usage rows"
+    );
+    failures += execute_sql(database, "SET foreign_key_checks = 0", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE missing_parent_fk ("
+        "id INT PRIMARY KEY, parent_id INT, "
+        "CONSTRAINT fk_missing_parent FOREIGN KEY (parent_id) "
+        "REFERENCES missing_parent(id))",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT CONSTRAINT_NAME, UNIQUE_CONSTRAINT_NAME, MATCH_OPTION, UPDATE_RULE, "
+        "DELETE_RULE, TABLE_NAME, REFERENCED_TABLE_NAME "
+        "FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
+        "WHERE CONSTRAINT_SCHEMA = 'mylite_ct11' "
+        "AND CONSTRAINT_NAME = 'fk_missing_parent'",
+        fk_missing_parent_referential_columns,
+        7,
+        fk_missing_parent_referential_values,
+        1,
+        "create table foreign key missing parent referential constraints row"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COLUMN_NAME, ORDINAL_POSITION, POSITION_IN_UNIQUE_CONSTRAINT, "
+        "REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME "
+        "FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE "
+        "WHERE CONSTRAINT_SCHEMA = 'mylite_ct11' AND TABLE_NAME = 'missing_parent_fk' "
+        "AND CONSTRAINT_NAME = 'fk_missing_parent'",
+        fk_key_usage_columns,
+        5,
+        fk_missing_parent_key_usage_values,
+        1,
+        "create table foreign key missing parent key column usage row"
+    );
+    failures += execute_sql(database, "SET foreign_key_checks = 1", MYLITE_DONE);
 
     failures += prepare_sql(database, "CREATE TABLE simple_create (a INT)", MYLITE_OK, &stmt);
     failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "duplicate table create");
@@ -43223,6 +43402,29 @@ static int test_show_create_table_execution(void) {
                                         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 "
                                         "COLLATE=utf8mb4_0900_ai_ci";
     static const char *const simple_values[] = {"simple_table", simple_create};
+    static const char show_create_fk_create[] =
+        "CREATE TABLE `child_fk` (\n"
+        "  `id` int NOT NULL,\n"
+        "  `parent_id` int DEFAULT NULL,\n"
+        "  PRIMARY KEY (`id`),\n"
+        "  KEY `fk_parent` (`parent_id`),\n"
+        "  CONSTRAINT `fk_parent` FOREIGN KEY (`parent_id`) REFERENCES `parent_fk` (`id`) "
+        "ON DELETE SET NULL ON UPDATE CASCADE\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
+    static const char *const show_create_fk_values[] = {"child_fk", show_create_fk_create};
+    static const char show_create_fk_cross_schema_create[] =
+        "CREATE TABLE `child_cross_fk` (\n"
+        "  `id` int NOT NULL,\n"
+        "  `parent_id` int DEFAULT NULL,\n"
+        "  PRIMARY KEY (`id`),\n"
+        "  KEY `parent_id` (`parent_id`),\n"
+        "  CONSTRAINT `child_cross_fk_ibfk_1` FOREIGN KEY (`parent_id`) "
+        "REFERENCES `mylite_show_create_b`.`parent_cross_fk` (`id`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
+    static const char *const show_create_fk_cross_schema_values[] = {
+        "child_cross_fk",
+        show_create_fk_cross_schema_create
+    };
     static const char qualified_create[] = "CREATE TABLE `qualified` (\n"
                                            "  `code` int DEFAULT NULL\n"
                                            ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 "
@@ -43337,6 +43539,47 @@ static int test_show_create_table_execution(void) {
         simple_values,
         1,
         "show create simple table"
+    );
+    failures += execute_sql(database, "CREATE TABLE parent_fk (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE child_fk ("
+        "id INT PRIMARY KEY, "
+        "parent_id INT, "
+        "CONSTRAINT fk_parent FOREIGN KEY (parent_id) REFERENCES parent_fk(id) "
+        "ON UPDATE CASCADE ON DELETE SET NULL)",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW CREATE TABLE child_fk",
+        columns,
+        2,
+        show_create_fk_values,
+        1,
+        "show create table foreign key metadata"
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE mylite_show_create_b.parent_cross_fk (id INT PRIMARY KEY)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE child_cross_fk ("
+        "id INT PRIMARY KEY, "
+        "parent_id INT, "
+        "FOREIGN KEY (parent_id) REFERENCES mylite_show_create_b.parent_cross_fk(id))",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW CREATE TABLE child_cross_fk",
+        columns,
+        2,
+        show_create_fk_cross_schema_values,
+        1,
+        "show create table cross-schema foreign key metadata"
     );
 
     failures += execute_sql(

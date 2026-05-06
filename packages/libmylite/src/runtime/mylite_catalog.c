@@ -12,11 +12,13 @@ static const char table_catalog_name[] = "__mylite_table_catalog";
 static const char column_catalog_name[] = "__mylite_column_catalog";
 static const char index_catalog_name[] = "__mylite_index_catalog";
 static const char check_constraint_catalog_name[] = "__mylite_check_constraint_catalog";
+static const char foreign_key_catalog_name[] = "__mylite_foreign_key_catalog";
 static const char temporary_table_catalog_name[] = "__mylite_temp_table_catalog";
 static const char temporary_column_catalog_name[] = "__mylite_temp_column_catalog";
 static const char temporary_index_catalog_name[] = "__mylite_temp_index_catalog";
 static const char temporary_check_constraint_catalog_name[] =
     "__mylite_temp_check_constraint_catalog";
+static const char temporary_foreign_key_catalog_name[] = "__mylite_temp_foreign_key_catalog";
 
 enum { mylite_catalog_innodb_page_bytes = 16384 };
 
@@ -112,6 +114,28 @@ static const char check_constraint_catalog_sql[] =
     "ordinal_position INTEGER NOT NULL,"
     "PRIMARY KEY(constraint_schema, table_name, constraint_name))";
 
+static const char foreign_key_catalog_sql[] =
+    "CREATE TABLE IF NOT EXISTS __mylite_foreign_key_catalog("
+    "constraint_catalog TEXT NOT NULL,"
+    "constraint_schema TEXT NOT NULL,"
+    "constraint_name TEXT NOT NULL,"
+    "table_schema TEXT NOT NULL,"
+    "table_name TEXT NOT NULL,"
+    "column_name TEXT NOT NULL,"
+    "ordinal_position INTEGER NOT NULL,"
+    "supporting_index_name TEXT NOT NULL,"
+    "unique_constraint_catalog TEXT NOT NULL,"
+    "unique_constraint_schema TEXT NOT NULL,"
+    "unique_constraint_name TEXT,"
+    "match_option TEXT NOT NULL,"
+    "update_rule TEXT NOT NULL,"
+    "delete_rule TEXT NOT NULL,"
+    "referenced_table_schema TEXT NOT NULL,"
+    "referenced_table_name TEXT NOT NULL,"
+    "referenced_column_name TEXT NOT NULL,"
+    "position_in_unique_constraint INTEGER NOT NULL,"
+    "PRIMARY KEY(constraint_schema, table_name, constraint_name, ordinal_position))";
+
 static const char temporary_table_catalog_sql[] =
     "CREATE TEMPORARY TABLE IF NOT EXISTS __mylite_temp_table_catalog("
     "table_catalog TEXT NOT NULL,"
@@ -197,6 +221,28 @@ static const char temporary_check_constraint_catalog_sql[] =
     "enforced TEXT NOT NULL,"
     "ordinal_position INTEGER NOT NULL,"
     "PRIMARY KEY(constraint_schema, table_name, constraint_name))";
+
+static const char temporary_foreign_key_catalog_sql[] =
+    "CREATE TEMPORARY TABLE IF NOT EXISTS __mylite_temp_foreign_key_catalog("
+    "constraint_catalog TEXT NOT NULL,"
+    "constraint_schema TEXT NOT NULL,"
+    "constraint_name TEXT NOT NULL,"
+    "table_schema TEXT NOT NULL,"
+    "table_name TEXT NOT NULL,"
+    "column_name TEXT NOT NULL,"
+    "ordinal_position INTEGER NOT NULL,"
+    "supporting_index_name TEXT NOT NULL,"
+    "unique_constraint_catalog TEXT NOT NULL,"
+    "unique_constraint_schema TEXT NOT NULL,"
+    "unique_constraint_name TEXT,"
+    "match_option TEXT NOT NULL,"
+    "update_rule TEXT NOT NULL,"
+    "delete_rule TEXT NOT NULL,"
+    "referenced_table_schema TEXT NOT NULL,"
+    "referenced_table_name TEXT NOT NULL,"
+    "referenced_column_name TEXT NOT NULL,"
+    "position_in_unique_constraint INTEGER NOT NULL,"
+    "PRIMARY KEY(constraint_schema, table_name, constraint_name, ordinal_position))";
 
 struct mylite_catalog_table_key {
     const char *schema_name;
@@ -300,6 +346,11 @@ int mylite_catalog_initialize(mylite_db *database) {
         return mylite_diagnostics_set_sqlite_error(database);
     }
 
+    rc = sqlite3_exec(database->sqlite, foreign_key_catalog_sql, NULL, NULL, NULL);
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+
     rc = sqlite3_exec(database->sqlite, temporary_table_catalog_sql, NULL, NULL, NULL);
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
@@ -320,6 +371,11 @@ int mylite_catalog_initialize(mylite_db *database) {
     }
 
     rc = sqlite3_exec(database->sqlite, temporary_check_constraint_catalog_sql, NULL, NULL, NULL);
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+
+    rc = sqlite3_exec(database->sqlite, temporary_foreign_key_catalog_sql, NULL, NULL, NULL);
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
     }
@@ -525,6 +581,8 @@ int mylite_catalog_delete_table_rows(
         "DELETE FROM __mylite_index_catalog WHERE table_schema = ? AND table_name = ?";
     static const char delete_checks[] =
         "DELETE FROM __mylite_check_constraint_catalog WHERE table_schema = ? AND table_name = ?";
+    static const char delete_foreign_keys[] =
+        "DELETE FROM __mylite_foreign_key_catalog WHERE table_schema = ? AND table_name = ?";
     static const char delete_columns[] =
         "DELETE FROM __mylite_column_catalog WHERE table_schema = ? AND table_name = ?";
     static const char delete_tables[] =
@@ -540,6 +598,9 @@ int mylite_catalog_delete_table_rows(
     }
     if (status == MYLITE_OK && (flags & MYLITE_CATALOG_DELETE_TABLE_CHECKS) != 0U) {
         status = delete_table_catalog_row(database, delete_checks, &key);
+    }
+    if (status == MYLITE_OK && (flags & MYLITE_CATALOG_DELETE_TABLE_FOREIGN_KEYS) != 0U) {
+        status = delete_table_catalog_row(database, delete_foreign_keys, &key);
     }
     if (status == MYLITE_OK && (flags & MYLITE_CATALOG_DELETE_TABLE_COLUMNS) != 0U) {
         status = delete_table_catalog_row(database, delete_columns, &key);
@@ -560,6 +621,8 @@ int mylite_catalog_delete_temporary_table_rows(
         "DELETE FROM __mylite_temp_index_catalog WHERE table_schema = ? AND table_name = ?";
     static const char delete_checks[] = "DELETE FROM __mylite_temp_check_constraint_catalog "
                                         "WHERE table_schema = ? AND table_name = ?";
+    static const char delete_foreign_keys[] = "DELETE FROM __mylite_temp_foreign_key_catalog "
+                                              "WHERE table_schema = ? AND table_name = ?";
     static const char delete_columns[] =
         "DELETE FROM __mylite_temp_column_catalog WHERE table_schema = ? AND table_name = ?";
     static const char delete_tables[] =
@@ -575,6 +638,9 @@ int mylite_catalog_delete_temporary_table_rows(
     }
     if (status == MYLITE_OK && (flags & MYLITE_CATALOG_DELETE_TABLE_CHECKS) != 0U) {
         status = delete_table_catalog_row(database, delete_checks, &key);
+    }
+    if (status == MYLITE_OK && (flags & MYLITE_CATALOG_DELETE_TABLE_FOREIGN_KEYS) != 0U) {
+        status = delete_table_catalog_row(database, delete_foreign_keys, &key);
     }
     if (status == MYLITE_OK && (flags & MYLITE_CATALOG_DELETE_TABLE_COLUMNS) != 0U) {
         status = delete_table_catalog_row(database, delete_columns, &key);
@@ -850,6 +916,10 @@ const char *mylite_catalog_index_catalog_name(bool temporary) {
 
 const char *mylite_catalog_check_constraint_catalog_name(bool temporary) {
     return temporary ? temporary_check_constraint_catalog_name : check_constraint_catalog_name;
+}
+
+const char *mylite_catalog_foreign_key_catalog_name(bool temporary) {
+    return temporary ? temporary_foreign_key_catalog_name : foreign_key_catalog_name;
 }
 
 static int catalog_table_exists_in(

@@ -28,9 +28,9 @@ from `__mylite_index_catalog`. MyLite must not create a parallel key-column
 catalog for primary and unique metadata. Nonunique indexes are excluded.
 Functional or expression-only key parts are excluded because this information
 schema table reports columns, not expressions. CHECK constraints do not appear
-in `KEY_COLUMN_USAGE`. Foreign-key rows remain deferred until MyLite has
-foreign-key catalogs and runtime semantics; `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS`
-currently exposes only the empty MySQL-compatible system-view shape.
+in `KEY_COLUMN_USAGE`. Table-level `CREATE TABLE ... FOREIGN KEY` definitions
+now produce referenced-table rows from MyLite's foreign-key catalog. ALTER
+foreign keys and referential enforcement remain deferred.
 
 ## Compatibility Sources
 
@@ -68,9 +68,9 @@ For primary-key and unique constraints, MySQL reports:
 - `POSITION_IN_UNIQUE_CONSTRAINT=NULL`
 - referenced-table columns as `NULL`
 
-Foreign-key rows populate the referenced-table columns and may populate
-`POSITION_IN_UNIQUE_CONSTRAINT`, but foreign keys are outside this first slice.
-CHECK constraints do not produce `KEY_COLUMN_USAGE` rows.
+Foreign-key rows populate the referenced-table columns and
+`POSITION_IN_UNIQUE_CONSTRAINT`. CHECK constraints do not produce
+`KEY_COLUMN_USAGE` rows.
 
 The verified MySQL 8.4.9 runtime accepts case-insensitive references such as
 `information_schema.key_column_usage`, mixed-case references, and quoted forms
@@ -198,16 +198,22 @@ Result columns:
 - `TABLE_SCHEMA` and `TABLE_NAME` come from `__mylite_index_catalog`.
 - `COLUMN_NAME` is `__mylite_index_catalog.column_name`.
 - `ORDINAL_POSITION` is `__mylite_index_catalog.seq_in_index`.
-- `POSITION_IN_UNIQUE_CONSTRAINT` is `NULL` for every row in this slice.
+- `POSITION_IN_UNIQUE_CONSTRAINT` is `NULL` for primary-key and unique rows.
+  Foreign-key rows use the one-based referenced unique-key position recorded in
+  the foreign-key catalog.
 - `REFERENCED_TABLE_SCHEMA`, `REFERENCED_TABLE_NAME`, and
-  `REFERENCED_COLUMN_NAME` are `NULL` for every row in this slice.
+  `REFERENCED_COLUMN_NAME` are `NULL` for primary-key and unique rows.
+  Foreign-key rows use the referenced schema, table, and column recorded in
+  the foreign-key catalog.
 - Successful execution is read-only, returns affected rows `-1`, and does not
   mutate diagnostics beyond the existing successful-prepare/step behavior for
   MyLite `SELECT` statements.
 
-Rows are derived from `__mylite_index_catalog` with `non_unique = 0` and
-`column_name IS NOT NULL`. This produces one row per primary-key or unique-key
-column part. Nonunique indexes and expression-only key parts are excluded.
+Primary-key and unique rows are derived from `__mylite_index_catalog` with
+`non_unique = 0` and `column_name IS NOT NULL`. This produces one row per
+primary-key or unique-key column part. Foreign-key rows are derived from
+`__mylite_foreign_key_catalog`, one row per child-column part. Nonunique
+indexes and expression-only key parts are excluded.
 
 Rows are ordered deterministically by:
 
@@ -310,6 +316,10 @@ Runtime coverage:
   is supported by the current runtime
 - `ALTER TABLE ... DROP PRIMARY KEY` removes primary key-column rows when that
   DDL is supported by the current runtime
+- table-level `CREATE TABLE ... FOREIGN KEY` adds child-column rows with
+  referenced schema, table, column, and position-in-unique metadata
+- `foreign_key_checks=0` permits a missing referenced table and still records
+  the referenced table and column names
 - composable projections, `DISTINCT`/`ALL`, `WHERE`, `ORDER BY`, `LIMIT`,
   `COUNT(*)`, aliases, and qualified wildcard forms are covered by the shared
   system-view SELECT path
@@ -318,9 +328,8 @@ Runtime coverage:
 
 - CHECK constraints are omitted. MySQL does not expose CHECK constraints in
   `KEY_COLUMN_USAGE`.
-- Foreign-key rows are omitted until MyLite has foreign-key catalogs,
-  referential actions, enforcement, and catalog-backed
-  `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS` rows.
+- Foreign-key rows currently come from table-level `CREATE TABLE` definitions
+  only. ALTER foreign keys, referential actions, and enforcement are deferred.
 - Expression-only key parts are omitted until MyLite has functional index
   runtime/catalog support; even then `KEY_COLUMN_USAGE` should remain
   column-only.

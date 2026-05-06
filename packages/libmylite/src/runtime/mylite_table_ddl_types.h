@@ -68,6 +68,21 @@ struct mylite_create_table_check {
     bool enforced;
 };
 
+struct mylite_create_table_foreign_key {
+    char *constraint_name;
+    char *supporting_index_name;
+    char **column_names;
+    size_t column_count;
+    char *referenced_schema_name;
+    char *referenced_table_name;
+    char **referenced_column_names;
+    size_t referenced_column_count;
+    char *unique_constraint_name;
+    enum mylite_sql_ast_reference_match match;
+    enum mylite_sql_ast_reference_action on_update;
+    enum mylite_sql_ast_reference_action on_delete;
+};
+
 struct mylite_create_table_plan {
     char *schema_name;
     char *table_name;
@@ -78,8 +93,9 @@ struct mylite_create_table_plan {
     size_t index_count;
     struct mylite_create_table_check *checks;
     size_t check_count;
+    struct mylite_create_table_foreign_key *foreign_keys;
+    size_t foreign_key_count;
     bool temporary;
-    bool has_unsupported_foreign_key;
 };
 
 struct mylite_create_table_column_index_status {

@@ -24,6 +24,10 @@ void mylite_table_ddl_create_table_plan_deinit(struct mylite_create_table_plan *
         mylite_table_ddl_create_table_check_deinit(&plan->checks[index]);
     }
     free(plan->checks);
+    for (size_t index = 0U; index < plan->foreign_key_count; ++index) {
+        mylite_table_ddl_create_table_foreign_key_deinit(&plan->foreign_keys[index]);
+    }
+    free(plan->foreign_keys);
     *plan = (struct mylite_create_table_plan){0};
 }
 
@@ -216,6 +220,29 @@ void mylite_table_ddl_create_table_check_deinit(struct mylite_create_table_check
     free(check->name);
     free(check->clause);
     *check = (struct mylite_create_table_check){0};
+}
+
+void mylite_table_ddl_create_table_foreign_key_deinit(
+    struct mylite_create_table_foreign_key *foreign_key
+) {
+    if (foreign_key == NULL) {
+        return;
+    }
+
+    free(foreign_key->constraint_name);
+    free(foreign_key->supporting_index_name);
+    for (size_t index = 0U; index < foreign_key->column_count; ++index) {
+        free(foreign_key->column_names[index]);
+    }
+    free(foreign_key->column_names);
+    free(foreign_key->referenced_schema_name);
+    free(foreign_key->referenced_table_name);
+    for (size_t index = 0U; index < foreign_key->referenced_column_count; ++index) {
+        free(foreign_key->referenced_column_names[index]);
+    }
+    free(foreign_key->referenced_column_names);
+    free(foreign_key->unique_constraint_name);
+    *foreign_key = (struct mylite_create_table_foreign_key){0};
 }
 
 void mylite_table_ddl_create_table_key_part_deinit(struct mylite_create_table_key_part *part) {

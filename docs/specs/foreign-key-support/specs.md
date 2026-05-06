@@ -116,6 +116,18 @@ runtime slices. Temporary table behavior must be verified separately and
 implemented with explicit MySQL-compatible diagnostics before it is marked
 supported.
 
+The first implemented runtime slice records table-level `CREATE TABLE`
+foreign-key definitions for persistent base tables. It copies the constraint
+shape into the create-table plan, generates MySQL-style unnamed constraint
+names, creates or reuses supporting child indexes, validates the referenced
+unique or primary key when the parent table exists, allows missing referenced
+tables only while `foreign_key_checks=0`, and writes catalog-backed
+`TABLE_CONSTRAINTS`, `KEY_COLUMN_USAGE`, `REFERENTIAL_CONSTRAINTS`, and
+`SHOW CREATE TABLE` output. Temporary-table foreign-key definitions are
+rejected with a deterministic `Cannot add foreign key constraint` diagnostic.
+DML enforcement, referential actions, ALTER ADD/DROP FOREIGN KEY, and
+dependency restrictions remain follow-up slices.
+
 ## DDL Semantics
 
 Table-level `CREATE TABLE ... FOREIGN KEY` should:
@@ -190,4 +202,3 @@ Each completed slice must add runtime tests whose expected behavior was
 verified against MySQL 8.4.9. Tests must cover result rows, result metadata
 where available, diagnostics, affected rows, row side effects, metadata side
 effects, and `foreign_key_checks` interactions.
-

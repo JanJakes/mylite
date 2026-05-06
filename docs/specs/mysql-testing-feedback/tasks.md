@@ -45,7 +45,7 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `information_schema.CHECK_CONSTRAINTS`.
 - [ ] Normalize information-schema write-protection diagnostics to
       MySQL-style access-denied errors.
-- [ ] Align dynamic database-name queries against
+- [x] Align dynamic database-name queries against
       `information_schema.SCHEMATA`, including casing and row counts.
 
 ## DDL grammar and metadata

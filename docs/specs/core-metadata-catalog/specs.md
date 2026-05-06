@@ -212,6 +212,8 @@ Supported query:
 
 ```sql
 SELECT * FROM INFORMATION_SCHEMA.SCHEMATA
+SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA
+  WHERE SCHEMA_NAME = DATABASE()
 ```
 
 Behavior:
@@ -226,6 +228,14 @@ Behavior:
 - Orders rows by schema name using bytewise ordering. MySQL does not guarantee
   semantic ordering for an unqualified query; this deterministic ordering keeps
   MyLite tests stable.
+- Supports composable projections, predicates, aggregates, `IN`, and `ORDER BY`
+  through the general SELECT path. Runtime-verified dynamic schema filters
+  include `SCHEMA_NAME = DATABASE()`, `SCHEMA_NAME = SCHEMA()`, row counts, and
+  unqualified `SCHEMATA` after `USE information_schema`.
+- Schema-name equality comparisons are case-sensitive for binary-collation
+  schema catalog values. A filter such as
+  `SCHEMA_NAME = 'MYLITE_METADATA_CATALOG_DYNAMIC'` returns no row when the
+  stored schema name is lower-case.
 
 ### `INFORMATION_SCHEMA.TABLES`
 
@@ -355,10 +365,7 @@ The following are intentionally out of scope and should return MyLite's normal
 parse or unsupported-statement diagnostic until the relevant SELECT feature
 lands:
 
-- explicit projections such as `SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA`
 - explicit `ALL` / `DISTINCT` modifiers
-- `WHERE`, `ORDER BY`, `LIMIT`, joins, aliases, and expressions over metadata
-  tables
 - unqualified `SELECT * FROM SCHEMATA`
 - metadata tables other than the supported current surfaces
 
@@ -407,6 +414,12 @@ The following observations were verified against `mylite-mysql-849`:
 | `SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA='mylite_metadata_catalog_a'` on an empty created schema | Returns `0`. |
 | `DROP DATABASE mylite_metadata_catalog_a; SELECT COUNT(*) FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME='mylite_metadata_catalog_a'` | Returns `0`. |
 | `SELECT COUNT(*) FROM information_schema.schemata`, `INFORMATION_SCHEMA.schemata`, and backtick-quoted `` `information_schema`.`SCHEMATA` `` | All resolve successfully. |
+| `USE mylite_metadata_catalog_dynamic; SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = DATABASE()` | Returns `mylite_metadata_catalog_dynamic`. |
+| `SELECT COUNT(*) AS c FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = DATABASE()` | Returns `1` for the selected user schema. |
+| `SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME IN (DATABASE(), 'information_schema') ORDER BY SCHEMA_NAME` | Returns `information_schema`, then the selected user schema. |
+| `SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = SCHEMA()` | Returns the same row as `DATABASE()`. |
+| `SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = 'MYLITE_METADATA_CATALOG_DYNAMIC'` | Returns no row for a lower-case schema, matching MySQL's case-sensitive comparison. |
+| `USE information_schema; SELECT SCHEMA_NAME FROM SCHEMATA WHERE SCHEMA_NAME = DATABASE()` | Returns `information_schema`. |
 | `USE information_schema; SELECT * FROM tables` | Resolves `tables` as `information_schema.TABLES` and returns the same system-view row shape and values as a qualified query. |
 | `SELECT ... FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA='information_schema' AND TABLE_NAME IN (...)` | The scoped system views are reported as `SYSTEM VIEW` rows with `ENGINE=NULL`, `VERSION=10`, `TABLE_ROWS=0`, zero size counters, `TABLE_COLLATION=NULL`, and empty comments. |
 | `CREATE TABLE simple_create ...; SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='simple_create'` | The base-table row reports `ENGINE='InnoDB'`, `VERSION=10`, `ROW_FORMAT='Dynamic'`, zero size counters for the current placeholder statistics slice, the next `AUTO_INCREMENT` value when present, the table collation, and the table comment. |
@@ -424,6 +437,9 @@ The following observations were verified against `mylite-mysql-849`:
   - seeded system schema rows include MySQL-observed defaults
   - created schema defaults and encryption are reflected in `SCHEMATA`
   - dropping a schema removes its `SCHEMATA` row
+  - dynamic `SCHEMATA` filters using `DATABASE()` and `SCHEMA()` return the
+    selected schema and MySQL-compatible counts
+  - upper-case schema-name literals do not match lower-case schema catalog rows
   - information schema table resolution is case-insensitive
   - selecting `information_schema` as the default schema lets unqualified
     `tables` resolve to `INFORMATION_SCHEMA.TABLES`

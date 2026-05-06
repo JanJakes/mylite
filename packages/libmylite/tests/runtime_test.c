@@ -1585,6 +1585,15 @@ static int test_core_metadata_catalog(void) {
         "IS_VISIBLE",
         "EXPRESSION",
     };
+    static const char *const schema_name_columns[] = {"SCHEMA_NAME"};
+    static const char *const count_columns[] = {"c"};
+    static const char *const dynamic_schema_values[] = {"mylite_metadata_catalog_dynamic"};
+    static const char *const dynamic_schema_count_values[] = {"1"};
+    static const char *const dynamic_schema_in_values[] = {
+        "information_schema",
+        "mylite_metadata_catalog_dynamic",
+    };
+    static const char *const information_schema_values[] = {"information_schema"};
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -1651,6 +1660,69 @@ static int test_core_metadata_catalog(void) {
     );
     failures += execute_sql(database, "DROP DATABASE mylite_metadata_catalog_a", MYLITE_DONE);
     failures += expect_no_information_schema_schemata_row(database, "mylite_metadata_catalog_a");
+
+    failures +=
+        execute_sql(database, "CREATE DATABASE mylite_metadata_catalog_dynamic", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_metadata_catalog_dynamic", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = DATABASE()",
+        schema_name_columns,
+        1,
+        dynamic_schema_values,
+        1,
+        "information schema schemata database function filter"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = DATABASE()",
+        count_columns,
+        1,
+        dynamic_schema_count_values,
+        1,
+        "information schema schemata database function count"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA "
+        "WHERE SCHEMA_NAME IN (DATABASE(), 'information_schema') ORDER BY SCHEMA_NAME",
+        schema_name_columns,
+        1,
+        dynamic_schema_in_values,
+        2,
+        "information schema schemata database function in filter"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = SCHEMA()",
+        schema_name_columns,
+        1,
+        dynamic_schema_values,
+        1,
+        "information schema schemata schema function filter"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA "
+        "WHERE SCHEMA_NAME = 'MYLITE_METADATA_CATALOG_DYNAMIC'",
+        schema_name_columns,
+        1,
+        dynamic_schema_values,
+        0,
+        "information schema schemata case-sensitive name filter"
+    );
+    failures += execute_sql(database, "USE information_schema", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT SCHEMA_NAME FROM SCHEMATA WHERE SCHEMA_NAME = DATABASE()",
+        schema_name_columns,
+        1,
+        information_schema_values,
+        1,
+        "selected information schema schemata database function filter"
+    );
+    failures += execute_sql(database, "USE mylite_metadata_catalog_dynamic", MYLITE_DONE);
+    failures += execute_sql(database, "DROP DATABASE mylite_metadata_catalog_dynamic", MYLITE_DONE);
 
     failures +=
         prepare_sql(database, "SELECT * FROM information_schema.schemata", MYLITE_OK, &stmt);

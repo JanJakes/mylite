@@ -9,6 +9,7 @@
 #include "mylite_prepared_statements.h"
 #include "mylite_runtime.h"
 #include "mylite_span.h"
+#include "mylite_sqlite_fork.h"
 #include "mylite_transactions.h"
 #include "mylite_user_variables.h"
 #include "mylite_vfs.h"
@@ -476,6 +477,12 @@ static int open_sqlite_database(
     database->connection_id = mylite_embedded_connection_id;
 
     rc = sqlite3_open_v2(filename, &database->sqlite, flags, vfs_name);
+    if (rc != SQLITE_OK) {
+        sqlite3_close(database->sqlite);
+        free(database);
+        return MYLITE_SQLITE_ERROR;
+    }
+    rc = mylite_sqlite_fork_configure(database->sqlite);
     if (rc != SQLITE_OK) {
         sqlite3_close(database->sqlite);
         free(database);

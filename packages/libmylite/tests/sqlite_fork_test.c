@@ -1,5 +1,7 @@
 #include "fork/mylite_sqlite_fork.h"
 
+#include <mylite/mylite.h>
+
 #include "sqlite3.h"
 
 #include <stdio.h>
@@ -11,17 +13,31 @@ struct expected_text_row {
     const char *context;
 };
 
+struct expected_mylite_rows {
+    const char *sql;
+    const char *const *values;
+    int column_count;
+    int row_count;
+    const char *context;
+};
+
 static int test_registered_functions(void);
 
 static int test_mysql_collations(void);
 
 static int test_wordpress_like_crud(void);
 
+static int test_mylite_wordpress_like_crud(void);
+
 static int open_configured_database(sqlite3 **out_database);
 
 static int exec_sql(sqlite3 *database, const char *sql, const char *context);
 
+static int exec_mylite_sql(mylite_db *database, const char *sql, const char *context);
+
 static int expect_text(sqlite3 *database, struct expected_text_row expectation);
+
+static int expect_mylite_rows(mylite_db *database, struct expected_mylite_rows expectation);
 
 static int expect_int64(
     sqlite3 *database,
@@ -41,12 +57,17 @@ static int finish_single_row(sqlite3_stmt *statement, const char *context);
 
 static int expect_sqlite_ok(int rc, sqlite3 *database, const char *context);
 
+static int expect_mylite_ok(int status, mylite_db *database, const char *context);
+
+static int expect_mylite_status(int status, int expected, mylite_db *database, const char *context);
+
 int main(void) {
     int failures = 0;
 
     failures += test_registered_functions();
     failures += test_mysql_collations();
     failures += test_wordpress_like_crud();
+    failures += test_mylite_wordpress_like_crud();
 
     return failures == 0 ? 0 : 1;
 }
@@ -297,6 +318,181 @@ static int test_wordpress_like_crud(void) {
     return failures;
 }
 
+static int test_mylite_wordpress_like_crud(void) {
+    static const char *const post_summary[] = {"3", "1", "3", "4"};
+    static const char *const published_rows[] = {
+        "1",
+        "hello-mylite",
+        "publish",
+        "2",
+        "2",
+        "draft-notes",
+        "publish",
+        "1",
+        "3",
+        "sqlite-fork-plan",
+        "publish",
+        "1",
+    };
+    static const char *const meta_before_truncate[] = {
+        "2",
+        "1:_thumbnail_id=99|3:_wp_page_template=default",
+    };
+    static const char *const meta_after_truncate[] = {"0", "0"};
+    static const char *const meta_after_reinsert[] = {"1", "2", "_restored", "yes"};
+    static const char *const remaining_tables[] = {"1"};
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += expect_mylite_ok(mylite_open_memory(&database), database, "open MyLite fork CRUD");
+    if (failures != 0) {
+        return failures;
+    }
+
+    failures += exec_mylite_sql(
+        database,
+        "CREATE DATABASE mylite_fork_crud CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+        "create MyLite fork CRUD schema"
+    );
+    failures += exec_mylite_sql(database, "USE mylite_fork_crud", "use MyLite fork CRUD schema");
+    failures += exec_mylite_sql(
+        database,
+        "CREATE TABLE wp_posts_like ("
+        "ID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,"
+        "post_author BIGINT UNSIGNED NOT NULL DEFAULT 0,"
+        "post_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "post_title TEXT NOT NULL,"
+        "post_name VARCHAR(200) NOT NULL DEFAULT '',"
+        "post_status VARCHAR(20) NOT NULL DEFAULT 'publish',"
+        "comment_count BIGINT NOT NULL DEFAULT 0,"
+        "PRIMARY KEY (ID),"
+        "KEY post_name (post_name),"
+        "KEY post_status_date (post_status, post_date)"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "create MyLite wp_posts_like"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "CREATE TABLE wp_postmeta_like ("
+        "meta_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,"
+        "post_id BIGINT UNSIGNED NOT NULL DEFAULT 0,"
+        "meta_key VARCHAR(255) DEFAULT NULL,"
+        "meta_value LONGTEXT,"
+        "PRIMARY KEY (meta_id),"
+        "KEY post_id (post_id),"
+        "KEY meta_key (meta_key)"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "create MyLite wp_postmeta_like"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT INTO wp_posts_like "
+        "(post_author, post_date, post_title, post_name, post_status, comment_count) VALUES "
+        "(1, '2026-05-06 09:15:00', 'Hello MyLite', 'hello-mylite', 'publish', 2),"
+        "(2, '2026-05-06 10:00:00', 'Draft Notes', 'draft-notes', 'draft', 0),"
+        "(1, '2026-05-07 08:30:00', 'SQLite Fork Plan', 'sqlite-fork-plan', 'publish', 1)",
+        "insert MyLite posts"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT INTO wp_postmeta_like (post_id, meta_key, meta_value) VALUES "
+        "(1, '_edit_lock', '1714994100:1'),"
+        "(1, '_thumbnail_id', '99'),"
+        "(3, '_wp_page_template', 'default')",
+        "insert MyLite postmeta"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "UPDATE wp_posts_like "
+        "SET post_status = 'publish', comment_count = comment_count + 1 "
+        "WHERE post_name = 'draft-notes'",
+        "publish MyLite draft post"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "DELETE FROM wp_postmeta_like WHERE meta_key = '_edit_lock'",
+        "delete MyLite edit lock"
+    );
+
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT COUNT(*), MIN(ID), MAX(ID), SUM(comment_count) FROM wp_posts_like",
+            .values = post_summary,
+            .column_count = 4,
+            .row_count = 1,
+            .context = "MyLite post summary matches MySQL fixture",
+        }
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT ID, post_name, post_status, comment_count "
+                   "FROM wp_posts_like WHERE post_status = 'publish' ORDER BY ID",
+            .values = published_rows,
+            .column_count = 4,
+            .row_count = 3,
+            .context = "MyLite published rows match MySQL fixture",
+        }
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT COUNT(*), GROUP_CONCAT(CONCAT(post_id, ':', meta_key, '=', "
+                   "meta_value) ORDER BY meta_id SEPARATOR '|') FROM wp_postmeta_like",
+            .values = meta_before_truncate,
+            .column_count = 2,
+            .row_count = 1,
+            .context = "MyLite metadata rows match MySQL fixture before truncate",
+        }
+    );
+
+    failures +=
+        exec_mylite_sql(database, "TRUNCATE TABLE wp_postmeta_like", "truncate MyLite metadata");
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT COUNT(*), COALESCE(MAX(meta_id), 0) FROM wp_postmeta_like",
+            .values = meta_after_truncate,
+            .column_count = 2,
+            .row_count = 1,
+            .context = "MyLite truncate empties metadata table",
+        }
+    );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT INTO wp_postmeta_like (post_id, meta_key, meta_value) "
+        "VALUES (2, '_restored', 'yes')",
+        "insert MyLite metadata after truncate"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT meta_id, post_id, meta_key, meta_value FROM wp_postmeta_like",
+            .values = meta_after_reinsert,
+            .column_count = 4,
+            .row_count = 1,
+            .context = "MyLite truncate resets auto-increment sequence",
+        }
+    );
+    failures += exec_mylite_sql(database, "DROP TABLE wp_postmeta_like", "drop MyLite metadata");
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT COUNT(*) FROM information_schema.tables "
+                   "WHERE table_schema = DATABASE() "
+                   "AND table_name IN ('wp_posts_like', 'wp_postmeta_like')",
+            .values = remaining_tables,
+            .column_count = 1,
+            .row_count = 1,
+            .context = "MyLite remaining tables match MySQL fixture",
+        }
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
 static int open_configured_database(sqlite3 **out_database) {
     sqlite3 *database = NULL;
     int rc = SQLITE_OK;
@@ -328,6 +524,20 @@ static int exec_sql(sqlite3 *database, const char *sql, const char *context) {
     return expect_sqlite_ok(sqlite3_exec(database, sql, NULL, NULL, NULL), database, context);
 }
 
+static int exec_mylite_sql(mylite_db *database, const char *sql, const char *context) {
+    mylite_stmt *statement = NULL;
+    int failures =
+        expect_mylite_ok(mylite_prepare(database, sql, strlen(sql), &statement), database, context);
+
+    if (failures == 0) {
+        failures += expect_mylite_status(mylite_step(statement), MYLITE_DONE, database, context);
+    }
+    if (statement != NULL) {
+        mylite_finalize(statement);
+    }
+    return failures;
+}
+
 static int expect_text(sqlite3 *database, struct expected_text_row expectation) {
     sqlite3_stmt *statement = NULL;
     const unsigned char *actual = NULL;
@@ -353,6 +563,56 @@ static int expect_text(sqlite3 *database, struct expected_text_row expectation) 
     }
 
     failures += finish_single_row(statement, expectation.context);
+    return failures;
+}
+
+static int expect_mylite_rows(mylite_db *database, struct expected_mylite_rows expectation) {
+    mylite_stmt *statement = NULL;
+    int failures = expect_mylite_ok(
+        mylite_prepare(database, expectation.sql, strlen(expectation.sql), &statement),
+        database,
+        expectation.context
+    );
+
+    if (failures != 0) {
+        mylite_finalize(statement);
+        return failures;
+    }
+    for (int row = 0; row < expectation.row_count; ++row) {
+        failures +=
+            expect_mylite_status(mylite_step(statement), MYLITE_ROW, database, expectation.context);
+        if (failures != 0) {
+            break;
+        }
+        for (int column = 0; column < expectation.column_count; ++column) {
+            const char *expected = expectation.values[(row * expectation.column_count) + column];
+            const char *actual = mylite_column_text(statement, column);
+
+            if ((actual == NULL && expected != NULL) || (actual != NULL && expected == NULL) ||
+                (actual != NULL && strcmp(actual, expected) != 0)) {
+                fprintf(
+                    stderr,
+                    "%s: row %d column %d expected \"%s\", got \"%s\"\n",
+                    expectation.context,
+                    row,
+                    column,
+                    expected == NULL ? "(null)" : expected,
+                    actual == NULL ? "(null)" : actual
+                );
+                ++failures;
+            }
+        }
+    }
+    if (failures == 0) {
+        failures += expect_mylite_status(
+            mylite_step(statement),
+            MYLITE_DONE,
+            database,
+            expectation.context
+        );
+    }
+
+    mylite_finalize(statement);
     return failures;
 }
 
@@ -437,5 +697,32 @@ static int expect_sqlite_ok(int rc, sqlite3 *database, const char *context) {
         return 0;
     }
     fprintf(stderr, "%s: sqlite rc=%d: %s\n", context, rc, sqlite3_errmsg(database));
+    return 1;
+}
+
+static int expect_mylite_ok(int status, mylite_db *database, const char *context) {
+    if (status == MYLITE_OK) {
+        return 0;
+    }
+    return expect_mylite_status(status, MYLITE_OK, database, context);
+}
+
+static int expect_mylite_status(
+    int status,
+    int expected,
+    mylite_db *database,
+    const char *context
+) {
+    if (status == expected) {
+        return 0;
+    }
+    fprintf(
+        stderr,
+        "%s: expected mylite status=%s, got %s: %s\n",
+        context,
+        mylite_status_name(expected),
+        mylite_status_name(status),
+        database == NULL ? "(no database)" : mylite_error_message(database)
+    );
     return 1;
 }

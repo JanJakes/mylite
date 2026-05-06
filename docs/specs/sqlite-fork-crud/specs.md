@@ -8,7 +8,8 @@ primitive layer MyLite needs when MySQL compatibility is moved closer to
 SQLite's parser, schema builder, VDBE, constraints, collations, and function
 registry.
 
-The first implementation slice is deliberately narrow:
+The implementation is still experimental, but it now covers two executable
+slices:
 
 - register MyLite's current MySQL collation names directly with SQLite
 - register a few MySQL-compatible scalar functions directly with SQLite
@@ -16,11 +17,19 @@ The first implementation slice is deliberately narrow:
   and resets `sqlite_sequence` for auto-increment tables
 - add a WordPress-like CRUD test using native SQLite tables shaped as the
   intended physical form of MySQL-compatible tables
+- configure these primitives for real MyLite connections
+- emit safer native physical tables for supported MyLite DDL: rowid-backed
+  single-column integer `AUTO_INCREMENT` primary keys, MySQL collation names,
+  physical defaults, and secondary SQLite indexes where prefix semantics do not
+  make a physical index too strict
+- execute the MySQL-runtime-verified WordPress-like CRUD fixture through
+  MyLite's public SQL API
 
-The slice is an executable probe for the fork direction, not a compatibility
-claim for the full MySQL SQL text. The convergence target is that the MySQL
-script in this directory should eventually execute unchanged through the forked
-SQLite parser.
+The current slice proves an end-to-end MyLite path for the fixture, but it is
+not yet a claim that SQLite's own parser accepts the MySQL script unchanged.
+MyLite still parses the MySQL SQL text and lowers it into SQLite operations.
+The convergence target remains that the script in this directory should
+eventually execute unchanged through the forked SQLite parser.
 
 ## Sources
 
@@ -289,16 +298,23 @@ This metadata should be updated by SQLite DDL paths, not a parallel DDL engine.
 ## Initial Implementation Plan
 
 1. Add a fork primitive module that configures SQLite connections with MySQL
-   collation and function names.
+   collation and function names. Implemented.
 2. Add native truncate support over SQLite tables, including `sqlite_sequence`
-   reset.
+   reset. Implemented.
 3. Add the MySQL-verified WordPress-like CRUD fixture and expected result rows.
+   Implemented.
 4. Add a native SQLite-fork test that creates the physical form of the same
-   tables, runs equivalent CRUD, and checks the result rows.
-5. Next, move from equivalent physical SQL to direct MySQL SQL by forking the
+   tables, runs equivalent CRUD, and checks the result rows. Implemented.
+5. Configure real MyLite connections with the fork primitives and make
+   supported `CREATE TABLE` output use native SQLite collations,
+   rowid-backed `AUTO_INCREMENT`, defaults, and physical indexes where safe.
+   Implemented for the first supported subset.
+6. Add a public MyLite SQL fixture test for the WordPress-like CRUD script.
+   Implemented.
+7. Next, move from MyLite-lowered SQL to direct MySQL SQL by forking the
    SQLite grammar for `TRUNCATE TABLE`, MySQL table options, secondary-key
    table elements, and `AUTO_INCREMENT`.
-6. Then move type descriptors into SQLite column metadata and enforce MySQL
+8. Then move type descriptors into SQLite column metadata and enforce MySQL
    conversion/range/length rules in SQLite's insert/update path.
 
 ## Lemon Grammar Direction

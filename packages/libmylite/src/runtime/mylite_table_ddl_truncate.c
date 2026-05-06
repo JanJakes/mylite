@@ -4,6 +4,7 @@
 #include "mylite_diagnostics.h"
 #include "mylite_runtime.h"
 #include "mylite_span.h"
+#include "mylite_sqlite_fork.h"
 #include "mylite_transactions.h"
 #include "sqlite3.h"
 
@@ -166,7 +167,6 @@ static int delete_truncate_table_rows(
     const struct mylite_truncate_table_plan *plan
 ) {
     char *physical_name = mylite_catalog_physical_table_name(plan->schema_name, plan->table_name);
-    char *sql = NULL;
     int rc = SQLITE_OK;
 
     if (physical_name == NULL) {
@@ -174,15 +174,8 @@ static int delete_truncate_table_rows(
         return MYLITE_NOMEM;
     }
 
-    sql = sqlite3_mprintf("DELETE FROM \"%w\"", physical_name);
+    rc = mylite_sqlite_fork_truncate_table(database->sqlite, physical_name);
     free(physical_name);
-    if (sql == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    rc = sqlite3_exec(database->sqlite, sql, NULL, NULL, NULL);
-    sqlite3_free(sql);
     return rc == SQLITE_OK ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 

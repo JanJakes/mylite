@@ -1,5 +1,6 @@
 #include <mylite/mylite.h>
 
+#include "fork/mylite_sqlite_fork.h"
 #include "mylite_file_format.h"
 #include "mylite_internal.h"
 #include "mylite_vfs.h"
@@ -761,6 +762,13 @@ static int expect_result_metadata(
 );
 
 static char *expected_physical_table_name(const char *schema_name, const char *table_name);
+
+static int open_configured_sqlite_payload(
+    const char *path,
+    int flags,
+    sqlite3 **out_sqlite,
+    const char *context
+);
 
 static int expect_sqlite_table_exists(const struct sqlite_table_lookup *lookup);
 
@@ -56145,12 +56153,41 @@ static char *expected_physical_table_name(const char *schema_name, const char *t
     return output;
 }
 
+static int open_configured_sqlite_payload(
+    const char *path,
+    int flags,
+    sqlite3 **out_sqlite,
+    const char *context
+) {
+    sqlite3 *sqlite = NULL;
+    int failures = expect_sqlite_status(
+        sqlite3_open_v2(path, &sqlite, flags, mylite_vfs_name()),
+        SQLITE_OK,
+        context
+    );
+    int rc = SQLITE_OK;
+
+    *out_sqlite = sqlite;
+    if (sqlite == NULL || failures != 0) {
+        return failures + (sqlite == NULL ? 1 : 0);
+    }
+
+    rc = mylite_sqlite_fork_configure(sqlite);
+    if (rc != SQLITE_OK) {
+        failures += expect_sqlite_status(rc, SQLITE_OK, "configure sqlite fork payload");
+        sqlite3_close(sqlite);
+        *out_sqlite = NULL;
+    }
+    return failures;
+}
+
 static int expect_sqlite_table_exists(const struct sqlite_table_lookup *lookup) {
     sqlite3 *sqlite = NULL;
     sqlite3_stmt *stmt = NULL;
-    int failures = expect_sqlite_status(
-        sqlite3_open_v2(lookup->path, &sqlite, SQLITE_OPEN_READONLY, mylite_vfs_name()),
-        SQLITE_OK,
+    int failures = open_configured_sqlite_payload(
+        lookup->path,
+        SQLITE_OPEN_READONLY,
+        &sqlite,
         "open sqlite for physical table check"
     );
     int rc = SQLITE_OK;
@@ -56179,9 +56216,10 @@ static int expect_sqlite_table_exists(const struct sqlite_table_lookup *lookup) 
 static int expect_sqlite_table_missing(const struct sqlite_table_lookup *lookup) {
     sqlite3 *sqlite = NULL;
     sqlite3_stmt *stmt = NULL;
-    int failures = expect_sqlite_status(
-        sqlite3_open_v2(lookup->path, &sqlite, SQLITE_OPEN_READONLY, mylite_vfs_name()),
-        SQLITE_OK,
+    int failures = open_configured_sqlite_payload(
+        lookup->path,
+        SQLITE_OPEN_READONLY,
+        &sqlite,
         "open sqlite for physical table missing check"
     );
     int rc = SQLITE_OK;
@@ -56296,9 +56334,10 @@ static int expect_sqlite_physical_value(const struct sqlite_physical_value_expec
         return 1;
     }
 
-    failures += expect_sqlite_status(
-        sqlite3_open_v2(expected->path, &sqlite, SQLITE_OPEN_READONLY, mylite_vfs_name()),
-        SQLITE_OK,
+    failures += open_configured_sqlite_payload(
+        expected->path,
+        SQLITE_OPEN_READONLY,
+        &sqlite,
         "open sqlite for physical value check"
     );
     if (sqlite == NULL) {
@@ -56308,6 +56347,9 @@ static int expect_sqlite_physical_value(const struct sqlite_physical_value_expec
 
     rc = sqlite3_prepare_v2(sqlite, sql, -1, &stmt, NULL);
     failures += expect_sqlite_status(rc, SQLITE_OK, expected->context);
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "%s: sqlite message: %s\n", expected->context, sqlite3_errmsg(sqlite));
+    }
     if (rc == SQLITE_OK) {
         rc = sqlite3_step(stmt);
         failures += expect_sqlite_status(rc, SQLITE_ROW, expected->context);

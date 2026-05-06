@@ -38,6 +38,7 @@ endif()
 add_library(mylite STATIC
   "${MYLITE_SQL_PARSE_C}"
   src/charset/mylite_charset.c
+  src/fork/mylite_sqlite_fork.c
   src/runtime/mylite_advisory_locks.c
   src/runtime/mylite_connection.c
   src/runtime/mylite_connection_statement.c
@@ -308,6 +309,7 @@ target_include_directories(mylite
   PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/charset"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/fork"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/sql"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/storage"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/types"
@@ -357,6 +359,13 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_test)
 
+  add_executable(mylite_sqlite_fork_test
+    tests/sqlite_fork_test.c
+  )
+  target_link_libraries(mylite_sqlite_fork_test PRIVATE MyLite::mylite MyLite::sqlite)
+  target_include_directories(mylite_sqlite_fork_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+  mylite_configure_c_target(mylite_sqlite_fork_test)
+
   add_executable(mylite_column_type_test
     tests/column_type_test.c
   )
@@ -373,6 +382,7 @@ if(BUILD_TESTING)
   add_test(NAME libmylite.lexer COMMAND mylite_lexer_test)
   add_test(NAME libmylite.parser COMMAND mylite_parser_test)
   add_test(NAME libmylite.runtime COMMAND mylite_runtime_test)
+  add_test(NAME libmylite.sqlite_fork COMMAND mylite_sqlite_fork_test)
   add_test(NAME libmylite.column_type COMMAND mylite_column_type_test)
   add_test(NAME libmylite.version COMMAND mylite_version_test)
 endif()

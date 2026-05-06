@@ -47,13 +47,16 @@ static char *build_create_physical_table_sql(mylite_db *database, const char *ph
                                              const struct mylite_create_table_plan *plan)
 {
     sqlite3_str *sql = sqlite3_str_new(database->sqlite);
+    const char *temporary_keyword = "";
 
     if (sql == NULL) {
         return NULL;
     }
+    if (plan->temporary) {
+        temporary_keyword = "TEMPORARY ";
+    }
 
-    sqlite3_str_appendf(sql, "CREATE %sTABLE \"%w\"(", plan->temporary ? "TEMPORARY " : "",
-                        physical_name);
+    sqlite3_str_appendf(sql, "CREATE %sTABLE \"%w\"(", temporary_keyword, physical_name);
     for (size_t index = 0U; index < plan->column_count; ++index) {
         struct mylite_column_type_descriptor descriptor;
         int status = mylite_table_ddl_describe_create_table_column(

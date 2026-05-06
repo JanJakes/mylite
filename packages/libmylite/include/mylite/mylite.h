@@ -126,6 +126,7 @@ MYLITE_API unsigned int mylite_column_charset_id(const mylite_stmt *stmt, int co
 MYLITE_API int mylite_column_is_nullable(const mylite_stmt *stmt, int column);
 MYLITE_API int64_t mylite_column_int64(const mylite_stmt *stmt, int column);
 MYLITE_API const char *mylite_column_text(const mylite_stmt *stmt, int column);
+MYLITE_API uint64_t mylite_column_bytes(const mylite_stmt *stmt, int column);
 
 #ifdef __cplusplus
 }

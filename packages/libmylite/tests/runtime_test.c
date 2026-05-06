@@ -98,6 +98,7 @@ enum {
     simple_create_statistics_count = 3,
     mysql_warning_no_database = 1046,
     mysql_warning_bad_null = 1048,
+    mysql_warning_table_exists = 1050,
     mysql_warning_ambiguous_column = 1052,
     mysql_warning_unknown_column = 1054,
     mysql_warning_duplicate_entry = 1062,
@@ -6486,7 +6487,9 @@ static int test_hex_bit_literal_execution(void)
     static const char *const bit_padding_columns[] = {"one",   "two",         "three",
                                                       "eight", "nine_length", "nine_hex"};
     static const char *const bit_padding_values[] = {"01", "01", "01", "01", "2", "0001"};
+    static const unsigned char odd_width_bit_literal[] = {0x00U, 0x01U};
     mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
     int failures = 0;
 
     failures +=
@@ -6515,6 +6518,16 @@ static int test_hex_bit_literal_execution(void)
         "HEX(0b000000001) AS nine_hex",
         bit_padding_columns, (int)(sizeof(bit_padding_columns) / sizeof(bit_padding_columns[0])),
         bit_padding_values, 1, "bit literal byte padding");
+    failures += prepare_sql(database, "SELECT 0b000000001 AS odd_bits", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "odd-width bit literal row");
+    failures +=
+        expect_int64((int64_t)mylite_column_bytes(stmt, 0), (int64_t)sizeof(odd_width_bit_literal),
+                     "odd-width bit literal byte length");
+    failures +=
+        expect_bytes((const unsigned char *)mylite_column_text(stmt, 0), odd_width_bit_literal,
+                     sizeof(odd_width_bit_literal), "odd-width bit literal raw bytes");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "odd-width bit literal done");
+    mylite_finalize(stmt);
 
     mylite_close(database);
     return failures;
@@ -20376,10 +20389,20 @@ static int test_temporary_table_execution(void)
     failures += execute_sql(database, "INSERT INTO shadowed VALUES (2,'temp')", MYLITE_DONE);
     failures += expect_select_rows(database, "SELECT id, temp_note FROM shadowed", selected_columns,
                                    2, temp_values, 1, "temporary table shadows base table");
-    failures += execute_sql(database,
+    failures += prepare_sql(database,
                             "CREATE TEMPORARY TABLE IF NOT EXISTS shadowed "
                             "(id INT PRIMARY KEY, ignored INT)",
-                            MYLITE_DONE);
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE,
+                              "temporary if not exists skips existing temporary table");
+    failures += expect_string(mylite_error_message(database), "",
+                              "temporary if not exists leaves no error");
+    failures += expect_int(mylite_warning_count(database), 1,
+                           "temporary if not exists existing warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_table_exists,
+                           "temporary if not exists existing warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += prepare_sql(database,
                             "CREATE TEMPORARY TABLE shadowed "
                             "(id INT PRIMARY KEY, dup INT)",
@@ -20422,8 +20445,24 @@ static int test_temporary_table_execution(void)
     failures += execute_sql(database,
                             "CREATE TEMPORARY TABLE ai_shadow ("
                             "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, note VARCHAR(20)) "
-                            "AUTO_INCREMENT=500",
+                            "ENGINE=InnoDB AUTO_INCREMENT=500 DEFAULT CHARSET=utf8mb4 "
+                            "COLLATE=utf8mb4_bin",
                             MYLITE_DONE);
+    failures += prepare_sql(database,
+                            "CREATE TEMPORARY TABLE IF NOT EXISTS ai_shadow ("
+                            "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, ignored INT) "
+                            "ENGINE=InnoDB AUTO_INCREMENT=900 DEFAULT CHARSET=utf8mb4",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE,
+                              "temporary if not exists skips existing table with options");
+    failures += expect_string(mylite_error_message(database), "",
+                              "temporary if not exists with options leaves no error");
+    failures += expect_int(mylite_warning_count(database), 1,
+                           "temporary if not exists with options warning count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_table_exists,
+                           "temporary if not exists with options warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += execute_sql(database, "INSERT INTO ai_shadow (note) VALUES ('temp')", MYLITE_DONE);
     failures +=
         expect_select_rows(database, "SELECT id, note FROM ai_shadow", ai_columns, 2,
@@ -29878,6 +29917,9 @@ static int test_update_single_table_execution(void)
     static const char *const named_limit_order_values[] = {
         "1", "ordered", "2", "two", "3", "three",
     };
+    static const char *const named_limit_qualified_order_values[] = {
+        "1", "qualified", "2", "two", "3", "three",
+    };
     static const char *const scalar_subquery_values[] = {"scalar"};
     static const char *const count_columns[] = {"COUNT(*)"};
     static const char *const one_count[] = {"1"};
@@ -30043,6 +30085,21 @@ static int test_update_single_table_execution(void)
     failures += expect_select_rows(database, "SELECT id, value FROM update_limit_named ORDER BY id",
                                    named_limit_columns, 2, named_limit_order_values, 3,
                                    "update order by keyword-named column limit values");
+    failures += prepare_sql(database,
+                            "UPDATE update_limit_named SET value = 'qualified' "
+                            "WHERE name = 'one' ORDER BY update_limit_named.name LIMIT 1",
+                            MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE,
+                              "update qualified order by keyword-named column limit");
+    failures += expect_int64(mylite_affected_rows(stmt), 1,
+                             "update qualified order by keyword-named column limit affected");
+    failures += expect_string(mylite_error_message(database), "",
+                              "update qualified order by limit leaves no error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(database, "SELECT id, value FROM update_limit_named ORDER BY id",
+                                   named_limit_columns, 2, named_limit_qualified_order_values, 3,
+                                   "update qualified order by keyword-named column limit values");
     failures += prepare_sql(database, "UPDATE update_limit_named SET value = 'plain-limit' LIMIT 1",
                             MYLITE_OK, &stmt);
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "update limit without order");

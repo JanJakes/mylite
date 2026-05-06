@@ -19,14 +19,17 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
+
+static const mylite_stmt *mylite_statement_result_stmt(const mylite_stmt *stmt);
+static uint64_t expression_value_column_bytes(const struct mylite_expression_value *value,
+                                              const char *text);
 
 int64_t mylite_affected_rows(const mylite_stmt *stmt)
 {
+    stmt = mylite_statement_result_stmt(stmt);
     if (stmt == NULL) {
         return -1;
-    }
-    if (stmt->kind == MYLITE_STMT_EXECUTE_PREPARED && stmt->prepared_execute_stmt != NULL) {
-        return mylite_affected_rows(stmt->prepared_execute_stmt);
     }
 
     return stmt->affected_rows;
@@ -242,10 +245,7 @@ void mylite_finalize(mylite_stmt *stmt)
 
 int64_t mylite_column_int64(const mylite_stmt *stmt, int column)
 {
-    if (stmt != NULL && stmt->kind == MYLITE_STMT_EXECUTE_PREPARED &&
-        stmt->prepared_execute_stmt != NULL) {
-        return mylite_column_int64(stmt->prepared_execute_stmt, column);
-    }
+    stmt = mylite_statement_result_stmt(stmt);
 
     const struct mylite_expression_value *value =
         mylite_statement_table_select_current_output_value(stmt, column);
@@ -273,11 +273,7 @@ int64_t mylite_column_int64(const mylite_stmt *stmt, int column)
 
 const char *mylite_column_text(const mylite_stmt *stmt, int column)
 {
-    if (stmt != NULL && stmt->kind == MYLITE_STMT_EXECUTE_PREPARED &&
-        stmt->prepared_execute_stmt != NULL) {
-        return mylite_column_text(stmt->prepared_execute_stmt, column);
-    }
-
+    stmt = mylite_statement_result_stmt(stmt);
     if (stmt != NULL &&
         (stmt->kind == MYLITE_STMT_TABLE_SELECT || stmt->kind == MYLITE_STMT_UNION_QUERY ||
          stmt->kind == MYLITE_STMT_VALUES_QUERY) &&
@@ -300,6 +296,35 @@ const char *mylite_column_text(const mylite_stmt *stmt, int column)
     }
 
     return (const char *)sqlite3_column_text(stmt->sqlite_stmt, column);
+}
+
+uint64_t mylite_column_bytes(const mylite_stmt *stmt, int column)
+{
+    const struct mylite_expression_value *value = NULL;
+
+    stmt = mylite_statement_result_stmt(stmt);
+    value = mylite_statement_table_select_current_output_value(stmt, column);
+    if (value != NULL) {
+        return expression_value_column_bytes(
+            value, mylite_statement_table_select_current_output_text(stmt, column));
+    }
+    if (stmt != NULL && stmt->sqlite_stmt != NULL && stmt->kind == MYLITE_STMT_TABLE_SELECT &&
+        column >= 0 && (size_t)column < stmt->select_plan.output_count) {
+        size_t physical_column = stmt->select_plan.outputs[column].column_index;
+
+        return (uint64_t)sqlite3_column_bytes(stmt->sqlite_stmt, (int)physical_column);
+    }
+    if (stmt == NULL || stmt->sqlite_stmt == NULL || column < 0 ||
+        column >= sqlite3_column_count(stmt->sqlite_stmt)) {
+        if (stmt != NULL && stmt->kind == MYLITE_STMT_SCALAR_SELECT && column >= 0 &&
+            (size_t)column < stmt->scalar_result.value_count) {
+            return expression_value_column_bytes(&stmt->scalar_result.values[column],
+                                                 stmt->scalar_result.texts[column]);
+        }
+        return 0U;
+    }
+
+    return (uint64_t)sqlite3_column_bytes(stmt->sqlite_stmt, column);
 }
 
 const struct mylite_expression_value *
@@ -325,6 +350,29 @@ const char *mylite_statement_table_select_current_output_text(const mylite_stmt 
         return NULL;
     }
     return stmt->select_result.current_texts[column];
+}
+
+static const mylite_stmt *mylite_statement_result_stmt(const mylite_stmt *stmt)
+{
+    const mylite_stmt *result = stmt;
+
+    while (result != NULL && result->kind == MYLITE_STMT_EXECUTE_PREPARED &&
+           result->prepared_execute_stmt != NULL) {
+        result = result->prepared_execute_stmt;
+    }
+    return result;
+}
+
+static uint64_t expression_value_column_bytes(const struct mylite_expression_value *value,
+                                              const char *text)
+{
+    if (value == NULL || value->kind == MYLITE_EXPRESSION_VALUE_NULL) {
+        return 0U;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+        return value->text_length;
+    }
+    return text == NULL ? 0U : (uint64_t)strlen(text);
 }
 
 void mylite_statement_record_row_count(mylite_stmt *stmt)

@@ -7,6 +7,7 @@
 #include "mylite_table_ddl.h"
 #include "mylite_table_ddl_create_options.h"
 #include "mylite_table_ddl_plan_lookup.h"
+#include "sqlite3.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -15,6 +16,7 @@ static bool validate_create_table_column_names(mylite_db *database,
                                                const struct mylite_create_table_plan *plan);
 static bool validate_create_table_indexes(mylite_db *database,
                                           const struct mylite_create_table_plan *plan);
+static int append_create_table_exists_note(mylite_db *database, const char *table_name);
 static void apply_create_table_primary_key_nullability(struct mylite_create_table_plan *plan);
 static bool create_table_index_name_exists(const struct mylite_create_table_plan *plan,
                                            const char *name, size_t before_index);
@@ -56,14 +58,8 @@ int mylite_table_ddl_validate_create_table_plan(mylite_db *database, const char 
     }
     if (exists) {
         if (if_not_exists) {
-            int note_status = mylite_diagnostics_set_error_message_parts(
-                database, "Table '", plan->table_name, "' already exists");
+            int note_status = append_create_table_exists_note(database, plan->table_name);
 
-            if (note_status == MYLITE_NOMEM) {
-                return MYLITE_NOMEM;
-            }
-            note_status = mylite_diagnostics_append_note(
-                database, MYLITE_MYSQL_ER_TABLE_EXISTS_ERROR, mylite_error_message(database));
             if (note_status == MYLITE_OK) {
                 *out_skip_create = true;
             }
@@ -151,6 +147,21 @@ static bool validate_create_table_indexes(mylite_db *database,
         }
     }
     return true;
+}
+
+static int append_create_table_exists_note(mylite_db *database, const char *table_name)
+{
+    char *message = sqlite3_mprintf("Table '%q' already exists", table_name);
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    status = mylite_diagnostics_append_note(database, MYLITE_MYSQL_ER_TABLE_EXISTS_ERROR, message);
+    sqlite3_free(message);
+    return status;
 }
 
 static void apply_create_table_primary_key_nullability(struct mylite_create_table_plan *plan)

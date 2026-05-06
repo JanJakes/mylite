@@ -76,6 +76,8 @@ The evaluator:
 - packs bit digits into bytes after calculating the required left padding
 - returns a `MYLITE_EXPRESSION_VALUE_TEXT` with an explicit byte length so
   embedded NUL bytes survive nested functions such as `HEX()` and `LENGTH()`
+- exposes the byte length through `mylite_column_bytes()` so clients can read
+  binary strings that begin with `0x00`
 
 No storage or file-format changes are required.
 

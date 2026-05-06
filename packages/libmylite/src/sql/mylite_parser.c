@@ -7666,6 +7666,7 @@ static bool lookup_keyword_parser_token(
         {"HOUR_SECOND", MYLITE_SQL_PARSE_HOUR_SECOND},
         {"IF", MYLITE_SQL_PARSE_IF},
         {"IGNORE", MYLITE_SQL_PARSE_IGNORE},
+        {"IMMEDIATE", MYLITE_SQL_PARSE_IMMEDIATE},
         {"IMPORT", MYLITE_SQL_PARSE_IMPORT},
         {"IN", MYLITE_SQL_PARSE_IN},
         {"INOUT", MYLITE_SQL_PARSE_INOUT},

@@ -16,6 +16,7 @@ int mylite_transaction_begin_explicit(
     enum mylite_transaction_access_mode access_mode,
     bool consistent_snapshot
 );
+int mylite_transaction_begin_explicit_immediate(mylite_db *database);
 int mylite_transaction_commit_explicit(mylite_db *database);
 int mylite_transaction_rollback_explicit(mylite_db *database);
 int mylite_transaction_begin_storage(mylite_db *database);

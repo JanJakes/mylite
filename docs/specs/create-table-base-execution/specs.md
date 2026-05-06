@@ -26,6 +26,8 @@ In scope:
   duplicate tables, empty table bodies, duplicate column names, duplicate
   primary keys, duplicate explicit index names, and unknown indexed columns
 - atomic DDL side effects
+- MySQL-compatible implicit commit before non-temporary `CREATE TABLE` inside
+  an explicit transaction
 
 Out of scope:
 
@@ -34,6 +36,7 @@ Out of scope:
 - standalone `CREATE INDEX`
 - `CREATE TEMPORARY TABLE`, `CREATE TABLE ... LIKE`, and
   `CREATE TABLE ... SELECT`
+- temporary-table transaction exceptions
 - full engine-specific validation, prefix-length suitability, functional key
   parts, generated columns, references, checks, partitions, and unsupported
   table options
@@ -221,6 +224,10 @@ Storage:
   affinities are selected from the current MyLite type descriptor domain:
   integer/boolean as `INTEGER`, approximate numeric as `REAL`, exact numeric as
   `NUMERIC`, binary/blob as `BLOB`, and character/temporal as `TEXT`.
+- For non-temporary tables, `CREATE TABLE` commits an active explicit
+  transaction before validation and execution. This matches MySQL's
+  implicit-commit boundary: later `ROLLBACK` does not undo earlier work, the
+  created table, or later autocommit writes.
 - Physical SQLite defaults, constraints, and indexes are deferred until write
   execution semantics can enforce them with MySQL-compatible conversions and
   diagnostics. Metadata rows still reflect the supported definitions.

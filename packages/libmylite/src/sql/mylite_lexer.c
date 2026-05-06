@@ -541,6 +541,7 @@ static const struct mylite_keyword_entry mylite_keyword_catalog[] = {
     {"IF", MYLITE_SQL_KEYWORD_RESERVED},
     {"IGNORE", MYLITE_SQL_KEYWORD_RESERVED},
     {"IGNORE_SERVER_IDS", 0U},
+    {"IMMEDIATE", 0U},
     {"IMPORT", MYLITE_SQL_KEYWORD_RESTRICTED_LABEL},
     {"IN", MYLITE_SQL_KEYWORD_RESERVED},
     {"INACTIVE", 0U},

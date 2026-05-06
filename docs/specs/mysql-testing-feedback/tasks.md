@@ -1,0 +1,112 @@
+# MySQL testing feedback task list
+
+This task list tracks the reported compatibility feedback as implementation
+work items. Expected behavior must be verified against the `mylite-mysql-849`
+MySQL 8.4.9 runtime before each item is marked complete.
+
+## Transaction and locking
+
+- [x] Implement non-temporary DDL implicit-commit behavior inside explicit
+      transactions, starting with `START TRANSACTION; CREATE TABLE ...`.
+- [x] Support MyLite file-backed lock probes that use SQLite-style
+      `BEGIN IMMEDIATE` without treating this as a MySQL SQL surface.
+
+## Information schema and SHOW metadata
+
+- [ ] Align `SELECT * FROM information_schema.TABLES` metadata with MySQL for
+      row format, size fields, timestamps, and placeholder values.
+- [ ] Align `USE information_schema; SELECT * FROM tables` with the same
+      MySQL-compatible metadata rows.
+- [ ] Verify and complete `SHOW DATABASES` and `SHOW TABLE SCHEMAS` parser and
+      runtime coverage.
+- [ ] Align `SHOW TABLE STATUS` values, including row counts, data length,
+      timestamps, and `AUTO_INCREMENT`.
+- [ ] Verify and complete `SHOW TABLE STATUS WHERE ...` filtering.
+- [ ] Align `CREATE TABLE ... AUTO_INCREMENT=100` metadata and status
+      reporting with MySQL next-value expectations.
+- [ ] Align `SHOW CREATE TABLE` formatting and metadata, including index
+      spacing, text-column defaults, comments, and `USING BTREE`.
+- [ ] Align `SHOW CREATE TABLE missing_table` diagnostics with MySQL.
+- [ ] Verify and complete `DESCRIBE` / `SHOW COLUMNS` for generated schemas.
+- [ ] Verify and complete `SHOW INDEX` parsing and metadata, including
+      cardinality placeholders where MySQL reports `0`.
+- [ ] Align `information_schema.TABLE_CONSTRAINTS` ordering and content with
+      MySQL.
+- [ ] Complete check-constraint metadata needed by
+      `information_schema.CHECK_CONSTRAINTS`.
+- [ ] Normalize information-schema write-protection diagnostics to
+      MySQL-style access-denied errors.
+- [ ] Align dynamic database-name queries against
+      `information_schema.SCHEMATA`, including casing and row counts.
+
+## DDL grammar and metadata
+
+- [ ] Support `ALTER TABLE ... AUTO_INCREMENT=50`.
+- [ ] Support `CREATE TEMPORARY TABLE ... AUTO_INCREMENT=...`.
+- [ ] Make `CREATE TABLE IF NOT EXISTS t ...` a MySQL-compatible no-op when
+      `t` exists.
+- [ ] Make `CREATE TEMPORARY TABLE IF NOT EXISTS t ...` a MySQL-compatible
+      no-op when the temporary `t` exists.
+- [ ] Support or intentionally diagnose `CREATE FULLTEXT INDEX`.
+- [ ] Support or intentionally diagnose `ALTER TABLE ... ADD FULLTEXT INDEX`.
+- [ ] Support or intentionally diagnose `CREATE SPATIAL INDEX`.
+- [ ] Complete `CREATE INDEX` forms with ordering, comments, and complex index
+      options.
+- [ ] Verify and complete `DROP INDEX ...`.
+- [ ] Complete complex `ALTER TABLE ... MODIFY/CHANGE COLUMN` forms,
+      preservation behavior, and affected rows.
+- [ ] Support or intentionally diagnose `ALTER TABLE ... ADD/DROP CHECK`.
+- [ ] Complete `CREATE TABLE ... CHECK (...)` syntax forms.
+- [ ] Complete inline and table-level foreign-key DDL syntax coverage.
+- [ ] Support or intentionally diagnose `ALTER TABLE ... ADD/DROP FOREIGN KEY`.
+
+## DML
+
+- [ ] Verify and complete `UPDATE ... WHERE ... ORDER BY ... LIMIT`.
+- [ ] Fix joined `UPDATE ... JOIN ... ON ...` name resolution such as `t1.id`.
+- [ ] Complete more complex joined update forms.
+- [ ] Support `INSERT ... SELECT FROM DUAL`.
+- [ ] Verify and complete `INSERT ... SET ...` defaults and generated values.
+- [ ] Verify and complete `INSERT` without `INTO`.
+- [ ] Complete complex insert value expressions.
+- [ ] Align `ON DUPLICATE KEY UPDATE` affected-row semantics.
+- [ ] Align composite primary-key duplicate handling.
+- [ ] Make `FOUND_ROWS()` return `0` without prior `SQL_CALC_FOUND_ROWS`.
+
+## Variables and version reporting
+
+- [ ] Support `SELECT @@gtid_purged`, `@@log_bin`, and
+      `@@log_bin_trust_function_creators` with embedded-compatible values.
+- [ ] Complete additional `SET` syntaxes for session variables, booleans,
+      keywords, and dump-style backup/restore scripts.
+- [ ] Decide and document whether `SELECT VERSION()` / `@@version` should
+      report the MySQL compatibility target (`8.4.9`) or MyLite's own version,
+      then align tests and docs.
+
+## Expressions, literals, casts, and temporal coercion
+
+- [ ] Align `NO_BACKSLASH_ESCAPES` string and pattern escaping, including
+      `\0` and pattern matching.
+- [ ] Fix binary literal evaluation such as `SELECT 0b000000001`.
+- [ ] Preserve string values containing null bytes instead of truncating at
+      `\0`.
+- [ ] Make `FROM_BASE64(TO_BASE64('binary\\0data'))` preserve binary null
+      bytes.
+- [ ] Align invalid and zero-date coercion/rejection with MySQL in strict and
+      non-strict modes.
+- [ ] Align non-strict `INSERT`/`UPDATE` behavior for missing and `NULL`
+      `NOT NULL` values.
+- [ ] Align numeric/string casts in strict and non-strict modes.
+- [ ] Complete `CAST(...)` and `CONVERT(...)` syntax, including
+      `CONVERT ... USING utf8`.
+- [ ] Complete `SELECT DATE(...)` and date-function predicates.
+- [ ] Align ambiguous-name handling in `GROUP BY`, `HAVING`, and `ORDER BY`.
+- [ ] Align literal expression column labels, such as `SELECT 'abc'`.
+- [ ] Complete result column metadata for expressions that currently report no
+      metadata.
+
+## Test harness classification
+
+- [ ] Classify SQLite-driver-internal probes that depend on `sqlite_master`,
+      PRAGMA-like assumptions, or SQLite helper methods as internal-assumption
+      tests rather than direct MySQL API gaps.

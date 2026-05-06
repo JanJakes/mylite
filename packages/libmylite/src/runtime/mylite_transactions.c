@@ -36,6 +36,19 @@ int mylite_transaction_begin_explicit(
     return MYLITE_OK;
 }
 
+int mylite_transaction_begin_explicit_immediate(mylite_db *database) {
+    int rc = sqlite3_exec(database->sqlite, "BEGIN IMMEDIATE", NULL, NULL, NULL);
+
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+
+    database->transaction_active = true;
+    database->transaction_access_mode = MYLITE_TRANSACTION_ACCESS_READ_WRITE;
+    database->transaction_consistent_snapshot = false;
+    return MYLITE_OK;
+}
+
 int mylite_transaction_commit_explicit(mylite_db *database) {
     int status = mylite_transaction_commit_storage(database);
 
@@ -78,6 +91,11 @@ int mylite_transaction_copy_statement(
     stmt->transaction.access_mode = MYLITE_TRANSACTION_ACCESS_READ_WRITE;
     stmt->transaction.completion_chain = MYLITE_TRANSACTION_COMPLETION_CHAIN_DEFAULT;
     stmt->transaction.completion_release = MYLITE_TRANSACTION_COMPLETION_RELEASE_DEFAULT;
+
+    if (statement->kind == MYLITE_SQL_AST_BEGIN_TRANSACTION_STATEMENT) {
+        stmt->transaction.begin_immediate = statement->begin_transaction_immediate;
+        return MYLITE_OK;
+    }
 
     if (statement->kind == MYLITE_SQL_AST_START_TRANSACTION_STATEMENT) {
         characteristics = mylite_ast_child_at(statement, 0U);
@@ -250,11 +268,13 @@ static int execute_begin_transaction_statement(mylite_stmt *stmt) {
         }
     }
 
-    status = mylite_transaction_begin_explicit(
-        stmt->database,
-        MYLITE_TRANSACTION_ACCESS_READ_WRITE,
-        false
-    );
+    status = stmt->transaction.begin_immediate
+                 ? mylite_transaction_begin_explicit_immediate(stmt->database)
+                 : mylite_transaction_begin_explicit(
+                       stmt->database,
+                       MYLITE_TRANSACTION_ACCESS_READ_WRITE,
+                       false
+                   );
     if (status != MYLITE_OK) {
         stmt->affected_rows = -1;
         return status;

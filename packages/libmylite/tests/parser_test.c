@@ -7374,6 +7374,19 @@ static int test_transaction_statement_syntax(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("BEGIN IMMEDIATE", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_BEGIN_TRANSACTION_STATEMENT,
+        "begin immediate transaction"
+    );
+    if (statement != NULL && !statement->begin_transaction_immediate) {
+        fprintf(stderr, "begin immediate transaction flag was not set\n");
+        failures = 1;
+    }
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql(
         "COMMIT AND CHAIN; COMMIT AND CHAIN NO RELEASE; "
         "COMMIT AND NO CHAIN RELEASE; COMMIT RELEASE; COMMIT NO RELEASE; "

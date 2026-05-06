@@ -518,6 +518,8 @@ static int test_delete_multi_table_execution(void);
 
 static int test_transaction_statements_execution(void);
 
+static int test_file_backed_lock_probe_execution(void);
+
 static int test_savepoint_execution(void);
 
 static int test_parse_error(void);
@@ -956,6 +958,7 @@ int main(void) {
     failures += test_delete_single_table_execution();
     failures += test_delete_multi_table_execution();
     failures += test_transaction_statements_execution();
+    failures += test_file_backed_lock_probe_execution();
     failures += test_savepoint_execution();
     failures += test_parse_error();
 
@@ -54280,6 +54283,45 @@ static int test_transaction_statements_execution(void) {
         );
     }
 
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE tx_ddl (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx_ddl VALUES (1)", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_row_count(
+        database,
+        "SELECT id FROM tx_ddl WHERE id = 1",
+        1,
+        "create table commits explicit transaction"
+    );
+
+    failures +=
+        execute_sql(database, "CREATE TABLE tx_ddl_existing (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx_ddl_existing VALUES (1)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE IF NOT EXISTS tx_ddl_existing (id INT PRIMARY KEY)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_row_count(
+        database,
+        "SELECT id FROM tx_ddl_existing WHERE id = 1",
+        1,
+        "create table if not exists commits explicit transaction"
+    );
+
+    failures += execute_sql(database, "START TRANSACTION READ ONLY", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "CREATE TABLE tx_read_only_ddl (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_row_count(
+        database,
+        "SELECT id FROM tx_read_only_ddl",
+        0,
+        "create table read only transaction leaves table"
+    );
+
     failures += execute_sql(database, "START TRANSACTION READ WRITE", MYLITE_DONE);
     failures += execute_sql(database, "INSERT INTO tx VALUES (14, 140)", MYLITE_DONE);
     failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
@@ -54362,6 +54404,48 @@ static int test_transaction_statements_execution(void) {
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_file_backed_lock_probe_execution(void) {
+    const char *path = MYLITE_RUNTIME_TEST_FILE_PATH;
+    mylite_db *locker = NULL;
+    mylite_db *reader = NULL;
+    int failures = 0;
+
+    remove_runtime_test_files();
+    failures += expect_status(mylite_open(path, &locker), MYLITE_OK, "open lock probe locker");
+    failures += execute_sql(locker, "CREATE DATABASE lock_probe", MYLITE_DONE);
+    failures += execute_sql(locker, "USE lock_probe", MYLITE_DONE);
+    failures += execute_sql(locker, "CREATE TABLE t (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(locker, "INSERT INTO t VALUES (1)", MYLITE_DONE);
+    failures += expect_status(mylite_open(path, &reader), MYLITE_OK, "open lock probe reader");
+    failures += execute_sql(reader, "USE lock_probe", MYLITE_DONE);
+
+    failures += execute_sql(locker, "BEGIN IMMEDIATE", MYLITE_DONE);
+    failures += expect_select_row_count(
+        reader,
+        "SELECT id FROM t",
+        1,
+        "select under begin immediate lock probe"
+    );
+    failures += expect_select_row_count(
+        reader,
+        "SHOW TABLES",
+        1,
+        "show tables under begin immediate lock probe"
+    );
+    failures += expect_select_row_count(
+        reader,
+        "DESCRIBE t",
+        1,
+        "describe under begin immediate lock probe"
+    );
+    failures += execute_sql(locker, "ROLLBACK", MYLITE_DONE);
+
+    mylite_close(reader);
+    mylite_close(locker);
+    remove_runtime_test_files();
     return failures;
 }
 

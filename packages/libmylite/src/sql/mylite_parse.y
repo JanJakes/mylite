@@ -172,7 +172,7 @@ static void mylite_sql_parser_stack_free(void *pointer, void *context)
     CONSISTENT CONSTRAINT_CATALOG CONSTRAINT_NAME CONSTRAINT_SCHEMA CONTAINS COUNT CURRENT
     CURSOR_NAME DATA DATE DATETIME DATE_ADD DATE_SUB DAY DEFINER DISABLE DISK DO DYNAMIC ENABLE ENDS
     ENGINE ENGINES ENGINE_ATTRIBUTE ENCRYPTION ERRORS EVENT EVERY EXTRACT FIRST FIXED FOLLOWING
-    FOLLOWS HASH HOUR INSTANT
+    FOLLOWS HASH HOUR IMMEDIATE INSTANT
     INVISIBLE INVOKER KEY_BLOCK_SIZE LANGUAGE MEMORY MESSAGE_TEXT MINUTE MODIFY MONTH MYSQL_ERRNO
     NCHAR NO NULLS NVARCHAR OFFSET ONLY POSITION PRECEDES PRECEDING PRESERVE QUARTER REPLICA
     RESPECT RETURNS ROLLBACK SAVEPOINT SCHEDULE SCHEMA_NAME SECOND SECONDARY_ENGINE_ATTRIBUTE
@@ -1265,6 +1265,11 @@ transaction_characteristic(A) ::= WITH(T) CONSISTENT SNAPSHOT(S). {
 begin_transaction_statement(A) ::= BEGIN(T) opt_work(W). {
     A = mylite_sql_parser_make_begin_transaction_statement(
         state, (struct mylite_sql_parser_statement_tokens){.start = T, .end = W});
+}
+begin_transaction_statement(A) ::= BEGIN(T) IMMEDIATE(I). {
+    A = mylite_sql_parser_make_begin_transaction_statement(
+        state, (struct mylite_sql_parser_statement_tokens){.start = T, .end = I});
+    mylite_sql_ast_node_set_begin_transaction_immediate(A);
 }
 
 commit_statement(A) ::= COMMIT(T) opt_work(W) opt_transaction_completion(C). {

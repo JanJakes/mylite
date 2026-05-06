@@ -18,10 +18,10 @@ statements for ordinary SQL execution:
   and `transaction_read_only` session variables
 
 Task 21's parser, AST, runtime state, DML transaction atomicity, read-only
-write rejection, chaining, no-chain, release, affected-row behavior, and C API
-tests are implemented for the subset described here. Full DDL implicit-commit
-retrofits and direct transaction system variables remain deferred as documented
-below.
+write rejection, chaining, no-chain, release, affected-row behavior, the first
+`CREATE TABLE` implicit-commit retrofit, and C API tests are implemented for
+the subset described here. Remaining DDL implicit-commit retrofits and direct
+transaction system variables remain deferred as documented below.
 
 Out of scope for Task 21:
 
@@ -276,10 +276,12 @@ ROLLBACK;
 
 The inserted row and the created table both survived the later rollback.
 
-Task 21 should define the state model and helper APIs needed for implicit
-commit, but exact DDL retrofits can be phased into the DDL tasks. Until that
-retrofit lands, the compatibility matrix must continue to mark implicit commit
-boundaries as incomplete.
+MyLite now applies this behavior to non-temporary `CREATE TABLE`: an active
+explicit transaction is committed before validation and execution, the DDL runs
+in its own statement transaction, and no explicit transaction remains active
+afterward. Remaining DDL statements still need the same retrofit, so the
+compatibility matrix continues to mark implicit commit boundaries as
+incomplete.
 
 ### Diagnostics, Affected Rows, And Metadata
 
@@ -361,6 +363,13 @@ write lock earlier than MySQL's InnoDB behavior and can make read-only or
 read-mostly transactions less compatible. Writes can upgrade the SQLite
 transaction when needed, while MyLite enforces MySQL access-mode rules before
 executing a write.
+
+MyLite additionally accepts top-level `BEGIN IMMEDIATE` as a narrow
+file-backed lock-probe extension for internal testing. MySQL 8.4.9 rejects this
+syntax, so this extension must not be counted as MySQL SQL compatibility. It
+starts a read/write explicit transaction using SQLite's immediate mode so a
+pre-opened second handle can verify read surfaces such as `SELECT`,
+`SHOW TABLES`, and `DESCRIBE` while the first handle owns the write lock.
 
 ### Parser And AST Needs
 
@@ -559,6 +568,7 @@ Accepted forms:
 | `START TRANSACTION WITH CONSISTENT SNAPSHOT, WITH CONSISTENT SNAPSHOT` | accepted; analyzer normalizes duplicate snapshot |
 | `BEGIN` | begin-transaction AST |
 | `BEGIN WORK` | begin-transaction AST |
+| `BEGIN IMMEDIATE` | MyLite lock-probe extension AST, not MySQL syntax |
 | `COMMIT` | commit AST, default completion |
 | `COMMIT WORK` | commit AST, default completion |
 | `COMMIT AND CHAIN` | commit AST, chain completion |
@@ -622,6 +632,8 @@ Required Task 21 runtime cases:
 | `START TRANSACTION WITH CONSISTENT SNAPSHOT` under default isolation | succeeds without warning |
 | `SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED; START TRANSACTION WITH CONSISTENT SNAPSHOT` | warning 138 once isolation state exists |
 | `START TRANSACTION; INSERT; CREATE TABLE; ROLLBACK` | inserted row and created table survive due implicit commit |
+| `START TRANSACTION READ ONLY; CREATE TABLE; ROLLBACK` | created table survives due implicit commit |
+| `BEGIN IMMEDIATE` on a file-backed handle while another handle reads | pre-opened reader can still run `SELECT`, `SHOW TABLES`, and `DESCRIBE` |
 | `COMMIT RELEASE` followed by another statement in protocol tests | connection is released after OK response |
 | `ROLLBACK RELEASE` followed by another statement in protocol tests | connection is released after OK response |
 
@@ -635,8 +647,8 @@ add SQL-level assertions when `ROW_COUNT()` and `SHOW WARNINGS` are implemented.
 - `SET TRANSACTION` and full isolation-level behavior remain deferred.
 - Direct `SET autocommit`, `SET completion_type`, `SET transaction_read_only`,
   and `SET transaction_isolation` remain deferred to the system-variable task.
-- Full DDL implicit-commit retrofits are tracked by DDL statement tasks and the
-  compatibility matrix's implicit-commit row.
+- Remaining DDL implicit-commit retrofits are tracked by DDL statement tasks
+  and the compatibility matrix's implicit-commit row.
 - Temporary-table exceptions for read-only transactions and implicit commits
   are deferred until temporary tables exist.
 - Stored-program `BEGIN ... END` remains separate from top-level transaction

@@ -18,6 +18,11 @@ static int create_table_transaction(
     const struct mylite_create_table_plan *plan
 );
 
+static int commit_create_table_implicit_transaction(
+    mylite_db *database,
+    const struct mylite_create_table_plan *plan
+);
+
 static const char *create_table_column_type_name(enum mylite_sql_ast_column_type column_type);
 
 static bool create_table_column_uses_integer_descriptor(
@@ -51,6 +56,11 @@ int mylite_table_ddl_execute_create_table_statement(
     bool skip_create = false;
     int status = MYLITE_OK;
 
+    status = commit_create_table_implicit_transaction(database, plan);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
     if (schema_name == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "No database selected");
         return MYLITE_EXEC_ERROR;
@@ -72,6 +82,17 @@ int mylite_table_ddl_execute_create_table_statement(
     }
 
     return create_table_transaction(database, schema_name, &schema_default, plan);
+}
+
+static int commit_create_table_implicit_transaction(
+    mylite_db *database,
+    const struct mylite_create_table_plan *plan
+) {
+    if (plan->temporary || !database->transaction_active) {
+        return MYLITE_OK;
+    }
+
+    return mylite_transaction_commit_explicit(database);
 }
 
 static int create_table_transaction(

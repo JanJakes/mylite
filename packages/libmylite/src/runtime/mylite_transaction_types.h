@@ -34,6 +34,7 @@ struct mylite_transaction_plan {
     enum mylite_transaction_completion_release completion_release;
     bool has_access_mode;
     bool consistent_snapshot;
+    bool begin_immediate;
 };
 
 struct mylite_savepoint_plan {

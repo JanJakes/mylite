@@ -699,6 +699,7 @@ struct mylite_sql_ast_node {
     bool select_duplicate_mode_explicit;
     bool select_duplicate_mode_conflict;
     bool select_calc_found_rows;
+    bool begin_transaction_immediate;
     bool transaction_consistent_snapshot;
     bool show_tables_extended;
     bool show_tables_full;
@@ -853,6 +854,7 @@ void mylite_sql_ast_node_set_transaction_access_mode(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_transaction_access_mode access_mode
 );
+void mylite_sql_ast_node_set_begin_transaction_immediate(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_transaction_consistent_snapshot(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_transaction_completion(
     struct mylite_sql_ast_node *node,

@@ -511,6 +511,14 @@ void mylite_sql_ast_node_set_transaction_access_mode(
     node->transaction_access_mode = access_mode;
 }
 
+void mylite_sql_ast_node_set_begin_transaction_immediate(struct mylite_sql_ast_node *node) {
+    if (node == NULL) {
+        return;
+    }
+
+    node->begin_transaction_immediate = true;
+}
+
 void mylite_sql_ast_node_set_transaction_consistent_snapshot(struct mylite_sql_ast_node *node) {
     if (node == NULL) {
         return;

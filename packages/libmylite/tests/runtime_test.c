@@ -138,6 +138,8 @@ enum {
     mysql_warning_unknown_stmt_handler = 1243,
     mysql_warning_table_name_not_allowed = 1250,
     mysql_warning_group_concat_cut = 1260,
+    mysql_warning_data_out_of_range = 1264,
+    mysql_warning_data_truncated = 1265,
     mysql_warning_deprecated_syntax = 1287,
     mysql_warning_truncated_wrong_value = 1292,
     mysql_warning_unsupported_prepared_statement = 1295,
@@ -518,6 +520,8 @@ static int test_replace_execution(void);
 static int test_insert_ignore_execution(void);
 
 static int test_non_strict_not_null_coercion_execution(void);
+
+static int test_temporal_dml_coercion_execution(void);
 
 static int test_insert_on_duplicate_key_update_execution(void);
 
@@ -998,6 +1002,7 @@ int main(void) {
     failures += test_replace_execution();
     failures += test_insert_ignore_execution();
     failures += test_non_strict_not_null_coercion_execution();
+    failures += test_temporal_dml_coercion_execution();
     failures += test_insert_on_duplicate_key_update_execution();
     failures += test_foreign_key_insert_execution();
     failures += test_foreign_key_parent_restrict_execution();
@@ -47930,6 +47935,306 @@ static int test_non_strict_not_null_coercion_execution(void) {
         default_values,
         6,
         "non-strict required implicit defaults"
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_temporal_dml_coercion_execution(void) {
+    static const char *const temporal_columns[] = {"id", "d", "dt", "ts"};
+    static const char *const non_strict_values[] = {
+        "2",
+        "0000-00-00",
+        "0000-00-00 00:00:00",
+        "0000-00-00 00:00:00",
+        "3",
+        "2022-00-01",
+        "2022-00-01 00:00:00",
+        "0000-00-00 00:00:00",
+        "4",
+        "2022-02-31",
+        "2022-02-31 12:34:56",
+        "0000-00-00 00:00:00",
+    };
+    static const char *const updated_values[] = {
+        "2",
+        "0000-00-00",
+        "0000-00-00 00:00:00",
+        "0000-00-00 00:00:00",
+        "3",
+        "0000-00-00",
+        "0000-00-00 00:00:00",
+        "0000-00-00 00:00:00",
+        "4",
+        "2022-02-31",
+        "2022-02-31 12:34:56",
+        "0000-00-00 00:00:00",
+    };
+    static const char *const zero_temporal_values[] = {
+        "1",
+        "0000-00-00",
+        "0000-00-00 00:00:00",
+        "0000-00-00 00:00:00",
+    };
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open temporal coercion db");
+    failures += execute_sql(database, "CREATE DATABASE mylite_temporal_dml", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_temporal_dml", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE temporal_values ("
+        "id INT PRIMARY KEY AUTO_INCREMENT, "
+        "d DATE, dt DATETIME, ts TIMESTAMP NULL DEFAULT NULL)",
+        MYLITE_DONE
+    );
+
+    failures += prepare_sql(
+        database,
+        "INSERT INTO temporal_values(d,dt,ts) VALUES "
+        "('2022-31-01','2022-31-01 12:34:56','2022-31-01 12:34:56')",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Incorrect date value: '2022-31-01' for column 'd' at row 1",
+        "default temporal invalid date error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value,
+        "default temporal invalid date code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM temporal_values",
+        (const char *[]){"c"},
+        1,
+        (const char *[]){"0"},
+        1,
+        "default temporal invalid date rollback"
+    );
+
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO temporal_values(d,dt,ts) VALUES "
+        "('2022-31-01','2022-31-01 12:34:56','2022-31-01 12:34:56')",
+        1,
+        "non-strict malformed temporal insert"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        3,
+        "non-strict malformed temporal warning count"
+    );
+    for (int warning = 0; warning < 3; ++warning) {
+        failures += expect_int(
+            (int)mylite_warning_code(database, warning),
+            mysql_warning_data_truncated,
+            "non-strict malformed temporal warning code"
+        );
+    }
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO temporal_values SET "
+        "d = '2022-00-01', dt = '2022-00-01 00:00:00', "
+        "ts = '2022-00-01 00:00:00'",
+        1,
+        "non-strict zero-in-date temporal insert set"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        1,
+        "non-strict zero-in-date timestamp warning count"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_out_of_range,
+        "non-strict zero-in-date timestamp warning code"
+    );
+
+    failures += execute_sql(database, "SET SESSION sql_mode = 'ALLOW_INVALID_DATES'", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO temporal_values(d,dt,ts) VALUES "
+        "('2022-02-31','2022-02-31 12:34:56','2022-02-31 12:34:56')",
+        1,
+        "allow invalid dates temporal insert"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        1,
+        "allow invalid dates timestamp warning count"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_out_of_range,
+        "allow invalid dates timestamp warning code"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id,d,dt,ts FROM temporal_values ORDER BY id",
+        temporal_columns,
+        4,
+        non_strict_values,
+        3,
+        "temporal non-strict stored values"
+    );
+
+    failures +=
+        execute_sql(database, "SET SESSION sql_mode = 'NO_ZERO_DATE,NO_ZERO_IN_DATE'", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "UPDATE temporal_values SET "
+        "d = '0000-00-00', dt = '0000-00-00 00:00:00', "
+        "ts = '0000-00-00 00:00:00' WHERE id = 2",
+        MYLITE_DONE
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 3, "non-strict no-zero temporal warning count");
+    for (int warning = 0; warning < 3; ++warning) {
+        failures += expect_int(
+            (int)mylite_warning_code(database, warning),
+            mysql_warning_data_out_of_range,
+            "non-strict no-zero temporal warning code"
+        );
+    }
+
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "UPDATE temporal_values SET d = '0000-00-00' WHERE id = 2",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Incorrect date value: '0000-00-00' for column 'd' at row 1",
+        "strict temporal update zero-date error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value,
+        "strict temporal update zero-date code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "UPDATE temporal_values SET d = '2022-00-01' WHERE id = 3",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Incorrect date value: '2022-00-01' for column 'd' at row 1",
+        "strict temporal update zero-in-date error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value,
+        "strict temporal update zero-in-date code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE temporal_values SET "
+        "d = '2022-31-01', dt = '2022-31-01 12:34:56', "
+        "ts = '2022-31-01 12:34:56' WHERE id = 3",
+        1,
+        "non-strict malformed temporal update"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        3,
+        "non-strict malformed temporal update warning count"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id,d,dt,ts FROM temporal_values ORDER BY id",
+        temporal_columns,
+        4,
+        updated_values,
+        3,
+        "temporal update stored values"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE temporal_replace ("
+        "id INT PRIMARY KEY, d DATE, dt DATETIME, ts TIMESTAMP NULL DEFAULT NULL)",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "REPLACE INTO temporal_replace VALUES "
+        "(1,'2022-31-01','2022-31-01 12:34:56','2022-31-01 12:34:56')",
+        1,
+        "non-strict temporal replace malformed"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 3, "non-strict temporal replace warning count");
+    failures += expect_select_rows(
+        database,
+        "SELECT id,d,dt,ts FROM temporal_replace ORDER BY id",
+        temporal_columns,
+        4,
+        zero_temporal_values,
+        1,
+        "temporal replace stored values"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE temporal_odku ("
+        "id INT PRIMARY KEY, d DATE, dt DATETIME, ts TIMESTAMP NULL DEFAULT NULL)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO temporal_odku VALUES "
+        "(1,'2024-01-01','2024-01-01 01:02:03','2024-01-01 01:02:03')",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO temporal_odku VALUES "
+        "(1,'2024-02-02','2024-02-02 02:03:04','2024-02-02 02:03:04') "
+        "ON DUPLICATE KEY UPDATE "
+        "d = '2022-31-01', dt = '2022-31-01 12:34:56', "
+        "ts = '2022-31-01 12:34:56'",
+        2,
+        "non-strict temporal odku update branch"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        3,
+        "non-strict temporal odku update warning count"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id,d,dt,ts FROM temporal_odku ORDER BY id",
+        temporal_columns,
+        4,
+        zero_temporal_values,
+        1,
+        "temporal odku update stored values"
     );
 
     mylite_close(database);

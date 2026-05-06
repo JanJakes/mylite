@@ -127,8 +127,14 @@ MySQL 8.4.9 runtime before each item is marked complete.
       embedded NUL byte lengths.
 - [x] Make `FROM_BASE64(TO_BASE64('binary\\0data'))` preserve binary null
       bytes.
-- [ ] Align invalid and zero-date coercion/rejection with MySQL in strict and
-      non-strict modes.
+- [x] Align invalid and zero-date coercion/rejection with MySQL in strict and
+      non-strict modes for supported `DATE`, `DATETIME`, and `TIMESTAMP` DML
+      write paths. Covered strict/default `NO_ZERO_DATE` and `NO_ZERO_IN_DATE`
+      rejection, non-strict malformed/calendar coercion warnings 1265/1264,
+      DATE/DATETIME zero-in-date preservation, TIMESTAMP zero-in-date coercion,
+      `ALLOW_INVALID_DATES` for DATE/DATETIME, and non-strict no-zero warnings.
+      Broader temporal input variants and scalar temporal edge cases remain
+      tracked in `COMPATIBILITY.md`.
 - [x] Align non-strict `INSERT`/`UPDATE` behavior for missing and `NULL`
       `NOT NULL` values across the currently supported `INSERT ... VALUES`,
       `INSERT ... SET`, single-table `UPDATE`, and joined `UPDATE` surfaces.

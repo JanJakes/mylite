@@ -425,6 +425,27 @@ bool mylite_connection_sql_mode_has_no_backslash_escapes(const mylite_db *databa
     });
 }
 
+bool mylite_connection_sql_mode_has_no_zero_date(const mylite_db *database) {
+    return sql_mode_contains_token((struct mylite_sql_mode_token_search){
+        .sql_mode = mylite_connection_sql_mode(database),
+        .expected = "NO_ZERO_DATE",
+    });
+}
+
+bool mylite_connection_sql_mode_has_no_zero_in_date(const mylite_db *database) {
+    return sql_mode_contains_token((struct mylite_sql_mode_token_search){
+        .sql_mode = mylite_connection_sql_mode(database),
+        .expected = "NO_ZERO_IN_DATE",
+    });
+}
+
+bool mylite_connection_sql_mode_allows_invalid_dates(const mylite_db *database) {
+    return sql_mode_contains_token((struct mylite_sql_mode_token_search){
+        .sql_mode = mylite_connection_sql_mode(database),
+        .expected = "ALLOW_INVALID_DATES",
+    });
+}
+
 const char *mylite_connection_default_storage_engine(void) {
     return mylite_default_storage_engine;
 }

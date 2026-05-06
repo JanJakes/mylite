@@ -36,6 +36,8 @@ static bool insert_plan_coerces_missing_required_default(
     const struct mylite_insert_table_column *column
 );
 
+static bool insert_column_uses_temporal_storage(const struct mylite_insert_table_column *column);
+
 static bool insert_column_uses_text_storage(const struct mylite_insert_table_column *column);
 
 static char *insert_current_timestamp_text(void);
@@ -248,6 +250,13 @@ int mylite_dml_resolve_insert_text_value(
         *out_value = (struct mylite_insert_bound_value){.kind = MYLITE_INSERT_BOUND_NULL};
         return MYLITE_OK;
     }
+    if (insert_column_uses_temporal_storage(column)) {
+        int status = set_insert_bound_text_value(database, text, text_length, out_value);
+
+        return status == MYLITE_OK
+                   ? mylite_dml_coerce_insert_temporal_value(database, column, 1U, out_value)
+                   : status;
+    }
     if (mylite_dml_parse_insert_integer_text(text, &integer_value)) {
         if (integer_value == 0 &&
             mylite_dml_insert_auto_increment_zero_generates(database, column)) {
@@ -411,6 +420,24 @@ static bool insert_column_uses_numeric_implicit_default(
     }
     for (size_t index = 0U; index < sizeof(numeric_types) / sizeof(numeric_types[0]); ++index) {
         if (mylite_ascii_case_equal(column->data_type, numeric_types[index])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool insert_column_uses_temporal_storage(const struct mylite_insert_table_column *column) {
+    static const char *const temporal_types[] = {
+        "date",
+        "datetime",
+        "timestamp",
+    };
+
+    if (column == NULL || column->data_type == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < sizeof(temporal_types) / sizeof(temporal_types[0]); ++index) {
+        if (mylite_ascii_case_equal(column->data_type, temporal_types[index])) {
             return true;
         }
     }

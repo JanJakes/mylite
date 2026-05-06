@@ -130,6 +130,11 @@ static int validate_insert_update_assignment_result(
         }
         return mylite_dml_set_not_null_column_error(database, column->name);
     }
+    int status = mylite_dml_coerce_insert_temporal_value(database, column, 1U, value);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
     if (!column->auto_increment) {
         return MYLITE_OK;
     }

@@ -1,0 +1,18 @@
+id	bigint	bigint unsigned	NULL	NULL	NULL	NULL
+post_status	enum	enum('draft','publish','trash')	7	28	utf8mb4	utf8mb4_unicode_ci
+feature_flags	set	set('sticky','featured','private')	23	92	utf8mb4	utf8mb4_unicode_ci
+review_state	enum	enum('','0','1','approved')	8	8	latin1	latin1_bin
+id	bigint unsigned	NO	PRI	NULL	
+post_status	enum('draft','publish','trash')	NO		NULL	
+feature_flags	set('sticky','featured','private')	YES		NULL	
+review_state	enum('','0','1','approved')	YES		NULL	
+1	draft	1	sticky,featured	3		1
+2	publish	2	sticky,private	5	0	2
+3	trash	3	sticky,private	5	1	3
+1	trash	3	sticky,featured	3	approved	4
+2	publish	2	private	4	0	2
+3	trash	3	sticky,private	5	1	3
+4	publish	2	sticky,featured	3	1	3
+5	draft	1	featured,private	6	approved	4
+after-delete	4
+after-truncate	0

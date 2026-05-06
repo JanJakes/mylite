@@ -1,5 +1,6 @@
 #include "mylite_dml_insert_set_row_resolve.h"
 
+#include "mylite_connection.h"
 #include "mylite_dml.h"
 #include "mylite_dml_insert_bound_value.h"
 #include "mylite_dml_insert_default.h"
@@ -70,6 +71,11 @@ static int evaluate_insert_set_assignment_value(
 );
 
 static int set_insert_set_candidate_auto_value(struct mylite_insert_bound_value *out_value);
+
+static bool insert_set_plan_coerces_missing_required_default(
+    const mylite_db *database,
+    const struct mylite_insert_values_plan *plan
+);
 
 // NOLINTBEGIN(bugprone-easily-swappable-parameters)
 int mylite_dml_resolve_insert_set_row_values(
@@ -269,7 +275,7 @@ static int finish_insert_set_required_omission(
         row_state->assigned_columns[column_index]) {
         return MYLITE_OK;
     }
-    if (!plan->ignore) {
+    if (!insert_set_plan_coerces_missing_required_default(database, plan)) {
         return mylite_dml_insert_set_no_default_error(database, column->name);
     }
     return mylite_dml_insert_append_no_default_warning_once(database, column, state, column_index);
@@ -398,4 +404,11 @@ static int set_insert_set_candidate_auto_value(struct mylite_insert_bound_value 
         .integer_value = 0,
     };
     return MYLITE_OK;
+}
+
+static bool insert_set_plan_coerces_missing_required_default(
+    const mylite_db *database,
+    const struct mylite_insert_values_plan *plan
+) {
+    return plan != NULL && (plan->ignore || !mylite_connection_sql_mode_is_strict(database));
 }

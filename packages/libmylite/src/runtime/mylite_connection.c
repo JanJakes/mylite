@@ -384,6 +384,19 @@ const char *mylite_connection_sql_mode(const mylite_db *database) {
                                                           : database->sql_mode;
 }
 
+bool mylite_connection_sql_mode_is_strict(const mylite_db *database) {
+    const char *sql_mode = mylite_connection_sql_mode(database);
+
+    return sql_mode_contains_token((struct mylite_sql_mode_token_search){
+               .sql_mode = sql_mode,
+               .expected = "STRICT_TRANS_TABLES",
+           }) ||
+           sql_mode_contains_token((struct mylite_sql_mode_token_search){
+               .sql_mode = sql_mode,
+               .expected = "STRICT_ALL_TABLES",
+           });
+}
+
 bool mylite_connection_sql_mode_has_ansi_quotes(const mylite_db *database) {
     return sql_mode_contains_token((struct mylite_sql_mode_token_search){
         .sql_mode = mylite_connection_sql_mode(database),

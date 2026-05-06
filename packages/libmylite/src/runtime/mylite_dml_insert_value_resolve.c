@@ -1,5 +1,6 @@
 #include "mylite_dml.h"
 
+#include "mylite_connection.h"
 #include "mylite_dml_insert_default.h"
 #include "mylite_dml_insert_diagnostics.h"
 
@@ -63,6 +64,11 @@ static int resolve_insert_explicit_value(
 static bool insert_row_uses_all_defaults(
     const struct mylite_insert_values_plan *plan,
     size_t row_index
+);
+
+static bool insert_plan_coerces_explicit_null(
+    const mylite_db *database,
+    const struct mylite_insert_values_plan *plan
 );
 
 static size_t insert_row_target_column_count(
@@ -315,7 +321,7 @@ static int resolve_insert_explicit_value(
             );
         }
         if (!column->nullable) {
-            if (plan->ignore) {
+            if (insert_plan_coerces_explicit_null(database, plan)) {
                 int status = mylite_dml_insert_append_null_warning_once(
                     database,
                     column,
@@ -391,6 +397,14 @@ static bool insert_row_uses_all_defaults(
     size_t row_index
 ) {
     return plan->rows[row_index].value_count == 0U;
+}
+
+static bool insert_plan_coerces_explicit_null(
+    const mylite_db *database,
+    const struct mylite_insert_values_plan *plan
+) {
+    return plan != NULL && (plan->ignore || (!mylite_connection_sql_mode_is_strict(database) &&
+                                             plan->row_count > 1U));
 }
 
 static size_t insert_row_target_column_count(

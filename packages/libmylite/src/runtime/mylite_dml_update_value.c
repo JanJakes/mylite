@@ -1,5 +1,6 @@
 #include "mylite_dml.h"
 
+#include "mylite_connection.h"
 #include "mylite_diagnostics.h"
 #include "mylite_dml_insert_default.h"
 #include "mylite_dml_insert_diagnostics.h"
@@ -13,6 +14,12 @@
 static bool update_values_equal(
     const struct mylite_expression_value *left,
     const struct mylite_expression_value *right
+);
+
+static int resolve_update_implicit_default_value(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    struct mylite_expression_value *out_value
 );
 
 int mylite_dml_copy_update_candidate_values(
@@ -48,7 +55,18 @@ int mylite_dml_resolve_update_default_value(
     struct mylite_expression_value *out_value
 ) {
     struct mylite_insert_bound_value value = {0};
-    int status = mylite_dml_resolve_insert_default_bound_value(database, column, 0U, NULL, &value);
+    int status = MYLITE_OK;
+
+    if (!mylite_connection_sql_mode_is_strict(database) && column != NULL &&
+        !column->auto_increment && !column->nullable && column->default_text == NULL) {
+        status = mylite_dml_insert_append_no_default_warning(database, column->name);
+        if (status == MYLITE_OK) {
+            status = resolve_update_implicit_default_value(database, column, out_value);
+        }
+        return status;
+    }
+
+    status = mylite_dml_resolve_insert_default_bound_value(database, column, 0U, NULL, &value);
 
     if (status == MYLITE_OK) {
         status = mylite_dml_copy_insert_bound_value_to_expression(&value, out_value);
@@ -153,6 +171,14 @@ int mylite_dml_validate_update_assignment_value(
         if (column->nullable) {
             return MYLITE_OK;
         }
+        if (!mylite_connection_sql_mode_is_strict(database)) {
+            int status = mylite_dml_insert_append_null_warning(database, column->name);
+
+            if (status != MYLITE_OK) {
+                return status;
+            }
+            return resolve_update_implicit_default_value(database, column, value);
+        }
         return mylite_dml_set_not_null_column_error(database, column->name);
     }
     if (!column->auto_increment) {
@@ -222,6 +248,25 @@ bool mylite_dml_update_expression_value_positive_uint64(
         return true;
     }
     return false;
+}
+
+static int resolve_update_implicit_default_value(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    struct mylite_expression_value *out_value
+) {
+    struct mylite_insert_bound_value value = {0};
+    int status = mylite_dml_resolve_insert_implicit_expression_default(database, column, &value);
+
+    if (status == MYLITE_OK) {
+        mylite_expression_value_deinit(out_value);
+        status = mylite_dml_copy_insert_bound_value_to_expression(&value, out_value);
+        if (status == MYLITE_NOMEM) {
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        }
+    }
+    mylite_dml_insert_bound_value_deinit(&value);
+    return status;
 }
 
 bool mylite_dml_update_row_changed(

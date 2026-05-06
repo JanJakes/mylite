@@ -47,6 +47,7 @@ const char *mylite_connection_character_set_results(const mylite_db *database);
 const char *mylite_connection_collation_connection(const mylite_db *database);
 const char *mylite_connection_default_sql_mode(void);
 const char *mylite_connection_sql_mode(const mylite_db *database);
+bool mylite_connection_sql_mode_is_strict(const mylite_db *database);
 bool mylite_connection_sql_mode_has_ansi_quotes(const mylite_db *database);
 bool mylite_connection_sql_mode_has_only_full_group_by(const mylite_db *database);
 bool mylite_connection_sql_mode_has_no_auto_value_on_zero(const mylite_db *database);

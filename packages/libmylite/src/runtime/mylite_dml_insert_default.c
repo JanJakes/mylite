@@ -30,6 +30,12 @@ static bool insert_column_uses_numeric_implicit_default(
     const struct mylite_insert_table_column *column
 );
 
+static bool insert_plan_coerces_missing_required_default(
+    const mylite_db *database,
+    const struct mylite_insert_values_plan *plan,
+    const struct mylite_insert_table_column *column
+);
+
 static bool insert_column_uses_text_storage(const struct mylite_insert_table_column *column);
 
 static char *insert_current_timestamp_text(void);
@@ -179,8 +185,7 @@ int mylite_dml_resolve_insert_explicit_default_value(
     struct mylite_insert_execution_state *state,
     struct mylite_insert_bound_value *out_value
 ) {
-    if (plan->ignore && !column->auto_increment && !column->nullable &&
-        column->default_text == NULL) {
+    if (insert_plan_coerces_missing_required_default(database, plan, column)) {
         int status = mylite_dml_insert_append_no_default_warning(database, column->name);
 
         if (status != MYLITE_OK) {
@@ -206,8 +211,7 @@ int mylite_dml_resolve_insert_omitted_default_value(
     size_t column_index,
     struct mylite_insert_bound_value *out_value
 ) {
-    if (plan->ignore && !column->auto_increment && !column->nullable &&
-        column->default_text == NULL) {
+    if (insert_plan_coerces_missing_required_default(database, plan, column)) {
         int status =
             mylite_dml_insert_append_no_default_warning_once(database, column, state, column_index);
 
@@ -373,6 +377,16 @@ static int reserve_insert_auto_increment(
     }
     state->reserved_auto_increment_end = first_value + statement_row_count;
     return MYLITE_OK;
+}
+
+static bool insert_plan_coerces_missing_required_default(
+    const mylite_db *database,
+    const struct mylite_insert_values_plan *plan,
+    const struct mylite_insert_table_column *column
+) {
+    return plan != NULL && column != NULL && !column->auto_increment && !column->nullable &&
+           column->default_text == NULL &&
+           (plan->ignore || !mylite_connection_sql_mode_is_strict(database));
 }
 
 static bool insert_column_uses_numeric_implicit_default(

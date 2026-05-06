@@ -80,7 +80,7 @@ int mylite_dml_load_write_table(
     const char *table_name,
     struct mylite_insert_table *out_table
 );
-int mylite_dml_initialize_insert_ignore_warning_state(
+int mylite_dml_initialize_insert_required_warning_state(
     mylite_db *database,
     const struct mylite_insert_values_plan *plan,
     const struct mylite_insert_table *table,

@@ -129,8 +129,13 @@ MySQL 8.4.9 runtime before each item is marked complete.
       bytes.
 - [ ] Align invalid and zero-date coercion/rejection with MySQL in strict and
       non-strict modes.
-- [ ] Align non-strict `INSERT`/`UPDATE` behavior for missing and `NULL`
-      `NOT NULL` values.
+- [x] Align non-strict `INSERT`/`UPDATE` behavior for missing and `NULL`
+      `NOT NULL` values across the currently supported `INSERT ... VALUES`,
+      `INSERT ... SET`, single-table `UPDATE`, and joined `UPDATE` surfaces.
+      Covered behavior includes missing-default warning 1364 coercion, multi-row
+      `INSERT ... VALUES` `NULL` warning 1048 coercion, single-row insert `NULL`
+      error preservation, update `NULL`/`DEFAULT` coercion, changed-row affected
+      counts, and numeric/text/date/datetime/time implicit defaults.
 - [ ] Align numeric/string casts in strict and non-strict modes.
 - [x] Complete `CAST(...)` and `CONVERT(...)` syntax, including
       `CONVERT ... USING utf8`.

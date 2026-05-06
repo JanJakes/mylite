@@ -517,6 +517,8 @@ static int test_replace_execution(void);
 
 static int test_insert_ignore_execution(void);
 
+static int test_non_strict_not_null_coercion_execution(void);
+
 static int test_insert_on_duplicate_key_update_execution(void);
 
 static int test_foreign_key_insert_execution(void);
@@ -993,6 +995,7 @@ int main(void) {
     failures += test_insert_update_null_byte_storage_execution();
     failures += test_replace_execution();
     failures += test_insert_ignore_execution();
+    failures += test_non_strict_not_null_coercion_execution();
     failures += test_insert_on_duplicate_key_update_execution();
     failures += test_foreign_key_insert_execution();
     failures += test_foreign_key_parent_restrict_execution();
@@ -47711,6 +47714,222 @@ static int test_insert_ignore_execution(void) {
     free(required_physical);
     mylite_close(database);
     remove_runtime_test_files();
+    return failures;
+}
+
+static int test_non_strict_not_null_coercion_execution(void) {
+    static const char *const default_columns[] = {"opt", "n", "s", "d", "dt", "tm"};
+    static const char *const default_values[] = {
+        "1", "0", "", "0000-00-00", "0000-00-00 00:00:00", "00:00:00",
+        "2", "0", "", "0000-00-00", "0000-00-00 00:00:00", "00:00:00",
+        "3", "0", "", "0000-00-00", "0000-00-00 00:00:00", "00:00:00",
+        "4", "0", "", "0000-00-00", "0000-00-00 00:00:00", "00:00:00",
+        "5", "0", "", "0000-00-00", "0000-00-00 00:00:00", "00:00:00",
+        "6", "0", "", "0000-00-00", "0000-00-00 00:00:00", "00:00:00",
+    };
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open non-strict coercion db");
+    failures += execute_sql(database, "CREATE DATABASE mylite_ns_nn", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_ns_nn", MYLITE_DONE);
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE single_null (n INT NOT NULL, s VARCHAR(4) NOT NULL)",
+        MYLITE_DONE
+    );
+    failures +=
+        prepare_sql(database, "INSERT INTO single_null(n,s) VALUES (NULL,NULL)", MYLITE_OK, &stmt);
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Column 'n' cannot be null",
+        "non-strict single-row INSERT NULL remains error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM single_null",
+        (const char *[]){"c"},
+        1,
+        (const char *[]){"0"},
+        1,
+        "non-strict single-row INSERT NULL rollback"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE nn ("
+        "id INT PRIMARY KEY AUTO_INCREMENT, "
+        "n INT NOT NULL, "
+        "s VARCHAR(5) NOT NULL, "
+        "d DATE NOT NULL, "
+        "dt DATETIME NOT NULL, "
+        "tm TIME NOT NULL, "
+        "opt INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO nn(opt) VALUES (1),(2)",
+        2,
+        "non-strict omitted required insert affected rows"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 5, "non-strict omitted required warning count");
+    for (int index = 0; index < 5; ++index) {
+        failures += expect_int(
+            (int)mylite_warning_code(database, index),
+            mysql_warning_no_default,
+            "non-strict omitted required warning code"
+        );
+    }
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "Field 'n' doesn't have a default value",
+        "non-strict omitted required warning message"
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO nn(n,s,d,dt,tm,opt) VALUES "
+        "(NULL,NULL,NULL,NULL,NULL,3),"
+        "(NULL,NULL,NULL,NULL,NULL,4)",
+        2,
+        "non-strict multi-row INSERT NULL affected rows"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        5,
+        "non-strict multi-row INSERT NULL warning count"
+    );
+    for (int index = 0; index < 5; ++index) {
+        failures += expect_int(
+            (int)mylite_warning_code(database, index),
+            mysql_warning_bad_null,
+            "non-strict multi-row INSERT NULL warning code"
+        );
+    }
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "Column 'n' cannot be null",
+        "non-strict multi-row INSERT NULL warning message"
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO nn SET opt = 5",
+        1,
+        "non-strict INSERT SET omitted required affected rows"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        5,
+        "non-strict INSERT SET omitted warning count"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO nn SET n = DEFAULT, s = DEFAULT, d = DEFAULT, "
+        "dt = DEFAULT, tm = DEFAULT, opt = 6",
+        1,
+        "non-strict INSERT SET DEFAULT required affected rows"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        5,
+        "non-strict INSERT SET DEFAULT warning count"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_no_default,
+        "non-strict INSERT SET DEFAULT warning code"
+    );
+    failures += prepare_sql(
+        database,
+        "INSERT INTO nn SET n = NULL, s = NULL, d = NULL, "
+        "dt = NULL, tm = NULL, opt = 7",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Column 'n' cannot be null",
+        "non-strict INSERT SET NULL remains error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE nn SET n = 7, s = 'abc', d = '2024-01-02', "
+        "dt = '2024-01-02 03:04:05', tm = '01:02:03' WHERE opt = 1",
+        1,
+        "non-strict update seed row one"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE nn SET n = NULL, s = NULL, d = NULL, dt = NULL, tm = NULL WHERE opt = 1",
+        1,
+        "non-strict UPDATE NULL affected rows"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 5, "non-strict UPDATE NULL warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_bad_null,
+        "non-strict UPDATE NULL warning code"
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE nn SET n = 8, s = 'def', d = '2024-02-03', "
+        "dt = '2024-02-03 04:05:06', tm = '02:03:04' WHERE opt = 2",
+        1,
+        "non-strict update seed row two"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE nn SET n = DEFAULT, s = DEFAULT, d = DEFAULT, "
+        "dt = DEFAULT, tm = DEFAULT WHERE opt = 2",
+        1,
+        "non-strict UPDATE DEFAULT affected rows"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 5, "non-strict UPDATE DEFAULT warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_no_default,
+        "non-strict UPDATE DEFAULT warning code"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE nn SET n = NULL, s = NULL, d = NULL, dt = NULL, tm = NULL WHERE opt = 3",
+        0,
+        "non-strict UPDATE NULL unchanged affected rows"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        5,
+        "non-strict UPDATE NULL unchanged warning count"
+    );
+
+    failures += expect_select_rows(
+        database,
+        "SELECT opt,n,s,d,dt,tm FROM nn ORDER BY opt",
+        default_columns,
+        6,
+        default_values,
+        6,
+        "non-strict required implicit defaults"
+    );
+
+    mylite_close(database);
     return failures;
 }
 

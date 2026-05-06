@@ -1,5 +1,6 @@
 #include "mylite_dml.h"
 
+#include "mylite_connection.h"
 #include "mylite_diagnostics.h"
 #include "mylite_dml_insert_conflict.h"
 #include "mylite_dml_insert_set_row_resolve.h"
@@ -25,7 +26,12 @@ static bool insert_bound_values_equal(
     const struct mylite_insert_bound_value *right
 );
 
-int mylite_dml_initialize_insert_ignore_warning_state(
+static bool insert_plan_tracks_required_warnings(
+    const mylite_db *database,
+    const struct mylite_insert_values_plan *plan
+);
+
+int mylite_dml_initialize_insert_required_warning_state(
     mylite_db *database,
     const struct mylite_insert_values_plan *plan,
     const struct mylite_insert_table *table,
@@ -34,7 +40,7 @@ int mylite_dml_initialize_insert_ignore_warning_state(
     if (database == NULL || plan == NULL || table == NULL || state == NULL) {
         return MYLITE_MISUSE;
     }
-    if (!plan->ignore || table->column_count == 0U) {
+    if (!insert_plan_tracks_required_warnings(database, plan) || table->column_count == 0U) {
         return MYLITE_OK;
     }
 
@@ -58,6 +64,13 @@ void mylite_dml_insert_execution_state_deinit(struct mylite_insert_execution_sta
     state->warned_omitted_no_default_columns = NULL;
     free(state->warned_null_columns);
     state->warned_null_columns = NULL;
+}
+
+static bool insert_plan_tracks_required_warnings(
+    const mylite_db *database,
+    const struct mylite_insert_values_plan *plan
+) {
+    return plan != NULL && (plan->ignore || !mylite_connection_sql_mode_is_strict(database));
 }
 
 char *mylite_dml_build_insert_physical_sql(

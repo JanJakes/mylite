@@ -51,7 +51,7 @@ int mylite_dml_execute_insert_values_transaction(
     row_column_indexes.source_column_count = source_column_count;
 
     status =
-        mylite_dml_initialize_insert_ignore_warning_state(database, values_plan, table, &state);
+        mylite_dml_initialize_insert_required_warning_state(database, values_plan, table, &state);
     if (status != MYLITE_OK) {
         mylite_transaction_rollback_statement_atomicity(database, &atomicity);
         return status;
@@ -194,7 +194,7 @@ int mylite_dml_execute_insert_set_transaction(
         return status;
     }
     status =
-        mylite_dml_initialize_insert_ignore_warning_state(database, values_plan, table, &state);
+        mylite_dml_initialize_insert_required_warning_state(database, values_plan, table, &state);
     if (status != MYLITE_OK) {
         mylite_transaction_rollback_statement_atomicity(database, &atomicity);
         return status;

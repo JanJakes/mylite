@@ -200,11 +200,19 @@ Representative runtime results:
 | `SELECT 'a_c' LIKE 'a\\_c'` | `1` |
 | `SELECT 'a\\c' LIKE 'a\\\\c'` | `1` |
 | `SELECT 'abc' NOT LIKE 'a%'` | `0` |
+| `SET sql_mode='NO_BACKSLASH_ESCAPES'; SELECT HEX('a\\0b')` | `615C3062` |
+| `SET sql_mode='NO_BACKSLASH_ESCAPES'; SELECT 'a_c' LIKE 'a\\_c'` | `0` |
+| `SET sql_mode='NO_BACKSLASH_ESCAPES'; SELECT 'a\\_c' LIKE 'a\\_c'` | `1` |
+| `SET sql_mode='NO_BACKSLASH_ESCAPES'; SELECT 'a_c' LIKE 'a\\_c' ESCAPE CHAR(92)` | `1` |
 
 Task 16 should implement `%`, `_`, default backslash escaping, and
 `LIKE ... ESCAPE` for ASCII-compatible strings under the current default
 connection collation. It must preserve `NULL` propagation when either operand
 is `NULL`.
+
+When `NO_BACKSLASH_ESCAPES` is active, backslash remains ordinary string
+content and `LIKE` does not use a default backslash escape. Explicit
+`LIKE ... ESCAPE` still supplies an escape character.
 
 `BINARY expr` is accepted as a deprecated binary-string cast and forces
 case-sensitive `LIKE` evaluation for the covered ASCII-compatible string
@@ -595,6 +603,10 @@ these cases.
 | `SELECT 'abc' LIKE 'A%'` | `1` |
 | `SELECT 'a_c' LIKE 'a\\_c'` | `1` |
 | `SELECT 'abc' NOT LIKE 'a%'` | `0` |
+| `SET sql_mode='NO_BACKSLASH_ESCAPES'; SELECT HEX('a\\0b')` | `615C3062` |
+| `SET sql_mode='NO_BACKSLASH_ESCAPES'; SELECT 'a_c' LIKE 'a\\_c'` | `0` |
+| `SET sql_mode='NO_BACKSLASH_ESCAPES'; SELECT 'a\\_c' LIKE 'a\\_c'` | `1` |
+| `SET sql_mode='NO_BACKSLASH_ESCAPES'; SELECT 'a_c' LIKE 'a\\_c' ESCAPE CHAR(92)` | `1` |
 | `SELECT 2 IN (1,2,3)` | `1` |
 | `SELECT 4 IN (1,2,NULL)` | `NULL` |
 | `SELECT 2 IN (NULL,2)` | `1` |

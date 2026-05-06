@@ -718,6 +718,7 @@ struct mylite_sql_ast_node {
     bool show_columns_full;
     bool show_index_extended;
     bool show_create_schema_if_not_exists;
+    bool no_backslash_escapes;
     bool trim_spec;
     bool interval_spec;
 };
@@ -747,6 +748,7 @@ void mylite_sql_ast_node_set_literal_kind(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_literal_kind literal_kind
 );
+void mylite_sql_ast_node_set_no_backslash_escapes(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_delete_form(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_delete_form delete_form

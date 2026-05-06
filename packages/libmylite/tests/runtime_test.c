@@ -3663,6 +3663,26 @@ static int test_expression_operator_foundation(void) {
     mylite_finalize(stmt);
     stmt = NULL;
 
+    failures += execute_sql(database, "SET SESSION sql_mode = 'NO_BACKSLASH_ESCAPES'", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "SELECT HEX('a\\0b'), LENGTH('a\\0b'), 'a_c' LIKE 'a\\_c', "
+        "'a\\_c' LIKE 'a\\_c', 'a_c' LIKE 'a\\_c' ESCAPE CHAR(92)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "no backslash escapes row");
+    failures += expect_string(mylite_column_text(stmt, 0), "615C3062", "no backslash nul hex");
+    failures += expect_string(mylite_column_text(stmt, 1), "4", "no backslash nul length");
+    failures += expect_string(mylite_column_text(stmt, 2), "0", "no backslash like literal miss");
+    failures += expect_string(mylite_column_text(stmt, 3), "1", "no backslash like literal match");
+    failures +=
+        expect_string(mylite_column_text(stmt, 4), "1", "no backslash explicit escape match");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "no backslash escapes done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
+
     failures += prepare_sql(database, "SELECT 1/0, 1 DIV 0, 1 % 0", MYLITE_OK, &stmt);
     failures += expect_int(mylite_warning_count(database), 0, "division warning count before step");
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "division warning row");
@@ -39811,6 +39831,26 @@ static int test_show_variables_execution(void) {
         7,
         "show variables like is case-insensitive"
     );
+    failures += execute_sql(database, "SET SESSION sql_mode = 'NO_BACKSLASH_ESCAPES'", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SHOW VARIABLES LIKE 'character\\_set\\_%'",
+        columns,
+        2,
+        NULL,
+        0,
+        "show variables no backslash escaped charset pattern"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW VARIABLES LIKE 'character_set_%'",
+        columns,
+        2,
+        unescaped_charset_values,
+        8,
+        "show variables no backslash unescaped charset wildcard"
+    );
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
     failures += expect_select_rows(
         database,
         "SHOW VARIABLES LIKE 'version%'",
@@ -46225,6 +46265,13 @@ static int test_insert_update_null_byte_storage_execution(void) {
         "7570640062696E",
         "7",
     };
+    static const char *const no_backslash_values[] = {
+        "3",
+        "615C3062",
+        "4",
+        "62696E6172795C3064617461",
+        "12",
+    };
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -46267,6 +46314,19 @@ static int test_insert_update_null_byte_storage_execution(void) {
         values,
         2,
         "DML embedded NUL storage"
+    );
+    failures += execute_sql(database, "SET SESSION sql_mode = 'NO_BACKSLASH_ESCAPES'", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO t VALUES (3, 'a\\0b', 'binary\\0data')", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id, HEX(s) AS s_hex, LENGTH(s) AS s_len, "
+        "HEX(b) AS b_hex, LENGTH(b) AS b_len FROM t WHERE id = 3",
+        columns,
+        (int)(sizeof(columns) / sizeof(columns[0])),
+        no_backslash_values,
+        1,
+        "DML no backslash preserves backslash sequences"
     );
 
     mylite_close(database);

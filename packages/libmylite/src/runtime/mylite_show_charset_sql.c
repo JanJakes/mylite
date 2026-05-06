@@ -42,7 +42,10 @@ int mylite_show_character_set_sql(
     sqlite3_str_appendall(sql, ")");
 
     if (query->like_pattern != NULL) {
-        sqlite3_str_appendf(sql, " WHERE Charset LIKE %Q ESCAPE '\\'", query->like_pattern);
+        sqlite3_str_appendf(sql, " WHERE Charset LIKE %Q", query->like_pattern);
+        if (query->like_escape_backslash) {
+            sqlite3_str_appendall(sql, " ESCAPE '\\'");
+        }
     }
     if (query->where_expression != NULL) {
         sqlite3_str_appendall(sql, query->like_pattern == NULL ? " WHERE " : " AND ");
@@ -98,7 +101,10 @@ int mylite_show_collation_sql(
     sqlite3_str_appendall(sql, ")");
 
     if (query->like_pattern != NULL) {
-        sqlite3_str_appendf(sql, " WHERE Collation LIKE %Q ESCAPE '\\'", query->like_pattern);
+        sqlite3_str_appendf(sql, " WHERE Collation LIKE %Q", query->like_pattern);
+        if (query->like_escape_backslash) {
+            sqlite3_str_appendall(sql, " ESCAPE '\\'");
+        }
     }
     if (query->where_expression != NULL) {
         sqlite3_str_appendall(sql, query->like_pattern == NULL ? " WHERE " : " AND ");

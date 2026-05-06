@@ -211,7 +211,7 @@ char *mylite_copy_string_literal_span_with_length(
         if (text[index] == quote && index + 2U < length && text[index + 1U] == quote) {
             copy[output++] = quote;
             ++index;
-        } else if (text[index] == '\\' && index + 2U < length) {
+        } else if (!node->no_backslash_escapes && text[index] == '\\' && index + 2U < length) {
             char escaped = '\0';
 
             if (decode_string_escape(text[index + 1U], &escaped)) {

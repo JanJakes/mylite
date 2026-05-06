@@ -117,8 +117,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
 
 ## Expressions, literals, casts, and temporal coercion
 
-- [ ] Align `NO_BACKSLASH_ESCAPES` string and pattern escaping, including
-      `\0` and pattern matching.
+- [x] Align `NO_BACKSLASH_ESCAPES` string and pattern escaping, including
+      `\0` and pattern matching. Scalar literal decoding, DML string storage,
+      scalar `LIKE`, explicit `LIKE ... ESCAPE`, and `SHOW ... LIKE` patterns
+      now follow MySQL 8.4.9-observed behavior.
 - [x] Fix binary literal evaluation such as `SELECT 0b000000001`.
 - [x] Preserve string values containing null bytes instead of truncating at
       `\0`. Scalar `SELECT` literals and DML storage/update paths now preserve

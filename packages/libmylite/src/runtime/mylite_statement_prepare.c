@@ -35,6 +35,8 @@ static enum mylite_stmt_kind placeholder_statement_kind(
 
 static bool placeholder_statement_is_table_maintenance(const struct mylite_sql_ast_node *statement);
 
+static unsigned int connection_parse_modes(const mylite_db *database);
+
 int mylite_prepare(mylite_db *database, const char *sql, size_t length, mylite_stmt **out_stmt) {
     return mylite_statement_prepare_with_callbacks(
         database,
@@ -76,7 +78,7 @@ int mylite_statement_prepare_with_callbacks(
         (struct mylite_sql_parse_config){
             .input = sql,
             .length = length,
-            .modes = 0U,
+            .modes = connection_parse_modes(database),
         },
         &parse_result
     );
@@ -108,6 +110,18 @@ int mylite_statement_prepare_with_callbacks(
     }
     mylite_sql_parse_result_deinit(&parse_result);
     return status;
+}
+
+static unsigned int connection_parse_modes(const mylite_db *database) {
+    unsigned int modes = 0U;
+
+    if (mylite_connection_sql_mode_has_ansi_quotes(database)) {
+        modes |= MYLITE_SQL_MODE_ANSI_QUOTES;
+    }
+    if (mylite_connection_sql_mode_has_no_backslash_escapes(database)) {
+        modes |= MYLITE_SQL_MODE_NO_BACKSLASH_ESCAPES;
+    }
+    return modes;
 }
 
 static int prepare_parsed_statement(

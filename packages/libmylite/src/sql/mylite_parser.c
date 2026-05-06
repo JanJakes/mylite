@@ -271,6 +271,7 @@ enum mylite_sql_parse_status mylite_sql_parse(
 
     state = (struct mylite_sql_parser_state){
         .result = out_result,
+        .modes = config.modes,
         .accepted = false,
     };
 
@@ -6342,6 +6343,9 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_literal(
     }
 
     mylite_sql_ast_node_set_literal_kind(literal, literal_kind);
+    if ((state->modes & MYLITE_SQL_MODE_NO_BACKSLASH_ESCAPES) != 0U) {
+        mylite_sql_ast_node_set_no_backslash_escapes(literal);
+    }
     return literal;
 }
 
@@ -7193,6 +7197,9 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_binary_expression(
     }
 
     mylite_sql_ast_node_set_operator(expression, operator_kind);
+    if ((state->modes & MYLITE_SQL_MODE_NO_BACKSLASH_ESCAPES) != 0U) {
+        mylite_sql_ast_node_set_no_backslash_escapes(expression);
+    }
     mylite_sql_ast_node_append_child(expression, left);
     mylite_sql_ast_node_append_child(expression, right);
     return expression;

@@ -73,6 +73,8 @@ int mylite_show_prepare_columns_statement(
                 .table_name = target.table_name,
                 .like_pattern = like_pattern,
                 .where_expression = show_columns_where_expression(statement),
+                .like_escape_backslash = show_columns_filter(statement) != NULL &&
+                                         !show_columns_filter(statement)->no_backslash_escapes,
                 .full = statement->show_columns_full,
                 .temporary = target.temporary,
             },
@@ -123,6 +125,8 @@ int mylite_show_prepare_describe_table_statement(
                 .schema_name = target.schema_name,
                 .table_name = target.table_name,
                 .like_pattern = column_pattern,
+                .like_escape_backslash = mylite_ast_child_at(statement, 1U) != NULL &&
+                                         !mylite_ast_child_at(statement, 1U)->no_backslash_escapes,
                 .full = false,
                 .temporary = target.temporary,
             },

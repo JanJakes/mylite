@@ -20828,7 +20828,7 @@ static int eval_like(
     char *value_text = NULL;
     char *pattern_text = NULL;
     char *escape_text = NULL;
-    char escape = '\\';
+    char escape = node->no_backslash_escapes ? '\0' : '\\';
     bool case_sensitive = expression_is_binary_string_modifier(child_at(node, 0U)) ||
                           expression_is_binary_string_modifier(child_at(node, 1U));
     int status = eval_node(child_at(node, 0U), context, warnings, &value);
@@ -23342,7 +23342,7 @@ static char *decode_string_literal(const struct mylite_sql_ast_node *node, size_
         return NULL;
     }
     for (size_t index = start; index < end; ++index) {
-        if (text[index] == '\\' && index + 1U < end) {
+        if (!node->no_backslash_escapes && text[index] == '\\' && index + 1U < end) {
             char escaped = '\0';
 
             if (decode_string_escape(text[index + 1U], &escaped)) {

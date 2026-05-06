@@ -74,6 +74,11 @@ semantic analysis:
 Other SQL modes may affect later interpretation, but they do not need lexer
 flags until a documented token boundary changes.
 
+Statement preparation feeds the connection's current lexical mode flags into
+the parser. The parser preserves `NO_BACKSLASH_ESCAPES` on literal AST nodes so
+runtime decoding and pattern matching can distinguish quoted bytes parsed under
+different modes.
+
 ## Whitespace
 
 The lexer treats ASCII space, horizontal tab, line feed, carriage return, form
@@ -101,6 +106,9 @@ String literals are quoted with single quotes or, unless `ANSI_QUOTES` is set,
 double quotes. A matching quote inside the literal can be doubled. Backslash
 escapes keep the token open unless `NO_BACKSLASH_ESCAPES` is set. Adjacent
 quoted strings are separate tokens; concatenation is parser/analyzer behavior.
+String escape replacement remains runtime behavior; when
+`NO_BACKSLASH_ESCAPES` is set, `\0` remains the two bytes backslash and `0`
+rather than becoming a NUL byte.
 
 National character strings use `N'...'` or `n'...'` with no whitespace between
 the `N` and the quote.

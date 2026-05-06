@@ -169,7 +169,10 @@ int mylite_show_variables_sql(
     sqlite3_str_appendall(sql, ")");
 
     if (query->like_pattern != NULL) {
-        sqlite3_str_appendf(sql, " WHERE Variable_name LIKE %Q ESCAPE '\\'", query->like_pattern);
+        sqlite3_str_appendf(sql, " WHERE Variable_name LIKE %Q", query->like_pattern);
+        if (query->like_escape_backslash) {
+            sqlite3_str_appendall(sql, " ESCAPE '\\'");
+        }
     }
     if (status == MYLITE_OK && query->where_expression != NULL) {
         sqlite3_str_appendall(sql, query->like_pattern == NULL ? " WHERE " : " AND ");

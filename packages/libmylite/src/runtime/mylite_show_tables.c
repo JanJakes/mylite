@@ -33,7 +33,7 @@ static char *copy_show_tables_display_pattern(const char *like_pattern, bool upp
 
 static char *show_tables_column_name(const char *schema_name, const char *like_pattern);
 
-static char *show_tables_glob_pattern(const char *like_pattern);
+static char *show_tables_glob_pattern(const char *like_pattern, bool escape_backslash);
 
 static int normalize_show_tables_schema_name(char **schema_name);
 
@@ -73,7 +73,11 @@ int mylite_show_prepare_tables_statement(
         }
     }
     if (status == MYLITE_OK && display_pattern != NULL) {
-        glob_pattern = show_tables_glob_pattern(display_pattern);
+        glob_pattern = show_tables_glob_pattern(
+            display_pattern,
+            show_tables_filter(statement) != NULL &&
+                !show_tables_filter(statement)->no_backslash_escapes
+        );
         if (glob_pattern == NULL) {
             status = MYLITE_NOMEM;
         }
@@ -146,7 +150,11 @@ int mylite_show_prepare_table_status_statement(
         }
     }
     if (status == MYLITE_OK && display_pattern != NULL) {
-        glob_pattern = show_tables_glob_pattern(display_pattern);
+        glob_pattern = show_tables_glob_pattern(
+            display_pattern,
+            show_tables_filter(statement) != NULL &&
+                !show_tables_filter(statement)->no_backslash_escapes
+        );
         if (glob_pattern == NULL) {
             status = MYLITE_NOMEM;
         }
@@ -273,7 +281,7 @@ static char *show_tables_column_name(const char *schema_name, const char *like_p
     return sqlite3_mprintf("Tables_in_%s (%s)", schema_name, like_pattern);
 }
 
-static char *show_tables_glob_pattern(const char *like_pattern) {
+static char *show_tables_glob_pattern(const char *like_pattern, bool escape_backslash) {
     sqlite3_str *glob = sqlite3_str_new(NULL);
 
     if (glob == NULL) {
@@ -283,7 +291,7 @@ static char *show_tables_glob_pattern(const char *like_pattern) {
     for (size_t index = 0U; like_pattern[index] != '\0'; ++index) {
         char character = like_pattern[index];
 
-        if (character == '\\' && like_pattern[index + 1U] != '\0') {
+        if (escape_backslash && character == '\\' && like_pattern[index + 1U] != '\0') {
             append_show_tables_glob_literal(glob, like_pattern[++index]);
         } else if (character == '%') {
             sqlite3_str_append(glob, "*", 1);

@@ -26,6 +26,8 @@ static char *copy_show_character_set_like_pattern(const struct mylite_sql_ast_no
 
 static char *copy_show_collation_like_pattern(const struct mylite_sql_ast_node *filter);
 
+static bool show_like_uses_backslash_escape(const struct mylite_sql_ast_node *filter);
+
 static bool decode_show_string_escape(char escaped, char *out_character);
 
 int mylite_show_prepare_diagnostics_statement(
@@ -98,6 +100,7 @@ int mylite_show_prepare_variables_statement(
                 .scope = statement->show_variables_scope,
                 .like_pattern = like_pattern,
                 .where_expression = show_filter_where_expression(filter),
+                .like_escape_backslash = show_like_uses_backslash_escape(filter),
             },
             &sqlite_sql
         );
@@ -135,6 +138,7 @@ int mylite_show_prepare_status_statement(
                 .scope = statement->show_status_scope,
                 .like_pattern = like_pattern,
                 .where_expression = show_filter_where_expression(filter),
+                .like_escape_backslash = show_like_uses_backslash_escape(filter),
             },
             &sqlite_sql
         );
@@ -171,6 +175,7 @@ int mylite_show_prepare_character_set_statement(
             &(const struct mylite_show_character_set_query){
                 .like_pattern = like_pattern,
                 .where_expression = show_filter_where_expression(filter),
+                .like_escape_backslash = show_like_uses_backslash_escape(filter),
             },
             &sqlite_sql
         );
@@ -207,6 +212,7 @@ int mylite_show_prepare_collation_statement(
             &(const struct mylite_show_collation_query){
                 .like_pattern = like_pattern,
                 .where_expression = show_filter_where_expression(filter),
+                .like_escape_backslash = show_like_uses_backslash_escape(filter),
             },
             &sqlite_sql
         );
@@ -286,6 +292,11 @@ static char *copy_show_collation_like_pattern(const struct mylite_sql_ast_node *
     return mylite_show_copy_like_pattern_span(filter);
 }
 
+static bool show_like_uses_backslash_escape(const struct mylite_sql_ast_node *filter) {
+    return filter != NULL && filter->kind == MYLITE_SQL_AST_LITERAL &&
+           !filter->no_backslash_escapes;
+}
+
 char *mylite_show_copy_like_pattern_span(const struct mylite_sql_ast_node *node) {
     const char *text = node == NULL ? NULL : node->span.text;
     size_t length = node == NULL ? 0U : node->span.length;
@@ -313,7 +324,7 @@ char *mylite_show_copy_like_pattern_span(const struct mylite_sql_ast_node *node)
     }
 
     for (size_t index = start; index < end; ++index) {
-        if (text[index] == '\\' && index + 1U < end) {
+        if (!node->no_backslash_escapes && text[index] == '\\' && index + 1U < end) {
             char escaped = '\0';
 
             if (decode_show_string_escape(text[index + 1U], &escaped)) {

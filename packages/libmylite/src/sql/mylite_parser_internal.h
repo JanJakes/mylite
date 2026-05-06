@@ -10,6 +10,7 @@
 
 struct mylite_sql_parser_state {
     struct mylite_sql_parse_result *result;
+    unsigned int modes;
     bool accepted;
 };
 

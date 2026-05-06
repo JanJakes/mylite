@@ -384,6 +384,13 @@ const char *mylite_connection_sql_mode(const mylite_db *database) {
                                                           : database->sql_mode;
 }
 
+bool mylite_connection_sql_mode_has_ansi_quotes(const mylite_db *database) {
+    return sql_mode_contains_token((struct mylite_sql_mode_token_search){
+        .sql_mode = mylite_connection_sql_mode(database),
+        .expected = "ANSI_QUOTES",
+    });
+}
+
 bool mylite_connection_sql_mode_has_only_full_group_by(const mylite_db *database) {
     return sql_mode_contains_token((struct mylite_sql_mode_token_search){
         .sql_mode = mylite_connection_sql_mode(database),
@@ -395,6 +402,13 @@ bool mylite_connection_sql_mode_has_no_auto_value_on_zero(const mylite_db *datab
     return sql_mode_contains_token((struct mylite_sql_mode_token_search){
         .sql_mode = mylite_connection_sql_mode(database),
         .expected = "NO_AUTO_VALUE_ON_ZERO",
+    });
+}
+
+bool mylite_connection_sql_mode_has_no_backslash_escapes(const mylite_db *database) {
+    return sql_mode_contains_token((struct mylite_sql_mode_token_search){
+        .sql_mode = mylite_connection_sql_mode(database),
+        .expected = "NO_BACKSLASH_ESCAPES",
     });
 }
 

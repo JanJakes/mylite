@@ -88,6 +88,14 @@ void mylite_sql_ast_node_set_literal_kind(
     node->literal_kind = literal_kind;
 }
 
+void mylite_sql_ast_node_set_no_backslash_escapes(struct mylite_sql_ast_node *node) {
+    if (node == NULL) {
+        return;
+    }
+
+    node->no_backslash_escapes = true;
+}
+
 void mylite_sql_ast_node_set_delete_form(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_delete_form delete_form

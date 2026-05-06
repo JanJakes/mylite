@@ -141,6 +141,8 @@ static int show_schemas_filtered_sql(
     char *like_pattern = NULL;
     char *display_column = NULL;
     const struct mylite_sql_ast_node *where_expression = show_schemas_where_expression(filter);
+    bool like_escape_backslash =
+        filter != NULL && filter->kind == MYLITE_SQL_AST_LITERAL && !filter->no_backslash_escapes;
     int status = MYLITE_OK;
 
     *out_sql = NULL;
@@ -167,7 +169,10 @@ static int show_schemas_filtered_sql(
             display_column == NULL ? "Database" : display_column
         );
         if (like_pattern != NULL) {
-            sqlite3_str_appendf(sql, " WHERE name LIKE %Q ESCAPE '\\'", like_pattern);
+            sqlite3_str_appendf(sql, " WHERE name LIKE %Q", like_pattern);
+            if (like_escape_backslash) {
+                sqlite3_str_appendall(sql, " ESCAPE '\\'");
+            }
         }
         if (where_expression != NULL) {
             sqlite3_str_appendall(sql, " WHERE ");
@@ -265,7 +270,10 @@ int mylite_show_columns_sql(
         query->table_name
     );
     if (query->like_pattern != NULL) {
-        sqlite3_str_appendf(sql, " AND column_name LIKE %Q ESCAPE '\\'", query->like_pattern);
+        sqlite3_str_appendf(sql, " AND column_name LIKE %Q", query->like_pattern);
+        if (query->like_escape_backslash) {
+            sqlite3_str_appendall(sql, " ESCAPE '\\'");
+        }
     }
     if (query->where_expression != NULL) {
         sqlite3_str_appendall(sql, " AND ");

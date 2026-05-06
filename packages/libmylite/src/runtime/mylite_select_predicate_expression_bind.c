@@ -5,6 +5,7 @@
 #include "mylite_select_predicate_bind.h"
 #include "mylite_select_resolve.h"
 #include "mylite_span.h"
+#include "mylite_system_variables.h"
 #include "sql/mylite_expression.h"
 
 static int
@@ -56,6 +57,9 @@ int mylite_select_bind_predicate_expression_in_clause(
         return MYLITE_OK;
     case MYLITE_SQL_AST_IDENTIFIER:
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER: {
+        if (mylite_system_variable_identifier_is_system_variable(expression)) {
+            return MYLITE_OK;
+        }
         size_t column_index = mylite_select_plan_column_count(plan);
         int status = mylite_select_resolve_plan_column_reference_in_scope(
             database, plan, expression, clause_context, first_table, table_count, &column_index);

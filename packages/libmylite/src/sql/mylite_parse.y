@@ -3271,6 +3271,9 @@ primary_expression(A) ::= scalar_function_call(B). {
 primary_expression(A) ::= json_extract_expression(B). {
     A = B;
 }
+primary_expression(A) ::= SYSTEM_VARIABLE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 primary_expression(A) ::= qualified_identifier(B). {
     A = B;
 }

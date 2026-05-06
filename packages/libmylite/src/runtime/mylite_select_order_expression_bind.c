@@ -7,6 +7,7 @@
 #include "mylite_select_order_resolve.h"
 #include "mylite_select_subquery.h"
 #include "mylite_span.h"
+#include "mylite_system_variables.h"
 #include "sql/mylite_ast.h"
 #include "sql/mylite_expression.h"
 
@@ -17,6 +18,9 @@ static int bind_order_binary_expression(mylite_db *database,
                                         const struct mylite_sql_ast_node *expression,
                                         struct mylite_select_plan *plan,
                                         const struct mylite_select_order_bind_callbacks *callbacks);
+static int bind_order_identifier_expression(mylite_db *database,
+                                            const struct mylite_sql_ast_node *expression,
+                                            struct mylite_select_plan *plan);
 static int
 bind_order_in_subquery_expression(mylite_db *database, const struct mylite_sql_ast_node *expression,
                                   struct mylite_select_plan *plan,
@@ -38,17 +42,8 @@ int mylite_select_bind_order_expression( // NOLINT(misc-no-recursion)
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
         return MYLITE_OK;
     case MYLITE_SQL_AST_IDENTIFIER:
-    case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER: {
-        enum mylite_select_order_key_kind kind = MYLITE_SELECT_ORDER_KEY_EXPRESSION;
-        size_t index = 0U;
-        int status =
-            mylite_select_resolve_order_reference(database, plan, expression, &kind, &index);
-
-        if (status == MYLITE_OK && kind == MYLITE_SELECT_ORDER_KEY_OUTPUT) {
-            mylite_select_plan_mark_output_order_reference(plan, index);
-        }
-        return status;
-    }
+    case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
+        return bind_order_identifier_expression(database, expression, plan);
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
     case MYLITE_SQL_AST_TERNARY_EXPRESSION:
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
@@ -236,6 +231,25 @@ int mylite_select_bind_order_expression( // NOLINT(misc-no-recursion)
     }
 
     return callbacks->set_unsupported_order_error(database);
+}
+
+static int bind_order_identifier_expression(mylite_db *database,
+                                            const struct mylite_sql_ast_node *expression,
+                                            struct mylite_select_plan *plan)
+{
+    enum mylite_select_order_key_kind kind = MYLITE_SELECT_ORDER_KEY_EXPRESSION;
+    size_t index = 0U;
+    int status = MYLITE_OK;
+
+    if (mylite_system_variable_identifier_is_system_variable(expression)) {
+        return MYLITE_OK;
+    }
+
+    status = mylite_select_resolve_order_reference(database, plan, expression, &kind, &index);
+    if (status == MYLITE_OK && kind == MYLITE_SELECT_ORDER_KEY_OUTPUT) {
+        mylite_select_plan_mark_output_order_reference(plan, index);
+    }
+    return status;
 }
 
 static int bind_order_row_constructor( // NOLINT(misc-no-recursion)

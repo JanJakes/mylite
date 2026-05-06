@@ -2166,6 +2166,10 @@ static const struct mylite_sql_ast_node *child_at(const struct mylite_sql_ast_no
 static size_t child_count(const struct mylite_sql_ast_node *node);
 static bool expression_is_supported_no_table(const struct mylite_sql_ast_node *expression,
                                              bool require_cacheable);
+static bool
+expression_is_supported_no_table_identifier(const struct mylite_sql_ast_node *expression,
+                                            bool require_cacheable);
+static bool expression_is_system_variable_identifier(const struct mylite_sql_ast_node *expression);
 static enum mylite_scalar_function_id scalar_function_id(const struct mylite_sql_ast_node *node);
 static enum mylite_scalar_function_id
 scalar_function_id_from_span(struct mylite_sql_source_span span);
@@ -2413,10 +2417,36 @@ static bool expression_is_supported_no_table(const struct mylite_sql_ast_node *e
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
         return !require_cacheable;
     case MYLITE_SQL_AST_IDENTIFIER:
+        return expression_is_supported_no_table_identifier(expression, require_cacheable);
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
     default:
         return false;
     }
+}
+
+static bool
+expression_is_supported_no_table_identifier(const struct mylite_sql_ast_node *expression,
+                                            bool require_cacheable)
+{
+    if (require_cacheable) {
+        return false;
+    }
+    return expression_is_system_variable_identifier(expression);
+}
+
+static bool expression_is_system_variable_identifier(const struct mylite_sql_ast_node *expression)
+{
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_IDENTIFIER ||
+        expression->span.length < 2U || expression->span.text == NULL) {
+        return false;
+    }
+    if (expression->span.text[0] != '@') {
+        return false;
+    }
+    if (expression->span.text[1] != '@') {
+        return false;
+    }
+    return true;
 }
 
 bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_node *expression)

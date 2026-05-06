@@ -4,6 +4,7 @@
 #include "mylite_runtime.h"
 #include "mylite_select.h"
 #include "mylite_span.h"
+#include "mylite_system_variables.h"
 
 #include <stdlib.h>
 
@@ -102,6 +103,10 @@ static int resolve_union_expression_identifier(void *user_data,
 
     if (context == NULL || context->stmt == NULL || context->row == NULL) {
         return -1;
+    }
+    if (mylite_system_variable_identifier_is_system_variable(identifier)) {
+        return mylite_system_variable_eval_identifier(context->stmt->database, identifier,
+                                                      out_value);
     }
 
     status = mylite_copy_identifier_parts(identifier, parts, &part_count);

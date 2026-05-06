@@ -5,6 +5,7 @@
 
 extern const unsigned int mylite_mysql_not_fixed_decimals;
 extern const unsigned int mylite_mysql_binary_charset_id;
+extern const unsigned int mylite_mysql_latin1_swedish_ci_charset_id;
 extern const unsigned int mylite_mysql_utf8mb4_bin_charset_id;
 extern const unsigned int mylite_mysql_utf8mb4_0900_ai_ci_charset_id;
 extern const char mylite_mysql_binary_charset_name[];
@@ -48,6 +49,8 @@ extern const uint64_t mylite_mysql_ord_function_display_length;
 extern const uint64_t mylite_mysql_schema_function_display_length;
 extern const uint64_t mylite_mysql_version_function_display_length;
 extern const uint64_t mylite_mysql_session_integer_function_display_length;
+extern const uint64_t mylite_mysql_system_variable_string_display_length;
+extern const uint64_t mylite_mysql_system_variable_integer_display_length;
 extern const uint64_t mylite_mysql_identity_function_display_chars;
 extern const uint64_t mylite_mysql_current_role_function_display_chars;
 extern const uint64_t mylite_mysql_charset_collation_function_display_chars;

@@ -7,6 +7,7 @@
 #include "mylite_select_order_resolve.h"
 #include "mylite_select_resolve.h"
 #include "mylite_span.h"
+#include "mylite_system_variables.h"
 #include "sqlite3.h"
 
 #include <stdlib.h>
@@ -118,6 +119,9 @@ static int validate_select_distinct_order_expression_node(
         return MYLITE_OK;
     case MYLITE_SQL_AST_IDENTIFIER:
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
+        if (mylite_system_variable_identifier_is_system_variable(expression)) {
+            return MYLITE_OK;
+        }
         return validate_select_distinct_order_identifier(database, plan, expression, order_position,
                                                          alias_first);
     case MYLITE_SQL_AST_UNARY_EXPRESSION:

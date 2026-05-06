@@ -6,6 +6,7 @@
 #include "mylite_select_order_expression_bind.h"
 #include "mylite_select_order_resolve.h"
 #include "mylite_span.h"
+#include "mylite_system_variables.h"
 
 #include <stdlib.h>
 
@@ -95,7 +96,8 @@ static int bind_order_item(mylite_db *database, const struct mylite_sql_ast_node
         return mylite_select_plan_add_order_key(plan, &order_key);
     }
 
-    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER) {
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER &&
+        !mylite_system_variable_identifier_is_system_variable(expression)) {
         enum mylite_select_order_key_kind kind = MYLITE_SELECT_ORDER_KEY_EXPRESSION;
         size_t index = 0U;
         int status =

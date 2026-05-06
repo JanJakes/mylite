@@ -5,6 +5,7 @@
 #include "mylite_select.h"
 #include "mylite_select_types.h"
 #include "mylite_span.h"
+#include "mylite_system_variables.h"
 #include "sql/mylite_ast.h"
 #include "sql/mylite_expression.h"
 
@@ -37,6 +38,9 @@ int mylite_dml_bind_mutation_expression(
         return MYLITE_OK;
     case MYLITE_SQL_AST_IDENTIFIER:
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER: {
+        if (mylite_system_variable_identifier_is_system_variable(expression)) {
+            return MYLITE_OK;
+        }
         size_t column_index = table->column_count;
         int status = mylite_select_resolve_column_reference(table, expression, &column_index);
 

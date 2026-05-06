@@ -4,6 +4,7 @@
 #include "mylite_select_resolve.h"
 #include "mylite_select_subquery.h"
 #include "mylite_span.h"
+#include "mylite_system_variables.h"
 
 #include <stdlib.h>
 
@@ -102,6 +103,9 @@ bool mylite_select_expression_is_group_invariant( // NOLINT(misc-no-recursion)
         return true;
     case MYLITE_SQL_AST_IDENTIFIER:
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
+        if (mylite_system_variable_identifier_is_system_variable(expression)) {
+            return true;
+        }
         return select_identifier_is_group_invariant(plan, expression, reference_policy);
     case MYLITE_SQL_AST_CAST_EXPRESSION:
         return mylite_select_expression_is_group_invariant(

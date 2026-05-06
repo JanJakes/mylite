@@ -335,8 +335,11 @@ level application surfaces.
 41. [ ] User and system variables: `SET`, user-variable storage, system-variable
        validation, scope, charset/collation metadata, and expression use.
        Focused session-variable slices are specified and implemented for
-       `sql_mode` and `group_concat_max_len`; global mutation, user variables,
-       persisted variables, and `@@` expression reads remain unfinished.
+       `sql_mode` and `group_concat_max_len`, and the first
+       [system-variable expression read](../system-variable-expression-reads/specs.md)
+       slice covers the current `SHOW VARIABLES` catalog; global mutation,
+       user variables, persisted variables, direct arbitrary assignment, and
+       complete variable-catalog coverage remain unfinished.
 42. [ ] Prepared statements: `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`,
        parameter markers, metadata, and diagnostics.
 43. [ ] `CREATE TABLE ... LIKE`: metadata cloning, indexes, defaults, generated

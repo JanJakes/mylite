@@ -109,12 +109,14 @@ enum {
     mysql_warning_nonunique_table = 1066,
     mysql_warning_invalid_group_function = 1111,
     mysql_warning_mix_group_function_fields = 1140,
+    mysql_warning_unknown_system_variable = 1193,
     mysql_warning_wrong_usage = 1221,
     mysql_warning_wrong_number_of_columns = 1222,
     mysql_warning_wrong_value_for_var = 1231,
     mysql_warning_wrong_type_for_var = 1232,
     mysql_warning_wrong_sql_calc_found_rows_placement = 1234,
     mysql_warning_not_supported_yet = 1235,
+    mysql_warning_incorrect_global_local_var = 1238,
     mysql_warning_unknown = 1105,
     mysql_warning_incorrect_escape_arguments = 1210,
     mysql_warning_operand_columns = 1241,
@@ -21408,6 +21410,58 @@ static int test_show_variables_execution(void)
     static const char *const warning_count_values[] = {"warning_count", "0"};
     static const char *const error_count_values[] = {"error_count", "0"};
     static const char *const diagnostics_columns[] = {"Level", "Code", "Message"};
+    static const char *const system_variable_columns[] = {
+        "sm", "ssm", "gsm", "gcm", "sgcm", "ggcm", "ver", "vc",
+        "ac", "sn",  "ti",  "ro",  "wc",   "ec",   "mec",
+    };
+    static const char *const system_variable_changed_columns[] = {"sm", "lsm", "gsm", "gcm",
+                                                                  "lgcm"};
+    static const char *const system_variable_charset_columns[] = {
+        "client", "global_client", "connection", "global_connection"};
+    static const char *const system_variable_charset_values[] = {
+        "latin1",
+        "utf8mb4",
+        "latin1_bin",
+        "utf8mb4_0900_ai_ci",
+    };
+    static const char *const system_variable_schema_columns[] = {
+        "charset_database", "collation_database", "global_collation_database"};
+    static const char *const system_variable_schema_values[] = {
+        "latin1",
+        "latin1_bin",
+        "utf8mb4_0900_ai_ci",
+    };
+    static const struct expected_result_metadata system_variable_metadata[] = {
+        {
+            .name = "sm",
+            .declared_length = 21845U,
+            .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+            .decimals = 31U,
+            .charset_id = 8U,
+            .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                           MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED,
+            .nullable = 1,
+        },
+        {
+            .name = "gcm",
+            .declared_length = 21U,
+            .field_type = MYLITE_FIELD_TYPE_LONGLONG,
+            .charset_id = 63U,
+            .flags_set =
+                MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+            .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+            .nullable = 1,
+        },
+        {
+            .name = "ac",
+            .declared_length = 1U,
+            .field_type = MYLITE_FIELD_TYPE_LONGLONG,
+            .charset_id = 63U,
+            .flags_set = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+            .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED,
+            .nullable = 1,
+        },
+    };
     const char *const version_values[] = {
         "version",
         mylite_version(),
@@ -21420,6 +21474,28 @@ static int test_show_variables_execution(void)
         "version_compile_zlib",
         "",
     };
+    const char *const system_variable_values[] = {
+        default_sql_mode_values[1],
+        default_sql_mode_values[1],
+        default_sql_mode_values[1],
+        "1024",
+        "1024",
+        "1024",
+        mylite_version(),
+        "MyLite",
+        "1",
+        "1",
+        "REPEATABLE-READ",
+        "0",
+        "0",
+        "0",
+        "1024",
+    };
+    const char *const system_variable_changed_values[] = {
+        "", "", default_sql_mode_values[1], "7", "7",
+    };
+    static const char *const table_expr_columns[] = {"id"};
+    static const char *const table_expr_values[] = {"1", "2"};
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -21440,6 +21516,29 @@ static int test_show_variables_execution(void)
                            initial_charset_values, 7, "show variables like is case-insensitive");
     failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'version%'", columns, 2,
                                    version_values, 5, "show variables version rows");
+    failures += expect_select_rows(
+        database,
+        "SELECT @@sql_mode AS sm, @@SESSION.sql_mode AS ssm, @@GLOBAL.sql_mode AS gsm, "
+        "@@group_concat_max_len AS gcm, @@SESSION.group_concat_max_len AS sgcm, "
+        "@@GLOBAL.group_concat_max_len AS ggcm, @@version AS ver, @@version_comment AS vc, "
+        "@@autocommit AS ac, @@sql_notes AS sn, @@transaction_isolation AS ti, "
+        "@@transaction_read_only AS ro, @@warning_count AS wc, @@error_count AS ec, "
+        "@@max_error_count AS mec",
+        system_variable_columns,
+        (int)(sizeof(system_variable_columns) / sizeof(system_variable_columns[0])),
+        system_variable_values, 1, "system variable expression defaults");
+    failures += prepare_sql(database,
+                            "SELECT @@sql_mode AS sm, @@group_concat_max_len AS gcm, "
+                            "@@autocommit AS ac",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, system_variable_metadata,
+        (int)(sizeof(system_variable_metadata) / sizeof(system_variable_metadata[0])),
+        "system variable metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "system variable metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "system variable metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'no_such_variable'", columns, 2,
                                    NULL, 0, "show variables empty like result");
     failures += expect_select_rows(database, "SHOW VARIABLES LIKE 'group_concat_max_len'", columns,
@@ -21470,6 +21569,15 @@ static int test_show_variables_execution(void)
     failures +=
         expect_select_rows(database, "SHOW GLOBAL VARIABLES LIKE 'sql_mode'", columns, 2,
                            default_sql_mode_values, 1, "show global variables sql mode default");
+    failures += execute_sql(database, "SET SESSION group_concat_max_len = 7", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT @@sql_mode AS sm, @@LOCAL.sql_mode AS lsm, @@GLOBAL.sql_mode AS gsm, "
+        "@@group_concat_max_len AS gcm, @@LOCAL.group_concat_max_len AS lgcm",
+        system_variable_changed_columns,
+        (int)(sizeof(system_variable_changed_columns) / sizeof(system_variable_changed_columns[0])),
+        system_variable_changed_values, 1, "system variable expression session changes");
+    failures += execute_sql(database, "SET SESSION group_concat_max_len = DEFAULT", MYLITE_DONE);
     failures += execute_sql(database,
                             "SET @@session.sql_mode = "
                             "'no_engine_substitution,only_full_group_by'",
@@ -21559,6 +21667,24 @@ static int test_show_variables_execution(void)
         expect_prepare_error(database, "SET GLOBAL group_concat_max_len = 8", MYLITE_UNSUPPORTED,
                              "SET GLOBAL group_concat_max_len is not supported",
                              "set global group concat max len unsupported");
+    failures += expect_prepare_error(database, "SELECT @@no_such_variable", MYLITE_EXEC_ERROR,
+                                     "Unknown system variable 'no_such_variable'",
+                                     "unknown system variable expression error");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_unknown_system_variable,
+                   "unknown system variable expression error code");
+    failures += expect_prepare_error(database, "SELECT @@GLOBAL.warning_count", MYLITE_EXEC_ERROR,
+                                     "Variable 'warning_count' is a SESSION variable",
+                                     "global session-only system variable error");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_incorrect_global_local_var,
+                   "global session-only system variable error code");
+    failures += expect_prepare_error(database, "SELECT @@SESSION.version", MYLITE_EXEC_ERROR,
+                                     "Variable 'version' is a GLOBAL variable",
+                                     "session global-only system variable error");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_incorrect_global_local_var,
+                   "session global-only system variable error code");
     failures += expect_prepare_error(database, "SHOW VARIABLES WHERE Variable_name = 'autocommit'",
                                      MYLITE_UNSUPPORTED, "SHOW VARIABLES WHERE is not supported",
                                      "show variables where is parsed but unsupported");
@@ -21584,6 +21710,15 @@ static int test_show_variables_execution(void)
     failures += expect_select_rows(database, "SHOW GLOBAL VARIABLES LIKE 'collation_connection'",
                                    columns, 2, global_collation_values, 1,
                                    "show variables global collation default");
+    failures += expect_select_rows(
+        database,
+        "SELECT @@character_set_client AS client, "
+        "@@GLOBAL.character_set_client AS global_client, "
+        "@@collation_connection AS connection, "
+        "@@GLOBAL.collation_connection AS global_connection",
+        system_variable_charset_columns,
+        (int)(sizeof(system_variable_charset_columns) / sizeof(system_variable_charset_columns[0])),
+        system_variable_charset_values, 1, "system variable charset state");
     failures += expect_select_rows(database, "SHOW GLOBAL VARIABLES LIKE 'warning_count'", columns,
                                    2, NULL, 0, "show global variables omits warning count");
     failures += expect_select_rows(database, "SHOW GLOBAL VARIABLES LIKE 'error_count'", columns, 2,
@@ -21612,6 +21747,23 @@ static int test_show_variables_execution(void)
     failures += expect_select_rows(database, "SHOW GLOBAL VARIABLES LIKE 'collation_database'",
                                    columns, 2, global_database_collation_values, 1,
                                    "show global variables database collation default");
+    failures += expect_select_rows(
+        database,
+        "SELECT @@character_set_database AS charset_database, "
+        "@@collation_database AS collation_database, "
+        "@@GLOBAL.collation_database AS global_collation_database",
+        system_variable_schema_columns,
+        (int)(sizeof(system_variable_schema_columns) / sizeof(system_variable_schema_columns[0])),
+        system_variable_schema_values, 1, "system variable selected schema state");
+
+    failures += execute_sql(database, "CREATE TABLE show_variable_expr (id INT)", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO show_variable_expr VALUES (2), (1)", MYLITE_DONE);
+    failures += expect_select_rows(database,
+                                   "SELECT id FROM show_variable_expr WHERE @@autocommit = 1 "
+                                   "ORDER BY @@group_concat_max_len, id",
+                                   table_expr_columns, 1, table_expr_values, 2,
+                                   "system variable table predicate and order");
 
     failures +=
         expect_select_rows(database, "SELECT 1/0 AS divzero", (const char *const[]){"divzero"}, 1,

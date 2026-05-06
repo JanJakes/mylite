@@ -8,6 +8,7 @@
 #include "mylite_select_resolve.h"
 #include "mylite_select_scalar.h"
 #include "mylite_span.h"
+#include "mylite_system_variables.h"
 #include "sql/mylite_ast.h"
 
 #include <stdint.h>
@@ -101,6 +102,9 @@ static int validate_scalar_select_order_expression( // NOLINT(misc-no-recursion)
         return MYLITE_OK;
     case MYLITE_SQL_AST_IDENTIFIER:
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
+        if (mylite_system_variable_identifier_is_system_variable(expression)) {
+            return MYLITE_OK;
+        }
         return resolve_scalar_select_order_reference(database, metadata, expression, callbacks);
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
     case MYLITE_SQL_AST_BINARY_EXPRESSION:

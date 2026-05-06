@@ -9,6 +9,7 @@
 #include "mylite_select_subquery.h"
 #include "mylite_span.h"
 #include "mylite_statement.h"
+#include "mylite_system_variables.h"
 #include "sql/mylite_ast.h"
 
 #include <stdint.h>
@@ -60,6 +61,9 @@ static int evaluate_scalar_numeric_aggregate_expression(
     const struct mylite_expression_value *argument, struct mylite_expression_value *out_value);
 static struct mylite_expression_eval_context
 scalar_expression_eval_context(struct mylite_select_scalar_expression_context *context);
+static int scalar_context_resolve_identifier(void *user_data,
+                                             const struct mylite_sql_ast_node *identifier,
+                                             struct mylite_expression_value *out_value);
 static int scalar_context_eval_session_function(
     void *user_data, const struct mylite_sql_ast_node *function_call,
     const struct mylite_expression_eval_context *expression_context,
@@ -609,6 +613,7 @@ scalar_expression_eval_context(struct mylite_select_scalar_expression_context *c
 {
     return (struct mylite_expression_eval_context){
         .user_data = context,
+        .resolve_identifier = scalar_context_resolve_identifier,
         .eval_subquery = scalar_context_eval_subquery,
         .eval_in_subquery = scalar_context_eval_in_subquery,
         .eval_quantified_subquery = scalar_context_eval_quantified_subquery,
@@ -616,6 +621,22 @@ scalar_expression_eval_context(struct mylite_select_scalar_expression_context *c
         .eval_session_function = scalar_context_eval_session_function,
         .eval_default_function = scalar_context_eval_default_function,
     };
+}
+
+static int scalar_context_resolve_identifier(void *user_data,
+                                             const struct mylite_sql_ast_node *identifier,
+                                             struct mylite_expression_value *out_value)
+{
+    struct mylite_select_scalar_expression_context *context = user_data;
+
+    if (context == NULL || context->stmt == NULL) {
+        return -1;
+    }
+    if (mylite_system_variable_identifier_is_system_variable(identifier)) {
+        return mylite_system_variable_eval_identifier(context->stmt->database, identifier,
+                                                      out_value);
+    }
+    return -1;
 }
 
 static int scalar_context_eval_session_function(

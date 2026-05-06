@@ -4,6 +4,7 @@
 #include "mylite_metadata_constants.h"
 #include "mylite_select.h"
 #include "mylite_select_resolve.h"
+#include "mylite_system_variables.h"
 #include "sql/mylite_ast.h"
 
 #include <stddef.h>
@@ -58,6 +59,10 @@ int mylite_expression_descriptor_infer_identifier(mylite_db *database,
                                                   const struct mylite_sql_ast_node *expression,
                                                   struct mylite_field_descriptor *out_descriptor)
 {
+    if (mylite_system_variable_identifier_is_system_variable(expression)) {
+        return mylite_system_variable_infer_identifier(database, expression, out_descriptor);
+    }
+
     size_t column_index = plan == NULL ? 0U : mylite_select_plan_column_count(plan);
     int status = plan == NULL ? MYLITE_UNSUPPORTED
                               : mylite_select_resolve_plan_column_reference(

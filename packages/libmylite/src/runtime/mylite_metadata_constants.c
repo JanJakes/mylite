@@ -2,6 +2,7 @@
 
 const unsigned int mylite_mysql_not_fixed_decimals = 31U;
 const unsigned int mylite_mysql_binary_charset_id = 63U;
+const unsigned int mylite_mysql_latin1_swedish_ci_charset_id = 8U;
 const unsigned int mylite_mysql_utf8mb4_bin_charset_id = 46U;
 const unsigned int mylite_mysql_utf8mb4_0900_ai_ci_charset_id = 255U;
 const char mylite_mysql_binary_charset_name[] = "binary";
@@ -45,6 +46,8 @@ const uint64_t mylite_mysql_ord_function_display_length = 21U;
 const uint64_t mylite_mysql_schema_function_display_length = 256U;
 const uint64_t mylite_mysql_version_function_display_length = 20U;
 const uint64_t mylite_mysql_session_integer_function_display_length = 21U;
+const uint64_t mylite_mysql_system_variable_string_display_length = 21845U;
+const uint64_t mylite_mysql_system_variable_integer_display_length = 21U;
 const uint64_t mylite_mysql_identity_function_display_chars = 288U;
 const uint64_t mylite_mysql_current_role_function_display_chars = UINT64_C(50331648);
 const uint64_t mylite_mysql_charset_collation_function_display_chars = 64U;

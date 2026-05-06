@@ -5210,6 +5210,32 @@ static int test_select_expression_list(void)
                                "null literal");
 
     mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT @@sql_mode, @@SESSION.sql_mode AS sm, "
+                          "@@LOCAL.group_concat_max_len, @@GLOBAL.version;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_child_count(select_list, 4U, "system variable select list");
+    failures += expect_node(child_at(child_at(select_list, 0U), 0U), MYLITE_SQL_AST_IDENTIFIER,
+                            "bare system variable");
+    failures += expect_span_text(child_at(child_at(select_list, 0U), 0U), "@@sql_mode",
+                                 "bare system variable span");
+    failures += expect_node(child_at(child_at(select_list, 1U), 0U), MYLITE_SQL_AST_IDENTIFIER,
+                            "session system variable");
+    failures += expect_span_text(child_at(child_at(select_list, 1U), 0U), "@@SESSION.sql_mode",
+                                 "session system variable span");
+    failures +=
+        expect_span_text(child_at(child_at(select_list, 1U), 1U), "sm", "system variable alias");
+    failures += expect_node(child_at(child_at(select_list, 2U), 0U), MYLITE_SQL_AST_IDENTIFIER,
+                            "local system variable");
+    failures += expect_span_text(child_at(child_at(select_list, 2U), 0U),
+                                 "@@LOCAL.group_concat_max_len", "local system variable span");
+    failures += expect_node(child_at(child_at(select_list, 3U), 0U), MYLITE_SQL_AST_IDENTIFIER,
+                            "global system variable");
+    failures += expect_span_text(child_at(child_at(select_list, 3U), 0U), "@@GLOBAL.version",
+                                 "global system variable span");
+    mylite_sql_parse_result_deinit(&result);
+
     return failures;
 }
 

@@ -5,6 +5,7 @@
 #include "mylite_runtime.h"
 #include "mylite_select.h"
 #include "mylite_span.h"
+#include "mylite_system_variables.h"
 #include "sql/mylite_ast.h"
 #include "sql/mylite_expression.h"
 
@@ -61,6 +62,9 @@ int mylite_dml_resolve_update_expression_identifier(void *user_data,
 
     if (context == NULL || context->table == NULL || context->row == NULL) {
         return -1;
+    }
+    if (mylite_system_variable_identifier_is_system_variable(identifier)) {
+        return mylite_system_variable_eval_identifier(context->database, identifier, out_value);
     }
 
     status = mylite_select_resolve_column_reference(context->table, identifier, &column_index);

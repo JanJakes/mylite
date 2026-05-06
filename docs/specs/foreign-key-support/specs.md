@@ -150,13 +150,16 @@ tables only while `foreign_key_checks=0`, and writes catalog-backed
 does not retroactively validate old rows when checks are re-enabled, accepts
 rows where any child foreign-key column is `NULL`, treats simple self-references
 to the candidate row as satisfied, and demotes unmatched child rows to warning
-1452 for `INSERT IGNORE`. Child-row update enforcement covers supported
-single-table and joined `UPDATE` paths, validates only constraints whose child
-columns changed, and allows unrelated updates to orphaned child rows that were
-created while `foreign_key_checks=0`. Parent-side `RESTRICT`, `NO ACTION`, and
-`SET DEFAULT` enforcement rejects supported parent key updates, parent deletes,
-multi-table deletes, self-referential parent mutations, and `REPLACE` conflict
-deletes with error 1451 while `foreign_key_checks` is enabled. Direct parent
+1452 for `INSERT IGNORE` and single-table `UPDATE IGNORE`. Child-row update
+enforcement covers supported single-table and joined `UPDATE` paths, validates
+only constraints whose child columns changed, and allows unrelated updates to
+orphaned child rows that were created while `foreign_key_checks=0`.
+Parent-side `RESTRICT`, `NO ACTION`, and `SET DEFAULT` enforcement rejects
+supported parent key updates, parent deletes, multi-table deletes,
+self-referential parent mutations, and `REPLACE` conflict deletes with error
+1451 while `foreign_key_checks` is enabled; single-table `UPDATE IGNORE`
+demotes supported parent-side update violations to warning 1451 and skips the
+referenced row. Direct parent
 updates apply `ON UPDATE CASCADE` and `ON UPDATE SET NULL` to matching child
 rows for supported single-table and joined `UPDATE` paths. Direct parent
 deletes and `REPLACE` conflict deletes apply `ON DELETE CASCADE` and

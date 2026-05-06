@@ -665,6 +665,7 @@ static int execute_joined_update_target_row(
     struct mylite_update_row stored = {0};
     struct mylite_update_row candidate = {0};
     sqlite3_int64 rowid = 0;
+    bool ignored = false;
     bool row_changed = false;
     int status = MYLITE_OK;
 
@@ -691,7 +692,9 @@ static int execute_joined_update_target_row(
             database,
             target->table,
             &target->write_table,
-            &candidate
+            &candidate,
+            false,
+            &ignored
         );
     }
     if (status == MYLITE_OK) {
@@ -703,7 +706,9 @@ static int execute_joined_update_target_row(
             target->table,
             &target->write_table,
             &stored,
-            &candidate
+            &candidate,
+            false,
+            &ignored
         );
     }
     if (status == MYLITE_OK && row_changed) {
@@ -711,7 +716,9 @@ static int execute_joined_update_target_row(
             database,
             target->table,
             &stored,
-            &candidate
+            &candidate,
+            false,
+            &ignored
         );
     }
     if (status == MYLITE_OK && row_changed) {

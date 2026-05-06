@@ -704,6 +704,7 @@ struct mylite_sql_ast_node {
     bool drop_table_restrict;
     bool drop_table_cascade;
     bool insert_ignore;
+    bool update_ignore;
     bool replace_low_priority;
     bool replace_delayed;
     bool alter_table_action_column_keyword;
@@ -861,6 +862,7 @@ void mylite_sql_ast_node_set_drop_table_temporary(struct mylite_sql_ast_node *no
 void mylite_sql_ast_node_set_drop_table_restrict(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_drop_table_cascade(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_insert_ignore(struct mylite_sql_ast_node *node);
+void mylite_sql_ast_node_set_update_ignore(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_replace_low_priority(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_replace_delayed(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_transaction_access_mode(

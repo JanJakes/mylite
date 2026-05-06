@@ -1099,12 +1099,36 @@ insert_set_value(A) ::= DEFAULT(T). {
 
 update_statement(A) ::= UPDATE(T) single_update_target(B) SET update_assignment_list(C)
         opt_where_clause(D) opt_order_by_clause(E) opt_update_limit_clause(F). {
-    A = mylite_sql_parser_make_update_statement(state, T, B, C, D, E, F);
+    A = mylite_sql_parser_make_update_statement(
+        state,
+        (struct mylite_sql_parser_update_tokens){.update = T},
+        B,
+        C,
+        D,
+        E,
+        F);
+}
+update_statement(A) ::= UPDATE(T) IGNORE(I) single_update_target(B) SET update_assignment_list(C)
+        opt_where_clause(D) opt_order_by_clause(E) opt_update_limit_clause(F). {
+    A = mylite_sql_parser_make_update_statement(
+        state,
+        (struct mylite_sql_parser_update_tokens){.update = T, .ignore = I},
+        B,
+        C,
+        D,
+        E,
+        F);
 }
 update_statement(A) ::= UPDATE(T) joined_update_table_references(B) SET update_assignment_list(C)
         opt_where_clause(D). {
     A = mylite_sql_parser_make_update_statement(
-        state, T, mylite_sql_parser_make_from_table_references(state, T, B), C, D, NULL, NULL);
+        state,
+        (struct mylite_sql_parser_update_tokens){.update = T},
+        mylite_sql_parser_make_from_table_references(state, T, B),
+        C,
+        D,
+        NULL,
+        NULL);
 }
 
 single_update_target(A) ::= table_name(B) opt_table_alias(C) opt_index_hint_list. {

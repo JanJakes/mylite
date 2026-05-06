@@ -2929,16 +2929,19 @@ struct mylite_sql_ast_node *mylite_sql_parser_append_insert_alias_column(
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_update_statement(
     struct mylite_sql_parser_state *state,
-    struct mylite_sql_token update_token,
+    struct mylite_sql_parser_update_tokens tokens,
     struct mylite_sql_ast_node *target,
     struct mylite_sql_ast_node *assignments,
     struct mylite_sql_ast_node *where_clause,
     struct mylite_sql_ast_node *order_by_clause,
     struct mylite_sql_ast_node *limit_clause
 ) {
-    struct mylite_sql_source_span span = span_from_token(&update_token);
+    struct mylite_sql_source_span span = span_from_token(&tokens.update);
     struct mylite_sql_ast_node *statement = NULL;
 
+    if (tokens.ignore.text != NULL) {
+        span = span_join(span, span_from_token(&tokens.ignore));
+    }
     if (target != NULL) {
         span = span_join(span, target->span);
     }
@@ -2958,6 +2961,9 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_update_statement(
     statement = make_node(state, MYLITE_SQL_AST_UPDATE_STATEMENT, span);
     if (statement == NULL) {
         return NULL;
+    }
+    if (tokens.ignore.text != NULL) {
+        mylite_sql_ast_node_set_update_ignore(statement);
     }
 
     mylite_sql_ast_node_append_child(statement, target);

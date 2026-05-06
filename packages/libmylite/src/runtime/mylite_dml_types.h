@@ -126,6 +126,7 @@ struct mylite_update_plan {
     struct mylite_update_target target;
     struct mylite_update_assignment *assignments;
     size_t assignment_count;
+    bool ignore;
     const struct mylite_sql_ast_node *from_clause;
     const struct mylite_sql_ast_node *where_clause;
     const struct mylite_sql_ast_node *order_by_clause;

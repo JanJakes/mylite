@@ -1,6 +1,7 @@
 #include "mylite_dml.h"
 
 #include "mylite_diagnostics.h"
+#include "mylite_error_codes.h"
 #include "mylite_runtime.h"
 #include "mylite_select_types.h"
 #include "sql/mylite_expression.h"
@@ -24,6 +25,13 @@ static int set_update_duplicate_entry_error(
     const struct mylite_update_row *candidate
 );
 
+static int append_update_duplicate_entry_warning(
+    mylite_db *database,
+    const char *table_name,
+    const struct mylite_insert_unique_index *index,
+    const struct mylite_update_row *candidate
+);
+
 static char *copy_update_duplicate_entry_value(
     const struct mylite_insert_unique_index *index,
     const struct mylite_update_row *candidate
@@ -33,12 +41,16 @@ int mylite_dml_validate_update_unique_indexes(
     mylite_db *database,
     const struct mylite_select_table *table,
     const struct mylite_insert_table *write_table,
-    const struct mylite_update_row *candidate
+    const struct mylite_update_row *candidate,
+    bool ignore,
+    bool *out_ignored
 ) {
-    if (database == NULL || table == NULL || write_table == NULL || candidate == NULL) {
+    if (database == NULL || table == NULL || write_table == NULL || candidate == NULL ||
+        out_ignored == NULL) {
         return MYLITE_MISUSE;
     }
 
+    *out_ignored = false;
     for (size_t index = 0U; index < write_table->unique_index_count; ++index) {
         bool conflicts = false;
         int status = update_unique_index_conflicts(
@@ -54,6 +66,15 @@ int mylite_dml_validate_update_unique_indexes(
             return status;
         }
         if (conflicts) {
+            if (ignore) {
+                *out_ignored = true;
+                return append_update_duplicate_entry_warning(
+                    database,
+                    table->table_name,
+                    &write_table->unique_indexes[index],
+                    candidate
+                );
+            }
             return set_update_duplicate_entry_error(
                 database,
                 table->table_name,
@@ -136,6 +157,34 @@ static int set_update_duplicate_entry_error(
     status = mylite_diagnostics_set_error_message(database, message);
     sqlite3_free(message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int append_update_duplicate_entry_warning(
+    mylite_db *database,
+    const char *table_name,
+    const struct mylite_insert_unique_index *index,
+    const struct mylite_update_row *candidate
+) {
+    char *entry = copy_update_duplicate_entry_value(index, candidate);
+    char *message = NULL;
+    int status = MYLITE_OK;
+
+    if (entry == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    message =
+        sqlite3_mprintf("Duplicate entry '%q' for key '%q.%q'", entry, table_name, index->name);
+    sqlite3_free(entry);
+    if (message == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    status = mylite_diagnostics_append_warning(database, MYLITE_MYSQL_ER_DUP_ENTRY, message);
+    sqlite3_free(message);
+    return status;
 }
 
 static char *copy_update_duplicate_entry_value(

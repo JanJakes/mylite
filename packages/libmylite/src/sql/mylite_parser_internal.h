@@ -292,6 +292,11 @@ struct mylite_sql_parser_insert_tokens {
     struct mylite_sql_token ignore;
 };
 
+struct mylite_sql_parser_update_tokens {
+    struct mylite_sql_token update;
+    struct mylite_sql_token ignore;
+};
+
 struct mylite_sql_parser_replace_modifier {
     struct mylite_sql_token low_priority;
     struct mylite_sql_token delayed;
@@ -926,7 +931,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_append_insert_alias_column(
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_update_statement(
     struct mylite_sql_parser_state *state,
-    struct mylite_sql_token update_token,
+    struct mylite_sql_parser_update_tokens tokens,
     struct mylite_sql_ast_node *target,
     struct mylite_sql_ast_node *assignments,
     struct mylite_sql_ast_node *where_clause,

@@ -521,6 +521,8 @@ static int test_replace_execution(void);
 
 static int test_insert_ignore_execution(void);
 
+static int test_update_ignore_execution(void);
+
 static int test_non_strict_not_null_coercion_execution(void);
 
 static int test_temporal_dml_coercion_execution(void);
@@ -1007,6 +1009,7 @@ int main(void) {
     failures += test_insert_update_null_byte_storage_execution();
     failures += test_replace_execution();
     failures += test_insert_ignore_execution();
+    failures += test_update_ignore_execution();
     failures += test_non_strict_not_null_coercion_execution();
     failures += test_temporal_dml_coercion_execution();
     failures += test_numeric_dml_coercion_execution();
@@ -47752,6 +47755,200 @@ static int test_insert_ignore_execution(void) {
     free(required_physical);
     mylite_close(database);
     remove_runtime_test_files();
+    return failures;
+}
+
+static int test_update_ignore_execution(void) {
+    static const char *const duplicate_columns[] = {"id", "u", "v"};
+    static const char *const duplicate_values[] = {
+        "1",
+        "1",
+        "10",
+        "2",
+        "2",
+        "20",
+        "3",
+        "30",
+        "31",
+    };
+    static const char *const child_columns[] = {"id", "parent_id", "payload"};
+    static const char *const child_after_ignore_values[] = {
+        "1",
+        "2",
+        "11",
+        "2",
+        "1",
+        "20",
+    };
+    static const char *const child_after_checks_off_values[] = {
+        "1",
+        "2",
+        "11",
+        "2",
+        "99",
+        "20",
+    };
+    static const char *const parent_columns[] = {"id", "payload"};
+    static const char *const parent_values[] = {
+        "1",
+        "10",
+        "12",
+        "21",
+        "13",
+        "31",
+    };
+    static const char *const parent_child_columns[] = {"id", "parent_id"};
+    static const char *const parent_child_values[] = {"1", "1"};
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open update ignore database");
+    failures += execute_sql(database, "CREATE DATABASE upd_ignore_runtime", MYLITE_DONE);
+    failures += execute_sql(database, "USE upd_ignore_runtime", MYLITE_DONE);
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE upd_ignore_dup(id INT PRIMARY KEY, u INT UNIQUE, v INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO upd_ignore_dup VALUES (1,1,10),(2,2,20),(3,3,30)",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE IGNORE upd_ignore_dup "
+        "SET u = CASE id WHEN 2 THEN 1 ELSE 30 END, v = v + 1 "
+        "WHERE id IN (2,3) ORDER BY id",
+        1,
+        "update ignore duplicate affected rows"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "update ignore duplicate warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_duplicate_entry,
+        "update ignore duplicate warning code"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, u, v FROM upd_ignore_dup ORDER BY id",
+        duplicate_columns,
+        3,
+        duplicate_values,
+        3,
+        "update ignore duplicate skips full row"
+    );
+
+    failures +=
+        execute_sql(database, "CREATE TABLE upd_ignore_parent(id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE upd_ignore_child("
+        "id INT PRIMARY KEY, parent_id INT, payload INT, "
+        "FOREIGN KEY(parent_id) REFERENCES upd_ignore_parent(id))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "INSERT INTO upd_ignore_parent VALUES (1),(2)", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO upd_ignore_child VALUES (1,1,10),(2,1,20)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE IGNORE upd_ignore_child "
+        "SET parent_id = CASE id WHEN 1 THEN 2 ELSE 99 END, payload = payload + 1 "
+        "ORDER BY id",
+        1,
+        "update ignore child foreign key affected rows"
+    );
+    failures += expect_int(mylite_warning_count(database), 1, "update ignore child warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_no_referenced_row,
+        "update ignore child warning code"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, parent_id, payload FROM upd_ignore_child ORDER BY id",
+        child_columns,
+        3,
+        child_after_ignore_values,
+        2,
+        "update ignore child skips violating row"
+    );
+    failures += execute_sql(database, "SET foreign_key_checks = 0", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE IGNORE upd_ignore_child SET parent_id = 99 WHERE id = 2",
+        1,
+        "update ignore checks off child affected rows"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "update ignore checks off warning count");
+    failures += execute_sql(database, "SET foreign_key_checks = 1", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id, parent_id, payload FROM upd_ignore_child ORDER BY id",
+        child_columns,
+        3,
+        child_after_checks_off_values,
+        2,
+        "update ignore checks off permits orphan"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE upd_ignore_restrict_parent(id INT PRIMARY KEY, payload INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE upd_ignore_restrict_child("
+        "id INT PRIMARY KEY, parent_id INT, "
+        "FOREIGN KEY(parent_id) REFERENCES upd_ignore_restrict_parent(id))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO upd_ignore_restrict_parent VALUES (1,10),(2,20),(3,30)",
+        MYLITE_DONE
+    );
+    failures +=
+        execute_sql(database, "INSERT INTO upd_ignore_restrict_child VALUES (1,1)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE IGNORE upd_ignore_restrict_parent SET id = id + 10, payload = payload + 1 "
+        "ORDER BY id",
+        2,
+        "update ignore parent foreign key affected rows"
+    );
+    failures += expect_int(mylite_warning_count(database), 1, "update ignore parent warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_row_is_referenced,
+        "update ignore parent warning code"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, payload FROM upd_ignore_restrict_parent ORDER BY id",
+        parent_columns,
+        2,
+        parent_values,
+        3,
+        "update ignore parent skips referenced row"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, parent_id FROM upd_ignore_restrict_child",
+        parent_child_columns,
+        2,
+        parent_child_values,
+        1,
+        "update ignore parent leaves child row"
+    );
+
+    mylite_close(database);
     return failures;
 }
 

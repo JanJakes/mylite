@@ -82,6 +82,7 @@ int mylite_dml_copy_update_statement(
         return MYLITE_MISUSE;
     }
 
+    plan->ignore = statement->update_ignore;
     target = mylite_ast_child_at(statement, 0U);
     assignments = mylite_ast_child_at(statement, 1U);
     if (target != NULL && target->kind == MYLITE_SQL_AST_UPDATE_TARGET) {

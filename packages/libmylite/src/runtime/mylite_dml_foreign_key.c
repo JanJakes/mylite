@@ -97,7 +97,9 @@ static int validate_parent_foreign_key_references(
     const char *table_name,
     const struct mylite_parent_foreign_key_row *stored,
     const struct mylite_parent_foreign_key_row *candidate,
-    enum mylite_parent_foreign_key_action action
+    enum mylite_parent_foreign_key_action action,
+    bool ignore,
+    bool *out_ignored
 );
 
 static int validate_parent_foreign_key_constraint(
@@ -105,7 +107,9 @@ static int validate_parent_foreign_key_constraint(
     const struct mylite_parent_foreign_key_row *stored,
     const struct mylite_parent_foreign_key_row *candidate,
     sqlite3_stmt *constraint,
-    enum mylite_parent_foreign_key_action action
+    enum mylite_parent_foreign_key_action action,
+    bool ignore,
+    bool *out_ignored
 );
 
 static int parent_foreign_key_has_child(
@@ -143,7 +147,9 @@ static int set_parent_foreign_key_violation(
     mylite_db *database,
     const char *schema_name,
     const char *table_name,
-    const char *constraint_name
+    const char *constraint_name,
+    bool ignore,
+    bool *out_ignored
 );
 
 static int apply_parent_delete_foreign_key_action_constraint(
@@ -328,7 +334,9 @@ int mylite_dml_validate_parent_update_foreign_keys(
     mylite_db *database,
     const struct mylite_select_table *table,
     const struct mylite_update_row *stored,
-    const struct mylite_update_row *candidate
+    const struct mylite_update_row *candidate,
+    bool ignore,
+    bool *out_ignored
 ) {
     struct mylite_parent_foreign_key_row stored_row = {
         .kind = MYLITE_PARENT_FOREIGN_KEY_UPDATE_ROW,
@@ -342,9 +350,10 @@ int mylite_dml_validate_parent_update_foreign_keys(
     };
 
     if (database == NULL || table == NULL || stored == NULL || candidate == NULL ||
-        table->schema_name == NULL || table->table_name == NULL) {
+        out_ignored == NULL || table->schema_name == NULL || table->table_name == NULL) {
         return MYLITE_MISUSE;
     }
+    *out_ignored = false;
     if (!mylite_connection_foreign_key_checks(database)) {
         return MYLITE_OK;
     }
@@ -354,7 +363,9 @@ int mylite_dml_validate_parent_update_foreign_keys(
         table->table_name,
         &stored_row,
         &candidate_row,
-        MYLITE_PARENT_FOREIGN_KEY_UPDATE
+        MYLITE_PARENT_FOREIGN_KEY_UPDATE,
+        ignore,
+        out_ignored
     );
 }
 
@@ -368,6 +379,7 @@ int mylite_dml_validate_parent_delete_foreign_keys(
         .select_table = table,
         .update_row = stored,
     };
+    bool ignored = false;
 
     if (database == NULL || table == NULL || stored == NULL || table->schema_name == NULL ||
         table->table_name == NULL) {
@@ -382,7 +394,9 @@ int mylite_dml_validate_parent_delete_foreign_keys(
         table->table_name,
         &stored_row,
         NULL,
-        MYLITE_PARENT_FOREIGN_KEY_DELETE
+        MYLITE_PARENT_FOREIGN_KEY_DELETE,
+        false,
+        &ignored
     );
 }
 
@@ -510,6 +524,7 @@ int mylite_dml_validate_replace_parent_delete_foreign_keys(
         .insert_table = table,
         .insert_values = stored,
     };
+    bool ignored = false;
 
     if (database == NULL || schema_name == NULL || table_name == NULL || table == NULL ||
         stored == NULL) {
@@ -524,7 +539,9 @@ int mylite_dml_validate_replace_parent_delete_foreign_keys(
         table_name,
         &stored_row,
         NULL,
-        MYLITE_PARENT_FOREIGN_KEY_DELETE
+        MYLITE_PARENT_FOREIGN_KEY_DELETE,
+        false,
+        &ignored
     );
 }
 
@@ -586,7 +603,9 @@ int mylite_dml_validate_update_child_foreign_keys(
     const struct mylite_select_table *table,
     const struct mylite_insert_table *write_table,
     const struct mylite_update_row *stored,
-    const struct mylite_update_row *candidate
+    const struct mylite_update_row *candidate,
+    bool ignore,
+    bool *out_ignored
 ) {
     static const char sql[] =
         "SELECT constraint_name, referenced_table_schema, referenced_table_name "
@@ -595,14 +614,15 @@ int mylite_dml_validate_update_child_foreign_keys(
         "ORDER BY rowid";
     sqlite3_stmt *constraint = NULL;
     struct mylite_insert_bound_value *candidate_values = NULL;
-    bool ignored = false;
     int rc = SQLITE_OK;
     int status = MYLITE_OK;
 
     if (database == NULL || table == NULL || write_table == NULL || stored == NULL ||
-        candidate == NULL || table->schema_name == NULL || table->table_name == NULL) {
+        candidate == NULL || out_ignored == NULL || table->schema_name == NULL ||
+        table->table_name == NULL) {
         return MYLITE_MISUSE;
     }
+    *out_ignored = false;
     if (!mylite_connection_foreign_key_checks(database)) {
         return MYLITE_OK;
     }
@@ -645,18 +665,18 @@ int mylite_dml_validate_update_child_foreign_keys(
                 write_table,
                 candidate_values,
                 constraint,
-                false,
-                &ignored
+                ignore,
+                out_ignored
             );
         }
-        if (status != MYLITE_OK) {
+        if (status != MYLITE_OK || *out_ignored) {
             break;
         }
     }
 
     sqlite3_finalize(constraint);
     mylite_dml_insert_bound_values_deinit(candidate_values, write_table->column_count);
-    if (status != MYLITE_OK) {
+    if (status != MYLITE_OK || *out_ignored) {
         return status;
     }
     return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
@@ -983,7 +1003,10 @@ static int set_child_foreign_key_violation(
     if (status != MYLITE_OK) {
         return status;
     }
-    return ignore ? MYLITE_OK : MYLITE_EXEC_ERROR;
+    if (ignore) {
+        return MYLITE_OK;
+    }
+    return MYLITE_EXEC_ERROR;
 }
 
 static int validate_parent_foreign_key_references(
@@ -992,7 +1015,9 @@ static int validate_parent_foreign_key_references(
     const char *table_name,
     const struct mylite_parent_foreign_key_row *stored,
     const struct mylite_parent_foreign_key_row *candidate,
-    enum mylite_parent_foreign_key_action action
+    enum mylite_parent_foreign_key_action action,
+    bool ignore,
+    bool *out_ignored
 ) {
     static const char update_sql[] =
         "SELECT constraint_schema, constraint_name, table_schema, table_name "
@@ -1011,6 +1036,10 @@ static int validate_parent_foreign_key_references(
     int rc = SQLITE_OK;
     int status = MYLITE_OK;
 
+    if (out_ignored == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_ignored = false;
     rc =
         sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &constraint, NULL);
     if (rc != SQLITE_OK) {
@@ -1020,15 +1049,22 @@ static int validate_parent_foreign_key_references(
     sqlite3_bind_text(constraint, 2, table_name, -1, SQLITE_TRANSIENT);
 
     while ((rc = sqlite3_step(constraint)) == SQLITE_ROW) {
-        status =
-            validate_parent_foreign_key_constraint(database, stored, candidate, constraint, action);
-        if (status != MYLITE_OK) {
+        status = validate_parent_foreign_key_constraint(
+            database,
+            stored,
+            candidate,
+            constraint,
+            action,
+            ignore,
+            out_ignored
+        );
+        if (status != MYLITE_OK || *out_ignored) {
             break;
         }
     }
 
     sqlite3_finalize(constraint);
-    if (status != MYLITE_OK) {
+    if (status != MYLITE_OK || *out_ignored) {
         return status;
     }
     return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
@@ -1039,7 +1075,9 @@ static int validate_parent_foreign_key_constraint(
     const struct mylite_parent_foreign_key_row *stored,
     const struct mylite_parent_foreign_key_row *candidate,
     sqlite3_stmt *constraint,
-    enum mylite_parent_foreign_key_action action
+    enum mylite_parent_foreign_key_action action,
+    bool ignore,
+    bool *out_ignored
 ) {
     const char *constraint_name = (const char *)sqlite3_column_text(constraint, 1);
     const char *child_schema = (const char *)sqlite3_column_text(constraint, 2);
@@ -1051,7 +1089,14 @@ static int validate_parent_foreign_key_constraint(
     if (status != MYLITE_OK || !has_child) {
         return status;
     }
-    return set_parent_foreign_key_violation(database, child_schema, child_table, constraint_name);
+    return set_parent_foreign_key_violation(
+        database,
+        child_schema,
+        child_table,
+        constraint_name,
+        ignore,
+        out_ignored
+    );
 }
 
 static int parent_foreign_key_has_child(
@@ -1283,7 +1328,9 @@ static int set_parent_foreign_key_violation(
     mylite_db *database,
     const char *schema_name,
     const char *table_name,
-    const char *constraint_name
+    const char *constraint_name,
+    bool ignore,
+    bool *out_ignored
 ) {
     char *message = sqlite3_mprintf(
         "Cannot delete or update a parent row: a foreign key constraint fails "
@@ -1299,13 +1346,31 @@ static int set_parent_foreign_key_violation(
         return MYLITE_NOMEM;
     }
 
-    status = mylite_diagnostics_set_error_message(database, message);
-    if (status == MYLITE_OK) {
-        status =
-            mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_ROW_IS_REFERENCED_2, message);
+    if (ignore) {
+        *out_ignored = true;
+        status = mylite_diagnostics_append_warning(
+            database,
+            MYLITE_MYSQL_ER_ROW_IS_REFERENCED_2,
+            message
+        );
+    } else {
+        status = mylite_diagnostics_set_error_message(database, message);
+        if (status == MYLITE_OK) {
+            status = mylite_diagnostics_append_error(
+                database,
+                MYLITE_MYSQL_ER_ROW_IS_REFERENCED_2,
+                message
+            );
+        }
     }
     sqlite3_free(message);
-    return status == MYLITE_OK ? MYLITE_EXEC_ERROR : status;
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (ignore) {
+        return MYLITE_OK;
+    }
+    return MYLITE_EXEC_ERROR;
 }
 
 static int apply_parent_delete_foreign_key_action_constraint(
@@ -1521,12 +1586,15 @@ static int apply_parent_update_foreign_key_action_constraint(
     int status = MYLITE_OK;
 
     if (self_referencing) {
+        bool ignored = false;
         return validate_parent_foreign_key_constraint(
             database,
             stored,
             candidate,
             constraint,
-            MYLITE_PARENT_FOREIGN_KEY_UPDATE
+            MYLITE_PARENT_FOREIGN_KEY_UPDATE,
+            false,
+            &ignored
         );
     }
 

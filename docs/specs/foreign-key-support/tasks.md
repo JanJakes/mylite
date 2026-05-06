@@ -86,5 +86,8 @@ commit.
       behavior. Conflict deletes now apply covered `ON DELETE CASCADE` and
       `ON DELETE SET NULL` actions without adding child side effects to
       affected rows.
-- [ ] Revisit `INSERT IGNORE` and `UPDATE IGNORE` after FK enforcement to align
-      warning demotion behavior.
+- [x] Revisit `INSERT IGNORE` and `UPDATE IGNORE` after FK enforcement to align
+      warning demotion behavior. Covered child-row warnings 1452 for
+      `INSERT IGNORE` and single-table `UPDATE IGNORE`, parent-row warning
+      1451 for single-table `UPDATE IGNORE`, skipped-row side effects, and
+      `foreign_key_checks=0` bypass behavior.

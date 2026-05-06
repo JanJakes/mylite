@@ -492,6 +492,14 @@ void mylite_sql_ast_node_set_insert_ignore(struct mylite_sql_ast_node *node) {
     node->insert_ignore = true;
 }
 
+void mylite_sql_ast_node_set_update_ignore(struct mylite_sql_ast_node *node) {
+    if (node == NULL) {
+        return;
+    }
+
+    node->update_ignore = true;
+}
+
 void mylite_sql_ast_node_set_replace_low_priority(struct mylite_sql_ast_node *node) {
     if (node == NULL) {
         return;

@@ -41,7 +41,8 @@ Out of scope for Task 19:
 
 - multiple-table `UPDATE` and joined table references
 - common table expressions before `UPDATE`
-- `LOW_PRIORITY` and `IGNORE`
+- `LOW_PRIORITY`, joined `UPDATE IGNORE`, and conversion-error demotion caused
+  specifically by `IGNORE`
 - partition clauses, optimizer hints, and locking modifiers; index hints are
   parsed and ignored by the separate placeholder slice
 - `ORDER BY` or `LIMIT` variants other than single `LIMIT row_count`
@@ -460,6 +461,9 @@ copied from MySQL grammar.
 update_statement ::= UPDATE single_update_target SET update_assignment_list
     opt_where_clause opt_order_by_clause opt_update_limit_clause.
 
+update_statement ::= UPDATE IGNORE single_update_target SET update_assignment_list
+    opt_where_clause opt_order_by_clause opt_update_limit_clause.
+
 single_update_target ::= table_name opt_table_alias.
 
 opt_table_alias ::= .
@@ -505,7 +509,6 @@ The following MySQL-supported grammar surface remains outside Task 19:
 ```lemon
 /* Deferred: modifiers. */
 update_statement ::= UPDATE LOW_PRIORITY single_update_target SET update_assignment_list.
-update_statement ::= UPDATE IGNORE single_update_target SET update_assignment_list.
 
 /* Deferred: common table expressions. */
 update_statement ::= WITH cte_list UPDATE single_update_target SET update_assignment_list.
@@ -747,8 +750,8 @@ Use SQLite for durable storage, not as the semantic authority for Task 19.
   supported scalar-expression contexts, and self-referencing subquery
   diagnostics are deferred. Multiple-table joined updates are tracked separately in
   [UPDATE JOIN](../update-join/specs.md).
-- `LOW_PRIORITY`, `IGNORE`, partition clauses, and optimizer hints are
-  deferred. Index hints are parsed and ignored by
+- `LOW_PRIORITY`, joined `UPDATE IGNORE`, partition clauses, and optimizer hints
+  are deferred. Index hints are parsed and ignored by
   [index hint parser placeholders](../index-hint-placeholders/specs.md).
 - Remaining unsupported function calls, including `LAST_INSERT_ID(expr)` and
   `DEFAULT(col_name)`, are deferred until their function slices land in DML
@@ -794,7 +797,8 @@ these cases.
 | `UPDATE t SET a = 1 LIMIT NULL` | syntax error 1064 |
 | `UPDATE t SET a = 1 LIMIT 18446744073709551616` | syntax error 1064 |
 | `UPDATE LOW_PRIORITY t SET a = 1` | deferred unless modifier support is implemented |
-| `UPDATE IGNORE t SET a = 1` | deferred unless `IGNORE` semantics are implemented |
+| `UPDATE IGNORE t SET a = 1` | accepted for the single-table first slice |
+| `UPDATE IGNORE t JOIN u ON t.id = u.id SET t.a = u.a` | deferred until joined `UPDATE IGNORE` support |
 | `WITH cte AS (SELECT 1) UPDATE t SET a = 1` | deferred until CTE support |
 | `UPDATE t JOIN u ON t.id = u.id SET t.a = u.a` | covered by the separate UPDATE JOIN feature |
 
@@ -921,7 +925,7 @@ Parser tests:
   missing assignment list, missing target, missing value, trailing comma, and
   invalid clause order
 - deferred-form rejection or unsupported diagnostics for `LOW_PRIORITY`,
-  `IGNORE`, partitions, joins, CTEs, subqueries, function calls, and
+  joined `UPDATE IGNORE`, partitions, joins, CTEs, subqueries, function calls, and
   `DEFAULT(col_name)`
 
 Runtime tests:

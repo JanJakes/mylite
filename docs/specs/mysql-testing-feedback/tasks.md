@@ -159,7 +159,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       non-strict modes, including TEXT/BLOB limits, binary-string byte edge
       cases, charset-specific string validation, unsigned and width-specific
       numeric range clipping, floating-point column edge cases, scalar
-      `CAST`/`CONVERT` value semantics, and `IGNORE` demotion.
+      `CAST`/`CONVERT` value semantics, and conversion/truncation `IGNORE`
+      demotion beyond the currently covered duplicate-key and foreign-key
+      `UPDATE IGNORE` row-skipping slice.
 - [x] Complete `CAST(...)` and `CONVERT(...)` syntax, including
       `CONVERT ... USING utf8`.
 - [x] Complete `SELECT DATE(...)` and date-function predicates.

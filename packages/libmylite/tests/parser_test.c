@@ -7341,7 +7341,23 @@ static int test_update_single_table_syntax(void) {
         parse_sql("UPDATE LOW_PRIORITY t SET a = 1", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("UPDATE IGNORE t SET a = 1", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql(
+        "UPDATE IGNORE t SET a = 1 WHERE id = 2 ORDER BY id LIMIT 1",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    if (statement == NULL || !statement->update_ignore) {
+        fprintf(stderr, "Expected UPDATE IGNORE flag\n");
+        ++failures;
+    }
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "UPDATE IGNORE t JOIN u ON t.id = u.id SET t.a = u.a",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(

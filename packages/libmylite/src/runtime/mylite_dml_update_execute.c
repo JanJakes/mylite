@@ -12,6 +12,7 @@ static int execute_update_row(
     sqlite3_stmt *update,
     const struct mylite_select_table *table,
     const struct mylite_insert_table *write_table,
+    bool ignore,
     const struct mylite_update_bound_assignment *assignments,
     size_t assignment_count,
     const struct mylite_dml_expression_callbacks *callbacks,
@@ -54,6 +55,7 @@ int mylite_dml_execute_update_rows_transaction(
     mylite_db *database,
     const struct mylite_select_table *table,
     const struct mylite_insert_table *write_table,
+    bool ignore,
     const struct mylite_update_bound_assignment *assignments,
     size_t assignment_count,
     const struct mylite_dml_expression_callbacks *callbacks,
@@ -110,6 +112,7 @@ int mylite_dml_execute_update_rows_transaction(
             update,
             table,
             write_table,
+            ignore,
             assignments,
             assignment_count,
             callbacks,
@@ -149,6 +152,7 @@ static int execute_update_row(
     sqlite3_stmt *update,
     const struct mylite_select_table *table,
     const struct mylite_insert_table *write_table,
+    bool ignore,
     const struct mylite_update_bound_assignment *assignments,
     size_t assignment_count,
     const struct mylite_dml_expression_callbacks *callbacks,
@@ -157,6 +161,7 @@ static int execute_update_row(
     int64_t *affected_rows
 ) {
     struct mylite_update_row candidate = {0};
+    bool ignored = false;
     bool row_changed = false;
     int status = mylite_dml_copy_update_candidate_values(database, stored, &candidate);
 
@@ -172,8 +177,18 @@ static int execute_update_row(
         );
     }
     if (status == MYLITE_OK) {
-        status =
-            mylite_dml_validate_update_unique_indexes(database, table, write_table, &candidate);
+        status = mylite_dml_validate_update_unique_indexes(
+            database,
+            table,
+            write_table,
+            &candidate,
+            ignore,
+            &ignored
+        );
+    }
+    if (status == MYLITE_OK && ignored) {
+        mylite_dml_update_row_deinit(&candidate);
+        return MYLITE_OK;
     }
     if (status == MYLITE_OK) {
         row_changed = mylite_dml_update_row_changed(stored, &candidate);
@@ -184,12 +199,28 @@ static int execute_update_row(
             table,
             write_table,
             stored,
-            &candidate
+            &candidate,
+            ignore,
+            &ignored
         );
     }
+    if (status == MYLITE_OK && ignored) {
+        mylite_dml_update_row_deinit(&candidate);
+        return MYLITE_OK;
+    }
     if (status == MYLITE_OK && row_changed) {
-        status =
-            mylite_dml_validate_parent_update_foreign_keys(database, table, stored, &candidate);
+        status = mylite_dml_validate_parent_update_foreign_keys(
+            database,
+            table,
+            stored,
+            &candidate,
+            ignore,
+            &ignored
+        );
+    }
+    if (status == MYLITE_OK && ignored) {
+        mylite_dml_update_row_deinit(&candidate);
+        return MYLITE_OK;
     }
     if (status == MYLITE_OK && row_changed) {
         status =

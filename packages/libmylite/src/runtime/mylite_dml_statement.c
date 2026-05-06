@@ -478,6 +478,7 @@ int mylite_dml_execute_update_statement(
             stmt->database,
             &table,
             &write_table,
+            stmt->update.ignore,
             assignments,
             assignment_count,
             expression_callbacks,

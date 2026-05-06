@@ -100,7 +100,9 @@ int mylite_dml_validate_parent_update_foreign_keys(
     mylite_db *database,
     const struct mylite_select_table *table,
     const struct mylite_update_row *stored,
-    const struct mylite_update_row *candidate
+    const struct mylite_update_row *candidate,
+    bool ignore,
+    bool *out_ignored
 );
 int mylite_dml_validate_parent_delete_foreign_keys(
     mylite_db *database,
@@ -137,7 +139,9 @@ int mylite_dml_validate_update_child_foreign_keys(
     const struct mylite_select_table *table,
     const struct mylite_insert_table *write_table,
     const struct mylite_update_row *stored,
-    const struct mylite_update_row *candidate
+    const struct mylite_update_row *candidate,
+    bool ignore,
+    bool *out_ignored
 );
 int mylite_dml_promote_expression_warnings(mylite_db *database, size_t warning_start);
 int mylite_dml_set_expression_condition_error(mylite_db *database, size_t warning_start);
@@ -324,7 +328,9 @@ int mylite_dml_validate_update_unique_indexes(
     mylite_db *database,
     const struct mylite_select_table *table,
     const struct mylite_insert_table *write_table,
-    const struct mylite_update_row *candidate
+    const struct mylite_update_row *candidate,
+    bool ignore,
+    bool *out_ignored
 );
 int mylite_dml_resolve_insert_row_values(
     mylite_db *database,
@@ -549,6 +555,7 @@ int mylite_dml_execute_update_rows_transaction(
     mylite_db *database,
     const struct mylite_select_table *table,
     const struct mylite_insert_table *write_table,
+    bool ignore,
     const struct mylite_update_bound_assignment *assignments,
     size_t assignment_count,
     const struct mylite_dml_expression_callbacks *callbacks,

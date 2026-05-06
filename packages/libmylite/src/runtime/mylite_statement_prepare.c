@@ -14,14 +14,18 @@
 #include "mylite_span.h"
 #include "mylite_statement.h"
 #include "mylite_statement_types.h"
+#include "mylite_table_maintenance.h"
 #include "mylite_user_variables.h"
 #include "mylite_values_query.h"
+
+#include <stdbool.h>
 
 static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql_ast_node *root,
                                     const char *sql, size_t sql_length, mylite_stmt **out_stmt,
                                     const struct mylite_statement_prepare_callbacks *callbacks);
 static enum mylite_stmt_kind
 placeholder_statement_kind(const struct mylite_sql_ast_node *statement);
+static bool placeholder_statement_is_table_maintenance(const struct mylite_sql_ast_node *statement);
 
 int mylite_prepare(mylite_db *database, const char *sql, size_t length, mylite_stmt **out_stmt)
 {
@@ -121,6 +125,9 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
             return mylite_prepared_statement_prepare_deallocate_statement(database, statement,
                                                                           out_stmt);
         case MYLITE_SQL_AST_PLACEHOLDER_STATEMENT:
+            if (placeholder_statement_is_table_maintenance(statement)) {
+                return mylite_table_maintenance_prepare_statement(database, statement, out_stmt);
+            }
             return mylite_statement_prepare_custom_statement(
                 database, placeholder_statement_kind(statement), statement, out_stmt, callbacks);
         case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
@@ -337,6 +344,18 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
     return status;
 }
 
+static bool placeholder_statement_is_table_maintenance(const struct mylite_sql_ast_node *statement)
+{
+    switch (statement->placeholder_statement_kind) {
+    case MYLITE_SQL_AST_PLACEHOLDER_CHECK_TABLE:
+    case MYLITE_SQL_AST_PLACEHOLDER_OPTIMIZE_TABLE:
+    case MYLITE_SQL_AST_PLACEHOLDER_REPAIR_TABLE:
+        return true;
+    default:
+        return false;
+    }
+}
+
 static enum mylite_stmt_kind placeholder_statement_kind(const struct mylite_sql_ast_node *statement)
 {
     switch (statement->placeholder_statement_kind) {
@@ -392,6 +411,10 @@ static enum mylite_stmt_kind placeholder_statement_kind(const struct mylite_sql_
         return MYLITE_STMT_TABLE_PARTITIONING_PLACEHOLDER;
     case MYLITE_SQL_AST_PLACEHOLDER_CTE:
         return MYLITE_STMT_CTE_PLACEHOLDER;
+    case MYLITE_SQL_AST_PLACEHOLDER_CHECK_TABLE:
+    case MYLITE_SQL_AST_PLACEHOLDER_OPTIMIZE_TABLE:
+    case MYLITE_SQL_AST_PLACEHOLDER_REPAIR_TABLE:
+        break;
     }
 
     return MYLITE_STMT_SQLITE;

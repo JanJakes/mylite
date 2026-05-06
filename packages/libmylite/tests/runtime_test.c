@@ -360,6 +360,7 @@ static int test_alter_table_column_operations_execution(void);
 static int test_alter_table_key_operations_execution(void);
 static int test_rename_table_execution(void);
 static int test_truncate_table_execution(void);
+static int test_table_maintenance_execution(void);
 static int test_show_variables_execution(void);
 static int test_show_status_execution(void);
 static int test_show_engines_execution(void);
@@ -594,6 +595,7 @@ int main(void)
     failures += test_alter_table_key_operations_execution();
     failures += test_rename_table_execution();
     failures += test_truncate_table_execution();
+    failures += test_table_maintenance_execution();
     failures += test_show_variables_execution();
     failures += test_show_status_execution();
     failures += test_show_engines_execution();
@@ -21957,6 +21959,139 @@ static int test_truncate_table_execution(void)
     }
     free(physical_name);
     remove_runtime_test_files();
+
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
+    return failures;
+}
+
+static int test_table_maintenance_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const columns[] = {"Table", "Op", "Msg_type", "Msg_text"};
+    static const char *const no_default_values[] = {
+        "mylite_table_maintenance_no_default.q",
+        "check",
+        "status",
+        "OK",
+    };
+    static const char *const check_values[] = {
+        "mylite_table_maintenance.t",
+        "check",
+        "status",
+        "OK",
+        "mylite_table_maintenance.temp_t",
+        "check",
+        "status",
+        "OK",
+        "mylite_table_maintenance.missing_t",
+        "check",
+        "Error",
+        "Table 'mylite_table_maintenance.missing_t' doesn't exist",
+        "mylite_table_maintenance.missing_t",
+        "check",
+        "status",
+        "Operation failed",
+    };
+    static const char *const unknown_schema_values[] = {
+        "missing_maintenance.t", "check", "Error", "Unknown database 'missing_maintenance'",
+        "missing_maintenance.t", "check", "error", "Corrupt",
+    };
+    static const char *const optimize_values[] = {
+        "mylite_table_maintenance.t",
+        "optimize",
+        "note",
+        "Table does not support optimize, doing recreate + analyze instead",
+        "mylite_table_maintenance.t",
+        "optimize",
+        "status",
+        "OK",
+    };
+    static const char *const optimize_missing_values[] = {
+        "mylite_table_maintenance.missing_t",
+        "optimize",
+        "Error",
+        "Table 'mylite_table_maintenance.missing_t' doesn't exist",
+        "mylite_table_maintenance.missing_t",
+        "optimize",
+        "status",
+        "Operation failed",
+    };
+    static const char *const repair_values[] = {
+        "mylite_table_maintenance.t",
+        "repair",
+        "note",
+        "The storage engine for the table doesn't support repair",
+    };
+    static const char *const repair_unknown_schema_values[] = {
+        "missing_maintenance.t", "repair", "Error", "Unknown database 'missing_maintenance'",
+        "missing_maintenance.t", "repair", "error", "Corrupt",
+    };
+    static const char *const information_schema_values[] = {
+        "information_schema.TABLES",
+        "check",
+        "status",
+        "OK",
+    };
+    static const char *const information_schema_missing_values[] = {
+        "information_schema.NO_SUCH_TABLE",
+        "check",
+        "Error",
+        "Table 'information_schema.NO_SUCH_TABLE' doesn't exist",
+        "information_schema.NO_SUCH_TABLE",
+        "check",
+        "status",
+        "Operation failed",
+    };
+    mylite_db *database = NULL;
+    mylite_db *no_default_database = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open table maintenance database");
+    failures +=
+        expect_prepare_error(database, "CHECK TABLE t", MYLITE_EXEC_ERROR, "No database selected",
+                             "check table requires selected schema");
+
+    failures += execute_sql(database, "CREATE DATABASE mylite_table_maintenance", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_table_maintenance", MYLITE_DONE);
+    failures += execute_sql(
+        database, "CREATE TABLE t (id INT PRIMARY KEY, v VARCHAR(10), KEY v_idx(v))", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TEMPORARY TABLE temp_t (id INT)", MYLITE_DONE);
+
+    failures += expect_select_rows(
+        database, "CHECK TABLE t, temp_t, missing_t QUICK FAST MEDIUM EXTENDED CHANGED FOR UPGRADE",
+        columns, 4, check_values, 4, "check table selected schema targets");
+    failures += expect_select_rows(database, "CHECK TABLE missing_maintenance.t", columns, 4,
+                                   unknown_schema_values, 2, "check table unknown schema");
+    failures += expect_select_rows(database, "OPTIMIZE TABLE t", columns, 4, optimize_values, 2,
+                                   "optimize table existing target");
+    failures += expect_select_rows(database, "OPTIMIZE LOCAL TABLE missing_t", columns, 4,
+                                   optimize_missing_values, 2, "optimize table missing target");
+    failures += expect_select_rows(database,
+                                   "REPAIR NO_WRITE_TO_BINLOG TABLE t QUICK EXTENDED "
+                                   "USE_FRM",
+                                   columns, 4, repair_values, 1, "repair table existing target");
+    failures += expect_select_rows(database, "REPAIR TABLE missing_maintenance.t", columns, 4,
+                                   repair_unknown_schema_values, 2, "repair table unknown schema");
+    failures += expect_select_rows(database, "CHECK TABLE information_schema.TABLES", columns, 4,
+                                   information_schema_values, 1, "check table information schema");
+    failures += expect_select_rows(database, "CHECK TABLE information_schema.NO_SUCH_TABLE",
+                                   columns, 4, information_schema_missing_values, 2,
+                                   "check table missing information schema table");
+
+    mylite_close(database);
+
+    failures += expect_status(mylite_open_memory(&no_default_database), MYLITE_OK,
+                              "open table maintenance no-default database");
+    failures += execute_sql(no_default_database,
+                            "CREATE DATABASE mylite_table_maintenance_no_default", MYLITE_DONE);
+    failures +=
+        execute_sql(no_default_database,
+                    "CREATE TABLE mylite_table_maintenance_no_default.q (id INT)", MYLITE_DONE);
+    failures += expect_select_rows(
+        no_default_database, "CHECK TABLE mylite_table_maintenance_no_default.q", columns, 4,
+        no_default_values, 1, "check qualified table without selected schema");
+    mylite_close(no_default_database);
 
     // NOLINTEND(readability-function-size,readability-magic-numbers)
     return failures;

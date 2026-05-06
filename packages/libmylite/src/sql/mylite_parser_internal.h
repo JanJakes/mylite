@@ -902,6 +902,9 @@ mylite_sql_parser_make_deallocate_prepare_statement(struct mylite_sql_parser_sta
 struct mylite_sql_ast_node *mylite_sql_parser_make_placeholder_statement(
     struct mylite_sql_parser_state *state, enum mylite_sql_ast_placeholder_statement_kind kind,
     struct mylite_sql_token start_token, struct mylite_sql_ast_node *last_node);
+struct mylite_sql_ast_node *mylite_sql_parser_make_placeholder_statement_with_child(
+    struct mylite_sql_parser_state *state, enum mylite_sql_ast_placeholder_statement_kind kind,
+    struct mylite_sql_token start_token, struct mylite_sql_ast_node *child);
 struct mylite_sql_ast_node *mylite_sql_parser_make_placeholder_statement_with_end_token(
     struct mylite_sql_parser_state *state, enum mylite_sql_ast_placeholder_statement_kind kind,
     struct mylite_sql_token start_token, struct mylite_sql_token end_token);

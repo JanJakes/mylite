@@ -214,10 +214,10 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `DROP RESOURCE GROUP` | ❌ | low | Resource group deletion syntax. |  |
 | `SET RESOURCE GROUP` | ❌ | low | Thread assignment to resource groups. |  |
 | `ANALYZE TABLE` | ❌ | high | Statistics refresh, histogram update/drop, validation, and result-set metadata. |  |
-| `CHECK TABLE` | ❌ | high | Table consistency checks and result-set metadata. |  |
+| `CHECK TABLE` | 🟡 | high | Table consistency checks and result-set metadata. | Syntax, table resolution, existing-table `status` / `OK` rows, missing-table rows, unknown-schema rows, temporary tables, and supported `information_schema` targets are implemented as an embedded no-op result-set surface; actual corruption checks are deferred. See [table maintenance statements spec](docs/specs/table-maintenance-statements/specs.md). |
 | `CHECKSUM TABLE` | ❌ | high | Table checksum syntax and result-set metadata. |  |
-| `OPTIMIZE TABLE` | ❌ | high | Table optimization syntax and result-set metadata. |  |
-| `REPAIR TABLE` | ❌ | high | Repair syntax and result-set metadata. |  |
+| `OPTIMIZE TABLE` | 🟡 | high | Table optimization syntax and result-set metadata. | Syntax, `LOCAL` / `NO_WRITE_TO_BINLOG`, table resolution, existing-table InnoDB-style no-op rows, missing-table rows, unknown-schema rows, temporary tables, and supported `information_schema` targets are implemented; actual table rebuild/statistics refresh behavior is deferred. See [table maintenance statements spec](docs/specs/table-maintenance-statements/specs.md). |
+| `REPAIR TABLE` | 🟡 | high | Repair syntax and result-set metadata. | Syntax, `LOCAL` / `NO_WRITE_TO_BINLOG`, repair options, table resolution, existing-table unsupported-engine note rows, missing-table rows, unknown-schema rows, temporary tables, and supported `information_schema` targets are implemented; actual repair behavior is deferred. See [table maintenance statements spec](docs/specs/table-maintenance-statements/specs.md). |
 | `INSTALL COMPONENT` | ❌ | low | Component installation syntax and diagnostics. |  |
 | `UNINSTALL COMPONENT` | ❌ | low | Component uninstallation syntax and diagnostics. |  |
 | `INSTALL PLUGIN` | ❌ | low | Plugin installation syntax and diagnostics. |  |

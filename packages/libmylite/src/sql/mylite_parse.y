@@ -246,6 +246,9 @@ statement(A) ::= rename_table_statement(B). {
 statement(A) ::= truncate_table_statement(B). {
     A = B;
 }
+statement(A) ::= table_maintenance_statement(B). {
+    A = B;
+}
 statement(A) ::= insert_values_statement(B). {
     A = B;
 }
@@ -801,6 +804,45 @@ rename_table_pair_list(A) ::= rename_table_pair_list(B) COMMA rename_table_pair(
 rename_table_pair(A) ::= table_name(O) TO(T) table_name(N). {
     A = mylite_sql_parser_make_rename_table_pair(state, O, T, N);
 }
+
+table_maintenance_statement(A) ::= CHECK(T) TABLE maintenance_table_name_list(B) check_table_option_list. {
+    A = mylite_sql_parser_make_placeholder_statement_with_child(
+        state, MYLITE_SQL_AST_PLACEHOLDER_CHECK_TABLE, T, B);
+}
+table_maintenance_statement(A) ::= OPTIMIZE(T) opt_write_to_binlog TABLE maintenance_table_name_list(B). {
+    A = mylite_sql_parser_make_placeholder_statement_with_child(
+        state, MYLITE_SQL_AST_PLACEHOLDER_OPTIMIZE_TABLE, T, B);
+}
+table_maintenance_statement(A) ::= REPAIR(T) opt_write_to_binlog TABLE maintenance_table_name_list(B) repair_table_option_list. {
+    A = mylite_sql_parser_make_placeholder_statement_with_child(
+        state, MYLITE_SQL_AST_PLACEHOLDER_REPAIR_TABLE, T, B);
+}
+
+maintenance_table_name_list(A) ::= table_name(B). {
+    A = mylite_sql_parser_make_table_name_list(state, B);
+}
+maintenance_table_name_list(A) ::= maintenance_table_name_list(B) COMMA table_name(C). {
+    A = mylite_sql_parser_append_table_name(state, B, C);
+}
+
+opt_write_to_binlog ::= .
+opt_write_to_binlog ::= NO_WRITE_TO_BINLOG.
+opt_write_to_binlog ::= LOCAL.
+
+check_table_option_list ::= .
+check_table_option_list ::= check_table_option_list check_table_option.
+check_table_option ::= QUICK.
+check_table_option ::= FAST.
+check_table_option ::= MEDIUM.
+check_table_option ::= EXTENDED.
+check_table_option ::= CHANGED.
+check_table_option ::= FOR UPGRADE.
+
+repair_table_option_list ::= .
+repair_table_option_list ::= repair_table_option_list repair_table_option.
+repair_table_option ::= QUICK.
+repair_table_option ::= EXTENDED.
+repair_table_option ::= USE_FRM.
 
 opt_drop_table_mode(A) ::= . {
     A = (struct mylite_sql_token){0};
@@ -5200,6 +5242,9 @@ nonreserved_identifier_keyword(A) ::= COLUMNS(T). {
 nonreserved_identifier_keyword(A) ::= COALESCE(T). {
     A = T;
 }
+nonreserved_identifier_keyword(A) ::= CHANGED(T). {
+    A = T;
+}
 nonreserved_identifier_keyword(A) ::= CONNECTION(T). {
     A = T;
 }
@@ -5213,6 +5258,9 @@ nonreserved_identifier_keyword(A) ::= EXCLUSIVE(T). {
     A = T;
 }
 nonreserved_identifier_keyword(A) ::= EXTENDED(T). {
+    A = T;
+}
+nonreserved_identifier_keyword(A) ::= FAST(T). {
     A = T;
 }
 nonreserved_identifier_keyword(A) ::= FIRST(T). {
@@ -5245,6 +5293,9 @@ nonreserved_identifier_keyword(A) ::= INDEXES(T). {
 nonreserved_identifier_keyword(A) ::= LOCAL(T). {
     A = T;
 }
+nonreserved_identifier_keyword(A) ::= MEDIUM(T). {
+    A = T;
+}
 nonreserved_identifier_keyword(A) ::= MODIFY(T). {
     A = T;
 }
@@ -5261,6 +5312,9 @@ nonreserved_identifier_keyword(A) ::= PASSWORD(T). {
     A = T;
 }
 nonreserved_identifier_keyword(A) ::= PRIVILEGES(T). {
+    A = T;
+}
+nonreserved_identifier_keyword(A) ::= QUICK(T). {
     A = T;
 }
 nonreserved_identifier_keyword(A) ::= REBUILD(T). {
@@ -5296,7 +5350,13 @@ nonreserved_identifier_keyword(A) ::= TIME(T). {
 nonreserved_identifier_keyword(A) ::= TRUNCATE(T). {
     A = T;
 }
+nonreserved_identifier_keyword(A) ::= UPGRADE(T). {
+    A = T;
+}
 nonreserved_identifier_keyword(A) ::= USER(T). {
+    A = T;
+}
+nonreserved_identifier_keyword(A) ::= USE_FRM(T). {
     A = T;
 }
 nonreserved_identifier_keyword(A) ::= VALUE(T). {

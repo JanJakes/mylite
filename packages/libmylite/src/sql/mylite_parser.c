@@ -3676,6 +3676,20 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_placeholder_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_placeholder_statement_with_child(
+    struct mylite_sql_parser_state *state, enum mylite_sql_ast_placeholder_statement_kind kind,
+    struct mylite_sql_token start_token, struct mylite_sql_ast_node *child)
+{
+    struct mylite_sql_ast_node *statement =
+        mylite_sql_parser_make_placeholder_statement(state, kind, start_token, child);
+
+    if (statement == NULL || child == NULL) {
+        return statement;
+    }
+    mylite_sql_ast_node_append_child(statement, child);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_placeholder_statement_with_end_token(
     struct mylite_sql_parser_state *state, enum mylite_sql_ast_placeholder_statement_kind kind,
     struct mylite_sql_token start_token, struct mylite_sql_token end_token)
@@ -6887,6 +6901,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"CHARSET", MYLITE_SQL_PARSE_CHARSET},
         {"CHAIN", MYLITE_SQL_PARSE_CHAIN},
         {"CHANGE", MYLITE_SQL_PARSE_CHANGE},
+        {"CHANGED", MYLITE_SQL_PARSE_CHANGED},
         {"CHECK", MYLITE_SQL_PARSE_CHECK},
         {"CLASS_ORIGIN", MYLITE_SQL_PARSE_CLASS_ORIGIN},
         {"COLLATE", MYLITE_SQL_PARSE_COLLATE},
@@ -6975,6 +6990,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"EXTENDED", MYLITE_SQL_PARSE_EXTENDED},
         {"EXTRACT", MYLITE_SQL_PARSE_EXTRACT},
         {"FALSE", MYLITE_SQL_PARSE_FALSE},
+        {"FAST", MYLITE_SQL_PARSE_FAST},
         {"FIELDS", MYLITE_SQL_PARSE_FIELDS},
         {"FIRST", MYLITE_SQL_PARSE_FIRST},
         {"FIRST_VALUE", MYLITE_SQL_PARSE_FIRST_VALUE},
@@ -7048,6 +7064,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"LOW_PRIORITY", MYLITE_SQL_PARSE_LOW_PRIORITY},
         {"MATCH", MYLITE_SQL_PARSE_MATCH},
         {"MAXVALUE", MYLITE_SQL_PARSE_MAXVALUE},
+        {"MEDIUM", MYLITE_SQL_PARSE_MEDIUM},
         {"MEDIUMINT", MYLITE_SQL_PARSE_MEDIUMINT},
         {"MEDIUMBLOB", MYLITE_SQL_PARSE_MEDIUMBLOB},
         {"MEDIUMTEXT", MYLITE_SQL_PARSE_MEDIUMTEXT},
@@ -7065,6 +7082,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"NATIONAL", MYLITE_SQL_PARSE_NATIONAL},
         {"NCHAR", MYLITE_SQL_PARSE_NCHAR},
         {"NO", MYLITE_SQL_PARSE_NO},
+        {"NO_WRITE_TO_BINLOG", MYLITE_SQL_PARSE_NO_WRITE_TO_BINLOG},
         {"NONE", MYLITE_SQL_PARSE_NONE},
         {"NOT", MYLITE_SQL_PARSE_NOT},
         {"NULL", MYLITE_SQL_PARSE_NULL},
@@ -7097,6 +7115,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"PRIMARY", MYLITE_SQL_PARSE_PRIMARY},
         {"PRIVILEGES", MYLITE_SQL_PARSE_PRIVILEGES},
         {"PROCEDURE", MYLITE_SQL_PARSE_PROCEDURE},
+        {"QUICK", MYLITE_SQL_PARSE_QUICK},
         {"QUARTER", MYLITE_SQL_PARSE_QUARTER},
         {"RANGE", MYLITE_SQL_PARSE_RANGE},
         {"READ", MYLITE_SQL_PARSE_READ},
@@ -7187,7 +7206,9 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"UNKNOWN", MYLITE_SQL_PARSE_UNKNOWN},
         {"UNSIGNED", MYLITE_SQL_PARSE_UNSIGNED},
         {"UPDATE", MYLITE_SQL_PARSE_UPDATE},
+        {"UPGRADE", MYLITE_SQL_PARSE_UPGRADE},
         {"USE", MYLITE_SQL_PARSE_USE},
+        {"USE_FRM", MYLITE_SQL_PARSE_USE_FRM},
         {"USAGE", MYLITE_SQL_PARSE_USAGE},
         {"USER", MYLITE_SQL_PARSE_USER},
         {"USING", MYLITE_SQL_PARSE_USING},

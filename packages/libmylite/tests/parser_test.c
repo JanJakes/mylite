@@ -21,6 +21,7 @@ static int test_alter_table_column_operations_syntax(void);
 static int test_alter_table_key_constraint_operations_syntax(void);
 static int test_rename_table_syntax(void);
 static int test_truncate_table_syntax(void);
+static int test_table_maintenance_syntax(void);
 static int test_show_variables_syntax(void);
 static int test_show_status_syntax(void);
 static int test_show_engines_syntax(void);
@@ -192,6 +193,7 @@ int main(void)
     failures += test_alter_table_key_constraint_operations_syntax();
     failures += test_rename_table_syntax();
     failures += test_truncate_table_syntax();
+    failures += test_table_maintenance_syntax();
     failures += test_show_variables_syntax();
     failures += test_show_status_syntax();
     failures += test_show_engines_syntax();
@@ -2963,6 +2965,109 @@ static int test_truncate_table_syntax(void)
     failures += parse_sql("TRUNCATE TABLE t TO u;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
+    return failures;
+}
+
+static int test_table_maintenance_syntax(void)
+{
+    // NOLINTBEGIN(readability-magic-numbers)
+    enum {
+        check_simple_index = 0,
+        check_options_index = 1,
+        optimize_index = 2,
+        optimize_local_index = 3,
+        optimize_no_write_index = 4,
+        repair_options_index = 5,
+        repair_local_index = 6,
+        statement_count = 7,
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *table_list = NULL;
+    const struct mylite_sql_ast_node *table_name = NULL;
+    int failures = 0;
+
+    failures += parse_sql("CHECK TABLE t; "
+                          "CHECK TABLE app.t, u QUICK FAST MEDIUM EXTENDED CHANGED FOR UPGRADE; "
+                          "OPTIMIZE TABLE t, app.u; "
+                          "OPTIMIZE LOCAL TABLE t; "
+                          "OPTIMIZE NO_WRITE_TO_BINLOG TABLE t; "
+                          "REPAIR TABLE t QUICK EXTENDED USE_FRM; "
+                          "REPAIR LOCAL TABLE app.t;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_child_count(result.root, statement_count, "maintenance script count");
+
+    statement = child_at(result.root, check_simple_index);
+    failures += expect_placeholder_statement(statement, MYLITE_SQL_AST_PLACEHOLDER_CHECK_TABLE,
+                                             "check table placeholder");
+    failures += expect_child_count(statement, 1U, "check table child count");
+    table_list = child_at(statement, 0U);
+    failures += expect_node(table_list, MYLITE_SQL_AST_TABLE_NAME_LIST, "check table name list");
+    failures += expect_child_count(table_list, 1U, "check table name count");
+    failures += expect_span_text(child_at(table_list, 0U), "t", "check table target");
+
+    statement = child_at(result.root, check_options_index);
+    failures += expect_placeholder_statement(statement, MYLITE_SQL_AST_PLACEHOLDER_CHECK_TABLE,
+                                             "check options placeholder");
+    table_list = child_at(statement, 0U);
+    failures += expect_child_count(table_list, 2U, "check options target count");
+    table_name = child_at(table_list, 0U);
+    failures +=
+        expect_node(table_name, MYLITE_SQL_AST_QUALIFIED_IDENTIFIER, "check qualified target");
+    failures += expect_span_text(child_at(table_name, 0U), "app", "check target schema");
+    failures += expect_span_text(child_at(table_name, 1U), "t", "check target table");
+
+    statement = child_at(result.root, optimize_index);
+    failures += expect_placeholder_statement(statement, MYLITE_SQL_AST_PLACEHOLDER_OPTIMIZE_TABLE,
+                                             "optimize table placeholder");
+    table_list = child_at(statement, 0U);
+    failures += expect_child_count(table_list, 2U, "optimize target count");
+    failures += expect_span_text(child_at(table_list, 0U), "t", "optimize first target");
+
+    failures += expect_placeholder_statement(child_at(result.root, optimize_local_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_OPTIMIZE_TABLE,
+                                             "optimize local placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, optimize_no_write_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_OPTIMIZE_TABLE,
+                                             "optimize no-write placeholder");
+
+    statement = child_at(result.root, repair_options_index);
+    failures += expect_placeholder_statement(statement, MYLITE_SQL_AST_PLACEHOLDER_REPAIR_TABLE,
+                                             "repair table placeholder");
+    table_list = child_at(statement, 0U);
+    failures += expect_child_count(table_list, 1U, "repair target count");
+    failures += expect_span_text(child_at(table_list, 0U), "t", "repair target");
+
+    failures += expect_placeholder_statement(child_at(result.root, repair_local_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_REPAIR_TABLE,
+                                             "repair local placeholder");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CHECK TABLE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CHECK TABLE t QUICK, u;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CHECK TABLE t FOR;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("OPTIMIZE TABLE t QUICK;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("OPTIMIZE NO_WRITE_TO_BINLOG t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("REPAIR TABLE t FAST;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE quick (fast INT, medium INT, changed INT, "
+                          "upgrade INT, use_frm INT);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_child_count(result.root, 1U, "maintenance option identifiers");
+    mylite_sql_parse_result_deinit(&result);
+
+    // NOLINTEND(readability-magic-numbers)
     return failures;
 }
 

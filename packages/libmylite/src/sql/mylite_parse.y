@@ -2,6 +2,8 @@
 %token_prefix MYLITE_SQL_PARSE_
 %token_type { struct mylite_sql_token }
 %default_type { struct mylite_sql_ast_node * }
+%realloc mylite_sql_parser_stack_realloc
+%free mylite_sql_parser_stack_free
 %type opt_into { struct mylite_sql_token }
 %type opt_insert_ignore { struct mylite_sql_token }
 %type opt_replace_modifier { struct mylite_sql_parser_replace_modifier }
@@ -79,6 +81,21 @@
 %include {
 #define YYNOERRORRECOVERY 1
 #include "mylite_parser_internal.h"
+
+#include <stdlib.h>
+#include <string.h>
+
+static void *mylite_sql_parser_stack_realloc(void *pointer, size_t size, void *context)
+{
+    (void)context;
+    return realloc(pointer, size);
+}
+
+static void mylite_sql_parser_stack_free(void *pointer, void *context)
+{
+    (void)context;
+    free(pointer);
+}
 }
 
 %syntax_error {

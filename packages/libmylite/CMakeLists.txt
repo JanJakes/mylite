@@ -31,7 +31,7 @@ if(MSVC)
   )
 else()
   set_source_files_properties("${MYLITE_SQL_PARSE_C}" PROPERTIES
-    COMPILE_OPTIONS "-Wno-unused-parameter;-Wno-unused-variable;-Wno-type-limits"
+    COMPILE_OPTIONS "-Wno-unused-parameter;-Wno-unused-variable;-Wno-type-limits;-Wno-sign-conversion"
   )
 endif()
 

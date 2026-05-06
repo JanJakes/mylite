@@ -68,6 +68,9 @@ static int test_syntax_errors(void);
 static int test_lexer_errors(void);
 static int parse_sql(const char *sql, enum mylite_sql_parse_status expected_status,
                      struct mylite_sql_parse_result *out_result);
+static bool make_deeply_nested_coalesce_query(char *buffer, size_t capacity, unsigned int depth);
+static bool make_deeply_nested_case_query(char *buffer, size_t capacity, unsigned int depth);
+static bool append_query_text(char *buffer, size_t capacity, size_t *offset, const char *text);
 static const struct mylite_sql_ast_node *child_at(const struct mylite_sql_ast_node *node,
                                                   size_t index);
 static int expect_node(const struct mylite_sql_ast_node *node,
@@ -5425,12 +5428,15 @@ static int test_scalar_function_call_syntax(void)
         quote_function_item_count = 2,
         list_function_item_count = 30,
         coalesce_nested_arg_index = 2,
+        nested_coalesce_depth = 32,
+        nested_query_capacity = 2048,
     };
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *select_list = NULL;
     const struct mylite_sql_ast_node *item = NULL;
     const struct mylite_sql_ast_node *call = NULL;
     const struct mylite_sql_ast_node *arguments = NULL;
+    char nested_query[nested_query_capacity];
     int failures = 0;
 
     failures += parse_sql("SELECT CONCAT('a','b') AS joined, PI() pi_value, "
@@ -5543,6 +5549,15 @@ static int test_scalar_function_call_syntax(void)
     failures += expect_function_call(child_at(child_at(select_list, 41U), 0U), "CURRENT_ROLE", 0U,
                                      "CURRENT_ROLE call");
     mylite_sql_parse_result_deinit(&result);
+
+    if (!make_deeply_nested_coalesce_query(nested_query, sizeof(nested_query),
+                                           nested_coalesce_depth)) {
+        fprintf(stderr, "failed to build deeply nested COALESCE parser regression query\n");
+        failures = 1;
+    } else {
+        failures += parse_sql(nested_query, MYLITE_SQL_PARSE_OK, &result);
+        mylite_sql_parse_result_deinit(&result);
+    }
 
     failures += parse_sql("SELECT DEFAULT(1) FROM t", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
@@ -6388,11 +6403,16 @@ static int test_scalar_function_call_syntax(void)
 static int test_case_expression_syntax(void)
 {
     // NOLINTBEGIN(readability-magic-numbers)
+    enum {
+        nested_case_depth = 32,
+        nested_query_capacity = 2048,
+    };
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *select_list = NULL;
     const struct mylite_sql_ast_node *case_expression = NULL;
     const struct mylite_sql_ast_node *when_list = NULL;
     const struct mylite_sql_ast_node *case_when = NULL;
+    char nested_query[nested_query_capacity];
     int failures = 0;
 
     failures += parse_sql("SELECT CASE WHEN 1 THEN 2 END;", MYLITE_SQL_PARSE_OK, &result);
@@ -6440,6 +6460,14 @@ static int test_case_expression_syntax(void)
     failures +=
         expect_node(child_at(case_when, 1U), MYLITE_SQL_AST_CASE_EXPRESSION, "nested CASE result");
     mylite_sql_parse_result_deinit(&result);
+
+    if (!make_deeply_nested_case_query(nested_query, sizeof(nested_query), nested_case_depth)) {
+        fprintf(stderr, "failed to build deeply nested CASE parser regression query\n");
+        failures = 1;
+    } else {
+        failures += parse_sql(nested_query, MYLITE_SQL_PARSE_OK, &result);
+        mylite_sql_parse_result_deinit(&result);
+    }
 
     failures += parse_sql("SELECT CASE ELSE 1 END", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
@@ -8655,6 +8683,71 @@ static int parse_sql(const char *sql, enum mylite_sql_parse_status expected_stat
     }
 
     return 0;
+}
+
+static bool make_deeply_nested_coalesce_query(char *buffer, size_t capacity, unsigned int depth)
+{
+    size_t offset = 0U;
+
+    if (!append_query_text(buffer, capacity, &offset, "SELECT x.b, ")) {
+        return false;
+    }
+    for (unsigned int index = 0U; index < depth; ++index) {
+        if (!append_query_text(buffer, capacity, &offset, "COALESCE(NULL,")) {
+            return false;
+        }
+    }
+    if (!append_query_text(buffer, capacity, &offset, "x.b")) {
+        return false;
+    }
+    for (unsigned int index = 0U; index < depth; ++index) {
+        if (!append_query_text(buffer, capacity, &offset, ")")) {
+            return false;
+        }
+    }
+    return append_query_text(buffer, capacity, &offset, " + 1 FROM sample AS x");
+}
+
+static bool make_deeply_nested_case_query(char *buffer, size_t capacity, unsigned int depth)
+{
+    size_t offset = 0U;
+
+    if (!append_query_text(buffer, capacity, &offset, "SELECT x.b, ")) {
+        return false;
+    }
+    for (unsigned int index = 0U; index < depth; ++index) {
+        if (!append_query_text(buffer, capacity, &offset, "CASE WHEN x.b = 0 THEN 0 ELSE ")) {
+            return false;
+        }
+    }
+    if (!append_query_text(buffer, capacity, &offset, "x.b")) {
+        return false;
+    }
+    for (unsigned int index = 0U; index < depth; ++index) {
+        if (!append_query_text(buffer, capacity, &offset, " END")) {
+            return false;
+        }
+    }
+    return append_query_text(buffer, capacity, &offset, " + 1 FROM sample AS x");
+}
+
+static bool append_query_text(char *buffer, size_t capacity, size_t *offset, const char *text)
+{
+    size_t length = 0U;
+
+    if (buffer == NULL || offset == NULL || text == NULL || *offset >= capacity) {
+        return false;
+    }
+
+    length = strlen(text);
+    if (length >= capacity - *offset) {
+        return false;
+    }
+
+    memcpy(&buffer[*offset], text, length);
+    *offset += length;
+    buffer[*offset] = '\0';
+    return true;
 }
 
 static const struct mylite_sql_ast_node *child_at(const struct mylite_sql_ast_node *node,

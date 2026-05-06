@@ -24,6 +24,7 @@
 
 static int validate_select_duplicate_mode(mylite_db *database,
                                           const struct mylite_sql_ast_node *statement);
+static bool select_statement_uses_windowing(const struct mylite_sql_ast_node *node);
 static int prepare_table_select_statement(mylite_db *database,
                                           const struct mylite_sql_ast_node *statement,
                                           const char *sql, size_t sql_length,
@@ -70,6 +71,9 @@ int mylite_select_prepare_statement(mylite_db *database,
     if (status != MYLITE_OK) {
         return status;
     }
+    if (select_statement_uses_windowing(statement)) {
+        return mylite_select_set_unsupported_window_error(database);
+    }
     status = mylite_information_schema_prepare_select_statement(database, statement, out_stmt);
     if (status != MYLITE_UNSUPPORTED) {
         return status;
@@ -110,6 +114,25 @@ static int validate_select_duplicate_mode(mylite_db *database,
         return mylite_select_set_duplicate_mode_error(database);
     }
     return MYLITE_OK;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static bool select_statement_uses_windowing(const struct mylite_sql_ast_node *node)
+{
+    if (node == NULL) {
+        return false;
+    }
+    if (node->kind == MYLITE_SQL_AST_WINDOW_FUNCTION_CALL ||
+        node->kind == MYLITE_SQL_AST_WINDOW_CLAUSE) {
+        return true;
+    }
+    for (const struct mylite_sql_ast_node *child = node->first_child; child != NULL;
+         child = child->next_sibling) {
+        if (select_statement_uses_windowing(child)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)

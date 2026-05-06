@@ -29,6 +29,9 @@
 %type select_duplicate_mode_item { struct mylite_sql_parser_select_duplicate_mode }
 %type union_or_except_operator { struct mylite_sql_parser_union_operator }
 %type intersect_operator { struct mylite_sql_parser_union_operator }
+%type window_function_name { struct mylite_sql_parser_window_function_token }
+%type window_frame_unit { struct mylite_sql_parser_window_frame_unit_token }
+%type window_null_treatment { struct mylite_sql_parser_window_null_treatment }
 %type inner_join_operator { struct mylite_sql_parser_join_operator }
 %type outer_join_operator { struct mylite_sql_parser_join_operator }
 %type subquery { struct mylite_sql_parser_subquery }
@@ -161,14 +164,16 @@ static void mylite_sql_parser_stack_free(void *pointer, void *context)
 %right KEY.
 %fallback IDENTIFIER ADDDATE AFTER AGGREGATE AT AUTO_INCREMENT BEGIN BOOL BOOLEAN BTREE CATALOG_NAME
     CHAIN CHARSET CLASS_ORIGIN COLLATION COLUMN_FORMAT COLUMN_NAME COMMENT COMMIT COMPLETION
-    CONSISTENT CONSTRAINT_CATALOG CONSTRAINT_NAME CONSTRAINT_SCHEMA CONTAINS COUNT CURSOR_NAME DATA
-    DATE DATETIME DATE_ADD DATE_SUB DAY DEFINER DISABLE DISK DO DYNAMIC ENABLE ENDS ENGINE ENGINES
-    ENGINE_ATTRIBUTE ENCRYPTION ERRORS EVENT EVERY EXTRACT FIRST FIXED FOLLOWS HASH HOUR INSTANT
+    CONSISTENT CONSTRAINT_CATALOG CONSTRAINT_NAME CONSTRAINT_SCHEMA CONTAINS COUNT CURRENT
+    CURSOR_NAME DATA DATE DATETIME DATE_ADD DATE_SUB DAY DEFINER DISABLE DISK DO DYNAMIC ENABLE ENDS
+    ENGINE ENGINES ENGINE_ATTRIBUTE ENCRYPTION ERRORS EVENT EVERY EXTRACT FIRST FIXED FOLLOWING
+    FOLLOWS HASH HOUR INSTANT
     INVISIBLE INVOKER KEY_BLOCK_SIZE LANGUAGE MEMORY MESSAGE_TEXT MINUTE MODIFY MONTH MYSQL_ERRNO
-    NCHAR NO NVARCHAR OFFSET ONLY POSITION PRECEDES PRESERVE QUARTER REPLICA RETURNS ROLLBACK
-    SAVEPOINT SCHEDULE SCHEMA_NAME SECOND SECONDARY_ENGINE_ATTRIBUTE SECURITY SIGNED SLAVE SNAPSHOT
-    SONAME START STARTS STORAGE STRINGKW SUBCLASS_ORIGIN SUBDATE TABLE_NAME TEMPORARY TEXT TIME
-    TIMESTAMP TRANSACTION TYPE VISIBLE VALUE WARNINGS WEEK WORK YEAR.
+    NCHAR NO NULLS NVARCHAR OFFSET ONLY POSITION PRECEDES PRECEDING PRESERVE QUARTER REPLICA
+    RESPECT RETURNS ROLLBACK SAVEPOINT SCHEDULE SCHEMA_NAME SECOND SECONDARY_ENGINE_ATTRIBUTE
+    SECURITY SIGNED SLAVE SNAPSHOT SONAME START STARTS STORAGE STRINGKW SUBCLASS_ORIGIN SUBDATE
+    TABLE_NAME TEMPORARY TEXT TIME TIMESTAMP TRANSACTION TYPE UNBOUNDED VISIBLE VALUE WARNINGS WEEK
+    WORK YEAR.
 
 input ::= statement_list(A). {
     mylite_sql_parser_state_set_root(state, A);
@@ -3575,38 +3580,41 @@ opt_default ::= DEFAULT.
 opt_equal ::= .
 opt_equal ::= EQ.
 
-select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B). {
+select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B) opt_window_clause(W). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, M, B, NULL, NULL, NULL, NULL, NULL, NULL);
+        state, T, M, B, NULL, NULL, NULL, NULL, W, NULL, NULL);
 }
-select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B) FROM(F) DUAL(D). {
+select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B) FROM(F) DUAL(D)
+        opt_window_clause(W). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, M, B, mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL,
+        state, T, M, B, mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, W, NULL,
         NULL);
 }
 select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B) FROM(F)
         table_references(C)
-        opt_where_clause(E) opt_group_by_clause(G) opt_having_clause(H) opt_order_by_clause(I)
-        opt_limit_clause(J). {
+        opt_where_clause(E) opt_group_by_clause(G) opt_having_clause(H) opt_window_clause(W)
+        opt_order_by_clause(I) opt_limit_clause(J). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, M, B, mylite_sql_parser_make_from_table_references(state, F, C), E, G, H, I, J);
+        state, T, M, B, mylite_sql_parser_make_from_table_references(state, F, C), E, G, H, W, I,
+        J);
 }
-select_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S). {
+select_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S) opt_window_clause(W). {
     A = mylite_sql_parser_make_select_statement(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S), NULL, NULL, NULL, NULL,
-        NULL, NULL);
+        W, NULL, NULL);
 }
-select_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S) FROM(F) DUAL(D). {
+select_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S) FROM(F) DUAL(D)
+        opt_window_clause(W). {
     A = mylite_sql_parser_make_select_statement(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL, NULL);
+        mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, W, NULL, NULL);
 }
 select_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S) FROM(F) table_references(C)
-        opt_where_clause(E) opt_group_by_clause(G) opt_having_clause(H) opt_order_by_clause(I)
-        opt_limit_clause(J). {
+        opt_where_clause(E) opt_group_by_clause(G) opt_having_clause(H) opt_window_clause(W)
+        opt_order_by_clause(I) opt_limit_clause(J). {
     A = mylite_sql_parser_make_select_statement(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_table_references(state, F, C), E, G, H, I, J);
+        mylite_sql_parser_make_from_table_references(state, F, C), E, G, H, W, I, J);
 }
 
 union_query_expression(A) ::= query_expression_with_set_op(B) opt_order_by_clause(C) opt_limit_clause(D). {
@@ -3718,38 +3726,40 @@ values_query_row(A) ::= ROW(T) LPAREN expression_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_insert_row(state, T, B, R);
 }
 
-select_union_operand(A) ::= SELECT(T) select_modifiers(M) select_item_list(B). {
+select_union_operand(A) ::= SELECT(T) select_modifiers(M) select_item_list(B) opt_window_clause(W). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, M, B, NULL, NULL, NULL, NULL, NULL, NULL);
+        state, T, M, B, NULL, NULL, NULL, NULL, W, NULL, NULL);
 }
 select_union_operand(A) ::= SELECT(T) select_modifiers(M) select_item_list(B)
-        FROM(F) DUAL(D). {
+        FROM(F) DUAL(D) opt_window_clause(W). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, M, B, mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL,
+        state, T, M, B, mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, W, NULL,
         NULL);
 }
 select_union_operand(A) ::= SELECT(T) select_modifiers(M) select_item_list(B)
         FROM(F) table_references(C) opt_where_clause(E) opt_group_by_clause(G)
-        opt_having_clause(H). {
+        opt_having_clause(H) opt_window_clause(W). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, M, B, mylite_sql_parser_make_from_table_references(state, F, C), E, G, H, NULL,
-        NULL);
-}
-select_union_operand(A) ::= SELECT(T) select_modifiers(M) STAR(S). {
-    A = mylite_sql_parser_make_select_statement(
-        state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S), NULL, NULL, NULL, NULL,
+        state, T, M, B, mylite_sql_parser_make_from_table_references(state, F, C), E, G, H, W,
         NULL, NULL);
 }
-select_union_operand(A) ::= SELECT(T) select_modifiers(M) STAR(S) FROM(F) DUAL(D). {
+select_union_operand(A) ::= SELECT(T) select_modifiers(M) STAR(S) opt_window_clause(W). {
+    A = mylite_sql_parser_make_select_statement(
+        state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S), NULL, NULL, NULL, NULL,
+        W, NULL, NULL);
+}
+select_union_operand(A) ::= SELECT(T) select_modifiers(M) STAR(S) FROM(F) DUAL(D)
+        opt_window_clause(W). {
     A = mylite_sql_parser_make_select_statement(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL, NULL);
+        mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, W, NULL, NULL);
 }
 select_union_operand(A) ::= SELECT(T) select_modifiers(M) STAR(S) FROM(F)
-        table_references(C) opt_where_clause(E) opt_group_by_clause(G) opt_having_clause(H). {
+        table_references(C) opt_where_clause(E) opt_group_by_clause(G) opt_having_clause(H)
+        opt_window_clause(W). {
     A = mylite_sql_parser_make_select_statement(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_table_references(state, F, C), E, G, H, NULL, NULL);
+        mylite_sql_parser_make_from_table_references(state, F, C), E, G, H, W, NULL, NULL);
 }
 
 select_modifiers(A) ::= select_duplicate_mode(B). {
@@ -3825,6 +3835,107 @@ opt_having_clause(A) ::= having_clause(B). {
 
 having_clause(A) ::= HAVING(T) expression(B). {
     A = mylite_sql_parser_make_having_clause(state, T, B);
+}
+
+opt_window_clause(A) ::= . {
+    A = NULL;
+}
+opt_window_clause(A) ::= window_clause(B). {
+    A = B;
+}
+
+window_clause(A) ::= WINDOW(T) window_definition_list(B). {
+    A = mylite_sql_parser_make_window_clause(state, T, B);
+}
+
+window_definition_list(A) ::= window_definition(B). {
+    A = mylite_sql_parser_make_window_definition_list(state, B);
+}
+window_definition_list(A) ::= window_definition_list(B) COMMA window_definition(C). {
+    A = mylite_sql_parser_append_window_definition(state, B, C);
+}
+
+window_definition(A) ::= identifier(B) AS(T) LPAREN window_specification(C) RPAREN(R). {
+    A = mylite_sql_parser_make_window_definition(state, B, T, C, R);
+}
+
+over_clause(A) ::= OVER(T) identifier(B). {
+    A = mylite_sql_parser_make_over_clause_with_name(state, T, B);
+}
+over_clause(A) ::= OVER(T) LPAREN window_specification(B) RPAREN(R). {
+    A = mylite_sql_parser_make_over_clause_with_specification(state, T, B, R);
+}
+
+window_specification(A) ::= opt_window_name(B) opt_window_partition_clause(C)
+        opt_window_order_clause(D) opt_window_frame_clause(E). {
+    A = mylite_sql_parser_make_window_specification(state, B, C, D, E);
+}
+
+opt_window_name(A) ::= . {
+    A = NULL;
+}
+opt_window_name(A) ::= identifier(B). {
+    A = B;
+}
+
+opt_window_partition_clause(A) ::= . {
+    A = NULL;
+}
+opt_window_partition_clause(A) ::= PARTITION(P) BY(B) expression_list(C). {
+    A = mylite_sql_parser_make_window_partition_clause(state, P, B, C);
+}
+
+opt_window_order_clause(A) ::= . {
+    A = NULL;
+}
+opt_window_order_clause(A) ::= order_by_clause(B). {
+    A = B;
+}
+
+opt_window_frame_clause(A) ::= . {
+    A = NULL;
+}
+opt_window_frame_clause(A) ::= window_frame_clause(B). {
+    A = B;
+}
+
+window_frame_clause(A) ::= window_frame_unit(U) window_frame_bound(B). {
+    A = mylite_sql_parser_make_window_frame_clause(state, U, B, NULL);
+}
+window_frame_clause(A) ::= window_frame_unit(U) BETWEEN window_frame_bound(B) AND window_frame_bound(C). {
+    A = mylite_sql_parser_make_window_frame_clause(state, U, B, C);
+}
+
+window_frame_unit(A) ::= ROWS(T). {
+    A = mylite_sql_parser_make_window_frame_unit_token(
+        T, MYLITE_SQL_AST_WINDOW_FRAME_UNIT_ROWS);
+}
+window_frame_unit(A) ::= RANGE(T). {
+    A = mylite_sql_parser_make_window_frame_unit_token(
+        T, MYLITE_SQL_AST_WINDOW_FRAME_UNIT_RANGE);
+}
+
+window_frame_bound(A) ::= CURRENT(T) ROW(R). {
+    A = mylite_sql_parser_make_window_frame_bound(
+        state, T, MYLITE_SQL_AST_WINDOW_FRAME_BOUND_CURRENT_ROW, NULL, R);
+}
+window_frame_bound(A) ::= UNBOUNDED(T) PRECEDING(P). {
+    A = mylite_sql_parser_make_window_frame_bound(
+        state, T, MYLITE_SQL_AST_WINDOW_FRAME_BOUND_UNBOUNDED_PRECEDING, NULL, P);
+}
+window_frame_bound(A) ::= UNBOUNDED(T) FOLLOWING(F). {
+    A = mylite_sql_parser_make_window_frame_bound(
+        state, T, MYLITE_SQL_AST_WINDOW_FRAME_BOUND_UNBOUNDED_FOLLOWING, NULL, F);
+}
+window_frame_bound(A) ::= expression(B) PRECEDING(P). {
+    A = mylite_sql_parser_make_window_frame_bound(
+        state, (struct mylite_sql_token){0}, MYLITE_SQL_AST_WINDOW_FRAME_BOUND_EXPRESSION_PRECEDING,
+        B, P);
+}
+window_frame_bound(A) ::= expression(B) FOLLOWING(F). {
+    A = mylite_sql_parser_make_window_frame_bound(
+        state, (struct mylite_sql_token){0}, MYLITE_SQL_AST_WINDOW_FRAME_BOUND_EXPRESSION_FOLLOWING,
+        B, F);
 }
 
 opt_order_by_clause(A) ::= . {
@@ -4343,14 +4454,26 @@ primary_expression(A) ::= convert_expression(B). {
 primary_expression(A) ::= case_expression(B). {
     A = B;
 }
+primary_expression(A) ::= window_function_call(B). {
+    A = B;
+}
 primary_expression(A) ::= group_concat_call(B). {
     A = B;
+}
+primary_expression(A) ::= aggregate_distinct_call(B) over_clause(C). {
+    A = mylite_sql_parser_make_aggregate_window_function_call(state, B, C);
 }
 primary_expression(A) ::= aggregate_distinct_call(B). {
     A = B;
 }
+primary_expression(A) ::= aggregate_star_call(B) over_clause(C). {
+    A = mylite_sql_parser_make_aggregate_window_function_call(state, B, C);
+}
 primary_expression(A) ::= aggregate_star_call(B). {
     A = B;
+}
+primary_expression(A) ::= scalar_function_call(B) over_clause(C). {
+    A = mylite_sql_parser_make_aggregate_window_function_call(state, B, C);
 }
 primary_expression(A) ::= scalar_function_call(B). {
     A = B;
@@ -4550,6 +4673,73 @@ bare_temporal_function(A) ::= UTC_TIMESTAMP(T). {
 
 bare_current_user_function(A) ::= CURRENT_USER(T). {
     A = mylite_sql_parser_make_bare_function_call(state, T);
+}
+
+window_function_call(A) ::= window_function_name(B) LPAREN(L) RPAREN(R)
+        opt_window_null_treatment(N) over_clause(O). {
+    A = mylite_sql_parser_make_window_function_call(
+        state, B, L, mylite_sql_parser_make_empty_function_argument_list(state, L, R), R, N, O);
+}
+window_function_call(A) ::= window_function_name(B) LPAREN(L) function_argument_list(C) RPAREN(R)
+        opt_window_null_treatment(N) over_clause(O). {
+    A = mylite_sql_parser_make_window_function_call(state, B, L, C, R, N, O);
+}
+
+window_function_name(A) ::= CUME_DIST(T). {
+    A = mylite_sql_parser_make_window_function_token(
+        T, MYLITE_SQL_AST_WINDOW_FUNCTION_CUME_DIST);
+}
+window_function_name(A) ::= DENSE_RANK(T). {
+    A = mylite_sql_parser_make_window_function_token(
+        T, MYLITE_SQL_AST_WINDOW_FUNCTION_DENSE_RANK);
+}
+window_function_name(A) ::= FIRST_VALUE(T). {
+    A = mylite_sql_parser_make_window_function_token(
+        T, MYLITE_SQL_AST_WINDOW_FUNCTION_FIRST_VALUE);
+}
+window_function_name(A) ::= LAG(T). {
+    A = mylite_sql_parser_make_window_function_token(T, MYLITE_SQL_AST_WINDOW_FUNCTION_LAG);
+}
+window_function_name(A) ::= LAST_VALUE(T). {
+    A = mylite_sql_parser_make_window_function_token(
+        T, MYLITE_SQL_AST_WINDOW_FUNCTION_LAST_VALUE);
+}
+window_function_name(A) ::= LEAD(T). {
+    A = mylite_sql_parser_make_window_function_token(T, MYLITE_SQL_AST_WINDOW_FUNCTION_LEAD);
+}
+window_function_name(A) ::= NTH_VALUE(T). {
+    A = mylite_sql_parser_make_window_function_token(
+        T, MYLITE_SQL_AST_WINDOW_FUNCTION_NTH_VALUE);
+}
+window_function_name(A) ::= NTILE(T). {
+    A = mylite_sql_parser_make_window_function_token(T, MYLITE_SQL_AST_WINDOW_FUNCTION_NTILE);
+}
+window_function_name(A) ::= PERCENT_RANK(T). {
+    A = mylite_sql_parser_make_window_function_token(
+        T, MYLITE_SQL_AST_WINDOW_FUNCTION_PERCENT_RANK);
+}
+window_function_name(A) ::= RANK(T). {
+    A = mylite_sql_parser_make_window_function_token(T, MYLITE_SQL_AST_WINDOW_FUNCTION_RANK);
+}
+window_function_name(A) ::= ROW_NUMBER(T). {
+    A = mylite_sql_parser_make_window_function_token(
+        T, MYLITE_SQL_AST_WINDOW_FUNCTION_ROW_NUMBER);
+}
+
+opt_window_null_treatment(A) ::= . {
+    A = NULL;
+}
+opt_window_null_treatment(A) ::= window_null_treatment(T) NULLS(N). {
+    A = mylite_sql_parser_make_window_null_treatment(state, T, N);
+}
+
+window_null_treatment(A) ::= RESPECT(T). {
+    A = mylite_sql_parser_make_window_null_treatment_token(
+        T, MYLITE_SQL_AST_WINDOW_NULL_TREATMENT_RESPECT);
+}
+window_null_treatment(A) ::= IGNORE(T). {
+    A = mylite_sql_parser_make_window_null_treatment_token(
+        T, MYLITE_SQL_AST_WINDOW_NULL_TREATMENT_IGNORE);
 }
 
 aggregate_star_call(A) ::= function_name(B) LPAREN(L) STAR(S) RPAREN(R). {

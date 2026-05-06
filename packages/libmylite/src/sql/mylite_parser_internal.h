@@ -30,6 +30,21 @@ struct mylite_sql_parser_union_operator {
     struct mylite_sql_source_span span;
 };
 
+struct mylite_sql_parser_window_function_token {
+    struct mylite_sql_token token;
+    enum mylite_sql_ast_window_function_kind function_kind;
+};
+
+struct mylite_sql_parser_window_frame_unit_token {
+    struct mylite_sql_token token;
+    enum mylite_sql_ast_window_frame_unit unit;
+};
+
+struct mylite_sql_parser_window_null_treatment {
+    struct mylite_sql_token token;
+    enum mylite_sql_ast_window_null_treatment treatment;
+};
+
 struct mylite_sql_parser_aggregate_star_tokens {
     struct mylite_sql_token left_paren;
     struct mylite_sql_token star;
@@ -338,8 +353,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     struct mylite_sql_parser_select_duplicate_mode duplicate_mode,
     struct mylite_sql_ast_node *select_list, struct mylite_sql_ast_node *from_clause,
     struct mylite_sql_ast_node *where_clause, struct mylite_sql_ast_node *group_by_clause,
-    struct mylite_sql_ast_node *having_clause, struct mylite_sql_ast_node *order_by_clause,
-    struct mylite_sql_ast_node *limit_clause);
+    struct mylite_sql_ast_node *having_clause, struct mylite_sql_ast_node *window_clause,
+    struct mylite_sql_ast_node *order_by_clause, struct mylite_sql_ast_node *limit_clause);
 struct mylite_sql_ast_node *mylite_sql_parser_make_query_expression(
     struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *body,
     struct mylite_sql_ast_node *order_by_clause, struct mylite_sql_ast_node *limit_clause);
@@ -405,6 +420,62 @@ mylite_sql_parser_make_having_clause(struct mylite_sql_parser_state *state,
 struct mylite_sql_ast_node *mylite_sql_parser_make_order_by_clause(
     struct mylite_sql_parser_state *state, struct mylite_sql_token order_token,
     struct mylite_sql_token by_token, struct mylite_sql_ast_node *items);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_window_clause(struct mylite_sql_parser_state *state,
+                                     struct mylite_sql_token window_token,
+                                     struct mylite_sql_ast_node *definitions);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_window_definition_list(struct mylite_sql_parser_state *state,
+                                              struct mylite_sql_ast_node *definition);
+struct mylite_sql_ast_node *
+mylite_sql_parser_append_window_definition(struct mylite_sql_parser_state *state,
+                                           struct mylite_sql_ast_node *list,
+                                           struct mylite_sql_ast_node *definition);
+struct mylite_sql_ast_node *mylite_sql_parser_make_window_definition(
+    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
+    struct mylite_sql_token as_token, struct mylite_sql_ast_node *specification,
+    struct mylite_sql_token right_paren);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_over_clause_with_name(struct mylite_sql_parser_state *state,
+                                             struct mylite_sql_token over_token,
+                                             struct mylite_sql_ast_node *window_name);
+struct mylite_sql_ast_node *mylite_sql_parser_make_over_clause_with_specification(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token over_token,
+    struct mylite_sql_ast_node *specification, struct mylite_sql_token right_paren);
+struct mylite_sql_ast_node *mylite_sql_parser_make_window_specification(
+    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
+    struct mylite_sql_ast_node *partition_clause, struct mylite_sql_ast_node *order_by_clause,
+    struct mylite_sql_ast_node *frame_clause);
+struct mylite_sql_ast_node *mylite_sql_parser_make_window_partition_clause(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token partition_token,
+    struct mylite_sql_token by_token, struct mylite_sql_ast_node *expressions);
+struct mylite_sql_ast_node *mylite_sql_parser_make_window_frame_clause(
+    struct mylite_sql_parser_state *state, struct mylite_sql_parser_window_frame_unit_token unit,
+    struct mylite_sql_ast_node *start_bound, struct mylite_sql_ast_node *end_bound);
+struct mylite_sql_ast_node *mylite_sql_parser_make_window_frame_bound(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token start_token,
+    enum mylite_sql_ast_window_frame_bound_kind bound_kind, struct mylite_sql_ast_node *expression,
+    struct mylite_sql_token end_token);
+struct mylite_sql_ast_node *mylite_sql_parser_make_window_null_treatment(
+    struct mylite_sql_parser_state *state, struct mylite_sql_parser_window_null_treatment treatment,
+    struct mylite_sql_token nulls_token);
+struct mylite_sql_parser_window_function_token mylite_sql_parser_make_window_function_token(
+    struct mylite_sql_token token, enum mylite_sql_ast_window_function_kind function_kind);
+struct mylite_sql_parser_window_frame_unit_token
+mylite_sql_parser_make_window_frame_unit_token(struct mylite_sql_token token,
+                                               enum mylite_sql_ast_window_frame_unit unit);
+struct mylite_sql_parser_window_null_treatment mylite_sql_parser_make_window_null_treatment_token(
+    struct mylite_sql_token token, enum mylite_sql_ast_window_null_treatment treatment);
+struct mylite_sql_ast_node *mylite_sql_parser_make_window_function_call(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_window_function_token function_token,
+    struct mylite_sql_token left_paren, struct mylite_sql_ast_node *arguments,
+    struct mylite_sql_token right_paren, struct mylite_sql_ast_node *null_treatment,
+    struct mylite_sql_ast_node *over_clause);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_aggregate_window_function_call(struct mylite_sql_parser_state *state,
+                                                      struct mylite_sql_ast_node *aggregate_call,
+                                                      struct mylite_sql_ast_node *over_clause);
 struct mylite_sql_ast_node *
 mylite_sql_parser_make_order_item_list(struct mylite_sql_parser_state *state,
                                        struct mylite_sql_ast_node *item);

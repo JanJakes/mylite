@@ -156,6 +156,16 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_DEALLOCATE_PREPARE_STATEMENT = 145,
     MYLITE_SQL_AST_PLACEHOLDER_STATEMENT = 146,
     MYLITE_SQL_AST_VALUES_STATEMENT = 147,
+    MYLITE_SQL_AST_WINDOW_FUNCTION_CALL = 148,
+    MYLITE_SQL_AST_OVER_CLAUSE = 149,
+    MYLITE_SQL_AST_WINDOW_SPECIFICATION = 150,
+    MYLITE_SQL_AST_WINDOW_CLAUSE = 151,
+    MYLITE_SQL_AST_WINDOW_DEFINITION_LIST = 152,
+    MYLITE_SQL_AST_WINDOW_DEFINITION = 153,
+    MYLITE_SQL_AST_WINDOW_PARTITION_CLAUSE = 154,
+    MYLITE_SQL_AST_WINDOW_FRAME_CLAUSE = 155,
+    MYLITE_SQL_AST_WINDOW_FRAME_BOUND = 156,
+    MYLITE_SQL_AST_WINDOW_NULL_TREATMENT = 157,
 };
 
 enum mylite_sql_ast_placeholder_statement_kind {
@@ -528,6 +538,43 @@ enum mylite_sql_ast_set_operation {
     MYLITE_SQL_AST_SET_OPERATION_EXCEPT = 2,
 };
 
+enum mylite_sql_ast_window_function_kind {
+    MYLITE_SQL_AST_WINDOW_FUNCTION_NONE = 0,
+    MYLITE_SQL_AST_WINDOW_FUNCTION_AGGREGATE = 1,
+    MYLITE_SQL_AST_WINDOW_FUNCTION_CUME_DIST = 2,
+    MYLITE_SQL_AST_WINDOW_FUNCTION_DENSE_RANK = 3,
+    MYLITE_SQL_AST_WINDOW_FUNCTION_FIRST_VALUE = 4,
+    MYLITE_SQL_AST_WINDOW_FUNCTION_LAG = 5,
+    MYLITE_SQL_AST_WINDOW_FUNCTION_LAST_VALUE = 6,
+    MYLITE_SQL_AST_WINDOW_FUNCTION_LEAD = 7,
+    MYLITE_SQL_AST_WINDOW_FUNCTION_NTH_VALUE = 8,
+    MYLITE_SQL_AST_WINDOW_FUNCTION_NTILE = 9,
+    MYLITE_SQL_AST_WINDOW_FUNCTION_PERCENT_RANK = 10,
+    MYLITE_SQL_AST_WINDOW_FUNCTION_RANK = 11,
+    MYLITE_SQL_AST_WINDOW_FUNCTION_ROW_NUMBER = 12,
+};
+
+enum mylite_sql_ast_window_frame_unit {
+    MYLITE_SQL_AST_WINDOW_FRAME_UNIT_NONE = 0,
+    MYLITE_SQL_AST_WINDOW_FRAME_UNIT_ROWS = 1,
+    MYLITE_SQL_AST_WINDOW_FRAME_UNIT_RANGE = 2,
+};
+
+enum mylite_sql_ast_window_frame_bound_kind {
+    MYLITE_SQL_AST_WINDOW_FRAME_BOUND_NONE = 0,
+    MYLITE_SQL_AST_WINDOW_FRAME_BOUND_CURRENT_ROW = 1,
+    MYLITE_SQL_AST_WINDOW_FRAME_BOUND_UNBOUNDED_PRECEDING = 2,
+    MYLITE_SQL_AST_WINDOW_FRAME_BOUND_UNBOUNDED_FOLLOWING = 3,
+    MYLITE_SQL_AST_WINDOW_FRAME_BOUND_EXPRESSION_PRECEDING = 4,
+    MYLITE_SQL_AST_WINDOW_FRAME_BOUND_EXPRESSION_FOLLOWING = 5,
+};
+
+enum mylite_sql_ast_window_null_treatment {
+    MYLITE_SQL_AST_WINDOW_NULL_TREATMENT_NONE = 0,
+    MYLITE_SQL_AST_WINDOW_NULL_TREATMENT_RESPECT = 1,
+    MYLITE_SQL_AST_WINDOW_NULL_TREATMENT_IGNORE = 2,
+};
+
 enum mylite_sql_ast_subquery_quantifier {
     MYLITE_SQL_AST_SUBQUERY_QUANTIFIER_NONE = 0,
     MYLITE_SQL_AST_SUBQUERY_QUANTIFIER_ANY = 1,
@@ -607,6 +654,10 @@ struct mylite_sql_ast_node {
     enum mylite_sql_ast_select_duplicate_mode select_duplicate_mode;
     enum mylite_sql_ast_set_duplicate_mode set_duplicate_mode;
     enum mylite_sql_ast_set_operation set_operation;
+    enum mylite_sql_ast_window_function_kind window_function_kind;
+    enum mylite_sql_ast_window_frame_unit window_frame_unit;
+    enum mylite_sql_ast_window_frame_bound_kind window_frame_bound_kind;
+    enum mylite_sql_ast_window_null_treatment window_null_treatment;
     enum mylite_sql_ast_subquery_quantifier subquery_quantifier;
     enum mylite_sql_ast_trim_direction trim_direction;
     enum mylite_sql_ast_interval_unit interval_unit;
@@ -757,6 +808,14 @@ void mylite_sql_ast_node_set_set_duplicate_mode(struct mylite_sql_ast_node *node
                                                 enum mylite_sql_ast_set_duplicate_mode mode);
 void mylite_sql_ast_node_set_set_operation(struct mylite_sql_ast_node *node,
                                            enum mylite_sql_ast_set_operation operation);
+void mylite_sql_ast_node_set_window_function(
+    struct mylite_sql_ast_node *node, enum mylite_sql_ast_window_function_kind function_kind);
+void mylite_sql_ast_node_set_window_frame_unit(struct mylite_sql_ast_node *node,
+                                               enum mylite_sql_ast_window_frame_unit unit);
+void mylite_sql_ast_node_set_window_frame_bound(
+    struct mylite_sql_ast_node *node, enum mylite_sql_ast_window_frame_bound_kind bound_kind);
+void mylite_sql_ast_node_set_window_null_treatment(
+    struct mylite_sql_ast_node *node, enum mylite_sql_ast_window_null_treatment treatment);
 void mylite_sql_ast_node_set_subquery_quantifier(
     struct mylite_sql_ast_node *node, enum mylite_sql_ast_subquery_quantifier quantifier);
 void mylite_sql_ast_node_set_trim_spec(struct mylite_sql_ast_node *node,

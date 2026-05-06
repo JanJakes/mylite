@@ -598,6 +598,46 @@ void mylite_sql_ast_node_set_set_operation(struct mylite_sql_ast_node *node,
     node->set_operation = operation;
 }
 
+void mylite_sql_ast_node_set_window_function(struct mylite_sql_ast_node *node,
+                                             enum mylite_sql_ast_window_function_kind function_kind)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->window_function_kind = function_kind;
+}
+
+void mylite_sql_ast_node_set_window_frame_unit(struct mylite_sql_ast_node *node,
+                                               enum mylite_sql_ast_window_frame_unit unit)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->window_frame_unit = unit;
+}
+
+void mylite_sql_ast_node_set_window_frame_bound(
+    struct mylite_sql_ast_node *node, enum mylite_sql_ast_window_frame_bound_kind bound_kind)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->window_frame_bound_kind = bound_kind;
+}
+
+void mylite_sql_ast_node_set_window_null_treatment(
+    struct mylite_sql_ast_node *node, enum mylite_sql_ast_window_null_treatment treatment)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->window_null_treatment = treatment;
+}
+
 void mylite_sql_ast_node_set_subquery_quantifier(struct mylite_sql_ast_node *node,
                                                  enum mylite_sql_ast_subquery_quantifier quantifier)
 {
@@ -989,6 +1029,26 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "query_primary";
     case MYLITE_SQL_AST_VALUES_STATEMENT:
         return "values_statement";
+    case MYLITE_SQL_AST_WINDOW_FUNCTION_CALL:
+        return "window_function_call";
+    case MYLITE_SQL_AST_OVER_CLAUSE:
+        return "over_clause";
+    case MYLITE_SQL_AST_WINDOW_SPECIFICATION:
+        return "window_specification";
+    case MYLITE_SQL_AST_WINDOW_CLAUSE:
+        return "window_clause";
+    case MYLITE_SQL_AST_WINDOW_DEFINITION_LIST:
+        return "window_definition_list";
+    case MYLITE_SQL_AST_WINDOW_DEFINITION:
+        return "window_definition";
+    case MYLITE_SQL_AST_WINDOW_PARTITION_CLAUSE:
+        return "window_partition_clause";
+    case MYLITE_SQL_AST_WINDOW_FRAME_CLAUSE:
+        return "window_frame_clause";
+    case MYLITE_SQL_AST_WINDOW_FRAME_BOUND:
+        return "window_frame_bound";
+    case MYLITE_SQL_AST_WINDOW_NULL_TREATMENT:
+        return "window_null_treatment";
     case MYLITE_SQL_AST_INSERT_DUPLICATE_UPDATE_CLAUSE:
         return "insert_duplicate_update_clause";
     case MYLITE_SQL_AST_INSERT_UPDATE_ASSIGNMENT_LIST:

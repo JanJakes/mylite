@@ -350,6 +350,7 @@ static int test_explain_statement_placeholder_execution(void);
 static int test_account_privilege_placeholder_execution(void);
 static int test_table_partitioning_placeholder_execution(void);
 static int test_cte_query_expression_placeholder_execution(void);
+static int test_window_function_placeholder_execution(void);
 static int test_create_table_base_execution(void);
 static int test_create_table_prepare_has_no_side_effects(void);
 static int test_drop_table_base_execution(void);
@@ -582,6 +583,7 @@ int main(void)
     failures += test_account_privilege_placeholder_execution();
     failures += test_table_partitioning_placeholder_execution();
     failures += test_cte_query_expression_placeholder_execution();
+    failures += test_window_function_placeholder_execution();
     failures += test_create_table_base_execution();
     failures += test_create_table_prepare_has_no_side_effects();
     failures += test_drop_table_base_execution();
@@ -19165,6 +19167,25 @@ static int test_cte_query_expression_placeholder_execution(void)
                                             "SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 3"
                                             ") SELECT n FROM seq",
                                             "CTE query expression", "recursive CTE placeholder");
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_window_function_placeholder_execution(void)
+{
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open window placeholder database");
+    failures += expect_prepare_error(database, "SELECT ROW_NUMBER() OVER ()", MYLITE_UNSUPPORTED,
+                                     "Unsupported window functions", "row_number placeholder");
+    failures += expect_prepare_error(
+        database,
+        "SELECT SUM(n) OVER w FROM t WINDOW w AS (PARTITION BY grp ORDER BY n "
+        "ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)",
+        MYLITE_UNSUPPORTED, "Unsupported window functions", "named window placeholder");
 
     mylite_close(database);
     return failures;

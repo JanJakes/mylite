@@ -61,6 +61,7 @@ static int test_select_outer_join_syntax(void);
 static int test_select_where_clause_syntax(void);
 static int test_select_order_limit_offset_syntax(void);
 static int test_select_distinct_syntax(void);
+static int test_select_window_syntax(void);
 static int test_union_query_expression_syntax(void);
 static int test_aggregate_grouping_syntax(void);
 static int test_subquery_expression_syntax(void);
@@ -86,6 +87,7 @@ expect_placeholder_statement(const struct mylite_sql_ast_node *node,
 static int expect_child_count(const struct mylite_sql_ast_node *node, size_t expected,
                               const char *context);
 static int expect_bool(bool actual, bool expected, const char *context);
+static int expect_int(int actual, int expected, const char *context);
 static int expect_span_text(const struct mylite_sql_ast_node *node, const char *expected,
                             const char *context);
 static int expect_function_call(const struct mylite_sql_ast_node *node, const char *expected_name,
@@ -230,6 +232,7 @@ int main(void)
     failures += test_select_where_clause_syntax();
     failures += test_select_order_limit_offset_syntax();
     failures += test_select_distinct_syntax();
+    failures += test_select_window_syntax();
     failures += test_union_query_expression_syntax();
     failures += test_aggregate_grouping_syntax();
     failures += test_subquery_expression_syntax();
@@ -8271,6 +8274,108 @@ static int test_select_distinct_syntax(void)
     return failures;
 }
 
+static int test_select_window_syntax(void)
+{
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *window_call = NULL;
+    const struct mylite_sql_ast_node *over_clause = NULL;
+    const struct mylite_sql_ast_node *window_clause = NULL;
+    const struct mylite_sql_ast_node *window_definition = NULL;
+    const struct mylite_sql_ast_node *window_spec = NULL;
+    const struct mylite_sql_ast_node *frame = NULL;
+    int failures = 0;
+
+    failures +=
+        parse_sql("SELECT ROW_NUMBER() OVER () AS rn FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    window_call = child_at(child_at(select_list, 0U), 0U);
+    over_clause = child_at(window_call, 1U);
+    failures +=
+        expect_node(window_call, MYLITE_SQL_AST_WINDOW_FUNCTION_CALL, "row_number window call");
+    failures += expect_int((int)window_call->window_function_kind,
+                           (int)MYLITE_SQL_AST_WINDOW_FUNCTION_ROW_NUMBER,
+                           "row_number window function kind");
+    failures += expect_node(over_clause, MYLITE_SQL_AST_OVER_CLAUSE, "row_number over clause");
+    failures += expect_node(child_at(over_clause, 0U), MYLITE_SQL_AST_WINDOW_SPECIFICATION,
+                            "row_number empty window specification");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT SUM(n) OVER w AS total FROM t "
+                          "WINDOW w AS (PARTITION BY grp ORDER BY n "
+                          "ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW);",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    window_call = child_at(child_at(child_at(select, 0U), 0U), 0U);
+    window_clause = child_at(select, 2U);
+    window_definition = child_at(child_at(window_clause, 0U), 0U);
+    window_spec = child_at(window_definition, 1U);
+    frame = child_at(window_spec, 2U);
+    failures +=
+        expect_node(window_call, MYLITE_SQL_AST_WINDOW_FUNCTION_CALL, "aggregate window call");
+    failures +=
+        expect_int((int)window_call->window_function_kind,
+                   (int)MYLITE_SQL_AST_WINDOW_FUNCTION_AGGREGATE, "aggregate window function kind");
+    failures += expect_node(window_clause, MYLITE_SQL_AST_WINDOW_CLAUSE, "window clause");
+    failures += expect_span_text(child_at(window_definition, 0U), "w", "window definition name");
+    failures += expect_node(child_at(window_spec, 0U), MYLITE_SQL_AST_WINDOW_PARTITION_CLAUSE,
+                            "window partition clause");
+    failures += expect_node(child_at(window_spec, 1U), MYLITE_SQL_AST_ORDER_BY_CLAUSE,
+                            "window order clause");
+    failures += expect_node(frame, MYLITE_SQL_AST_WINDOW_FRAME_CLAUSE, "window frame clause");
+    failures += expect_int((int)frame->window_frame_unit,
+                           (int)MYLITE_SQL_AST_WINDOW_FRAME_UNIT_ROWS, "window frame rows unit");
+    failures += expect_int((int)child_at(frame, 0U)->window_frame_bound_kind,
+                           (int)MYLITE_SQL_AST_WINDOW_FRAME_BOUND_UNBOUNDED_PRECEDING,
+                           "window frame start");
+    failures += expect_int((int)child_at(frame, 1U)->window_frame_bound_kind,
+                           (int)MYLITE_SQL_AST_WINDOW_FRAME_BOUND_CURRENT_ROW, "window frame end");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT LAG(n, 1, 0) RESPECT NULLS OVER "
+                          "(PARTITION BY grp ORDER BY id) FROM t;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    window_call = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_int((int)window_call->window_function_kind,
+                           (int)MYLITE_SQL_AST_WINDOW_FUNCTION_LAG, "lag window function kind");
+    failures += expect_int((int)child_at(window_call, 1U)->window_null_treatment,
+                           (int)MYLITE_SQL_AST_WINDOW_NULL_TREATMENT_RESPECT, "lag null treatment");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT NTH_VALUE(n, 2) IGNORE NULLS OVER "
+                          "(ORDER BY id RANGE UNBOUNDED PRECEDING) FROM t;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    window_call = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures +=
+        expect_int((int)window_call->window_function_kind,
+                   (int)MYLITE_SQL_AST_WINDOW_FUNCTION_NTH_VALUE, "nth_value window function kind");
+    failures +=
+        expect_int((int)child_at(window_call, 1U)->window_null_treatment,
+                   (int)MYLITE_SQL_AST_WINDOW_NULL_TREATMENT_IGNORE, "nth_value null treatment");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT current, following, nulls, preceding, respect, unbounded FROM t;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT ROW_NUMBER(1) OVER ();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT LAG() OVER ();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT ROW_NUMBER() RESPECT NULLS OVER ();",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT CONCAT('a') OVER ();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_union_query_expression_syntax(void)
 {
     struct mylite_sql_parse_result result;
@@ -9346,6 +9451,16 @@ static int expect_bool(bool actual, bool expected, const char *context)
     }
     if (actual != expected) {
         fprintf(stderr, "%s: expected %s, got %s\n", context, expected_text, actual_text);
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_int(int actual, int expected, const char *context)
+{
+    if (actual != expected) {
+        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
         return 1;
     }
 

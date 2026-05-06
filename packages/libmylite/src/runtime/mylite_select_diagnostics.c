@@ -30,6 +30,15 @@ int mylite_select_set_duplicate_mode_error(mylite_db *database)
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
+int mylite_select_set_unsupported_window_error(mylite_db *database)
+{
+    if (mylite_diagnostics_set_error_message(
+            database, "Unsupported window functions or WINDOW clause") == MYLITE_NOMEM) {
+        return MYLITE_NOMEM;
+    }
+    return MYLITE_UNSUPPORTED;
+}
+
 int mylite_select_set_unsupported_projection_error(mylite_db *database)
 {
     if (mylite_diagnostics_set_error_message(database, "Unsupported SELECT projection") ==

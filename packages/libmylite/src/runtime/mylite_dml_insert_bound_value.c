@@ -42,8 +42,8 @@ int mylite_dml_copy_insert_sqlite_column_value(
         int bytes = sqlite3_column_bytes(scan, column);
 
         out_value->kind = MYLITE_INSERT_BOUND_TEXT;
-        out_value->text_value =
-            mylite_copy_span_text((const char *)text, bytes < 0 ? 0U : (size_t)bytes);
+        out_value->text_length = bytes < 0 ? 0U : (size_t)bytes;
+        out_value->text_value = mylite_copy_span_text((const char *)text, out_value->text_length);
         return out_value->text_value == NULL ? -1 : 0;
     }
     default:
@@ -63,7 +63,7 @@ int mylite_dml_copy_insert_bound_value(
     *out_value = *value;
     out_value->text_value = NULL;
     if (value->kind == MYLITE_INSERT_BOUND_TEXT && value->text_value != NULL) {
-        out_value->text_value = mylite_copy_span_text(value->text_value, strlen(value->text_value));
+        out_value->text_value = mylite_copy_span_text(value->text_value, value->text_length);
         if (out_value->text_value == NULL) {
             return MYLITE_NOMEM;
         }

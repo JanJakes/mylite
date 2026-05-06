@@ -380,7 +380,8 @@ static bool insert_bound_values_equal(
         if (left->text_value == NULL || right->text_value == NULL) {
             return left->text_value == right->text_value;
         }
-        return strcmp(left->text_value, right->text_value) == 0;
+        return left->text_length == right->text_length &&
+               memcmp(left->text_value, right->text_value, left->text_length) == 0;
     }
     return false;
 }

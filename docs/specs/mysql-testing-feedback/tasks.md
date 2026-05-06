@@ -109,9 +109,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
 - [ ] Align `NO_BACKSLASH_ESCAPES` string and pattern escaping, including
       `\0` and pattern matching.
 - [x] Fix binary literal evaluation such as `SELECT 0b000000001`.
-- [ ] Preserve string values containing null bytes instead of truncating at
-      `\0`. Scalar `SELECT` literals now preserve embedded NUL byte lengths;
-      table storage/update paths still need length-aware DML binding.
+- [x] Preserve string values containing null bytes instead of truncating at
+      `\0`. Scalar `SELECT` literals and DML storage/update paths now preserve
+      embedded NUL byte lengths.
 - [x] Make `FROM_BASE64(TO_BASE64('binary\\0data'))` preserve binary null
       bytes.
 - [ ] Align invalid and zero-date coercion/rejection with MySQL in strict and

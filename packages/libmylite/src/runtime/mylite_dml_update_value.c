@@ -91,6 +91,7 @@ int mylite_dml_resolve_default_function_value(
         database,
         column,
         column->default_text,
+        column->default_text == NULL ? 0U : strlen(column->default_text),
         0U,
         NULL,
         &value
@@ -130,7 +131,7 @@ int mylite_dml_copy_insert_bound_value_to_expression(
         };
         return MYLITE_OK;
     case MYLITE_INSERT_BOUND_TEXT:
-        out_value->text_length = value->text_value == NULL ? 0U : strlen(value->text_value);
+        out_value->text_length = value->text_value == NULL ? 0U : value->text_length;
         out_value->text_value = mylite_copy_span_text(value->text_value, out_value->text_length);
         if (out_value->text_value == NULL) {
             return MYLITE_NOMEM;

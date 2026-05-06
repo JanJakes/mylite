@@ -2,6 +2,8 @@
 
 #include "mylite_diagnostics.h"
 
+#include <limits.h>
+
 static sqlite3_destructor_type sqlite_transient_destructor(void);
 
 int mylite_dml_bind_insert_row_values(
@@ -41,7 +43,16 @@ int mylite_dml_bind_insert_bound_value(
     case MYLITE_INSERT_BOUND_REAL:
         return sqlite3_bind_double(stmt, index, value->real_value);
     case MYLITE_INSERT_BOUND_TEXT:
-        return sqlite3_bind_text(stmt, index, value->text_value, -1, sqlite_transient_destructor());
+        if (value->text_length > (size_t)INT_MAX) {
+            return SQLITE_TOOBIG;
+        }
+        return sqlite3_bind_text(
+            stmt,
+            index,
+            value->text_value,
+            (int)value->text_length,
+            sqlite_transient_destructor()
+        );
     }
 
     return SQLITE_MISUSE;

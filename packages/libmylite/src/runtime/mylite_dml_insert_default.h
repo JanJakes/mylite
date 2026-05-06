@@ -45,6 +45,7 @@ int mylite_dml_resolve_insert_text_value(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
     const char *text,
+    size_t text_length,
     uint64_t statement_row_count,
     struct mylite_insert_execution_state *state,
     struct mylite_insert_bound_value *out_value
@@ -53,6 +54,7 @@ int mylite_dml_resolve_insert_quoted_text_value(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
     const char *text,
+    size_t text_length,
     uint64_t statement_row_count,
     struct mylite_insert_execution_state *state,
     struct mylite_insert_bound_value *out_value

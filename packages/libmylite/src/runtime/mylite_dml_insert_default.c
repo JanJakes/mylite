@@ -15,6 +15,7 @@
 static int set_insert_bound_text_value(
     mylite_db *database,
     const char *text,
+    size_t text_length,
     struct mylite_insert_bound_value *out_value
 );
 
@@ -76,6 +77,7 @@ int mylite_dml_resolve_insert_default_bound_value(
         *out_value = (struct mylite_insert_bound_value){
             .kind = MYLITE_INSERT_BOUND_TEXT,
             .text_value = timestamp,
+            .text_length = timestamp == NULL ? 0U : strlen(timestamp),
         };
         return MYLITE_OK;
     }
@@ -86,6 +88,7 @@ int mylite_dml_resolve_insert_default_bound_value(
         database,
         column,
         column->default_text,
+        column->default_text == NULL ? 0U : strlen(column->default_text),
         statement_row_count,
         state,
         out_value
@@ -129,6 +132,7 @@ int mylite_dml_resolve_insert_implicit_expression_default(
         return MYLITE_NOMEM;
     }
     out_value->kind = MYLITE_INSERT_BOUND_TEXT;
+    out_value->text_length = strlen(text_default);
     return MYLITE_OK;
 }
 
@@ -150,6 +154,7 @@ int mylite_dml_resolve_insert_current_timestamp_bound_value(
     *out_value = (struct mylite_insert_bound_value){
         .kind = MYLITE_INSERT_BOUND_TEXT,
         .text_value = timestamp,
+        .text_length = timestamp == NULL ? 0U : strlen(timestamp),
     };
     return MYLITE_OK;
 }
@@ -224,6 +229,7 @@ int mylite_dml_resolve_insert_text_value(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
     const char *text,
+    size_t text_length,
     uint64_t statement_row_count,
     struct mylite_insert_execution_state *state,
     struct mylite_insert_bound_value *out_value
@@ -265,13 +271,14 @@ int mylite_dml_resolve_insert_text_value(
         return MYLITE_OK;
     }
 
-    return set_insert_bound_text_value(database, text, out_value);
+    return set_insert_bound_text_value(database, text, text_length, out_value);
 }
 
 int mylite_dml_resolve_insert_quoted_text_value(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
     const char *text,
+    size_t text_length,
     uint64_t statement_row_count,
     struct mylite_insert_execution_state *state,
     struct mylite_insert_bound_value *out_value
@@ -281,12 +288,13 @@ int mylite_dml_resolve_insert_quoted_text_value(
             database,
             column,
             text,
+            text_length,
             statement_row_count,
             state,
             out_value
         );
     }
-    return set_insert_bound_text_value(database, text, out_value);
+    return set_insert_bound_text_value(database, text, text_length, out_value);
 }
 
 bool mylite_dml_insert_auto_increment_zero_generates(
@@ -336,14 +344,16 @@ int mylite_dml_allocate_insert_auto_increment(
 static int set_insert_bound_text_value(
     mylite_db *database,
     const char *text,
+    size_t text_length,
     struct mylite_insert_bound_value *out_value
 ) {
-    out_value->text_value = mylite_copy_span_text(text, strlen(text));
+    out_value->text_value = mylite_copy_span_text(text, text_length);
     if (out_value->text_value == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     out_value->kind = MYLITE_INSERT_BOUND_TEXT;
+    out_value->text_length = text_length;
     return MYLITE_OK;
 }
 

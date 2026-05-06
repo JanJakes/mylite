@@ -21,6 +21,10 @@ int mylite_copy_identifier_parts(
     size_t *part_count
 );
 char *mylite_copy_string_literal_span(const struct mylite_sql_ast_node *node);
+char *mylite_copy_string_literal_span_with_length(
+    const struct mylite_sql_ast_node *node,
+    size_t *out_length
+);
 char *mylite_copy_unquoted_span_text(struct mylite_sql_source_span span);
 char *mylite_copy_nonempty_cstring(const char *text);
 char *mylite_copy_span_text(const char *text, size_t length);

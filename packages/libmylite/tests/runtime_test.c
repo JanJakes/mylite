@@ -502,6 +502,8 @@ static int test_no_auto_value_on_zero_execution(void);
 
 static int test_insert_set_execution(void);
 
+static int test_insert_update_null_byte_storage_execution(void);
+
 static int test_replace_execution(void);
 
 static int test_insert_ignore_execution(void);
@@ -959,6 +961,7 @@ int main(void) {
     failures += test_insert_values_execution();
     failures += test_no_auto_value_on_zero_execution();
     failures += test_insert_set_execution();
+    failures += test_insert_update_null_byte_storage_execution();
     failures += test_replace_execution();
     failures += test_insert_ignore_execution();
     failures += test_insert_on_duplicate_key_update_execution();
@@ -46051,6 +46054,68 @@ static int test_insert_set_execution(void) {
     free(duplicate_physical);
     mylite_close(database);
     remove_runtime_test_files();
+    return failures;
+}
+
+static int test_insert_update_null_byte_storage_execution(void) {
+    static const char *const columns[] = {"id", "s_hex", "s_len", "b_hex", "b_len"};
+    static const char *const values[] = {
+        "1",
+        "6F646B750076",
+        "6",
+        "63616E646964617465",
+        "9",
+        "2",
+        "7570640076",
+        "5",
+        "7570640062696E",
+        "7",
+    };
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open nul dml database");
+    failures += execute_sql(database, "CREATE DATABASE mylite_nul_dml", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_nul_dml", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE t ("
+        "id INT PRIMARY KEY, "
+        "s VARCHAR(32), "
+        "b VARBINARY(32), "
+        "UNIQUE KEY uq_s (s))",
+        MYLITE_DONE
+    );
+    failures +=
+        execute_sql(database, "INSERT INTO t VALUES (1, 'a\\0b', 'binary\\0data')", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "INSERT INTO t SET id = 2, s = 'set\\0v', b = 'set\\0bin'",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "UPDATE t SET s = 'upd\\0v', b = 'upd\\0bin' WHERE id = 2",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO t VALUES (1, 'candidate', 'candidate') "
+        "ON DUPLICATE KEY UPDATE s = 'odku\\0v', b = VALUES(b)",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, HEX(s) AS s_hex, LENGTH(s) AS s_len, "
+        "HEX(b) AS b_hex, LENGTH(b) AS b_len FROM t ORDER BY id",
+        columns,
+        (int)(sizeof(columns) / sizeof(columns[0])),
+        values,
+        2,
+        "DML embedded NUL storage"
+    );
+
+    mylite_close(database);
     return failures;
 }
 

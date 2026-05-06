@@ -169,38 +169,96 @@ int mylite_copy_identifier_parts(
     return MYLITE_OK;
 }
 
+static bool decode_string_escape(char escaped, char *out_character);
+
 char *mylite_copy_string_literal_span(const struct mylite_sql_ast_node *node) {
+    return mylite_copy_string_literal_span_with_length(node, NULL);
+}
+
+char *mylite_copy_string_literal_span_with_length(
+    const struct mylite_sql_ast_node *node,
+    size_t *out_length
+) {
     const char *text = node == NULL ? NULL : node->span.text;
     size_t length = node == NULL ? 0U : node->span.length;
     char quote = '\0';
     char *copy = NULL;
     size_t output = 0U;
+    size_t start = 1U;
 
     if (text == NULL) {
         return NULL;
     }
-    if (length < 2U || (text[0] != '\'' && text[0] != '"')) {
+    if (length < 2U || ((text[0] != '\'' && text[0] != '"') &&
+                        (length < 3U || (text[0] != 'N' && text[0] != 'n') ||
+                         (text[1] != '\'' && text[1] != '"')))) {
+        if (out_length != NULL) {
+            *out_length = length;
+        }
         return mylite_copy_span_text(text, length);
     }
 
-    quote = text[0];
-    copy = malloc(length - 1U);
+    if (text[0] == 'N' || text[0] == 'n') {
+        start = 2U;
+    }
+    quote = text[start - 1U];
+    copy = malloc(length - start);
     if (copy == NULL) {
         return NULL;
     }
 
-    for (size_t index = 1U; index + 1U < length; ++index) {
+    for (size_t index = start; index + 1U < length; ++index) {
         if (text[index] == quote && index + 2U < length && text[index + 1U] == quote) {
             copy[output++] = quote;
             ++index;
         } else if (text[index] == '\\' && index + 2U < length) {
-            copy[output++] = text[++index];
+            char escaped = '\0';
+
+            if (decode_string_escape(text[index + 1U], &escaped)) {
+                copy[output++] = escaped;
+                ++index;
+            } else {
+                copy[output++] = text[index];
+            }
         } else {
             copy[output++] = text[index];
         }
     }
     copy[output] = '\0';
+    if (out_length != NULL) {
+        *out_length = output;
+    }
     return copy;
+}
+
+static bool decode_string_escape(char escaped, char *out_character) {
+    switch (escaped) {
+    case '\'':
+    case '"':
+    case '\\':
+        *out_character = escaped;
+        return true;
+    case '0':
+        *out_character = '\0';
+        return true;
+    case 'b':
+        *out_character = '\b';
+        return true;
+    case 'n':
+        *out_character = '\n';
+        return true;
+    case 'r':
+        *out_character = '\r';
+        return true;
+    case 't':
+        *out_character = '\t';
+        return true;
+    case 'Z':
+        *out_character = '\x1A';
+        return true;
+    default:
+        return false;
+    }
 }
 
 char *mylite_copy_unquoted_span_text(struct mylite_sql_source_span span) {

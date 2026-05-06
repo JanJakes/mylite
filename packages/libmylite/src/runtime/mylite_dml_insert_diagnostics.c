@@ -209,7 +209,7 @@ static char *copy_insert_duplicate_entry_value(
             sqlite3_str_append(
                 text,
                 value->text_value == NULL ? "" : value->text_value,
-                value->text_value == NULL ? 0 : (int)strlen(value->text_value)
+                value->text_value == NULL ? 0 : (int)value->text_length
             );
             break;
         }

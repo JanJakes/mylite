@@ -341,6 +341,7 @@ static int resolve_insert_explicit_value(
             database,
             column,
             value->text,
+            value->text_length,
             statement_row_count,
             state,
             out_value
@@ -353,6 +354,7 @@ static int resolve_insert_explicit_value(
             database,
             column,
             value->text,
+            value->text_length,
             statement_row_count,
             state,
             out_value
@@ -362,6 +364,7 @@ static int resolve_insert_explicit_value(
             database,
             column,
             value->text,
+            value->text_length,
             statement_row_count,
             state,
             out_value

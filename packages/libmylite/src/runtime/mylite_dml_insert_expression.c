@@ -354,17 +354,24 @@ static int resolve_insert_expression_text_value(
     struct mylite_insert_bound_value *out_value
 ) {
     char *text = mylite_expression_value_to_text(value);
+    size_t text_length = value->kind == MYLITE_EXPRESSION_VALUE_TEXT && value->text_value != NULL
+                             ? value->text_length
+                             : 0U;
     int status = MYLITE_OK;
 
     if (text == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
+    if (value->kind != MYLITE_EXPRESSION_VALUE_TEXT) {
+        text_length = strlen(text);
+    }
     status = value->kind == MYLITE_EXPRESSION_VALUE_TEXT
                  ? mylite_dml_resolve_insert_quoted_text_value(
                        database,
                        column,
                        text,
+                       text_length,
                        statement_row_count,
                        state,
                        out_value
@@ -373,6 +380,7 @@ static int resolve_insert_expression_text_value(
                        database,
                        column,
                        text,
+                       text_length,
                        statement_row_count,
                        state,
                        out_value

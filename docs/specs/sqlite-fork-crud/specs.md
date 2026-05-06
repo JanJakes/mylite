@@ -239,9 +239,11 @@ each statement executor.
 The fork must register MySQL collation names natively so SQLite can use them in
 indexes, equality, ordering, grouping, `DISTINCT`, and uniqueness checks. The
 first executable slice registers MyLite's current collation names and implements
-binary plus ASCII case-insensitive comparison with pad-space handling. That is
-enough for the verified ASCII WordPress-like fixture, but it is not a full
-Unicode collation implementation.
+binary plus ASCII case-insensitive comparison with pad-space handling. MyLite
+generated SQL now explicitly preserves column collation on prefix-key
+expressions used by unique probes and existing-row duplicate validation. That
+is enough for the verified ASCII WordPress-like and prefix-unique fixtures, but
+it is not a full Unicode collation implementation.
 
 Full `utf8mb4_0900_ai_ci`, `utf8mb4_unicode_ci`, and related collations remain
 one of the most important hard problems. They should be solved either by a
@@ -313,10 +315,13 @@ This metadata should be updated by SQLite DDL paths, not a parallel DDL engine.
    Implemented for the first supported subset.
 6. Add a public MyLite SQL fixture test for the WordPress-like CRUD script.
    Implemented.
-7. Next, move from MyLite-lowered SQL to direct MySQL SQL by forking the
+7. Preserve MySQL column collation in generated prefix-unique expressions for
+   `INSERT`, duplicate update, `UPDATE`, `CREATE UNIQUE INDEX`, and
+   `ALTER TABLE ... ADD UNIQUE`. Implemented.
+8. Next, move from MyLite-lowered SQL to direct MySQL SQL by forking the
    SQLite grammar for `TRUNCATE TABLE`, MySQL table options, secondary-key
    table elements, and `AUTO_INCREMENT`.
-8. Then move type descriptors into SQLite column metadata and enforce MySQL
+9. Then move type descriptors into SQLite column metadata and enforce MySQL
    conversion/range/length rules in SQLite's insert/update path. Implemented
    for the first signed integer, supported unsigned integer, `DOUBLE`,
    `VARCHAR`, `BINARY`, `VARBINARY`, `DECIMAL`, `DATE`, and `DATETIME` subset,

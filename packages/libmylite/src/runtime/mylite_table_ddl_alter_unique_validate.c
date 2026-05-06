@@ -187,6 +187,9 @@ static int append_alter_table_unique_part_expression(
     }
     if (part->has_sub_part) {
         sqlite3_str_appendf(sql, ",1,%lld)", (long long)part->sub_part);
+        if (column->collation_name != NULL) {
+            sqlite3_str_appendf(sql, " COLLATE \"%w\"", column->collation_name);
+        }
     }
     return MYLITE_OK;
 }

@@ -57,6 +57,8 @@ static int test_mylite_decimal_type_coercion(void);
 
 static int test_mylite_temporal_type_coercion(void);
 
+static int test_mylite_collation_unique_semantics(void);
+
 static int open_configured_database(sqlite3 **out_database);
 
 static int exec_sql(sqlite3 *database, const char *sql, const char *context);
@@ -121,6 +123,7 @@ int main(void) {
     failures += test_mylite_binary_type_coercion();
     failures += test_mylite_decimal_type_coercion();
     failures += test_mylite_temporal_type_coercion();
+    failures += test_mylite_collation_unique_semantics();
 
     return failures == 0 ? 0 : 1;
 }
@@ -194,6 +197,105 @@ static int test_mysql_collations(void) {
         "SELECT COUNT(*) FROM collated_names WHERE binary_name = 'hello'",
         0,
         "binary MySQL collation remains byte-sensitive"
+    );
+    failures += exec_sql(
+        database,
+        "CREATE TABLE collation_pad_unique(value TEXT COLLATE utf8mb4_unicode_ci UNIQUE)",
+        "create direct PAD SPACE unique fixture"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO collation_pad_unique VALUES ('trail')",
+        "insert direct PAD SPACE unique seed"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT OR IGNORE INTO collation_pad_unique VALUES ('trail ')",
+        "insert direct PAD SPACE trailing-space variant"
+    );
+    failures += expect_int64(
+        database,
+        "SELECT COUNT(*) FROM collation_pad_unique",
+        1,
+        "SQLite collation API preserves PAD SPACE uniqueness"
+    );
+    failures += exec_sql(
+        database,
+        "CREATE TABLE collation_no_pad_unique(value TEXT COLLATE utf8mb4_0900_ai_ci UNIQUE)",
+        "create direct NO PAD unique fixture"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO collation_no_pad_unique VALUES ('trail')",
+        "insert direct NO PAD unique seed"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT OR IGNORE INTO collation_no_pad_unique VALUES ('trail ')",
+        "insert direct NO PAD trailing-space variant"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT COUNT(*) || ':' || group_concat(value || ':' || length(value), '|') "
+                   "FROM (SELECT value FROM collation_no_pad_unique ORDER BY rowid)",
+            .expected = "2:trail:5|trail :6",
+            .context = "SQLite collation API preserves NO PAD uniqueness",
+        }
+    );
+    failures += exec_sql(
+        database,
+        "CREATE TABLE collation_prefix_ci(slug TEXT COLLATE utf8mb4_unicode_ci)",
+        "create direct case-insensitive prefix fixture"
+    );
+    failures += exec_sql(
+        database,
+        "CREATE UNIQUE INDEX uq_direct_slug4_ci ON collation_prefix_ci("
+        "substr(slug,1,4) COLLATE utf8mb4_unicode_ci)",
+        "create direct case-insensitive prefix index"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO collation_prefix_ci VALUES ('Post Alpha')",
+        "insert direct case-insensitive prefix seed"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT OR IGNORE INTO collation_prefix_ci VALUES ('post Beta')",
+        "insert direct case-insensitive prefix duplicate"
+    );
+    failures += expect_int64(
+        database,
+        "SELECT COUNT(*) FROM collation_prefix_ci",
+        1,
+        "SQLite expression indexes can preserve MySQL prefix collation"
+    );
+    failures += exec_sql(
+        database,
+        "CREATE TABLE collation_prefix_bin(slug TEXT COLLATE utf8mb4_bin)",
+        "create direct binary prefix fixture"
+    );
+    failures += exec_sql(
+        database,
+        "CREATE UNIQUE INDEX uq_direct_slug4_bin ON collation_prefix_bin("
+        "substr(slug,1,4) COLLATE utf8mb4_bin)",
+        "create direct binary prefix index"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO collation_prefix_bin VALUES ('Post Alpha')",
+        "insert direct binary prefix seed"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT OR IGNORE INTO collation_prefix_bin VALUES ('post Beta')",
+        "insert direct binary prefix distinct value"
+    );
+    failures += expect_int64(
+        database,
+        "SELECT COUNT(*) FROM collation_prefix_bin",
+        2,
+        "SQLite expression indexes keep binary prefix collation byte-sensitive"
     );
 
     sqlite3_close(database);
@@ -2074,6 +2176,183 @@ static int test_mylite_temporal_type_coercion(void) {
         database,
         datetime_overflow_error,
         "MyLite datetime overflow condition"
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_mylite_collation_unique_semantics(void) {
+    enum {
+        single_column = 1,
+    };
+
+    static const char *const prefix_ci_rows[] = {"Post Alpha"};
+    static const char *const prefix_bin_rows[] = {"Post Alpha", "post Beta"};
+    static const char *const pad_space_rows[] = {"trail:5"};
+    static const char *const no_pad_rows[] = {"trail:5", "trail :6"};
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += expect_mylite_ok(
+        mylite_open_memory(&database),
+        database,
+        "open MyLite collation unique semantics"
+    );
+    if (failures != 0) {
+        return failures;
+    }
+
+    failures += exec_mylite_sql(
+        database,
+        "CREATE DATABASE mylite_collation_unique CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+        "create MyLite collation unique schema"
+    );
+    failures +=
+        exec_mylite_sql(database, "USE mylite_collation_unique", "use collation unique schema");
+
+    failures += exec_mylite_sql(
+        database,
+        "CREATE TABLE prefix_ci ("
+        "id INT AUTO_INCREMENT PRIMARY KEY,"
+        "slug VARCHAR(20) COLLATE utf8mb4_unicode_ci NOT NULL,"
+        "UNIQUE KEY uq_slug4 (slug(4))"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "create MyLite case-insensitive prefix unique table"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT INTO prefix_ci(slug) VALUES ('Post Alpha')",
+        "insert MyLite case-insensitive prefix seed"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT IGNORE INTO prefix_ci(slug) VALUES ('post Beta')",
+        "ignore MyLite case-insensitive prefix duplicate"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT slug FROM prefix_ci ORDER BY id",
+            .values = prefix_ci_rows,
+            .column_count = single_column,
+            .row_count = 1,
+            .context = "MyLite prefix unique uses case-insensitive SQLite collation",
+        }
+    );
+
+    failures += exec_mylite_sql(
+        database,
+        "CREATE TABLE prefix_bin ("
+        "id INT AUTO_INCREMENT PRIMARY KEY,"
+        "slug VARCHAR(20) COLLATE utf8mb4_bin NOT NULL,"
+        "UNIQUE KEY uq_slug4 (slug(4))"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "create MyLite binary prefix unique table"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT INTO prefix_bin(slug) VALUES ('Post Alpha')",
+        "insert MyLite binary prefix seed"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT IGNORE INTO prefix_bin(slug) VALUES ('post Beta')",
+        "insert MyLite binary prefix distinct value"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT slug FROM prefix_bin ORDER BY id",
+            .values = prefix_bin_rows,
+            .column_count = single_column,
+            .row_count = 2,
+            .context = "MyLite prefix unique keeps binary SQLite collation byte-sensitive",
+        }
+    );
+
+    failures += exec_mylite_sql(
+        database,
+        "CREATE TABLE pad_space_unique ("
+        "id INT AUTO_INCREMENT PRIMARY KEY,"
+        "value VARCHAR(20) COLLATE utf8mb4_unicode_ci NOT NULL UNIQUE"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "create MyLite PAD SPACE unique table"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT INTO pad_space_unique(value) VALUES ('trail')",
+        "insert MyLite PAD SPACE unique seed"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT IGNORE INTO pad_space_unique(value) VALUES ('trail ')",
+        "ignore MyLite PAD SPACE duplicate"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT CONCAT(value, ':', LENGTH(value)) FROM pad_space_unique ORDER BY id",
+            .values = pad_space_rows,
+            .column_count = single_column,
+            .row_count = 1,
+            .context = "MyLite unique checks honor PAD SPACE SQLite collation",
+        }
+    );
+
+    failures += exec_mylite_sql(
+        database,
+        "CREATE TABLE no_pad_unique ("
+        "id INT AUTO_INCREMENT PRIMARY KEY,"
+        "value VARCHAR(20) COLLATE utf8mb4_0900_ai_ci NOT NULL UNIQUE"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+        "create MyLite NO PAD unique table"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT INTO no_pad_unique(value) VALUES ('trail')",
+        "insert MyLite NO PAD unique seed"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT IGNORE INTO no_pad_unique(value) VALUES ('trail ')",
+        "insert MyLite NO PAD trailing-space value"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT CONCAT(value, ':', LENGTH(value)) FROM no_pad_unique ORDER BY id",
+            .values = no_pad_rows,
+            .column_count = single_column,
+            .row_count = 2,
+            .context = "MyLite unique checks honor NO PAD SQLite collation",
+        }
+    );
+
+    failures += exec_mylite_sql(
+        database,
+        "CREATE TABLE prefix_existing ("
+        "id INT PRIMARY KEY,"
+        "slug VARCHAR(20) COLLATE utf8mb4_unicode_ci NOT NULL"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "create MyLite existing prefix duplicate table"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT INTO prefix_existing VALUES (1, 'Post Alpha'), (2, 'post Beta')",
+        "insert MyLite existing prefix duplicates"
+    );
+    failures += expect_mylite_sql_status(
+        database,
+        "CREATE UNIQUE INDEX uq_existing_slug4 ON prefix_existing(slug(4))",
+        MYLITE_EXEC_ERROR,
+        "MyLite CREATE UNIQUE INDEX detects case-insensitive prefix duplicates"
+    );
+    failures += expect_mylite_sql_status(
+        database,
+        "ALTER TABLE prefix_existing ADD UNIQUE KEY uq_existing_slug4_alt (slug(4))",
+        MYLITE_EXEC_ERROR,
+        "MyLite ALTER TABLE ADD UNIQUE detects case-insensitive prefix duplicates"
     );
 
     mylite_close(database);

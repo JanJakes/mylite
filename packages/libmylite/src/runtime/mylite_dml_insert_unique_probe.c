@@ -28,6 +28,25 @@ static char *build_insert_unique_check_sql(
     const struct mylite_insert_unique_index *index
 );
 
+static void append_insert_unique_part_comparison(
+    sqlite3_str *sql,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_unique_index *index,
+    size_t part
+);
+
+static void append_insert_unique_part_expression(
+    sqlite3_str *sql,
+    const struct mylite_insert_table_column *column,
+    uint64_t prefix_length,
+    bool bind_parameter
+);
+
+static void append_insert_unique_part_collation(
+    sqlite3_str *sql,
+    const struct mylite_insert_table_column *column
+);
+
 static int bind_insert_unique_check_values(
     mylite_db *database,
     sqlite3_stmt *check,
@@ -149,22 +168,10 @@ static char *build_insert_unique_conflict_sql(
 
     sqlite3_str_appendf(sql, "SELECT rowid FROM \"%w\" WHERE ", table->physical_name);
     for (size_t part = 0U; part < index->column_count; ++part) {
-        size_t column_index = index->column_indexes[part];
-
         if (part != 0U) {
             sqlite3_str_append(sql, " AND ", (int)strlen(" AND "));
         }
-        if (index->prefix_lengths[part] != 0U) {
-            sqlite3_str_appendf(
-                sql,
-                "substr(\"%w\",1,%llu) = substr(?,1,%llu)",
-                table->columns[column_index].name,
-                (unsigned long long)index->prefix_lengths[part],
-                (unsigned long long)index->prefix_lengths[part]
-            );
-        } else {
-            sqlite3_str_appendf(sql, "\"%w\" = ?", table->columns[column_index].name);
-        }
+        append_insert_unique_part_comparison(sql, table, index, part);
     }
     if (has_excluded_rowid) {
         sqlite3_str_append(sql, " AND rowid <> ?", (int)strlen(" AND rowid <> ?"));
@@ -215,25 +222,61 @@ static char *build_insert_unique_check_sql(
 
     sqlite3_str_appendf(sql, "SELECT 1 FROM \"%w\" WHERE ", table->physical_name);
     for (size_t part = 0U; part < index->column_count; ++part) {
-        size_t column_index = index->column_indexes[part];
-
         if (part != 0U) {
             sqlite3_str_append(sql, " AND ", (int)strlen(" AND "));
         }
-        if (index->prefix_lengths[part] != 0U) {
-            sqlite3_str_appendf(
-                sql,
-                "substr(\"%w\",1,%llu) = substr(?,1,%llu)",
-                table->columns[column_index].name,
-                (unsigned long long)index->prefix_lengths[part],
-                (unsigned long long)index->prefix_lengths[part]
-            );
-        } else {
-            sqlite3_str_appendf(sql, "\"%w\" = ?", table->columns[column_index].name);
-        }
+        append_insert_unique_part_comparison(sql, table, index, part);
     }
     sqlite3_str_append(sql, " LIMIT 1", (int)strlen(" LIMIT 1"));
     return sqlite3_str_finish(sql);
+}
+
+static void append_insert_unique_part_comparison(
+    sqlite3_str *sql,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_unique_index *index,
+    size_t part
+) {
+    size_t column_index = index->column_indexes[part];
+    const struct mylite_insert_table_column *column = &table->columns[column_index];
+    uint64_t prefix_length = index->prefix_lengths[part];
+
+    if (prefix_length == 0U) {
+        sqlite3_str_appendf(sql, "\"%w\" = ?", column->name);
+        return;
+    }
+
+    append_insert_unique_part_expression(sql, column, prefix_length, false);
+    sqlite3_str_append(sql, " = ", (int)strlen(" = "));
+    append_insert_unique_part_expression(sql, column, prefix_length, true);
+}
+
+static void append_insert_unique_part_expression(
+    sqlite3_str *sql,
+    const struct mylite_insert_table_column *column,
+    uint64_t prefix_length,
+    bool bind_parameter
+) {
+    if (bind_parameter) {
+        sqlite3_str_appendf(sql, "substr(?,1,%llu)", (unsigned long long)prefix_length);
+    } else {
+        sqlite3_str_appendf(
+            sql,
+            "substr(\"%w\",1,%llu)",
+            column->name,
+            (unsigned long long)prefix_length
+        );
+    }
+    append_insert_unique_part_collation(sql, column);
+}
+
+static void append_insert_unique_part_collation(
+    sqlite3_str *sql,
+    const struct mylite_insert_table_column *column
+) {
+    if (column->collation_name != NULL) {
+        sqlite3_str_appendf(sql, " COLLATE \"%w\"", column->collation_name);
+    }
 }
 
 static int bind_insert_unique_check_values(

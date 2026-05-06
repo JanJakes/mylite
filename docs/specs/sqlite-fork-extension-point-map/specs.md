@@ -11,6 +11,9 @@ Implemented fork points:
 
 - source-tree fork package with reproducible generated SQLite sources
 - MyLite connection bootstrap for native collations, functions, and truncate
+- native SQLite collation registration used for MySQL comparison, ordering,
+  grouping, duplicate elimination, and unique-key probes where generated SQL
+  preserves expression collation
 - MyLite column descriptors stored on SQLite `Column` objects
 - VDBE write-time type checking through `OP_MyliteTypeCheck`
 - binary string byte-length and fixed-length padding through column descriptors
@@ -50,6 +53,8 @@ Implemented fork points:
   `docs/specs/sqlite-fork-decimal-type-descriptors/specs.md`
 - SQLite fork temporal type descriptors:
   `docs/specs/sqlite-fork-temporal-type-descriptors/specs.md`
+- SQLite collation prefix uniqueness:
+  `docs/specs/sqlite-collation-prefix-unique/specs.md`
 
 This specification is independently authored from SQLite public documentation,
 official MySQL 8.4 documentation already cited in the feature specs, observed
@@ -67,7 +72,10 @@ Use existing SQLite APIs for:
 - Scalar, aggregate, and window functions whose arguments and result metadata
   can be represented by compact callbacks.
 - Collations where the comparison algorithm can be implemented directly and
-  registered by MySQL collation name.
+  registered by MySQL collation name. MyLite-generated expressions must still
+  carry the intended `COLLATE` clause when SQLite would otherwise treat a
+  derived expression, such as `substr(column,1,n)`, as binary/default
+  collation.
 - Virtual tables for synthetic schemas such as `information_schema`,
   `performance_schema`, `sys`, and perhaps diagnostic views, provided metadata
   updates remain coordinated with MyLite's catalog.
@@ -171,6 +179,16 @@ Virtual tables can expose synthetic schemas, but DDL must update the metadata
 that backs them. The fork should avoid a second catalog engine. The long-term
 shape is SQLite schema objects plus compact MyLite metadata fields that drive
 `SHOW`, `INFORMATION_SCHEMA`, result-set metadata, and protocol descriptors.
+
+### Collation propagation
+
+SQLite's collation extension surface is strong enough for native comparison
+once a `CollSeq` reaches the expression or index key. The fork does not need a
+new VDBE comparison opcode for the current ASCII-oriented supported registry.
+The MyLite lowering layer does need to preserve collation on generated
+expressions used for MySQL prefix indexes, duplicate probes, and existing-row
+unique validation. Implemented first for `INSERT`, duplicate update, `UPDATE`,
+`CREATE UNIQUE INDEX`, and `ALTER TABLE ... ADD UNIQUE` prefix checks.
 
 ## Current Technical Call
 

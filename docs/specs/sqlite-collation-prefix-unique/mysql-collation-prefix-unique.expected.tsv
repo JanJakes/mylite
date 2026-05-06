@@ -1,0 +1,4 @@
+prefix-ci	0	1	1	Post Alpha
+prefix-bin	1	0	2	Post Alpha|post Beta
+pad-space	0	1	1	trail:5
+no-pad	1	0	2	trail:5|trail :6

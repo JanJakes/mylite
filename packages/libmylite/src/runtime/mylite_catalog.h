@@ -25,6 +25,7 @@ struct mylite_catalog_column_row {
     const char *is_nullable;
     const char *data_type;
     const char *column_type;
+    const char *collation_name;
     uint64_t character_maximum_length;
     bool has_character_maximum_length;
     uint64_t numeric_precision;

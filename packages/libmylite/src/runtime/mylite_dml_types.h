@@ -153,6 +153,7 @@ struct mylite_insert_table_column {
     char *default_text;
     char *data_type;
     char *column_type;
+    char *collation_name;
     char *extra;
     uint64_t character_maximum_length;
     uint64_t numeric_precision;

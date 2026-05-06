@@ -511,7 +511,8 @@ int mylite_catalog_load_table_columns(
     }
     sql = sqlite3_mprintf(
         "SELECT column_name, column_default, is_nullable, data_type, column_type, "
-        "character_maximum_length, numeric_precision, numeric_scale, datetime_precision, extra "
+        "character_maximum_length, numeric_precision, numeric_scale, datetime_precision, "
+        "collation_name, extra "
         "FROM %s WHERE table_schema = ? AND table_name = ? "
         "ORDER BY ordinal_position",
         mylite_catalog_column_catalog_name(catalog.temporary)
@@ -543,7 +544,8 @@ int mylite_catalog_load_table_columns(
             .has_numeric_scale = sqlite3_column_type(stmt, 7) != SQLITE_NULL,
             .datetime_precision = (uint64_t)sqlite3_column_int64(stmt, 8),
             .has_datetime_precision = sqlite3_column_type(stmt, 8) != SQLITE_NULL,
-            .extra = (const char *)sqlite3_column_text(stmt, 9),
+            .collation_name = (const char *)sqlite3_column_text(stmt, 9),
+            .extra = (const char *)sqlite3_column_text(stmt, 10),
         };
         int callback_status = callback(context, &row);
 

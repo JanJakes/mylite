@@ -29,6 +29,13 @@ static char *build_create_unique_index_duplicate_sql(
     const struct mylite_create_table_index *index
 );
 
+static void append_create_unique_index_part_expression(
+    sqlite3_str *sql,
+    const struct mylite_alter_table_column *column,
+    const char *column_name,
+    uint64_t prefix_length
+);
+
 static const char *alter_table_column_physical_name(const struct mylite_alter_table_column *column);
 
 int mylite_table_ddl_validate_create_index_plan(
@@ -305,11 +312,11 @@ static char *build_create_unique_index_duplicate_sql(
             sqlite3_str_append(sql, ",", 1);
         }
         if (key_part->has_prefix_length) {
-            sqlite3_str_appendf(
+            append_create_unique_index_part_expression(
                 sql,
-                "substr(\"%w\",1,%llu)",
+                &model->columns[column_index],
                 column_name,
-                (unsigned long long)key_part->prefix_length
+                key_part->prefix_length
             );
         } else {
             sqlite3_str_appendf(sql, "\"%w\"", column_name);
@@ -339,6 +346,23 @@ static char *build_create_unique_index_duplicate_sql(
         (int)strlen(" HAVING COUNT(*) > 1) LIMIT 1")
     );
     return sqlite3_str_finish(sql);
+}
+
+static void append_create_unique_index_part_expression(
+    sqlite3_str *sql,
+    const struct mylite_alter_table_column *column,
+    const char *column_name,
+    uint64_t prefix_length
+) {
+    sqlite3_str_appendf(
+        sql,
+        "substr(\"%w\",1,%llu)",
+        column_name,
+        (unsigned long long)prefix_length
+    );
+    if (column->collation_name != NULL) {
+        sqlite3_str_appendf(sql, " COLLATE \"%w\"", column->collation_name);
+    }
 }
 
 static const char *alter_table_column_physical_name(

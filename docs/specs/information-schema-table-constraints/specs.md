@@ -159,11 +159,14 @@ Rows are ordered deterministically by:
 
 1. `TABLE_SCHEMA` using binary collation
 2. `TABLE_NAME` using binary collation
-3. primary-key constraints before unique constraints
-4. first catalog row for the index
+3. `CONSTRAINT_NAME` using case-insensitive MySQL-compatible ordering
+4. primary-key constraints before unique constraints only as a tie-breaker for
+   unusual duplicate catalog names
+5. first catalog row for the index
 
 This ordering keeps `SELECT *` stable without adding general `ORDER BY` support
-for information-schema queries.
+for information-schema queries and matches the MySQL 8.4.9 ordering observed
+for primary and unique constraints.
 
 ## INFORMATION_SCHEMA.TABLES
 

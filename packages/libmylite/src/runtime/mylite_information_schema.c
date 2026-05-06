@@ -250,7 +250,7 @@ static const char information_schema_table_constraints_sql[] =
     "WHERE non_unique = 0 "
     "GROUP BY table_schema, table_name, index_name) "
     "ORDER BY TABLE_SCHEMA COLLATE BINARY, TABLE_NAME COLLATE BINARY, "
-    "constraint_order, first_rowid";
+    "CONSTRAINT_NAME COLLATE NOCASE, constraint_order, first_rowid";
 
 static const char information_schema_key_column_usage_sql[] =
     "SELECT CONSTRAINT_CATALOG,"

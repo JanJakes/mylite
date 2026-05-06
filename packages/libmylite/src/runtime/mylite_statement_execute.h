@@ -7,12 +7,14 @@ struct mylite_expression_eval_context;
 struct mylite_expression_value;
 struct mylite_expression_warnings;
 struct mylite_select_table;
+struct mylite_select_scalar_eval_callbacks;
 struct mylite_select_union_callbacks;
 struct mylite_sql_ast_node;
 
 struct mylite_statement_execute_callbacks {
     int (*execute_scalar_select)(mylite_stmt *stmt);
     int (*execute_table_select)(mylite_stmt *stmt);
+    const struct mylite_select_scalar_eval_callbacks *scalar_callbacks;
     const struct mylite_select_union_callbacks *union_callbacks;
     int (*eval_dml_materialize_session_function)(
         void *user_data, const struct mylite_select_table *table,

@@ -588,6 +588,16 @@ void mylite_sql_ast_node_set_set_duplicate_mode(struct mylite_sql_ast_node *node
     node->set_duplicate_mode = mode;
 }
 
+void mylite_sql_ast_node_set_set_operation(struct mylite_sql_ast_node *node,
+                                           enum mylite_sql_ast_set_operation operation)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->set_operation = operation;
+}
+
 void mylite_sql_ast_node_set_subquery_quantifier(struct mylite_sql_ast_node *node,
                                                  enum mylite_sql_ast_subquery_quantifier quantifier)
 {
@@ -977,6 +987,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "union_expression";
     case MYLITE_SQL_AST_QUERY_PRIMARY:
         return "query_primary";
+    case MYLITE_SQL_AST_VALUES_STATEMENT:
+        return "values_statement";
     case MYLITE_SQL_AST_INSERT_DUPLICATE_UPDATE_CLAUSE:
         return "insert_duplicate_update_clause";
     case MYLITE_SQL_AST_INSERT_UPDATE_ASSIGNMENT_LIST:
@@ -1545,6 +1557,20 @@ const char *mylite_sql_ast_set_duplicate_mode_name(enum mylite_sql_ast_set_dupli
         return "distinct";
     case MYLITE_SQL_AST_SET_DUPLICATES_ALL:
         return "all";
+    }
+
+    return "unknown";
+}
+
+const char *mylite_sql_ast_set_operation_name(enum mylite_sql_ast_set_operation operation)
+{
+    switch (operation) {
+    case MYLITE_SQL_AST_SET_OPERATION_UNION:
+        return "union";
+    case MYLITE_SQL_AST_SET_OPERATION_INTERSECT:
+        return "intersect";
+    case MYLITE_SQL_AST_SET_OPERATION_EXCEPT:
+        return "except";
     }
 
     return "unknown";

@@ -7,6 +7,7 @@
 #include "mylite_runtime.h"
 #include "mylite_select.h"
 #include "mylite_span.h"
+#include "mylite_values_query.h"
 
 #include <stdbool.h>
 #include <stdlib.h>
@@ -20,17 +21,18 @@ static int bind_union_query_clauses(mylite_db *database,
                                     const struct mylite_select_union_prepare_callbacks *callbacks);
 static int
 collect_union_query_operands(mylite_db *database, const struct mylite_sql_ast_node *node,
-                             struct mylite_union_plan *plan,
+                             const char *sql, size_t sql_length, struct mylite_union_plan *plan,
                              const struct mylite_select_union_prepare_callbacks *callbacks);
 static int append_union_query_operand(mylite_db *database, struct mylite_union_plan *plan,
                                       mylite_stmt *operand,
+                                      enum mylite_sql_ast_set_operation operation,
                                       enum mylite_sql_ast_set_duplicate_mode duplicate_mode,
                                       bool has_operator);
 static bool union_operand_calc_found_rows(const mylite_stmt *operand);
 static int set_union_sql_calc_found_rows_placement_error(mylite_db *database);
 static int
 prepare_union_query_operand(mylite_db *database, const struct mylite_sql_ast_node *node,
-                            mylite_stmt **out_operand,
+                            const char *sql, size_t sql_length, mylite_stmt **out_operand,
                             const struct mylite_select_union_prepare_callbacks *callbacks);
 static const struct mylite_sql_ast_node *
 unwrap_union_query_primary(const struct mylite_sql_ast_node *node);
@@ -51,6 +53,7 @@ int mylite_select_union_prepare_query_expression(
     int status = MYLITE_OK;
 
     if (callbacks == NULL || callbacks->prepare_select_subquery == NULL ||
+        callbacks->scalar_callbacks == NULL ||
         callbacks->clone_order_expressions == NULL ||
         callbacks->set_ambiguous_order_column_error == NULL ||
         callbacks->set_unsupported_order_error == NULL) {
@@ -75,8 +78,9 @@ int mylite_select_union_prepare_query_expression(
         .affected_rows = -1,
     };
 
-    status = collect_union_query_operands(database, body, &stmt->union_plan, callbacks);
-    if (status == MYLITE_OK && stmt->union_plan.operand_count < 2U) {
+    status =
+        collect_union_query_operands(database, body, sql, sql_length, &stmt->union_plan, callbacks);
+    if (status == MYLITE_OK && stmt->union_plan.operand_count < 1U) {
         status = MYLITE_UNSUPPORTED;
     }
     if (status == MYLITE_OK) {
@@ -158,29 +162,29 @@ static int bind_union_query_clauses(mylite_db *database,
 }
 
 static int collect_union_query_operands( // NOLINT(misc-no-recursion)
-    mylite_db *database, const struct mylite_sql_ast_node *node, struct mylite_union_plan *plan,
+    mylite_db *database, const struct mylite_sql_ast_node *node, const char *sql, size_t sql_length,
+    struct mylite_union_plan *plan,
     const struct mylite_select_union_prepare_callbacks *callbacks)
 {
-    const struct mylite_sql_ast_node *unwrapped = unwrap_union_query_primary(node);
-
-    if (unwrapped == NULL) {
+    if (node == NULL) {
         return MYLITE_UNSUPPORTED;
     }
-    if (unwrapped->kind == MYLITE_SQL_AST_UNION_EXPRESSION) {
-        const struct mylite_sql_ast_node *left = mylite_ast_child_at(unwrapped, 0U);
-        const struct mylite_sql_ast_node *right = mylite_ast_child_at(unwrapped, 1U);
+    if (node->kind == MYLITE_SQL_AST_UNION_EXPRESSION) {
+        const struct mylite_sql_ast_node *left = mylite_ast_child_at(node, 0U);
+        const struct mylite_sql_ast_node *right = mylite_ast_child_at(node, 1U);
         mylite_stmt *right_operand = NULL;
-        int status = collect_union_query_operands(database, left, plan, callbacks);
+        int status = collect_union_query_operands(database, left, sql, sql_length, plan, callbacks);
 
         if (status != MYLITE_OK) {
             return status;
         }
-        status = prepare_union_query_operand(database, right, &right_operand, callbacks);
+        status = prepare_union_query_operand(database, right, sql, sql_length, &right_operand,
+                                             callbacks);
         if (status != MYLITE_OK) {
             return status;
         }
-        status = append_union_query_operand(database, plan, right_operand,
-                                            unwrapped->set_duplicate_mode, true);
+        status = append_union_query_operand(database, plan, right_operand, node->set_operation,
+                                            node->set_duplicate_mode, true);
         if (status != MYLITE_OK) {
             mylite_finalize(right_operand);
         }
@@ -189,12 +193,14 @@ static int collect_union_query_operands( // NOLINT(misc-no-recursion)
 
     {
         mylite_stmt *operand = NULL;
-        int status = prepare_union_query_operand(database, unwrapped, &operand, callbacks);
+        int status =
+            prepare_union_query_operand(database, node, sql, sql_length, &operand, callbacks);
 
         if (status != MYLITE_OK) {
             return status;
         }
         status = append_union_query_operand(database, plan, operand,
+                                            MYLITE_SQL_AST_SET_OPERATION_UNION,
                                             MYLITE_SQL_AST_SET_DUPLICATES_DISTINCT, false);
         if (status != MYLITE_OK) {
             mylite_finalize(operand);
@@ -205,6 +211,7 @@ static int collect_union_query_operands( // NOLINT(misc-no-recursion)
 
 static int append_union_query_operand(mylite_db *database, struct mylite_union_plan *plan,
                                       mylite_stmt *operand,
+                                      enum mylite_sql_ast_set_operation operation,
                                       enum mylite_sql_ast_set_duplicate_mode duplicate_mode,
                                       bool has_operator)
 {
@@ -230,15 +237,25 @@ static int append_union_query_operand(mylite_db *database, struct mylite_union_p
     plan->operands = operands;
 
     if (has_operator) {
-        enum mylite_sql_ast_set_duplicate_mode *operators =
-            (enum mylite_sql_ast_set_duplicate_mode *)realloc(
-                (void *)plan->operators, plan->operand_count * sizeof(*plan->operators));
+        enum mylite_sql_ast_set_operation *operations =
+            (enum mylite_sql_ast_set_operation *)realloc(
+                (void *)plan->operations, plan->operand_count * sizeof(*plan->operations));
+        enum mylite_sql_ast_set_duplicate_mode *operators = NULL;
 
+        if (operations == NULL) {
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+        plan->operations = operations;
+
+        operators = (enum mylite_sql_ast_set_duplicate_mode *)realloc(
+            (void *)plan->operators, plan->operand_count * sizeof(*plan->operators));
         if (operators == NULL) {
             (void)mylite_diagnostics_set_error_message(database, "out of memory");
             return MYLITE_NOMEM;
         }
         plan->operators = operators;
+        plan->operations[plan->operand_count - 1U] = operation;
         plan->operators[plan->operand_count - 1U] = duplicate_mode;
     }
 
@@ -255,6 +272,10 @@ static bool union_operand_calc_found_rows(const mylite_stmt *operand)
     case MYLITE_STMT_SCALAR_SELECT:
     case MYLITE_STMT_TABLE_SELECT:
         return operand->select_plan.calc_found_rows;
+    case MYLITE_STMT_UNION_QUERY:
+        return operand->union_plan.calc_found_rows;
+    case MYLITE_STMT_VALUES_QUERY:
+        return false;
     case MYLITE_STMT_SQLITE:
     case MYLITE_STMT_CREATE_SCHEMA:
     case MYLITE_STMT_ALTER_SCHEMA:
@@ -292,6 +313,7 @@ static bool union_operand_calc_found_rows(const mylite_stmt *operand)
     case MYLITE_STMT_SHOW_GRANTS_PLACEHOLDER:
     case MYLITE_STMT_SHOW_PRIVILEGES_PLACEHOLDER:
     case MYLITE_STMT_TABLE_PARTITIONING_PLACEHOLDER:
+    case MYLITE_STMT_CTE_PLACEHOLDER:
     case MYLITE_STMT_CREATE_TABLE:
     case MYLITE_STMT_DROP_TABLE:
     case MYLITE_STMT_RENAME_TABLE:
@@ -303,7 +325,6 @@ static bool union_operand_calc_found_rows(const mylite_stmt *operand)
     case MYLITE_STMT_INSERT_SET:
     case MYLITE_STMT_REPLACE_VALUES:
     case MYLITE_STMT_REPLACE_SET:
-    case MYLITE_STMT_UNION_QUERY:
     case MYLITE_STMT_UPDATE:
     case MYLITE_STMT_DELETE:
     case MYLITE_STMT_START_TRANSACTION:
@@ -340,16 +361,39 @@ static int set_union_sql_calc_found_rows_placement_error(mylite_db *database)
 
 static int
 prepare_union_query_operand(mylite_db *database, const struct mylite_sql_ast_node *node,
-                            mylite_stmt **out_operand,
+                            const char *sql, size_t sql_length, mylite_stmt **out_operand,
                             const struct mylite_select_union_prepare_callbacks *callbacks)
 {
     const struct mylite_sql_ast_node *operand = unwrap_union_query_primary(node);
 
     *out_operand = NULL;
-    if (operand == NULL || operand->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
+    if (operand == NULL) {
         return MYLITE_UNSUPPORTED;
     }
-    return callbacks->prepare_select_subquery(database, operand, out_operand);
+    if (operand->kind == MYLITE_SQL_AST_SELECT_STATEMENT) {
+        return callbacks->prepare_select_subquery(database, operand, out_operand);
+    }
+    if (operand->kind == MYLITE_SQL_AST_VALUES_STATEMENT) {
+        return mylite_values_query_prepare_statement(database, operand, sql, sql_length,
+                                                     out_operand, callbacks->scalar_callbacks,
+                                                     callbacks);
+    }
+    if (operand->kind == MYLITE_SQL_AST_QUERY_EXPRESSION) {
+        return mylite_select_union_prepare_query_expression(database, operand, sql, sql_length,
+                                                            out_operand, callbacks);
+    }
+    if (operand->kind == MYLITE_SQL_AST_UNION_EXPRESSION) {
+        struct mylite_sql_ast_node query_expression = {
+            .first_child = (struct mylite_sql_ast_node *)operand,
+            .last_child = (struct mylite_sql_ast_node *)operand,
+            .span = operand->span,
+            .kind = MYLITE_SQL_AST_QUERY_EXPRESSION,
+        };
+
+        return mylite_select_union_prepare_query_expression(database, &query_expression, sql,
+                                                            sql_length, out_operand, callbacks);
+    }
+    return MYLITE_UNSUPPORTED;
 }
 
 static const struct mylite_sql_ast_node *

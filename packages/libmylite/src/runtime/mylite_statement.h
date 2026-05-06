@@ -13,6 +13,7 @@ bool mylite_statement_kind_writes(enum mylite_stmt_kind kind);
 bool mylite_statement_ast_preserves_diagnostics(const struct mylite_sql_ast_node *statement);
 void mylite_statement_record_row_count(mylite_stmt *stmt);
 void mylite_statement_scalar_result_deinit(struct mylite_scalar_result *result);
+void mylite_statement_values_query_plan_deinit(struct mylite_values_query_plan *plan);
 void mylite_statement_select_constant_values_deinit(mylite_stmt *stmt);
 void mylite_statement_union_plan_deinit(struct mylite_union_plan *plan);
 

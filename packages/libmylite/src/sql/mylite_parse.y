@@ -27,7 +27,8 @@
 %type select_duplicate_mode { struct mylite_sql_parser_select_duplicate_mode }
 %type select_duplicate_mode_list { struct mylite_sql_parser_select_duplicate_mode }
 %type select_duplicate_mode_item { struct mylite_sql_parser_select_duplicate_mode }
-%type union_operator { struct mylite_sql_parser_union_operator }
+%type union_or_except_operator { struct mylite_sql_parser_union_operator }
+%type intersect_operator { struct mylite_sql_parser_union_operator }
 %type inner_join_operator { struct mylite_sql_parser_join_operator }
 %type outer_join_operator { struct mylite_sql_parser_join_operator }
 %type subquery { struct mylite_sql_parser_subquery }
@@ -96,6 +97,7 @@
 %type opt_explain_analyze_format { struct mylite_sql_ast_node * }
 %type explainable_statement { struct mylite_sql_ast_node * }
 %type table_query_statement { struct mylite_sql_ast_node * }
+%type cte_query_expression_placeholder { struct mylite_sql_ast_node * }
 %type partition_options { struct mylite_sql_ast_node * }
 %type parser_placeholder_tail { struct mylite_sql_ast_node * }
 %type parser_placeholder_item { struct mylite_sql_ast_node * }
@@ -139,6 +141,8 @@ static void mylite_sql_parser_stack_free(void *pointer, void *context)
 }
 
 %left LOWEST.
+%left UNION EXCEPT.
+%left INTERSECT.
 %left OR LOGICAL_OR.
 %left XOR.
 %left AND LOGICAL_AND.
@@ -191,6 +195,18 @@ statement(A) ::= select_statement(B). {
     A = B;
 }
 statement(A) ::= union_query_expression(B). {
+    A = B;
+}
+statement(A) ::= parenthesized_query_expression(B). {
+    A = B;
+}
+statement(A) ::= cte_query_expression_placeholder(B). {
+    A = B;
+}
+statement(A) ::= table_query_statement(B). {
+    A = B;
+}
+statement(A) ::= values_query_statement(B). {
     A = B;
 }
 statement(A) ::= use_statement(B). {
@@ -1556,9 +1572,8 @@ explainable_statement(A) ::= delete_statement(B). {
     A = B;
 }
 
-table_query_statement(A) ::= TABLE(T) table_name(B) opt_order_by_clause opt_limit_clause. {
-    A = mylite_sql_parser_make_placeholder_statement(
-        state, MYLITE_SQL_AST_PLACEHOLDER_EXPLAIN, T, B);
+table_query_statement(A) ::= TABLE(T) table_name(B) opt_order_by_clause(C) opt_limit_clause(D). {
+    A = mylite_sql_parser_make_table_query_statement(state, T, B, C, D);
 }
 
 show_index_keyword(A) ::= INDEX(T). {
@@ -2388,6 +2403,9 @@ parser_placeholder_keyword(A) ::= REFERENCES(T). {
 parser_placeholder_keyword(A) ::= REPLACE(T). {
     A = T;
 }
+parser_placeholder_keyword(A) ::= RECURSIVE(T). {
+    A = T;
+}
 parser_placeholder_keyword(A) ::= REQUIRE(T). {
     A = T;
 }
@@ -2415,6 +2433,9 @@ parser_placeholder_keyword(A) ::= TO(T). {
 parser_placeholder_keyword(A) ::= TRIGGER(T). {
     A = T;
 }
+parser_placeholder_keyword(A) ::= UNION(T). {
+    A = T;
+}
 parser_placeholder_keyword(A) ::= UNLOCK(T). {
     A = T;
 }
@@ -2428,6 +2449,9 @@ parser_placeholder_keyword(A) ::= USING(T). {
     A = T;
 }
 parser_placeholder_keyword(A) ::= VALUES(T). {
+    A = T;
+}
+parser_placeholder_keyword(A) ::= WHERE(T). {
     A = T;
 }
 parser_placeholder_keyword(A) ::= WITH(T). {
@@ -2498,6 +2522,11 @@ alter_table_partition_statement(A) ::= ALTER(T) TABLE table_name REMOVE PARTITIO
 partition_options(A) ::= PARTITION(P) BY parser_placeholder_tail(B). {
     A = mylite_sql_parser_make_placeholder_statement(
         state, MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING, P, B);
+}
+
+cte_query_expression_placeholder(A) ::= WITH(T) parser_placeholder_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_CTE, T, B);
 }
 
 create_partitioned_table_statement(A) ::= CREATE(T) TABLE opt_if_not_exists table_name
@@ -3580,39 +3609,113 @@ select_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S) FROM(F) table_refe
         mylite_sql_parser_make_from_table_references(state, F, C), E, G, H, I, J);
 }
 
-union_query_expression(A) ::= union_expression_body(B) opt_order_by_clause(C) opt_limit_clause(D). {
+union_query_expression(A) ::= query_expression_with_set_op(B) opt_order_by_clause(C) opt_limit_clause(D). {
     A = mylite_sql_parser_make_query_expression(state, B, C, D);
 }
 
-union_expression_body(A) ::= query_primary(B) union_operator(C) query_primary(D). {
+parenthesized_query_expression(A) ::= parenthesized_query_primary(B) opt_order_by_clause(C) opt_limit_clause(D). {
+    A = mylite_sql_parser_make_query_expression(state, B, C, D);
+}
+
+query_expression_body(A) ::= query_term(B). {
+    A = B;
+}
+query_expression_body(A) ::= query_expression_body(B) union_or_except_operator(C) query_term(D). {
     A = mylite_sql_parser_make_union_expression(state, B, C, D);
 }
-union_expression_body(A) ::= union_expression_body(B) union_operator(C) query_primary(D). {
+
+query_expression_with_set_op(A) ::= query_term_with_set_op(B). {
+    A = B;
+}
+query_expression_with_set_op(A) ::= query_term(B) union_or_except_operator(C) query_term(D). {
+    A = mylite_sql_parser_make_union_expression(state, B, C, D);
+}
+query_expression_with_set_op(A) ::= query_expression_with_set_op(B) union_or_except_operator(C) query_term(D). {
+    A = mylite_sql_parser_make_union_expression(state, B, C, D);
+}
+
+query_term(A) ::= query_primary(B). [LOWEST] {
+    A = B;
+}
+query_term(A) ::= query_term(B) intersect_operator(C) query_primary(D). {
+    A = mylite_sql_parser_make_union_expression(state, B, C, D);
+}
+
+query_term_with_set_op(A) ::= query_primary(B) intersect_operator(C) query_primary(D). {
+    A = mylite_sql_parser_make_union_expression(state, B, C, D);
+}
+query_term_with_set_op(A) ::= query_term_with_set_op(B) intersect_operator(C) query_primary(D). {
     A = mylite_sql_parser_make_union_expression(state, B, C, D);
 }
 
 query_primary(A) ::= select_union_operand(B). {
     A = B;
 }
+query_primary(A) ::= table_query_operand(B). {
+    A = B;
+}
+query_primary(A) ::= values_query_operand(B). {
+    A = B;
+}
 query_primary(A) ::= parenthesized_query_primary(B). {
     A = B;
 }
 
-parenthesized_query_primary(A) ::= LPAREN(L) parenthesized_select_union_operand(B) RPAREN(R). {
-    A = mylite_sql_parser_make_query_primary(state, L, B, R);
-}
-parenthesized_query_primary(A) ::= LPAREN(L) parenthesized_query_primary(B) RPAREN(R). {
-    A = mylite_sql_parser_make_query_primary(state, L, B, R);
+parenthesized_query_primary(A) ::= LPAREN(L) query_expression_body(B) opt_order_by_clause(C) opt_limit_clause(D) RPAREN(R). {
+    A = mylite_sql_parser_make_query_primary(
+        state, L, mylite_sql_parser_make_query_expression(state, B, C, D), R);
 }
 
-union_operator(A) ::= UNION(T). {
-    A = mylite_sql_parser_make_default_union_operator(T);
+union_or_except_operator(A) ::= UNION(T). {
+    A = mylite_sql_parser_make_default_set_operator(T, MYLITE_SQL_AST_SET_OPERATION_UNION);
 }
-union_operator(A) ::= UNION(T) ALL(M). {
-    A = mylite_sql_parser_make_all_union_operator(T, M);
+union_or_except_operator(A) ::= UNION(T) ALL(M). {
+    A = mylite_sql_parser_make_all_set_operator(T, M, MYLITE_SQL_AST_SET_OPERATION_UNION);
 }
-union_operator(A) ::= UNION(T) DISTINCT(M). {
-    A = mylite_sql_parser_make_distinct_union_operator(T, M);
+union_or_except_operator(A) ::= UNION(T) DISTINCT(M). {
+    A = mylite_sql_parser_make_distinct_set_operator(T, M, MYLITE_SQL_AST_SET_OPERATION_UNION);
+}
+union_or_except_operator(A) ::= EXCEPT(T). {
+    A = mylite_sql_parser_make_default_set_operator(T, MYLITE_SQL_AST_SET_OPERATION_EXCEPT);
+}
+union_or_except_operator(A) ::= EXCEPT(T) ALL(M). {
+    A = mylite_sql_parser_make_all_set_operator(T, M, MYLITE_SQL_AST_SET_OPERATION_EXCEPT);
+}
+union_or_except_operator(A) ::= EXCEPT(T) DISTINCT(M). {
+    A = mylite_sql_parser_make_distinct_set_operator(T, M, MYLITE_SQL_AST_SET_OPERATION_EXCEPT);
+}
+
+intersect_operator(A) ::= INTERSECT(T). {
+    A = mylite_sql_parser_make_default_set_operator(T, MYLITE_SQL_AST_SET_OPERATION_INTERSECT);
+}
+intersect_operator(A) ::= INTERSECT(T) ALL(M). {
+    A = mylite_sql_parser_make_all_set_operator(T, M, MYLITE_SQL_AST_SET_OPERATION_INTERSECT);
+}
+intersect_operator(A) ::= INTERSECT(T) DISTINCT(M). {
+    A = mylite_sql_parser_make_distinct_set_operator(T, M, MYLITE_SQL_AST_SET_OPERATION_INTERSECT);
+}
+
+table_query_operand(A) ::= TABLE(T) table_name(B). {
+    A = mylite_sql_parser_make_table_query_statement(state, T, B, NULL, NULL);
+}
+
+values_query_statement(A) ::= VALUES(T) values_query_row_list(B) opt_order_by_clause(C) opt_limit_clause(D). {
+    A = mylite_sql_parser_make_values_statement(state, T, B, C, D);
+}
+
+values_query_operand(A) ::= VALUES(T) values_query_row_list(B). {
+    A = mylite_sql_parser_make_values_statement(state, T, B, NULL, NULL);
+}
+
+values_query_row_list(A) ::= values_query_row(B). {
+    A = mylite_sql_parser_make_insert_row_list(state, B);
+}
+values_query_row_list(A) ::= values_query_row_list(B) COMMA values_query_row(C). {
+    A = mylite_sql_parser_append_insert_row(state, B, C);
+}
+
+values_query_row(A) ::= ROW(T) LPAREN expression_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_insert_row(state, T, B, R);
 }
 
 select_union_operand(A) ::= SELECT(T) select_modifiers(M) select_item_list(B). {
@@ -3647,42 +3750,6 @@ select_union_operand(A) ::= SELECT(T) select_modifiers(M) STAR(S) FROM(F)
     A = mylite_sql_parser_make_select_statement(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
         mylite_sql_parser_make_from_table_references(state, F, C), E, G, H, NULL, NULL);
-}
-
-parenthesized_select_union_operand(A) ::= SELECT(T) select_modifiers(M) select_item_list(B)
-        opt_order_by_clause(I) opt_limit_clause(J). {
-    A = mylite_sql_parser_make_select_statement(
-        state, T, M, B, NULL, NULL, NULL, NULL, I, J);
-}
-parenthesized_select_union_operand(A) ::= SELECT(T) select_modifiers(M) select_item_list(B)
-        FROM(F) DUAL(D) opt_order_by_clause(I) opt_limit_clause(J). {
-    A = mylite_sql_parser_make_select_statement(
-        state, T, M, B, mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, I, J);
-}
-parenthesized_select_union_operand(A) ::= SELECT(T) select_modifiers(M) select_item_list(B)
-        FROM(F) table_references(C) opt_where_clause(E) opt_group_by_clause(G)
-        opt_having_clause(H) opt_order_by_clause(I) opt_limit_clause(J). {
-    A = mylite_sql_parser_make_select_statement(
-        state, T, M, B, mylite_sql_parser_make_from_table_references(state, F, C), E, G, H, I, J);
-}
-parenthesized_select_union_operand(A) ::= SELECT(T) select_modifiers(M) STAR(S)
-        opt_order_by_clause(I) opt_limit_clause(J). {
-    A = mylite_sql_parser_make_select_statement(
-        state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S), NULL, NULL, NULL, NULL,
-        I, J);
-}
-parenthesized_select_union_operand(A) ::= SELECT(T) select_modifiers(M) STAR(S) FROM(F)
-        DUAL(D) opt_order_by_clause(I) opt_limit_clause(J). {
-    A = mylite_sql_parser_make_select_statement(
-        state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, I, J);
-}
-parenthesized_select_union_operand(A) ::= SELECT(T) select_modifiers(M) STAR(S) FROM(F)
-        table_references(C) opt_where_clause(E) opt_group_by_clause(G) opt_having_clause(H)
-        opt_order_by_clause(I) opt_limit_clause(J). {
-    A = mylite_sql_parser_make_select_statement(
-        state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_table_references(state, F, C), E, G, H, I, J);
 }
 
 select_modifiers(A) ::= select_duplicate_mode(B). {

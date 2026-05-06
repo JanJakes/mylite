@@ -75,6 +75,7 @@ int mylite_statement_prepare_custom(
     case MYLITE_STMT_SHOW_GRANTS_PLACEHOLDER:
     case MYLITE_STMT_SHOW_PRIVILEGES_PLACEHOLDER:
     case MYLITE_STMT_TABLE_PARTITIONING_PLACEHOLDER:
+    case MYLITE_STMT_CTE_PLACEHOLDER:
         break;
     case MYLITE_STMT_CREATE_TABLE:
         status = mylite_table_ddl_copy_create_table_statement(statement, &stmt->create_table);
@@ -132,6 +133,7 @@ int mylite_statement_prepare_custom(
         break;
     case MYLITE_STMT_TABLE_SELECT:
     case MYLITE_STMT_UNION_QUERY:
+    case MYLITE_STMT_VALUES_QUERY:
     case MYLITE_STMT_SQLITE:
         status = MYLITE_UNSUPPORTED;
         break;

@@ -15,6 +15,7 @@
 #include "mylite_table_ddl_statement.h"
 #include "mylite_transactions.h"
 #include "mylite_user_variables.h"
+#include "mylite_values_query.h"
 
 static int execute_parser_placeholder_statement(mylite_stmt *stmt);
 static const char *parser_placeholder_warning_message(enum mylite_stmt_kind kind);
@@ -30,6 +31,7 @@ int mylite_statement_execute_custom_with_callbacks(
 {
     if (stmt == NULL || callbacks == NULL || callbacks->execute_scalar_select == NULL ||
         callbacks->execute_table_select == NULL || callbacks->union_callbacks == NULL ||
+        callbacks->scalar_callbacks == NULL ||
         callbacks->eval_dml_materialize_session_function == NULL ||
         callbacks->set_dml_materialize_where_predicate_eval_error == NULL) {
         return MYLITE_MISUSE;
@@ -50,6 +52,10 @@ int mylite_statement_execute_custom_with_callbacks(
     }
     if (stmt->kind == MYLITE_STMT_UNION_QUERY) {
         return mylite_select_union_execute_query(stmt, callbacks->union_callbacks);
+    }
+    if (stmt->kind == MYLITE_STMT_VALUES_QUERY) {
+        return mylite_values_query_execute_statement(
+            stmt, callbacks->scalar_callbacks, callbacks->union_callbacks);
     }
     if (stmt->kind == MYLITE_STMT_EXECUTE_PREPARED) {
         return mylite_prepared_statement_execute_execute(stmt);
@@ -178,6 +184,7 @@ int mylite_statement_execute_custom_with_callbacks(
     case MYLITE_STMT_SHOW_GRANTS_PLACEHOLDER:
     case MYLITE_STMT_SHOW_PRIVILEGES_PLACEHOLDER:
     case MYLITE_STMT_TABLE_PARTITIONING_PLACEHOLDER:
+    case MYLITE_STMT_CTE_PLACEHOLDER:
         status = execute_parser_placeholder_statement(stmt);
         break;
     case MYLITE_STMT_SCALAR_SELECT:
@@ -186,6 +193,9 @@ int mylite_statement_execute_custom_with_callbacks(
         return callbacks->execute_table_select(stmt);
     case MYLITE_STMT_UNION_QUERY:
         return mylite_select_union_execute_query(stmt, callbacks->union_callbacks);
+    case MYLITE_STMT_VALUES_QUERY:
+        return mylite_values_query_execute_statement(
+            stmt, callbacks->scalar_callbacks, callbacks->union_callbacks);
     case MYLITE_STMT_EXECUTE_PREPARED:
         return mylite_prepared_statement_execute_execute(stmt);
     case MYLITE_STMT_SQLITE:
@@ -256,6 +266,9 @@ static const char *parser_placeholder_warning_message(enum mylite_stmt_kind kind
     case MYLITE_STMT_TABLE_PARTITIONING_PLACEHOLDER:
         return "table partitioning syntax is accepted as a MyLite parser placeholder and is not "
                "executed";
+    case MYLITE_STMT_CTE_PLACEHOLDER:
+        return "CTE query expression is accepted as a MyLite parser placeholder and is not "
+               "executed";
     case MYLITE_STMT_SQLITE:
     case MYLITE_STMT_CREATE_SCHEMA:
     case MYLITE_STMT_ALTER_SCHEMA:
@@ -272,6 +285,7 @@ static const char *parser_placeholder_warning_message(enum mylite_stmt_kind kind
     case MYLITE_STMT_SCALAR_SELECT:
     case MYLITE_STMT_TABLE_SELECT:
     case MYLITE_STMT_UNION_QUERY:
+    case MYLITE_STMT_VALUES_QUERY:
     case MYLITE_STMT_UPDATE:
     case MYLITE_STMT_DELETE:
     case MYLITE_STMT_START_TRANSACTION:

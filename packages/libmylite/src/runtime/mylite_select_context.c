@@ -157,6 +157,7 @@ static const struct mylite_select_prepare_callbacks select_prepare_callbacks = {
 
 static const struct mylite_select_union_prepare_callbacks union_query_prepare_callbacks = {
     .prepare_select_subquery = mylite_select_context_prepare_subquery,
+    .scalar_callbacks = &select_scalar_eval_callbacks,
     .clone_order_expressions = mylite_select_clone_order_expressions,
     .set_ambiguous_order_column_error = mylite_select_set_ambiguous_order_column_error,
     .set_unsupported_order_error = mylite_select_set_unsupported_order_error,
@@ -170,6 +171,7 @@ static const struct mylite_statement_prepare_callbacks statement_prepare_callbac
 
 static const struct mylite_select_union_callbacks union_query_callbacks = {
     .select_eval_callbacks = &table_select_eval_callbacks,
+    .scalar_callbacks = &select_scalar_eval_callbacks,
     .execute_scalar_select = execute_scalar_select_statement,
     .execute_table_select = execute_table_select_statement,
     .copy_operand_row_value = mylite_select_subquery_copy_row_value,
@@ -180,6 +182,7 @@ static const struct mylite_select_union_callbacks union_query_callbacks = {
 static const struct mylite_statement_execute_callbacks statement_execute_callbacks = {
     .execute_scalar_select = execute_scalar_select_statement,
     .execute_table_select = execute_table_select_statement,
+    .scalar_callbacks = &select_scalar_eval_callbacks,
     .union_callbacks = &union_query_callbacks,
     .eval_dml_materialize_session_function = evaluate_dml_materialize_session_function,
     .set_dml_materialize_where_predicate_eval_error =

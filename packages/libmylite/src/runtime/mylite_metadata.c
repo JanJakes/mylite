@@ -78,7 +78,8 @@ int mylite_column_count(const mylite_stmt *stmt)
     if (stmt->kind == MYLITE_STMT_SCALAR_SELECT) {
         return (int)stmt->scalar_result.value_count;
     }
-    if (stmt->kind == MYLITE_STMT_TABLE_SELECT || stmt->kind == MYLITE_STMT_UNION_QUERY) {
+    if (stmt->kind == MYLITE_STMT_TABLE_SELECT || stmt->kind == MYLITE_STMT_UNION_QUERY ||
+        stmt->kind == MYLITE_STMT_VALUES_QUERY) {
         return (int)stmt->result_metadata.column_count;
     }
     if (stmt->sqlite_stmt == NULL) {

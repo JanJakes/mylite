@@ -9,8 +9,11 @@
 
 #include <stddef.h>
 
+struct mylite_select_scalar_eval_callbacks;
+
 struct mylite_select_union_callbacks {
     const struct mylite_select_eval_callbacks *select_eval_callbacks;
+    const struct mylite_select_scalar_eval_callbacks *scalar_callbacks;
     int (*execute_scalar_select)(mylite_stmt *stmt);
     int (*execute_table_select)(mylite_stmt *stmt);
     int (*copy_operand_row_value)(mylite_stmt *stmt, size_t index,
@@ -23,6 +26,7 @@ struct mylite_select_union_callbacks {
 struct mylite_select_union_prepare_callbacks {
     int (*prepare_select_subquery)(mylite_db *database, const struct mylite_sql_ast_node *statement,
                                    mylite_stmt **out_stmt);
+    const struct mylite_select_scalar_eval_callbacks *scalar_callbacks;
     int (*clone_order_expressions)(mylite_stmt *stmt, const char *sql, size_t sql_length);
     int (*set_ambiguous_order_column_error)(mylite_db *database, const char *column_name);
     int (*set_unsupported_order_error)(mylite_db *database);

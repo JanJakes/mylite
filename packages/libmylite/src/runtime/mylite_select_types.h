@@ -321,9 +321,16 @@ struct mylite_table_select_result {
 
 struct mylite_union_plan {
     mylite_stmt **operands;
+    enum mylite_sql_ast_set_operation *operations;
     enum mylite_sql_ast_set_duplicate_mode *operators;
     size_t operand_count;
     bool calc_found_rows;
+};
+
+struct mylite_values_query_plan {
+    const struct mylite_sql_ast_node **expressions;
+    size_t row_count;
+    size_t column_count;
 };
 
 struct mylite_in_subquery_scan_context {

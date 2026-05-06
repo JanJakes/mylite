@@ -15,6 +15,7 @@
 #include "mylite_statement.h"
 #include "mylite_statement_types.h"
 #include "mylite_user_variables.h"
+#include "mylite_values_query.h"
 
 static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql_ast_node *root,
                                     const char *sql, size_t sql_length, mylite_stmt **out_stmt,
@@ -203,6 +204,10 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
         case MYLITE_SQL_AST_QUERY_EXPRESSION:
             return mylite_select_union_prepare_query_expression(
                 database, statement, sql, sql_length, out_stmt, callbacks->union_callbacks);
+        case MYLITE_SQL_AST_VALUES_STATEMENT:
+            return mylite_values_query_prepare_statement(database, statement, sql, sql_length,
+                                                         out_stmt, callbacks->scalar_callbacks,
+                                                         callbacks->union_callbacks);
         case MYLITE_SQL_AST_SELECT_STATEMENT:
             status = mylite_select_prepare_statement(database, statement, sql, sql_length, out_stmt,
                                                      callbacks->select_callbacks);
@@ -375,6 +380,8 @@ static enum mylite_stmt_kind placeholder_statement_kind(const struct mylite_sql_
         return MYLITE_STMT_SHOW_PRIVILEGES_PLACEHOLDER;
     case MYLITE_SQL_AST_PLACEHOLDER_TABLE_PARTITIONING:
         return MYLITE_STMT_TABLE_PARTITIONING_PLACEHOLDER;
+    case MYLITE_SQL_AST_PLACEHOLDER_CTE:
+        return MYLITE_STMT_CTE_PLACEHOLDER;
     }
 
     return MYLITE_STMT_SQLITE;

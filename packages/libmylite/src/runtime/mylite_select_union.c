@@ -4,6 +4,7 @@
 #include "mylite_runtime.h"
 #include "mylite_select_rowset.h"
 #include "mylite_select_rowset_distinct.h"
+#include "mylite_values_query.h"
 #include "sqlite3.h"
 
 #include <stdbool.h>
@@ -15,6 +16,32 @@ static int materialize_union_query_result(mylite_stmt *stmt,
 static int scan_union_operand(mylite_stmt *stmt, mylite_stmt *operand,
                               enum mylite_sql_ast_set_duplicate_mode duplicate_mode,
                               const struct mylite_select_union_callbacks *callbacks);
+static int apply_intersect_operand(mylite_stmt *stmt, mylite_stmt *operand,
+                                   enum mylite_sql_ast_set_duplicate_mode duplicate_mode,
+                                   const struct mylite_select_union_callbacks *callbacks);
+static int apply_except_operand(mylite_stmt *stmt, mylite_stmt *operand,
+                                enum mylite_sql_ast_set_duplicate_mode duplicate_mode,
+                                const struct mylite_select_union_callbacks *callbacks);
+static int materialize_set_operand_rows(mylite_stmt *stmt, mylite_stmt *operand,
+                                        struct mylite_table_select_result *out_result,
+                                        const struct mylite_select_union_callbacks *callbacks);
+static int append_union_operand_current_row_to_result(
+    mylite_stmt *stmt, mylite_stmt *operand, struct mylite_table_select_result *result,
+    const struct mylite_select_union_callbacks *callbacks);
+static int keep_intersect_distinct_rows(mylite_stmt *stmt,
+                                        const struct mylite_table_select_result *right);
+static int keep_except_distinct_rows(mylite_stmt *stmt,
+                                     const struct mylite_table_select_result *right);
+static int keep_intersect_all_rows(mylite_stmt *stmt,
+                                   const struct mylite_table_select_result *right);
+static int keep_except_all_rows(mylite_stmt *stmt,
+                                const struct mylite_table_select_result *right);
+static bool rowset_contains_row(const mylite_stmt *stmt,
+                                const struct mylite_table_select_result *rowset,
+                                const struct mylite_table_select_row *row);
+static bool consume_matching_row(const mylite_stmt *stmt,
+                                 const struct mylite_table_select_result *rowset, bool *used,
+                                 const struct mylite_table_select_row *row);
 static int append_union_operand_current_row(mylite_stmt *stmt, mylite_stmt *operand, bool distinct,
                                             const struct mylite_select_union_callbacks *callbacks);
 static int execute_union_operand_statement(mylite_stmt *operand,
@@ -72,6 +99,14 @@ static int materialize_union_query_result(mylite_stmt *stmt,
     if (stmt->select_result.materialized) {
         return MYLITE_OK;
     }
+    if (!stmt->select_plan.calc_found_rows && stmt->select_plan.limit.has_limit &&
+        stmt->select_plan.limit.row_count == 0U) {
+        stmt->found_rows = 0U;
+        stmt->database->previous_found_rows = 0U;
+        stmt->previous_found_rows_recorded = true;
+        stmt->select_result.materialized = true;
+        return MYLITE_OK;
+    }
 
     saved_warnings = stmt->database->warnings;
     stmt->database->warnings = (struct mylite_expression_warnings){0};
@@ -81,9 +116,24 @@ static int materialize_union_query_result(mylite_stmt *stmt,
         enum mylite_sql_ast_set_duplicate_mode duplicate_mode =
             index == 0U ? MYLITE_SQL_AST_SET_DUPLICATES_ALL
                         : stmt->union_plan.operators[index - 1U];
+        enum mylite_sql_ast_set_operation operation =
+            index == 0U ? MYLITE_SQL_AST_SET_OPERATION_UNION
+                        : stmt->union_plan.operations[index - 1U];
 
-        status =
-            scan_union_operand(stmt, stmt->union_plan.operands[index], duplicate_mode, callbacks);
+        switch (operation) {
+        case MYLITE_SQL_AST_SET_OPERATION_UNION:
+            status = scan_union_operand(stmt, stmt->union_plan.operands[index], duplicate_mode,
+                                        callbacks);
+            break;
+        case MYLITE_SQL_AST_SET_OPERATION_INTERSECT:
+            status = apply_intersect_operand(stmt, stmt->union_plan.operands[index],
+                                             duplicate_mode, callbacks);
+            break;
+        case MYLITE_SQL_AST_SET_OPERATION_EXCEPT:
+            status = apply_except_operand(stmt, stmt->union_plan.operands[index], duplicate_mode,
+                                          callbacks);
+            break;
+        }
         if (append_and_clear_union_database_warnings(stmt->database, &accumulated_warnings,
                                                      callbacks) != MYLITE_OK) {
             status = MYLITE_NOMEM;
@@ -157,6 +207,209 @@ static int scan_union_operand(mylite_stmt *stmt, mylite_stmt *operand,
     }
 }
 
+static int apply_intersect_operand(mylite_stmt *stmt, mylite_stmt *operand,
+                                   enum mylite_sql_ast_set_duplicate_mode duplicate_mode,
+                                   const struct mylite_select_union_callbacks *callbacks)
+{
+    struct mylite_table_select_result right = {0};
+    int status = materialize_set_operand_rows(stmt, operand, &right, callbacks);
+
+    if (status == MYLITE_OK && duplicate_mode == MYLITE_SQL_AST_SET_DUPLICATES_DISTINCT) {
+        status = keep_intersect_distinct_rows(stmt, &right);
+    } else if (status == MYLITE_OK) {
+        status = keep_intersect_all_rows(stmt, &right);
+    }
+    mylite_select_result_deinit(&right);
+    return status;
+}
+
+static int apply_except_operand(mylite_stmt *stmt, mylite_stmt *operand,
+                                enum mylite_sql_ast_set_duplicate_mode duplicate_mode,
+                                const struct mylite_select_union_callbacks *callbacks)
+{
+    struct mylite_table_select_result right = {0};
+    int status = materialize_set_operand_rows(stmt, operand, &right, callbacks);
+
+    if (status == MYLITE_OK && duplicate_mode == MYLITE_SQL_AST_SET_DUPLICATES_DISTINCT) {
+        status = keep_except_distinct_rows(stmt, &right);
+    } else if (status == MYLITE_OK) {
+        status = keep_except_all_rows(stmt, &right);
+    }
+    mylite_select_result_deinit(&right);
+    return status;
+}
+
+static int materialize_set_operand_rows(mylite_stmt *stmt, mylite_stmt *operand,
+                                        struct mylite_table_select_result *out_result,
+                                        const struct mylite_select_union_callbacks *callbacks)
+{
+    for (;;) {
+        int status = execute_union_operand_statement(operand, callbacks);
+
+        if (status == MYLITE_DONE) {
+            return MYLITE_OK;
+        }
+        if (status != MYLITE_ROW) {
+            return status;
+        }
+        status = append_union_operand_current_row_to_result(stmt, operand, out_result, callbacks);
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+}
+
+static int append_union_operand_current_row_to_result(
+    mylite_stmt *stmt, mylite_stmt *operand, struct mylite_table_select_result *result,
+    const struct mylite_select_union_callbacks *callbacks)
+{
+    struct mylite_table_select_row row = {0};
+    int status = copy_union_operand_current_row(stmt, operand, &row, callbacks);
+
+    if (status == MYLITE_OK) {
+        status = mylite_select_result_append_row(stmt->database, result, &row);
+    }
+    mylite_select_row_deinit(&row);
+    return status;
+}
+
+static int keep_intersect_distinct_rows(mylite_stmt *stmt,
+                                        const struct mylite_table_select_result *right)
+{
+    size_t kept = 0U;
+    int status = deduplicate_union_result_rows(stmt);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    for (size_t index = 0U; index < stmt->select_result.row_count; ++index) {
+        if (!rowset_contains_row(stmt, right, &stmt->select_result.rows[index])) {
+            mylite_select_row_deinit(&stmt->select_result.rows[index]);
+            continue;
+        }
+        if (kept != index) {
+            stmt->select_result.rows[kept] = stmt->select_result.rows[index];
+            stmt->select_result.rows[index] = (struct mylite_table_select_row){0};
+        }
+        ++kept;
+    }
+    stmt->select_result.row_count = kept;
+    return MYLITE_OK;
+}
+
+static int keep_except_distinct_rows(mylite_stmt *stmt,
+                                     const struct mylite_table_select_result *right)
+{
+    size_t kept = 0U;
+    int status = deduplicate_union_result_rows(stmt);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    for (size_t index = 0U; index < stmt->select_result.row_count; ++index) {
+        if (rowset_contains_row(stmt, right, &stmt->select_result.rows[index])) {
+            mylite_select_row_deinit(&stmt->select_result.rows[index]);
+            continue;
+        }
+        if (kept != index) {
+            stmt->select_result.rows[kept] = stmt->select_result.rows[index];
+            stmt->select_result.rows[index] = (struct mylite_table_select_row){0};
+        }
+        ++kept;
+    }
+    stmt->select_result.row_count = kept;
+    return MYLITE_OK;
+}
+
+static int keep_intersect_all_rows(mylite_stmt *stmt,
+                                   const struct mylite_table_select_result *right)
+{
+    bool *used = NULL;
+    size_t kept = 0U;
+
+    if (right->row_count != 0U) {
+        used = calloc(right->row_count, sizeof(*used));
+        if (used == NULL) {
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+    }
+    for (size_t index = 0U; index < stmt->select_result.row_count; ++index) {
+        if (!consume_matching_row(stmt, right, used, &stmt->select_result.rows[index])) {
+            mylite_select_row_deinit(&stmt->select_result.rows[index]);
+            continue;
+        }
+        if (kept != index) {
+            stmt->select_result.rows[kept] = stmt->select_result.rows[index];
+            stmt->select_result.rows[index] = (struct mylite_table_select_row){0};
+        }
+        ++kept;
+    }
+    free(used);
+    stmt->select_result.row_count = kept;
+    return MYLITE_OK;
+}
+
+static int keep_except_all_rows(mylite_stmt *stmt, const struct mylite_table_select_result *right)
+{
+    bool *used = NULL;
+    size_t kept = 0U;
+
+    if (right->row_count != 0U) {
+        used = calloc(right->row_count, sizeof(*used));
+        if (used == NULL) {
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+    }
+    for (size_t index = 0U; index < stmt->select_result.row_count; ++index) {
+        if (consume_matching_row(stmt, right, used, &stmt->select_result.rows[index])) {
+            mylite_select_row_deinit(&stmt->select_result.rows[index]);
+            continue;
+        }
+        if (kept != index) {
+            stmt->select_result.rows[kept] = stmt->select_result.rows[index];
+            stmt->select_result.rows[index] = (struct mylite_table_select_row){0};
+        }
+        ++kept;
+    }
+    free(used);
+    stmt->select_result.row_count = kept;
+    return MYLITE_OK;
+}
+
+static bool rowset_contains_row(const mylite_stmt *stmt,
+                                const struct mylite_table_select_result *rowset,
+                                const struct mylite_table_select_row *row)
+{
+    for (size_t index = 0U; index < rowset->row_count; ++index) {
+        if (mylite_select_output_values_equal(&stmt->select_plan, &stmt->result_metadata,
+                                              &rowset->rows[index], row)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool consume_matching_row(const mylite_stmt *stmt,
+                                 const struct mylite_table_select_result *rowset, bool *used,
+                                 const struct mylite_table_select_row *row)
+{
+    for (size_t index = 0U; index < rowset->row_count; ++index) {
+        if (used != NULL && used[index]) {
+            continue;
+        }
+        if (mylite_select_output_values_equal(&stmt->select_plan, &stmt->result_metadata,
+                                              &rowset->rows[index], row)) {
+            if (used != NULL) {
+                used[index] = true;
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
 static int append_union_operand_current_row(mylite_stmt *stmt, mylite_stmt *operand, bool distinct,
                                             const struct mylite_select_union_callbacks *callbacks)
 {
@@ -197,6 +450,11 @@ static int execute_union_operand_statement(mylite_stmt *operand,
         return callbacks->execute_scalar_select(operand);
     case MYLITE_STMT_TABLE_SELECT:
         return callbacks->execute_table_select(operand);
+    case MYLITE_STMT_UNION_QUERY:
+        return mylite_select_union_execute_query(operand, callbacks);
+    case MYLITE_STMT_VALUES_QUERY:
+        return mylite_values_query_execute_statement(operand, callbacks->scalar_callbacks,
+                                                     callbacks);
     case MYLITE_STMT_CREATE_SCHEMA:
     case MYLITE_STMT_ALTER_SCHEMA:
     case MYLITE_STMT_DROP_SCHEMA:
@@ -233,6 +491,7 @@ static int execute_union_operand_statement(mylite_stmt *operand,
     case MYLITE_STMT_SHOW_GRANTS_PLACEHOLDER:
     case MYLITE_STMT_SHOW_PRIVILEGES_PLACEHOLDER:
     case MYLITE_STMT_TABLE_PARTITIONING_PLACEHOLDER:
+    case MYLITE_STMT_CTE_PLACEHOLDER:
     case MYLITE_STMT_CREATE_TABLE:
     case MYLITE_STMT_DROP_TABLE:
     case MYLITE_STMT_RENAME_TABLE:
@@ -244,7 +503,6 @@ static int execute_union_operand_statement(mylite_stmt *operand,
     case MYLITE_STMT_INSERT_SET:
     case MYLITE_STMT_REPLACE_VALUES:
     case MYLITE_STMT_REPLACE_SET:
-    case MYLITE_STMT_UNION_QUERY:
     case MYLITE_STMT_UPDATE:
     case MYLITE_STMT_DELETE:
     case MYLITE_STMT_START_TRANSACTION:

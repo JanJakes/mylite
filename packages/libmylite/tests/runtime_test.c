@@ -349,6 +349,7 @@ static int test_stored_program_placeholder_execution(void);
 static int test_explain_statement_placeholder_execution(void);
 static int test_account_privilege_placeholder_execution(void);
 static int test_table_partitioning_placeholder_execution(void);
+static int test_cte_query_expression_placeholder_execution(void);
 static int test_create_table_base_execution(void);
 static int test_create_table_prepare_has_no_side_effects(void);
 static int test_drop_table_base_execution(void);
@@ -580,6 +581,7 @@ int main(void)
     failures += test_explain_statement_placeholder_execution();
     failures += test_account_privilege_placeholder_execution();
     failures += test_table_partitioning_placeholder_execution();
+    failures += test_cte_query_expression_placeholder_execution();
     failures += test_create_table_base_execution();
     failures += test_create_table_prepare_has_no_side_effects();
     failures += test_drop_table_base_execution();
@@ -19147,6 +19149,27 @@ static int test_table_partitioning_placeholder_execution(void)
     return failures;
 }
 
+static int test_cte_query_expression_placeholder_execution(void)
+{
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open CTE placeholder database");
+    failures += expect_parser_placeholder_execution(
+        database, "WITH cte AS (SELECT 1) SELECT * FROM cte", "CTE query expression",
+        "non-recursive CTE placeholder");
+    failures += expect_parser_placeholder_execution(
+        database,
+        "WITH RECURSIVE seq(n) AS ("
+        "SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 3"
+        ") SELECT n FROM seq",
+        "CTE query expression", "recursive CTE placeholder");
+
+    mylite_close(database);
+    return failures;
+}
+
 static int test_create_table_base_execution(void)
 {
     const char *path = MYLITE_RUNTIME_TEST_FILE_PATH;
@@ -26756,7 +26779,17 @@ static int test_union_query_expression_execution(void)
     static const char *const one_one_values[] = {"1", "1"};
     static const char *const one_value[] = {"1"};
     static const char *const two_value[] = {"2"};
+    static const char *const two_null_values[] = {"2", NULL};
     static const char *const two_decimal_value[] = {"2.0000"};
+    static const char *const column_0_column[] = {"column_0"};
+    static const char *const column_0_column_1_columns[] = {"column_0", "column_1"};
+    static const char *const values_columns[] = {"column_0", "column_1", "column_2"};
+    static const char *const ordered_values[] = {"1", "-2", "3", "4", "6", "8", "5", "7", "9"};
+    static const char *const values_pair[] = {"1", "2"};
+    static const char *const values_two_ones[] = {"1", "1"};
+    static const char *const values_one_two[] = {"1", "2"};
+    static const char *const table_columns[] = {"id", "n", "s", "bin_s"};
+    static const char *const table_first_two_rows[] = {"1", "1", "10", "A", "2", "2", "bad", "a"};
     static const char *const found_rows_column[] = {"found_rows"};
     static const char *const found_rows_three[] = {"3"};
     static const char *const found_rows_six[] = {"6"};
@@ -26811,6 +26844,42 @@ static int test_union_query_expression_execution(void)
                             "(11,3,'7','a'), "
                             "(12,NULL,'40',NULL)",
                             MYLITE_DONE);
+
+    failures += expect_select_rows(database, "TABLE left_t ORDER BY id LIMIT 2", table_columns, 4,
+                                   table_first_two_rows, 2, "table query expression");
+    failures += expect_select_rows(
+        database, "VALUES ROW(1,-2,3), ROW(5,7,9), ROW(4,6,8) ORDER BY column_1", values_columns,
+        3, ordered_values, 3, "values query expression");
+    failures += expect_select_rows(
+        database, "SELECT n AS v FROM left_t INTERSECT SELECT n FROM right_t "
+                  "ORDER BY v IS NULL, v",
+        v_column, 1, two_null_values, 2, "intersect distinct query expression");
+    failures += expect_select_rows(database,
+                                   "SELECT n AS v FROM left_t EXCEPT SELECT n FROM right_t "
+                                   "ORDER BY v IS NULL, v",
+                                   v_column, 1, one_value, 1,
+                                   "except distinct query expression");
+    failures += expect_select_rows(
+        database,
+        "VALUES ROW(1), ROW(1), ROW(2) INTERSECT ALL "
+        "VALUES ROW(1), ROW(1), ROW(1), ROW(3) ORDER BY column_0",
+        column_0_column, 1, values_two_ones, 2, "intersect all values multiplicity");
+    failures += expect_select_rows(
+        database,
+        "VALUES ROW(1), ROW(1), ROW(2) EXCEPT ALL VALUES ROW(1), ROW(3) ORDER BY column_0",
+        column_0_column, 1, values_one_two, 2, "except all values multiplicity");
+    failures += expect_select_rows(
+        database, "SELECT 1 AS v UNION SELECT 2 INTERSECT SELECT 2 ORDER BY v", v_column, 1,
+        one_two_values, 2, "intersect precedence over union");
+    failures += expect_select_rows(database,
+                                   "(SELECT 1 AS v UNION SELECT 2) EXCEPT SELECT 2 ORDER BY v",
+                                   v_column, 1, one_value, 1,
+                                   "parenthesized set expression precedence");
+    failures += expect_select_rows(
+        database,
+        "VALUES ROW(1,2), ROW(3,4), ROW(1,2) INTERSECT "
+        "VALUES ROW(1,2), ROW(5,6) ORDER BY column_0, column_1",
+        column_0_column_1_columns, 2, values_pair, 1, "values set operation");
 
     failures += expect_select_rows(database,
                                    "SELECT 1 AS v UNION SELECT 1 UNION SELECT NULL UNION "
@@ -26901,6 +26970,10 @@ static int test_union_query_expression_execution(void)
                                      "different number of columns", "union column count error");
     failures += expect_int((int)mylite_warning_code(database, 0),
                            mysql_warning_wrong_number_of_columns, "union column count warning");
+    failures += expect_prepare_error(database, "VALUES ROW(1), ROW(1, 2)", MYLITE_EXEC_ERROR,
+                                     "different number of columns", "values column count error");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_wrong_number_of_columns, "values column count warning");
     failures += expect_prepare_error(
         database, "SELECT n FROM left_t UNION ALL SELECT n FROM right_t ORDER BY left_t.n",
         MYLITE_EXEC_ERROR, "cannot be used in global ORDER clause",

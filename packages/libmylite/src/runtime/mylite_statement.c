@@ -220,6 +220,7 @@ void mylite_finalize(mylite_stmt *stmt)
     mylite_dml_delete_plan_deinit(&stmt->delete_plan);
     mylite_transaction_savepoint_plan_deinit(&stmt->savepoint);
     mylite_statement_union_plan_deinit(&stmt->union_plan);
+    mylite_statement_values_query_plan_deinit(&stmt->values_query);
     mylite_select_plan_deinit(&stmt->select_plan);
     mylite_result_metadata_deinit(&stmt->result_metadata);
     mylite_statement_scalar_result_deinit(&stmt->scalar_result);
@@ -278,7 +279,8 @@ const char *mylite_column_text(const mylite_stmt *stmt, int column)
     }
 
     if (stmt != NULL &&
-        (stmt->kind == MYLITE_STMT_TABLE_SELECT || stmt->kind == MYLITE_STMT_UNION_QUERY) &&
+        (stmt->kind == MYLITE_STMT_TABLE_SELECT || stmt->kind == MYLITE_STMT_UNION_QUERY ||
+         stmt->kind == MYLITE_STMT_VALUES_QUERY) &&
         stmt->select_result.has_current_row) {
         return mylite_statement_table_select_current_output_text(stmt, column);
     }
@@ -304,7 +306,8 @@ const struct mylite_expression_value *
 mylite_statement_table_select_current_output_value(const mylite_stmt *stmt, int column)
 {
     if (stmt == NULL ||
-        (stmt->kind != MYLITE_STMT_TABLE_SELECT && stmt->kind != MYLITE_STMT_UNION_QUERY) ||
+        (stmt->kind != MYLITE_STMT_TABLE_SELECT && stmt->kind != MYLITE_STMT_UNION_QUERY &&
+         stmt->kind != MYLITE_STMT_VALUES_QUERY) ||
         column < 0 || (size_t)column >= stmt->select_result.current_value_count ||
         !stmt->select_result.has_current_row) {
         return NULL;
@@ -315,7 +318,8 @@ mylite_statement_table_select_current_output_value(const mylite_stmt *stmt, int 
 const char *mylite_statement_table_select_current_output_text(const mylite_stmt *stmt, int column)
 {
     if (stmt == NULL ||
-        (stmt->kind != MYLITE_STMT_TABLE_SELECT && stmt->kind != MYLITE_STMT_UNION_QUERY) ||
+        (stmt->kind != MYLITE_STMT_TABLE_SELECT && stmt->kind != MYLITE_STMT_UNION_QUERY &&
+         stmt->kind != MYLITE_STMT_VALUES_QUERY) ||
         column < 0 || (size_t)column >= stmt->select_result.current_value_count ||
         !stmt->select_result.has_current_row) {
         return NULL;
@@ -364,6 +368,16 @@ void mylite_statement_select_constant_values_deinit(mylite_stmt *stmt)
     stmt->select_constant_value_count = 0U;
 }
 
+void mylite_statement_values_query_plan_deinit(struct mylite_values_query_plan *plan)
+{
+    if (plan == NULL) {
+        return;
+    }
+
+    free((void *)plan->expressions);
+    *plan = (struct mylite_values_query_plan){0};
+}
+
 // NOLINTNEXTLINE(misc-no-recursion)
 void mylite_statement_union_plan_deinit(struct mylite_union_plan *plan)
 {
@@ -375,6 +389,7 @@ void mylite_statement_union_plan_deinit(struct mylite_union_plan *plan)
         mylite_finalize(plan->operands[index]);
     }
     free((void *)plan->operands);
+    free(plan->operations);
     free(plan->operators);
     *plan = (struct mylite_union_plan){0};
 }

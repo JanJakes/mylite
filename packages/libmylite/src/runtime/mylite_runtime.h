@@ -115,6 +115,7 @@ struct mylite_stmt {
     struct mylite_savepoint_plan savepoint;
     struct mylite_select_plan select_plan;
     struct mylite_union_plan union_plan;
+    struct mylite_values_query_plan values_query;
     struct mylite_connection_system_variable_plan connection_system_variable;
     struct mylite_result_metadata result_metadata;
     struct mylite_scalar_result scalar_result;

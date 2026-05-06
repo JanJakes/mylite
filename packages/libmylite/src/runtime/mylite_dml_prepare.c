@@ -234,6 +234,7 @@ static int copy_insert_like_statement(enum mylite_stmt_kind kind,
     case MYLITE_STMT_SHOW_GRANTS_PLACEHOLDER:
     case MYLITE_STMT_SHOW_PRIVILEGES_PLACEHOLDER:
     case MYLITE_STMT_TABLE_PARTITIONING_PLACEHOLDER:
+    case MYLITE_STMT_CTE_PLACEHOLDER:
     case MYLITE_STMT_CREATE_TABLE:
     case MYLITE_STMT_DROP_TABLE:
     case MYLITE_STMT_RENAME_TABLE:
@@ -253,6 +254,7 @@ static int copy_insert_like_statement(enum mylite_stmt_kind kind,
     case MYLITE_STMT_SCALAR_SELECT:
     case MYLITE_STMT_TABLE_SELECT:
     case MYLITE_STMT_UNION_QUERY:
+    case MYLITE_STMT_VALUES_QUERY:
     case MYLITE_STMT_SQLITE:
         break;
     }

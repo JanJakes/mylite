@@ -237,6 +237,7 @@ add_library(mylite STATIC
   src/runtime/mylite_strcmp_compare.c
   src/runtime/mylite_system_variables.c
   src/runtime/mylite_user_variables.c
+  src/runtime/mylite_values_query.c
   src/runtime/mylite_storage_engine.c
   src/runtime/mylite_table_ddl.c
   src/runtime/mylite_table_ddl_alter.c

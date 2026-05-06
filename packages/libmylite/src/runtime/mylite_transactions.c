@@ -177,6 +177,7 @@ int mylite_transaction_execute_statement(mylite_stmt *stmt)
     case MYLITE_STMT_SHOW_GRANTS_PLACEHOLDER:
     case MYLITE_STMT_SHOW_PRIVILEGES_PLACEHOLDER:
     case MYLITE_STMT_TABLE_PARTITIONING_PLACEHOLDER:
+    case MYLITE_STMT_CTE_PLACEHOLDER:
     case MYLITE_STMT_CREATE_TABLE:
     case MYLITE_STMT_DROP_TABLE:
     case MYLITE_STMT_INSERT_VALUES:
@@ -186,6 +187,7 @@ int mylite_transaction_execute_statement(mylite_stmt *stmt)
     case MYLITE_STMT_SCALAR_SELECT:
     case MYLITE_STMT_TABLE_SELECT:
     case MYLITE_STMT_UNION_QUERY:
+    case MYLITE_STMT_VALUES_QUERY:
     case MYLITE_STMT_UPDATE:
     case MYLITE_STMT_DELETE:
     case MYLITE_STMT_RENAME_TABLE:

@@ -11,6 +11,8 @@ SELECT !mylite_deleted, ~mylite_flags, mylite_flags & 7, mylite_flags | 8, mylit
 SELECT (mylite_score << 1) + (mylite_score >> 2) AS shifted_score FROM mylite_scores;
 SELECT @mylite_seen := @mylite_seen + 1 AS sequence_number FROM mylite_posts;
 SELECT @@session.sql_mode, @@global.time_zone, @@version_comment;
+SELECT @@`default`.key_buffer_size, @@`default`.key_cache_block_size,
+       @@`default`.key_cache_division_limit, @@`default`.key_cache_age_threshold;
 
 -- literals and identifiers
 SELECT 'single quoted', "double quoted string", 'two '' quotes', "two "" quotes";

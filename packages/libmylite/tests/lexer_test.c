@@ -365,6 +365,22 @@ static int test_variables(void)
                        MYLITE_SQL_OPERATOR_NONE, MYLITE_SQL_LEXER_ERROR_NONE, 0U),
         EXPECTED_TOKEN(MYLITE_SQL_TOKEN_PUNCTUATION, ",", MYLITE_SQL_OPERATOR_NONE,
                        MYLITE_SQL_LEXER_ERROR_NONE, 0U),
+        EXPECTED_TOKEN(MYLITE_SQL_TOKEN_SYSTEM_VARIABLE, "@@`default`.key_buffer_size",
+                       MYLITE_SQL_OPERATOR_NONE, MYLITE_SQL_LEXER_ERROR_NONE, 0U),
+        EXPECTED_TOKEN(MYLITE_SQL_TOKEN_PUNCTUATION, ",", MYLITE_SQL_OPERATOR_NONE,
+                       MYLITE_SQL_LEXER_ERROR_NONE, 0U),
+        EXPECTED_TOKEN(MYLITE_SQL_TOKEN_SYSTEM_VARIABLE, "@@`default`.key_cache_block_size",
+                       MYLITE_SQL_OPERATOR_NONE, MYLITE_SQL_LEXER_ERROR_NONE, 0U),
+        EXPECTED_TOKEN(MYLITE_SQL_TOKEN_PUNCTUATION, ",", MYLITE_SQL_OPERATOR_NONE,
+                       MYLITE_SQL_LEXER_ERROR_NONE, 0U),
+        EXPECTED_TOKEN(MYLITE_SQL_TOKEN_SYSTEM_VARIABLE, "@@`default`.key_cache_division_limit",
+                       MYLITE_SQL_OPERATOR_NONE, MYLITE_SQL_LEXER_ERROR_NONE, 0U),
+        EXPECTED_TOKEN(MYLITE_SQL_TOKEN_PUNCTUATION, ",", MYLITE_SQL_OPERATOR_NONE,
+                       MYLITE_SQL_LEXER_ERROR_NONE, 0U),
+        EXPECTED_TOKEN(MYLITE_SQL_TOKEN_SYSTEM_VARIABLE, "@@`default`.key_cache_age_threshold",
+                       MYLITE_SQL_OPERATOR_NONE, MYLITE_SQL_LEXER_ERROR_NONE, 0U),
+        EXPECTED_TOKEN(MYLITE_SQL_TOKEN_PUNCTUATION, ",", MYLITE_SQL_OPERATOR_NONE,
+                       MYLITE_SQL_LEXER_ERROR_NONE, 0U),
         EXPECTED_TOKEN(MYLITE_SQL_TOKEN_USER_VARIABLE, "@plain", MYLITE_SQL_OPERATOR_NONE,
                        MYLITE_SQL_LEXER_ERROR_NONE, 0U),
         EXPECTED_TOKEN(MYLITE_SQL_TOKEN_PUNCTUATION, ",", MYLITE_SQL_OPERATOR_NONE,
@@ -384,8 +400,11 @@ static int test_variables(void)
     };
 
     return expect_sequence(
-        "SELECT @@session.sql_mode, @plain, @'dash-name', @\"double-name\", @`tick-name`", 0U,
-        expected, sizeof(expected) / sizeof(expected[0]));
+        "SELECT @@session.sql_mode, @@`default`.key_buffer_size, "
+        "@@`default`.key_cache_block_size, @@`default`.key_cache_division_limit, "
+        "@@`default`.key_cache_age_threshold, @plain, @'dash-name', @\"double-name\", "
+        "@`tick-name`",
+        0U, expected, sizeof(expected) / sizeof(expected[0]));
 }
 
 static int test_errors(void)
@@ -405,6 +424,8 @@ static int test_errors(void)
     failures += EXPECT_SINGLE_TOKEN("/* unterminated", 0U, MYLITE_SQL_TOKEN_ERROR,
                                     MYLITE_SQL_LEXER_ERROR_UNTERMINATED_COMMENT);
     failures += EXPECT_SINGLE_TOKEN("@", 0U, MYLITE_SQL_TOKEN_ERROR,
+                                    MYLITE_SQL_LEXER_ERROR_INVALID_VARIABLE);
+    failures += EXPECT_SINGLE_TOKEN("@@`default", 0U, MYLITE_SQL_TOKEN_ERROR,
                                     MYLITE_SQL_LEXER_ERROR_INVALID_VARIABLE);
 
     return failures;

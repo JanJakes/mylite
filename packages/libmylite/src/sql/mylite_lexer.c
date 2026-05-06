@@ -59,6 +59,9 @@ static bool scan_digit_leading_identifier(struct mylite_sql_lexer *lexer, unsign
                                           struct mylite_sql_token *out_token);
 static bool scan_unquoted_identifier(struct mylite_sql_lexer *lexer, unsigned int flags,
                                      struct mylite_sql_token *out_token);
+static bool scan_system_variable(struct mylite_sql_lexer *lexer, struct mylite_token_start start,
+                                 struct mylite_sql_token *out_token);
+static bool scan_quoted_system_variable_component(struct mylite_sql_lexer *lexer);
 static bool scan_quoted_variable(struct mylite_sql_lexer *lexer, struct mylite_token_start start,
                                  char quote, struct mylite_sql_token *out_token);
 static struct mylite_token_start make_token_start(const struct mylite_sql_lexer *lexer,
@@ -1344,15 +1347,7 @@ static bool scan_variable(struct mylite_sql_lexer *lexer, unsigned int flags,
     advance_one(lexer);
     if (peek_at(lexer, 0U) == '@') {
         advance_one(lexer);
-        if (!is_identifier_part(peek_at(lexer, 0U)) && peek_at(lexer, 0U) != '.') {
-            set_error_token(lexer, out_token, MYLITE_SQL_LEXER_ERROR_INVALID_VARIABLE, start);
-            return true;
-        }
-        while (is_identifier_part(peek_at(lexer, 0U)) || peek_at(lexer, 0U) == '.') {
-            advance_one(lexer);
-        }
-        set_token(lexer, out_token, MYLITE_SQL_TOKEN_SYSTEM_VARIABLE, start);
-        return true;
+        return scan_system_variable(lexer, start, out_token);
     }
 
     if (peek_at(lexer, 0U) == '\'' || peek_at(lexer, 0U) == '"' || peek_at(lexer, 0U) == '`') {
@@ -1369,6 +1364,56 @@ static bool scan_variable(struct mylite_sql_lexer *lexer, unsigned int flags,
     }
     set_token(lexer, out_token, MYLITE_SQL_TOKEN_USER_VARIABLE, start);
     return true;
+}
+
+static bool scan_system_variable(struct mylite_sql_lexer *lexer, struct mylite_token_start start,
+                                 struct mylite_sql_token *out_token)
+{
+    unsigned char byte = peek_at(lexer, 0U);
+
+    if (!is_identifier_part(byte) && byte != '.' && byte != '`') {
+        set_error_token(lexer, out_token, MYLITE_SQL_LEXER_ERROR_INVALID_VARIABLE, start);
+        return true;
+    }
+
+    while (lexer->offset < lexer->length) {
+        byte = peek_at(lexer, 0U);
+        if (is_identifier_part(byte) || byte == '.') {
+            advance_one(lexer);
+            continue;
+        }
+        if (byte == '`') {
+            if (!scan_quoted_system_variable_component(lexer)) {
+                set_error_token(lexer, out_token, MYLITE_SQL_LEXER_ERROR_INVALID_VARIABLE, start);
+                return true;
+            }
+            continue;
+        }
+        break;
+    }
+
+    set_token(lexer, out_token, MYLITE_SQL_TOKEN_SYSTEM_VARIABLE, start);
+    return true;
+}
+
+static bool scan_quoted_system_variable_component(struct mylite_sql_lexer *lexer)
+{
+    assert(peek_at(lexer, 0U) == '`');
+
+    advance_one(lexer);
+    while (lexer->offset < lexer->length) {
+        if (peek_at(lexer, 0U) == '`') {
+            advance_one(lexer);
+            if (peek_at(lexer, 0U) == '`') {
+                advance_one(lexer);
+                continue;
+            }
+            return true;
+        }
+        advance_one(lexer);
+    }
+
+    return false;
 }
 
 static bool scan_operator_or_punctuation(struct mylite_sql_lexer *lexer, unsigned int flags,

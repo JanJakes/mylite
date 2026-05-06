@@ -36,8 +36,10 @@ commit.
 - [x] Skip existing-row validation when `foreign_key_checks = 0`.
 - [x] Implement `ALTER TABLE ... DROP FOREIGN KEY` without removing the
       supporting child index.
-- [ ] Preserve mixed-action ALTER atomicity when FK actions are combined with
-      supported column/index actions.
+- [x] Preserve mixed-action ALTER atomicity when FK actions are combined with
+      supported column/index actions. Mixed FK actions remain intentionally
+      unsupported, but runtime tests verify that no partial column, index, or
+      foreign-key metadata mutation survives.
 
 ## DML Enforcement
 

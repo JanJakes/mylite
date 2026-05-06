@@ -177,8 +177,8 @@ keys with error 1553, even while `foreign_key_checks=0`. `RENAME TABLE` and
 `ALTER TABLE ... RENAME` rewrite foreign-key catalog metadata for child and
 parent tables, including cross-schema moves and MySQL-style regenerated
 `old_table_ibfk_N` child constraint names. Recursive referential actions,
-mixed-action ALTER FK operations, and exact parent-update optimizer ordering
-remain follow-up slices. `DROP TABLE`
+executable mixed-action ALTER FK operations, and exact parent-update optimizer
+ordering remain follow-up slices. `DROP TABLE`
 rejects parent tables referenced by surviving child tables while
 `foreign_key_checks=1`, permits multi-table drops that remove the parent and
 all referencing children together, and allows checks-off parent drops while
@@ -200,8 +200,10 @@ FK-only `ALTER TABLE ... ADD FOREIGN KEY` additionally validates existing child
 rows when `foreign_key_checks` is enabled, skips that scan when checks are
 disabled, and reports the child table row count as affected rows for supported
 metadata-only shapes.
-Mixed FK actions with supported column/index actions remain deferred until FK
-catalog rewrites participate in the shadow-table ALTER model.
+Mixed FK actions with supported column/index actions are rejected before
+mutation, so no partial column, index, or foreign-key metadata changes survive.
+Executable mixed FK actions remain deferred until FK catalog rewrites
+participate in the shadow-table ALTER model.
 
 `ALTER TABLE ... DROP FOREIGN KEY` removes only the foreign-key catalog rows.
 It must not remove the supporting child index.

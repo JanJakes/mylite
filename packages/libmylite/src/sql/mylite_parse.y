@@ -13,6 +13,8 @@
 %type opt_drop_table_mode { struct mylite_sql_token }
 %type insert_values_keyword { struct mylite_sql_token }
 %type opt_order_direction { struct mylite_sql_token }
+%type group_concat_separator { struct mylite_sql_ast_node * }
+%type opt_group_concat_separator { struct mylite_sql_ast_node * }
 %type opt_work { struct mylite_sql_token }
 %type opt_savepoint_keyword { struct mylite_sql_token }
 %type ddl_algorithm { struct mylite_sql_token }
@@ -3234,6 +3236,9 @@ primary_expression(A) ::= convert_expression(B). {
 primary_expression(A) ::= case_expression(B). {
     A = B;
 }
+primary_expression(A) ::= group_concat_call(B). {
+    A = B;
+}
 primary_expression(A) ::= aggregate_distinct_call(B). {
     A = B;
 }
@@ -3428,8 +3433,72 @@ aggregate_star_call(A) ::= function_name(B) LPAREN(L) STAR(S) RPAREN(R). {
         });
 }
 
+group_concat_call(A) ::= function_name(B) LPAREN(L) function_argument_list(C) order_by_clause(O) opt_group_concat_separator(S) RPAREN(R). {
+    A = mylite_sql_parser_make_group_concat_call(
+        state,
+        (struct mylite_sql_parser_group_concat_call_parts){
+            .name = B,
+            .left_paren = L,
+            .distinct = (struct mylite_sql_token){0},
+            .arguments = C,
+            .order_by = O,
+            .separator = S,
+            .right_paren = R,
+        });
+}
+group_concat_call(A) ::= function_name(B) LPAREN(L) function_argument_list(C) group_concat_separator(S) RPAREN(R). {
+    A = mylite_sql_parser_make_group_concat_call(
+        state,
+        (struct mylite_sql_parser_group_concat_call_parts){
+            .name = B,
+            .left_paren = L,
+            .distinct = (struct mylite_sql_token){0},
+            .arguments = C,
+            .order_by = NULL,
+            .separator = S,
+            .right_paren = R,
+        });
+}
+group_concat_call(A) ::= function_name(B) LPAREN(L) DISTINCT(D) expression_list(C) order_by_clause(O) opt_group_concat_separator(S) RPAREN(R). {
+    A = mylite_sql_parser_make_group_concat_call(
+        state,
+        (struct mylite_sql_parser_group_concat_call_parts){
+            .name = B,
+            .left_paren = L,
+            .distinct = D,
+            .arguments = C,
+            .order_by = O,
+            .separator = S,
+            .right_paren = R,
+        });
+}
+group_concat_call(A) ::= function_name(B) LPAREN(L) DISTINCT(D) expression_list(C) group_concat_separator(S) RPAREN(R). {
+    A = mylite_sql_parser_make_group_concat_call(
+        state,
+        (struct mylite_sql_parser_group_concat_call_parts){
+            .name = B,
+            .left_paren = L,
+            .distinct = D,
+            .arguments = C,
+            .order_by = NULL,
+            .separator = S,
+            .right_paren = R,
+        });
+}
+
+group_concat_separator(A) ::= SEPARATOR STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+
+opt_group_concat_separator(A) ::= . {
+    A = NULL;
+}
+opt_group_concat_separator(A) ::= group_concat_separator(B). {
+    A = B;
+}
+
 aggregate_distinct_call(A) ::= function_name(B) LPAREN(L) DISTINCT expression_list(C) RPAREN(R). {
-    A = mylite_sql_parser_make_count_distinct_call(state, B, L, C, R);
+    A = mylite_sql_parser_make_distinct_aggregate_call(state, B, L, C, R);
 }
 
 scalar_function_call(A) ::= function_name(B) LPAREN(L) RPAREN(R). {

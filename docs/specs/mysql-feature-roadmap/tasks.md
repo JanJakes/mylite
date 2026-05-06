@@ -71,10 +71,11 @@ level application surfaces.
        [INSERT/REPLACE scalar expression values](../insert-scalar-expression-values/specs.md).
        [ADDTIME and SUBTIME functions](../addtime-subtime-functions/specs.md).
 25. [x] Aggregate functions and grouping: `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`,
-       `GROUP BY`, `HAVING`, aliases, ordinals, `ONLY_FULL_GROUP_BY`, and
-       grouped joined row sources. Specs:
+       `GROUP_CONCAT`, `GROUP BY`, `HAVING`, aliases, ordinals,
+       `ONLY_FULL_GROUP_BY`, and grouped joined row sources. Specs:
        [aggregate functions and grouping](../aggregate-grouping/specs.md),
-       [joined GROUP BY](../joined-group-by/specs.md).
+       [joined GROUP BY](../joined-group-by/specs.md),
+       [GROUP_CONCAT function](../group-concat-function/specs.md).
 26. [x] Inner joins and comma joins: join precedence, aliases, `ON`, `USING`,
        name resolution, and result metadata. Spec:
        [inner joins](../inner-joins/specs.md).

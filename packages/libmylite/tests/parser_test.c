@@ -7858,6 +7858,51 @@ static int test_aggregate_grouping_syntax(void)
                                    "COUNT distinct argument count");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SELECT GROUP_CONCAT(txt), "
+                          "GROUP_CONCAT(DISTINCT txt ORDER BY n DESC SEPARATOR '|'), "
+                          "GROUP_CONCAT(txt, ':', n ORDER BY 1 DESC SEPARATOR ';') FROM t;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    failures += expect_aggregate_call(child_at(child_at(select_list, 0U), 0U),
+                                      MYLITE_SQL_AST_AGGREGATE_GROUP_CONCAT,
+                                      MYLITE_SQL_AST_AGGREGATE_ARGUMENT_EXPRESSION_LIST,
+                                      "GROUP_CONCAT", "GROUP_CONCAT aggregate");
+    failures += expect_node(child_at(child_at(child_at(select_list, 0U), 0U), 1U),
+                            MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST, "GROUP_CONCAT arguments");
+    failures += expect_child_count(child_at(child_at(child_at(select_list, 0U), 0U), 1U), 1U,
+                                   "GROUP_CONCAT argument count");
+
+    failures += expect_aggregate_call(child_at(child_at(select_list, 1U), 0U),
+                                      MYLITE_SQL_AST_AGGREGATE_GROUP_CONCAT,
+                                      MYLITE_SQL_AST_AGGREGATE_ARGUMENT_DISTINCT_EXPRESSION_LIST,
+                                      "GROUP_CONCAT", "GROUP_CONCAT distinct aggregate");
+    failures += expect_child_count(child_at(child_at(select_list, 1U), 0U), 4U,
+                                   "GROUP_CONCAT distinct option child count");
+    failures += expect_node(child_at(child_at(child_at(select_list, 1U), 0U), 1U),
+                            MYLITE_SQL_AST_EXPRESSION_LIST, "GROUP_CONCAT distinct arguments");
+    failures += expect_node(child_at(child_at(child_at(select_list, 1U), 0U), 2U),
+                            MYLITE_SQL_AST_ORDER_BY_CLAUSE, "GROUP_CONCAT order by");
+    failures += expect_order_item_direction(
+        child_at(child_at(child_at(child_at(child_at(select_list, 1U), 0U), 2U), 0U), 0U),
+        MYLITE_SQL_AST_KEY_PART_ORDER_DESC, "GROUP_CONCAT order direction");
+    failures += expect_literal(child_at(child_at(child_at(select_list, 1U), 0U), 3U),
+                               MYLITE_SQL_AST_LITERAL_STRING, "GROUP_CONCAT separator");
+
+    failures += expect_aggregate_call(child_at(child_at(select_list, 2U), 0U),
+                                      MYLITE_SQL_AST_AGGREGATE_GROUP_CONCAT,
+                                      MYLITE_SQL_AST_AGGREGATE_ARGUMENT_EXPRESSION_LIST,
+                                      "GROUP_CONCAT", "GROUP_CONCAT multi argument aggregate");
+    failures += expect_child_count(child_at(child_at(select_list, 2U), 0U), 4U,
+                                   "GROUP_CONCAT multi option child count");
+    failures += expect_child_count(child_at(child_at(child_at(select_list, 2U), 0U), 1U), 3U,
+                                   "GROUP_CONCAT multi argument count");
+    failures += expect_literal(
+        child_at(child_at(child_at(child_at(child_at(child_at(select_list, 2U), 0U), 2U), 0U), 0U),
+                 0U),
+        MYLITE_SQL_AST_LITERAL_INTEGER, "GROUP_CONCAT order ordinal");
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("SELECT COUNT(*);", MYLITE_SQL_PARSE_OK, &result);
     select = child_at(result.root, 0U);
     failures += expect_aggregate_call(
@@ -7879,6 +7924,28 @@ static int test_aggregate_grouping_syntax(void)
 
     failures +=
         parse_sql("SELECT COUNT(DISTINCT *) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT GROUP_CONCAT() FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT GROUP_CONCAT(*) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT GROUP_CONCAT(txt SEPARATOR NULL) FROM t;",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT GROUP_CONCAT(txt SEPARATOR 123) FROM t;",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT GROUP_CONCAT(txt SEPARATOR CONCAT('|', '|')) FROM t;",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT GROUP_CONCAT(txt SEPARATOR '|' ORDER BY txt) FROM t;",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT SUM(DISTINCT n) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
@@ -8559,7 +8626,16 @@ static int expect_aggregate_call(const struct mylite_sql_ast_node *node,
         return failures;
     }
 
-    failures += expect_child_count(node, 2U, context);
+    if (expected_kind == MYLITE_SQL_AST_AGGREGATE_GROUP_CONCAT) {
+        size_t child_count = mylite_sql_ast_node_child_count(node);
+
+        if (child_count < 2U || child_count > 4U) {
+            fprintf(stderr, "%s: expected 2 to 4 children, got %zu\n", context, child_count);
+            failures = 1;
+        }
+    } else {
+        failures += expect_child_count(node, 2U, context);
+    }
     name = child_at(node, 0U);
     failures += expect_node(name, MYLITE_SQL_AST_IDENTIFIER, context);
     failures += expect_span_text(name, expected_name, context);

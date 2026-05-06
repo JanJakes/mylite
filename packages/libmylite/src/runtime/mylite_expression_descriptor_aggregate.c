@@ -86,6 +86,19 @@ int mylite_expression_descriptor_infer_aggregate_expression(
         mylite_field_descriptor_set_nullable(&descriptor, true);
         *out_descriptor = descriptor;
         return MYLITE_OK;
+    case MYLITE_SQL_AST_AGGREGATE_GROUP_CONCAT:
+        descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_BLOB,
+            .flags = MYLITE_FIELD_FLAG_BLOB,
+            .length =
+                1024U * mylite_expression_descriptor_connection_character_max_length(database),
+            .decimals = mylite_mysql_not_fixed_decimals,
+            .charset_id = mylite_expression_descriptor_connection_collation_id(database),
+            .nullable = true,
+        };
+        mylite_field_descriptor_set_nullable(&descriptor, true);
+        *out_descriptor = descriptor;
+        return MYLITE_OK;
     case MYLITE_SQL_AST_AGGREGATE_NONE:
         break;
     }

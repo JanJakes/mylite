@@ -119,6 +119,7 @@ enum {
     mysql_warning_operand_columns = 1241,
     mysql_warning_subquery_no_1_row = 1242,
     mysql_warning_table_name_not_allowed = 1250,
+    mysql_warning_group_concat_cut = 1260,
     mysql_warning_deprecated_syntax = 1287,
     mysql_warning_truncated_wrong_value = 1292,
     mysql_warning_invalid_character_string = 1300,
@@ -16825,6 +16826,20 @@ static int test_aggregate_grouping_execution(void)
     static const char *const count_distinct_repeat_values[] = {"3", "3", "5"};
     static const char *const count_distinct_alias_values[] = {"3"};
     static const char *const count_distinct_group_having_values[] = {"x", "2"};
+    static const char *const group_concat_columns[] = {"gc"};
+    static const char *const group_concat_all_values[] = {"alpha,beta,gamma,delta,epsilon"};
+    static const char *const group_concat_order_values[] = {"beta|alpha"};
+    static const char *const group_concat_multi_values[] = {"alpha:10;beta:20"};
+    static const char *const group_concat_distinct_values[] = {"gamma|epsilon|delta|beta|alpha"};
+    static const char *const group_concat_ordinal_values[] = {"beta,alpha"};
+    static const char *const group_concat_empty_values[] = {NULL};
+    static const char *const group_concat_rowless_columns[] = {"gc", "gn"};
+    static const char *const group_concat_rowless_values[] = {"ab", NULL};
+    static const char *const group_concat_grouped_columns[] = {"g", "gc"};
+    static const char *const group_concat_grouped_values[] = {
+        "a", "alpha|beta", "b", "gamma|delta", NULL, "epsilon",
+    };
+    static const char *const group_concat_tuple_values[] = {"abc|abc"};
     static const char *const conversion_columns[] = {"sum_s", "avg_s", "min_s", "max_s"};
     static const char *const conversion_values[] = {"12.5", "4.166666666666667", "10", "bad"};
     static const struct expected_result_metadata metadata[] = {
@@ -16844,6 +16859,10 @@ static int test_aggregate_grouping_execution(void)
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
         {"cab", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+    };
+    static const struct expected_result_metadata group_concat_metadata[] = {
+        {"gc", NULL, NULL, NULL, NULL, NULL, 4096U, MYLITE_FIELD_TYPE_BLOB, 31U, 255U,
+         MYLITE_FIELD_FLAG_BLOB, MYLITE_FIELD_FLAG_NOT_NULL, 1},
     };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
@@ -17189,6 +17208,104 @@ static int test_aggregate_grouping_execution(void)
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "count distinct metadata done");
     mylite_finalize(stmt);
     stmt = NULL;
+
+    failures += expect_select_rows(database, "SELECT GROUP_CONCAT(txt ORDER BY id) AS gc FROM t",
+                                   group_concat_columns, 1, group_concat_all_values, 1,
+                                   "GROUP_CONCAT implicit group");
+    failures += expect_select_rows(
+        database,
+        "SELECT GROUP_CONCAT(txt ORDER BY n DESC SEPARATOR '|') AS gc FROM t WHERE grp = 'a'",
+        group_concat_columns, 1, group_concat_order_values, 1, "GROUP_CONCAT local order");
+    failures += expect_select_rows(
+        database,
+        "SELECT GROUP_CONCAT(txt, ':', n ORDER BY n SEPARATOR ';') AS gc FROM t WHERE grp = 'a'",
+        group_concat_columns, 1, group_concat_multi_values, 1, "GROUP_CONCAT multi expression");
+    failures += expect_select_rows(
+        database, "SELECT GROUP_CONCAT(DISTINCT txt ORDER BY txt DESC SEPARATOR '|') AS gc FROM t",
+        group_concat_columns, 1, group_concat_distinct_values, 1, "GROUP_CONCAT distinct");
+    failures += expect_select_rows(database,
+                                   "SELECT GROUP_CONCAT(txt ORDER BY 1 DESC) AS gc "
+                                   "FROM t WHERE grp = 'a'",
+                                   group_concat_columns, 1, group_concat_ordinal_values, 1,
+                                   "GROUP_CONCAT order by ordinal");
+    failures += expect_prepare_error(database, "SELECT GROUP_CONCAT(txt ORDER BY 0) AS gc FROM t",
+                                     MYLITE_EXEC_ERROR, "Unknown column '0' in 'order clause'",
+                                     "GROUP_CONCAT zero order ordinal");
+    failures += expect_prepare_error(database, "SELECT GROUP_CONCAT(txt ORDER BY 2) AS gc FROM t",
+                                     MYLITE_EXEC_ERROR, "Unknown column '2' in 'order clause'",
+                                     "GROUP_CONCAT out of range order ordinal");
+    failures += expect_prepare_error(
+        database, "SELECT GROUP_CONCAT(txt ORDER BY missing) AS gc FROM t", MYLITE_EXEC_ERROR,
+        "Unknown column 'missing' in 'order clause'", "GROUP_CONCAT unknown order column");
+    failures += expect_select_rows(database,
+                                   "SELECT grp AS g, "
+                                   "GROUP_CONCAT(txt ORDER BY n SEPARATOR '|') AS gc "
+                                   "FROM t GROUP BY grp ORDER BY grp IS NULL, grp",
+                                   group_concat_grouped_columns, 2, group_concat_grouped_values, 3,
+                                   "GROUP_CONCAT grouped rows");
+    failures += expect_select_rows(database, "SELECT GROUP_CONCAT(txt) AS gc FROM empty_t",
+                                   group_concat_columns, 1, group_concat_empty_values, 1,
+                                   "GROUP_CONCAT empty table");
+    failures += expect_select_rows(
+        database, "SELECT GROUP_CONCAT(nullable) AS gc FROM t WHERE id = 1", group_concat_columns,
+        1, group_concat_empty_values, 1, "GROUP_CONCAT all null rows");
+    failures += expect_select_rows(database,
+                                   "SELECT GROUP_CONCAT('a','b') AS gc, "
+                                   "GROUP_CONCAT('a',NULL,'b') AS gn",
+                                   group_concat_rowless_columns, 2, group_concat_rowless_values, 1,
+                                   "GROUP_CONCAT rowless values");
+    failures += expect_prepare_error(database, "SELECT GROUP_CONCAT('a' ORDER BY 2) AS gc",
+                                     MYLITE_EXEC_ERROR, "Unknown column '2' in 'order clause'",
+                                     "GROUP_CONCAT rowless out of range order ordinal");
+    failures += expect_select_rows(database,
+                                   "SELECT GROUP_CONCAT(txt ORDER BY id) AS gc "
+                                   "FROM t HAVING gc LIKE 'alpha%' ORDER BY gc",
+                                   group_concat_columns, 1, group_concat_all_values, 1,
+                                   "GROUP_CONCAT having and order alias");
+    failures += execute_sql(database,
+                            "CREATE TABLE gc_tuple ("
+                            "id INT PRIMARY KEY, a VARCHAR(8), b VARCHAR(8), ord INT)",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO gc_tuple VALUES "
+                            "(1,'a','bc',1),"
+                            "(2,'ab','c',2),"
+                            "(3,'a','bc',3),"
+                            "(4,'x',NULL,4)",
+                            MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT GROUP_CONCAT(DISTINCT a,b ORDER BY ord SEPARATOR '|') AS gc FROM gc_tuple",
+        group_concat_columns, 1, group_concat_tuple_values, 1,
+        "GROUP_CONCAT distinct expression tuple");
+    failures += prepare_sql(database, "SELECT GROUP_CONCAT(txt) AS gc FROM t", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, group_concat_metadata,
+        (int)(sizeof(group_concat_metadata) / sizeof(group_concat_metadata[0])),
+        "GROUP_CONCAT metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "GROUP_CONCAT metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "GROUP_CONCAT metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "SELECT GROUP_CONCAT(REPEAT('a', 300) ORDER BY id) AS gc FROM t",
+                    MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "GROUP_CONCAT truncation row");
+    const char *truncated_group_concat = mylite_column_text(stmt, 0);
+    failures +=
+        expect_int(truncated_group_concat == NULL ? -1 : (int)strlen(truncated_group_concat), 1024,
+                   "GROUP_CONCAT truncation length");
+    failures += expect_int(mylite_warning_count(database), 1, "GROUP_CONCAT truncation warning");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_group_concat_cut,
+                           "GROUP_CONCAT truncation warning code");
+    failures +=
+        expect_string(mylite_warning_message(database, 0), "Row 4 was cut by GROUP_CONCAT()",
+                      "GROUP_CONCAT truncation warning message");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "GROUP_CONCAT truncation done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
     failures += expect_prepare_error(database, "SELECT COUNT(DISTINCT COUNT(*)) FROM cd_t",
                                      MYLITE_EXEC_ERROR, "Invalid use of group function",
                                      "count distinct nested aggregate");

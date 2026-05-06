@@ -440,6 +440,7 @@ enum mylite_sql_ast_aggregate_kind {
     MYLITE_SQL_AST_AGGREGATE_AVG = 3,
     MYLITE_SQL_AST_AGGREGATE_MIN = 4,
     MYLITE_SQL_AST_AGGREGATE_MAX = 5,
+    MYLITE_SQL_AST_AGGREGATE_GROUP_CONCAT = 6,
 };
 
 enum mylite_sql_ast_aggregate_argument {
@@ -447,6 +448,7 @@ enum mylite_sql_ast_aggregate_argument {
     MYLITE_SQL_AST_AGGREGATE_ARGUMENT_STAR = 1,
     MYLITE_SQL_AST_AGGREGATE_ARGUMENT_EXPRESSION = 2,
     MYLITE_SQL_AST_AGGREGATE_ARGUMENT_DISTINCT_EXPRESSION_LIST = 3,
+    MYLITE_SQL_AST_AGGREGATE_ARGUMENT_EXPRESSION_LIST = 4,
 };
 
 enum mylite_sql_ast_join_type {

@@ -1426,6 +1426,8 @@ const char *mylite_sql_ast_aggregate_kind_name(enum mylite_sql_ast_aggregate_kin
         return "min";
     case MYLITE_SQL_AST_AGGREGATE_MAX:
         return "max";
+    case MYLITE_SQL_AST_AGGREGATE_GROUP_CONCAT:
+        return "group_concat";
     }
 
     return "unknown";
@@ -1443,6 +1445,8 @@ mylite_sql_ast_aggregate_argument_name(enum mylite_sql_ast_aggregate_argument ag
         return "expression";
     case MYLITE_SQL_AST_AGGREGATE_ARGUMENT_DISTINCT_EXPRESSION_LIST:
         return "distinct expression list";
+    case MYLITE_SQL_AST_AGGREGATE_ARGUMENT_EXPRESSION_LIST:
+        return "expression list";
     }
 
     return "unknown";

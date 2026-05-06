@@ -14,6 +14,8 @@ In scope for the first implementable slice:
   row source, for example `SELECT COUNT(*)`
 - `COUNT(*)`, `COUNT(expr)`, `SUM(expr)`, `AVG(expr)`, `MIN(expr)`, and
   `MAX(expr)`
+- follow-on aggregate slices for `COUNT(DISTINCT expr [, expr ...])` and
+  `GROUP_CONCAT(...)` in the same aggregate execution surfaces
 - aggregate functions in the select list, `HAVING`, and `ORDER BY`
 - aggregate queries without `GROUP BY`, treating the filtered input as one
   implicit group
@@ -37,11 +39,12 @@ Out of scope for the first implementable slice:
 - derived tables, CTEs, views, subqueries as row sources, set operations,
   lateral references, and table functions
 - `DISTINCT`, `DISTINCTROW`, and aggregate-local `DISTINCT` forms other than
-  `COUNT(DISTINCT ...)`
+  `COUNT(DISTINCT ...)` and `GROUP_CONCAT(DISTINCT ...)`
 - `GROUP BY ... WITH ROLLUP` and `GROUPING()`
 - window-function execution and aggregate `OVER (...)` clauses
-- aggregate functions beyond `COUNT`, `SUM`, `AVG`, `MIN`, and `MAX`, including
-  bit, JSON, string, statistical, spatial, and variance aggregates
+- aggregate functions beyond `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`, and
+  `GROUP_CONCAT`, including bit, JSON, remaining string, statistical, spatial,
+  and variance aggregates
 - `ANY_VALUE()` and broader functional-dependence detection beyond
   primary-key/non-null-unique-key proof for non-grouped base-table columns
 - `HAVING` references to outer query columns
@@ -86,6 +89,7 @@ metadata, and statement side effects.
   - `docs/specs/scalar-built-in-functions/specs.md`
   - `docs/specs/case-expression/specs.md`
   - `docs/specs/count-distinct-aggregate/specs.md`
+  - `docs/specs/group-concat-function/specs.md`
   - `docs/specs/create-table-base-execution/specs.md`
   - `docs/specs/create-table-indexes/specs.md`
 
@@ -354,7 +358,8 @@ Recommended AST additions:
 
 - expression node kind for aggregate calls:
   - function identifier preserving original spelling for diagnostics
-  - canonical aggregate kind: `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`
+  - canonical aggregate kind: `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`,
+    `GROUP_CONCAT`
   - argument mode: star, single expression, or distinct expression list
   - source span covering the function call
 - `SELECT` query block fields:
@@ -439,7 +444,9 @@ aggregate_name(A) ::= MAX.   { A = MYLITE_AGG_MAX; }
 ```
 
 `COUNT(DISTINCT ...)` is specified and implemented separately in
-`docs/specs/count-distinct-aggregate/specs.md`. `SUM(DISTINCT ...)`,
+`docs/specs/count-distinct-aggregate/specs.md`. `GROUP_CONCAT(...)` and its
+aggregate-local options are specified in
+`docs/specs/group-concat-function/specs.md`. `SUM(DISTINCT ...)`,
 `AVG(DISTINCT ...)`, `MIN(DISTINCT ...)`, and `MAX(DISTINCT ...)` should remain
 unsupported until their deduplication behavior and metadata are specified.
 
@@ -589,6 +596,7 @@ expectations:
 | implicit aggregate | `SELECT COUNT(*), COUNT(n), SUM(n), AVG(n), MIN(n), MAX(n) FROM t` | one row: `5`, `4`, `37`, `9.2500`, `0`, `20` |
 | empty input | `SELECT COUNT(*), COUNT(n), SUM(n), AVG(n), MIN(n), MAX(n) FROM empty_t` | one row: `0`, `0`, `NULL`, `NULL`, `NULL`, `NULL` |
 | grouped rows | `SELECT grp, COUNT(*), COUNT(n), SUM(n), AVG(n), MIN(txt), MAX(txt) FROM t GROUP BY grp ORDER BY grp IS NULL, grp` | three rows matching the verified grouped result table above |
+| grouped string aggregation | `SELECT grp, GROUP_CONCAT(txt ORDER BY n SEPARATOR '|') FROM t GROUP BY grp ORDER BY grp IS NULL, grp` | grouped concatenated strings matching `docs/specs/group-concat-function/specs.md` |
 | alias grouping | `SELECT grp AS g, SUM(n) AS total FROM t GROUP BY g HAVING total > 10 ORDER BY g` | one row: `('a',30)` |
 | ordinal grouping | `SELECT grp, SUM(n) AS total FROM t GROUP BY 1 HAVING SUM(n) >= 10 ORDER BY 2 DESC` | one row: `('a',30)` |
 | `WHERE` before grouping | `SELECT grp, SUM(n) FROM t WHERE n IS NOT NULL GROUP BY grp HAVING SUM(n) > 7 ORDER BY grp IS NULL, grp` | one row: `('a',30)` |

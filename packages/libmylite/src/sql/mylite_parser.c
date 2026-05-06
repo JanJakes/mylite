@@ -75,6 +75,7 @@ static bool function_name_is_position(const struct mylite_sql_ast_node *name);
 static bool function_name_is_extract(const struct mylite_sql_ast_node *name);
 static bool function_name_is_timestampadd(const struct mylite_sql_ast_node *name);
 static bool function_name_is_timestampdiff(const struct mylite_sql_ast_node *name);
+static bool function_name_is_group_concat(const struct mylite_sql_ast_node *name);
 static bool normalize_timestampdiff_function_call(struct mylite_sql_parser_state *state,
                                                   const struct mylite_sql_ast_node *name,
                                                   struct mylite_sql_ast_node *arguments,
@@ -106,6 +107,10 @@ aggregate_kind_from_name(struct mylite_sql_source_span name);
 static struct mylite_sql_ast_node *
 make_aggregate_function_call(struct mylite_sql_parser_state *state,
                              struct mylite_sql_parser_aggregate_function_call_parts parts);
+static struct mylite_sql_ast_node *
+make_group_concat_aggregate_call(struct mylite_sql_parser_state *state,
+                                 struct mylite_sql_parser_group_concat_call_parts parts,
+                                 enum mylite_sql_ast_aggregate_argument argument_kind);
 static bool aggregate_accepts_star(enum mylite_sql_ast_aggregate_kind aggregate_kind);
 static bool transaction_characteristics_conflict(const struct mylite_sql_ast_node *left,
                                                  const struct mylite_sql_ast_node *right);
@@ -5125,6 +5130,21 @@ make_aggregate_function_call(struct mylite_sql_parser_state *state,
     if (parts.arguments == NULL) {
         return NULL;
     }
+    if (parts.aggregate_kind == MYLITE_SQL_AST_AGGREGATE_GROUP_CONCAT) {
+        if (mylite_sql_ast_node_child_count(parts.arguments) == 0U) {
+            mylite_sql_parser_state_parse_failed(state);
+            return NULL;
+        }
+        call = make_node(state, MYLITE_SQL_AST_AGGREGATE_CALL, parts.span);
+        if (call == NULL) {
+            return NULL;
+        }
+        mylite_sql_ast_node_set_aggregate(call, MYLITE_SQL_AST_AGGREGATE_GROUP_CONCAT,
+                                          MYLITE_SQL_AST_AGGREGATE_ARGUMENT_EXPRESSION_LIST);
+        mylite_sql_ast_node_append_child(call, parts.name);
+        mylite_sql_ast_node_append_child(call, parts.arguments);
+        return call;
+    }
     if (mylite_sql_ast_node_child_count(parts.arguments) != 1U) {
         mylite_sql_parser_state_parse_failed(state);
         return NULL;
@@ -5139,6 +5159,58 @@ make_aggregate_function_call(struct mylite_sql_parser_state *state,
                                       MYLITE_SQL_AST_AGGREGATE_ARGUMENT_EXPRESSION);
     mylite_sql_ast_node_append_child(call, parts.name);
     mylite_sql_ast_node_append_child(call, parts.arguments->first_child);
+    return call;
+}
+
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_group_concat_call(struct mylite_sql_parser_state *state,
+                                         struct mylite_sql_parser_group_concat_call_parts parts)
+{
+    enum mylite_sql_ast_aggregate_argument argument_kind =
+        parts.distinct.kind == 0 ? MYLITE_SQL_AST_AGGREGATE_ARGUMENT_EXPRESSION_LIST
+                                 : MYLITE_SQL_AST_AGGREGATE_ARGUMENT_DISTINCT_EXPRESSION_LIST;
+
+    if (!function_name_is_group_concat(parts.name)) {
+        mylite_sql_parser_state_parse_failed(state);
+        return NULL;
+    }
+    return make_group_concat_aggregate_call(state, parts, argument_kind);
+}
+
+static struct mylite_sql_ast_node *
+make_group_concat_aggregate_call(struct mylite_sql_parser_state *state,
+                                 struct mylite_sql_parser_group_concat_call_parts parts,
+                                 enum mylite_sql_ast_aggregate_argument argument_kind)
+{
+    struct mylite_sql_source_span span =
+        parts.name == NULL ? span_from_token(&parts.left_paren) : parts.name->span;
+    struct mylite_sql_ast_node *call = NULL;
+
+    if (parts.arguments == NULL || mylite_sql_ast_node_child_count(parts.arguments) == 0U) {
+        mylite_sql_parser_state_parse_failed(state);
+        return NULL;
+    }
+
+    if (parts.right_paren.text != NULL) {
+        span = span_join(span, span_from_token(&parts.right_paren));
+    } else if (parts.separator != NULL) {
+        span = span_join(span, parts.separator->span);
+    } else if (parts.order_by != NULL) {
+        span = span_join(span, parts.order_by->span);
+    } else {
+        span = span_join(span, parts.arguments->span);
+    }
+
+    call = make_node(state, MYLITE_SQL_AST_AGGREGATE_CALL, span);
+    if (call == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_aggregate(call, MYLITE_SQL_AST_AGGREGATE_GROUP_CONCAT, argument_kind);
+    mylite_sql_ast_node_append_child(call, parts.name);
+    mylite_sql_ast_node_append_child(call, parts.arguments);
+    mylite_sql_ast_node_append_child(call, parts.order_by);
+    mylite_sql_ast_node_append_child(call, parts.separator);
     return call;
 }
 
@@ -5396,19 +5468,34 @@ mylite_sql_parser_make_aggregate_star_call(struct mylite_sql_parser_state *state
     return call;
 }
 
-struct mylite_sql_ast_node *mylite_sql_parser_make_count_distinct_call(
+struct mylite_sql_ast_node *mylite_sql_parser_make_distinct_aggregate_call(
     struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
     struct mylite_sql_token left_paren, struct mylite_sql_ast_node *arguments,
     struct mylite_sql_token right_paren)
 {
     struct mylite_sql_source_span span = name == NULL ? span_from_token(&left_paren) : name->span;
+    enum mylite_sql_ast_aggregate_kind aggregate_kind =
+        name == NULL ? MYLITE_SQL_AST_AGGREGATE_NONE : aggregate_kind_from_name(name->span);
     struct mylite_sql_ast_node *call = NULL;
 
-    if (aggregate_kind_from_name(name == NULL ? (struct mylite_sql_source_span){0} : name->span) !=
-            MYLITE_SQL_AST_AGGREGATE_COUNT ||
+    if ((aggregate_kind != MYLITE_SQL_AST_AGGREGATE_COUNT &&
+         aggregate_kind != MYLITE_SQL_AST_AGGREGATE_GROUP_CONCAT) ||
         arguments == NULL || mylite_sql_ast_node_child_count(arguments) == 0U) {
         mylite_sql_parser_state_parse_failed(state);
         return NULL;
+    }
+
+    if (aggregate_kind == MYLITE_SQL_AST_AGGREGATE_GROUP_CONCAT) {
+        return make_group_concat_aggregate_call(
+            state,
+            (struct mylite_sql_parser_group_concat_call_parts){
+                .name = name,
+                .left_paren = left_paren,
+                .distinct = (struct mylite_sql_token){.kind = MYLITE_SQL_TOKEN_KEYWORD},
+                .arguments = arguments,
+                .right_paren = right_paren,
+            },
+            MYLITE_SQL_AST_AGGREGATE_ARGUMENT_DISTINCT_EXPRESSION_LIST);
     }
 
     (void)left_paren;
@@ -6348,6 +6435,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
         {"SAVEPOINT", MYLITE_SQL_PARSE_SAVEPOINT},
         {"SECOND", MYLITE_SQL_PARSE_SECOND},
         {"SECONDARY_ENGINE_ATTRIBUTE", MYLITE_SQL_PARSE_SECONDARY_ENGINE_ATTRIBUTE},
+        {"SEPARATOR", MYLITE_SQL_PARSE_SEPARATOR},
         {"SELECT", MYLITE_SQL_PARSE_SELECT},
         {"SESSION", MYLITE_SQL_PARSE_SESSION},
         {"SET", MYLITE_SQL_PARSE_SET},
@@ -6628,6 +6716,11 @@ static bool function_name_is_timestampdiff(const struct mylite_sql_ast_node *nam
     return function_name_matches(name, "TIMESTAMPDIFF");
 }
 
+static bool function_name_is_group_concat(const struct mylite_sql_ast_node *name)
+{
+    return function_name_matches(name, "GROUP_CONCAT");
+}
+
 static bool extract_interval_unit_from_expression(const struct mylite_sql_ast_node *expression,
                                                   enum mylite_sql_ast_interval_unit *out_unit)
 {
@@ -6811,6 +6904,9 @@ aggregate_kind_from_name(struct mylite_sql_source_span name)
     }
     if (span_text_equals(name, "MAX")) {
         return MYLITE_SQL_AST_AGGREGATE_MAX;
+    }
+    if (span_text_equals(name, "GROUP_CONCAT")) {
+        return MYLITE_SQL_AST_AGGREGATE_GROUP_CONCAT;
     }
     return MYLITE_SQL_AST_AGGREGATE_NONE;
 }

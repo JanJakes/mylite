@@ -54,6 +54,16 @@ struct mylite_sql_parser_char_function_call_parts {
     struct mylite_sql_token right_paren;
 };
 
+struct mylite_sql_parser_group_concat_call_parts {
+    struct mylite_sql_ast_node *name;
+    struct mylite_sql_token left_paren;
+    struct mylite_sql_token distinct;
+    struct mylite_sql_ast_node *arguments;
+    struct mylite_sql_ast_node *order_by;
+    struct mylite_sql_ast_node *separator;
+    struct mylite_sql_token right_paren;
+};
+
 struct mylite_sql_parser_interval_function_call_parts {
     struct mylite_sql_token left_paren;
     struct mylite_sql_ast_node *temporal;
@@ -1127,6 +1137,9 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_function_call(
     struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
     struct mylite_sql_token left_paren, struct mylite_sql_ast_node *arguments,
     struct mylite_sql_token right_paren);
+struct mylite_sql_ast_node *
+mylite_sql_parser_make_group_concat_call(struct mylite_sql_parser_state *state,
+                                         struct mylite_sql_parser_group_concat_call_parts parts);
 struct mylite_sql_ast_node *mylite_sql_parser_make_interval_function_call(
     struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
     struct mylite_sql_parser_interval_function_call_parts parts);
@@ -1153,7 +1166,7 @@ struct mylite_sql_ast_node *
 mylite_sql_parser_make_aggregate_star_call(struct mylite_sql_parser_state *state,
                                            struct mylite_sql_ast_node *name,
                                            struct mylite_sql_parser_aggregate_star_tokens tokens);
-struct mylite_sql_ast_node *mylite_sql_parser_make_count_distinct_call(
+struct mylite_sql_ast_node *mylite_sql_parser_make_distinct_aggregate_call(
     struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
     struct mylite_sql_token left_paren, struct mylite_sql_ast_node *arguments,
     struct mylite_sql_token right_paren);

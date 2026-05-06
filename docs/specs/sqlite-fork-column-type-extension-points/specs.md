@@ -17,8 +17,8 @@ Implemented scope:
 - add `OP_MyliteTypeCheck`, emitted from SQLite's `sqlite3TableAffinity()` when
   a target table has MyLite descriptors
 - support strict assignment coercion for signed integer ranges, supported
-  unsigned integer ranges, `DOUBLE`, `VARCHAR(n)`, `BINARY(n)`, and
-  `VARBINARY(n)`
+  unsigned integer ranges, `DOUBLE`, `VARCHAR(n)`, `BINARY(n)`,
+  `VARBINARY(n)`, and `DECIMAL(p,s)`
 - preserve ordinary SQLite affinity for columns without a MyLite descriptor
 - cover direct SQLite `INSERT` and `UPDATE` statements that write through the
   new descriptor path without SQL wrapper functions
@@ -40,7 +40,7 @@ Deferred scope:
 - exact MySQL diagnostic messages, row interpolation, complete warning records,
   and `IGNORE` demotion
 - non-strict SQL mode clipping and string truncation behavior
-- `DECIMAL`, temporal, JSON, `ENUM`, `SET`, bit, blob-family, and spatial
+- temporal, JSON, `ENUM`, `SET`, bit, blob-family, and spatial
   assignment conversion
 - preserving MyLite descriptors through SQLite-native schema rebuilds that are
   not coordinated by MyLite
@@ -61,6 +61,8 @@ Deferred scope:
   `docs/specs/sqlite-fork-type-coercion/specs.md`
 - SQLite fork binary string type descriptors:
   `docs/specs/sqlite-fork-binary-string-types/specs.md`
+- SQLite fork decimal type descriptors:
+  `docs/specs/sqlite-fork-decimal-type-descriptors/specs.md`
 - Existing SQLite source-tree fork package:
   `docs/specs/sqlite-source-tree-fork/specs.md`
 
@@ -118,6 +120,10 @@ SQLite already uses for table affinity. For each target column:
 - `VARBINARY(n)` descriptors convert non-binary values through SQLite's UTF-8
   text representation, reject values above the declared byte length, and store
   the value as a BLOB without padding.
+- `DECIMAL(p,s)` descriptors parse exact decimal text when available, round
+  half away from zero to the declared scale, reject post-round range overflow,
+  reject negative values for unsigned decimal columns, and store canonical
+  fixed-scale text.
 
 On failure, SQLite aborts the statement with `SQLITE_CONSTRAINT_DATATYPE` and a
 message naming the failed conversion and target column. The fork diagnostics
@@ -145,8 +151,8 @@ The executable tests must cover:
 
 - source-tree SQLite still builds and reports the pinned version
 - MyLite fork primitives still register on a SQLite connection
-- a table can be annotated with signed integer, unsigned integer, `DOUBLE`, and
-  `VARCHAR`, `BINARY`, and `VARBINARY` descriptors
+- a table can be annotated with signed integer, unsigned integer, `DOUBLE`,
+  `VARCHAR`, `BINARY`, `VARBINARY`, and `DECIMAL` descriptors
 - direct SQLite `INSERT` coerces numeric strings, numeric-to-text values, and
   approximate values through native descriptors
 - direct SQLite `UPDATE` uses the same native descriptor path
@@ -155,6 +161,8 @@ The executable tests must cover:
 - out-of-range integer, negative unsigned integer, over-length `VARCHAR`, and
   invalid `DOUBLE`, over-length `BINARY`, and over-length `VARBINARY`
   assignments fail through the native opcode
+- invalid decimal text, post-round decimal overflow, and unsigned-negative
+  decimal assignments fail through the native opcode
 
 The existing MySQL 8.4.9 fixture in
 `docs/specs/sqlite-fork-type-coercion/mysql-basic-type-coercion.sql` remains
@@ -162,6 +170,9 @@ the runtime baseline for the first supported numeric and text type behavior.
 The MySQL 8.4.9 fixture in
 `docs/specs/sqlite-fork-binary-string-types/mysql-binary-string-coercion.sql`
 is the runtime baseline for the first supported binary string behavior.
+The MySQL 8.4.9 fixture in
+`docs/specs/sqlite-fork-decimal-type-descriptors/mysql-decimal-coercion.sql`
+is the runtime baseline for the first supported decimal assignment behavior.
 
 ## Compatibility Status
 

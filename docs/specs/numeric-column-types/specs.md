@@ -13,10 +13,11 @@ with MySQL exact and approximate numeric declarations:
   `NUMERIC_PRECISION`, and `NUMERIC_SCALE`
 - parse-only `CREATE TABLE` column definitions for the covered declarations
 
-Table DDL execution, catalog writes, value storage, arithmetic, rounding,
-warnings, and information-schema row creation remain later roadmap work. Valid
-declarations prepare as `MYLITE_UNSUPPORTED`; malformed declarations fail
-during parsing.
+The original slice was parse-only. A later SQLite-fork descriptor slice now
+executes basic `DECIMAL` table creation and write-time assignment coercion for
+public MyLite DML, including fixed-scale rounding and strict range checks.
+Arithmetic, comparison/index ordering, compact storage, non-strict warnings,
+and complete information-schema behavior remain later roadmap work.
 
 ## Sources
 
@@ -148,10 +149,11 @@ limits covered by this parse-only feature.
 
 ### Runtime boundary
 
-Preparing a parse-only `CREATE TABLE` statement covered by this feature returns
-`MYLITE_UNSUPPORTED`, not `MYLITE_PARSE_ERROR`. No SQLite table is created and
-no MyLite catalog rows are written. Task 11 owns execution, metadata writes,
-implicit commit semantics, warnings, and statement side effects.
+The parse-only behavior described by this original feature has been superseded
+for covered executable `CREATE TABLE` paths. MyLite now writes catalog metadata
+for basic numeric columns and the SQLite fork descriptor slice enforces covered
+`DECIMAL` assignments. Unsupported declaration features still fail or defer
+according to the executable table-DDL validation layer.
 
 ## Lemon grammar snippets
 
@@ -226,8 +228,10 @@ Implementation tests should cover these MySQL 8.4.9 expectations:
 
 ## Compatibility gaps
 
-- Table DDL execution, catalog writes, storage, rounding, overflow, arithmetic,
-  and value conversion are deferred.
+- Full exact arithmetic, decimal comparison/index ordering, compact binary
+  decimal storage, and complete value conversion are deferred. Basic executable
+  DDL/catalog rows and strict write-time decimal assignment are covered by the
+  SQLite fork descriptor slice.
 - Warning records for deprecated floating `(M,D)`, decimal/floating
   `UNSIGNED`, and `ZEROFILL` are deferred until diagnostics/warning storage
   exists.

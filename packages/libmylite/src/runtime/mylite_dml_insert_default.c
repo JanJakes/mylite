@@ -29,6 +29,8 @@ static bool insert_column_uses_numeric_implicit_default(
     const struct mylite_insert_table_column *column
 );
 
+static bool insert_column_uses_decimal_storage(const struct mylite_insert_table_column *column);
+
 static bool insert_column_uses_text_storage(const struct mylite_insert_table_column *column);
 
 static char *insert_current_timestamp_text(void);
@@ -238,6 +240,9 @@ int mylite_dml_resolve_insert_text_value(
         *out_value = (struct mylite_insert_bound_value){.kind = MYLITE_INSERT_BOUND_NULL};
         return MYLITE_OK;
     }
+    if (insert_column_uses_decimal_storage(column)) {
+        return set_insert_bound_text_value(database, text, out_value);
+    }
     if (mylite_dml_parse_insert_integer_text(text, &integer_value)) {
         if (integer_value == 0 &&
             mylite_dml_insert_auto_increment_zero_generates(database, column)) {
@@ -391,6 +396,11 @@ static bool insert_column_uses_numeric_implicit_default(
         }
     }
     return false;
+}
+
+static bool insert_column_uses_decimal_storage(const struct mylite_insert_table_column *column) {
+    return (column != NULL && column->data_type != NULL &&
+            mylite_ascii_case_equal(column->data_type, "decimal")) != 0;
 }
 
 static bool insert_column_uses_text_storage(const struct mylite_insert_table_column *column) {

@@ -448,6 +448,49 @@ static int myliteMemToFiniteReal(Mem *pMem, double *pValue);
 static int myliteCoerceDouble(Mem *pMem, const char **pzErr);
 static int myliteCoerceVarchar(Mem *pMem, u64 nChar, const char **pzErr);
 static int myliteCoerceBinary(Mem *pMem, u64 nByte, int bFixed, const char **pzErr);
+static int myliteCoerceDecimal(
+  Mem *pMem,
+  u8 nPrecision,
+  u8 nScale,
+  int bUnsigned,
+  const char **pzErr,
+  u32 *pMyErrno,
+  const char **pzSqlState
+);
+static int myliteDecimalText(
+  const char *zText,
+  int nText,
+  u8 nPrecision,
+  u8 nScale,
+  int bUnsigned,
+  char **pzOut,
+  int *pnOut,
+  const char **pzErr,
+  u32 *pMyErrno,
+  const char **pzSqlState
+);
+static char *myliteDecimalZeroText(u8 nScale, int *pnOut);
+static int myliteDecimalScaledText(
+  const char *zDigits,
+  int nDigits,
+  i64 iDecimalPos,
+  u8 nPrecision,
+  u8 nScale,
+  int bNegative,
+  char **pzOut,
+  int *pnOut,
+  const char **pzErr,
+  u32 *pMyErrno,
+  const char **pzSqlState
+);
+static int myliteDecimalIncrement(char **pzScaled, int *pnScaled);
+static char *myliteDecimalFormat(
+  char *zScaled,
+  int nScaled,
+  u8 nScale,
+  int bNegative,
+  int *pnOut
+);
 static u64 myliteUtf8CharCount(const unsigned char *zText, int nText);
 
 static int myliteApplyColumnType(
@@ -514,6 +557,12 @@ static int myliteApplyColumnType(
         *pzSqlState = "22001";
       }
       return rc;
+    case MYLITE_COLTYPE_DECIMAL:
+      return myliteCoerceDecimal(
+          pMem, pCol->myliteType.nPrecision, pCol->myliteType.nScale,
+          (pCol->myliteType.mFlags & MYLITE_COLTYPE_FLAG_UNSIGNED)!=0,
+          pzErr, pMyErrno, pzSqlState
+      );
     default:
       *pzErr = "invalid MyLite column type";
       *pMyErrno = 1105;
@@ -649,6 +698,296 @@ static int myliteCoerceBinary(Mem *pMem, u64 nByte, int bFixed, const char **pzE
   pMem->flags |= MEM_Blob;
   pMem->enc = SQLITE_UTF8;
   return SQLITE_OK;
+}
+
+static int myliteCoerceDecimal(
+  Mem *pMem,
+  u8 nPrecision,
+  u8 nScale,
+  int bUnsigned,
+  const char **pzErr,
+  u32 *pMyErrno,
+  const char **pzSqlState
+){
+  char *zOut = 0;
+  int nOut = 0;
+  int rc;
+
+  if( (pMem->flags & (MEM_Str|MEM_Blob))==0 ){
+    if( sqlite3VdbeMemStringify(pMem, SQLITE_UTF8, 1)!=SQLITE_OK ){
+      return SQLITE_NOMEM;
+    }
+  }
+  if( ExpandBlob(pMem)!=SQLITE_OK ){
+    return SQLITE_NOMEM;
+  }
+  rc = myliteDecimalText(
+      pMem->z, pMem->n, nPrecision, nScale, bUnsigned, &zOut, &nOut,
+      pzErr, pMyErrno, pzSqlState
+  );
+  if( rc!=SQLITE_OK ) return rc;
+  rc = sqlite3VdbeMemSetStr(pMem, zOut, nOut, SQLITE_UTF8, sqlite3_free);
+  if( rc!=SQLITE_OK ) return SQLITE_NOMEM;
+  return SQLITE_OK;
+}
+
+static int myliteDecimalText(
+  const char *zText,
+  int nText,
+  u8 nPrecision,
+  u8 nScale,
+  int bUnsigned,
+  char **pzOut,
+  int *pnOut,
+  const char **pzErr,
+  u32 *pMyErrno,
+  const char **pzSqlState
+){
+  char *zDigits;
+  int i = 0;
+  int nDigits = 0;
+  int nIntegerDigits = 0;
+  int bNegative = 0;
+  int bSawDigit = 0;
+  int bSawDot = 0;
+  int bExpNegative = 0;
+  int bNonzero = 0;
+  int iFirstNonzero = 0;
+  i64 iExp = 0;
+  i64 iDecimalPos;
+
+  *pzOut = 0;
+  *pnOut = 0;
+  while( i<nText && sqlite3Isspace(zText[i]) ) i++;
+  if( i<nText && (zText[i]=='+' || zText[i]=='-') ){
+    bNegative = zText[i]=='-';
+    i++;
+  }
+
+  zDigits = sqlite3_malloc64((sqlite3_uint64)nText + 2);
+  if( zDigits==0 ) return SQLITE_NOMEM;
+  while( i<nText ){
+    if( sqlite3Isdigit(zText[i]) ){
+      zDigits[nDigits++] = zText[i++];
+      bSawDigit = 1;
+      continue;
+    }
+    if( zText[i]=='.' && !bSawDot ){
+      nIntegerDigits = nDigits;
+      bSawDot = 1;
+      i++;
+      continue;
+    }
+    break;
+  }
+  if( !bSawDot ) nIntegerDigits = nDigits;
+  if( !bSawDigit ) goto invalid_decimal;
+
+  if( i<nText && (zText[i]=='e' || zText[i]=='E') ){
+    int bSawExpDigit = 0;
+    i++;
+    if( i<nText && (zText[i]=='+' || zText[i]=='-') ){
+      bExpNegative = zText[i]=='-';
+      i++;
+    }
+    while( i<nText && sqlite3Isdigit(zText[i]) ){
+      bSawExpDigit = 1;
+      if( iExp<1000000 ){
+        iExp = iExp*10 + (zText[i] - '0');
+      }
+      i++;
+    }
+    if( !bSawExpDigit ) goto invalid_decimal;
+  }
+  while( i<nText && sqlite3Isspace(zText[i]) ) i++;
+  if( i!=nText ) goto invalid_decimal;
+
+  while( iFirstNonzero<nDigits && zDigits[iFirstNonzero]=='0' ){
+    iFirstNonzero++;
+  }
+  if( iFirstNonzero==nDigits ){
+    sqlite3_free(zDigits);
+    *pzOut = myliteDecimalZeroText(nScale, pnOut);
+    return *pzOut==0 ? SQLITE_NOMEM : SQLITE_OK;
+  }
+  bNonzero = 1;
+  if( iFirstNonzero>0 ){
+    memmove(zDigits, &zDigits[iFirstNonzero], (size_t)(nDigits - iFirstNonzero));
+    nDigits -= iFirstNonzero;
+    nIntegerDigits -= iFirstNonzero;
+  }
+  iDecimalPos = (i64)nIntegerDigits + (bExpNegative ? -iExp : iExp);
+  if( bUnsigned && bNegative && bNonzero ){
+    sqlite3_free(zDigits);
+    *pzErr = "decimal value is out of range";
+    *pMyErrno = 1264;
+    *pzSqlState = "22003";
+    return SQLITE_MISMATCH;
+  }
+
+  i = myliteDecimalScaledText(
+      zDigits, nDigits, iDecimalPos, nPrecision, nScale, bNegative,
+      pzOut, pnOut, pzErr, pMyErrno, pzSqlState
+  );
+  sqlite3_free(zDigits);
+  return i;
+
+invalid_decimal:
+  sqlite3_free(zDigits);
+  *pzErr = "invalid decimal value";
+  *pMyErrno = 1366;
+  *pzSqlState = "HY000";
+  return SQLITE_MISMATCH;
+}
+
+static char *myliteDecimalZeroText(u8 nScale, int *pnOut){
+  char *zOut;
+  int nOut = nScale==0 ? 1 : (int)nScale + 2;
+
+  zOut = sqlite3_malloc64((sqlite3_uint64)nOut + 1);
+  if( zOut==0 ) return 0;
+  zOut[0] = '0';
+  if( nScale>0 ){
+    zOut[1] = '.';
+    memset(&zOut[2], '0', nScale);
+  }
+  zOut[nOut] = 0;
+  *pnOut = nOut;
+  return zOut;
+}
+
+static int myliteDecimalScaledText(
+  const char *zDigits,
+  int nDigits,
+  i64 iDecimalPos,
+  u8 nPrecision,
+  u8 nScale,
+  int bNegative,
+  char **pzOut,
+  int *pnOut,
+  const char **pzErr,
+  u32 *pMyErrno,
+  const char **pzSqlState
+){
+  const int nMaxInteger = (int)nPrecision - (int)nScale;
+  i64 iShift = iDecimalPos + (i64)nScale;
+  int nKeep;
+  int bRoundUp = 0;
+  char *zScaled;
+  int nScaled;
+  int nInteger;
+
+  if( iDecimalPos>(i64)nMaxInteger ){
+    goto decimal_range;
+  }
+  if( iShift<0 ){
+    nKeep = 0;
+  }else if( iShift>nPrecision+1 ){
+    goto decimal_range;
+  }else{
+    nKeep = (int)iShift;
+  }
+  if( iShift>=0 && iShift<nDigits && zDigits[iShift]>='5' ){
+    bRoundUp = 1;
+  }
+
+  nScaled = nKeep>0 ? nKeep : 1;
+  zScaled = sqlite3_malloc64((sqlite3_uint64)nScaled + 2);
+  if( zScaled==0 ) return SQLITE_NOMEM;
+  if( nKeep<=0 ){
+    zScaled[0] = '0';
+  }else if( nKeep<=nDigits ){
+    memcpy(zScaled, zDigits, (size_t)nKeep);
+  }else{
+    memcpy(zScaled, zDigits, (size_t)nDigits);
+    memset(&zScaled[nDigits], '0', (size_t)(nKeep - nDigits));
+  }
+  zScaled[nScaled] = 0;
+
+  if( bRoundUp && myliteDecimalIncrement(&zScaled, &nScaled)!=SQLITE_OK ){
+    sqlite3_free(zScaled);
+    return SQLITE_NOMEM;
+  }
+  if( nScaled==1 && zScaled[0]=='0' ){
+    bNegative = 0;
+    nInteger = 0;
+  }else{
+    nInteger = nScaled>(int)nScale ? nScaled - (int)nScale : 0;
+  }
+  if( nInteger>nMaxInteger ){
+    sqlite3_free(zScaled);
+    goto decimal_range;
+  }
+
+  *pzOut = myliteDecimalFormat(zScaled, nScaled, nScale, bNegative, pnOut);
+  sqlite3_free(zScaled);
+  return *pzOut==0 ? SQLITE_NOMEM : SQLITE_OK;
+
+decimal_range:
+  *pzErr = "decimal value is out of range";
+  *pMyErrno = 1264;
+  *pzSqlState = "22003";
+  return SQLITE_MISMATCH;
+}
+
+static int myliteDecimalIncrement(char **pzScaled, int *pnScaled){
+  char *zScaled = *pzScaled;
+  int i;
+
+  for(i=*pnScaled-1; i>=0; i--){
+    if( zScaled[i]<'9' ){
+      zScaled[i]++;
+      return SQLITE_OK;
+    }
+    zScaled[i] = '0';
+  }
+  zScaled = sqlite3_realloc64(zScaled, (sqlite3_uint64)(*pnScaled) + 2);
+  if( zScaled==0 ) return SQLITE_NOMEM;
+  memmove(&zScaled[1], zScaled, (size_t)(*pnScaled) + 1);
+  zScaled[0] = '1';
+  (*pnScaled)++;
+  *pzScaled = zScaled;
+  return SQLITE_OK;
+}
+
+static char *myliteDecimalFormat(
+  char *zScaled,
+  int nScaled,
+  u8 nScale,
+  int bNegative,
+  int *pnOut
+){
+  int nPadded = nScaled;
+  int nPad;
+  int nInteger;
+  int nOut;
+  int iOut = 0;
+  int i;
+  char *zOut;
+
+  if( nScale>0 && nPadded<=(int)nScale ){
+    nPadded = (int)nScale + 1;
+  }
+  nPad = nPadded - nScaled;
+  nInteger = nScale==0 ? nPadded : nPadded - (int)nScale;
+  nOut = (bNegative ? 1 : 0) + nPadded + (nScale>0 ? 1 : 0);
+  zOut = sqlite3_malloc64((sqlite3_uint64)nOut + 1);
+  if( zOut==0 ) return 0;
+  if( bNegative ){
+    zOut[iOut++] = '-';
+  }
+  for(i=0; i<nInteger; i++){
+    zOut[iOut++] = i<nPad ? '0' : zScaled[i - nPad];
+  }
+  if( nScale>0 ){
+    zOut[iOut++] = '.';
+    for(; i<nPadded; i++){
+      zOut[iOut++] = i<nPad ? '0' : zScaled[i - nPad];
+    }
+  }
+  zOut[iOut] = 0;
+  *pnOut = iOut;
+  return zOut;
 }
 
 static u64 myliteUtf8CharCount(const unsigned char *zText, int nText){

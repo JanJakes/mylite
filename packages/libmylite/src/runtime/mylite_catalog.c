@@ -168,6 +168,12 @@ struct mylite_catalog_table_key {
     const char *table_name;
 };
 
+struct mylite_resolved_table_catalog {
+    const char *catalog_name;
+    bool temporary;
+    bool exists;
+};
+
 static int delete_table_catalog_row(
     mylite_db *database,
     const char *sql,
@@ -177,27 +183,22 @@ static int delete_table_catalog_row(
 static int catalog_table_exists_in(
     mylite_db *database,
     const char *catalog_name,
-    const char *schema_name,
-    const char *table_name,
+    const struct mylite_catalog_table_key *key,
     bool *out_exists
 );
 
 static int load_table_metadata_from_catalog(
     mylite_db *database,
     const char *catalog_name,
-    const char *schema_name,
-    const char *table_name,
+    const struct mylite_catalog_table_key *key,
     struct mylite_catalog_table_metadata *out_metadata,
     bool *out_found
 );
 
 static int resolve_table_catalog_name(
     mylite_db *database,
-    const char *schema_name,
-    const char *table_name,
-    const char **out_catalog_name,
-    bool *out_temporary,
-    bool *out_exists
+    const struct mylite_catalog_table_key *key,
+    struct mylite_resolved_table_catalog *out_catalog
 );
 
 static sqlite3_destructor_type sqlite_transient_destructor(void);
@@ -271,31 +272,26 @@ int mylite_catalog_update_auto_increment(
     uint64_t next_auto_increment
 ) {
     sqlite3_stmt *update = NULL;
-    const char *catalog_name = NULL;
-    bool temporary = false;
-    bool exists = false;
+    const struct mylite_catalog_table_key key = {
+        .schema_name = schema_name,
+        .table_name = table_name,
+    };
+    struct mylite_resolved_table_catalog catalog = {0};
     char *sql = NULL;
     int rc = SQLITE_OK;
-    int status = resolve_table_catalog_name(
-        database,
-        schema_name,
-        table_name,
-        &catalog_name,
-        &temporary,
-        &exists
-    );
+    int status = resolve_table_catalog_name(database, &key, &catalog);
 
     if (status != MYLITE_OK) {
         return status;
     }
-    if (!exists) {
+    if (!catalog.exists) {
         return mylite_diagnostics_set_table_doesnt_exist_error(database, schema_name, table_name);
     }
 
     sql = sqlite3_mprintf(
         "UPDATE %s SET auto_increment = ? "
         "WHERE table_schema = ? AND table_name = ?",
-        catalog_name
+        catalog.catalog_name
     );
     if (sql == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
@@ -426,13 +422,12 @@ int mylite_catalog_persistent_table_exists(
     const char *table_name,
     bool *out_exists
 ) {
-    return catalog_table_exists_in(
-        database,
-        table_catalog_name,
-        schema_name,
-        table_name,
-        out_exists
-    );
+    const struct mylite_catalog_table_key key = {
+        .schema_name = schema_name,
+        .table_name = table_name,
+    };
+
+    return catalog_table_exists_in(database, table_catalog_name, &key, out_exists);
 }
 
 int mylite_catalog_temporary_table_exists(
@@ -441,13 +436,12 @@ int mylite_catalog_temporary_table_exists(
     const char *table_name,
     bool *out_exists
 ) {
-    return catalog_table_exists_in(
-        database,
-        temporary_table_catalog_name,
-        schema_name,
-        table_name,
-        out_exists
-    );
+    const struct mylite_catalog_table_key key = {
+        .schema_name = schema_name,
+        .table_name = table_name,
+    };
+
+    return catalog_table_exists_in(database, temporary_table_catalog_name, &key, out_exists);
 }
 
 int mylite_catalog_load_table_metadata(
@@ -456,6 +450,10 @@ int mylite_catalog_load_table_metadata(
     const char *table_name,
     struct mylite_catalog_table_metadata *out_metadata
 ) {
+    const struct mylite_catalog_table_key key = {
+        .schema_name = schema_name,
+        .table_name = table_name,
+    };
     bool found = false;
     int status = MYLITE_OK;
 
@@ -466,28 +464,22 @@ int mylite_catalog_load_table_metadata(
     status = load_table_metadata_from_catalog(
         database,
         temporary_table_catalog_name,
-        schema_name,
-        table_name,
+        &key,
         out_metadata,
         &found
     );
     if (status != MYLITE_OK || found) {
         return status;
     }
-    status = load_table_metadata_from_catalog(
-        database,
-        table_catalog_name,
-        schema_name,
-        table_name,
-        out_metadata,
-        &found
-    );
+    status =
+        load_table_metadata_from_catalog(database, table_catalog_name, &key, out_metadata, &found);
     if (status != MYLITE_OK) {
         return status;
     }
-    return found
-               ? MYLITE_OK
-               : mylite_diagnostics_set_table_doesnt_exist_error(database, schema_name, table_name);
+    if (found) {
+        return MYLITE_OK;
+    }
+    return mylite_diagnostics_set_table_doesnt_exist_error(database, schema_name, table_name);
 }
 
 int mylite_catalog_load_table_columns(
@@ -498,9 +490,11 @@ int mylite_catalog_load_table_columns(
     void *context
 ) {
     sqlite3_stmt *stmt = NULL;
-    const char *catalog_name = NULL;
-    bool temporary = false;
-    bool exists = false;
+    const struct mylite_catalog_table_key key = {
+        .schema_name = schema_name,
+        .table_name = table_name,
+    };
+    struct mylite_resolved_table_catalog catalog = {0};
     char *sql = NULL;
     int rc = SQLITE_OK;
     int status = MYLITE_OK;
@@ -508,26 +502,19 @@ int mylite_catalog_load_table_columns(
     if (callback == NULL) {
         return MYLITE_MISUSE;
     }
-    status = resolve_table_catalog_name(
-        database,
-        schema_name,
-        table_name,
-        &catalog_name,
-        &temporary,
-        &exists
-    );
+    status = resolve_table_catalog_name(database, &key, &catalog);
     if (status != MYLITE_OK) {
         return status;
     }
-    if (!exists) {
+    if (!catalog.exists) {
         return MYLITE_OK;
     }
     sql = sqlite3_mprintf(
         "SELECT column_name, column_default, is_nullable, data_type, column_type, "
-        "character_maximum_length, extra "
+        "character_maximum_length, numeric_precision, numeric_scale, extra "
         "FROM %s WHERE table_schema = ? AND table_name = ? "
         "ORDER BY ordinal_position",
-        mylite_catalog_column_catalog_name(temporary)
+        mylite_catalog_column_catalog_name(catalog.temporary)
     );
     if (sql == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
@@ -550,7 +537,11 @@ int mylite_catalog_load_table_columns(
             .column_type = (const char *)sqlite3_column_text(stmt, 4),
             .character_maximum_length = (uint64_t)sqlite3_column_int64(stmt, 5),
             .has_character_maximum_length = sqlite3_column_type(stmt, 5) != SQLITE_NULL,
-            .extra = (const char *)sqlite3_column_text(stmt, 6),
+            .numeric_precision = (uint64_t)sqlite3_column_int64(stmt, 6),
+            .has_numeric_precision = sqlite3_column_type(stmt, 6) != SQLITE_NULL,
+            .numeric_scale = (uint64_t)sqlite3_column_int64(stmt, 7),
+            .has_numeric_scale = sqlite3_column_type(stmt, 7) != SQLITE_NULL,
+            .extra = (const char *)sqlite3_column_text(stmt, 8),
         };
         int callback_status = callback(context, &row);
 
@@ -571,9 +562,11 @@ int mylite_catalog_load_unique_index_parts(
     void *context
 ) {
     sqlite3_stmt *stmt = NULL;
-    const char *catalog_name = NULL;
-    bool temporary = false;
-    bool exists = false;
+    const struct mylite_catalog_table_key key = {
+        .schema_name = schema_name,
+        .table_name = table_name,
+    };
+    struct mylite_resolved_table_catalog catalog = {0};
     char *sql = NULL;
     int rc = SQLITE_OK;
     int status = MYLITE_OK;
@@ -581,25 +574,18 @@ int mylite_catalog_load_unique_index_parts(
     if (callback == NULL) {
         return MYLITE_MISUSE;
     }
-    status = resolve_table_catalog_name(
-        database,
-        schema_name,
-        table_name,
-        &catalog_name,
-        &temporary,
-        &exists
-    );
+    status = resolve_table_catalog_name(database, &key, &catalog);
     if (status != MYLITE_OK) {
         return status;
     }
-    if (!exists) {
+    if (!catalog.exists) {
         return MYLITE_OK;
     }
     sql = sqlite3_mprintf(
         "SELECT index_name, column_name, sub_part FROM %s "
         "WHERE table_schema = ? AND table_name = ? AND non_unique = 0 "
         "ORDER BY rowid",
-        mylite_catalog_index_catalog_name(temporary)
+        mylite_catalog_index_catalog_name(catalog.temporary)
     );
     if (sql == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
@@ -632,22 +618,30 @@ int mylite_catalog_load_unique_index_parts(
 }
 
 const char *mylite_catalog_table_catalog_name(bool temporary) {
-    return temporary ? temporary_table_catalog_name : table_catalog_name;
+    if (temporary) {
+        return temporary_table_catalog_name;
+    }
+    return table_catalog_name;
 }
 
 const char *mylite_catalog_column_catalog_name(bool temporary) {
-    return temporary ? temporary_column_catalog_name : column_catalog_name;
+    if (temporary) {
+        return temporary_column_catalog_name;
+    }
+    return column_catalog_name;
 }
 
 const char *mylite_catalog_index_catalog_name(bool temporary) {
-    return temporary ? temporary_index_catalog_name : index_catalog_name;
+    if (temporary) {
+        return temporary_index_catalog_name;
+    }
+    return index_catalog_name;
 }
 
 static int catalog_table_exists_in(
     mylite_db *database,
     const char *catalog_name,
-    const char *schema_name,
-    const char *table_name,
+    const struct mylite_catalog_table_key *key,
     bool *out_exists
 ) {
     sqlite3_stmt *stmt = NULL;
@@ -670,8 +664,8 @@ static int catalog_table_exists_in(
         return mylite_diagnostics_set_sqlite_error(database);
     }
 
-    sqlite3_bind_text(stmt, 1, schema_name, -1, sqlite_transient_destructor());
-    sqlite3_bind_text(stmt, 2, table_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(stmt, 1, key->schema_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(stmt, 2, key->table_name, -1, sqlite_transient_destructor());
     rc = sqlite3_step(stmt);
     if (rc == SQLITE_ROW) {
         *out_exists = true;
@@ -686,8 +680,7 @@ static int catalog_table_exists_in(
 static int load_table_metadata_from_catalog(
     mylite_db *database,
     const char *catalog_name,
-    const char *schema_name,
-    const char *table_name,
+    const struct mylite_catalog_table_key *key,
     struct mylite_catalog_table_metadata *out_metadata,
     bool *out_found
 ) {
@@ -711,8 +704,8 @@ static int load_table_metadata_from_catalog(
         return mylite_diagnostics_set_sqlite_error(database);
     }
 
-    sqlite3_bind_text(stmt, 1, schema_name, -1, sqlite_transient_destructor());
-    sqlite3_bind_text(stmt, 2, table_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(stmt, 1, key->schema_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(stmt, 2, key->table_name, -1, sqlite_transient_destructor());
     rc = sqlite3_step(stmt);
     if (rc == SQLITE_ROW) {
         *out_found = true;
@@ -733,29 +726,36 @@ static int load_table_metadata_from_catalog(
 
 static int resolve_table_catalog_name(
     mylite_db *database,
-    const char *schema_name,
-    const char *table_name,
-    const char **out_catalog_name,
-    bool *out_temporary,
-    bool *out_exists
+    const struct mylite_catalog_table_key *key,
+    struct mylite_resolved_table_catalog *out_catalog
 ) {
-    int status =
-        mylite_catalog_temporary_table_exists(database, schema_name, table_name, out_exists);
+    int status = MYLITE_OK;
 
-    *out_catalog_name = NULL;
-    *out_temporary = false;
+    *out_catalog = (struct mylite_resolved_table_catalog){0};
+    status = mylite_catalog_temporary_table_exists(
+        database,
+        key->schema_name,
+        key->table_name,
+        &out_catalog->exists
+    );
+
     if (status != MYLITE_OK) {
         return status;
     }
-    if (*out_exists) {
-        *out_catalog_name = temporary_table_catalog_name;
-        *out_temporary = true;
+    if (out_catalog->exists) {
+        out_catalog->catalog_name = temporary_table_catalog_name;
+        out_catalog->temporary = true;
         return MYLITE_OK;
     }
 
-    status = mylite_catalog_persistent_table_exists(database, schema_name, table_name, out_exists);
-    if (status == MYLITE_OK && *out_exists) {
-        *out_catalog_name = table_catalog_name;
+    status = mylite_catalog_persistent_table_exists(
+        database,
+        key->schema_name,
+        key->table_name,
+        &out_catalog->exists
+    );
+    if (status == MYLITE_OK && out_catalog->exists) {
+        out_catalog->catalog_name = table_catalog_name;
     }
     return status;
 }

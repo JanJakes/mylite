@@ -42,7 +42,7 @@ int mylite_sqlite_fork_clear_column_type(
   const char *zColumn
 ){
   const MyliteColumnType sqliteType = {
-    MYLITE_COLTYPE_NONE, 0, 0, 0, 0, 0, 0
+    MYLITE_COLTYPE_NONE, 0, 0, 0, 0, 0, 0, 0, 0
   };
 
   if( db==0 ) return SQLITE_MISUSE;
@@ -177,6 +177,22 @@ static int myliteMakeColumnType(
     case MYLITE_SQLITE_FORK_COLUMN_TYPE_VARBINARY:
       pOut->eType = MYLITE_COLTYPE_VARBINARY;
       pOut->nByte = pType->byte_maximum_length;
+      return SQLITE_OK;
+    case MYLITE_SQLITE_FORK_COLUMN_TYPE_DECIMAL:
+      if( pType->numeric_precision==0 || pType->numeric_precision>65 ||
+          pType->numeric_scale>30 ||
+          pType->numeric_scale>pType->numeric_precision ){
+        return SQLITE_MISUSE;
+      }
+      if( pType->flags & ~MYLITE_SQLITE_FORK_COLUMN_TYPE_UNSIGNED ){
+        return SQLITE_MISUSE;
+      }
+      pOut->eType = MYLITE_COLTYPE_DECIMAL;
+      pOut->nPrecision = (u8)pType->numeric_precision;
+      pOut->nScale = (u8)pType->numeric_scale;
+      if( pType->flags & MYLITE_SQLITE_FORK_COLUMN_TYPE_UNSIGNED ){
+        pOut->mFlags |= MYLITE_COLTYPE_FLAG_UNSIGNED;
+      }
       return SQLITE_OK;
   }
 

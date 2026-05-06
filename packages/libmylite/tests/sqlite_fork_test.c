@@ -41,6 +41,8 @@ static int test_native_type_coercion(void);
 
 static int test_native_binary_type_coercion(void);
 
+static int test_native_decimal_type_coercion(void);
+
 static int test_wordpress_like_crud(void);
 
 static int test_mylite_wordpress_like_crud(void);
@@ -48,6 +50,8 @@ static int test_mylite_wordpress_like_crud(void);
 static int test_mylite_basic_type_coercion(void);
 
 static int test_mylite_binary_type_coercion(void);
+
+static int test_mylite_decimal_type_coercion(void);
 
 static int open_configured_database(sqlite3 **out_database);
 
@@ -105,10 +109,12 @@ int main(void) {
     failures += test_mysql_collations();
     failures += test_native_type_coercion();
     failures += test_native_binary_type_coercion();
+    failures += test_native_decimal_type_coercion();
     failures += test_wordpress_like_crud();
     failures += test_mylite_wordpress_like_crud();
     failures += test_mylite_basic_type_coercion();
     failures += test_mylite_binary_type_coercion();
+    failures += test_mylite_decimal_type_coercion();
 
     return failures == 0 ? 0 : 1;
 }
@@ -473,6 +479,172 @@ static int test_native_binary_type_coercion(void) {
             .mysql_errno = binary_string_too_long_error,
             .sqlstate = "22001",
             .context = "over-length varbinary exposes MySQL condition",
+        }
+    );
+
+    sqlite3_close(database);
+    return failures;
+}
+
+static int test_native_decimal_type_coercion(void) {
+    enum {
+        decimal_precision = 5,
+        decimal_scale = 2,
+        whole_precision = 4,
+        whole_scale = 0,
+        decimal_out_of_range_error = 1264,
+        invalid_decimal_error = 1366,
+    };
+
+    sqlite3 *database = NULL;
+    int failures = 0;
+
+    failures += open_configured_database(&database);
+    if (failures != 0) {
+        return failures;
+    }
+
+    failures += exec_sql(
+        database,
+        "CREATE TABLE decimal_direct("
+        "id INTEGER PRIMARY KEY, amount TEXT, whole TEXT, unsigned_amount TEXT)",
+        "create direct decimal descriptor fixture"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_column_type(
+            database,
+            NULL,
+            "decimal_direct",
+            "amount",
+            &(const struct mylite_sqlite_fork_column_type){
+                .kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_DECIMAL,
+                .numeric_precision = decimal_precision,
+                .numeric_scale = decimal_scale,
+            }
+        ),
+        database,
+        "set direct decimal descriptor"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_column_type(
+            database,
+            NULL,
+            "decimal_direct",
+            "whole",
+            &(const struct mylite_sqlite_fork_column_type){
+                .kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_DECIMAL,
+                .numeric_precision = whole_precision,
+                .numeric_scale = whole_scale,
+            }
+        ),
+        database,
+        "set direct whole decimal descriptor"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_column_type(
+            database,
+            NULL,
+            "decimal_direct",
+            "unsigned_amount",
+            &(const struct mylite_sqlite_fork_column_type){
+                .kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_DECIMAL,
+                .numeric_precision = decimal_precision,
+                .numeric_scale = decimal_scale,
+                .flags = MYLITE_SQLITE_FORK_COLUMN_TYPE_UNSIGNED,
+            }
+        ),
+        database,
+        "set direct unsigned decimal descriptor"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO decimal_direct VALUES "
+        "(1, '1.234', '12.5', '0'),"
+        "(2, '-1.235', '-12.5', '9.995'),"
+        "(3, '001.2', '9.5', '99.999')",
+        "insert direct decimal descriptor values"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT group_concat(id || ':' || amount || ':' || whole || ':' || "
+                   "unsigned_amount, '|') FROM ("
+                   "SELECT id, amount, whole, unsigned_amount FROM decimal_direct ORDER BY id)",
+            .expected = "1:1.23:13:0.00|2:-1.24:-13:10.00|3:1.20:10:100.00",
+            .context = "direct decimal descriptors round and normalize stored text",
+        }
+    );
+    failures += exec_sql(
+        database,
+        "UPDATE decimal_direct SET amount = 999.994, whole = -0.5, "
+        "unsigned_amount = 0.004 WHERE id = 1",
+        "update direct decimal descriptor values"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT amount || ':' || whole || ':' || unsigned_amount "
+                   "FROM decimal_direct WHERE id = 1",
+            .expected = "999.99:-1:0.00",
+            .context = "direct decimal update coerces assigned values",
+        }
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO decimal_direct VALUES (4, '999.995', '1', '1')",
+            .message_fragment = "decimal value is out of range",
+            .context = "direct decimal descriptor rejects post-round overflow",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = decimal_out_of_range_error,
+            .sqlstate = "22003",
+            .context = "post-round decimal overflow exposes MySQL condition",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear decimal overflow fork condition"
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO decimal_direct VALUES (4, '12abc', '1', '1')",
+            .message_fragment = "invalid decimal value",
+            .context = "direct decimal descriptor rejects invalid text",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = invalid_decimal_error,
+            .sqlstate = "HY000",
+            .context = "invalid decimal exposes MySQL condition",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear invalid decimal fork condition"
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO decimal_direct VALUES (4, '1', '1', '-0.01')",
+            .message_fragment = "decimal value is out of range",
+            .context = "direct decimal descriptor rejects unsigned negative value",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = decimal_out_of_range_error,
+            .sqlstate = "22003",
+            .context = "unsigned negative decimal exposes MySQL condition",
         }
     );
 
@@ -1214,6 +1386,208 @@ static int test_mylite_binary_type_coercion(void) {
         database,
         binary_string_too_long_error,
         "MyLite over-length varbinary condition"
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_mylite_decimal_type_coercion(void) {
+    enum {
+        decimal_column_count = 4,
+        decimal_out_of_range_error = 1264,
+        invalid_decimal_error = 1366,
+    };
+
+    static const char *const after_insert[] = {
+        "1",
+        "1.23",
+        "13",
+        "0.00",
+        "2",
+        "-1.24",
+        "-13",
+        "10.00",
+        "3",
+        "1.20",
+        "10",
+        "100.00",
+    };
+    static const char *const after_update[] = {
+        "1",
+        "999.99",
+        "-1",
+        "0.00",
+        "2",
+        "-1.24",
+        "-13",
+        "10.00",
+        "3",
+        "1.20",
+        "10",
+        "100.00",
+    };
+    static const char *const after_duplicate_update[] = {
+        "1",
+        "999.99",
+        "-1",
+        "0.00",
+        "2",
+        "2.23",
+        "2",
+        "1.56",
+        "3",
+        "1.20",
+        "10",
+        "100.00",
+    };
+    static const char *const after_replace[] = {
+        "1",
+        "999.99",
+        "-1",
+        "0.00",
+        "2",
+        "2.23",
+        "2",
+        "1.56",
+        "3",
+        "1.20",
+        "10",
+        "100.00",
+        "4",
+        "3.34",
+        "-3",
+        "2.23",
+    };
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_mylite_ok(mylite_open_memory(&database), database, "open MyLite decimal coercion");
+    if (failures != 0) {
+        return failures;
+    }
+
+    failures += exec_mylite_sql(
+        database,
+        "CREATE DATABASE mylite_decimal_coercion CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+        "create MyLite decimal coercion schema"
+    );
+    failures +=
+        exec_mylite_sql(database, "USE mylite_decimal_coercion", "use decimal coercion schema");
+    failures += exec_mylite_sql(
+        database,
+        "CREATE TABLE decimal_basic ("
+        "id INT PRIMARY KEY,"
+        "amount DECIMAL(5,2) NOT NULL,"
+        "whole DECIMAL(4,0) NOT NULL,"
+        "unsigned_amount DECIMAL(5,2) UNSIGNED NOT NULL"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "create MyLite decimal coercion table"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT INTO decimal_basic VALUES "
+        "(1, 1.234, 12.5, 0),"
+        "(2, -1.235, -12.5, 9.995),"
+        "(3, '001.2', '9.5', '99.999')",
+        "insert MyLite decimal coercion rows"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT id, amount, whole, unsigned_amount "
+                   "FROM decimal_basic ORDER BY id",
+            .values = after_insert,
+            .column_count = decimal_column_count,
+            .row_count = 3,
+            .context = "MyLite decimal insert coercion matches MySQL fixture",
+        }
+    );
+    failures += exec_mylite_sql(
+        database,
+        "UPDATE decimal_basic SET amount = 999.994, whole = -0.5, "
+        "unsigned_amount = 0.004 WHERE id = 1",
+        "update MyLite decimal coercion row"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT id, amount, whole, unsigned_amount "
+                   "FROM decimal_basic ORDER BY id",
+            .values = after_update,
+            .column_count = decimal_column_count,
+            .row_count = 3,
+            .context = "MyLite decimal update coercion matches MySQL fixture",
+        }
+    );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT INTO decimal_basic VALUES (2, 2.225, 1.5, 1.555) "
+        "ON DUPLICATE KEY UPDATE amount = VALUES(amount), whole = VALUES(whole), "
+        "unsigned_amount = VALUES(unsigned_amount)",
+        "insert duplicate update MyLite decimal coercion row"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT id, amount, whole, unsigned_amount "
+                   "FROM decimal_basic ORDER BY id",
+            .values = after_duplicate_update,
+            .column_count = decimal_column_count,
+            .row_count = 3,
+            .context = "MyLite decimal duplicate update coercion matches MySQL fixture",
+        }
+    );
+    failures += exec_mylite_sql(
+        database,
+        "REPLACE INTO decimal_basic VALUES (4, 3.335, -2.5, 2.225)",
+        "replace MyLite decimal coercion row"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT id, amount, whole, unsigned_amount "
+                   "FROM decimal_basic ORDER BY id",
+            .values = after_replace,
+            .column_count = decimal_column_count,
+            .row_count = 4,
+            .context = "MyLite decimal replace coercion matches MySQL fixture",
+        }
+    );
+
+    failures += expect_mylite_sql_status(
+        database,
+        "INSERT INTO decimal_basic VALUES (5, 999.995, 1, 1)",
+        MYLITE_SQLITE_ERROR,
+        "MyLite decimal coercion rejects post-round overflow"
+    );
+    failures += expect_mylite_error_condition(
+        database,
+        decimal_out_of_range_error,
+        "MyLite decimal post-round overflow condition"
+    );
+    failures += expect_mylite_sql_status(
+        database,
+        "INSERT INTO decimal_basic VALUES (5, '12abc', 1, 1)",
+        MYLITE_SQLITE_ERROR,
+        "MyLite decimal coercion rejects invalid text"
+    );
+    failures += expect_mylite_error_condition(
+        database,
+        invalid_decimal_error,
+        "MyLite invalid decimal condition"
+    );
+    failures += expect_mylite_sql_status(
+        database,
+        "INSERT INTO decimal_basic VALUES (5, 1, 1, -0.01)",
+        MYLITE_SQLITE_ERROR,
+        "MyLite decimal coercion rejects unsigned negative value"
+    );
+    failures += expect_mylite_error_condition(
+        database,
+        decimal_out_of_range_error,
+        "MyLite unsigned negative decimal condition"
     );
 
     mylite_close(database);

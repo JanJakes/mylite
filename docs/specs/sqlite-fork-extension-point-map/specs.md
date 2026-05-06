@@ -14,6 +14,7 @@ Implemented fork points:
 - MyLite column descriptors stored on SQLite `Column` objects
 - VDBE write-time type checking through `OP_MyliteTypeCheck`
 - binary string byte-length and fixed-length padding through column descriptors
+- decimal precision/scale rounding and range checks through column descriptors
 - update-mask-aware descriptor checking for SQLite `UPDATE` record creation
 - structured fork diagnostics for MyLite-owned VDBE type-check failures
 - public MyLite DML write-table loading that applies catalog descriptors before
@@ -43,6 +44,8 @@ Implemented fork points:
   `docs/specs/sqlite-fork-diagnostics-bridge/specs.md`
 - SQLite fork binary string type descriptors:
   `docs/specs/sqlite-fork-binary-string-types/specs.md`
+- SQLite fork decimal type descriptors:
+  `docs/specs/sqlite-fork-decimal-type-descriptors/specs.md`
 
 This specification is independently authored from SQLite public documentation,
 official MySQL 8.4 documentation already cited in the feature specs, observed
@@ -111,10 +114,13 @@ Implemented first slice:
 
 Next likely descriptor families:
 
-- `DECIMAL(p,s)` with exact rounding and range checks
 - temporal values with SQL-mode and fractional precision handling
 - blob-family capacity checks
 - `ENUM`, `SET`, `JSON`, and bit values
+
+The next decimal-specific fork points are comparison/index ordering and direct
+SQLite parser numeric-literal preservation. The write-time descriptor now owns
+basic fixed-point assignment.
 
 ### Diagnostics and warnings
 

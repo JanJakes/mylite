@@ -12,7 +12,7 @@ Implemented scope:
   supported unsigned integer, `DOUBLE`, and `VARCHAR`
 - native SQLite column descriptor hooks that emit VDBE write-time coercion for
   signed integer, supported unsigned integer, `DOUBLE`, `VARCHAR`, `BINARY`,
-  and `VARBINARY`
+  `VARBINARY`, and `DECIMAL`
 - MyLite public write-table loading attaches catalog-derived descriptors before
   preparing physical SQLite writes
 - MyLite `INSERT`, `UPDATE`, `REPLACE`, and duplicate-key update lowering uses
@@ -31,8 +31,10 @@ Deferred scope:
 - exact MySQL error messages, row interpolation, complete warning records, and
   `IGNORE` demotion for every conversion failure
 - full unsigned `BIGINT` above `INT64_MAX`
-- `DECIMAL`, temporal, JSON, `ENUM`, `SET`, bit, blob-family, and spatial
+- temporal, JSON, `ENUM`, `SET`, bit, blob-family, and spatial
   assignment conversion
+- decimal-aware comparison/index ordering, compact decimal storage, and direct
+  SQLite parser numeric-literal preservation
 - direct SQLite parser/catalog reload into descriptors for SQL executed without
   MyLite's current statement layer
 - non-strict SQL mode clipping/truncation behavior
@@ -56,6 +58,8 @@ Deferred scope:
   `docs/architecture/native-sqlite-execution-plan.md`
 - SQLite fork binary string type descriptors:
   `docs/specs/sqlite-fork-binary-string-types/specs.md`
+- SQLite fork decimal type descriptors:
+  `docs/specs/sqlite-fork-decimal-type-descriptors/specs.md`
 
 This specification is independently authored from official documentation,
 observed MySQL 8.4.9 runtime behavior, and the current MyLite codebase. It does
@@ -100,6 +104,12 @@ This slice records the strict failure as a SQLite execution error from the
 native hook. The first fork diagnostics bridge now publishes MySQL condition
 codes and SQLSTATE values for these failures; exact MySQL message text and
 warning demotion remain later diagnostics work.
+
+The fixture in
+`docs/specs/sqlite-fork-decimal-type-descriptors/mysql-decimal-coercion.sql`
+establishes the first supported exact fixed-point assignment behavior:
+half-away rounding to scale, post-round overflow errors, unsigned-negative
+errors, and canonical fixed-scale display text.
 
 ## Runtime Design
 
@@ -164,6 +174,16 @@ representation and validates the UTF-8 character count against the column's
 declared character length. This preserves numeric-to-text insertion for the
 supported UTF-8 path and rejects over-length text in the strict path.
 
+### `DECIMAL` assignment
+
+The `DECIMAL` descriptor carries precision, scale, and unsigned state. The VDBE
+hook parses exact decimal text when it is available, rounds the magnitude half
+away from zero to the declared scale, rejects post-round integer precision
+overflow, rejects negative unsigned assignments, and stores canonical
+fixed-scale text. Direct SQLite numeric literals may already be approximate by
+the time the hook runs; full direct-parser fidelity requires a later
+numeric-literal preservation hook in the SQLite parser/code generator.
+
 ## Lemon Grammar Direction
 
 No new MyLite grammar is introduced in this slice. The long-term fork grammar
@@ -185,6 +205,9 @@ The executable tests must cover:
   over-length `VARCHAR`, and invalid `DOUBLE`
 - native SQLite failure behavior for over-length `BINARY` and `VARBINARY`
   through the binary string descriptor slice
+- native SQLite failure behavior for invalid decimal text, post-round decimal
+  overflow, and unsigned-negative decimal assignment through the decimal
+  descriptor slice
 - direct SQLite `INSERT` and `UPDATE` behavior through MyLite column descriptors
   without SQL wrapper functions
 - direct SQLite `UPDATE` behavior that coerces assigned descriptor columns
@@ -196,5 +219,6 @@ The executable tests must cover:
 This feature is `🟡` because it establishes the first native assignment
 coercion primitive and now uses direct VDBE write-time coercion through MyLite
 column descriptors for the common public write paths. Full MySQL assignment
-conversion, blob-family coverage, direct SQLite parser/catalog descriptor
-reload, and exact diagnostics remain deferred.
+conversion, decimal-aware comparison/index ordering, blob-family coverage,
+direct SQLite parser/catalog descriptor reload, and exact diagnostics remain
+deferred.

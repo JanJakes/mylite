@@ -89,6 +89,8 @@ static bool write_table_column_uses_binary_type(const struct mylite_insert_table
 
 static bool write_table_column_uses_varbinary_type(const struct mylite_insert_table_column *column);
 
+static bool write_table_column_uses_decimal_type(const struct mylite_insert_table_column *column);
+
 static int set_write_table_descriptor_error(
     mylite_db *database,
     const struct mylite_insert_table *table,
@@ -231,6 +233,10 @@ static int load_insert_column_from_catalog_row(
 
     column.has_character_maximum_length = row->has_character_maximum_length;
     column.character_maximum_length = row->character_maximum_length;
+    column.has_numeric_precision = row->has_numeric_precision;
+    column.numeric_precision = row->numeric_precision;
+    column.has_numeric_scale = row->has_numeric_scale;
+    column.numeric_scale = row->numeric_scale;
     column.auto_increment = mylite_text_contains_word(column.extra, "auto_increment");
     column.generated_default = mylite_text_contains_word(column.extra, "DEFAULT_GENERATED");
     if (column.auto_increment) {
@@ -463,6 +469,15 @@ static bool write_table_column_fork_type(
         out_type->byte_maximum_length = column->character_maximum_length;
         return true;
     }
+    if (write_table_column_uses_decimal_type(column)) {
+        out_type->kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_DECIMAL;
+        out_type->numeric_precision = column->numeric_precision;
+        out_type->numeric_scale = column->numeric_scale;
+        if (mylite_text_contains_word(column->column_type, "unsigned")) {
+            out_type->flags |= MYLITE_SQLITE_FORK_COLUMN_TYPE_UNSIGNED;
+        }
+        return true;
+    }
     return false;
 }
 
@@ -562,6 +577,13 @@ static bool write_table_column_uses_varbinary_type(
         return false;
     }
     return mylite_ascii_case_equal(column->data_type, "varbinary");
+}
+
+static bool write_table_column_uses_decimal_type(const struct mylite_insert_table_column *column) {
+    if (column == NULL || !column->has_numeric_precision || !column->has_numeric_scale) {
+        return false;
+    }
+    return mylite_ascii_case_equal(column->data_type, "decimal");
 }
 
 static int set_write_table_descriptor_error(

@@ -54,6 +54,8 @@ Deferred scope:
   `docs/specs/sqlite-fork-diagnostics-bridge/specs.md`
 - SQLite fork binary string type descriptors:
   `docs/specs/sqlite-fork-binary-string-types/specs.md`
+- SQLite fork decimal type descriptors:
+  `docs/specs/sqlite-fork-decimal-type-descriptors/specs.md`
 
 This specification is independently authored from official SQLite source-tree
 layout, observed MyLite build behavior, and the current MyLite codebase.
@@ -98,7 +100,7 @@ The fork's `UPDATE` record-building path uses SQLite's changed-column mask for
 MyLite descriptor checks, so assignment coercion applies to assigned columns
 without revalidating unrelated stored values.
 The current descriptor families cover strict integer, `DOUBLE`, `VARCHAR`,
-`BINARY`, and `VARBINARY` assignment behavior.
+`BINARY`, `VARBINARY`, and `DECIMAL` assignment behavior.
 Fork-owned VDBE failures can also publish a structured MySQL condition through
 the diagnostics bridge before SQLite reports the statement error.
 

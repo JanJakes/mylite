@@ -125,8 +125,9 @@ unique or primary key when the parent table exists, allows missing referenced
 tables only while `foreign_key_checks=0`, and writes catalog-backed
 `TABLE_CONSTRAINTS`, `KEY_COLUMN_USAGE`, `REFERENTIAL_CONSTRAINTS`, and
 `SHOW CREATE TABLE` output. Insert enforcement covers `INSERT ... VALUES`,
-`INSERT ... SET`, insert and update branches of `ON DUPLICATE KEY UPDATE`,
-`INSERT IGNORE`, and `REPLACE`. It skips checks when `foreign_key_checks=0`,
+`INSERT ... SET`, `INSERT ... SELECT FROM DUAL`, insert and update branches of
+`ON DUPLICATE KEY UPDATE`, `INSERT IGNORE`, and `REPLACE`. It skips checks when
+`foreign_key_checks=0`,
 does not retroactively validate old rows when checks are re-enabled, accepts
 rows where any child foreign-key column is `NULL`, treats simple self-references
 to the candidate row as satisfied, and demotes unmatched child rows to warning

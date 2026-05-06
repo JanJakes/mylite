@@ -43,8 +43,7 @@ commit.
 
 - [x] Enforce child-row insert checks for `INSERT ... VALUES`, `INSERT ... SET`,
       `ON DUPLICATE KEY UPDATE`, `INSERT IGNORE`, and `REPLACE`.
-- [ ] Enforce child-row insert checks for `INSERT ... SELECT FROM DUAL` after
-      query-source insert support lands.
+- [x] Enforce child-row insert checks for `INSERT ... SELECT FROM DUAL`.
 - [x] Enforce child-row update checks for single-table and joined `UPDATE`.
 - [x] Enforce parent-row `ON UPDATE RESTRICT` and `NO ACTION`.
 - [x] Enforce parent-row `ON DELETE RESTRICT` and `NO ACTION`.

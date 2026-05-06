@@ -48168,6 +48168,8 @@ static int test_foreign_key_insert_execution(void) {
         "2",
         "7",
         "2",
+        "8",
+        "2",
     };
     static const char *const pair_columns[] = {"id", "a", "b"};
     static const char *const pair_values[] = {
@@ -48293,13 +48295,54 @@ static int test_foreign_key_insert_execution(void) {
     failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "foreign key ODKU rejects");
     mylite_finalize(stmt);
     stmt = NULL;
+    failures += execute_sql(database, "INSERT INTO child_fk SELECT 8, 1 FROM DUAL", MYLITE_DONE);
+    failures +=
+        prepare_sql(database, "INSERT INTO child_fk SELECT 9, 99 FROM DUAL", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "foreign key insert select rejects");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT IGNORE INTO child_fk SELECT 9, 99 FROM DUAL",
+        0,
+        "foreign key insert ignore select affected rows"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "foreign key insert ignore select warning");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_no_referenced_row,
+        "foreign key insert ignore select warning code"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO child_fk SELECT 8, 2 FROM DUAL "
+        "ON DUPLICATE KEY UPDATE parent_id = VALUES(parent_id)",
+        2,
+        "foreign key insert select ODKU accepts matching parent"
+    );
+    failures += prepare_sql(
+        database,
+        "INSERT INTO child_fk SELECT 8, 99 FROM DUAL "
+        "ON DUPLICATE KEY UPDATE parent_id = VALUES(parent_id)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "foreign key insert select ODKU rejects"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += expect_select_rows(
         database,
         "SELECT id, parent_id FROM child_fk ORDER BY id",
         child_columns,
         2,
         child_final_values,
-        6,
+        7,
         "foreign key write forms leave expected rows"
     );
 

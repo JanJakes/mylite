@@ -150,6 +150,7 @@ enum {
     mysql_warning_row_is_referenced = 1451,
     mysql_warning_no_referenced_row = 1452,
     mysql_warning_drop_index_foreign_key = 1553,
+    mysql_warning_truncate_foreign_key = 1701,
     mysql_warning_wrong_paramcount_to_native_fct = 1582,
     mysql_warning_wrong_parameters_to_native_fct = 1583,
     mysql_warning_unknown_locale = 1649,
@@ -530,6 +531,8 @@ static int test_foreign_key_index_dependency_execution(void);
 static int test_foreign_key_drop_table_dependency_execution(void);
 
 static int test_foreign_key_rename_table_execution(void);
+
+static int test_foreign_key_truncate_table_dependency_execution(void);
 
 static int test_select_table_core_execution(void);
 
@@ -994,6 +997,7 @@ int main(void) {
     failures += test_foreign_key_index_dependency_execution();
     failures += test_foreign_key_drop_table_dependency_execution();
     failures += test_foreign_key_rename_table_execution();
+    failures += test_foreign_key_truncate_table_dependency_execution();
     failures += test_select_table_core_execution();
     failures += test_inner_join_execution();
     failures += test_outer_join_execution();
@@ -49985,6 +49989,198 @@ static int test_foreign_key_rename_table_execution(void) {
         "INSERT INTO fk_rename_runtime_b.child_cross VALUES (1,1)",
         MYLITE_DONE
     );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_foreign_key_truncate_table_dependency_execution(void) {
+    static const char *const count_columns[] = {"c"};
+    static const char *const zero_count_values[] = {"0"};
+    static const char *const one_count_values[] = {"1"};
+    static const char *const two_count_values[] = {"2"};
+    static const char *const fk_columns[] = {"CONSTRAINT_NAME", "REFERENCED_TABLE_NAME"};
+    static const char *const checks_off_fk_values[] = {"fk_truncate_off", "parent_off"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(
+        mylite_open_memory(&database),
+        MYLITE_OK,
+        "open foreign key truncate database"
+    );
+    failures += execute_sql(database, "CREATE DATABASE fk_truncate_runtime", MYLITE_DONE);
+    failures += execute_sql(database, "USE fk_truncate_runtime", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE parent_ref (id INT PRIMARY KEY AUTO_INCREMENT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE child_ref ("
+        "id INT PRIMARY KEY AUTO_INCREMENT, "
+        "parent_id INT, "
+        "CONSTRAINT fk_truncate_ref FOREIGN KEY (parent_id) REFERENCES parent_ref(id)"
+        ")",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "INSERT INTO parent_ref VALUES (1),(2)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO child_ref(parent_id) VALUES (1)", MYLITE_DONE);
+
+    failures += prepare_sql(database, "TRUNCATE TABLE parent_ref", MYLITE_OK, &stmt);
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "foreign key blocks truncate parent table"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Cannot truncate a table referenced in a foreign key constraint "
+        "(`fk_truncate_runtime`.`child_ref`, CONSTRAINT `fk_truncate_ref`)",
+        "foreign key truncate parent table error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncate_foreign_key,
+        "foreign key truncate parent table code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM parent_ref",
+        count_columns,
+        1,
+        two_count_values,
+        1,
+        "foreign key blocked truncate preserves parent rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM child_ref",
+        count_columns,
+        1,
+        one_count_values,
+        1,
+        "foreign key blocked truncate preserves child rows"
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "TRUNCATE TABLE child_ref",
+        0,
+        "foreign key child truncate affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM child_ref",
+        count_columns,
+        1,
+        zero_count_values,
+        1,
+        "foreign key child truncate removes child rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM parent_ref",
+        count_columns,
+        1,
+        two_count_values,
+        1,
+        "foreign key child truncate preserves parent rows"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE self_ref ("
+        "id INT PRIMARY KEY, "
+        "parent_id INT, "
+        "CONSTRAINT fk_truncate_self FOREIGN KEY (parent_id) REFERENCES self_ref(id)"
+        ")",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "INSERT INTO self_ref VALUES (1,NULL),(2,1)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "TRUNCATE TABLE self_ref",
+        0,
+        "foreign key self truncate affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM self_ref",
+        count_columns,
+        1,
+        zero_count_values,
+        1,
+        "foreign key self truncate removes rows"
+    );
+
+    failures += execute_sql(database, "CREATE TABLE parent_off (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE child_off ("
+        "id INT PRIMARY KEY, "
+        "parent_id INT, "
+        "CONSTRAINT fk_truncate_off FOREIGN KEY (parent_id) REFERENCES parent_off(id)"
+        ")",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "INSERT INTO parent_off VALUES (1)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO child_off VALUES (1,1)", MYLITE_DONE);
+    failures += execute_sql(database, "SET foreign_key_checks=0", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "TRUNCATE TABLE parent_off",
+        0,
+        "foreign key checks off parent truncate affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM parent_off",
+        count_columns,
+        1,
+        zero_count_values,
+        1,
+        "foreign key checks off parent truncate removes parent rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM child_off",
+        count_columns,
+        1,
+        one_count_values,
+        1,
+        "foreign key checks off parent truncate leaves child rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT CONSTRAINT_NAME, REFERENCED_TABLE_NAME "
+        "FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
+        "WHERE CONSTRAINT_SCHEMA = 'fk_truncate_runtime' "
+        "AND TABLE_NAME = 'child_off'",
+        fk_columns,
+        2,
+        checks_off_fk_values,
+        1,
+        "foreign key checks off parent truncate keeps metadata"
+    );
+    failures += execute_sql(database, "SET foreign_key_checks=1", MYLITE_DONE);
+    failures += prepare_sql(database, "INSERT INTO child_off VALUES (2,1)", MYLITE_OK, &stmt);
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "foreign key checks on rejects child after parent truncate"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_no_referenced_row,
+        "foreign key parent truncate missing parent insert code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
 
     mylite_close(database);
     return failures;

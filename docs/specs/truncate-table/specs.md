@@ -17,12 +17,14 @@ In scope:
 - affected rows reported as `0`
 - deterministic diagnostics for no selected database, missing table, missing
   schema, and system-schema targets
+- MySQL-compatible parent-table foreign-key restrictions for cataloged
+  persistent foreign keys
 - statement-level atomicity for MyLite's internal row and metadata state
 
 Deferred behavior is explicit: MySQL implicit commits, privilege checks,
-foreign-key restrictions, triggers, handlers, table locks, partition-specific
-truncation, corrupted-file recovery, binary logging, Performance Schema summary
-table behavior, and temporary-table shadowing are not modeled in this slice.
+triggers, handlers, table locks, partition-specific truncation, corrupted-file
+recovery, binary logging, Performance Schema summary table behavior, and
+temporary-table shadowing are not modeled in this slice.
 
 ## Sources
 
@@ -65,6 +67,14 @@ Runtime side effects verified against MySQL 8.4.9:
 - unique indexes still constrain later inserts;
 - `AUTO_INCREMENT` allocation restarts at `1` for an empty truncated table,
   including tables originally created with `AUTO_INCREMENT=10`;
+- truncating a parent table referenced by another table fails with error
+  `1701` / `42000`, regardless of whether child rows currently exist;
+- truncating a child table succeeds and leaves the parent rows and foreign-key
+  metadata intact;
+- truncating a self-referential table succeeds;
+- with `foreign_key_checks=0`, truncating a referenced parent table succeeds,
+  leaves child rows and foreign-key metadata in place, and later checked child
+  writes fail until a matching parent row exists again;
 - `TRUNCATE TABLE` causes an implicit commit in MySQL, so a later `ROLLBACK`
   does not restore rows.
 
@@ -86,9 +96,13 @@ On the first `mylite_step()`:
    names require the selected schema.
 2. Reject system schemas with the existing MyLite system-schema diagnostic.
 3. Verify that the target base table exists in `__mylite_table_catalog`.
-4. Run the mutation inside MyLite statement atomicity.
-5. Delete every row from the physical SQLite user table.
-6. Set `__mylite_table_catalog.auto_increment` to `NULL` for the target table.
+4. When `foreign_key_checks=1`, reject the target if any non-self foreign key
+   catalog row references it. The diagnostic uses MySQL error `1701` and names
+   the first child schema, child table, and constraint in deterministic catalog
+   order.
+5. Run the mutation inside MyLite statement atomicity.
+6. Delete every row from the physical SQLite user table.
+7. Set `__mylite_table_catalog.auto_increment` to `NULL` for the target table.
 
 The metadata rows in `__mylite_table_catalog`, `__mylite_column_catalog`, and
 `__mylite_index_catalog` remain in place. `INFORMATION_SCHEMA.TABLES`,
@@ -147,6 +161,12 @@ Runtime tests cover:
 - preservation of `INFORMATION_SCHEMA.TABLES`, `COLUMNS`, and `STATISTICS`;
 - preservation of the physical SQLite table object;
 - unique index enforcement after truncation;
+- rejection of referenced parent truncation with MySQL-compatible `1701`
+  diagnostics and no mutation;
+- successful child-table truncation with parent rows preserved;
+- successful self-referential table truncation;
+- checks-off parent truncation that keeps child rows and metadata, then rejects
+  later checked child writes without a matching parent;
 - `AUTO_INCREMENT` reset to generated id `1` after a table originally created
   with a higher table option;
 - no mutation after a failed truncate target resolution.

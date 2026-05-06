@@ -1,7 +1,9 @@
 #include "mylite_table_ddl.h"
 
 #include "mylite_catalog.h"
+#include "mylite_connection.h"
 #include "mylite_diagnostics.h"
+#include "mylite_error_codes.h"
 #include "mylite_runtime.h"
 #include "mylite_span.h"
 #include "mylite_transactions.h"
@@ -26,6 +28,18 @@ static int resolve_truncate_table_name(
 static int validate_truncate_table_target(
     mylite_db *database,
     const struct mylite_truncate_table_plan *plan
+);
+
+static int validate_truncate_table_foreign_key_dependencies(
+    mylite_db *database,
+    const struct mylite_truncate_table_plan *plan
+);
+
+static int set_truncate_table_foreign_key_dependency_error(
+    mylite_db *database,
+    const char *child_schema_name,
+    const char *child_table_name,
+    const char *constraint_name
 );
 
 static int truncate_table_transaction(
@@ -73,7 +87,11 @@ static int validate_truncate_table_plan(
     if (status != MYLITE_OK) {
         return status;
     }
-    return validate_truncate_table_target(database, plan);
+    status = validate_truncate_table_target(database, plan);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    return validate_truncate_table_foreign_key_dependencies(database, plan);
 }
 
 static int resolve_truncate_table_name(
@@ -134,6 +152,81 @@ static int validate_truncate_table_target(
         );
     }
     return MYLITE_OK;
+}
+
+static int validate_truncate_table_foreign_key_dependencies(
+    mylite_db *database,
+    const struct mylite_truncate_table_plan *plan
+) {
+    static const char sql[] =
+        "SELECT table_schema, table_name, constraint_name "
+        "FROM __mylite_foreign_key_catalog "
+        "WHERE referenced_table_schema = ? COLLATE NOCASE "
+        "AND referenced_table_name = ? COLLATE NOCASE "
+        "AND NOT (table_schema = ? COLLATE NOCASE AND table_name = ? COLLATE NOCASE) "
+        "GROUP BY table_schema, table_name, constraint_name "
+        "ORDER BY table_schema, table_name, constraint_name";
+    sqlite3_stmt *select = NULL;
+    int rc = SQLITE_OK;
+
+    if (!mylite_connection_foreign_key_checks(database)) {
+        return MYLITE_OK;
+    }
+
+    rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select, NULL);
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+    sqlite3_bind_text(select, 1, plan->schema_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(select, 2, plan->table_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(select, 3, plan->schema_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(select, 4, plan->table_name, -1, sqlite_transient_destructor());
+
+    rc = sqlite3_step(select);
+    if (rc == SQLITE_ROW) {
+        const char *child_schema_name = (const char *)sqlite3_column_text(select, 0);
+        const char *child_table_name = (const char *)sqlite3_column_text(select, 1);
+        const char *constraint_name = (const char *)sqlite3_column_text(select, 2);
+        int status = set_truncate_table_foreign_key_dependency_error(
+            database,
+            child_schema_name,
+            child_table_name,
+            constraint_name
+        );
+
+        sqlite3_finalize(select);
+        return status;
+    }
+    sqlite3_finalize(select);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
+}
+
+static int set_truncate_table_foreign_key_dependency_error(
+    mylite_db *database,
+    const char *child_schema_name,
+    const char *child_table_name,
+    const char *constraint_name
+) {
+    char *message = sqlite3_mprintf(
+        "Cannot truncate a table referenced in a foreign key constraint (`%q`.`%q`, "
+        "CONSTRAINT `%q`)",
+        child_schema_name,
+        child_table_name,
+        constraint_name
+    );
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    status = mylite_diagnostics_set_error_message(database, message);
+    if (status == MYLITE_OK) {
+        status =
+            mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_TRUNCATE_ILLEGAL_FK, message);
+    }
+    sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int truncate_table_transaction(

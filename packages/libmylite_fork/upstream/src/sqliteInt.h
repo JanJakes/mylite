@@ -1350,6 +1350,7 @@ typedef struct KeyInfo KeyInfo;
 typedef struct Lookaside Lookaside;
 typedef struct LookasideSlot LookasideSlot;
 typedef struct Module Module;
+typedef struct MyliteColumnType MyliteColumnType;
 typedef struct NameContext NameContext;
 typedef struct OnOrUsing OnOrUsing;
 typedef struct Parse Parse;
@@ -2242,6 +2243,26 @@ struct Module {
 ** collating sequence name is only included if the COLFLAG_HASCOLL bit is
 ** set.
 */
+#ifdef SQLITE_ENABLE_MYLITE
+/* MyLite-owned assignment type metadata.  SQLite's parser may leave this
+** empty; MyLite attaches descriptors from its schema catalog before preparing
+** DML that writes user rows. */
+struct MyliteColumnType {
+  u8 eType;              /* One of MYLITE_COLTYPE_* */
+  u8 bReserved;
+  u16 mFlags;
+  i64 iMin;              /* Signed or supported unsigned lower bound */
+  i64 iMax;              /* Signed or supported unsigned upper bound */
+  u64 nChar;             /* Character-count limit for VARCHAR */
+};
+
+# define MYLITE_COLTYPE_NONE             0
+# define MYLITE_COLTYPE_SIGNED_INTEGER   1
+# define MYLITE_COLTYPE_UNSIGNED_INTEGER 2
+# define MYLITE_COLTYPE_DOUBLE           3
+# define MYLITE_COLTYPE_VARCHAR          4
+#endif
+
 struct Column {
   char *zCnName;        /* Name of this column */
   unsigned notNull :4;  /* An OE_ code for handling a NOT NULL constraint */
@@ -2251,6 +2272,9 @@ struct Column {
   u8 hName;             /* Column name hash for faster lookup */
   u16 iDflt;            /* 1-based index of DEFAULT.  0 means "none" */
   u16 colFlags;         /* Boolean properties.  See COLFLAG_ defines below */
+#ifdef SQLITE_ENABLE_MYLITE
+  MyliteColumnType myliteType; /* MyLite assignment type metadata */
+#endif
 };
 
 /* Allowed values for Column.eCType.
@@ -2497,6 +2521,7 @@ struct Table {
 #define TF_Eponymous      0x00008000 /* An eponymous virtual table */
 #define TF_Strict         0x00010000 /* STRICT mode */
 #define TF_Imposter       0x00020000 /* An imposter table */
+#define TF_MyliteTypes    0x00040000 /* Has MyLite column type metadata */
 
 /*
 ** Allowed values for Table.eTabType

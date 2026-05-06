@@ -10,6 +10,8 @@ Implemented scope:
 
 - native SQLite scalar hooks for strict assignment coercion to signed integer,
   supported unsigned integer, `DOUBLE`, and `VARCHAR`
+- native SQLite column descriptor hooks that emit VDBE write-time coercion for
+  signed integer, supported unsigned integer, `DOUBLE`, and `VARCHAR`
 - MyLite `INSERT` lowering wraps supported target-column placeholders with those
   hooks
 - MySQL 8.4.9 verified success fixture covering numeric strings, numeric-to-text
@@ -24,6 +26,8 @@ Deferred scope:
   assignment conversion
 - assignment-aware `UPDATE` lowering that can coerce only changed target columns
   without revalidating unchanged legacy stored values
+- automatic MyLite catalog reload into SQLite descriptors for reopened
+  connections
 - non-strict SQL mode clipping/truncation behavior
 - direct SQLite parser execution of MySQL DDL/DML without MyLite lowering
 
@@ -110,6 +114,14 @@ functions. They are deterministic for a given value and argument list, and they
 return `NULL` unchanged so `NOT NULL` constraints remain owned by the physical
 table and higher-level MyLite diagnostics.
 
+The source-tree fork also exposes a descriptor path for the same first type
+subset. MyLite can attach type descriptors to SQLite's in-memory `Column`
+objects through `mylite_sqlite_fork_set_column_type()`. When a table has at
+least one descriptor, SQLite emits `OP_MyliteTypeCheck` before record creation
+for writes to that table. This moves assignment conversion into the VDBE for
+direct SQLite `INSERT` and `UPDATE` statements while preserving ordinary SQLite
+affinity for unannotated columns.
+
 ## Initial Semantics
 
 ### Integer assignment
@@ -155,11 +167,14 @@ The executable tests must cover:
   while assignment-aware native update coercion remains deferred
 - native SQLite failure behavior for out-of-range integer, negative unsigned,
   over-length `VARCHAR`, and invalid `DOUBLE`
+- direct SQLite `INSERT` and `UPDATE` behavior through MyLite column descriptors
+  without SQL wrapper functions
 - MySQL fixture diff against `mysql-basic-type-coercion.expected.tsv`
 
 ## Compatibility Status
 
 This feature is `🟡` because it establishes the first native assignment
-coercion primitive and uses it from supported MyLite `INSERT` lowering, while
-full MySQL assignment conversion, assignment-aware `UPDATE` lowering, and
-diagnostics remain deferred.
+coercion primitive, uses it from supported MyLite `INSERT` lowering, and now
+adds direct VDBE write-time coercion through MyLite column descriptors. Full
+MySQL assignment conversion, automatic descriptor reload, and exact diagnostics
+remain deferred.

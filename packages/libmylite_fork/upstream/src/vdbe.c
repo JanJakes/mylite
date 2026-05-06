@@ -427,6 +427,179 @@ static void applyAffinity(
   }
 }
 
+#ifdef SQLITE_ENABLE_MYLITE
+static int myliteApplyColumnType(
+  Mem *pMem,
+  const Column *pCol,
+  u8 enc,
+  const char **pzErr
+);
+static void myliteApplyOrdinaryAffinity(Mem *pMem, char affinity, u8 enc);
+static int myliteCoerceInteger(
+  Mem *pMem,
+  i64 iMin,
+  i64 iMax,
+  const char *zErr,
+  const char **pzErr
+);
+static int myliteMemToFiniteReal(Mem *pMem, double *pValue);
+static int myliteCoerceDouble(Mem *pMem, const char **pzErr);
+static int myliteCoerceVarchar(Mem *pMem, u64 nChar, const char **pzErr);
+static u64 myliteUtf8CharCount(const unsigned char *zText, int nText);
+
+static int myliteApplyColumnType(
+  Mem *pMem,
+  const Column *pCol,
+  u8 enc,
+  const char **pzErr
+){
+  if( pCol->myliteType.eType==MYLITE_COLTYPE_NONE ){
+    myliteApplyOrdinaryAffinity(pMem, pCol->affinity, enc);
+    return SQLITE_OK;
+  }
+  if( pMem->flags & MEM_Null ) return SQLITE_OK;
+
+  switch( pCol->myliteType.eType ){
+    case MYLITE_COLTYPE_SIGNED_INTEGER:
+      return myliteCoerceInteger(
+          pMem, pCol->myliteType.iMin, pCol->myliteType.iMax,
+          "integer value is out of range", pzErr
+      );
+    case MYLITE_COLTYPE_UNSIGNED_INTEGER:
+      return myliteCoerceInteger(
+          pMem, 0, pCol->myliteType.iMax,
+          "unsigned integer value is out of range", pzErr
+      );
+    case MYLITE_COLTYPE_DOUBLE:
+      return myliteCoerceDouble(pMem, pzErr);
+    case MYLITE_COLTYPE_VARCHAR:
+      return myliteCoerceVarchar(pMem, pCol->myliteType.nChar, pzErr);
+    default:
+      *pzErr = "invalid MyLite column type";
+      return SQLITE_MISMATCH;
+  }
+}
+
+static void myliteApplyOrdinaryAffinity(Mem *pMem, char affinity, u8 enc){
+  applyAffinity(pMem, affinity, enc);
+  if( affinity==SQLITE_AFF_REAL && (pMem->flags & MEM_Int)!=0 ){
+    pMem->flags |= MEM_IntReal;
+    pMem->flags &= ~MEM_Int;
+  }
+}
+
+static int myliteCoerceInteger(
+  Mem *pMem,
+  i64 iMin,
+  i64 iMax,
+  const char *zErr,
+  const char **pzErr
+){
+  double rValue;
+  double rLower;
+  double rUpper;
+  double rAdjusted;
+  i64 iValue;
+
+  assert( iMin<=iMax );
+  if( pMem->flags & MEM_Int ){
+    if( pMem->u.i<iMin || pMem->u.i>iMax ){
+      *pzErr = zErr;
+      return SQLITE_MISMATCH;
+    }
+    return SQLITE_OK;
+  }
+
+  if( myliteMemToFiniteReal(pMem, &rValue)!=SQLITE_OK ){
+    *pzErr = zErr;
+    return SQLITE_MISMATCH;
+  }
+  rLower = (double)iMin - 0.5;
+  rUpper = (double)iMax + 0.5;
+  if( rValue<=rLower || rValue>=rUpper ){
+    *pzErr = zErr;
+    return SQLITE_MISMATCH;
+  }
+  rAdjusted = rValue<0.0 ? rValue - 0.5 : rValue + 0.5;
+  if( rAdjusted<(double)SMALLEST_INT64 || rAdjusted>(double)LARGEST_INT64 ){
+    *pzErr = zErr;
+    return SQLITE_MISMATCH;
+  }
+  iValue = (i64)rAdjusted;
+  if( iValue<iMin || iValue>iMax ){
+    *pzErr = zErr;
+    return SQLITE_MISMATCH;
+  }
+  sqlite3VdbeMemSetInt64(pMem, iValue);
+  return SQLITE_OK;
+}
+
+static int myliteMemToFiniteReal(Mem *pMem, double *pValue){
+  double rValue;
+  int rc;
+
+  if( pMem->flags & (MEM_Int|MEM_IntReal) ){
+    *pValue = (double)pMem->u.i;
+    return SQLITE_OK;
+  }
+  if( pMem->flags & MEM_Real ){
+    rValue = pMem->u.r;
+  }else if( pMem->flags & (MEM_Str|MEM_Blob) ){
+    rc = sqlite3MemRealValueRC(pMem, &rValue);
+    if( rc<=0 ) return SQLITE_MISMATCH;
+  }else{
+    return SQLITE_MISMATCH;
+  }
+  if( sqlite3IsOverflow(rValue) ) return SQLITE_MISMATCH;
+  *pValue = rValue;
+  return SQLITE_OK;
+}
+
+static int myliteCoerceDouble(Mem *pMem, const char **pzErr){
+  double rValue;
+  if( myliteMemToFiniteReal(pMem, &rValue)!=SQLITE_OK ){
+    *pzErr = "invalid double value";
+    return SQLITE_MISMATCH;
+  }
+  sqlite3VdbeMemSetDouble(pMem, rValue);
+  return SQLITE_OK;
+}
+
+static int myliteCoerceVarchar(Mem *pMem, u64 nChar, const char **pzErr){
+  if( sqlite3VdbeMemCast(pMem, SQLITE_AFF_TEXT, SQLITE_UTF8)!=SQLITE_OK ){
+    return SQLITE_NOMEM;
+  }
+  if( myliteUtf8CharCount((const unsigned char*)pMem->z, pMem->n)>nChar ){
+    *pzErr = "varchar value is too long";
+    return SQLITE_MISMATCH;
+  }
+  return SQLITE_OK;
+}
+
+static u64 myliteUtf8CharCount(const unsigned char *zText, int nText){
+  u64 nChar = 0;
+  int i = 0;
+
+  while( i<nText ){
+    unsigned char b = zText[i];
+    int nAdvance = 1;
+
+    if( (b & 0x80)==0 ){
+      nAdvance = 1;
+    }else if( (b & 0xe0)==0xc0 && i+1<nText ){
+      nAdvance = 2;
+    }else if( (b & 0xf0)==0xe0 && i+2<nText ){
+      nAdvance = 3;
+    }else if( (b & 0xf8)==0xf0 && i+3<nText ){
+      nAdvance = 4;
+    }
+    i += nAdvance;
+    nChar++;
+  }
+  return nChar;
+}
+#endif
+
 /*
 ** Try to convert the type of a function argument or a result column
 ** into a numeric representation.  Use either INTEGER or REAL whichever
@@ -3266,6 +3439,65 @@ op_column_corrupt:
     goto abort_due_to_error;
   }
 }
+
+/* Opcode: MyliteTypeCheck P1 P2 P3 P4 *
+** Synopsis: mylite_typecheck(r[P1@P2])
+**
+** Apply MyLite assignment type coercion to the range of P2 registers
+** beginning with P1.  The MyLite column type descriptors are taken from the
+** Table object in P4.  Columns without MyLite descriptors use normal SQLite
+** affinity.  If a value cannot be coerced into the target MyLite type, raise
+** an error.
+**
+** P3 has the same generated-column skip semantics as OP_TypeCheck.
+*/
+#ifdef SQLITE_ENABLE_MYLITE
+case OP_MyliteTypeCheck: {
+  Table *pTab;
+  Column *aCol;
+  int i;
+  int nCol;
+
+  assert( pOp->p4type==P4_TABLE );
+  pTab = pOp->p4.pTab;
+  assert( pTab->tabFlags & TF_MyliteTypes );
+  assert( pOp->p3>=0 && pOp->p3<pTab->nCol+2 );
+  aCol = pTab->aCol;
+  pIn1 = &aMem[pOp->p1];
+  if( pOp->p3<2 ){
+    assert( pTab->nNVCol==pOp->p2 );
+    i = 0;
+    nCol = pTab->nCol;
+  }else{
+    i = pOp->p3-2;
+    nCol = i+1;
+    assert( i<pTab->nCol );
+    assert( aCol[i].colFlags & COLFLAG_VIRTUAL );
+    assert( pOp->p2==1 );
+  }
+  for(; i<nCol; i++){
+    const char *zErr = 0;
+    int rc2;
+    if( (aCol[i].colFlags & COLFLAG_GENERATED)!=0 && pOp->p3<2 ){
+      if( (aCol[i].colFlags & COLFLAG_VIRTUAL)!=0 ) continue;
+      if( pOp->p3 ){ pIn1++; continue; }
+    }
+    assert( pIn1 < &aMem[pOp->p1+pOp->p2] );
+    rc2 = myliteApplyColumnType(pIn1, &aCol[i], encoding, &zErr);
+    if( rc2==SQLITE_NOMEM ) goto no_mem;
+    if( rc2!=SQLITE_OK ){
+      sqlite3VdbeError(p, "%s for column %s.%s",
+         zErr ? zErr : "invalid MyLite value", pTab->zName, aCol[i].zCnName);
+      rc = SQLITE_CONSTRAINT_DATATYPE;
+      goto abort_due_to_error;
+    }
+    REGISTER_TRACE((int)(pIn1-aMem), pIn1);
+    pIn1++;
+  }
+  assert( pIn1 == &aMem[pOp->p1+pOp->p2] );
+  break;
+}
+#endif
 
 /* Opcode: TypeCheck P1 P2 P3 P4 *
 ** Synopsis: typecheck(r[P1@P2])

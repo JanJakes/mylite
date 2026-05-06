@@ -26,8 +26,10 @@ Implemented scope:
 Deferred scope:
 
 - direct SQLite parser grammar changes for MySQL syntax
-- VDBE-native assignment coercion opcodes
-- SQLite schema objects carrying MySQL column descriptors
+- broader VDBE-native assignment coercion beyond the first MyLite descriptor
+  extension point
+- persistent SQLite schema objects carrying MySQL column descriptors without
+  MyLite reattachment
 - `.mylite` shifted-file-offset pager/VFS patches
 - removal of the old amalgamation snapshot under `third_party/sqlite`
 - direct MySQL DDL/DML execution through the fork parser
@@ -44,6 +46,8 @@ Deferred scope:
   `docs/specs/sqlite-fork-crud/specs.md`
 - SQLite fork type coercion foundation:
   `docs/specs/sqlite-fork-type-coercion/specs.md`
+- SQLite fork column type extension points:
+  `docs/specs/sqlite-fork-column-type-extension-points/specs.md`
 
 This specification is independently authored from official SQLite source-tree
 layout, observed MyLite build behavior, and the current MyLite codebase.
@@ -61,8 +65,11 @@ directly and suppresses warnings only for vendored upstream code. Generated
 SQLite files are reproducible from checked-in SQLite inputs and generated under
 `build/<preset>/generated/libmylite_fork/sqlite`.
 
-MyLite-specific fork code remains first-party C and keeps normal project
-formatting and static-analysis policy.
+MyLite-specific wrapper code outside the vendored SQLite tree remains
+first-party C and keeps normal project formatting and static-analysis policy.
+Local SQLite patch files under `packages/libmylite_fork/upstream/src/`, such as
+the descriptor bridge added for MyLite column types, follow SQLite source-tree
+style and remain covered by the fork build and runtime tests.
 
 ## Integration Semantics
 
@@ -71,9 +78,11 @@ formatting and static-analysis policy.
 `MyLite::mylite_fork`, which exposes the source-built SQLite API and the
 MyLite fork primitive registration helpers.
 
-For now, MyLite still reaches fork primitives through registration hooks such as
-`mylite_sqlite_fork_configure()`. The difference is architectural: those hooks
-now live next to a private SQLite source-tree build where parser, VDBE, pager,
+MyLite reaches connection-local fork primitives through registration hooks such
+as `mylite_sqlite_fork_configure()`, and can now attach MyLite column type
+descriptors to SQLite schema objects through
+`mylite_sqlite_fork_set_column_type()`. The difference is architectural: these
+hooks live next to a private SQLite source-tree build where parser, VDBE, pager,
 and file-format changes can be made directly.
 
 ## Tests
@@ -91,5 +100,6 @@ MyLite behavior still works through the new fork package boundary.
 ## Compatibility Status
 
 This feature is `🟡` because MyLite now has a real source-tree SQLite fork
-package and build boundary, but MySQL syntax and type behavior are not yet
-implemented inside SQLite parser/VDBE internals.
+package and build boundary, plus the first VDBE-native MyLite column type
+extension point. MySQL syntax, persistent descriptor reload, and broader
+parser/VDBE/pager behavior remain incomplete.

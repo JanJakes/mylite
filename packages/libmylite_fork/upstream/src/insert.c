@@ -179,6 +179,26 @@ char *sqlite3TableAffinityStr(sqlite3 *db, const Table *pTab){
 void sqlite3TableAffinity(Vdbe *v, Table *pTab, int iReg){
   int i;
   char *zColAff;
+#ifdef SQLITE_ENABLE_MYLITE
+  if( pTab->tabFlags & TF_MyliteTypes ){
+    if( iReg==0 ){
+      VdbeOp *pPrev;
+      int p3;
+      sqlite3VdbeAppendP4(v, pTab, P4_TABLE);
+      pPrev = sqlite3VdbeGetLastOp(v);
+      assert( pPrev!=0 );
+      assert( pPrev->opcode==OP_MakeRecord || sqlite3VdbeDb(v)->mallocFailed );
+      pPrev->opcode = OP_MyliteTypeCheck;
+      p3 = pPrev->p3;
+      pPrev->p3 = 0;
+      sqlite3VdbeAddOp3(v, OP_MakeRecord, pPrev->p1, pPrev->p2, p3);
+    }else{
+      sqlite3VdbeAddOp2(v, OP_MyliteTypeCheck, iReg, pTab->nNVCol);
+      sqlite3VdbeAppendP4(v, pTab, P4_TABLE);
+    }
+    return;
+  }
+#endif
   if( pTab->tabFlags & TF_Strict ){
     if( iReg==0 ){
       /* Move the previous opcode (which should be OP_MakeRecord) forward

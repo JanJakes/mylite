@@ -180,6 +180,7 @@ set(MYLITE_FORK_SQLITE_SOURCES
   upstream/src/mem1.c
   upstream/src/memdb.c
   upstream/src/memjournal.c
+  upstream/src/mylite.c
   upstream/src/mutex.c
   upstream/src/mutex_noop.c
   "${MYLITE_FORK_OPCODES_C}"
@@ -249,6 +250,7 @@ target_include_directories(mylite_fork_sqlite
     "${MYLITE_FORK_GENERATED_DIR}"
   PRIVATE
     "${MYLITE_FORK_GENERATED_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
     "${MYLITE_FORK_UPSTREAM_DIR}/src"
 )
 target_compile_definitions(mylite_fork_sqlite
@@ -256,6 +258,7 @@ target_compile_definitions(mylite_fork_sqlite
     SQLITE_OMIT_LOAD_EXTENSION
   PRIVATE
     SQLITE_CORE
+    SQLITE_ENABLE_MYLITE
 )
 
 if(NOT WIN32)

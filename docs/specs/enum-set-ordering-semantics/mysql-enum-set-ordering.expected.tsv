@@ -1,0 +1,55 @@
+order-enum	2	zeta	1	zeta	1
+order-enum	5	zeta	1	alpha,beta	6
+order-enum	1	alpha	2	alpha	2
+order-enum	4	alpha	2	zeta,beta	5
+order-enum	3	beta	3	beta	4
+order-enum	6	beta	3	zeta,alpha	3
+order-set	2	zeta	1	zeta	1
+order-set	1	alpha	2	alpha	2
+order-set	6	beta	3	zeta,alpha	3
+order-set	3	beta	3	beta	4
+order-set	4	alpha	2	zeta,beta	5
+order-set	5	zeta	1	alpha,beta	6
+distinct-enum	zeta	1
+distinct-enum	alpha	2
+distinct-enum	beta	3
+distinct-set	zeta	1
+distinct-set	alpha	2
+distinct-set	zeta,alpha	3
+distinct-set	beta	4
+distinct-set	zeta,beta	5
+distinct-set	alpha,beta	6
+group-enum	zeta	1	2
+group-enum	alpha	2	2
+group-enum	beta	3	2
+group-set	zeta	1	1
+group-set	alpha	2	1
+group-set	zeta,alpha	3	1
+group-set	beta	4	1
+group-set	zeta,beta	5	1
+group-set	alpha,beta	6	1
+where-enum-string	2	zeta	1
+where-enum-string	3	beta	3
+where-enum-string	5	zeta	1
+where-enum-string	6	beta	3
+where-enum-numeric	1	alpha	2
+where-enum-numeric	3	beta	3
+where-enum-numeric	4	alpha	2
+where-enum-numeric	6	beta	3
+where-set-string	2	zeta	1
+where-set-string	3	beta	4
+where-set-string	4	zeta,beta	5
+where-set-string	5	alpha,beta	6
+where-set-string	6	zeta,alpha	3
+where-set-numeric	3	beta	4
+where-set-numeric	4	zeta,beta	5
+where-set-numeric	5	alpha,beta	6
+where-set-numeric	6	zeta,alpha	3
+comparisons	1	0	0	0	1	0	0	0	1
+comparisons	2	1	1	1	0	1	1	1	0
+comparisons	3	0	0	1	1	0	0	1	1
+comparisons	4	0	0	0	1	0	0	1	1
+comparisons	5	1	1	1	0	0	0	1	1
+comparisons	6	0	0	1	1	0	0	1	1
+extrema	alpha	1	zeta	3	alpha	1	zeta,beta	6
+group-concat	zeta|zeta|alpha|alpha|beta|beta	zeta|alpha|zeta,alpha|beta|zeta,beta|alpha,beta

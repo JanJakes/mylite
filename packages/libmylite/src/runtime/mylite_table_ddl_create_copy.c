@@ -112,6 +112,8 @@ int mylite_table_ddl_copy_create_table_index(
             }
         } else if (child->kind == MYLITE_SQL_AST_INDEX_TYPE) {
             index.algorithm = child->index_algorithm;
+            index.display_index_type =
+                child->index_algorithm == MYLITE_SQL_AST_INDEX_ALGORITHM_BTREE;
         }
     }
     if (index.is_primary) {
@@ -188,6 +190,8 @@ int mylite_table_ddl_copy_create_table_index_options(
         switch (option->index_option) {
         case MYLITE_SQL_AST_INDEX_OPTION_USING:
             index->algorithm = option->index_algorithm;
+            index->display_index_type =
+                option->index_algorithm == MYLITE_SQL_AST_INDEX_ALGORITHM_BTREE;
             break;
         case MYLITE_SQL_AST_INDEX_OPTION_COMMENT:
             copy = mylite_copy_string_literal_span(mylite_ast_child_at(option, 0U));

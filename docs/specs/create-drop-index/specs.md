@@ -39,7 +39,8 @@ First executable implementation slice:
 - support identifier key parts with prefix lengths and `ASC`/`DESC` metadata
 - support `USING BTREE`, `USING HASH`, `TYPE BTREE`, and `TYPE HASH` in the
   MySQL-accepted positions; record the effective metadata type as `BTREE` for
-  MyLite's InnoDB-compatible table model
+  MyLite's InnoDB-compatible table model and preserve explicit BTREE display
+  metadata for `SHOW CREATE TABLE`
 - support `KEY_BLOCK_SIZE`, `COMMENT`, `VISIBLE`, `INVISIBLE`,
   `ENGINE_ATTRIBUTE`, and `SECONDARY_ENGINE_ATTRIBUTE` syntax and metadata
   where the current catalog can represent it
@@ -233,6 +234,9 @@ For InnoDB, `BTREE` is the supported ordinary index type. `USING HASH` is
 accepted for ordinary indexes but records note 3502 and falls back to the
 storage-engine default. `RTREE` is recognized by MySQL's parser family for
 spatial-related syntax, but it is not a first-slice MyLite ordinary index type.
+`SHOW CREATE TABLE` displays explicit `USING BTREE` for standalone indexes
+created with BTREE syntax. It does not display a type clause for default BTREE
+or HASH fallback indexes.
 
 Post-key-list options:
 

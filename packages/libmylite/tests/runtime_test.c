@@ -42467,6 +42467,32 @@ static int test_show_create_table_execution(void) {
         ") ENGINE=InnoDB AUTO_INCREMENT=42 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin "
         "COMMENT='table comment'";
     static const char *const meta_values[] = {"meta", meta_create};
+    static const char index_options_create[] =
+        "CREATE TABLE `index_options` (\n"
+        "  `id` int DEFAULT NULL,\n"
+        "  `v` int DEFAULT NULL,\n"
+        "  KEY `idx_pre` (`v`) USING BTREE,\n"
+        "  KEY `idx_post` (`v`) USING BTREE,\n"
+        "  KEY `idx_hash` (`v`),\n"
+        "  KEY `idx_comment` (`id`) USING BTREE COMMENT 'idx comment'\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
+    static const char *const index_options_values[] = {"index_options", index_options_create};
+    static const char index_rewrite_create[] =
+        "CREATE TABLE `index_rewrite` (\n"
+        "  `id` int DEFAULT NULL,\n"
+        "  `v` int DEFAULT NULL,\n"
+        "  KEY `idx_standalone` (`v`) USING BTREE,\n"
+        "  KEY `idx_alter` (`id`) USING BTREE,\n"
+        "  KEY `idx_hash` (`id`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
+    static const char *const index_rewrite_values[] = {"index_rewrite", index_rewrite_create};
+    static const char text_defaults_create[] = "CREATE TABLE `text_defaults` (\n"
+                                               "  `a` text,\n"
+                                               "  `b` text,\n"
+                                               "  `c` text NOT NULL\n"
+                                               ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 "
+                                               "COLLATE=utf8mb4_0900_ai_ci";
+    static const char *const text_defaults_values[] = {"text_defaults", text_defaults_create};
     static const char collation_default_create[] =
         "CREATE TABLE `collation_default` (\n"
         "  `c` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,\n"
@@ -42549,6 +42575,63 @@ static int test_show_create_table_execution(void) {
         meta_values,
         1,
         "show create table full metadata"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE index_options ("
+        "id INT, v INT, "
+        "KEY idx_pre USING BTREE (v), "
+        "KEY idx_post (v) USING BTREE, "
+        "KEY idx_hash USING HASH (v), "
+        "KEY idx_comment USING BTREE (id) COMMENT 'idx comment')",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW CREATE TABLE index_options",
+        columns,
+        2,
+        index_options_values,
+        1,
+        "show create table explicit index type display"
+    );
+
+    failures += execute_sql(database, "CREATE TABLE index_rewrite (id INT, v INT)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE INDEX idx_standalone USING BTREE ON index_rewrite (v)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "ALTER TABLE index_rewrite ADD KEY idx_alter USING BTREE (id), "
+        "ADD KEY idx_hash USING HASH (id)",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW CREATE TABLE index_rewrite",
+        columns,
+        2,
+        index_rewrite_values,
+        1,
+        "show create table preserves explicit index type through rewrites"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE text_defaults (a TEXT, b TEXT DEFAULT NULL, c TEXT NOT NULL)",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW CREATE TABLE text_defaults",
+        columns,
+        2,
+        text_defaults_values,
+        1,
+        "show create table suppresses text default null"
     );
 
     failures += execute_sql(

@@ -341,8 +341,8 @@ static int insert_alter_table_index_catalog_rows(
         "INSERT INTO %s("
         "table_catalog, table_schema, table_name, non_unique, index_schema, index_name, "
         "seq_in_index, column_name, collation, cardinality, sub_part, packed, nullable, "
-        "index_type, comment, index_comment, is_visible, expression)"
-        " VALUES('def', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NULL, ?, ?, ?, ?, ?, NULL)",
+        "index_type, display_index_type, comment, index_comment, is_visible, expression)"
+        " VALUES('def', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NULL, ?, ?, ?, ?, ?, ?, NULL)",
         mylite_catalog_index_catalog_name(model->temporary)
     );
     int rc = SQLITE_OK;
@@ -398,9 +398,10 @@ static int insert_alter_table_index_catalog_part(
         bind_sub_part = 9,
         bind_nullable = 10,
         bind_index_type = 11,
-        bind_comment = 12,
-        bind_index_comment = 13,
-        bind_is_visible = 14,
+        bind_display_index_type = 12,
+        bind_comment = 13,
+        bind_index_comment = 14,
+        bind_is_visible = 15,
     };
 
     int rc = SQLITE_OK;
@@ -462,6 +463,7 @@ static int insert_alter_table_index_catalog_part(
         -1,
         sqlite_transient_destructor()
     );
+    sqlite3_bind_int(insert, bind_display_index_type, index->display_index_type ? 1 : 0);
     sqlite3_bind_text(insert, bind_comment, index->comment, -1, sqlite_transient_destructor());
     sqlite3_bind_text(
         insert,

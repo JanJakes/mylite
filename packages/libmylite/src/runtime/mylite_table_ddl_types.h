@@ -56,6 +56,7 @@ struct mylite_create_table_index {
     bool is_visible;
     bool explicit_name;
     bool has_with_parser;
+    bool display_index_type;
 };
 
 struct mylite_create_table_plan {
@@ -215,6 +216,7 @@ struct mylite_alter_table_index {
     int non_unique;
     bool changed;
     bool hash_fallback_warning;
+    bool display_index_type;
 };
 
 struct mylite_alter_table_model {
@@ -266,6 +268,7 @@ enum mylite_alter_table_index_catalog_field {
     MYLITE_ALTER_TABLE_INDEX_CATALOG_COMMENT = 9,
     MYLITE_ALTER_TABLE_INDEX_CATALOG_INDEX_COMMENT = 10,
     MYLITE_ALTER_TABLE_INDEX_CATALOG_VISIBLE = 11,
+    MYLITE_ALTER_TABLE_INDEX_CATALOG_DISPLAY_TYPE = 12,
 };
 
 #endif

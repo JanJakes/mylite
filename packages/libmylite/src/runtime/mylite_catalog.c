@@ -5,6 +5,9 @@
 #include "mylite_runtime.h"
 #include "sqlite3.h"
 
+#include <stdbool.h>
+#include <string.h>
+
 static const char table_catalog_name[] = "__mylite_table_catalog";
 static const char column_catalog_name[] = "__mylite_column_catalog";
 static const char index_catalog_name[] = "__mylite_index_catalog";
@@ -87,6 +90,7 @@ static const char index_catalog_sql[] =
     "packed TEXT,"
     "nullable TEXT NOT NULL,"
     "index_type TEXT NOT NULL,"
+    "display_index_type INTEGER NOT NULL DEFAULT 0,"
     "comment TEXT NOT NULL,"
     "index_comment TEXT NOT NULL,"
     "is_visible TEXT NOT NULL,"
@@ -160,6 +164,7 @@ static const char temporary_index_catalog_sql[] =
     "packed TEXT,"
     "nullable TEXT NOT NULL,"
     "index_type TEXT NOT NULL,"
+    "display_index_type INTEGER NOT NULL DEFAULT 0,"
     "comment TEXT NOT NULL,"
     "index_comment TEXT NOT NULL,"
     "is_visible TEXT NOT NULL,"
@@ -226,6 +231,15 @@ static int update_table_statistics(
     sqlite3_int64 secondary_index_count
 );
 
+static int ensure_index_catalog_display_type_column(mylite_db *database, const char *catalog_name);
+
+static int catalog_column_exists(
+    mylite_db *database,
+    const char *catalog_name,
+    const char *column_name,
+    bool *out_exists
+);
+
 static sqlite3_destructor_type sqlite_transient_destructor(void);
 
 int mylite_catalog_initialize(mylite_db *database) {
@@ -249,6 +263,10 @@ int mylite_catalog_initialize(mylite_db *database) {
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
     }
+    rc = ensure_index_catalog_display_type_column(database, index_catalog_name);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
 
     rc = sqlite3_exec(database->sqlite, temporary_table_catalog_sql, NULL, NULL, NULL);
     if (rc != SQLITE_OK) {
@@ -263,6 +281,10 @@ int mylite_catalog_initialize(mylite_db *database) {
     rc = sqlite3_exec(database->sqlite, temporary_index_catalog_sql, NULL, NULL, NULL);
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
+    }
+    rc = ensure_index_catalog_display_type_column(database, temporary_index_catalog_name);
+    if (rc != MYLITE_OK) {
+        return rc;
     }
 
     rc = mylite_catalog_seed_system_schema(
@@ -288,6 +310,65 @@ int mylite_catalog_initialize(mylite_db *database) {
         return rc;
     }
     return mylite_catalog_seed_system_schema(database, "sys", "utf8mb4", "utf8mb4_0900_ai_ci");
+}
+
+static int ensure_index_catalog_display_type_column(mylite_db *database, const char *catalog_name) {
+    bool exists = false;
+    char *sql = NULL;
+    int rc = SQLITE_OK;
+    int status = catalog_column_exists(database, catalog_name, "display_index_type", &exists);
+
+    if (status != MYLITE_OK || exists) {
+        return status;
+    }
+
+    sql = sqlite3_mprintf(
+        "ALTER TABLE %s ADD COLUMN display_index_type INTEGER NOT NULL DEFAULT 0",
+        catalog_name
+    );
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_exec(database->sqlite, sql, NULL, NULL, NULL);
+    sqlite3_free(sql);
+    return rc == SQLITE_OK ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
+}
+
+static int catalog_column_exists(
+    mylite_db *database,
+    const char *catalog_name,
+    const char *column_name,
+    bool *out_exists
+) {
+    sqlite3_stmt *select = NULL;
+    char *sql = sqlite3_mprintf("PRAGMA table_info(%s)", catalog_name);
+    int rc = SQLITE_OK;
+
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select, NULL);
+    sqlite3_free(sql);
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+
+    *out_exists = false;
+    while ((rc = sqlite3_step(select)) == SQLITE_ROW) {
+        enum { table_info_name_column = 1 };
+
+        const char *name = (const char *)sqlite3_column_text(select, table_info_name_column);
+
+        if (name != NULL && strcmp(name, column_name) == 0) {
+            *out_exists = true;
+            break;
+        }
+    }
+    sqlite3_finalize(select);
+    return rc == SQLITE_DONE || *out_exists ? MYLITE_OK
+                                            : mylite_diagnostics_set_sqlite_error(database);
 }
 
 int mylite_catalog_update_auto_increment(

@@ -46,6 +46,8 @@ int mylite_table_ddl_init_alter_table_index_from_create_index(
         out_index->non_unique = 0;
     }
     out_index->changed = true;
+    out_index->display_index_type =
+        source->display_index_type && source->algorithm == MYLITE_SQL_AST_INDEX_ALGORITHM_BTREE;
     if (out_index->index_schema == NULL || out_index->index_type == NULL ||
         out_index->comment == NULL || out_index->index_comment == NULL ||
         out_index->is_visible == NULL) {

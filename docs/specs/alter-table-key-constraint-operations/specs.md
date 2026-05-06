@@ -683,7 +683,8 @@ and warning state.
 - update index names for successful renames
 - update visibility metadata for `ALTER INDEX`
 - preserve prefix length, order marker, comment, effective index type,
-  visibility, uniqueness, and catalog order
+  explicit `USING BTREE` display metadata, visibility, uniqueness, and catalog
+  order
 - mark `PRIMARY` as the only valid primary-key index name
 
 `__mylite_column_catalog`:

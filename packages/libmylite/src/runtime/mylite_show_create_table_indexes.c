@@ -33,7 +33,7 @@ int mylite_show_create_table_append_indexes(
         " SELECT index_name, MIN(rowid) AS first_rowid FROM %s "
         " WHERE table_schema = ? AND table_name = ? GROUP BY index_name)"
         "SELECT i.index_name, i.non_unique, i.index_comment, i.is_visible, "
-        "i.table_schema, i.table_name "
+        "i.table_schema, i.table_name, i.index_type, i.display_index_type "
         "FROM %s i "
         "JOIN first_parts f ON f.index_name = i.index_name "
         "WHERE i.table_schema = ? AND i.table_name = ? AND i.seq_in_index = 1 "
@@ -128,6 +128,8 @@ static int append_show_create_table_key_parts(
         is_visible_column = 3,
         table_schema_column = 4,
         table_name_column = 5,
+        index_type_column = 6,
+        display_index_type_column = 7,
     };
 
     sqlite3_stmt *parts = NULL;
@@ -142,6 +144,8 @@ static int append_show_create_table_key_parts(
     const char *table_name = (const char *)sqlite3_column_text(select, table_name_column);
     const char *index_comment = (const char *)sqlite3_column_text(select, index_comment_column);
     const char *is_visible = (const char *)sqlite3_column_text(select, is_visible_column);
+    const char *index_type = (const char *)sqlite3_column_text(select, index_type_column);
+    bool display_index_type = sqlite3_column_int(select, display_index_type_column) != 0;
     bool first_part = true;
     int rc = SQLITE_OK;
 
@@ -186,6 +190,9 @@ static int append_show_create_table_key_parts(
     }
 
     sqlite3_str_appendall(create_sql, ")");
+    if (display_index_type && mylite_ascii_case_equal(index_type, "BTREE")) {
+        sqlite3_str_appendall(create_sql, " USING BTREE");
+    }
     if (index_comment != NULL && index_comment[0] != '\0') {
         sqlite3_str_appendall(create_sql, " COMMENT ");
         mylite_show_create_append_string_literal(create_sql, index_comment);

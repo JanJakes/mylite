@@ -195,6 +195,11 @@ This feature creates them so later `CREATE TABLE`, `ALTER TABLE`, `CREATE
 INDEX`, and `DROP INDEX` work has a stable storage target, but no user table
 rows are inserted until those DDL features exist.
 
+`__mylite_index_catalog` also stores private metadata that is not exposed
+through `INFORMATION_SCHEMA.STATISTICS`, including `display_index_type`. The
+flag records whether `SHOW CREATE TABLE` should preserve explicit
+`USING BTREE` syntax separately from the effective `INDEX_TYPE` value.
+
 System schema rows are seeded when a MyLite database handle opens. The
 `information_schema` row uses MySQL-observed defaults `utf8mb3` and
 `utf8mb3_general_ci`; the `mysql`, `performance_schema`, and `sys` rows use

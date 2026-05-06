@@ -70,6 +70,8 @@ int mylite_table_ddl_copy_create_index_statement(
     }
     if (pre_index_type != NULL) {
         plan->index.algorithm = pre_index_type->index_algorithm;
+        plan->index.display_index_type =
+            pre_index_type->index_algorithm == MYLITE_SQL_AST_INDEX_ALGORITHM_BTREE;
     }
     status = mylite_table_ddl_copy_create_table_key_parts(key_parts, &plan->index);
     if (status == MYLITE_OK) {

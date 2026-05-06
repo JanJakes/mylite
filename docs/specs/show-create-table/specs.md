@@ -14,8 +14,8 @@ Generated text is deterministic and describes the currently supported
 `CREATE TABLE` subset: column names and stored column types, nullability,
 defaults, `AUTO_INCREMENT`, invisible columns, primary keys, unique indexes,
 secondary indexes, key-part prefix lengths and descending order, index
-comments, index visibility, engine, auto-increment table option, table charset,
-table collation, and table comment.
+comments, explicit `USING BTREE` display, index visibility, engine,
+auto-increment table option, table charset, table collation, and table comment.
 
 Deferred surfaces:
 
@@ -52,6 +52,8 @@ The following behavior was verified against MySQL 8.4.9:
 | --- | --- |
 | `SHOW CREATE TABLE simple` for `CREATE TABLE simple (id INT PRIMARY KEY, v VARCHAR(10))` | Columns `Table`, `Create Table`; one row. The generated definition places `PRIMARY KEY` as a table constraint, renders `id` as `int NOT NULL`, renders nullable `varchar` as `varchar(10) DEFAULT NULL`, and appends `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci`. |
 | `SHOW CREATE TABLE meta` for a table with `AUTO_INCREMENT`, comments, invisible column, unique and nonunique indexes, prefix length, descending order, invisible index, explicit charset/collation, table comment, and `AUTO_INCREMENT=42` | Columns `Table`, `Create Table`; generated text uses backtick-quoted identifiers, `AUTO_INCREMENT` on the column, string-quoted literal defaults, `/*!80023 INVISIBLE */` for invisible columns, primary/unique/nonunique key clauses, `DESC` on descending key parts, index `COMMENT`, `/*!80000 INVISIBLE */` for invisible indexes, and table options `ENGINE=InnoDB AUTO_INCREMENT=42 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='table comment'`. |
+| `SHOW CREATE TABLE index_options` for `KEY idx_pre USING BTREE (v)`, `KEY idx_post (v) USING BTREE`, and `KEY idx_hash USING HASH (v)` | Explicit BTREE index type syntax is preserved as `USING BTREE` after the key-part list. Unsupported InnoDB HASH syntax falls back to effective BTREE metadata but does not display a `USING` clause. |
+| `SHOW CREATE TABLE text_defaults` for nullable `TEXT`, explicit `TEXT DEFAULT NULL`, and `TEXT NOT NULL` columns | Nullable text family columns omit implicit and explicit `DEFAULT NULL`; non-null text columns append `NOT NULL`. |
 | `SHOW CREATE TABLE t_default_col_explicit` for `CREATE TABLE t_default_col_explicit (c VARCHAR(10) COLLATE utf8mb4_bin, d VARCHAR(10)) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci` | Column `c` renders `varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL`; column `d` renders `varchar(10) DEFAULT NULL`. |
 | `SHOW CREATE TABLE t_table_bin` for `CREATE TABLE t_table_bin (c VARCHAR(10), d VARCHAR(10) COLLATE utf8mb4_0900_ai_ci) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin` | Column `c` renders `varchar(10) COLLATE utf8mb4_bin DEFAULT NULL`; column `d` renders `varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL`. |
 | `SHOW CREATE TABLE t` with no selected database | Error `1046`, SQLSTATE `3D000`, message `No database selected`. |
@@ -144,6 +146,10 @@ Formatting:
   optional ` DESC` when the catalog collation is `D`.
 - Key parts are separated with `,` without a following space, matching MySQL's
   default `SHOW CREATE TABLE` display.
+- Indexes created with explicit `USING BTREE` render `USING BTREE` after the
+  key-part list. Default BTREE indexes do not render the clause. InnoDB HASH
+  fallback indexes expose effective BTREE metadata but do not render an index
+  type clause.
 - Index comments append `COMMENT '<comment>'`.
 - Invisible non-primary indexes append `/*!80000 INVISIBLE */`.
 - The closing line appends table options in deterministic MySQL order:
@@ -177,6 +183,9 @@ Runtime coverage:
   primary key, unique key, secondary key, prefix length, descending key part,
   index comment, invisible index, explicit charset/collation, table comment,
   and table `AUTO_INCREMENT`
+- explicit `USING BTREE` display for create-table, standalone `CREATE INDEX`,
+  and `ALTER TABLE ADD KEY`, including HASH fallback suppression
+- text family columns suppressing implicit and explicit `DEFAULT NULL`
 - escaped backticks in table, column, and index identifiers
 - missing selected schema diagnostic
 - missing schema diagnostic
@@ -200,3 +209,9 @@ definers, security, or view connection character-set metadata.
 `sql_quote_show_create` is out of scope. Until MyLite has a compatible
 session-variable model for it, default quoted output is the only supported
 surface.
+
+MyLite stores a private `display_index_type` flag alongside effective
+`__mylite_index_catalog.index_type` metadata. This keeps
+`INFORMATION_SCHEMA.STATISTICS.INDEX_TYPE` normalized to the effective MySQL
+value while still allowing `SHOW CREATE TABLE` to preserve explicit
+`USING BTREE` syntax when MySQL displays it.

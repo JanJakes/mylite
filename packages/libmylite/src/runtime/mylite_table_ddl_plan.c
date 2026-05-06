@@ -265,6 +265,7 @@ void mylite_table_ddl_alter_table_action_deinit(struct mylite_alter_table_action
     free(action->after_column);
     mylite_table_ddl_create_table_column_deinit(&action->column);
     mylite_table_ddl_create_table_index_deinit(&action->index);
+    mylite_table_ddl_create_table_foreign_key_deinit(&action->foreign_key);
     *action = (struct mylite_alter_table_action){0};
 }
 

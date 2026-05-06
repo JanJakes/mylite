@@ -108,6 +108,14 @@ int mylite_table_ddl_assign_generated_index_names(
     mylite_db *database,
     struct mylite_create_table_plan *plan
 );
+int mylite_table_ddl_insert_foreign_key_catalog_rows(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    bool temporary,
+    const struct mylite_create_table_foreign_key *foreign_keys,
+    size_t foreign_key_count
+);
 char *mylite_table_ddl_generated_index_name_candidate(const char *base, unsigned int suffix);
 void mylite_table_ddl_create_table_plan_deinit(struct mylite_create_table_plan *plan);
 void mylite_table_ddl_drop_table_plan_deinit(struct mylite_drop_table_plan *plan);

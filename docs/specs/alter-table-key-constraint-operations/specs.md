@@ -81,8 +81,8 @@ application migrations:
   rewrites, optional auxiliary SQLite indexes, warnings, diagnostics, and
   affected-row state.
 - Return deterministic unsupported diagnostics before mutation for
-  `FULLTEXT`, `SPATIAL`, executable foreign keys, and executable CHECK
-  constraints until their dedicated catalog/runtime support lands.
+  `FULLTEXT`, `SPATIAL`, mixed-action executable foreign keys, and executable
+  CHECK constraints until their dedicated catalog/runtime support lands.
 - Keep CHECK and foreign-key AST nodes source-complete so later work can add
   catalogs and runtime behavior without changing the accepted parse tree.
 
@@ -330,10 +330,10 @@ Runtime probes observed:
 - missing foreign-key names failed with error 1091.
 
 Foreign keys require compatible child and parent column definitions, usable
-indexes, and storage-engine support. MyLite should parse and preserve this
-surface but return a deterministic unsupported diagnostic before mutation until
-foreign-key catalogs, referential validation, cascades, and dependency checks
-exist.
+indexes, and storage-engine support. MyLite implements FK-only ADD/DROP shapes
+using the foreign-key catalog and existing DML enforcement. Mixed FK actions
+with supported column/index actions, dependency checks, and broader recursive
+referential behavior remain deferred.
 
 ## MyLite behavior
 
@@ -833,8 +833,8 @@ fixtures should create and drop isolated schemas.
 
 | SQL or behavior | Expected MyLite-compatible outcome |
 | --- | --- |
-| `ADD CONSTRAINT fk_pid FOREIGN KEY fk_pid_idx (pid) REFERENCES parent(id)` over matching rows | MySQL succeeds, reports affected rows `2` for the verified two-row shape, and records `fk_pid` as the FK constraint; MyLite first slice returns unsupported before mutation. |
-| `ADD FOREIGN KEY fk_named_idx (pid) REFERENCES parent(id)` | MySQL creates supporting index `fk_named_idx` and generated constraint `child_named_ibfk_1`; MyLite first slice returns unsupported. |
+| `ADD CONSTRAINT fk_pid FOREIGN KEY fk_pid_idx (pid) REFERENCES parent(id)` over matching rows | Succeeds for FK-only ALTER, reports the child table row count as affected rows, and records `fk_pid` as the FK constraint. |
+| `ADD FOREIGN KEY fk_named_idx (pid) REFERENCES parent(id)` | Creates supporting index `fk_named_idx` when no existing prefix index can be reused and records generated constraint `child_named_ibfk_1`. |
 | adding a foreign key with unmatched existing child rows while `foreign_key_checks=1` | Error 1452; no foreign-key metadata is added. |
 | adding the same shape while `foreign_key_checks=0` | MySQL accepts without scanning old rows; future bad writes fail after checks are re-enabled. |
 | `DROP INDEX fk_named_idx` while the FK depends on it | Error 1553; FK and index remain. |

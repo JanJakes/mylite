@@ -58,9 +58,34 @@ static int copy_alter_table_index_action(
     struct mylite_alter_table_action *action
 );
 
+static int copy_alter_table_add_foreign_key_action(
+    const struct mylite_sql_ast_node *action_node,
+    struct mylite_alter_table_action *action
+);
+
+static int copy_alter_table_drop_foreign_key_action(
+    const struct mylite_sql_ast_node *action_node,
+    struct mylite_alter_table_action *action
+);
+
 static int copy_alter_table_column_definition(
     const struct mylite_sql_ast_node *column_node,
     struct mylite_create_table_column *out_column
+);
+
+static bool alter_table_foreign_key_has_constraint_prefix(
+    const struct mylite_sql_ast_node *action_node
+);
+
+static int copy_alter_table_foreign_key_identifier_list(
+    const struct mylite_sql_ast_node *list,
+    char ***out_names,
+    size_t *out_count
+);
+
+static int copy_alter_table_foreign_key_reference_options(
+    const struct mylite_sql_ast_node *options,
+    struct mylite_create_table_foreign_key *foreign_key
 );
 
 static int copy_alter_table_column_position(
@@ -241,8 +266,10 @@ static int copy_alter_table_action(
         action.kind = MYLITE_ALTER_TABLE_ACTION_UNSUPPORTED_CHECK;
         break;
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_FOREIGN_KEY:
+        status = copy_alter_table_add_foreign_key_action(action_node, &action);
+        break;
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_FOREIGN_KEY:
-        action.kind = MYLITE_ALTER_TABLE_ACTION_UNSUPPORTED_FOREIGN_KEY;
+        status = copy_alter_table_drop_foreign_key_action(action_node, &action);
         break;
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION_NONE:
         status = MYLITE_UNSUPPORTED;
@@ -392,6 +419,107 @@ static int copy_alter_table_index_action(
     return MYLITE_OK;
 }
 
+static int copy_alter_table_add_foreign_key_action(
+    const struct mylite_sql_ast_node *action_node,
+    struct mylite_alter_table_action *action
+) {
+    struct mylite_create_table_foreign_key foreign_key = {
+        .match = MYLITE_SQL_AST_REFERENCE_MATCH_NONE,
+        .on_update = MYLITE_SQL_AST_REFERENCE_ACTION_NO_ACTION,
+        .on_delete = MYLITE_SQL_AST_REFERENCE_ACTION_NO_ACTION,
+    };
+    const struct mylite_sql_ast_node *child = action_node->first_child;
+    const struct mylite_sql_ast_node *constraint_name = NULL;
+    const struct mylite_sql_ast_node *index_name = NULL;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *reference = NULL;
+    const struct mylite_sql_ast_node *referenced_table = NULL;
+    const struct mylite_sql_ast_node *referenced_columns = NULL;
+    const struct mylite_sql_ast_node *reference_options = NULL;
+    int status = MYLITE_OK;
+
+    if (alter_table_foreign_key_has_constraint_prefix(action_node) && child != NULL &&
+        child->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        constraint_name = child;
+        child = child->next_sibling;
+    }
+    if (child != NULL && child->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        index_name = child;
+        child = child->next_sibling;
+    }
+    columns = child;
+    reference = columns == NULL ? NULL : columns->next_sibling;
+    referenced_table = mylite_ast_child_at(reference, 0U);
+    referenced_columns = mylite_ast_child_at(reference, 1U);
+    reference_options = mylite_ast_child_at(reference, 2U);
+
+    if (constraint_name != NULL) {
+        foreign_key.constraint_name = mylite_copy_identifier_span(constraint_name);
+        if (foreign_key.constraint_name == NULL) {
+            status = MYLITE_NOMEM;
+        }
+    }
+    if (status == MYLITE_OK) {
+        status = copy_alter_table_foreign_key_identifier_list(
+            columns,
+            &foreign_key.column_names,
+            &foreign_key.column_count
+        );
+    }
+    if (status == MYLITE_OK) {
+        if (index_name != NULL) {
+            foreign_key.supporting_index_name = mylite_copy_identifier_span(index_name);
+        } else if (foreign_key.constraint_name != NULL) {
+            foreign_key.supporting_index_name =
+                mylite_copy_nonempty_cstring(foreign_key.constraint_name);
+        }
+        if ((index_name != NULL || foreign_key.constraint_name != NULL) &&
+            foreign_key.supporting_index_name == NULL) {
+            status = MYLITE_NOMEM;
+        }
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_table_ddl_copy_table_name_parts(
+            referenced_table,
+            &foreign_key.referenced_schema_name,
+            &foreign_key.referenced_table_name
+        );
+    }
+    if (status == MYLITE_OK) {
+        status = copy_alter_table_foreign_key_identifier_list(
+            referenced_columns,
+            &foreign_key.referenced_column_names,
+            &foreign_key.referenced_column_count
+        );
+    }
+    if (status == MYLITE_OK) {
+        status = copy_alter_table_foreign_key_reference_options(reference_options, &foreign_key);
+    }
+    if (status == MYLITE_OK && foreign_key.column_count != foreign_key.referenced_column_count) {
+        status = MYLITE_UNSUPPORTED;
+    }
+    if (status == MYLITE_OK) {
+        action->kind = MYLITE_ALTER_TABLE_ACTION_ADD_FOREIGN_KEY;
+        action->foreign_key = foreign_key;
+    }
+    if (status != MYLITE_OK) {
+        mylite_table_ddl_create_table_foreign_key_deinit(&foreign_key);
+    }
+    return status;
+}
+
+static int copy_alter_table_drop_foreign_key_action(
+    const struct mylite_sql_ast_node *action_node,
+    struct mylite_alter_table_action *action
+) {
+    action->kind = MYLITE_ALTER_TABLE_ACTION_DROP_FOREIGN_KEY;
+    action->old_name = mylite_copy_identifier_span(mylite_ast_child_at(action_node, 0U));
+    if (action->old_name == NULL) {
+        return MYLITE_NOMEM;
+    }
+    return MYLITE_OK;
+}
+
 static int copy_alter_table_column_definition(
     const struct mylite_sql_ast_node *column_node,
     struct mylite_create_table_column *out_column
@@ -411,6 +539,92 @@ static int copy_alter_table_column_definition(
     *out_column = plan.columns[0];
     plan.columns[0] = (struct mylite_create_table_column){0};
     mylite_table_ddl_create_table_plan_deinit(&plan);
+    return MYLITE_OK;
+}
+
+static bool alter_table_foreign_key_has_constraint_prefix(
+    const struct mylite_sql_ast_node *action_node
+) {
+    const char constraint_keyword[] = "CONSTRAINT";
+    const char foreign_keyword[] = "FOREIGN";
+    size_t keyword_length = strlen(constraint_keyword);
+    size_t foreign_length = strlen(foreign_keyword);
+
+    if (action_node == NULL || action_node->span.text == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < action_node->span.length; ++index) {
+        if (index + foreign_length <= action_node->span.length) {
+            struct mylite_sql_source_span candidate = {
+                .text = action_node->span.text + index,
+                .length = foreign_length,
+            };
+
+            if (mylite_span_equal_ci(candidate, foreign_keyword)) {
+                return false;
+            }
+        }
+        if (index + keyword_length <= action_node->span.length) {
+            struct mylite_sql_source_span candidate = {
+                .text = action_node->span.text + index,
+                .length = keyword_length,
+            };
+
+            if (mylite_span_equal_ci(candidate, constraint_keyword)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static int copy_alter_table_foreign_key_identifier_list(
+    const struct mylite_sql_ast_node *list,
+    char ***out_names,
+    size_t *out_count
+) {
+    *out_names = NULL;
+    *out_count = 0U;
+    for (const struct mylite_sql_ast_node *node = list == NULL ? NULL : list->first_child;
+         node != NULL;
+         node = node->next_sibling) {
+        char **names = realloc(*out_names, (*out_count + 1U) * sizeof(**out_names));
+        char *name = NULL;
+
+        if (names == NULL) {
+            return MYLITE_NOMEM;
+        }
+        *out_names = names;
+        name = mylite_copy_identifier_span(node);
+        if (name == NULL) {
+            return MYLITE_NOMEM;
+        }
+        (*out_names)[(*out_count)++] = name;
+    }
+    return *out_count == 0U ? MYLITE_UNSUPPORTED : MYLITE_OK;
+}
+
+static int copy_alter_table_foreign_key_reference_options(
+    const struct mylite_sql_ast_node *options,
+    struct mylite_create_table_foreign_key *foreign_key
+) {
+    for (const struct mylite_sql_ast_node *option = options == NULL ? NULL : options->first_child;
+         option != NULL;
+         option = option->next_sibling) {
+        switch (option->reference_option) {
+        case MYLITE_SQL_AST_REFERENCE_OPTION_ON_DELETE:
+            foreign_key->on_delete = option->reference_action;
+            break;
+        case MYLITE_SQL_AST_REFERENCE_OPTION_ON_UPDATE:
+            foreign_key->on_update = option->reference_action;
+            break;
+        case MYLITE_SQL_AST_REFERENCE_OPTION_MATCH:
+            foreign_key->match = option->reference_match;
+            break;
+        case MYLITE_SQL_AST_REFERENCE_OPTION_NONE:
+            break;
+        }
+    }
     return MYLITE_OK;
 }
 

@@ -152,8 +152,10 @@ enum mylite_alter_table_action_kind {
     MYLITE_ALTER_TABLE_ACTION_RENAME_INDEX = 12,
     MYLITE_ALTER_TABLE_ACTION_ALTER_INDEX_VISIBILITY = 13,
     MYLITE_ALTER_TABLE_ACTION_UNSUPPORTED_CHECK = 14,
-    MYLITE_ALTER_TABLE_ACTION_UNSUPPORTED_FOREIGN_KEY = 15,
-    MYLITE_ALTER_TABLE_ACTION_RENAME_TABLE = 16,
+    MYLITE_ALTER_TABLE_ACTION_ADD_FOREIGN_KEY = 15,
+    MYLITE_ALTER_TABLE_ACTION_DROP_FOREIGN_KEY = 16,
+    MYLITE_ALTER_TABLE_ACTION_UNSUPPORTED_FOREIGN_KEY = 17,
+    MYLITE_ALTER_TABLE_ACTION_RENAME_TABLE = 18,
 };
 
 enum mylite_alter_table_column_position_kind {
@@ -171,6 +173,7 @@ struct mylite_alter_table_action {
     char *after_column;
     struct mylite_create_table_column column;
     struct mylite_create_table_index index;
+    struct mylite_create_table_foreign_key foreign_key;
     bool index_visible;
 };
 

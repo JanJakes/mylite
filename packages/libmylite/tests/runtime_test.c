@@ -520,6 +520,8 @@ static int test_foreign_key_child_update_execution(void);
 
 static int test_foreign_key_delete_actions_execution(void);
 
+static int test_alter_table_foreign_key_execution(void);
+
 static int test_select_table_core_execution(void);
 
 static int test_inner_join_execution(void);
@@ -979,6 +981,7 @@ int main(void) {
     failures += test_foreign_key_parent_restrict_execution();
     failures += test_foreign_key_child_update_execution();
     failures += test_foreign_key_delete_actions_execution();
+    failures += test_alter_table_foreign_key_execution();
     failures += test_select_table_core_execution();
     failures += test_inner_join_execution();
     failures += test_outer_join_execution();
@@ -3106,6 +3109,30 @@ static int test_information_schema_referential_constraints_execution(void) {
         "referential_constraints_create_child",
         "referential_constraints_parent",
     };
+    static const char *const create_and_alter_fk_values[] = {
+        "def",
+        "mylite_referential_constraints",
+        "fk_create_parent",
+        "def",
+        "mylite_referential_constraints",
+        "PRIMARY",
+        "NONE",
+        "CASCADE",
+        "SET NULL",
+        "referential_constraints_create_child",
+        "referential_constraints_parent",
+        "def",
+        "mylite_referential_constraints",
+        "fk_parent",
+        "def",
+        "mylite_referential_constraints",
+        "PRIMARY",
+        "NONE",
+        "CASCADE",
+        "SET NULL",
+        "referential_constraints_child",
+        "referential_constraints_parent",
+    };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -3209,7 +3236,8 @@ static int test_information_schema_referential_constraints_execution(void) {
     stmt = NULL;
     failures += expect_select_rows(
         database,
-        "SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS",
+        "SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
+        "ORDER BY CONSTRAINT_NAME",
         columns,
         referential_constraints_column_count,
         create_fk_values,
@@ -3248,19 +3276,20 @@ static int test_information_schema_referential_constraints_execution(void) {
     );
     failures += expect_status(
         mylite_step(stmt),
-        MYLITE_UNSUPPORTED,
-        "alter foreign key does not create referential constraints rows"
+        MYLITE_DONE,
+        "alter foreign key creates referential constraints rows"
     );
     mylite_finalize(stmt);
     stmt = NULL;
     failures += expect_select_rows(
         database,
-        "SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS",
+        "SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
+        "ORDER BY CONSTRAINT_NAME",
         columns,
         referential_constraints_column_count,
-        create_fk_values,
-        1,
-        "alter foreign key leaves existing referential constraints rows"
+        create_and_alter_fk_values,
+        2,
+        "alter foreign key referential constraints rows"
     );
 
     mylite_close(database);
@@ -37956,13 +37985,13 @@ static int test_alter_table_key_operations_execution(void) {
     );
     failures += expect_status(
         mylite_step(stmt),
-        MYLITE_UNSUPPORTED,
-        "alter foreign key placeholder rejected"
+        MYLITE_EXEC_ERROR,
+        "alter foreign key missing parent rejected"
     );
     failures += expect_contains(
         mylite_error_message(database),
-        "FOREIGN KEY",
-        "alter foreign key unsupported error"
+        "Failed to open the referenced table 'missing_parent'",
+        "alter foreign key missing parent error"
     );
     mylite_finalize(stmt);
     stmt = NULL;
@@ -49182,6 +49211,205 @@ static int test_foreign_key_delete_actions_execution(void) {
         multi_null_values,
         2,
         "foreign key multi delete set null rows"
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_alter_table_foreign_key_execution(void) {
+    static const char *const child_columns[] = {"id", "parent_id"};
+    static const char *const child_after_cascade_values[] = {"2", NULL};
+    static const char *const child_after_drop_values[] = {"2", NULL, "3", "99"};
+    static const char *const fk_metadata_columns[] = {
+        "CONSTRAINT_NAME",
+        "UNIQUE_CONSTRAINT_NAME",
+        "UPDATE_RULE",
+        "DELETE_RULE",
+    };
+    static const char *const fk_metadata_values[] =
+        {"fk_parent", "PRIMARY", "NO ACTION", "CASCADE"};
+    static const char *const missing_fk_metadata_values[] = {
+        "child_missing_parent_ibfk_1",
+        NULL,
+        "missing_parent",
+    };
+    static const char *const count_columns[] = {"c"};
+    static const char *const zero_count_values[] = {"0"};
+    static const char *const one_count_values[] = {"1"};
+    static const char *const index_columns[] = {"INDEX_NAME"};
+    static const char *const index_values[] = {"fk_parent"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open alter foreign key database");
+    failures += execute_sql(database, "CREATE DATABASE alter_fk_runtime", MYLITE_DONE);
+    failures += execute_sql(database, "USE alter_fk_runtime", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE parent_fk (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE child_fk (id INT PRIMARY KEY, parent_id INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "INSERT INTO parent_fk VALUES (1),(2)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO child_fk VALUES (1,1),(2,NULL)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE child_fk ADD CONSTRAINT fk_parent "
+        "FOREIGN KEY (parent_id) REFERENCES parent_fk(id) ON DELETE CASCADE",
+        2,
+        "alter foreign key add affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT CONSTRAINT_NAME, UNIQUE_CONSTRAINT_NAME, UPDATE_RULE, DELETE_RULE "
+        "FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
+        "WHERE CONSTRAINT_SCHEMA = 'alter_fk_runtime' AND TABLE_NAME = 'child_fk'",
+        fk_metadata_columns,
+        4,
+        fk_metadata_values,
+        1,
+        "alter foreign key referential metadata"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS "
+        "WHERE TABLE_SCHEMA = 'alter_fk_runtime' AND TABLE_NAME = 'child_fk' "
+        "AND INDEX_NAME = 'fk_parent'",
+        index_columns,
+        1,
+        index_values,
+        1,
+        "alter foreign key supporting index"
+    );
+    failures += prepare_sql(database, "INSERT INTO child_fk VALUES (3,99)", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "alter foreign key enforces");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_no_referenced_row,
+        "alter foreign key enforcement code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "DELETE FROM parent_fk WHERE id = 1", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id, parent_id FROM child_fk ORDER BY id",
+        child_columns,
+        2,
+        child_after_cascade_values,
+        1,
+        "alter foreign key delete cascade rows"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE child_fk DROP FOREIGN KEY fk_parent",
+        0,
+        "alter foreign key drop affected rows"
+    );
+    failures += execute_sql(database, "INSERT INTO child_fk VALUES (3,99)", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
+        "WHERE CONSTRAINT_SCHEMA = 'alter_fk_runtime' AND TABLE_NAME = 'child_fk'",
+        count_columns,
+        1,
+        zero_count_values,
+        1,
+        "alter foreign key drop removes metadata"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS "
+        "WHERE TABLE_SCHEMA = 'alter_fk_runtime' AND TABLE_NAME = 'child_fk' "
+        "AND INDEX_NAME = 'fk_parent'",
+        index_columns,
+        1,
+        index_values,
+        1,
+        "alter foreign key drop leaves supporting index"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, parent_id FROM child_fk ORDER BY id",
+        child_columns,
+        2,
+        child_after_drop_values,
+        2,
+        "alter foreign key drop permits unmatched rows"
+    );
+
+    failures +=
+        execute_sql(database, "CREATE TABLE invalid_parent_fk (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE invalid_child_fk (id INT PRIMARY KEY, parent_id INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "INSERT INTO invalid_child_fk VALUES (1,99)", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "ALTER TABLE invalid_child_fk ADD CONSTRAINT fk_invalid "
+        "FOREIGN KEY (parent_id) REFERENCES invalid_parent_fk(id)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "alter foreign key validates existing rows"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
+        "WHERE CONSTRAINT_SCHEMA = 'alter_fk_runtime' AND TABLE_NAME = 'invalid_child_fk'",
+        count_columns,
+        1,
+        zero_count_values,
+        1,
+        "alter foreign key failed add leaves no metadata"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE child_missing_parent (id INT PRIMARY KEY, parent_id INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "SET foreign_key_checks = 0", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "ALTER TABLE child_missing_parent ADD FOREIGN KEY (parent_id) "
+        "REFERENCES missing_parent(id)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "SET foreign_key_checks = 1", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT CONSTRAINT_NAME, UNIQUE_CONSTRAINT_NAME, REFERENCED_TABLE_NAME "
+        "FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
+        "WHERE CONSTRAINT_SCHEMA = 'alter_fk_runtime' "
+        "AND TABLE_NAME = 'child_missing_parent'",
+        (const char *[]){"CONSTRAINT_NAME", "UNIQUE_CONSTRAINT_NAME", "REFERENCED_TABLE_NAME"},
+        3,
+        missing_fk_metadata_values,
+        1,
+        "alter foreign key checks off missing parent metadata"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE "
+        "WHERE CONSTRAINT_SCHEMA = 'alter_fk_runtime' "
+        "AND TABLE_NAME = 'child_missing_parent' AND CONSTRAINT_NAME = "
+        "'child_missing_parent_ibfk_1'",
+        count_columns,
+        1,
+        one_count_values,
+        1,
+        "alter foreign key checks off key column usage"
     );
 
     mylite_close(database);

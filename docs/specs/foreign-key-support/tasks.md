@@ -30,11 +30,11 @@ commit.
 
 ## `ALTER TABLE`
 
-- [ ] Implement `ALTER TABLE ... ADD [CONSTRAINT] FOREIGN KEY ...` over
-      supported base tables.
-- [ ] Validate existing child rows when `foreign_key_checks = 1`.
-- [ ] Skip existing-row validation when `foreign_key_checks = 0`.
-- [ ] Implement `ALTER TABLE ... DROP FOREIGN KEY` without removing the
+- [x] Implement FK-only `ALTER TABLE ... ADD [CONSTRAINT] FOREIGN KEY ...`
+      over supported persistent base tables.
+- [x] Validate existing child rows when `foreign_key_checks = 1`.
+- [x] Skip existing-row validation when `foreign_key_checks = 0`.
+- [x] Implement `ALTER TABLE ... DROP FOREIGN KEY` without removing the
       supporting child index.
 - [ ] Preserve mixed-action ALTER atomicity when FK actions are combined with
       supported column/index actions.

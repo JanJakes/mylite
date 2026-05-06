@@ -8,6 +8,7 @@
 #include "mylite_table_ddl_create_catalog_index.h"
 #include "sqlite3.h"
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <time.h>
@@ -27,12 +28,6 @@ static int insert_column_catalog_rows(
 );
 
 static int insert_check_constraint_catalog_rows(
-    mylite_db *database,
-    const char *schema_name,
-    const struct mylite_create_table_plan *plan
-);
-
-static int insert_foreign_key_catalog_rows(
     mylite_db *database,
     const char *schema_name,
     const struct mylite_create_table_plan *plan
@@ -61,7 +56,7 @@ static int insert_foreign_key_catalog_row(
     mylite_db *database,
     sqlite3_stmt *insert,
     const char *schema_name,
-    const struct mylite_create_table_plan *plan,
+    const char *table_name,
     const struct mylite_create_table_foreign_key *foreign_key,
     size_t column_index
 );
@@ -109,7 +104,14 @@ int mylite_table_ddl_insert_create_table_catalog_rows(
         status = insert_check_constraint_catalog_rows(database, schema_name, plan);
     }
     if (status == MYLITE_OK) {
-        status = insert_foreign_key_catalog_rows(database, schema_name, plan);
+        status = mylite_table_ddl_insert_foreign_key_catalog_rows(
+            database,
+            schema_name,
+            plan->table_name,
+            plan->temporary,
+            plan->foreign_keys,
+            plan->foreign_key_count
+        );
     }
     if (status == MYLITE_OK) {
         status = refresh_create_table_statistics(database, schema_name, plan);
@@ -326,16 +328,19 @@ static int insert_check_constraint_catalog_row(
     return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
-static int insert_foreign_key_catalog_rows(
+int mylite_table_ddl_insert_foreign_key_catalog_rows(
     mylite_db *database,
     const char *schema_name,
-    const struct mylite_create_table_plan *plan
+    const char *table_name,
+    bool temporary,
+    const struct mylite_create_table_foreign_key *foreign_keys,
+    size_t foreign_key_count
 ) {
     sqlite3_stmt *insert = NULL;
     char *sql = NULL;
     int rc = SQLITE_OK;
 
-    if (plan->foreign_key_count == 0U) {
+    if (foreign_key_count == 0U) {
         return MYLITE_OK;
     }
 
@@ -347,7 +352,7 @@ static int insert_foreign_key_catalog_rows(
         "delete_rule, referenced_table_schema, referenced_table_name, referenced_column_name, "
         "position_in_unique_constraint)"
         " VALUES('def', ?, ?, ?, ?, ?, ?, ?, 'def', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        mylite_catalog_foreign_key_catalog_name(plan->temporary)
+        mylite_catalog_foreign_key_catalog_name(temporary)
     );
     if (sql == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
@@ -359,14 +364,14 @@ static int insert_foreign_key_catalog_rows(
         return mylite_diagnostics_set_sqlite_error(database);
     }
 
-    for (size_t index = 0U; index < plan->foreign_key_count; ++index) {
-        for (size_t column = 0U; column < plan->foreign_keys[index].column_count; ++column) {
+    for (size_t index = 0U; index < foreign_key_count; ++index) {
+        for (size_t column = 0U; column < foreign_keys[index].column_count; ++column) {
             int status = insert_foreign_key_catalog_row(
                 database,
                 insert,
                 schema_name,
-                plan,
-                &plan->foreign_keys[index],
+                table_name,
+                &foreign_keys[index],
                 column
             );
 
@@ -385,7 +390,7 @@ static int insert_foreign_key_catalog_row(
     mylite_db *database,
     sqlite3_stmt *insert,
     const char *schema_name,
-    const struct mylite_create_table_plan *plan,
+    const char *table_name,
     const struct mylite_create_table_foreign_key *foreign_key,
     size_t column_index
 ) {
@@ -427,7 +432,7 @@ static int insert_foreign_key_catalog_row(
         sqlite_transient_destructor()
     );
     sqlite3_bind_text(insert, bind_table_schema, schema_name, -1, sqlite_transient_destructor());
-    sqlite3_bind_text(insert, bind_table_name, plan->table_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(insert, bind_table_name, table_name, -1, sqlite_transient_destructor());
     sqlite3_bind_text(
         insert,
         bind_column_name,

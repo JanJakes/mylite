@@ -142,7 +142,13 @@ apply `ON DELETE CASCADE` and `ON DELETE SET NULL` to matching child rows for
 supported single-table and multi-table `DELETE` paths, and skip those actions
 while `foreign_key_checks=0`. Temporary-table foreign-key definitions are
 rejected with a deterministic `Cannot add foreign key constraint` diagnostic.
-`ON UPDATE CASCADE`, `ON UPDATE SET NULL`, ALTER ADD/DROP FOREIGN KEY,
+FK-only `ALTER TABLE ... ADD FOREIGN KEY` persists catalog metadata, creates or
+reuses the supporting child index, validates existing child rows while
+`foreign_key_checks=1`, skips existing-row validation while
+`foreign_key_checks=0`, and permits missing referenced tables only while checks
+are disabled. FK-only `ALTER TABLE ... DROP FOREIGN KEY` removes only
+foreign-key metadata and leaves the supporting child index in place.
+`ON UPDATE CASCADE`, `ON UPDATE SET NULL`, mixed-action ALTER FK operations,
 recursive referential actions, and dependency restrictions remain follow-up
 slices.
 
@@ -158,9 +164,12 @@ Table-level `CREATE TABLE ... FOREIGN KEY` should:
   is enabled
 - record metadata atomically with the table, columns, and indexes
 
-`ALTER TABLE ... ADD FOREIGN KEY` should additionally validate existing child
-rows when `foreign_key_checks` is enabled and use MySQL affected-row semantics
-for the verified rebuild shape.
+FK-only `ALTER TABLE ... ADD FOREIGN KEY` additionally validates existing child
+rows when `foreign_key_checks` is enabled, skips that scan when checks are
+disabled, and reports the child table row count as affected rows for supported
+metadata-only shapes.
+Mixed FK actions with supported column/index actions remain deferred until FK
+catalog rewrites participate in the shadow-table ALTER model.
 
 `ALTER TABLE ... DROP FOREIGN KEY` removes only the foreign-key catalog rows.
 It must not remove the supporting child index.

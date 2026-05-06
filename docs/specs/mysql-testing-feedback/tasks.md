@@ -13,20 +13,21 @@ MySQL 8.4.9 runtime before each item is marked complete.
 
 ## Information schema and SHOW metadata
 
-- [ ] Align `SELECT * FROM information_schema.TABLES` metadata with MySQL for
+- [x] Align `SELECT * FROM information_schema.TABLES` metadata with MySQL for
       row format, size fields, timestamps, and placeholder values. Row-format
       zero-placeholder fields, row counts, and small-table size fields are
-      covered; timestamps remain open.
-- [ ] Align `USE information_schema; SELECT * FROM tables` with the same
+      covered; `CREATE_TIME` now reports MySQL-shaped non-NULL datetimes while
+      `UPDATE_TIME` and `CHECK_TIME` remain `NULL`.
+- [x] Align `USE information_schema; SELECT * FROM tables` with the same
       MySQL-compatible metadata rows. Resolution and zero-placeholder fields
-      plus row-count and small-table size fields are covered; timestamps remain
-      open with the qualified `information_schema.TABLES` task.
+      plus row-count, small-table size fields, and timestamps are covered with
+      the qualified `information_schema.TABLES` task.
 - [x] Verify and complete `SHOW DATABASES` parser and runtime coverage;
       verify `SHOW TABLE SCHEMAS` remains a MySQL syntax error.
-- [ ] Align `SHOW TABLE STATUS` values, including row counts, data length,
+- [x] Align `SHOW TABLE STATUS` values, including row counts, data length,
       timestamps, and `AUTO_INCREMENT`. Row counts, small-table size fields,
-      secondary-index length, and `AUTO_INCREMENT` are covered; timestamps
-      remain open.
+      secondary-index length, `AUTO_INCREMENT`, and timestamp shapes are
+      covered.
 - [x] Verify and complete `SHOW TABLE STATUS WHERE ...` filtering.
 - [x] Align `CREATE TABLE ... AUTO_INCREMENT=100` metadata and status
       reporting with MySQL next-value expectations.

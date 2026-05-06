@@ -10,6 +10,7 @@
 
 #include <stddef.h>
 #include <stdlib.h>
+#include <time.h>
 
 static int insert_table_catalog_row(
     mylite_db *database,
@@ -51,6 +52,8 @@ static int refresh_create_table_statistics(
     const struct mylite_create_table_plan *plan
 );
 
+static char *create_table_current_timestamp_text(void);
+
 static sqlite3_destructor_type sqlite_transient_destructor(void);
 
 int mylite_table_ddl_insert_create_table_catalog_rows(
@@ -82,11 +85,13 @@ static int insert_table_catalog_row(
 ) {
     enum {
         bind_auto_increment = 4,
-        bind_table_collation = 5,
-        bind_table_comment = 6,
+        bind_create_time = 5,
+        bind_table_collation = 6,
+        bind_table_comment = 7,
     };
 
     sqlite3_stmt *insert = NULL;
+    char *create_time = create_table_current_timestamp_text();
     char *sql = sqlite3_mprintf(
         "INSERT INTO %s("
         "table_catalog, table_schema, table_name, table_type, engine, version, row_format, "
@@ -94,7 +99,7 @@ static int insert_table_catalog_row(
         "auto_increment, create_time, update_time, check_time, table_collation, checksum, "
         "create_options, table_comment)"
         " VALUES('def', ?, ?, 'BASE TABLE', ?, 10, 'Dynamic', 0, 0, 0, 0, 0, 0, "
-        "?, '1970-01-01 00:00:00', NULL, NULL, ?, NULL, '', ?)",
+        "?, ?, NULL, NULL, ?, NULL, '', ?)",
         mylite_catalog_table_catalog_name(plan->temporary)
     );
     const char *collation =
@@ -102,13 +107,16 @@ static int insert_table_catalog_row(
     const char *comment = plan->options.comment == NULL ? "" : plan->options.comment;
     int rc = SQLITE_OK;
 
-    if (sql == NULL) {
+    if (create_time == NULL || sql == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        free(create_time);
+        sqlite3_free(sql);
         return MYLITE_NOMEM;
     }
     rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &insert, NULL);
     sqlite3_free(sql);
     if (rc != SQLITE_OK) {
+        free(create_time);
         return mylite_diagnostics_set_sqlite_error(database);
     }
 
@@ -124,8 +132,10 @@ static int insert_table_catalog_row(
     } else {
         sqlite3_bind_null(insert, bind_auto_increment);
     }
+    sqlite3_bind_text(insert, bind_create_time, create_time, -1, sqlite_transient_destructor());
     sqlite3_bind_text(insert, bind_table_collation, collation, -1, sqlite_transient_destructor());
     sqlite3_bind_text(insert, bind_table_comment, comment, -1, sqlite_transient_destructor());
+    free(create_time);
 
     rc = sqlite3_step(insert);
     sqlite3_finalize(insert);
@@ -399,6 +409,34 @@ static int refresh_create_table_statistics(
     );
     free(physical_name);
     return status;
+}
+
+static char *create_table_current_timestamp_text(void) {
+    enum { timestamp_length = 19U };
+
+    time_t now = time(NULL);
+    struct tm tm_value;
+    char *timestamp = malloc(timestamp_length + 1U);
+
+    if (timestamp == NULL) {
+        return NULL;
+    }
+#ifdef _WIN32
+    if (gmtime_s(&tm_value, &now) != 0) {
+        free(timestamp);
+        return NULL;
+    }
+#else
+    if (gmtime_r(&now, &tm_value) == NULL) {
+        free(timestamp);
+        return NULL;
+    }
+#endif
+    if (strftime(timestamp, timestamp_length + 1U, "%Y-%m-%d %H:%M:%S", &tm_value) == 0U) {
+        free(timestamp);
+        return NULL;
+    }
+    return timestamp;
 }
 
 static sqlite3_destructor_type sqlite_transient_destructor(void) {

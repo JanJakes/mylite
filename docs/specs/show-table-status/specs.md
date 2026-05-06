@@ -130,7 +130,8 @@ Column mapping:
   small InnoDB-table shape with a 16 KiB data page, integer average-row length,
   and one 16 KiB index page per secondary logical index.
 - `Auto_increment`: `auto_increment`
-- `Create_time`: `create_time`
+- `Create_time`: the table catalog creation timestamp recorded when MyLite
+  executes `CREATE TABLE`.
 - `Update_time`: `update_time`
 - `Check_time`: `check_time`
 - `Collation`: `table_collation`
@@ -147,7 +148,7 @@ MySQL-shaped placeholder rows:
 - numeric status columns `Rows`, `Avg_row_length`, `Data_length`,
   `Max_data_length`, `Index_length`, and `Data_free` as `0`
 - `Auto_increment=NULL`
-- `Create_time='1970-01-01 00:00:00'`
+- `Create_time`: a MySQL-shaped non-NULL datetime value.
 - `Update_time=NULL`
 - `Check_time=NULL`
 - `Collation=NULL`

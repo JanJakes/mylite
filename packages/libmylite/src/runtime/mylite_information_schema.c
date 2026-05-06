@@ -136,7 +136,7 @@ static const char information_schema_tables_sql[] =
     "0 AS INDEX_LENGTH,"
     "0 AS DATA_FREE,"
     "NULL AS AUTO_INCREMENT,"
-    "'1970-01-01 00:00:00' AS CREATE_TIME,"
+    "strftime('%Y-%m-%d %H:%M:%S', 'now') AS CREATE_TIME,"
     "NULL AS UPDATE_TIME,"
     "NULL AS CHECK_TIME,"
     "NULL AS TABLE_COLLATION,"

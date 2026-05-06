@@ -43,6 +43,9 @@ enum {
     tables_index_length_column = 11,
     tables_data_free_column = 12,
     tables_auto_increment_column = 13,
+    tables_create_time_column = 14,
+    tables_update_time_column = 15,
+    tables_check_time_column = 16,
     tables_collation_column = 17,
     tables_comment_column = 20,
     columns_name_column = 3,
@@ -284,6 +287,8 @@ struct expected_result_metadata {
     unsigned int flags_clear;
     int nullable;
 };
+
+static const char any_datetime_text[] = "<any datetime>";
 
 static int test_select_integer_literal(void);
 
@@ -1723,8 +1728,19 @@ static int test_information_schema_selected_schema_execution(void) {
         "TABLE_NAME",
         "AVG_ROW_LENGTH",
         "DATA_LENGTH",
+        "CREATE_TIME",
+        "UPDATE_TIME",
+        "CHECK_TIME",
     };
-    static const char *const values[] = {"information_schema", "TABLES", "0", "0"};
+    static const char *const values[] = {
+        "information_schema",
+        "TABLES",
+        "0",
+        "0",
+        any_datetime_text,
+        NULL,
+        NULL,
+    };
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -1732,7 +1748,8 @@ static int test_information_schema_selected_schema_execution(void) {
     failures += execute_sql(database, "USE information_schema", MYLITE_DONE);
     failures += expect_select_rows(
         database,
-        "SELECT TABLE_SCHEMA, TABLE_NAME, AVG_ROW_LENGTH, DATA_LENGTH "
+        "SELECT TABLE_SCHEMA, TABLE_NAME, AVG_ROW_LENGTH, DATA_LENGTH, "
+        "CREATE_TIME, UPDATE_TIME, CHECK_TIME "
         "FROM tables WHERE TABLE_NAME = 'TABLES'",
         columns,
         (int)(sizeof(columns) / sizeof(columns[0])),
@@ -1747,6 +1764,8 @@ static int test_information_schema_selected_schema_execution(void) {
 
 static int test_information_schema_tables_engine_filter_execution(void) {
     static const char *const table_engine_columns[] = {"TABLE_NAME", "ENGINE"};
+    static const char *const table_time_columns[] =
+        {"TABLE_NAME", "CREATE_TIME", "UPDATE_TIME", "CHECK_TIME"};
     static const char *const table_name_columns[] = {"TABLE_NAME"};
     static const char *const aliased_table_engine_columns[] = {"n", "ENGINE"};
     static const char *const schema_count_columns[] = {"TABLE_SCHEMA", "c"};
@@ -1756,6 +1775,16 @@ static int test_information_schema_tables_engine_filter_execution(void) {
         "InnoDB",
         "beta",
         "InnoDB",
+    };
+    static const char *const user_table_time_values[] = {
+        "alpha",
+        any_datetime_text,
+        NULL,
+        NULL,
+        "beta",
+        any_datetime_text,
+        NULL,
+        NULL,
     };
     static const char *const aliased_user_table_engine_values[] = {
         "alpha",
@@ -1797,6 +1826,17 @@ static int test_information_schema_tables_engine_filter_execution(void) {
         user_table_engine_values,
         2,
         "information schema tables engine filter"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT TABLE_NAME, CREATE_TIME, UPDATE_TIME, CHECK_TIME "
+        "FROM information_schema.TABLES "
+        "WHERE TABLE_SCHEMA = DATABASE() ORDER BY TABLE_NAME",
+        table_time_columns,
+        4,
+        user_table_time_values,
+        2,
+        "information schema tables user timestamp fields"
     );
     failures += expect_select_rows(
         database,
@@ -34993,7 +35033,7 @@ static int test_temporary_table_execution(void) {
         "0",
         "0",
         "11",
-        "1970-01-01 00:00:00",
+        any_datetime_text,
         NULL,
         NULL,
         "utf8mb4_0900_ai_ci",
@@ -38528,16 +38568,16 @@ static int test_show_table_status_execution(void) {
     };
     static const char *const selected_values[] = {
         "CamelCase",   "InnoDB", "10",          "Dynamic", "0",  "0",
-        "16384",       "0",      "0",           "0",       NULL, "1970-01-01 00:00:00",
+        "16384",       "0",      "0",           "0",       NULL, any_datetime_text,
         NULL,          NULL,     "utf8mb4_bin", NULL,      "",   "",
         "alpha",       "InnoDB", "10",          "Dynamic", "0",  "0",
-        "16384",       "0",      "0",           "0",       NULL, "1970-01-01 00:00:00",
+        "16384",       "0",      "0",           "0",       NULL, any_datetime_text,
         NULL,          NULL,     "utf8mb4_bin", NULL,      "",   "",
         "beta_1",      "InnoDB", "10",          "Dynamic", "0",  "0",
-        "16384",       "0",      "0",           "0",       NULL, "1970-01-01 00:00:00",
+        "16384",       "0",      "0",           "0",       NULL, any_datetime_text,
         NULL,          NULL,     "utf8mb4_bin", NULL,      "",   "",
         "status_meta", "InnoDB", "10",          "Dynamic", "2",  "8192",
-        "16384",       "0",      "0",           "0",       "44", "1970-01-01 00:00:00",
+        "16384",       "0",      "0",           "0",       "44", any_datetime_text,
         NULL,          NULL,     "utf8mb4_bin", NULL,      "",   "table comment",
     };
     static const char *const alpha_values[] = {
@@ -38552,7 +38592,7 @@ static int test_show_table_status_execution(void) {
         "0",
         "0",
         NULL,
-        "1970-01-01 00:00:00",
+        any_datetime_text,
         NULL,
         NULL,
         "utf8mb4_bin",
@@ -38572,7 +38612,7 @@ static int test_show_table_status_execution(void) {
         "0",
         "0",
         NULL,
-        "1970-01-01 00:00:00",
+        any_datetime_text,
         NULL,
         NULL,
         "utf8mb4_bin",
@@ -38592,7 +38632,7 @@ static int test_show_table_status_execution(void) {
         "0",
         "0",
         NULL,
-        "1970-01-01 00:00:00",
+        any_datetime_text,
         NULL,
         NULL,
         "utf8mb4_bin",
@@ -38612,7 +38652,7 @@ static int test_show_table_status_execution(void) {
         "0",
         "0",
         NULL,
-        "1970-01-01 00:00:00",
+        any_datetime_text,
         NULL,
         NULL,
         "utf8mb4_0900_ai_ci",
@@ -38632,7 +38672,7 @@ static int test_show_table_status_execution(void) {
         "0",
         "0",
         NULL,
-        "1970-01-01 00:00:00",
+        any_datetime_text,
         NULL,
         NULL,
         NULL,
@@ -38652,7 +38692,7 @@ static int test_show_table_status_execution(void) {
         "0",
         "0",
         NULL,
-        "1970-01-01 00:00:00",
+        any_datetime_text,
         NULL,
         NULL,
         "utf8mb4_bin",
@@ -38672,7 +38712,7 @@ static int test_show_table_status_execution(void) {
         "0",
         "0",
         NULL,
-        "1970-01-01 00:00:00",
+        any_datetime_text,
         NULL,
         NULL,
         "utf8mb4_bin",
@@ -38692,7 +38732,7 @@ static int test_show_table_status_execution(void) {
         "0",
         "0",
         NULL,
-        "1970-01-01 00:00:00",
+        any_datetime_text,
         NULL,
         NULL,
         "utf8mb4_bin",
@@ -38712,7 +38752,7 @@ static int test_show_table_status_execution(void) {
         "16384",
         "0",
         NULL,
-        "1970-01-01 00:00:00",
+        any_datetime_text,
         NULL,
         NULL,
         "utf8mb4_bin",
@@ -55581,6 +55621,8 @@ static int expect_select_rows(
 
             if (expected == NULL) {
                 failures += expect_null_text(mylite_column_text(stmt, column), context);
+            } else if (strcmp(expected, any_datetime_text) == 0) {
+                failures += expect_datetime_text(mylite_column_text(stmt, column), 0U, context);
             } else {
                 failures += expect_string(mylite_column_text(stmt, column), expected, context);
             }
@@ -55628,7 +55670,7 @@ static int expect_show_table_status_information_schema_rows(
             failures += expect_string(mylite_column_text(stmt, column), "0", context);
         }
         failures += expect_null_text(mylite_column_text(stmt, 10), context);
-        failures += expect_string(mylite_column_text(stmt, 11), "1970-01-01 00:00:00", context);
+        failures += expect_datetime_text(mylite_column_text(stmt, 11), 0U, context);
         for (int column = 12; column <= 15; ++column) {
             failures += expect_null_text(mylite_column_text(stmt, column), context);
         }
@@ -55874,6 +55916,23 @@ static int expect_information_schema_tables_views(mylite_db *database) {
                     mylite_column_text(stmt, tables_data_free_column),
                     "0",
                     "tables data free"
+                );
+                failures += expect_null_text(
+                    mylite_column_text(stmt, tables_auto_increment_column),
+                    "tables auto increment"
+                );
+                failures += expect_datetime_text(
+                    mylite_column_text(stmt, tables_create_time_column),
+                    0U,
+                    "tables create time"
+                );
+                failures += expect_null_text(
+                    mylite_column_text(stmt, tables_update_time_column),
+                    "tables update time"
+                );
+                failures += expect_null_text(
+                    mylite_column_text(stmt, tables_check_time_column),
+                    "tables check time"
                 );
                 failures += expect_null_text(
                     mylite_column_text(stmt, tables_collation_column),

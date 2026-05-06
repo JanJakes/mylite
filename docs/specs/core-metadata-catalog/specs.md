@@ -125,7 +125,8 @@ later result metadata work.
 12. `INDEX_LENGTH`
 13. `DATA_FREE`
 14. `AUTO_INCREMENT`
-15. `CREATE_TIME`
+15. `CREATE_TIME`: the table creation timestamp recorded when MyLite executes
+    `CREATE TABLE`.
 16. `UPDATE_TIME`
 17. `CHECK_TIME`
 18. `TABLE_COLLATION`

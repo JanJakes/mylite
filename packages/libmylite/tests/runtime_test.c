@@ -114,6 +114,7 @@ enum {
     mysql_warning_key_column_missing = 1072,
     mysql_warning_unknown_table = 1109,
     mysql_warning_invalid_null = 1138,
+    mysql_warning_no_such_table = 1146,
     mysql_warning_wrong_field_with_group = 1055,
     mysql_warning_nonunique_table = 1066,
     mysql_warning_invalid_group_function = 1111,
@@ -42628,6 +42629,11 @@ static int test_show_create_table_execution(void) {
         MYLITE_EXEC_ERROR,
         "doesn't exist",
         "show create table rejects missing table"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_no_such_table,
+        "show create table missing table code"
     );
     failures += expect_prepare_error(
         database,

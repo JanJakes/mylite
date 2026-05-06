@@ -274,9 +274,8 @@ level application surfaces.
        build-dependent engine catalog breadth, full MySQL character-set
        catalog breadth, full MySQL collation catalog breadth, exact MySQL
        keyword catalog completeness, ALTER foreign-key rows, cascading and
-       set-null foreign-key actions, child-row UPDATE checks, privilege
-       filtering, exact MySQL field metadata, and unknown information-schema
-       tables remain deferred. Specs:
+       set-null foreign-key actions, privilege filtering, exact MySQL field
+       metadata, and unknown information-schema tables remain deferred. Specs:
        [SHOW TABLES](../show-tables/specs.md),
        [SHOW TABLE STATUS](../show-table-status/specs.md),
        [SHOW COLUMNS](../show-columns/specs.md),

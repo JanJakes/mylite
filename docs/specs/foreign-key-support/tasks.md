@@ -45,17 +45,16 @@ commit.
       `ON DUPLICATE KEY UPDATE`, `INSERT IGNORE`, and `REPLACE`.
 - [ ] Enforce child-row insert checks for `INSERT ... SELECT FROM DUAL` after
       query-source insert support lands.
-- [ ] Enforce child-row update checks for single-table and joined `UPDATE`.
+- [x] Enforce child-row update checks for single-table and joined `UPDATE`.
 - [x] Enforce parent-row `ON UPDATE RESTRICT` and `NO ACTION`.
 - [x] Enforce parent-row `ON DELETE RESTRICT` and `NO ACTION`.
 - [ ] Implement `ON UPDATE CASCADE` and `ON DELETE CASCADE`.
 - [ ] Implement `ON UPDATE SET NULL` and `ON DELETE SET NULL`.
 - [ ] Verify and document `SET DEFAULT` behavior before enabling or rejecting
       it with a MySQL-compatible diagnostic.
-- [x] Apply `foreign_key_checks` to implemented child-row insert and parent
-      restrict checks without retroactive validation on re-enable.
-- [ ] Apply `foreign_key_checks` to update/delete enforcement and referential
-      actions.
+- [x] Apply `foreign_key_checks` to implemented child-row insert/update and
+      parent restrict checks without retroactive validation on re-enable.
+- [ ] Apply `foreign_key_checks` to cascading and set-null referential actions.
 
 ## DDL Dependencies
 

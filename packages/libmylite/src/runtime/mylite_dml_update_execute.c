@@ -179,6 +179,15 @@ static int execute_update_row(
         row_changed = mylite_dml_update_row_changed(stored, &candidate);
     }
     if (status == MYLITE_OK && row_changed) {
+        status = mylite_dml_validate_update_child_foreign_keys(
+            database,
+            table,
+            write_table,
+            stored,
+            &candidate
+        );
+    }
+    if (status == MYLITE_OK && row_changed) {
         status =
             mylite_dml_validate_parent_update_foreign_keys(database, table, stored, &candidate);
     }

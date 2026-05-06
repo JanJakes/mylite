@@ -130,13 +130,16 @@ tables only while `foreign_key_checks=0`, and writes catalog-backed
 does not retroactively validate old rows when checks are re-enabled, accepts
 rows where any child foreign-key column is `NULL`, treats simple self-references
 to the candidate row as satisfied, and demotes unmatched child rows to warning
-1452 for `INSERT IGNORE`. Parent-side `RESTRICT` and `NO ACTION` enforcement
-rejects supported parent key updates, parent deletes, multi-table deletes,
-self-referential parent mutations, and `REPLACE` conflict deletes with error
-1451 while `foreign_key_checks` is enabled. Temporary-table foreign-key
+1452 for `INSERT IGNORE`. Child-row update enforcement covers supported
+single-table and joined `UPDATE` paths, validates only constraints whose child
+columns changed, and allows unrelated updates to orphaned child rows that were
+created while `foreign_key_checks=0`. Parent-side `RESTRICT` and `NO ACTION`
+enforcement rejects supported parent key updates, parent deletes, multi-table
+deletes, self-referential parent mutations, and `REPLACE` conflict deletes with
+error 1451 while `foreign_key_checks` is enabled. Temporary-table foreign-key
 definitions are rejected with a deterministic `Cannot add foreign key
-constraint` diagnostic. `CASCADE`, `SET NULL`, child-row UPDATE checks, ALTER
-ADD/DROP FOREIGN KEY, and dependency restrictions remain follow-up slices.
+constraint` diagnostic. `CASCADE`, `SET NULL`, ALTER ADD/DROP FOREIGN KEY, and
+dependency restrictions remain follow-up slices.
 
 ## DDL Semantics
 

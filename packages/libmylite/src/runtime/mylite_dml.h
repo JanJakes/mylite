@@ -114,6 +114,13 @@ int mylite_dml_validate_replace_parent_delete_foreign_keys(
     const struct mylite_insert_table *table,
     const struct mylite_insert_bound_value *stored
 );
+int mylite_dml_validate_update_child_foreign_keys(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_insert_table *write_table,
+    const struct mylite_update_row *stored,
+    const struct mylite_update_row *candidate
+);
 int mylite_dml_promote_expression_warnings(mylite_db *database, size_t warning_start);
 int mylite_dml_set_expression_condition_error(mylite_db *database, size_t warning_start);
 int mylite_dml_resolve_update_expression_identifier(

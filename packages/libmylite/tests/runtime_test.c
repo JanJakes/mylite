@@ -3,6 +3,7 @@
 #include "mylite_file_format.h"
 #include "mylite_internal.h"
 #include "mylite_vfs.h"
+#include "runtime/mylite_metadata_constants.h"
 #include "sql/mylite_lexer.h"
 #include "sqlite3.h"
 
@@ -29123,6 +29124,7 @@ static int test_session_information_functions_execution(void) {
     static const char *const delete_row_count[] = {"1"};
     static const char *const select_row_count[] = {"-1"};
     static const char *const found_rows_one[] = {"1"};
+    static const char *const found_rows_zero[] = {"0"};
     static const char *const found_rows_two[] = {"2"};
     static const char *const found_rows_three[] = {"3"};
     static const char *const explicit_insert_values[] = {"1", "1"};
@@ -29328,8 +29330,25 @@ static int test_session_information_functions_execution(void) {
          0},
     };
     mylite_db *database = NULL;
+    mylite_db *fresh_database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
+
+    failures += expect_status(
+        mylite_open_memory(&fresh_database),
+        MYLITE_OK,
+        "open fresh found rows database"
+    );
+    failures += expect_select_rows(
+        fresh_database,
+        "SELECT FOUND_ROWS() AS found_rows",
+        found_rows_column,
+        1,
+        found_rows_zero,
+        1,
+        "initial found rows"
+    );
+    mylite_close(fresh_database);
 
     failures +=
         expect_status(mylite_open_memory(&database), MYLITE_OK, "open session functions database");
@@ -29346,7 +29365,11 @@ static int test_session_information_functions_execution(void) {
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "initial session row");
     failures += expect_null_text(mylite_column_text(stmt, 0), "initial database null");
     failures += expect_null_text(mylite_column_text(stmt, 1), "initial schema null");
-    failures += expect_string(mylite_column_text(stmt, 2), mylite_version(), "version function");
+    failures += expect_string(
+        mylite_column_text(stmt, 2),
+        mylite_mysql_compatibility_version,
+        "version function"
+    );
     failures += expect_string(mylite_column_text(stmt, 3), initial_values[3], "initial last id");
     failures += expect_string(mylite_column_text(stmt, 4), initial_values[4], "initial row count");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "initial session done");
@@ -29691,8 +29714,11 @@ static int test_session_information_functions_execution(void) {
         "mylite_info_funcs",
         "table projection database"
     );
-    failures +=
-        expect_string(mylite_column_text(stmt, 2), mylite_version(), "table projection version");
+    failures += expect_string(
+        mylite_column_text(stmt, 2),
+        mylite_mysql_compatibility_version,
+        "table projection version"
+    );
     failures += expect_string(
         mylite_column_text(stmt, 3),
         "18446744073709551611",
@@ -38692,7 +38718,10 @@ static int test_show_variables_execution(void) {
     static const char *const memory_storage_engine_values[] = {"default_storage_engine", "MEMORY"};
     static const char *const foreign_key_checks_values[] = {"foreign_key_checks", "ON"};
     static const char *const foreign_key_checks_off_values[] = {"foreign_key_checks", "OFF"};
+    static const char *const gtid_purged_values[] = {"gtid_purged", ""};
     static const char *const last_insert_id_values[] = {"last_insert_id", "0"};
+    static const char *const log_bin_values[] = {"log_bin", "OFF"};
+    static const char *const log_bin_trust_values[] = {"log_bin_trust_function_creators", "OFF"};
     static const char *const lower_case_table_names_values[] = {"lower_case_table_names", "0"};
     static const char *const max_allowed_packet_values[] = {"max_allowed_packet", "67108864"};
     static const char *const max_connections_values[] = {"max_connections", "151"};
@@ -38721,21 +38750,8 @@ static int test_show_variables_execution(void) {
     static const char *const error_count_values[] = {"error_count", "0"};
     static const char *const diagnostics_columns[] = {"Level", "Code", "Message"};
     static const char *const system_variable_columns[] = {
-        "sm",
-        "ssm",
-        "gsm",
-        "gcm",
-        "sgcm",
-        "ggcm",
-        "ver",
-        "vc",
-        "ac",
-        "sn",
-        "ti",
-        "ro",
-        "wc",
-        "ec",
-        "mec",
+        "sm",     "ssm",   "gsm", "gcm", "sgcm", "ggcm", "ver", "gver", "vc",  "gtid",
+        "logbin", "trust", "ac",  "sn",  "ti",   "ro",   "wc",  "ec",   "mec",
     };
     static const char *const system_variable_changed_columns[] =
         {"sm", "lsm", "gsm", "gcm", "lgcm"};
@@ -38834,7 +38850,7 @@ static int test_show_variables_execution(void) {
     };
     const char *const version_values[] = {
         "version",
-        mylite_version(),
+        mylite_mysql_compatibility_version,
         "version_comment",
         "MyLite",
         "version_compile_machine",
@@ -38851,8 +38867,12 @@ static int test_show_variables_execution(void) {
         "1024",
         "1024",
         "1024",
-        mylite_version(),
+        mylite_mysql_compatibility_version,
+        mylite_mysql_compatibility_version,
         "MyLite",
+        "",
+        "0",
+        "0",
         "1",
         "1",
         "REPEATABLE-READ",
@@ -38926,8 +38946,10 @@ static int test_show_variables_execution(void) {
         database,
         "SELECT @@sql_mode AS sm, @@SESSION.sql_mode AS ssm, @@GLOBAL.sql_mode AS gsm, "
         "@@group_concat_max_len AS gcm, @@SESSION.group_concat_max_len AS sgcm, "
-        "@@GLOBAL.group_concat_max_len AS ggcm, @@version AS ver, @@version_comment AS vc, "
-        "@@autocommit AS ac, @@sql_notes AS sn, @@transaction_isolation AS ti, "
+        "@@GLOBAL.group_concat_max_len AS ggcm, @@version AS ver, @@GLOBAL.version AS gver, "
+        "@@version_comment AS vc, @@gtid_purged AS gtid, @@log_bin AS logbin, "
+        "@@log_bin_trust_function_creators AS trust, @@autocommit AS ac, @@sql_notes AS sn, "
+        "@@transaction_isolation AS ti, "
         "@@transaction_read_only AS ro, @@warning_count AS wc, @@error_count AS ec, "
         "@@max_error_count AS mec",
         system_variable_columns,
@@ -39004,12 +39026,39 @@ static int test_show_variables_execution(void) {
     );
     failures += expect_select_rows(
         database,
+        "SHOW VARIABLES LIKE 'gtid_purged'",
+        columns,
+        2,
+        gtid_purged_values,
+        1,
+        "show variables gtid purged"
+    );
+    failures += expect_select_rows(
+        database,
         "SHOW VARIABLES LIKE 'last_insert_id'",
         columns,
         2,
         last_insert_id_values,
         1,
         "show variables last insert id"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW VARIABLES LIKE 'log_bin'",
+        columns,
+        2,
+        log_bin_values,
+        1,
+        "show variables log bin"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW VARIABLES LIKE 'log_bin_trust_function_creators'",
+        columns,
+        2,
+        log_bin_trust_values,
+        1,
+        "show variables log bin trust function creators"
     );
     failures += expect_select_rows(
         database,
@@ -39099,7 +39148,7 @@ static int test_show_variables_execution(void) {
         &(const struct show_variable_expectation){
             .sql = "SHOW VARIABLES",
             .variable_name = "version",
-            .value = mylite_version(),
+            .value = mylite_mysql_compatibility_version,
             .context = "show variables unfiltered version",
         }
     );
@@ -39481,6 +39530,18 @@ static int test_show_variables_execution(void) {
         (int)mylite_warning_code(database, 0),
         mysql_warning_incorrect_global_local_var,
         "session global-only system variable error code"
+    );
+    failures += expect_prepare_error(
+        database,
+        "SELECT @@SESSION.log_bin",
+        MYLITE_EXEC_ERROR,
+        "Variable 'log_bin' is a GLOBAL variable",
+        "session log bin scope error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_incorrect_global_local_var,
+        "session log bin scope error code"
     );
     failures += expect_prepare_error(
         database,

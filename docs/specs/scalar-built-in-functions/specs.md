@@ -631,7 +631,7 @@ Representative runtime results:
 | --- | --- |
 | `DATABASE()` | selected schema, or `NULL` when no default schema is selected |
 | `SCHEMA()` | synonym for `DATABASE()` |
-| `VERSION()` | MyLite runtime version from `mylite_version()` |
+| `VERSION()` | MySQL compatibility target version, currently `8.4.9` |
 | `USER()` | MyLite embedded client identity; see the session identity spec |
 | `SESSION_USER()` | synonym for `USER()` |
 | `SYSTEM_USER()` | synonym for `USER()` |
@@ -899,9 +899,10 @@ for results, metadata, warnings, errors, type conversion, and edge cases.
 
 ## Compatibility decisions
 
-- `VERSION()` returns `mylite_version()` for the embedded runtime. A later
-  server/protocol task can decide whether to expose additional MyLite build
-  metadata in `version_comment` or related variables.
+- `VERSION()` returns the MySQL compatibility target for client compatibility.
+  The public C API `mylite_version()` continues to expose the MyLite library
+  version; MyLite build metadata can be exposed through `version_comment` or
+  related variables when that protocol surface is expanded.
 - `CONNECTION_ID()` returns a stable per-handle unsigned integer. It need not
   represent an operating-system thread.
 - `CURRENT_USER()` / bare `CURRENT_USER` and `USER()` use the same documented

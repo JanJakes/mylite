@@ -56,8 +56,9 @@ pin the details that matter for this MyLite slice:
 - `DATABASE()` returns the selected default schema name. If no schema is
   selected, or if the selected schema is dropped, it returns `NULL`.
 - `SCHEMA()` is a synonym for `DATABASE()`.
-- `VERSION()` returns the server version string. MyLite returns
-  `mylite_version()` so client code sees the embedded runtime version.
+- `VERSION()` returns the server version string. MyLite reports the current
+  MySQL compatibility target, `8.4.9`, while the public `mylite_version()` API
+  continues to expose the MyLite library version.
 - `LAST_INSERT_ID()` returns the session's remembered auto-increment id.
 - `LAST_INSERT_ID(expr)` evaluates `expr`, stores its unsigned-integer value in
   the session, and returns that value.
@@ -120,8 +121,8 @@ These functions read `mylite_db.selected_schema`.
 
 ### `VERSION()`
 
-`VERSION()` returns the result of `mylite_version()` as a non-`NULL` text value.
-It has no side effects and does not read or mutate session state.
+`VERSION()` returns `mylite_mysql_compatibility_version` as a non-`NULL` text
+value. It has no side effects and does not read or mutate session state.
 
 ### `LAST_INSERT_ID()`
 
@@ -215,7 +216,7 @@ Fast C tests must cover:
 - Prepare-time rejection of unsupported arities for the implemented functions.
 - `DATABASE()` and `SCHEMA()` with no selected schema, after `USE`, and after
   dropping the selected schema.
-- `VERSION()` matching `mylite_version()`.
+- `VERSION()` matching the MySQL compatibility target.
 - `LAST_INSERT_ID()` after generated auto-increment inserts, explicit
   auto-increment inserts, `UPDATE`, and `DELETE`.
 - `LAST_INSERT_ID(expr)` with positive integer, `NULL`, and negative integer

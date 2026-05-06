@@ -4,6 +4,7 @@
 #include "mylite_charset.h"
 #include "mylite_connection.h"
 #include "mylite_diagnostics.h"
+#include "mylite_metadata_constants.h"
 #include "mylite_runtime.h"
 #include "mylite_show_types.h"
 #include "sqlite3.h"
@@ -137,10 +138,13 @@ int mylite_show_variables_sql(
         "foreign_key_checks",
         show_variable_bool(foreign_key_checks)
     );
+    append_show_variable_row(sql, &first, "gtid_purged", "");
     append_show_variable_row(sql, &first, "group_concat_max_len", group_concat_max_len);
     if (!global) {
         append_show_variable_row(sql, &first, "last_insert_id", last_insert_id);
     }
+    append_show_variable_row(sql, &first, "log_bin", "OFF");
+    append_show_variable_row(sql, &first, "log_bin_trust_function_creators", "OFF");
     append_show_variable_row(sql, &first, "lower_case_table_names", "0");
     append_show_variable_row(sql, &first, "max_allowed_packet", max_allowed_packet);
     append_show_variable_row(sql, &first, "max_connections", max_connections);
@@ -151,7 +155,7 @@ int mylite_show_variables_sql(
     append_show_variable_row(sql, &first, "transaction_isolation", "REPEATABLE-READ");
     append_show_variable_row(sql, &first, "transaction_read_only", "OFF");
     append_show_variable_row(sql, &first, "unique_checks", show_variable_bool(unique_checks));
-    append_show_variable_row(sql, &first, "version", mylite_version());
+    append_show_variable_row(sql, &first, "version", mylite_mysql_compatibility_version);
     append_show_variable_row(sql, &first, "version_comment", "MyLite");
     append_show_variable_row(sql, &first, "version_compile_machine", "");
     append_show_variable_row(sql, &first, "version_compile_os", "");

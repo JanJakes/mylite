@@ -12,6 +12,7 @@ const char mylite_mysql_utf8mb3_charset_name[] = "utf8mb3";
 const char mylite_mysql_utf8mb3_general_ci_collation_name[] = "utf8mb3_general_ci";
 const char mylite_mysql_ascii_charset_name[] = "ascii";
 const char mylite_mysql_ascii_general_ci_collation_name[] = "ascii_general_ci";
+const char mylite_mysql_compatibility_version[] = "8.4.9";
 const int mylite_mysql_coercibility_implicit = 2;
 const int mylite_mysql_coercibility_system_constant = 3;
 const int mylite_mysql_coercibility_coercible = 4;

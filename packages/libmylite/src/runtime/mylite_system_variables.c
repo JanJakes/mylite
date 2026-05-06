@@ -49,6 +49,9 @@ enum mylite_system_variable_id {
     MYLITE_SYSTEM_VARIABLE_VERSION_COMPILE_ZLIB = 31,
     MYLITE_SYSTEM_VARIABLE_WAIT_TIMEOUT = 32,
     MYLITE_SYSTEM_VARIABLE_WARNING_COUNT = 33,
+    MYLITE_SYSTEM_VARIABLE_GTID_PURGED = 34,
+    MYLITE_SYSTEM_VARIABLE_LOG_BIN = 35,
+    MYLITE_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS = 36,
 };
 
 enum mylite_system_variable_requested_scope {
@@ -385,6 +388,10 @@ static const struct mylite_system_variable_entry *find_system_variable_entry(
          MYLITE_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS,
          MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
          MYLITE_SYSTEM_VARIABLE_VALUE_BOOLEAN},
+        {"gtid_purged",
+         MYLITE_SYSTEM_VARIABLE_GTID_PURGED,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_GLOBAL,
+         MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
         {"group_concat_max_len",
          MYLITE_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN,
          MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
@@ -397,6 +404,14 @@ static const struct mylite_system_variable_entry *find_system_variable_entry(
          MYLITE_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES,
          MYLITE_SYSTEM_VARIABLE_SUPPORT_GLOBAL,
          MYLITE_SYSTEM_VARIABLE_VALUE_UNSIGNED},
+        {"log_bin",
+         MYLITE_SYSTEM_VARIABLE_LOG_BIN,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_GLOBAL,
+         MYLITE_SYSTEM_VARIABLE_VALUE_BOOLEAN},
+        {"log_bin_trust_function_creators",
+         MYLITE_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_GLOBAL,
+         MYLITE_SYSTEM_VARIABLE_VALUE_BOOLEAN},
         {"max_allowed_packet",
          MYLITE_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET,
          MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
@@ -607,6 +622,9 @@ static uint64_t system_variable_unsigned_value(
     case MYLITE_SYSTEM_VARIABLE_COLLATION_SERVER:
     case MYLITE_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE:
     case MYLITE_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
+    case MYLITE_SYSTEM_VARIABLE_GTID_PURGED:
+    case MYLITE_SYSTEM_VARIABLE_LOG_BIN:
+    case MYLITE_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS:
     case MYLITE_SYSTEM_VARIABLE_SQL_MODE:
     case MYLITE_SYSTEM_VARIABLE_SQL_NOTES:
     case MYLITE_SYSTEM_VARIABLE_TIME_ZONE:
@@ -632,6 +650,9 @@ static int64_t system_variable_boolean_value(
     case MYLITE_SYSTEM_VARIABLE_AUTOCOMMIT:
     case MYLITE_SYSTEM_VARIABLE_SQL_NOTES:
         return 1;
+    case MYLITE_SYSTEM_VARIABLE_LOG_BIN:
+    case MYLITE_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS:
+        return 0;
     case MYLITE_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
         if (scope == MYLITE_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
             if (mylite_connection_default_foreign_key_checks()) {
@@ -670,6 +691,7 @@ static int64_t system_variable_boolean_value(
     case MYLITE_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE:
     case MYLITE_SYSTEM_VARIABLE_ERROR_COUNT:
     case MYLITE_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN:
+    case MYLITE_SYSTEM_VARIABLE_GTID_PURGED:
     case MYLITE_SYSTEM_VARIABLE_LAST_INSERT_ID:
     case MYLITE_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES:
     case MYLITE_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET:
@@ -732,6 +754,8 @@ static const char *system_variable_string_value(
             return mylite_connection_default_storage_engine();
         }
         return mylite_connection_storage_engine(database);
+    case MYLITE_SYSTEM_VARIABLE_GTID_PURGED:
+        return "";
     case MYLITE_SYSTEM_VARIABLE_SQL_MODE:
         if (global) {
             return mylite_connection_default_sql_mode();
@@ -745,7 +769,7 @@ static const char *system_variable_string_value(
     case MYLITE_SYSTEM_VARIABLE_TRANSACTION_ISOLATION:
         return "REPEATABLE-READ";
     case MYLITE_SYSTEM_VARIABLE_VERSION:
-        return mylite_version();
+        return mylite_mysql_compatibility_version;
     case MYLITE_SYSTEM_VARIABLE_VERSION_COMMENT:
         return "MyLite";
     case MYLITE_SYSTEM_VARIABLE_VERSION_COMPILE_MACHINE:
@@ -758,6 +782,8 @@ static const char *system_variable_string_value(
     case MYLITE_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN:
     case MYLITE_SYSTEM_VARIABLE_LAST_INSERT_ID:
     case MYLITE_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES:
+    case MYLITE_SYSTEM_VARIABLE_LOG_BIN:
+    case MYLITE_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS:
     case MYLITE_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET:
     case MYLITE_SYSTEM_VARIABLE_MAX_CONNECTIONS:
     case MYLITE_SYSTEM_VARIABLE_MAX_ERROR_COUNT:

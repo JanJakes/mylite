@@ -4,6 +4,7 @@
 #include "mylite_diagnostics.h"
 #include "mylite_error_codes.h"
 #include "mylite_expression.h"
+#include "mylite_metadata_constants.h"
 #include "mylite_runtime.h"
 #include "mylite_span.h"
 #include "mylite_temporal_functions.h"
@@ -198,7 +199,11 @@ int mylite_session_evaluate_core_function(
         );
     }
     if (mylite_span_equal_ci(name->span, "VERSION")) {
-        return mylite_session_set_text_function_value(database, mylite_version(), out_value);
+        return mylite_session_set_text_function_value(
+            database,
+            mylite_mysql_compatibility_version,
+            out_value
+        );
     }
     if (mylite_span_equal_ci(name->span, "LAST_INSERT_ID")) {
         return evaluate_last_insert_id_function(

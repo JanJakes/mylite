@@ -70,6 +70,9 @@ actual result set, the count is capped at the actual number of rows.
 that result statement completes, a later `FOUND_ROWS()` returns `1` because the
 `SELECT FOUND_ROWS()` result set contained one row.
 
+On a fresh connection before any previous successful `SELECT`, direct MySQL
+client probes return `0` for the first `SELECT FOUND_ROWS()`.
+
 Behavior after a failed `SELECT` is undefined by MySQL documentation. MyLite
 does not promise to update the stored value on failed statement preparation or
 execution.
@@ -157,6 +160,7 @@ Required coverage:
 - top-level `UNION` stores the final union row count before global limit with
   `SQL_CALC_FOUND_ROWS`
 - later `UNION` operands reject `SQL_CALC_FOUND_ROWS` with error 1234
+- first `FOUND_ROWS()` on a fresh connection returns `0`
 - `FOUND_ROWS()` reads the previous value and then updates the previous-select
   value to `1`
 - warning 1287 is observable for both deprecated surfaces

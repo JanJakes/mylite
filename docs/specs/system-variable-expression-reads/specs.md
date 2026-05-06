@@ -60,6 +60,9 @@ Invalid explicit scopes are errors:
   `Variable 'warning_count' is a SESSION variable`.
 - `@@SESSION.version` and `@@LOCAL.version` report error 1238 with
   `Variable 'version' is a GLOBAL variable`.
+- `@@SESSION.log_bin`, `@@SESSION.gtid_purged`, and
+  `@@SESSION.log_bin_trust_function_creators` report error 1238 because those
+  variables are global-only.
 
 Unknown variables report error 1193 with
 `Unknown system variable '<name>'`.
@@ -83,8 +86,11 @@ Global values reflect MyLite defaults for this embedded runtime:
 
 - `sql_mode` and `group_concat_max_len` read default values.
 - Charset and collation globals read the built-in default registry values.
-- Version variables read MyLite's compatibility version and embedded-runtime
-  compile placeholders already exposed through `SHOW VARIABLES`.
+- `version` reads the MySQL compatibility target, currently `8.4.9`.
+- `gtid_purged` reads an empty string, and `log_bin` /
+  `log_bin_trust_function_creators` read `0` for MyLite's embedded runtime.
+- Other version variables read embedded-runtime compile placeholders already
+  exposed through `SHOW VARIABLES`.
 
 Diagnostics counters currently follow MyLite's nondiagnostic clearing model and
 read as `0` in ordinary `SELECT @@warning_count` / `@@error_count` statements.

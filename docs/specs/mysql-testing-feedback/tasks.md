@@ -71,15 +71,16 @@ MySQL 8.4.9 runtime before each item is marked complete.
 - [ ] Complete complex insert value expressions.
 - [ ] Align `ON DUPLICATE KEY UPDATE` affected-row semantics.
 - [ ] Align composite primary-key duplicate handling.
-- [ ] Make `FOUND_ROWS()` return `0` without prior `SQL_CALC_FOUND_ROWS`.
+- [x] Make `FOUND_ROWS()` return `0` on a fresh connection before any prior
+      successful `SELECT`.
 
 ## Variables and version reporting
 
-- [ ] Support `SELECT @@gtid_purged`, `@@log_bin`, and
+- [x] Support `SELECT @@gtid_purged`, `@@log_bin`, and
       `@@log_bin_trust_function_creators` with embedded-compatible values.
 - [ ] Complete additional `SET` syntaxes for session variables, booleans,
       keywords, and dump-style backup/restore scripts.
-- [ ] Decide and document whether `SELECT VERSION()` / `@@version` should
+- [x] Decide and document whether `SELECT VERSION()` / `@@version` should
       report the MySQL compatibility target (`8.4.9`) or MyLite's own version,
       then align tests and docs.
 

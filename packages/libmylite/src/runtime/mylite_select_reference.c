@@ -116,6 +116,17 @@ char *mylite_select_copy_reference_name(const struct mylite_sql_ast_node *identi
     return name;
 }
 
+char *mylite_select_copy_expression_label(const struct mylite_sql_ast_node *expression) {
+    if (expression == NULL) {
+        return NULL;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL &&
+        expression->literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+        return mylite_copy_string_literal_span(expression);
+    }
+    return mylite_copy_span_text(expression->span.text, expression->span.length);
+}
+
 char *mylite_select_copy_alias(const struct mylite_sql_ast_node *alias) {
     if (alias == NULL) {
         return NULL;

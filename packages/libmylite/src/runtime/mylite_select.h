@@ -116,6 +116,7 @@ bool mylite_select_reference_qualifiers_match(
 );
 size_t mylite_select_column_index(const struct mylite_select_table *table, const char *column_name);
 char *mylite_select_copy_reference_name(const struct mylite_sql_ast_node *identifier);
+char *mylite_select_copy_expression_label(const struct mylite_sql_ast_node *expression);
 char *mylite_select_copy_alias(const struct mylite_sql_ast_node *alias);
 
 #endif

@@ -113,6 +113,7 @@ Observed behavior:
 | `SELECT id AS label, n AS label FROM t` | both output labels are exactly `label`; duplicates are allowed |
 | `SELECT n + 1 AS expr FROM t` | `name='expr'`, empty `org_name`, `db`, `table`, and `org_table` |
 | `SELECT n + 1 FROM t` | default label is the expression text as normalized by MySQL formatting |
+| `SELECT 'abc'` | default label is the literal string value `abc`, without SQL quotes |
 | `SELECT s AS s_alias FROM t AS tt` | `table='tt'`, `org_table='t'`, `org_name='s'` |
 | `SELECT 1 AS one` | empty origin metadata and `name='one'` |
 | `SELECT NULL AS nil` | empty origin metadata and `name='nil'` |
@@ -318,7 +319,8 @@ The implementation need is AST preservation:
 - preserve the exact explicit alias token text after identifier/string-literal
   unquoting according to existing alias rules
 - preserve enough expression source text to produce MySQL-compatible default
-  labels for unaliased expressions
+  labels for unaliased expressions, except string literals where MySQL uses
+  the unquoted literal value
 - retain wildcard expansion order and origin column identity
 - keep hidden `ORDER BY` expressions outside the output list
 

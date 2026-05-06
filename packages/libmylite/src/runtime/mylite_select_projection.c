@@ -159,7 +159,7 @@ static int append_select_expression_output(
         return status;
     }
 
-    label = alias == NULL ? mylite_copy_span_text(expression->span.text, expression->span.length)
+    label = alias == NULL ? mylite_select_copy_expression_label(expression)
                           : mylite_select_copy_alias(alias);
     if (label == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");

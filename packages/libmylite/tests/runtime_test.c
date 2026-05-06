@@ -52566,6 +52566,19 @@ static int test_result_metadata_expression_labels_execution(void) {
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
          0U,
          0},
+        {"abc",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         12U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         MYLITE_FIELD_FLAG_BINARY,
+         0},
         {"nil",
          NULL,
          NULL,
@@ -52673,6 +52686,19 @@ static int test_result_metadata_expression_labels_execution(void) {
          0},
     };
     static const struct expected_result_metadata table_expression_metadata[] = {
+        {"abc",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         12U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         MYLITE_FIELD_FLAG_BINARY,
+         0},
         {"n_plus",
          NULL,
          NULL,
@@ -52851,7 +52877,7 @@ static int test_result_metadata_expression_labels_execution(void) {
 
     failures += prepare_sql(
         database,
-        "SELECT 1, NULL AS nil, 'abc' AS str_lit, 1 + 2 AS sum_expr, "
+        "SELECT 1, 'abc', NULL AS nil, 'abc' AS str_lit, 1 + 2 AS sum_expr, "
         "5 / 2 AS slash_expr, 5 DIV 2 AS div_expr, 1 = 1 AS eq_expr, "
         "NULL IS NULL AS is_expr, 1 & 3 AS bit_expr",
         MYLITE_OK,
@@ -52870,7 +52896,7 @@ static int test_result_metadata_expression_labels_execution(void) {
 
     failures += prepare_sql(
         database,
-        "SELECT n + 1 AS n_plus, u + 1 AS u_plus, "
+        "SELECT 'abc', n + 1 AS n_plus, u + 1 AS u_plus, "
         "n IS NULL AS n_is_null, n <=> NULL AS nullsafe, "
         "n IN (1,2) AS n_in, n BETWEEN 1 AND 20 AS n_between, "
         "s LIKE 'a%' AS s_like FROM t LIMIT 0",

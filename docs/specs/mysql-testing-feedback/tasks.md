@@ -102,7 +102,7 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `CONVERT ... USING utf8`.
 - [ ] Complete `SELECT DATE(...)` and date-function predicates.
 - [ ] Align ambiguous-name handling in `GROUP BY`, `HAVING`, and `ORDER BY`.
-- [ ] Align literal expression column labels, such as `SELECT 'abc'`.
+- [x] Align literal expression column labels, such as `SELECT 'abc'`.
 - [ ] Complete result column metadata for expressions that currently report no
       metadata.
 

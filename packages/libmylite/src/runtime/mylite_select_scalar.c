@@ -210,8 +210,7 @@ static int copy_scalar_select_item(
     if (alias != NULL) {
         stmt->result_metadata.columns[index].name = mylite_select_copy_alias(alias);
     } else {
-        stmt->result_metadata.columns[index].name =
-            mylite_copy_span_text(expression->span.text, expression->span.length);
+        stmt->result_metadata.columns[index].name = mylite_select_copy_expression_label(expression);
     }
     if (stmt->result_metadata.columns[index].name == NULL) {
         return MYLITE_NOMEM;

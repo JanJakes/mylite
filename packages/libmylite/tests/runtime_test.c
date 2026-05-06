@@ -33580,8 +33580,32 @@ static int test_create_table_base_execution(void) {
         expect_contains(mylite_error_message(database), "already exists", "duplicate table error");
     mylite_finalize(stmt);
     stmt = NULL;
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE IF NOT EXISTS simple_create (a INT, ignored INT)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_DONE,
+        "persistent if not exists skips existing table"
+    );
+    failures += expect_string(
+        mylite_error_message(database),
+        "",
+        "persistent if not exists leaves no error"
+    );
     failures +=
-        execute_sql(database, "CREATE TABLE IF NOT EXISTS simple_create (a INT)", MYLITE_DONE);
+        expect_int(mylite_warning_count(database), 1, "persistent if not exists warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_table_exists,
+        "persistent if not exists warning code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_column_row(database, "simple_create", "ignored");
     failures += execute_sql(database, "CREATE TABLE IF NOT EXISTS new_table (a INT)", MYLITE_DONE);
 
     failures += prepare_sql(

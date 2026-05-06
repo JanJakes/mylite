@@ -85,9 +85,8 @@ or implementation sources.
 - Creating in `information_schema` is rejected by privileges. MyLite does not
   implement privileges, but system schemas must remain not writable.
 - Duplicate table creation fails with error 1050.
-- `CREATE TABLE IF NOT EXISTS existing_table (...)` succeeds as a no-op and
-  records note 1050. A warning API is not available in MyLite yet, so the
-  no-op must be deterministic and must not mutate existing metadata or storage.
+- `CREATE TABLE IF NOT EXISTS existing_table (...)` succeeds as a no-op,
+  records note 1050, and must not mutate existing metadata or storage.
 
 ### Metadata for the supported subset
 
@@ -209,9 +208,8 @@ Schema resolution:
 Existence:
 
 - Existing target table plus no `IF NOT EXISTS` fails.
-- Existing target table plus `IF NOT EXISTS` returns success with no metadata
-  or storage mutation.
-- Warning records for the MySQL note are deferred.
+- Existing target table plus `IF NOT EXISTS` returns success with note 1050 and
+  no metadata or storage mutation.
 
 Storage:
 

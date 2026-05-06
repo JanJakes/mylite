@@ -635,6 +635,9 @@ own schema so results are isolated.
 | `ALTER TABLE dep_ops CHANGE COLUMN renamed_b b2 BIGINT NOT NULL DEFAULT 5 AFTER id` | Succeeds; name, type, default, nullability, order, and index metadata change together; verified OK affected rows were `2` for two copied rows. |
 | `MODIFY a BIGINT` where `a` used to be `NOT NULL DEFAULT 9` | Succeeds; new column is nullable with `DEFAULT NULL`. |
 | `CHANGE b renamed_b VARCHAR(20)` where `b` used to be `NOT NULL DEFAULT 'x'` | Succeeds; new column is nullable with `DEFAULT NULL`. |
+| `CHANGE v v2 BIGINT` where existing `v` contains `b1` | Error 1366-style `Incorrect integer value`; physical rows and column metadata remain unchanged. |
+| `MODIFY v INT NOT NULL` where existing `v` contains `NULL` | Error 1138-style `Invalid use of NULL value`; physical rows and column metadata remain unchanged. |
+| `MODIFY s VARCHAR(2)` where existing `s` contains `abcd` | Error 1265-style `Data too long`; physical rows and column metadata remain unchanged. |
 
 ### Visibility
 

@@ -36,6 +36,50 @@ static int copy_alter_table_rows(
     int64_t *out_copied_rows
 );
 
+static int validate_alter_table_existing_values(
+    mylite_stmt *stmt,
+    const struct mylite_alter_table_model *model
+);
+
+static int validate_alter_table_existing_column_values(
+    mylite_stmt *stmt,
+    const struct mylite_alter_table_model *model,
+    const struct mylite_alter_table_column *column
+);
+
+static int validate_alter_table_existing_column_value(
+    mylite_db *database,
+    sqlite3_stmt *select,
+    const struct mylite_alter_table_column *column,
+    int64_t row_number
+);
+
+static bool alter_table_column_requires_integer_value(
+    const struct mylite_alter_table_column *column
+);
+
+static bool alter_table_column_requires_limited_text_value(
+    const struct mylite_alter_table_column *column
+);
+
+static bool sqlite_text_is_mysql_integer(const unsigned char *text, int byte_count);
+
+static int set_alter_table_invalid_null_error(mylite_db *database);
+
+static int set_alter_table_invalid_integer_error(
+    mylite_db *database,
+    const struct mylite_alter_table_column *column,
+    const unsigned char *text,
+    int byte_count,
+    int64_t row_number
+);
+
+static int set_alter_table_data_too_long_error(
+    mylite_db *database,
+    const struct mylite_alter_table_column *column,
+    int64_t row_number
+);
+
 static char *build_alter_table_copy_sql(
     mylite_db *database,
     const struct mylite_alter_table_model *model,
@@ -182,6 +226,12 @@ static int copy_alter_table_rows(
         return MYLITE_NOMEM;
     }
 
+    status = validate_alter_table_existing_values(stmt, model);
+    if (status != MYLITE_OK) {
+        sqlite3_free(sql);
+        return status;
+    }
+
     rc = sqlite3_prepare_v3(
         stmt->database->sqlite,
         sql,
@@ -206,6 +256,194 @@ static int copy_alter_table_rows(
     }
     sqlite3_finalize(insert);
     return status;
+}
+
+static int validate_alter_table_existing_values(
+    mylite_stmt *stmt,
+    const struct mylite_alter_table_model *model
+) {
+    for (size_t index = 0U; index < model->column_count; ++index) {
+        int status =
+            validate_alter_table_existing_column_values(stmt, model, &model->columns[index]);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int validate_alter_table_existing_column_values(
+    mylite_stmt *stmt,
+    const struct mylite_alter_table_model *model,
+    const struct mylite_alter_table_column *column
+) {
+    sqlite3_stmt *select = NULL;
+    char *sql = NULL;
+    int64_t row_number = 1;
+    int rc = SQLITE_OK;
+    int status = MYLITE_OK;
+
+    if (column->source_name == NULL) {
+        return MYLITE_OK;
+    }
+
+    sql = sqlite3_mprintf("SELECT \"%w\" FROM \"%w\"", column->source_name, model->physical_name);
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_prepare_v3(
+        stmt->database->sqlite,
+        sql,
+        -1,
+        SQLITE_PREPARE_PERSISTENT,
+        &select,
+        NULL
+    );
+    sqlite3_free(sql);
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
+    }
+
+    while ((rc = sqlite3_step(select)) == SQLITE_ROW) {
+        status =
+            validate_alter_table_existing_column_value(stmt->database, select, column, row_number);
+        if (status != MYLITE_OK) {
+            sqlite3_finalize(select);
+            return status;
+        }
+        ++row_number;
+    }
+
+    sqlite3_finalize(select);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
+}
+
+static int validate_alter_table_existing_column_value(
+    mylite_db *database,
+    sqlite3_stmt *select,
+    const struct mylite_alter_table_column *column,
+    int64_t row_number
+) {
+    const unsigned char *text = NULL;
+    int byte_count = 0;
+
+    if (sqlite3_column_type(select, 0) == SQLITE_NULL) {
+        return column->nullable ? MYLITE_OK : set_alter_table_invalid_null_error(database);
+    }
+
+    text = sqlite3_column_text(select, 0);
+    byte_count = sqlite3_column_bytes(select, 0);
+    if (alter_table_column_requires_integer_value(column) &&
+        !sqlite_text_is_mysql_integer(text, byte_count)) {
+        return set_alter_table_invalid_integer_error(
+            database,
+            column,
+            text,
+            byte_count,
+            row_number
+        );
+    }
+    if (alter_table_column_requires_limited_text_value(column) &&
+        byte_count > column->character_maximum_length) {
+        return set_alter_table_data_too_long_error(database, column, row_number);
+    }
+    return MYLITE_OK;
+}
+
+static bool alter_table_column_requires_integer_value(
+    const struct mylite_alter_table_column *column
+) {
+    return strcmp(column->data_type, "tinyint") == 0 ||
+           strcmp(column->data_type, "smallint") == 0 ||
+           strcmp(column->data_type, "mediumint") == 0 || strcmp(column->data_type, "int") == 0 ||
+           strcmp(column->data_type, "bigint") == 0;
+}
+
+static bool alter_table_column_requires_limited_text_value(
+    const struct mylite_alter_table_column *column
+) {
+    return column->has_character_maximum_length &&
+           (strcmp(column->data_type, "char") == 0 || strcmp(column->data_type, "varchar") == 0);
+}
+
+static bool sqlite_text_is_mysql_integer(const unsigned char *text, int byte_count) {
+    int index = 0;
+
+    if (text == NULL || byte_count <= 0) {
+        return false;
+    }
+    if (text[0] == '+' || text[0] == '-') {
+        index = 1;
+    }
+    if (index == byte_count) {
+        return false;
+    }
+    for (; index < byte_count; ++index) {
+        if (text[index] < '0' || text[index] > '9') {
+            return false;
+        }
+    }
+    return true;
+}
+
+static int set_alter_table_invalid_null_error(mylite_db *database) {
+    if (mylite_diagnostics_set_error_message(database, "Invalid use of NULL value") ==
+        MYLITE_NOMEM) {
+        return MYLITE_NOMEM;
+    }
+    return MYLITE_EXEC_ERROR;
+}
+
+static int set_alter_table_invalid_integer_error(
+    mylite_db *database,
+    const struct mylite_alter_table_column *column,
+    const unsigned char *text,
+    int byte_count,
+    int64_t row_number
+) {
+    char *message = sqlite3_mprintf(
+        "Incorrect integer value: '%.*q' for column '%q' at row %lld",
+        byte_count,
+        text == NULL ? (const unsigned char *)"" : text,
+        column->name,
+        (long long)row_number
+    );
+
+    if (message == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    if (mylite_diagnostics_set_error_message(database, message) == MYLITE_NOMEM) {
+        sqlite3_free(message);
+        return MYLITE_NOMEM;
+    }
+    sqlite3_free(message);
+    return MYLITE_EXEC_ERROR;
+}
+
+static int set_alter_table_data_too_long_error(
+    mylite_db *database,
+    const struct mylite_alter_table_column *column,
+    int64_t row_number
+) {
+    char *message = sqlite3_mprintf(
+        "Data too long for column '%q' at row %lld",
+        column->name,
+        (long long)row_number
+    );
+
+    if (message == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    if (mylite_diagnostics_set_error_message(database, message) == MYLITE_NOMEM) {
+        sqlite3_free(message);
+        return MYLITE_NOMEM;
+    }
+    sqlite3_free(message);
+    return MYLITE_EXEC_ERROR;
 }
 
 static char *build_alter_table_copy_sql(

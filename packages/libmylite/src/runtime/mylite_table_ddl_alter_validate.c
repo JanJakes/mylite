@@ -37,6 +37,8 @@ static bool alter_table_auto_increment_column_is_indexed(
 
 static int set_alter_table_all_invisible_error(mylite_db *database);
 
+static int set_alter_table_invalid_null_error(mylite_db *database);
+
 int mylite_table_ddl_validate_alter_table_final_model(
     mylite_db *database,
     struct mylite_alter_table_model *model
@@ -127,7 +129,7 @@ static int validate_alter_table_source_not_null(
     rc = sqlite3_step(select);
     sqlite3_finalize(select);
     if (rc == SQLITE_ROW) {
-        return mylite_dml_set_not_null_column_error(database, column->name);
+        return set_alter_table_invalid_null_error(database);
     }
     return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
@@ -198,6 +200,20 @@ static int set_alter_table_all_invisible_error(mylite_db *database) {
     status = mylite_diagnostics_append_error(
         database,
         MYLITE_MYSQL_ER_INVISIBLE_NOT_NULL_WITHOUT_DEFAULT,
+        mylite_error_message(database)
+    );
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int set_alter_table_invalid_null_error(mylite_db *database) {
+    int status = mylite_diagnostics_set_error_message(database, "Invalid use of NULL value");
+
+    if (status == MYLITE_NOMEM) {
+        return MYLITE_NOMEM;
+    }
+    status = mylite_diagnostics_append_error(
+        database,
+        MYLITE_MYSQL_ER_INVALID_USE_OF_NULL,
         mylite_error_message(database)
     );
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;

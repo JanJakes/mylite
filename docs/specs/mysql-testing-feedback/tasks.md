@@ -66,8 +66,12 @@ MySQL 8.4.9 runtime before each item is marked complete.
 - [x] Complete `CREATE INDEX` forms with ordering, comments, and complex index
       options.
 - [x] Verify and complete `DROP INDEX ...`.
-- [ ] Complete complex `ALTER TABLE ... MODIFY/CHANGE COLUMN` forms,
-      preservation behavior, and affected rows.
+- [x] Complete complex `ALTER TABLE ... MODIFY/CHANGE COLUMN` forms,
+      preservation behavior, and affected rows. Runtime coverage now verifies
+      successful metadata replacement, row preservation/conversion, copied-row
+      affected counts, and strict rejection without mutation for invalid
+      integer conversion, existing `NULL` values becoming `NOT NULL`, and
+      overlong `VARCHAR` narrowing.
 - [x] Support or intentionally diagnose `ALTER TABLE ... ADD/DROP CHECK`.
 - [x] Complete `CREATE TABLE ... CHECK (...)` syntax forms. Inline and
       table-level CHECK clauses parse and record catalog-backed metadata for

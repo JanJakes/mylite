@@ -36192,9 +36192,9 @@ static int test_alter_table_column_operations_execution(void) {
     static const char *const one_col_columns[] = {"only_col"};
     static const char *const invisible_alter_columns[] = {"v"};
     static const char *const all_values[] =
-        {"q", "1", "7", "10", "b1", NULL, "100", "0", "q", "2", "7", "20", "b2", "5", "200", "0"};
+        {"q", "1", "7", "10", "11", NULL, "100", "0", "q", "2", "7", "20", "22", "5", "200", "0"};
     static const char *const visible_after_add_values[] =
-        {"q", "1", "7", "10", "b1", NULL, "0", "q", "2", "7", "20", "b2", "5", "0"};
+        {"q", "1", "7", "10", "11", NULL, "0", "q", "2", "7", "20", "22", "5", "0"};
     static const struct expected_columns_row metadata_rows[] = {
         {.table_name = "alter_ops",
          .column_name = "first_col",
@@ -36270,7 +36270,7 @@ static int test_alter_table_column_operations_execution(void) {
          .extra = ""},
     };
     static const char *const final_values[] =
-        {"0", "q", "1", "b1", "7", "0", "5", "q", "2", "b2", "7", "0"};
+        {"0", "q", "1", "11", "7", "0", "5", "q", "2", "22", "7", "0"};
     static const char *const ai_drop_values[] = {"10", "20"};
     static const char *const alter_ai_initial_values[] = {"10", "1", "11", "2"};
     static const char *const alter_ai_raised_values[] = {"10", "1", "11", "2", "50", "3"};
@@ -36281,6 +36281,11 @@ static int test_alter_table_column_operations_execution(void) {
     static const char *const alter_no_ai_metadata_value[] = {NULL};
     static const char *const empty_default_values[] = {"1", ""};
     static const char *const invisible_values[] = {"1"};
+    static const char *const invalid_change_columns[] = {"id", "v"};
+    static const char *const invalid_change_values[] = {"1", "b1", "2", "2"};
+    static const char *const invalid_modify_text_columns[] = {"id", "s"};
+    static const char *const invalid_modify_null_values[] = {"1", NULL, "2", "5"};
+    static const char *const invalid_modify_text_values[] = {"1", "abcd", "2", "xy"};
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -36361,7 +36366,7 @@ static int test_alter_table_column_operations_execution(void) {
     failures += execute_sql(
         database,
         "INSERT INTO alter_ops (id, a, b, c, hidden) VALUES "
-        "(1,10,'b1',NULL,100),(2,20,'b2',5,200)",
+        "(1,10,'11',NULL,100),(2,20,'22',5,200)",
         MYLITE_DONE
     );
     failures += execute_sql(database, "CREATE INDEX idx_ab ON alter_ops (a, b)", MYLITE_DONE);
@@ -36439,6 +36444,20 @@ static int test_alter_table_column_operations_execution(void) {
         "ALTER TABLE alter_ops CHANGE COLUMN renamed_b b2 BIGINT NOT NULL DEFAULT 5 AFTER id",
         2,
         "alter change column affected rows"
+    );
+    failures += expect_information_schema_column_row(
+        database,
+        &(const struct expected_columns_row){
+            .table_name = "alter_ops",
+            .column_name = "b2",
+            .ordinal_position = 3,
+            .column_default = "5",
+            .is_nullable = "NO",
+            .data_type = "bigint",
+            .column_type = "bigint",
+            .column_key = "MUL",
+            .extra = "",
+        }
     );
     failures +=
         expect_no_information_schema_statistics_column_row(database, "alter_ops", "renamed_b");
@@ -36792,6 +36811,99 @@ static int test_alter_table_column_operations_execution(void) {
     mylite_finalize(stmt);
     stmt = NULL;
     failures += expect_no_information_schema_column_row(database, "alter_ops", "lock_col");
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE invalid_change (id INT PRIMARY KEY, v VARCHAR(20))",
+        MYLITE_DONE
+    );
+    failures +=
+        execute_sql(database, "INSERT INTO invalid_change VALUES (1,'b1'),(2,'2')", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "ALTER TABLE invalid_change CHANGE COLUMN v v2 BIGINT",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Incorrect integer value",
+        "alter change rejects invalid integer conversion"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id, v FROM invalid_change ORDER BY id",
+        invalid_change_columns,
+        2,
+        invalid_change_values,
+        2,
+        "invalid alter change preserves rows"
+    );
+    failures += expect_no_information_schema_column_row(database, "invalid_change", "v2");
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE invalid_modify_null (id INT PRIMARY KEY, v INT NULL)",
+        MYLITE_DONE
+    );
+    failures +=
+        execute_sql(database, "INSERT INTO invalid_modify_null VALUES (1,NULL),(2,5)", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "ALTER TABLE invalid_modify_null MODIFY COLUMN v INT NOT NULL",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Invalid use of NULL value",
+        "alter modify rejects existing null"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id, v FROM invalid_modify_null ORDER BY id",
+        invalid_change_columns,
+        2,
+        invalid_modify_null_values,
+        2,
+        "invalid alter modify null preserves rows"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE invalid_modify_text (id INT PRIMARY KEY, s VARCHAR(5))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO invalid_modify_text VALUES (1,'abcd'),(2,'xy')",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "ALTER TABLE invalid_modify_text MODIFY COLUMN s VARCHAR(2)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures +=
+        expect_exec_error(stmt, database, "Data too long", "alter modify rejects overlong text");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id, s FROM invalid_modify_text ORDER BY id",
+        invalid_modify_text_columns,
+        2,
+        invalid_modify_text_values,
+        2,
+        "invalid alter modify text preserves rows"
+    );
 
     failures += prepare_sql(database, "ALTER TABLE alter_ops ADD COLUMN id INT", MYLITE_OK, &stmt);
     failures += expect_exec_error(

@@ -67,6 +67,13 @@ Invalid explicit scopes are errors:
 Unknown variables report error 1193 with
 `Unknown system variable '<name>'`.
 
+System-variable reads are also valid in user-variable `SET` assignments. The
+dump-style form `SET @old_unique_checks = @@unique_checks, unique_checks = 0`
+evaluates all right-hand-side reads against statement-start values, matching
+the verified MySQL 8.4.9 behavior. Separate restore statements such as
+`SET unique_checks = @old_unique_checks` are accepted for the scoped mutable
+session variables.
+
 ## Values
 
 String variables return text values. Numeric variables return integer values,

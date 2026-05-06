@@ -7882,7 +7882,38 @@ static int test_user_variable_and_prepared_statement_syntax(void) {
     failures += expect_span_text(child_at(statement, 0U), "`select`", "DROP PREPARE name");
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("SET @a = 1, @@sql_mode = ''", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql(
+        "SET @old_unique_checks = @@unique_checks, unique_checks = 0, "
+        "@old_sql_mode = @@sql_mode, sql_mode = @old_sql_mode",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_SET_USER_VARIABLE_STATEMENT,
+        "mixed SET variable statement"
+    );
+    assignment_list = child_at(statement, 0U);
+    failures += expect_child_count(assignment_list, 4U, "mixed SET assignment count");
+    assignment = child_at(assignment_list, 1U);
+    failures += expect_node(
+        assignment,
+        MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT,
+        "mixed SET system assignment"
+    );
+    failures +=
+        expect_span_text(child_at(assignment, 0U), "unique_checks", "mixed SET system variable");
+    assignment = child_at(assignment_list, 3U);
+    failures += expect_span_text(child_at(assignment, 0U), "sql_mode", "mixed SET restore name");
+    failures += expect_span_text(
+        child_at(assignment, 1U),
+        "@old_sql_mode",
+        "mixed SET user variable restore value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SET @@sql_mode = '', @a = 1", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SELECT ? AS v", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);

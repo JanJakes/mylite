@@ -1,6 +1,7 @@
 #ifndef MYLITE_RUNTIME_MYLITE_USER_VARIABLES_TYPES_H
 #define MYLITE_RUNTIME_MYLITE_USER_VARIABLES_TYPES_H
 
+#include "mylite_connection_statement_types.h"
 #include "mylite_field_descriptor.h"
 #include "sql/mylite_ast.h"
 #include "sql/mylite_expression.h"
@@ -27,7 +28,9 @@ struct mylite_user_variable_assignment_plan {
 
 struct mylite_set_user_variable_plan {
     struct mylite_user_variable_assignment_plan *assignments;
+    struct mylite_connection_system_variable_plan *system_assignments;
     size_t assignment_count;
+    size_t system_assignment_count;
 };
 
 #endif

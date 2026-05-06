@@ -20,6 +20,11 @@ int mylite_user_variable_eval_identifier(
     const struct mylite_sql_ast_node *identifier,
     struct mylite_expression_value *out_value
 );
+int mylite_user_variable_eval_name(
+    mylite_db *database,
+    const char *name,
+    struct mylite_expression_value *out_value
+);
 int mylite_user_variable_infer_identifier(
     mylite_db *database,
     const struct mylite_sql_ast_node *identifier,

@@ -30056,6 +30056,11 @@ static int test_user_variable_foundation_execution(void) {
     static const char *const quoted_values[] = {"7", "quoted"};
     static const char *const assignment_columns[] = {"a_value", "b_value", "c_value"};
     static const char *const assignment_values[] = {"5", "11", NULL};
+    static const char *const mixed_set_columns[] =
+        {"old_uc", "current_uc", "after_uc", "old_notes", "current_notes", "after_notes"};
+    static const char *const mixed_set_values[] = {"1", "0", "1", "1", "0", "1"};
+    static const char *const restored_set_columns[] = {"uc", "notes"};
+    static const char *const restored_set_values[] = {"1", "1"};
     static const char *const id_column[] = {"id"};
     static const char *const greater_than_threshold_values[] = {"2", "3"};
     static const char *const row_columns[] = {"id", "note"};
@@ -30172,6 +30177,35 @@ static int test_user_variable_foundation_execution(void) {
         assignment_values,
         1,
         "multi-assignment statement-start values"
+    );
+    failures += execute_sql(
+        database,
+        "SET @old_unique_checks = @@unique_checks, unique_checks = 0, "
+        "@after_unique_checks = @@unique_checks, "
+        "@old_sql_notes = @@sql_notes, sql_notes = 0, @after_sql_notes = @@sql_notes",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT @old_unique_checks AS old_uc, @@unique_checks AS current_uc, "
+        "@after_unique_checks AS after_uc, @old_sql_notes AS old_notes, "
+        "@@sql_notes AS current_notes, @after_sql_notes AS after_notes",
+        mixed_set_columns,
+        6,
+        mixed_set_values,
+        1,
+        "mixed SET snapshots user and system assignments"
+    );
+    failures += execute_sql(database, "SET unique_checks = @old_unique_checks", MYLITE_DONE);
+    failures += execute_sql(database, "SET sql_notes = @old_sql_notes", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT @@unique_checks AS uc, @@sql_notes AS notes",
+        restored_set_columns,
+        2,
+        restored_set_values,
+        1,
+        "system variable restore from user variables"
     );
 
     failures += execute_sql(database, "CREATE DATABASE mylite_user_variables", MYLITE_DONE);

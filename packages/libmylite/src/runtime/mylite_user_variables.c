@@ -1,5 +1,6 @@
 #include "mylite_user_variables.h"
 
+#include "mylite_connection_statement.h"
 #include "mylite_diagnostics.h"
 #include "mylite_expression_descriptor.h"
 #include "mylite_metadata_constants.h"
@@ -8,6 +9,7 @@
 #include "mylite_statement.h"
 #include "mylite_statement_ast.h"
 #include "mylite_statement_types.h"
+#include "mylite_system_variables.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -45,6 +47,7 @@ static struct mylite_field_descriptor assigned_null_user_variable_descriptor(voi
 static struct mylite_field_descriptor assigned_text_user_variable_descriptor(mylite_db *database);
 
 static int copy_set_user_variable_assignments(
+    mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     struct mylite_set_user_variable_plan *plan
 );
@@ -54,8 +57,25 @@ static int copy_set_user_variable_assignment(
     struct mylite_user_variable_assignment_plan *assignment_plan
 );
 
+static int copy_set_user_variable_system_assignment(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *assignment,
+    struct mylite_set_user_variable_plan *plan
+);
+
 static void user_variable_assignment_plan_deinit(
     struct mylite_user_variable_assignment_plan *assignment
+);
+
+static int resolve_set_user_variable_system_assignments(
+    mylite_db *database,
+    const struct mylite_set_user_variable_plan *plan,
+    struct mylite_connection_system_variable_plan **out_assignments
+);
+
+static int execute_set_user_variable_system_assignments(
+    mylite_stmt *stmt,
+    const struct mylite_connection_system_variable_plan *system_assignments
 );
 
 static int eval_set_user_variable_identifier(
@@ -142,6 +162,30 @@ int mylite_user_variable_eval_identifier(
     return 0;
 }
 
+int mylite_user_variable_eval_name(
+    mylite_db *database,
+    const char *name,
+    struct mylite_expression_value *out_value
+) {
+    const struct mylite_user_variable *entry = NULL;
+
+    if (out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = (struct mylite_expression_value){0};
+    entry =
+        find_user_variable_entry_const(database == NULL ? NULL : &database->user_variables, name);
+    if (entry == NULL) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        return 0;
+    }
+    if (mylite_expression_value_copy(&entry->value, out_value) != 0) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    return 0;
+}
+
 int mylite_user_variable_infer_identifier(
     mylite_db *database,
     const struct mylite_sql_ast_node *identifier,
@@ -186,7 +230,7 @@ int mylite_user_variable_prepare_set_statement(
         .affected_rows = 0,
     };
 
-    status = copy_set_user_variable_assignments(statement, &stmt->set_user_variable);
+    status = copy_set_user_variable_assignments(database, statement, &stmt->set_user_variable);
     if (status != MYLITE_OK) {
         if (status == MYLITE_NOMEM) {
             (void)mylite_diagnostics_set_error_message(database, "out of memory");
@@ -204,6 +248,7 @@ int mylite_user_variable_execute_set_statement(mylite_stmt *stmt) {
         stmt == NULL ? NULL : &stmt->set_user_variable;
     struct mylite_expression_value *values = NULL;
     struct mylite_field_descriptor *descriptors = NULL;
+    struct mylite_connection_system_variable_plan *system_assignments = NULL;
     struct set_user_variable_eval_context user_context = {
         .database = stmt == NULL ? NULL : stmt->database,
     };
@@ -216,17 +261,19 @@ int mylite_user_variable_execute_set_statement(mylite_stmt *stmt) {
     if (stmt == NULL || plan == NULL) {
         return MYLITE_MISUSE;
     }
-    if (plan->assignment_count == 0U) {
+    if (plan->assignment_count == 0U && plan->system_assignment_count == 0U) {
         return MYLITE_OK;
     }
 
-    values = calloc(plan->assignment_count, sizeof(*values));
-    descriptors = calloc(plan->assignment_count, sizeof(*descriptors));
-    if (values == NULL || descriptors == NULL) {
-        free(values);
-        free(descriptors);
-        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
-        return MYLITE_NOMEM;
+    if (plan->assignment_count != 0U) {
+        values = calloc(plan->assignment_count, sizeof(*values));
+        descriptors = calloc(plan->assignment_count, sizeof(*descriptors));
+        if (values == NULL || descriptors == NULL) {
+            free(values);
+            free(descriptors);
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
+            return MYLITE_NOMEM;
+        }
     }
 
     for (size_t index = 0U; index < plan->assignment_count; ++index) {
@@ -242,6 +289,11 @@ int mylite_user_variable_execute_set_statement(mylite_stmt *stmt) {
         }
         descriptors[index] = user_variable_descriptor_from_value(stmt->database, &values[index]);
     }
+    status =
+        resolve_set_user_variable_system_assignments(stmt->database, plan, &system_assignments);
+    if (status != MYLITE_OK) {
+        goto done;
+    }
 
     for (size_t index = 0U; index < plan->assignment_count; ++index) {
         status = set_user_variable_store_value(
@@ -254,13 +306,18 @@ int mylite_user_variable_execute_set_statement(mylite_stmt *stmt) {
             goto done;
         }
     }
+    status = execute_set_user_variable_system_assignments(stmt, system_assignments);
 
 done:
     for (size_t index = 0U; index < plan->assignment_count; ++index) {
         mylite_expression_value_deinit(&values[index]);
     }
+    for (size_t index = 0U; index < plan->system_assignment_count; ++index) {
+        mylite_connection_system_variable_plan_deinit(&system_assignments[index]);
+    }
     free(values);
     free(descriptors);
+    free(system_assignments);
     return status;
 }
 
@@ -282,7 +339,11 @@ void mylite_user_variable_set_plan_deinit(struct mylite_set_user_variable_plan *
     for (size_t index = 0U; index < plan->assignment_count; ++index) {
         user_variable_assignment_plan_deinit(&plan->assignments[index]);
     }
+    for (size_t index = 0U; index < plan->system_assignment_count; ++index) {
+        mylite_connection_system_variable_plan_deinit(&plan->system_assignments[index]);
+    }
     free(plan->assignments);
+    free(plan->system_assignments);
     *plan = (struct mylite_set_user_variable_plan){0};
 }
 
@@ -407,6 +468,7 @@ static struct mylite_field_descriptor assigned_text_user_variable_descriptor(myl
 }
 
 static int copy_set_user_variable_assignments(
+    mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     struct mylite_set_user_variable_plan *plan
 ) {
@@ -420,9 +482,17 @@ static int copy_set_user_variable_assignments(
     for (const struct mylite_sql_ast_node *assignment = assignment_list->first_child;
          assignment != NULL;
          assignment = assignment->next_sibling) {
+        int status = MYLITE_OK;
+
+        if (assignment->kind == MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT) {
+            status = copy_set_user_variable_system_assignment(database, assignment, plan);
+            if (status != MYLITE_OK) {
+                return status;
+            }
+            continue;
+        }
         struct mylite_user_variable_assignment_plan *assignments =
             realloc(plan->assignments, (plan->assignment_count + 1U) * sizeof(*plan->assignments));
-        int status = MYLITE_OK;
 
         if (assignments == NULL) {
             return MYLITE_NOMEM;
@@ -480,6 +550,36 @@ static int copy_set_user_variable_assignment(
     return MYLITE_OK;
 }
 
+static int copy_set_user_variable_system_assignment(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *assignment,
+    struct mylite_set_user_variable_plan *plan
+) {
+    struct mylite_connection_system_variable_plan *assignments = realloc(
+        plan->system_assignments,
+        (plan->system_assignment_count + 1U) * sizeof(*plan->system_assignments)
+    );
+    int status = MYLITE_OK;
+
+    if (assignments == NULL) {
+        return MYLITE_NOMEM;
+    }
+    plan->system_assignments = assignments;
+    plan->system_assignments[plan->system_assignment_count] =
+        (struct mylite_connection_system_variable_plan){0};
+
+    status = mylite_connection_copy_system_variable_statement(
+        database,
+        assignment,
+        &plan->system_assignments[plan->system_assignment_count]
+    );
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    ++plan->system_assignment_count;
+    return MYLITE_OK;
+}
+
 static void user_variable_assignment_plan_deinit(
     struct mylite_user_variable_assignment_plan *assignment
 ) {
@@ -492,6 +592,57 @@ static void user_variable_assignment_plan_deinit(
     *assignment = (struct mylite_user_variable_assignment_plan){0};
 }
 
+static int resolve_set_user_variable_system_assignments(
+    mylite_db *database,
+    const struct mylite_set_user_variable_plan *plan,
+    struct mylite_connection_system_variable_plan **out_assignments
+) {
+    struct mylite_connection_system_variable_plan *assignments = NULL;
+
+    *out_assignments = NULL;
+    if (plan->system_assignment_count == 0U) {
+        return MYLITE_OK;
+    }
+
+    assignments = calloc(plan->system_assignment_count, sizeof(*assignments));
+    if (assignments == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    for (size_t index = 0U; index < plan->system_assignment_count; ++index) {
+        int status = mylite_connection_resolve_system_variable_plan(
+            database,
+            &plan->system_assignments[index],
+            &assignments[index]
+        );
+
+        if (status != MYLITE_OK) {
+            for (size_t previous = 0U; previous < index; ++previous) {
+                mylite_connection_system_variable_plan_deinit(&assignments[previous]);
+            }
+            free(assignments);
+            return status;
+        }
+    }
+    *out_assignments = assignments;
+    return MYLITE_OK;
+}
+
+static int execute_set_user_variable_system_assignments(
+    mylite_stmt *stmt,
+    const struct mylite_connection_system_variable_plan *system_assignments
+) {
+    for (size_t index = 0U; index < stmt->set_user_variable.system_assignment_count; ++index) {
+        int status =
+            mylite_connection_execute_system_variable_plan(stmt, &system_assignments[index]);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
+}
+
 static int eval_set_user_variable_identifier(
     void *user_data,
     const struct mylite_sql_ast_node *identifier,
@@ -499,6 +650,13 @@ static int eval_set_user_variable_identifier(
 ) {
     struct set_user_variable_eval_context *context = user_data;
 
+    if (mylite_system_variable_identifier_is_system_variable(identifier)) {
+        return mylite_system_variable_eval_identifier(
+            context == NULL ? NULL : context->database,
+            identifier,
+            out_value
+        );
+    }
     if (!mylite_user_variable_identifier_is_user_variable(identifier)) {
         return -1;
     }

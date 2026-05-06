@@ -223,7 +223,8 @@ Runtime coverage:
 - `SET SESSION group_concat_max_len` changes the session row without changing
   the global/default row
 - supported `SET` session-variable assignments update displayed session rows,
-  including boolean keywords and unquoted string keyword values
+  including boolean keywords, unquoted string keyword values, dump-style
+  user/system-variable assignment lists, and user-variable restore values
 - `WHERE` filters displayed columns and reports unknown-column diagnostics
 - `LIMIT` remains a syntax error
 - `SHOW VARIABLES` clears prior diagnostics before reporting `warning_count`

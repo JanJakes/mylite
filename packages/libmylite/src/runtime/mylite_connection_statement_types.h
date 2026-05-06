@@ -24,11 +24,13 @@ enum mylite_connection_system_variable {
 
 struct mylite_connection_system_variable_plan {
     char *value;
+    char *user_variable_name;
     char *replace_search;
     char *replace_replacement;
     uint64_t unsigned_value;
     enum mylite_connection_system_variable variable;
     bool use_default;
+    bool use_user_variable_value;
     bool replace_current_value;
     bool emit_truncation_warning;
 };

@@ -69,6 +69,8 @@
 %type opt_show_collation_filter { struct mylite_sql_ast_node * }
 %type opt_set_system_variable_scope { enum mylite_sql_ast_set_system_variable_scope }
 %type set_system_variable_value { struct mylite_sql_ast_node * }
+%type set_user_variable_assignment_item { struct mylite_sql_ast_node * }
+%type set_user_variable_system_assignment { struct mylite_sql_ast_node * }
 %type set_user_variable_assignment_list { struct mylite_sql_ast_node * }
 %type set_user_variable_assignment { struct mylite_sql_ast_node * }
 %type prepare_source { struct mylite_sql_ast_node * }
@@ -1881,6 +1883,9 @@ set_system_variable_value(A) ::= OFF(T). {
 set_system_variable_value(A) ::= SYSTEM(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+set_system_variable_value(A) ::= USER_VARIABLE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 set_system_variable_value(A) ::= identifier(B). {
     A = B;
 }
@@ -1901,8 +1906,28 @@ set_user_variable_statement(A) ::= SET(T) set_user_variable_assignment_list(B). 
 set_user_variable_assignment_list(A) ::= set_user_variable_assignment(B). {
     A = mylite_sql_parser_make_user_variable_assignment_list(state, B);
 }
-set_user_variable_assignment_list(A) ::= set_user_variable_assignment_list(B) COMMA set_user_variable_assignment(C). {
+set_user_variable_assignment_list(A) ::= set_user_variable_assignment_list(B) COMMA set_user_variable_assignment_item(C). {
     A = mylite_sql_parser_append_user_variable_assignment(state, B, C);
+}
+
+set_user_variable_assignment_item(A) ::= set_user_variable_assignment(B). {
+    A = B;
+}
+set_user_variable_assignment_item(A) ::= set_user_variable_system_assignment(B). {
+    A = B;
+}
+
+set_user_variable_system_assignment(A) ::= opt_set_system_variable_scope(S)
+        set_system_variable_name(B) EQ set_system_variable_value(C). {
+    struct mylite_sql_token start = {
+        .kind = MYLITE_SQL_TOKEN_IDENTIFIER,
+        .text = B == NULL ? NULL : B->span.text,
+        .length = B == NULL ? 0U : B->span.length,
+        .offset = B == NULL ? 0U : B->span.offset,
+        .line = B == NULL ? 0U : B->span.line,
+        .column = B == NULL ? 0U : B->span.column,
+    };
+    A = mylite_sql_parser_make_set_system_variable_statement(state, start, S, B, C);
 }
 
 set_user_variable_assignment(A) ::= USER_VARIABLE(T) EQ expression(B). {

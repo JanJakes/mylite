@@ -518,6 +518,8 @@ static int test_foreign_key_parent_restrict_execution(void);
 
 static int test_foreign_key_child_update_execution(void);
 
+static int test_foreign_key_delete_actions_execution(void);
+
 static int test_select_table_core_execution(void);
 
 static int test_inner_join_execution(void);
@@ -976,6 +978,7 @@ int main(void) {
     failures += test_foreign_key_insert_execution();
     failures += test_foreign_key_parent_restrict_execution();
     failures += test_foreign_key_child_update_execution();
+    failures += test_foreign_key_delete_actions_execution();
     failures += test_select_table_core_execution();
     failures += test_inner_join_execution();
     failures += test_outer_join_execution();
@@ -48747,12 +48750,12 @@ static int test_foreign_key_child_update_execution(void) {
     static const char *const pair_columns[] = {"id", "a", "b", "payload"};
     static const char *const pair_values[] = {
         "1",
-        "1",
-        "1",
-        "11",
-        "2",
         NULL,
         "99",
+        "11",
+        "2",
+        "1",
+        "1",
         "20",
     };
     static const char *const self_columns[] = {"id", "parent_id"};
@@ -48959,6 +48962,226 @@ static int test_foreign_key_child_update_execution(void) {
         joined_values,
         1,
         "foreign key joined child rows"
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_foreign_key_delete_actions_execution(void) {
+    static const char *const parent_columns[] = {"id"};
+    static const char *const parent_after_delete_values[] = {"2", "3"};
+    static const char *const parent_after_checks_off_values[] = {"3"};
+    static const char *const child_columns[] = {"id", "parent_id"};
+    static const char *const cascade_after_delete_values[] = {
+        "2",
+        "2",
+        "3",
+        NULL,
+    };
+    static const char *const set_null_after_delete_values[] = {
+        "1",
+        NULL,
+        "2",
+        "2",
+        "3",
+        NULL,
+    };
+    static const char *const pair_columns[] = {"id", "a", "b"};
+    static const char *const pair_values[] = {"1", NULL, NULL};
+    static const char *const parent_multi_values[] = {"2"};
+    static const char *const multi_cascade_values[] = {"2", "2"};
+    static const char *const multi_null_values[] = {
+        "1",
+        NULL,
+        "2",
+        "2",
+    };
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += expect_status(
+        mylite_open_memory(&database),
+        MYLITE_OK,
+        "open foreign key delete actions database"
+    );
+    failures += execute_sql(database, "CREATE DATABASE fk_delete_actions_runtime", MYLITE_DONE);
+    failures += execute_sql(database, "USE fk_delete_actions_runtime", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE parent_fk (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE child_cascade_fk ("
+        "id INT PRIMARY KEY, parent_id INT, "
+        "FOREIGN KEY (parent_id) REFERENCES parent_fk(id) ON DELETE CASCADE)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE child_null_fk ("
+        "id INT PRIMARY KEY, parent_id INT, "
+        "FOREIGN KEY (parent_id) REFERENCES parent_fk(id) ON DELETE SET NULL)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "INSERT INTO parent_fk VALUES (1),(2),(3)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "INSERT INTO child_cascade_fk VALUES (1,1),(2,2),(3,NULL)",
+        MYLITE_DONE
+    );
+    failures +=
+        execute_sql(database, "INSERT INTO child_null_fk VALUES (1,1),(2,2),(3,NULL)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "DELETE FROM parent_fk WHERE id = 1",
+        1,
+        "foreign key delete action parent affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM parent_fk ORDER BY id",
+        parent_columns,
+        1,
+        parent_after_delete_values,
+        2,
+        "foreign key delete action parent rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, parent_id FROM child_cascade_fk ORDER BY id",
+        child_columns,
+        2,
+        cascade_after_delete_values,
+        2,
+        "foreign key delete cascade rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, parent_id FROM child_null_fk ORDER BY id",
+        child_columns,
+        2,
+        set_null_after_delete_values,
+        3,
+        "foreign key delete set null rows"
+    );
+    failures += execute_sql(database, "SET foreign_key_checks = 0", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "DELETE FROM parent_fk WHERE id = 2",
+        1,
+        "foreign key checks off delete action affected rows"
+    );
+    failures += execute_sql(database, "SET foreign_key_checks = 1", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM parent_fk ORDER BY id",
+        parent_columns,
+        1,
+        parent_after_checks_off_values,
+        1,
+        "foreign key checks off delete action parent rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, parent_id FROM child_cascade_fk ORDER BY id",
+        child_columns,
+        2,
+        cascade_after_delete_values,
+        2,
+        "foreign key checks off skips cascade"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, parent_id FROM child_null_fk ORDER BY id",
+        child_columns,
+        2,
+        set_null_after_delete_values,
+        3,
+        "foreign key checks off skips set null"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE parent_pair_fk (a INT, b INT, PRIMARY KEY(a,b))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE child_pair_fk ("
+        "id INT PRIMARY KEY, a INT, b INT, "
+        "FOREIGN KEY (a,b) REFERENCES parent_pair_fk(a,b) ON DELETE SET NULL)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "INSERT INTO parent_pair_fk VALUES (1,1)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO child_pair_fk VALUES (1,1,1)", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "DELETE FROM parent_pair_fk WHERE a = 1 AND b = 1", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id, a, b FROM child_pair_fk",
+        pair_columns,
+        3,
+        pair_values,
+        1,
+        "foreign key composite delete set null rows"
+    );
+
+    failures +=
+        execute_sql(database, "CREATE TABLE parent_multi_fk (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "CREATE TABLE guard_multi_fk (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE child_multi_cascade_fk ("
+        "id INT PRIMARY KEY, parent_id INT, "
+        "FOREIGN KEY (parent_id) REFERENCES parent_multi_fk(id) ON DELETE CASCADE)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE child_multi_null_fk ("
+        "id INT PRIMARY KEY, parent_id INT, "
+        "FOREIGN KEY (parent_id) REFERENCES parent_multi_fk(id) ON DELETE SET NULL)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "INSERT INTO parent_multi_fk VALUES (1),(2)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO guard_multi_fk VALUES (1)", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO child_multi_cascade_fk VALUES (1,1),(2,2)", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO child_multi_null_fk VALUES (1,1),(2,2)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "DELETE parent_multi_fk FROM parent_multi_fk "
+        "JOIN guard_multi_fk ON parent_multi_fk.id = guard_multi_fk.id",
+        1,
+        "foreign key multi delete action affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM parent_multi_fk ORDER BY id",
+        parent_columns,
+        1,
+        parent_multi_values,
+        1,
+        "foreign key multi delete action parent rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, parent_id FROM child_multi_cascade_fk ORDER BY id",
+        child_columns,
+        2,
+        multi_cascade_values,
+        1,
+        "foreign key multi delete cascade rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, parent_id FROM child_multi_null_fk ORDER BY id",
+        child_columns,
+        2,
+        multi_null_values,
+        2,
+        "foreign key multi delete set null rows"
     );
 
     mylite_close(database);

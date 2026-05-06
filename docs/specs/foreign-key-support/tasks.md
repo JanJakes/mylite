@@ -47,13 +47,16 @@ commit.
 - [x] Enforce child-row update checks for single-table and joined `UPDATE`.
 - [x] Enforce parent-row `ON UPDATE RESTRICT` and `NO ACTION`.
 - [x] Enforce parent-row `ON DELETE RESTRICT` and `NO ACTION`.
-- [ ] Implement `ON UPDATE CASCADE` and `ON DELETE CASCADE`.
-- [ ] Implement `ON UPDATE SET NULL` and `ON DELETE SET NULL`.
+- [ ] Implement `ON UPDATE CASCADE`.
+- [x] Implement direct `ON DELETE CASCADE` for supported `DELETE` paths.
+- [ ] Implement `ON UPDATE SET NULL`.
+- [x] Implement direct `ON DELETE SET NULL` for supported `DELETE` paths.
 - [ ] Verify and document `SET DEFAULT` behavior before enabling or rejecting
       it with a MySQL-compatible diagnostic.
 - [x] Apply `foreign_key_checks` to implemented child-row insert/update and
       parent restrict checks without retroactive validation on re-enable.
-- [ ] Apply `foreign_key_checks` to cascading and set-null referential actions.
+- [x] Apply `foreign_key_checks` to direct delete cascade and set-null
+      referential actions.
 
 ## DDL Dependencies
 

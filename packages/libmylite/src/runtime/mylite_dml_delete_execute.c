@@ -25,6 +25,20 @@ static int validate_delete_rowset_parent_foreign_keys(
     const struct mylite_update_rowset *rowset
 );
 
+static int load_delete_row_if_needed(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_update_row *row,
+    struct mylite_update_row *loaded,
+    const struct mylite_update_row **out_row,
+    bool *out_found
+);
+
+static char *build_delete_row_scan_sql(
+    mylite_db *database,
+    const struct mylite_select_table *table
+);
+
 static size_t multi_delete_row_count(
     const struct mylite_update_rowset *rowsets,
     size_t rowset_count
@@ -84,6 +98,30 @@ int mylite_dml_execute_delete_rows_transaction(
     }
 
     for (size_t index = 0U; index < rowset->row_count; ++index) {
+        struct mylite_update_row loaded = {0};
+        const struct mylite_update_row *stored = NULL;
+
+        bool found = false;
+
+        status = load_delete_row_if_needed(
+            database,
+            table,
+            &rowset->rows[index],
+            &loaded,
+            &stored,
+            &found
+        );
+        if (status == MYLITE_OK && !found) {
+            mylite_dml_update_row_deinit(&loaded);
+            continue;
+        }
+        if (status == MYLITE_OK) {
+            status = mylite_dml_apply_parent_delete_foreign_key_actions(database, table, stored);
+        }
+        mylite_dml_update_row_deinit(&loaded);
+        if (status != MYLITE_OK) {
+            break;
+        }
         sqlite3_reset(delete_stmt);
         sqlite3_clear_bindings(delete_stmt);
         rc = sqlite3_bind_int64(delete_stmt, 1, rowset->rows[index].rowid);
@@ -212,6 +250,30 @@ static int execute_delete_rowset(
     }
 
     for (size_t index = 0U; index < rowset->row_count; ++index) {
+        struct mylite_update_row loaded = {0};
+        const struct mylite_update_row *stored = NULL;
+
+        bool found = false;
+
+        status = load_delete_row_if_needed(
+            database,
+            table,
+            &rowset->rows[index],
+            &loaded,
+            &stored,
+            &found
+        );
+        if (status == MYLITE_OK && !found) {
+            mylite_dml_update_row_deinit(&loaded);
+            continue;
+        }
+        if (status == MYLITE_OK) {
+            status = mylite_dml_apply_parent_delete_foreign_key_actions(database, table, stored);
+        }
+        mylite_dml_update_row_deinit(&loaded);
+        if (status != MYLITE_OK) {
+            break;
+        }
         sqlite3_reset(delete_stmt);
         sqlite3_clear_bindings(delete_stmt);
         rc = sqlite3_bind_int64(delete_stmt, 1, rowset->rows[index].rowid);
@@ -242,14 +304,98 @@ static int validate_delete_rowset_parent_foreign_keys(
     const struct mylite_update_rowset *rowset
 ) {
     for (size_t index = 0U; index < rowset->row_count; ++index) {
-        int status =
-            mylite_dml_validate_parent_delete_foreign_keys(database, table, &rowset->rows[index]);
+        struct mylite_update_row loaded = {0};
+        const struct mylite_update_row *stored = NULL;
+        bool found = false;
+        int status = load_delete_row_if_needed(
+            database,
+            table,
+            &rowset->rows[index],
+            &loaded,
+            &stored,
+            &found
+        );
+
+        if (status == MYLITE_OK && !found) {
+            (void)mylite_diagnostics_set_error_message(database, "DELETE row disappeared");
+            status = MYLITE_EXEC_ERROR;
+        }
+        if (status == MYLITE_OK) {
+            status = mylite_dml_validate_parent_delete_foreign_keys(database, table, stored);
+        }
+        mylite_dml_update_row_deinit(&loaded);
 
         if (status != MYLITE_OK) {
             return status;
         }
     }
     return MYLITE_OK;
+}
+
+static int load_delete_row_if_needed(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_update_row *row,
+    struct mylite_update_row *loaded,
+    const struct mylite_update_row **out_row,
+    bool *out_found
+) {
+    sqlite3_stmt *scan = NULL;
+    char *sql = NULL;
+    int rc = SQLITE_OK;
+    int status = MYLITE_OK;
+
+    *out_row = row;
+    *out_found = true;
+    if (row->values != NULL && row->value_count == table->column_count) {
+        return MYLITE_OK;
+    }
+
+    sql = build_delete_row_scan_sql(database, table);
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &scan, NULL);
+    sqlite3_free(sql);
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+    rc = sqlite3_bind_int64(scan, 1, row->rowid);
+    if (rc != SQLITE_OK) {
+        sqlite3_finalize(scan);
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+    rc = sqlite3_step(scan);
+    if (rc == SQLITE_ROW) {
+        status = mylite_dml_copy_update_sqlite_row(database, table, scan, loaded);
+        if (status == MYLITE_OK) {
+            *out_row = loaded;
+        }
+    } else if (rc == SQLITE_DONE) {
+        *out_found = false;
+    } else {
+        status = mylite_diagnostics_set_sqlite_error(database);
+    }
+    sqlite3_finalize(scan);
+    return status;
+}
+
+static char *build_delete_row_scan_sql(
+    mylite_db *database,
+    const struct mylite_select_table *table
+) {
+    sqlite3_str *sql = sqlite3_str_new(database->sqlite);
+
+    if (sql == NULL) {
+        return NULL;
+    }
+    sqlite3_str_appendall(sql, "SELECT rowid");
+    for (size_t index = 0U; index < table->column_count; ++index) {
+        sqlite3_str_appendf(sql, ",\"%w\"", table->columns[index].name);
+    }
+    sqlite3_str_appendf(sql, " FROM \"%w\" WHERE rowid = ?", table->physical_name);
+    return sqlite3_str_finish(sql);
 }
 
 static size_t multi_delete_row_count(

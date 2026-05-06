@@ -1,9 +1,10 @@
 #ifndef MYLITE_RUNTIME_MYLITE_SHOW_CREATE_TABLE_FOREIGN_KEYS_H
 #define MYLITE_RUNTIME_MYLITE_SHOW_CREATE_TABLE_FOREIGN_KEYS_H
 
-#include "mylite_runtime.h"
 #include "mylite_show_create_table_target.h"
 #include "sqlite3.h"
+
+#include <mylite/mylite.h>
 
 #include <stdbool.h>
 

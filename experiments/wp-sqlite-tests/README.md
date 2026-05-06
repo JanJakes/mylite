@@ -9,6 +9,11 @@ directly, so the runner provides a small `WP_SQLite_Driver`-shaped shim backed b
 MyLite. This keeps the original test SQL and assertions intact while making the
 database calls go through the PHP extension.
 
+The runner excludes `WP_SQLite_Driver_Translation_Tests` and
+`WP_SQLite_Information_Schema_Reconstructor_Tests` because those suites exercise
+the upstream parser/translator and schema reconstructor internals rather than
+MySQL-compatible SQL execution through mysqli.
+
 Run from the repository root:
 
 ```sh

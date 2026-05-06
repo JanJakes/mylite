@@ -598,11 +598,18 @@ namespace {
 
 	$options = parse_options($argv);
 	$tests_dir = rtrim($options['tests-dir'], '/');
+	$excluded_classes = array(
+		'WP_SQLite_Driver_Translation_Tests',
+		'WP_SQLite_Information_Schema_Reconstructor_Tests',
+	);
 	$files = glob($tests_dir . '/WP_SQLite_*.php');
 	sort($files);
 
 	$classes_before = get_declared_classes();
 	foreach ($files as $file) {
+		if (in_array(basename($file, '.php'), $excluded_classes, true)) {
+			continue;
+		}
 		require_once $file;
 	}
 	$classes_after = get_declared_classes();
@@ -711,6 +718,7 @@ namespace {
 
 	$output = array(
 		'upstream_tests_dir' => $tests_dir,
+		'excluded_classes' => $excluded_classes,
 		'mysqli_extension_version' => phpversion('mysqli'),
 		'summary' => $summary,
 		'results' => $results,
@@ -724,6 +732,7 @@ namespace {
 	echo 'Passed: ' . $summary['passed'] . PHP_EOL;
 	echo 'Failed: ' . $summary['failed'] . PHP_EOL;
 	echo 'Skipped: ' . $summary['skipped'] . PHP_EOL;
+	echo 'Excluded classes: ' . implode(', ', $excluded_classes) . PHP_EOL;
 	foreach ($summary['by_class'] as $class => $class_summary) {
 		echo sprintf(
 			"%s: %d passed, %d failed, %d skipped / %d\n",

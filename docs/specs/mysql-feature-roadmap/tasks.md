@@ -374,6 +374,8 @@ level application surfaces.
 50. [ ] Administrative compatibility placeholders: `LOCK TABLES`,
        `UNLOCK TABLES`, maintenance statements, account/privilege statements,
        replication-only statements, and embedded-compatible diagnostics.
+       Started with table lock, maintenance, and account/privilege parser
+       placeholders. Specs: [table lock placeholders](../table-lock-placeholders/specs.md).
 
 ## Execution Rule
 

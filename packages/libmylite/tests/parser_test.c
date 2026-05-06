@@ -22,6 +22,7 @@ static int test_alter_table_key_constraint_operations_syntax(void);
 static int test_rename_table_syntax(void);
 static int test_truncate_table_syntax(void);
 static int test_table_maintenance_syntax(void);
+static int test_table_lock_placeholder_syntax(void);
 static int test_show_variables_syntax(void);
 static int test_show_status_syntax(void);
 static int test_show_engines_syntax(void);
@@ -194,6 +195,7 @@ int main(void)
     failures += test_rename_table_syntax();
     failures += test_truncate_table_syntax();
     failures += test_table_maintenance_syntax();
+    failures += test_table_lock_placeholder_syntax();
     failures += test_show_variables_syntax();
     failures += test_show_status_syntax();
     failures += test_show_engines_syntax();
@@ -3106,6 +3108,81 @@ static int test_table_maintenance_syntax(void)
     mylite_sql_parse_result_deinit(&result);
 
     // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_table_lock_placeholder_syntax(void)
+{
+    enum {
+        lock_read_index = 0,
+        lock_multi_index = 1,
+        lock_singular_index = 2,
+        unlock_plural_index = 3,
+        unlock_singular_index = 4,
+        statement_count = 5,
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *table_list = NULL;
+    const struct mylite_sql_ast_node *table_name = NULL;
+    int failures = 0;
+
+    failures += parse_sql("LOCK TABLES t READ; "
+                          "LOCK TABLES app.t AS tt WRITE, u READ LOCAL; "
+                          "LOCK TABLE t WRITE; "
+                          "UNLOCK TABLES; "
+                          "UNLOCK TABLE;",
+                          MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_child_count(result.root, statement_count, "table lock script count");
+
+    statement = child_at(result.root, lock_read_index);
+    failures += expect_placeholder_statement(statement, MYLITE_SQL_AST_PLACEHOLDER_LOCK_TABLES,
+                                             "lock read placeholder");
+    failures += expect_child_count(statement, 1U, "lock read child count");
+    table_list = child_at(statement, 0U);
+    failures += expect_node(table_list, MYLITE_SQL_AST_TABLE_NAME_LIST, "lock read table list");
+    failures += expect_child_count(table_list, 1U, "lock read table count");
+    failures += expect_span_text(child_at(table_list, 0U), "t", "lock read target");
+
+    statement = child_at(result.root, lock_multi_index);
+    failures += expect_placeholder_statement(statement, MYLITE_SQL_AST_PLACEHOLDER_LOCK_TABLES,
+                                             "lock multi placeholder");
+    table_list = child_at(statement, 0U);
+    failures += expect_child_count(table_list, 2U, "lock multi table count");
+    table_name = child_at(table_list, 0U);
+    failures +=
+        expect_node(table_name, MYLITE_SQL_AST_QUALIFIED_IDENTIFIER, "lock qualified target");
+    failures += expect_span_text(child_at(table_name, 0U), "app", "lock target schema");
+    failures += expect_span_text(child_at(table_name, 1U), "t", "lock target table");
+    failures += expect_span_text(child_at(table_list, 1U), "u", "lock second target");
+
+    failures += expect_placeholder_statement(child_at(result.root, lock_singular_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_LOCK_TABLES,
+                                             "lock singular placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, unlock_plural_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_UNLOCK_TABLES,
+                                             "unlock plural placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, unlock_singular_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_UNLOCK_TABLES,
+                                             "unlock singular placeholder");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("LOCK TABLES;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("LOCK TABLES t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("LOCK TABLES t LOW_PRIORITY WRITE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("UNLOCK;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("UNLOCK TABLES t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
     return failures;
 }
 

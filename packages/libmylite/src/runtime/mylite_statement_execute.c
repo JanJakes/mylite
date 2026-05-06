@@ -185,6 +185,8 @@ int mylite_statement_execute_custom_with_callbacks(
     case MYLITE_STMT_SHOW_PRIVILEGES_PLACEHOLDER:
     case MYLITE_STMT_TABLE_PARTITIONING_PLACEHOLDER:
     case MYLITE_STMT_CTE_PLACEHOLDER:
+    case MYLITE_STMT_LOCK_TABLES_PLACEHOLDER:
+    case MYLITE_STMT_UNLOCK_TABLES_PLACEHOLDER:
         status = execute_parser_placeholder_statement(stmt);
         break;
     case MYLITE_STMT_SCALAR_SELECT:
@@ -269,6 +271,10 @@ static const char *parser_placeholder_warning_message(enum mylite_stmt_kind kind
     case MYLITE_STMT_CTE_PLACEHOLDER:
         return "CTE query expression is accepted as a MyLite parser placeholder and is not "
                "executed";
+    case MYLITE_STMT_LOCK_TABLES_PLACEHOLDER:
+        return "LOCK TABLES is accepted as a MyLite parser placeholder and is not executed";
+    case MYLITE_STMT_UNLOCK_TABLES_PLACEHOLDER:
+        return "UNLOCK TABLES is accepted as a MyLite parser placeholder and is not executed";
     case MYLITE_STMT_SQLITE:
     case MYLITE_STMT_CREATE_SCHEMA:
     case MYLITE_STMT_ALTER_SCHEMA:

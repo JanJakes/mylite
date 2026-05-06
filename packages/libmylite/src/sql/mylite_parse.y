@@ -249,6 +249,12 @@ statement(A) ::= truncate_table_statement(B). {
 statement(A) ::= table_maintenance_statement(B). {
     A = B;
 }
+statement(A) ::= lock_tables_statement(B). {
+    A = B;
+}
+statement(A) ::= unlock_tables_statement(B). {
+    A = B;
+}
 statement(A) ::= insert_values_statement(B). {
     A = B;
 }
@@ -817,6 +823,41 @@ table_maintenance_statement(A) ::= REPAIR(T) opt_write_to_binlog TABLE maintenan
     A = mylite_sql_parser_make_placeholder_statement_with_child(
         state, MYLITE_SQL_AST_PLACEHOLDER_REPAIR_TABLE, T, B);
 }
+
+lock_tables_statement(A) ::= LOCK(T) TABLE lock_table_name_list(B). {
+    A = mylite_sql_parser_make_placeholder_statement_with_child(
+        state, MYLITE_SQL_AST_PLACEHOLDER_LOCK_TABLES, T, B);
+}
+lock_tables_statement(A) ::= LOCK(T) TABLES lock_table_name_list(B). {
+    A = mylite_sql_parser_make_placeholder_statement_with_child(
+        state, MYLITE_SQL_AST_PLACEHOLDER_LOCK_TABLES, T, B);
+}
+
+unlock_tables_statement(A) ::= UNLOCK(T) TABLES(E). {
+    A = mylite_sql_parser_make_placeholder_statement_with_end_token(
+        state, MYLITE_SQL_AST_PLACEHOLDER_UNLOCK_TABLES, T, E);
+}
+unlock_tables_statement(A) ::= UNLOCK(T) TABLE(E). {
+    A = mylite_sql_parser_make_placeholder_statement_with_end_token(
+        state, MYLITE_SQL_AST_PLACEHOLDER_UNLOCK_TABLES, T, E);
+}
+
+lock_table_name_list(A) ::= lock_table_name(B). {
+    A = mylite_sql_parser_make_table_name_list(state, B);
+}
+lock_table_name_list(A) ::= lock_table_name_list(B) COMMA lock_table_name(C). {
+    A = mylite_sql_parser_append_table_name(state, B, C);
+}
+
+lock_table_name(A) ::= table_name(B) opt_table_alias lock_type. {
+    A = B;
+}
+
+lock_type ::= READ opt_local.
+lock_type ::= WRITE.
+
+opt_local ::= .
+opt_local ::= LOCAL.
 
 maintenance_table_name_list(A) ::= table_name(B). {
     A = mylite_sql_parser_make_table_name_list(state, B);

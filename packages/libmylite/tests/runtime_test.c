@@ -348,6 +348,7 @@ static int test_unsupported_statement(void);
 static int test_stored_program_placeholder_execution(void);
 static int test_explain_statement_placeholder_execution(void);
 static int test_account_privilege_placeholder_execution(void);
+static int test_table_lock_placeholder_execution(void);
 static int test_table_partitioning_placeholder_execution(void);
 static int test_cte_query_expression_placeholder_execution(void);
 static int test_window_function_placeholder_execution(void);
@@ -583,6 +584,7 @@ int main(void)
     failures += test_stored_program_placeholder_execution();
     failures += test_explain_statement_placeholder_execution();
     failures += test_account_privilege_placeholder_execution();
+    failures += test_table_lock_placeholder_execution();
     failures += test_table_partitioning_placeholder_execution();
     failures += test_cte_query_expression_placeholder_execution();
     failures += test_window_function_placeholder_execution();
@@ -19242,6 +19244,28 @@ static int test_account_privilege_placeholder_execution(void)
                                                     "DROP ROLE", "DROP ROLE placeholder");
     failures += expect_parser_placeholder_execution(database, "DROP USER IF EXISTS 'u'@'localhost'",
                                                     "DROP USER", "DROP USER placeholder");
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_table_lock_placeholder_execution(void)
+{
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open table lock database");
+    failures += expect_parser_placeholder_execution(database, "LOCK TABLES t READ", "LOCK TABLES",
+                                                    "LOCK TABLES READ placeholder");
+    failures +=
+        expect_parser_placeholder_execution(database, "LOCK TABLES app.t AS tt WRITE, u READ LOCAL",
+                                            "LOCK TABLES", "LOCK TABLES multi placeholder");
+    failures += expect_parser_placeholder_execution(database, "LOCK TABLE t WRITE", "LOCK TABLES",
+                                                    "LOCK TABLE singular placeholder");
+    failures += expect_parser_placeholder_execution(database, "UNLOCK TABLES", "UNLOCK TABLES",
+                                                    "UNLOCK TABLES placeholder");
+    failures += expect_parser_placeholder_execution(database, "UNLOCK TABLE", "UNLOCK TABLES",
+                                                    "UNLOCK TABLE singular placeholder");
 
     mylite_close(database);
     return failures;

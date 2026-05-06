@@ -151,8 +151,8 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | `SET TRANSACTION` | ❌ | high | Isolation level and access mode at global/session/next-transaction scope. |  |
 | `LOCK INSTANCE FOR BACKUP` | ❌ | low | Backup lock syntax and embedded-compatible behavior. |  |
 | `UNLOCK INSTANCE` | ❌ | low | Backup lock release syntax. |  |
-| `LOCK TABLES` | ❌ | high | READ, READ LOCAL, WRITE, LOW_PRIORITY WRITE, aliases, and implicit commit behavior. |  |
-| `UNLOCK TABLES` | ❌ | high | Table lock release and transaction interaction. |  |
+| `LOCK TABLES` | ⚪ | high | READ, READ LOCAL, WRITE, aliases, and implicit commit behavior. | Parser placeholder accepts MySQL 8.4 `LOCK TABLE` / `LOCK TABLES` table lists with aliases and `READ [LOCAL]` / `WRITE` lock types, then executes as a no-op warning; actual locks, privilege checks, implicit commits, and locked-session restrictions are deferred. See [table lock placeholders spec](docs/specs/table-lock-placeholders/specs.md). |
+| `UNLOCK TABLES` | ⚪ | high | Table lock release and transaction interaction. | Parser placeholder accepts MySQL 8.4 `UNLOCK TABLE` / `UNLOCK TABLES`, then executes as a no-op warning; actual lock release and transaction interactions are deferred. See [table lock placeholders spec](docs/specs/table-lock-placeholders/specs.md). |
 | `XA START` | ❌ | low | XA transaction branch start. |  |
 | `XA END` | ❌ | low | XA transaction branch end. |  |
 | `XA PREPARE` | ❌ | low | XA prepare phase. |  |

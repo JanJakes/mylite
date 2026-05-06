@@ -12,6 +12,22 @@ int mylite_dml_prepare_update_statement(mylite_db *database,
 int mylite_dml_prepare_delete_statement(mylite_db *database,
                                         const struct mylite_sql_ast_node *statement,
                                         const char *sql, size_t sql_length, mylite_stmt **out_stmt);
+int mylite_dml_prepare_insert_values_statement(mylite_db *database,
+                                               const struct mylite_sql_ast_node *statement,
+                                               const char *sql, size_t sql_length,
+                                               mylite_stmt **out_stmt);
+int mylite_dml_prepare_insert_set_statement(mylite_db *database,
+                                            const struct mylite_sql_ast_node *statement,
+                                            const char *sql, size_t sql_length,
+                                            mylite_stmt **out_stmt);
+int mylite_dml_prepare_replace_values_statement(mylite_db *database,
+                                                const struct mylite_sql_ast_node *statement,
+                                                const char *sql, size_t sql_length,
+                                                mylite_stmt **out_stmt);
+int mylite_dml_prepare_replace_set_statement(mylite_db *database,
+                                             const struct mylite_sql_ast_node *statement,
+                                             const char *sql, size_t sql_length,
+                                             mylite_stmt **out_stmt);
 int mylite_dml_validate_insert_target(mylite_db *database, const char *selected_schema,
                                       const struct mylite_insert_values_plan *plan,
                                       const char **out_schema_name);
@@ -56,7 +72,8 @@ int mylite_dml_execute_insert_values_transaction(
     const struct mylite_insert_values_plan *values_plan,
     const struct mylite_insert_duplicate_update_plan *update_plan,
     const struct mylite_insert_table *table, const size_t *column_indexes,
-    const size_t *update_column_indexes, struct mylite_insert_transaction_result *out_result);
+    const size_t *update_column_indexes, const struct mylite_dml_expression_callbacks *callbacks,
+    struct mylite_insert_transaction_result *out_result);
 int mylite_dml_execute_insert_set_transaction(
     mylite_db *database, const char *selected_schema, const char *schema_name,
     const struct mylite_insert_values_plan *values_plan,
@@ -64,26 +81,30 @@ int mylite_dml_execute_insert_set_transaction(
     const struct mylite_insert_duplicate_update_plan *update_plan,
     const struct mylite_insert_table *table, const size_t *column_indexes,
     size_t column_index_count, const size_t *update_column_indexes,
+    const struct mylite_dml_expression_callbacks *callbacks,
     struct mylite_insert_transaction_result *out_result);
 int mylite_dml_execute_replace_values_transaction(
     mylite_db *database, const char *schema_name,
     const struct mylite_insert_values_plan *values_plan, const struct mylite_insert_table *table,
-    const size_t *column_indexes, struct mylite_insert_transaction_result *out_result);
-int mylite_dml_execute_replace_set_transaction(mylite_db *database, const char *schema_name,
-                                               const struct mylite_insert_values_plan *values_plan,
-                                               const struct mylite_insert_set_plan *set_plan,
-                                               const struct mylite_insert_table *table,
-                                               const size_t *column_indexes,
-                                               size_t column_index_count,
-                                               struct mylite_insert_transaction_result *out_result);
+    const size_t *column_indexes, const struct mylite_dml_expression_callbacks *callbacks,
+    struct mylite_insert_transaction_result *out_result);
+int mylite_dml_execute_replace_set_transaction(
+    mylite_db *database, const char *schema_name,
+    const struct mylite_insert_values_plan *values_plan,
+    const struct mylite_insert_set_plan *set_plan, const struct mylite_insert_table *table,
+    const size_t *column_indexes, size_t column_index_count,
+    const struct mylite_dml_expression_callbacks *callbacks,
+    struct mylite_insert_transaction_result *out_result);
 int mylite_dml_write_insert_candidate_row(mylite_db *database, sqlite3_stmt *insert,
                                           const struct mylite_insert_table *table,
                                           const struct mylite_insert_bound_value *values,
                                           struct mylite_insert_execution_state *state);
 int mylite_dml_execute_insert_row(mylite_db *database, const struct mylite_insert_values_plan *plan,
-                                  sqlite3_stmt *insert, const struct mylite_insert_table *table,
+                                  const char *schema_name, sqlite3_stmt *insert,
+                                  const struct mylite_insert_table *table,
                                   const struct mylite_insert_row_column_indexes *column_indexes,
-                                  struct mylite_insert_execution_state *state, size_t row_index);
+                                  struct mylite_insert_execution_state *state, size_t row_index,
+                                  const struct mylite_dml_expression_callbacks *callbacks);
 int mylite_dml_execute_insert_set_row(mylite_db *database, const char *schema_name,
                                       const struct mylite_insert_values_plan *values_plan,
                                       const struct mylite_insert_set_plan *set_plan,
@@ -91,7 +112,8 @@ int mylite_dml_execute_insert_set_row(mylite_db *database, const char *schema_na
                                       const size_t *column_indexes, size_t column_index_count,
                                       struct mylite_insert_execution_state *state,
                                       struct mylite_insert_bound_value *values,
-                                      struct mylite_insert_set_row_state *row_state);
+                                      struct mylite_insert_set_row_state *row_state,
+                                      const struct mylite_dml_expression_callbacks *callbacks);
 int mylite_dml_write_insert_update_candidate(mylite_db *database,
                                              const struct mylite_insert_table *table,
                                              sqlite3_int64 rowid,
@@ -114,7 +136,8 @@ int mylite_dml_execute_insert_update_values_row(
     const struct mylite_insert_duplicate_update_plan *update_plan, sqlite3_stmt *insert,
     const struct mylite_insert_table *table,
     const struct mylite_insert_row_column_indexes *column_indexes,
-    struct mylite_insert_execution_state *state, size_t row_index);
+    struct mylite_insert_execution_state *state, size_t row_index,
+    const struct mylite_dml_expression_callbacks *callbacks);
 int mylite_dml_execute_insert_update_set_row(
     mylite_db *database, const char *selected_schema, const char *schema_name,
     const struct mylite_insert_values_plan *values_plan,
@@ -123,7 +146,8 @@ int mylite_dml_execute_insert_update_set_row(
     const struct mylite_insert_table *table, const size_t *column_indexes,
     size_t column_index_count, const struct mylite_insert_row_column_indexes *row_column_indexes,
     struct mylite_insert_execution_state *state, struct mylite_insert_bound_value *values,
-    struct mylite_insert_set_row_state *row_state);
+    struct mylite_insert_set_row_state *row_state,
+    const struct mylite_dml_expression_callbacks *callbacks);
 int mylite_dml_validate_insert_update_assignments(
     mylite_db *database, const struct mylite_insert_values_plan *values_plan,
     const struct mylite_insert_duplicate_update_plan *update_plan,
@@ -138,13 +162,19 @@ int mylite_dml_validate_update_unique_indexes(mylite_db *database,
                                               const struct mylite_select_table *table,
                                               const struct mylite_insert_table *write_table,
                                               const struct mylite_update_row *candidate);
-int mylite_dml_resolve_insert_row_values(mylite_db *database,
-                                         const struct mylite_insert_values_plan *plan,
-                                         const struct mylite_insert_table *table,
-                                         const size_t *column_indexes, uint64_t statement_row_count,
-                                         struct mylite_insert_execution_state *state,
-                                         size_t row_index,
-                                         struct mylite_insert_bound_value *out_values);
+int mylite_dml_resolve_insert_row_values(
+    mylite_db *database, const struct mylite_insert_values_plan *plan, const char *schema_name,
+    const struct mylite_insert_table *table, const size_t *column_indexes,
+    uint64_t statement_row_count, struct mylite_insert_execution_state *state, size_t row_index,
+    struct mylite_insert_bound_value *out_values,
+    const struct mylite_dml_expression_callbacks *callbacks);
+int mylite_dml_resolve_insert_expression_bound_value(
+    mylite_db *database, const char *schema_name, const struct mylite_insert_values_plan *plan,
+    const struct mylite_insert_table *table, const struct mylite_insert_bound_value *values,
+    const struct mylite_insert_table_column *column, const struct mylite_sql_ast_node *expression,
+    uint64_t statement_row_count, struct mylite_insert_execution_state *state,
+    const struct mylite_dml_expression_callbacks *callbacks,
+    struct mylite_insert_bound_value *out_value);
 int mylite_dml_copy_update_statement(const struct mylite_sql_ast_node *statement,
                                      struct mylite_update_plan *plan);
 int mylite_dml_copy_delete_statement(const struct mylite_sql_ast_node *statement,

@@ -251,6 +251,7 @@ static int evaluate_insert_set_simple_expression(mylite_db *database, const char
     case MYLITE_INSERT_VALUE_VALUES_FUNCTION:
     case MYLITE_INSERT_VALUE_UNARY_EXPRESSION:
     case MYLITE_INSERT_VALUE_BINARY_EXPRESSION:
+    case MYLITE_INSERT_VALUE_EXPRESSION:
         return mylite_dml_insert_set_unsupported_expression_error(database);
     }
 

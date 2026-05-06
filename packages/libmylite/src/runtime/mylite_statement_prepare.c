@@ -125,17 +125,17 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
             return mylite_statement_prepare_custom_statement(database, MYLITE_STMT_DROP_INDEX,
                                                              statement, out_stmt, callbacks);
         case MYLITE_SQL_AST_INSERT_VALUES_STATEMENT:
-            return mylite_statement_prepare_custom_statement(database, MYLITE_STMT_INSERT_VALUES,
-                                                             statement, out_stmt, callbacks);
+            return mylite_dml_prepare_insert_values_statement(database, statement, sql, sql_length,
+                                                              out_stmt);
         case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
-            return mylite_statement_prepare_custom_statement(database, MYLITE_STMT_INSERT_SET,
-                                                             statement, out_stmt, callbacks);
+            return mylite_dml_prepare_insert_set_statement(database, statement, sql, sql_length,
+                                                           out_stmt);
         case MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT:
-            return mylite_statement_prepare_custom_statement(database, MYLITE_STMT_REPLACE_VALUES,
-                                                             statement, out_stmt, callbacks);
+            return mylite_dml_prepare_replace_values_statement(database, statement, sql, sql_length,
+                                                               out_stmt);
         case MYLITE_SQL_AST_REPLACE_SET_STATEMENT:
-            return mylite_statement_prepare_custom_statement(database, MYLITE_STMT_REPLACE_SET,
-                                                             statement, out_stmt, callbacks);
+            return mylite_dml_prepare_replace_set_statement(database, statement, sql, sql_length,
+                                                            out_stmt);
         case MYLITE_SQL_AST_UPDATE_STATEMENT:
             return mylite_dml_prepare_update_statement(database, statement, sql, sql_length,
                                                        out_stmt);

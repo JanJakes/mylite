@@ -21560,6 +21560,7 @@ static int test_insert_values_execution(void)
     char *defaults_physical = NULL;
     char *atomic_physical = NULL;
     char *expr_physical = NULL;
+    char *scalar_physical = NULL;
     int failures = 0;
 
     remove_runtime_test_files();
@@ -21902,6 +21903,13 @@ static int test_insert_values_execution(void)
         failures += expect_sqlite_physical_int64(path, defaults_physical, "nd", "WHERE nn = -2", 4,
                                                  "spaced unary insert value");
     }
+    failures +=
+        execute_sql(database, "INSERT INTO defaults (nn, nd) VALUES (4, DEFAULT(nd))", MYLITE_DONE);
+    if (defaults_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, defaults_physical, "nd", "WHERE nn = 4",
+                                                 defaults_explicit_default_nd,
+                                                 "DEFAULT function insert value");
+    }
 
     failures +=
         prepare_sql(database, "INSERT INTO defaults (nd) VALUES (DEFAULT)", MYLITE_OK, &stmt);
@@ -21960,6 +21968,75 @@ static int test_insert_values_execution(void)
     }
 
     failures += execute_sql(database,
+                            "CREATE TABLE scalar_insert ("
+                            "id INT PRIMARY KEY, "
+                            "s VARCHAR(16), "
+                            "n INT, "
+                            "d DOUBLE, "
+                            "dt DATETIME(6), "
+                            "r DOUBLE, "
+                            "u VARCHAR(36))",
+                            MYLITE_DONE);
+    scalar_physical = expected_physical_table_name("mylite_iv13", "scalar_insert");
+    if (scalar_physical == NULL) {
+        fprintf(stderr, "out of memory while building scalar_insert physical table name\n");
+        failures = 1;
+    }
+    failures += execute_sql(database,
+                            "INSERT INTO scalar_insert (id, s, n, d, dt, r, u) VALUES "
+                            "(1, CONCAT('a','b'), ABS(-3), ROUND(12.345, 2), "
+                            "TIMESTAMP('2024-02-29', '01:02:03'), RAND(7), UUID()), "
+                            "(2, CONCAT('c','d'), 2 + 5, UNIX_TIMESTAMP('1970-01-01 00:00:01'), "
+                            "NOW(6), RAND(7), UUID())",
+                            MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT s, n, d > 12.34 AND d < 12.36 AS d_ok, "
+        "DATE_FORMAT(dt, '%Y-%m-%d %H:%i:%s') AS formatted_dt, "
+        "r > 0.9065 AND r < 0.9066 AS rand_ok, "
+        "IS_UUID(u) AS uuid_ok "
+        "FROM scalar_insert WHERE id = 1",
+        (const char *const[]){"s", "n", "d_ok", "formatted_dt", "rand_ok", "uuid_ok"}, 6,
+        (const char *const[]){"ab", "3", "1", "2024-02-29 01:02:03", "1", "1"}, 1,
+        "scalar INSERT VALUES expressions");
+    failures += expect_select_rows(database,
+                                   "SELECT s, n, d = 1 AS d_ok, dt IS NOT NULL AS dt_ok, "
+                                   "IS_UUID(u) AS uuid_ok "
+                                   "FROM scalar_insert WHERE id = 2",
+                                   (const char *const[]){"s", "n", "d_ok", "dt_ok", "uuid_ok"}, 5,
+                                   (const char *const[]){"cd", "7", "1", "1", "1"}, 1,
+                                   "scalar INSERT VALUES current temporal expression");
+    failures += execute_sql(database,
+                            "CREATE TABLE stable_insert ("
+                            "id INT PRIMARY KEY, a DATETIME(6), b DATETIME(6))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO stable_insert VALUES "
+                            "(1, NOW(6), NOW(6)), (2, NOW(6), NOW(6))",
+                            MYLITE_DONE);
+    failures +=
+        expect_select_rows(database,
+                           "SELECT COUNT(*) AS matching_pairs "
+                           "FROM stable_insert WHERE a = b",
+                           (const char *const[]){"matching_pairs"}, 1, (const char *const[]){"2"},
+                           1, "statement-stable INSERT VALUES temporal functions");
+    failures += prepare_sql(database, "INSERT INTO scalar_insert (id, n) VALUES (3, SQRT('9x'))",
+                            MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Truncated incorrect DOUBLE value",
+                                  "INSERT VALUES expression warning promoted");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "INSERT VALUES expression warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_truncated_wrong_value,
+                   "INSERT VALUES expression warning code");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    if (scalar_physical != NULL) {
+        failures += expect_sqlite_physical_int64(path, scalar_physical, "COUNT(*)", "WHERE id = 3",
+                                                 0, "INSERT VALUES expression error rollback");
+    }
+
+    failures += execute_sql(database,
                             "CREATE TABLE expr_defaults ("
                             "a INT DEFAULT (1 + 2), "
                             "b TIMESTAMP DEFAULT (CURRENT_TIMESTAMP))",
@@ -21996,6 +22073,7 @@ static int test_insert_values_execution(void)
     free(defaults_physical);
     free(atomic_physical);
     free(expr_physical);
+    free(scalar_physical);
     mylite_close(database);
     remove_runtime_test_files();
     return failures;
@@ -22057,6 +22135,7 @@ static int test_insert_set_execution(void)
     char *auto_ref_physical = NULL;
     char *diag_physical = NULL;
     char *expr_fail_physical = NULL;
+    char *scalar_physical = NULL;
     char *duplicate_physical = NULL;
     int failures = 0;
 
@@ -22336,6 +22415,42 @@ static int test_insert_set_execution(void)
                                                  "insert set qualified diagnostics row count");
     }
 
+    failures += execute_sql(database,
+                            "CREATE TABLE scalar_set ("
+                            "id INT PRIMARY KEY, "
+                            "s VARCHAR(16), "
+                            "n INT, "
+                            "d DOUBLE, "
+                            "dt DATETIME(6), "
+                            "r DOUBLE, "
+                            "u VARCHAR(36))",
+                            MYLITE_DONE);
+    scalar_physical = expected_physical_table_name("mylite_is14", "scalar_set");
+    if (scalar_physical == NULL) {
+        fprintf(stderr, "out of memory while building scalar_set physical table name\n");
+        failures = 1;
+    }
+    failures += execute_sql(database,
+                            "INSERT INTO scalar_set SET "
+                            "id = 1, "
+                            "s = CONCAT('x','y'), "
+                            "n = ABS(-2), "
+                            "d = n + 1.5, "
+                            "dt = TIMESTAMP('2024-02-29', '02:03:04'), "
+                            "r = RAND(7), "
+                            "u = UUID()",
+                            MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT s, n, d > 3.49 AND d < 3.51 AS d_ok, "
+        "DATE_FORMAT(dt, '%Y-%m-%d %H:%i:%s') AS formatted_dt, "
+        "r > 0.9065 AND r < 0.9066 AS rand_ok, "
+        "IS_UUID(u) AS uuid_ok "
+        "FROM scalar_set WHERE id = 1",
+        (const char *const[]){"s", "n", "d_ok", "formatted_dt", "rand_ok", "uuid_ok"}, 6,
+        (const char *const[]){"xy", "2", "1", "2024-02-29 02:03:04", "1", "1"}, 1,
+        "scalar INSERT SET expressions");
+
     failures += execute_sql(database, "CREATE TABLE quoted_diag (CamelCase INT)", MYLITE_DONE);
     failures += prepare_sql(database, "INSERT INTO quoted_diag SET CamelCase = 1, `camelcase` = 2",
                             MYLITE_OK, &stmt);
@@ -22352,11 +22467,14 @@ static int test_insert_set_execution(void)
         fprintf(stderr, "out of memory while building expr_fail physical table name\n");
         failures = 1;
     }
-    failures += prepare_sql(database, "INSERT INTO expr_fail SET a = 'text' + 1", MYLITE_OK, &stmt);
+    failures += prepare_sql(database, "INSERT INTO expr_fail SET a = SQRT('9x')", MYLITE_OK, &stmt);
+    failures += expect_exec_error(stmt, database, "Truncated incorrect DOUBLE value",
+                                  "insert set expression warning promoted");
     failures +=
-        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "insert set unsupported expression");
-    failures += expect_contains(mylite_error_message(database), "Unsupported INSERT value",
-                                "insert set unsupported expression error");
+        expect_int(mylite_warning_count(database), 1, "insert set expression warning count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_truncated_wrong_value,
+                   "insert set expression warning code");
     mylite_finalize(stmt);
     stmt = NULL;
     if (expr_fail_physical != NULL) {
@@ -22406,6 +22524,7 @@ static int test_insert_set_execution(void)
     free(auto_ref_physical);
     free(diag_physical);
     free(expr_fail_physical);
+    free(scalar_physical);
     free(duplicate_physical);
     mylite_close(database);
     remove_runtime_test_files();
@@ -22433,6 +22552,7 @@ static int test_replace_execution(void)
     char *conflict_physical = NULL;
     char *order_physical = NULL;
     char *set_physical = NULL;
+    char *scalar_physical = NULL;
     char *required_physical = NULL;
     char *atomic_physical = NULL;
     char *null_unique_physical = NULL;
@@ -22586,6 +22706,54 @@ static int test_replace_execution(void)
     }
 
     failures += execute_sql(database,
+                            "CREATE TABLE replace_scalar ("
+                            "id INT PRIMARY KEY, "
+                            "s VARCHAR(16), "
+                            "n INT, "
+                            "d DOUBLE, "
+                            "dt DATETIME(6), "
+                            "r DOUBLE)",
+                            MYLITE_DONE);
+    scalar_physical = expected_physical_table_name("mylite_r33", "replace_scalar");
+    if (scalar_physical == NULL) {
+        fprintf(stderr, "out of memory while building replace_scalar physical table name\n");
+        failures = 1;
+    }
+    failures += execute_sql(database,
+                            "INSERT INTO replace_scalar VALUES "
+                            "(1, 'old', 1, 1, '2024-01-01 00:00:00', 0)",
+                            MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(database,
+                                                 "REPLACE INTO replace_scalar VALUES "
+                                                 "(1, CONCAT('r','v'), ABS(-4), ROUND(5.25, 1), "
+                                                 "TIMESTAMP('2024-02-29', '03:04:05'), RAND(7))",
+                                                 2, "replace values scalar expressions affected");
+    failures +=
+        execute_sql_expect_done_affected(database,
+                                         "REPLACE INTO replace_scalar SET "
+                                         "id = 2, s = CONCAT('s','et'), n = ABS(-6), d = n + 0.5, "
+                                         "dt = TIMESTAMP('2024-03-01', '04:05:06'), r = RAND(7)",
+                                         1, "replace set scalar expressions affected");
+    failures += expect_select_rows(
+        database,
+        "SELECT id, s, n, d > 5.2 AND d < 5.4 AS d_ok, "
+        "DATE_FORMAT(dt, '%Y-%m-%d %H:%i:%s') AS formatted_dt, "
+        "r > 0.9065 AND r < 0.9066 AS rand_ok "
+        "FROM replace_scalar WHERE id = 1",
+        (const char *const[]){"id", "s", "n", "d_ok", "formatted_dt", "rand_ok"}, 6,
+        (const char *const[]){"1", "rv", "4", "1", "2024-02-29 03:04:05", "1"}, 1,
+        "replace values scalar expression row");
+    failures += expect_select_rows(
+        database,
+        "SELECT id, s, n, d > 6.4 AND d < 6.6 AS d_ok, "
+        "DATE_FORMAT(dt, '%Y-%m-%d %H:%i:%s') AS formatted_dt, "
+        "r > 0.9065 AND r < 0.9066 AS rand_ok "
+        "FROM replace_scalar WHERE id = 2",
+        (const char *const[]){"id", "s", "n", "d_ok", "formatted_dt", "rand_ok"}, 6,
+        (const char *const[]){"2", "set", "6", "1", "2024-03-01 04:05:06", "1"}, 1,
+        "replace set scalar expression row");
+
+    failures += execute_sql(database,
                             "CREATE TABLE replace_required ("
                             "id INT PRIMARY KEY, u INT UNIQUE, must INT NOT NULL)",
                             MYLITE_DONE);
@@ -22737,6 +22905,7 @@ static int test_replace_execution(void)
     free(conflict_physical);
     free(order_physical);
     free(set_physical);
+    free(scalar_physical);
     free(required_physical);
     free(atomic_physical);
     free(null_unique_physical);

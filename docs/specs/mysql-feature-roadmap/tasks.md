@@ -64,8 +64,11 @@ level application surfaces.
        [result metadata and expression labels](../result-metadata-expression-labels/specs.md).
 24. [ ] Scalar built-in functions used by common applications: string, numeric,
        temporal, conditional, comparison, information, and compatibility
-       functions with MySQL conversion behavior. Started; spec:
+       functions with MySQL conversion behavior. Started, including current
+       `INSERT`/`REPLACE` source expression use for the supported scalar
+       subset; specs:
        [scalar built-in functions](../scalar-built-in-functions/specs.md).
+       [INSERT/REPLACE scalar expression values](../insert-scalar-expression-values/specs.md).
 25. [x] Aggregate functions and grouping: `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`,
        `GROUP BY`, `HAVING`, aliases, ordinals, `ONLY_FULL_GROUP_BY`, and
        grouped joined row sources. Specs:
@@ -100,8 +103,9 @@ level application surfaces.
        Partially implemented for supported `VALUES`/`VALUE`/`VALUES ROW(...)`
        and `SET` forms, including optional `INTO`, column lists, explicit
        conflict delete loop, source-order multi-row semantics, affected rows,
-       `LOW_PRIORITY`, `DELAYED` warning 3005, rollback, and auto-increment/
-       last-insert-id behavior. Query-source replace, partitions, cascades,
+       supported scalar source expressions, `LOW_PRIORITY`, `DELAYED` warning
+       3005, rollback, and auto-increment/last-insert-id behavior.
+       Query-source replace, partitions, cascades,
        triggers, generated columns, and broad conversion fidelity remain
        deferred. Spec: [REPLACE](../replace/specs.md).
 34. [ ] `CREATE INDEX` and `DROP INDEX`: standalone index creation/removal,

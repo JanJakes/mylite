@@ -57,7 +57,8 @@ static int set_multi_delete_unknown_target_error(mylite_db *database,
 static int set_multi_delete_nonunique_target_error(mylite_db *database,
                                                    const struct mylite_delete_target *target);
 
-int mylite_dml_execute_insert_values_statement(mylite_stmt *stmt)
+int mylite_dml_execute_insert_values_statement(
+    mylite_stmt *stmt, const struct mylite_dml_expression_callbacks *expression_callbacks)
 {
     const char *schema_name = NULL;
     struct mylite_insert_table table = {0};
@@ -97,7 +98,8 @@ int mylite_dml_execute_insert_values_statement(mylite_stmt *stmt)
     if (status == MYLITE_OK) {
         status = mylite_dml_execute_insert_values_transaction(
             stmt->database, stmt->database->selected_schema, schema_name, &stmt->insert_values,
-            &stmt->insert_update, &table, column_indexes, update_column_indexes, &result);
+            &stmt->insert_update, &table, column_indexes, update_column_indexes,
+            expression_callbacks, &result);
     }
 
 cleanup:
@@ -115,7 +117,8 @@ cleanup:
     return status;
 }
 
-int mylite_dml_execute_insert_set_statement(mylite_stmt *stmt)
+int mylite_dml_execute_insert_set_statement(
+    mylite_stmt *stmt, const struct mylite_dml_expression_callbacks *expression_callbacks)
 {
     const char *schema_name = NULL;
     struct mylite_insert_table table = {0};
@@ -151,7 +154,7 @@ int mylite_dml_execute_insert_set_statement(mylite_stmt *stmt)
         status = mylite_dml_execute_insert_set_transaction(
             stmt->database, stmt->database->selected_schema, schema_name, &stmt->insert_values,
             &stmt->insert_set, &stmt->insert_update, &table, column_indexes, column_index_count,
-            update_column_indexes, &result);
+            update_column_indexes, expression_callbacks, &result);
     }
 
     free(update_column_indexes);
@@ -179,7 +182,8 @@ int mylite_dml_append_replace_delayed_warning(mylite_stmt *stmt)
         "converted to REPLACE.");
 }
 
-int mylite_dml_execute_replace_values_statement(mylite_stmt *stmt)
+int mylite_dml_execute_replace_values_statement(
+    mylite_stmt *stmt, const struct mylite_dml_expression_callbacks *expression_callbacks)
 {
     const char *schema_name = NULL;
     struct mylite_insert_table table = {0};
@@ -201,7 +205,8 @@ int mylite_dml_execute_replace_values_statement(mylite_stmt *stmt)
     }
     if (status == MYLITE_OK) {
         status = mylite_dml_execute_replace_values_transaction(
-            stmt->database, schema_name, &stmt->insert_values, &table, column_indexes, &result);
+            stmt->database, schema_name, &stmt->insert_values, &table, column_indexes,
+            expression_callbacks, &result);
     }
 
     free(column_indexes);
@@ -217,7 +222,8 @@ int mylite_dml_execute_replace_values_statement(mylite_stmt *stmt)
     return status;
 }
 
-int mylite_dml_execute_replace_set_statement(mylite_stmt *stmt)
+int mylite_dml_execute_replace_set_statement(
+    mylite_stmt *stmt, const struct mylite_dml_expression_callbacks *expression_callbacks)
 {
     const char *schema_name = NULL;
     struct mylite_insert_table table = {0};
@@ -242,7 +248,7 @@ int mylite_dml_execute_replace_set_statement(mylite_stmt *stmt)
     if (status == MYLITE_OK) {
         status = mylite_dml_execute_replace_set_transaction(
             stmt->database, schema_name, &stmt->insert_values, &stmt->insert_set, &table,
-            column_indexes, column_index_count, &result);
+            column_indexes, column_index_count, expression_callbacks, &result);
     }
 
     free(column_indexes);

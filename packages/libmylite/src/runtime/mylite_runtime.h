@@ -112,11 +112,13 @@ struct mylite_stmt {
     struct mylite_table_select_result select_result;
     struct mylite_sql_ast select_predicate_ast;
     struct mylite_sql_ast scalar_select_ast;
+    struct mylite_sql_ast insert_ast;
     struct mylite_sql_ast update_ast;
     struct mylite_sql_ast delete_ast;
     const struct mylite_sql_ast_node *select_predicate;
     char *select_sql_text;
     char *scalar_select_sql_text;
+    char *insert_sql_text;
     char *update_sql_text;
     char *delete_sql_text;
     struct mylite_cached_expression_value *select_constant_values;

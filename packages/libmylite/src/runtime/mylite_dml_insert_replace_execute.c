@@ -45,10 +45,12 @@ int mylite_dml_write_replace_candidate_row(mylite_db *database, sqlite3_stmt *in
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 int mylite_dml_execute_replace_row(mylite_db *database,
                                    const struct mylite_insert_values_plan *plan,
-                                   sqlite3_stmt *insert, sqlite3_stmt *delete_stmt,
+                                   const char *schema_name, sqlite3_stmt *insert,
+                                   sqlite3_stmt *delete_stmt,
                                    const struct mylite_insert_table *table,
                                    const struct mylite_insert_row_column_indexes *column_indexes,
-                                   struct mylite_insert_execution_state *state, size_t row_index)
+                                   struct mylite_insert_execution_state *state, size_t row_index,
+                                   const struct mylite_dml_expression_callbacks *callbacks)
 {
     struct mylite_insert_bound_value *values = NULL;
     int status = MYLITE_OK;
@@ -68,9 +70,9 @@ int mylite_dml_execute_replace_row(mylite_db *database,
         return MYLITE_NOMEM;
     }
 
-    status =
-        mylite_dml_resolve_insert_row_values(database, plan, table, column_indexes->insert_columns,
-                                             plan->row_count, state, row_index, values);
+    status = mylite_dml_resolve_insert_row_values(database, plan, schema_name, table,
+                                                  column_indexes->insert_columns, plan->row_count,
+                                                  state, row_index, values, callbacks);
     if (status == MYLITE_OK) {
         status = mylite_dml_write_replace_candidate_row(database, insert, delete_stmt, table, state,
                                                         values);
@@ -89,7 +91,8 @@ int mylite_dml_execute_replace_set_row(mylite_db *database, const char *schema_n
                                        const size_t *column_indexes, size_t column_index_count,
                                        struct mylite_insert_execution_state *state,
                                        struct mylite_insert_bound_value *values,
-                                       struct mylite_insert_set_row_state *row_state)
+                                       struct mylite_insert_set_row_state *row_state,
+                                       const struct mylite_dml_expression_callbacks *callbacks)
 {
     int status = MYLITE_OK;
 
@@ -101,7 +104,7 @@ int mylite_dml_execute_replace_set_row(mylite_db *database, const char *schema_n
 
     status = mylite_dml_resolve_insert_set_row_values(database, schema_name, values_plan, set_plan,
                                                       table, column_indexes, column_index_count, 1U,
-                                                      state, values, row_state);
+                                                      state, values, row_state, callbacks);
     if (status != MYLITE_OK) {
         return status;
     }

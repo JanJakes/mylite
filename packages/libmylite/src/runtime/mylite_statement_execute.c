@@ -108,16 +108,16 @@ int mylite_statement_execute_custom_with_callbacks(
         status = mylite_table_ddl_execute_drop_index_prepared_statement(stmt);
         break;
     case MYLITE_STMT_INSERT_VALUES:
-        status = mylite_dml_execute_insert_values_statement(stmt);
+        status = mylite_dml_execute_insert_values_statement(stmt, &dml_expression_callbacks);
         break;
     case MYLITE_STMT_INSERT_SET:
-        status = mylite_dml_execute_insert_set_statement(stmt);
+        status = mylite_dml_execute_insert_set_statement(stmt, &dml_expression_callbacks);
         break;
     case MYLITE_STMT_REPLACE_VALUES:
-        status = mylite_dml_execute_replace_values_statement(stmt);
+        status = mylite_dml_execute_replace_values_statement(stmt, &dml_expression_callbacks);
         break;
     case MYLITE_STMT_REPLACE_SET:
-        status = mylite_dml_execute_replace_set_statement(stmt);
+        status = mylite_dml_execute_replace_set_statement(stmt, &dml_expression_callbacks);
         break;
     case MYLITE_STMT_UPDATE:
         status = mylite_dml_execute_update_statement(stmt, &dml_expression_callbacks);

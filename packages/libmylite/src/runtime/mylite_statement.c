@@ -216,10 +216,12 @@ void mylite_finalize(mylite_stmt *stmt)
     mylite_select_result_deinit(&stmt->select_result);
     mylite_sql_ast_deinit(&stmt->select_predicate_ast);
     mylite_sql_ast_deinit(&stmt->scalar_select_ast);
+    mylite_sql_ast_deinit(&stmt->insert_ast);
     mylite_sql_ast_deinit(&stmt->update_ast);
     mylite_sql_ast_deinit(&stmt->delete_ast);
     free(stmt->select_sql_text);
     free(stmt->scalar_select_sql_text);
+    free(stmt->insert_sql_text);
     free(stmt->update_sql_text);
     free(stmt->delete_sql_text);
     mylite_statement_select_constant_values_deinit(stmt);

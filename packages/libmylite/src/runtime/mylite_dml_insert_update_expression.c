@@ -127,6 +127,7 @@ static int evaluate_insert_update_simple_expression(
     case MYLITE_INSERT_VALUE_UNSUPPORTED:
     case MYLITE_INSERT_VALUE_UNARY_EXPRESSION:
     case MYLITE_INSERT_VALUE_BINARY_EXPRESSION:
+    case MYLITE_INSERT_VALUE_EXPRESSION:
         return mylite_dml_insert_set_unsupported_expression_error(database);
     }
 

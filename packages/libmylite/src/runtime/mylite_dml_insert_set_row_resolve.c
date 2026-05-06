@@ -20,7 +20,8 @@ static int apply_insert_set_assignments(mylite_db *database, const char *schema_
                                         const struct mylite_insert_table *table,
                                         const size_t *column_indexes, size_t column_index_count,
                                         struct mylite_insert_bound_value *values,
-                                        struct mylite_insert_set_row_state *row_state);
+                                        struct mylite_insert_set_row_state *row_state,
+                                        const struct mylite_dml_expression_callbacks *callbacks);
 static int finish_insert_set_row_values(mylite_db *database,
                                         const struct mylite_insert_values_plan *plan,
                                         const struct mylite_insert_table *table,
@@ -42,7 +43,8 @@ static int evaluate_insert_set_assignment_value(
     mylite_db *database, const char *schema_name, const struct mylite_insert_values_plan *plan,
     const struct mylite_insert_table *table, size_t target_column,
     const struct mylite_insert_value *value, const struct mylite_insert_bound_value *values,
-    bool *out_generate_auto_increment, struct mylite_insert_bound_value *out_value);
+    bool *out_generate_auto_increment, struct mylite_insert_bound_value *out_value,
+    const struct mylite_dml_expression_callbacks *callbacks);
 static int set_insert_set_candidate_auto_value(struct mylite_insert_bound_value *out_value);
 
 // NOLINTBEGIN(bugprone-easily-swappable-parameters)
@@ -52,7 +54,8 @@ int mylite_dml_resolve_insert_set_row_values(
     const struct mylite_insert_set_plan *set_plan, const struct mylite_insert_table *table,
     const size_t *column_indexes, size_t column_index_count, uint64_t statement_row_count,
     struct mylite_insert_execution_state *state, struct mylite_insert_bound_value *values,
-    struct mylite_insert_set_row_state *row_state)
+    struct mylite_insert_set_row_state *row_state,
+    const struct mylite_dml_expression_callbacks *callbacks)
 {
     int status = MYLITE_OK;
 
@@ -64,9 +67,9 @@ int mylite_dml_resolve_insert_set_row_values(
     status = initialize_insert_set_row_values(database, table, statement_row_count, state, values,
                                               row_state);
     if (status == MYLITE_OK) {
-        status =
-            apply_insert_set_assignments(database, schema_name, values_plan, set_plan, table,
-                                         column_indexes, column_index_count, values, row_state);
+        status = apply_insert_set_assignments(database, schema_name, values_plan, set_plan, table,
+                                              column_indexes, column_index_count, values, row_state,
+                                              callbacks);
     }
     if (status == MYLITE_OK) {
         status = finish_insert_set_row_values(database, values_plan, table, statement_row_count,
@@ -109,7 +112,8 @@ static int apply_insert_set_assignments(mylite_db *database, const char *schema_
                                         const struct mylite_insert_table *table,
                                         const size_t *column_indexes, size_t column_index_count,
                                         struct mylite_insert_bound_value *values,
-                                        struct mylite_insert_set_row_state *row_state)
+                                        struct mylite_insert_set_row_state *row_state,
+                                        const struct mylite_dml_expression_callbacks *callbacks)
 {
     if (column_indexes == NULL || column_index_count != set_plan->assignment_count) {
         return MYLITE_MISUSE;
@@ -121,7 +125,7 @@ static int apply_insert_set_assignments(mylite_db *database, const char *schema_
         bool generate_auto = false;
         int status = evaluate_insert_set_assignment_value(
             database, schema_name, values_plan, table, column_index,
-            &set_plan->assignments[index].value, values, &generate_auto, &value);
+            &set_plan->assignments[index].value, values, &generate_auto, &value, callbacks);
 
         if (status != MYLITE_OK) {
             mylite_dml_insert_bound_value_deinit(&value);
@@ -211,7 +215,8 @@ static int evaluate_insert_set_assignment_value(
     mylite_db *database, const char *schema_name, const struct mylite_insert_values_plan *plan,
     const struct mylite_insert_table *table, size_t target_column,
     const struct mylite_insert_value *value, const struct mylite_insert_bound_value *values,
-    bool *out_generate_auto_increment, struct mylite_insert_bound_value *out_value)
+    bool *out_generate_auto_increment, struct mylite_insert_bound_value *out_value,
+    const struct mylite_dml_expression_callbacks *callbacks)
 {
     const struct mylite_insert_table_column *column = &table->columns[target_column];
     int status = MYLITE_OK;
@@ -225,9 +230,15 @@ static int evaluate_insert_set_assignment_value(
         return mylite_dml_resolve_insert_explicit_default_value(database, plan, column, 1U, NULL,
                                                                 out_value);
     }
+    if (value->kind == MYLITE_INSERT_VALUE_EXPRESSION) {
+        status = mylite_dml_resolve_insert_expression_bound_value(
+            database, schema_name, plan, table, values, column, value->expression, 1U, NULL,
+            callbacks, out_value);
+    } else {
+        status = mylite_dml_evaluate_insert_set_expression(database, schema_name, plan, table,
+                                                           value, values, out_value);
+    }
 
-    status = mylite_dml_evaluate_insert_set_expression(database, schema_name, plan, table, value,
-                                                       values, out_value);
     if (status != MYLITE_OK) {
         return status;
     }

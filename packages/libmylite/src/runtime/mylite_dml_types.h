@@ -29,6 +29,7 @@ enum mylite_insert_value_kind {
     MYLITE_INSERT_VALUE_UNARY_EXPRESSION = 8,
     MYLITE_INSERT_VALUE_BINARY_EXPRESSION = 9,
     MYLITE_INSERT_VALUE_VALUES_FUNCTION = 10,
+    MYLITE_INSERT_VALUE_EXPRESSION = 11,
 };
 
 enum mylite_insert_bound_value_kind {
@@ -49,6 +50,7 @@ struct mylite_insert_value {
     enum mylite_sql_ast_operator operator_kind;
     size_t values_function_count;
     char *text;
+    const struct mylite_sql_ast_node *expression;
     struct mylite_insert_column_reference column_reference;
     struct mylite_insert_value *left;
     struct mylite_insert_value *right;

@@ -229,9 +229,11 @@ by common scalar expressions:
   `docs/specs/convert-function/specs.md`
 
 These functions are implemented in no-table scalar `SELECT`, one-table
-`SELECT` projection, `WHERE`, and `ORDER BY` expressions, and the existing
-single-table `UPDATE` and `DELETE` expression paths. The checkpoint includes
-runtime tests for scalar rows, NULL propagation, UTF-8 length and substring
+`SELECT` projection, `WHERE`, and `ORDER BY` expressions, current
+`INSERT ... VALUES`, `INSERT ... SET`, `REPLACE ... VALUES`, and
+`REPLACE ... SET` source expressions, and the existing single-table `UPDATE`
+and `DELETE` expression paths. The checkpoint includes runtime tests for
+scalar rows, NULL propagation, UTF-8 length and substring
 handling, zero and negative `LEFT`/`RIGHT` counts, `SUBSTRING` `FROM` / `FOR`
 syntax, trim direction syntax, byte-based `ASCII`, packed-byte `ORD`,
 `LOCATE` / `POSITION` / `INSTR` search positions, start-position edges,
@@ -283,13 +285,18 @@ FROM_UNIXTIME epoch-to-datetime conversion and formatted output,
 STR_TO_DATE temporal string parsing,
 TIME_FORMAT token rendering,
 UTC current temporal functions,
+insert and replace source expression evaluation, assignment-order references in
+`INSERT ... SET` and `REPLACE ... SET`, statement-stable temporal values in
+multi-row insert source expressions, strict DML warning promotion,
 zero and incomplete date warnings, unsupported functions, unsupported arity,
 and selected result metadata.
 
-This checkpoint intentionally does not yet implement `INSERT ... VALUES` or
-`INSERT ... SET` function expressions, temporal functions outside the
-implemented current, extraction/difference, date-arithmetic, temporal part,
-day-number, time extraction, UNIX timestamp, formatting, and month-end slices,
+This checkpoint intentionally does not yet implement the full MySQL
+`INSERT ... VALUES` row-source column-reference model, scalar expressions in
+the `ON DUPLICATE KEY UPDATE` assignment list beyond the current scoped subset,
+temporal functions outside the implemented current, extraction/difference,
+date-arithmetic, temporal part, day-number, time extraction, UNIX timestamp,
+formatting, and month-end slices,
 information functions outside the session-state and session-identity slices,
 aggregate/window functions, JSON,
 regular expressions, spatial, full-text, encryption, loadable functions,

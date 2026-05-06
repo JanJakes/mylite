@@ -23,9 +23,11 @@ int mylite_dml_execute_insert_update_values_row(
     const struct mylite_insert_duplicate_update_plan *update_plan, sqlite3_stmt *insert,
     const struct mylite_insert_table *table,
     const struct mylite_insert_row_column_indexes *column_indexes,
-    struct mylite_insert_execution_state *state, size_t row_index)
+    struct mylite_insert_execution_state *state, size_t row_index,
+    const struct mylite_dml_expression_callbacks *callbacks)
 {
     struct mylite_insert_bound_value *values = NULL;
+    const char *schema_name = NULL;
     int status = MYLITE_OK;
 
     if (database == NULL || values_plan == NULL || update_plan == NULL || insert == NULL ||
@@ -44,9 +46,10 @@ int mylite_dml_execute_insert_update_values_row(
         return MYLITE_NOMEM;
     }
 
-    status = mylite_dml_resolve_insert_row_values(database, values_plan, table,
-                                                  column_indexes->insert_columns,
-                                                  values_plan->row_count, state, row_index, values);
+    schema_name = values_plan->schema_name == NULL ? selected_schema : values_plan->schema_name;
+    status = mylite_dml_resolve_insert_row_values(
+        database, values_plan, schema_name, table, column_indexes->insert_columns,
+        values_plan->row_count, state, row_index, values, callbacks);
     if (status == MYLITE_OK) {
         status =
             execute_insert_update_bound_row(database, selected_schema, values_plan, update_plan,
@@ -65,7 +68,8 @@ int mylite_dml_execute_insert_update_set_row(
     const struct mylite_insert_table *table, const size_t *column_indexes,
     size_t column_index_count, const struct mylite_insert_row_column_indexes *row_column_indexes,
     struct mylite_insert_execution_state *state, struct mylite_insert_bound_value *values,
-    struct mylite_insert_set_row_state *row_state)
+    struct mylite_insert_set_row_state *row_state,
+    const struct mylite_dml_expression_callbacks *callbacks)
 {
     int status = MYLITE_OK;
 
@@ -78,7 +82,7 @@ int mylite_dml_execute_insert_update_set_row(
 
     status = mylite_dml_resolve_insert_set_row_values(database, schema_name, values_plan, set_plan,
                                                       table, column_indexes, column_index_count, 1U,
-                                                      state, values, row_state);
+                                                      state, values, row_state, callbacks);
     if (status == MYLITE_OK) {
         return execute_insert_update_bound_row(database, selected_schema, values_plan, update_plan,
                                                insert, table, row_column_indexes, state, values);

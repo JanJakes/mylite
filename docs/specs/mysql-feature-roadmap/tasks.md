@@ -354,8 +354,11 @@ level application surfaces.
 49. [ ] JSON type and functions: validation, extraction, paths, comparison,
        mutation, generated-column interactions, and metadata. Started with the
        scalar foundation for `JSON_VALID`, `JSON_TYPE`, `JSON_QUOTE`,
-       `JSON_UNQUOTE`, `JSON_ARRAY`, and `JSON_OBJECT`. Spec:
-       [JSON scalar foundation](../json-scalar-foundation/specs.md).
+       `JSON_UNQUOTE`, `JSON_ARRAY`, and `JSON_OBJECT`, plus the first
+       path-extraction slice for JSON path parsing, `JSON_EXTRACT`,
+       `JSON_CONTAINS_PATH`, `JSON_KEYS`, `JSON_LENGTH`, and `->` / `->>`.
+       Specs: [JSON scalar foundation](../json-scalar-foundation/specs.md),
+       [JSON path extraction](../json-path-extraction/specs.md).
 50. [ ] Administrative compatibility placeholders: `LOCK TABLES`,
        `UNLOCK TABLES`, maintenance statements, account/privilege statements,
        replication-only statements, and embedded-compatible diagnostics.

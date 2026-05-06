@@ -195,6 +195,12 @@ bool mylite_expression_descriptor_infer_json_function(
         out_descriptor->length = mylite_mysql_signed_longlong_display_length;
         return true;
     }
+    if (mylite_function_name_is_json_contains_path(name) ||
+        mylite_function_name_is_json_length(name)) {
+        *out_descriptor = mylite_expression_descriptor_signed_longlong(true);
+        out_descriptor->length = mylite_mysql_signed_longlong_display_length;
+        return true;
+    }
     if (mylite_function_name_is_json_type(name) || mylite_function_name_is_json_quote(name) ||
         mylite_function_name_is_json_unquote(name)) {
         *out_descriptor = (struct mylite_field_descriptor){
@@ -208,16 +214,23 @@ bool mylite_expression_descriptor_infer_json_function(
         mylite_field_descriptor_set_nullable(out_descriptor, true);
         return true;
     }
-    if (mylite_function_name_is_json_creation(name)) {
+    if (mylite_function_name_is_json_creation(name) || mylite_function_name_is_json_extract(name) ||
+        mylite_function_name_is_json_keys(name)) {
+        bool nullable = true;
+
+        if (mylite_function_name_is_json_creation(name)) {
+            nullable = false;
+        }
+
         *out_descriptor = (struct mylite_field_descriptor){
             .type = MYLITE_FIELD_TYPE_JSON,
             .flags = MYLITE_FIELD_FLAG_BINARY,
             .length = mylite_mysql_json_document_length,
             .decimals = mylite_mysql_not_fixed_decimals,
             .charset_id = charset_id,
-            .nullable = false,
+            .nullable = nullable,
         };
-        mylite_field_descriptor_set_nullable(out_descriptor, false);
+        mylite_field_descriptor_set_nullable(out_descriptor, nullable);
         return true;
     }
     return false;

@@ -435,6 +435,8 @@ static const char *show_index_binary_operator_sql(enum mylite_sql_ast_operator o
     case MYLITE_SQL_AST_OPERATOR_MODULO:
     case MYLITE_SQL_AST_OPERATOR_REGEXP:
     case MYLITE_SQL_AST_OPERATOR_NOT_REGEXP:
+    case MYLITE_SQL_AST_OPERATOR_JSON_EXTRACT:
+    case MYLITE_SQL_AST_OPERATOR_JSON_UNQUOTE_EXTRACT:
     case MYLITE_SQL_AST_OPERATOR_NONE:
         return NULL;
     }

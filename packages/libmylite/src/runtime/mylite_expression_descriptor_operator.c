@@ -2,6 +2,7 @@
 
 #include "mylite_expression_descriptor.h"
 #include "mylite_expression_descriptor_subquery.h"
+#include "mylite_metadata_constants.h"
 #include "mylite_span.h"
 #include "sql/mylite_ast.h"
 
@@ -93,6 +94,8 @@ int mylite_expression_descriptor_infer_unary_expression(
     case MYLITE_SQL_AST_OPERATOR_NOT_LIKE:
     case MYLITE_SQL_AST_OPERATOR_REGEXP:
     case MYLITE_SQL_AST_OPERATOR_NOT_REGEXP:
+    case MYLITE_SQL_AST_OPERATOR_JSON_EXTRACT:
+    case MYLITE_SQL_AST_OPERATOR_JSON_UNQUOTE_EXTRACT:
     case MYLITE_SQL_AST_OPERATOR_IN:
     case MYLITE_SQL_AST_OPERATOR_NOT_IN:
     case MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE:
@@ -169,6 +172,28 @@ int mylite_expression_descriptor_infer_binary_expression(
     case MYLITE_SQL_AST_OPERATOR_SHIFT_LEFT:
     case MYLITE_SQL_AST_OPERATOR_SHIFT_RIGHT:
         *out_descriptor = mylite_expression_descriptor_unsigned_longlong(nullable);
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_OPERATOR_JSON_EXTRACT:
+        *out_descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_JSON,
+            .flags = MYLITE_FIELD_FLAG_BINARY,
+            .length = mylite_mysql_json_document_length,
+            .decimals = mylite_mysql_not_fixed_decimals,
+            .charset_id = mylite_expression_descriptor_connection_charset_id(database),
+            .nullable = true,
+        };
+        mylite_field_descriptor_set_nullable(out_descriptor, true);
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_OPERATOR_JSON_UNQUOTE_EXTRACT:
+        *out_descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_LONG_BLOB,
+            .flags = MYLITE_FIELD_FLAG_BINARY,
+            .length = mylite_mysql_long_text_length,
+            .decimals = mylite_mysql_not_fixed_decimals,
+            .charset_id = mylite_expression_descriptor_connection_charset_id(database),
+            .nullable = true,
+        };
+        mylite_field_descriptor_set_nullable(out_descriptor, true);
         return MYLITE_OK;
     case MYLITE_SQL_AST_OPERATOR_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
@@ -297,6 +322,8 @@ int mylite_expression_descriptor_infer_ternary_expression(
     case MYLITE_SQL_AST_OPERATOR_NOT_IN:
     case MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE:
     case MYLITE_SQL_AST_OPERATOR_MODULO:
+    case MYLITE_SQL_AST_OPERATOR_JSON_EXTRACT:
+    case MYLITE_SQL_AST_OPERATOR_JSON_UNQUOTE_EXTRACT:
         break;
     }
 

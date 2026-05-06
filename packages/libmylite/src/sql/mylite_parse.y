@@ -105,6 +105,7 @@
 %left PLUS MINUS.
 %left STAR SLASH DIV PERCENT MOD.
 %left BIT_XOR.
+%left JSON_EXTRACT JSON_UNQUOTE_EXTRACT.
 %right UPLUS UMINUS BIT_NOT.
 %right LOGICAL_NOT.
 %right KEY.
@@ -3267,6 +3268,9 @@ primary_expression(A) ::= aggregate_star_call(B). {
 primary_expression(A) ::= scalar_function_call(B). {
     A = B;
 }
+primary_expression(A) ::= json_extract_expression(B). {
+    A = B;
+}
 primary_expression(A) ::= qualified_identifier(B). {
     A = B;
 }
@@ -3287,6 +3291,19 @@ primary_expression(A) ::= row_constructor(B). {
 }
 primary_expression(A) ::= LPAREN(L) expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
+}
+
+json_extract_expression(A) ::= qualified_identifier(B) JSON_EXTRACT(T) STRING(P). {
+    struct mylite_sql_ast_node *path = mylite_sql_parser_make_literal(
+        state, P, MYLITE_SQL_AST_LITERAL_STRING);
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_JSON_EXTRACT, path);
+}
+json_extract_expression(A) ::= qualified_identifier(B) JSON_UNQUOTE_EXTRACT(T) STRING(P). {
+    struct mylite_sql_ast_node *path = mylite_sql_parser_make_literal(
+        state, P, MYLITE_SQL_AST_LITERAL_STRING);
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_JSON_UNQUOTE_EXTRACT, path);
 }
 
 subquery(A) ::= LPAREN(L) select_statement(B) RPAREN(R). {

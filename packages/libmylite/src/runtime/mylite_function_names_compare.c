@@ -99,3 +99,31 @@ bool mylite_function_name_is_json_creation(const struct mylite_sql_ast_node *nam
 
     return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }
+
+bool mylite_function_name_is_json_extract(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"JSON_EXTRACT"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+bool mylite_function_name_is_json_contains_path(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"JSON_CONTAINS_PATH"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+bool mylite_function_name_is_json_keys(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"JSON_KEYS"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+bool mylite_function_name_is_json_length(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"JSON_LENGTH"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}

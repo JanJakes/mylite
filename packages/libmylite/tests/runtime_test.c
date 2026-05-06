@@ -140,7 +140,10 @@ enum {
     mysql_warning_incorrect_json_type = 3064,
     mysql_warning_field_in_order_not_select = 3065,
     mysql_warning_invalid_json_text = 3141,
+    mysql_warning_invalid_json_path = 3143,
     mysql_warning_invalid_json_data = 3146,
+    mysql_warning_json_path_wildcard = 3149,
+    mysql_warning_invalid_json_one_or_all = 3154,
     mysql_warning_json_document_null_key = 3158,
     mysql_warning_using_other_handler = 3502,
     mysql_warning_primary_invisible = 3522,
@@ -2662,9 +2665,40 @@ static int test_json_scalar_foundation_execution(void)
         "{\"\": 5, \"a\": 3, \"b\": 2, \"aa\": 1, \"ab\": 4}",
         "[\"\\\"x\\\"\"]",
     };
-    static const char *const metadata_columns[] = {"jv", "jt", "jq", "ju", "ja", "jo"};
-    static const char *const metadata_values[] = {"1", "OBJECT",     "\"x\"",
-                                                  "x", "[\"a\", 1]", "{\"a\": 1}"};
+    static const char *const extraction_columns[] = {
+        "member",         "nested_string",  "missing",       "json_null",     "multi_paths",
+        "array_wild",     "object_wild",    "quoted_member", "range_path",    "last_index",
+        "last_range",     "recursive_path", "contains_one",  "contains_all",  "keys_root",
+        "keys_nested",    "keys_array",     "length_root",   "length_nested", "length_range",
+        "length_missing",
+    };
+    static const char *const extraction_values[] = {
+        "1",
+        "\"x\"",
+        NULL,
+        "null",
+        "[20, 10]",
+        "[30, 40]",
+        "[{\"b\": 1}, 2]",
+        "[7, 8]",
+        "[10, 20]",
+        "20",
+        "[20, 30]",
+        "[3, 1, 2]",
+        "1",
+        "0",
+        "[\"a\", \"b\"]",
+        "[\"c\", \"d\"]",
+        NULL,
+        "2",
+        "1",
+        "2",
+        NULL,
+    };
+    static const char *const metadata_columns[] = {"jv", "jt", "jq",  "ju", "ja",
+                                                   "jo", "je", "jcp", "jk", "jl"};
+    static const char *const metadata_values[] = {
+        "1", "OBJECT", "\"x\"", "x", "[\"a\", 1]", "{\"a\": 1}", "1", "1", "[\"a\"]", "1"};
     static const struct expected_result_metadata metadata[] = {
         {"jv", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
@@ -2678,9 +2712,29 @@ static int test_json_scalar_foundation_execution(void)
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, 0U, 0},
         {"jo", NULL, NULL, NULL, NULL, NULL, 1073741823U, MYLITE_FIELD_TYPE_JSON, 31U, 255U,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, 0U, 0},
+        {"je", NULL, NULL, NULL, NULL, NULL, 1073741823U, MYLITE_FIELD_TYPE_JSON, 31U, 255U,
+         MYLITE_FIELD_FLAG_BINARY, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"jcp", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"jk", NULL, NULL, NULL, NULL, NULL, 1073741823U, MYLITE_FIELD_TYPE_JSON, 31U, 255U,
+         MYLITE_FIELD_FLAG_BINARY, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"jl", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+    };
+    static const char *const arrow_columns[] = {"id", "id_json", "name_text", "arr2", "nested"};
+    static const char *const arrow_values[] = {
+        "1", "\"3\"", "Barney", "30", NULL, "2", "\"4\"", "Betty", "[31, \"y\", 61]", "y",
+    };
+    static const struct expected_result_metadata arrow_metadata[] = {
+        {"id_json", NULL, NULL, NULL, NULL, NULL, 1073741823U, MYLITE_FIELD_TYPE_JSON, 31U, 255U,
+         MYLITE_FIELD_FLAG_BINARY, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"name_text", NULL, NULL, NULL, NULL, NULL, UINT64_C(4294967295),
+         MYLITE_FIELD_TYPE_LONG_BLOB, 31U, 255U, MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL, 1},
     };
     static const char *const id_columns[] = {"id"};
     static const char *const valid_ids[] = {"1", "2"};
+    static const char *const arrow_match_ids[] = {"2"};
     static const char *const remaining_ids[] = {"1", "2", "4"};
     static const char *const note_columns[] = {"id", "note"};
     static const char *const updated_notes[] = {"1", "OBJECT", "2", "ARRAY"};
@@ -2740,23 +2794,60 @@ static int test_json_scalar_foundation_execution(void)
         creation_columns, (int)(sizeof(creation_columns) / sizeof(creation_columns[0])),
         creation_values, 1, "json creation values");
 
+    failures += expect_select_rows(
+        database,
+        "SELECT "
+        "JSON_EXTRACT('{\"a\":1,\"b\":[10,20],\"c\":{\"d\":\"x\"},\"n\":null}', '$.a') "
+        "AS member, "
+        "JSON_EXTRACT('{\"a\":1,\"b\":[10,20],\"c\":{\"d\":\"x\"},\"n\":null}', '$.c.d') "
+        "AS nested_string, "
+        "JSON_EXTRACT('{\"a\":1}', '$.missing') AS missing, "
+        "JSON_EXTRACT('{\"n\":null}', '$.n') AS json_null, "
+        "JSON_EXTRACT('[10,20,[30,40]]', '$[1]', '$[0]') AS multi_paths, "
+        "JSON_EXTRACT('[10,20,[30,40]]', '$[2][*]') AS array_wild, "
+        "JSON_EXTRACT('{\"a\":{\"b\":1},\"aa\":2}', '$.*') AS object_wild, "
+        "JSON_EXTRACT('{\"a.b\":7,\"space key\":8}', '$.\"a.b\"', '$.\"space key\"') "
+        "AS quoted_member, "
+        "JSON_EXTRACT('[10,20,30]', '$[0 to 1]') AS range_path, "
+        "JSON_EXTRACT('[10,20,30]', '$[last - 1]') AS last_index, "
+        "JSON_EXTRACT('[10,20,30]', '$[last-1 to last]') AS last_range, "
+        "JSON_EXTRACT('{\"a\":[{\"b\":1},{\"b\":2}],\"b\":3}', '$**.b') "
+        "AS recursive_path, "
+        "JSON_CONTAINS_PATH('{\"a\":1,\"b\":{\"c\":2}}', 'one', '$.a', '$.x') "
+        "AS contains_one, "
+        "JSON_CONTAINS_PATH('{\"a\":1,\"b\":{\"c\":2}}', 'all', '$.a', '$.x') "
+        "AS contains_all, "
+        "JSON_KEYS('{\"b\":2,\"a\":1}') AS keys_root, "
+        "JSON_KEYS('{\"a\":1,\"b\":{\"d\":4,\"c\":3}}', '$.b') AS keys_nested, "
+        "JSON_KEYS('[1,2]') AS keys_array, "
+        "JSON_LENGTH('{\"a\":1,\"b\":{\"c\":30}}') AS length_root, "
+        "JSON_LENGTH('{\"a\":1,\"b\":{\"c\":30}}', '$.b') AS length_nested, "
+        "JSON_LENGTH('[10,20,30]', '$[0 to 1]') AS length_range, "
+        "JSON_LENGTH('{\"a\":1}', '$.missing') AS length_missing",
+        extraction_columns, (int)(sizeof(extraction_columns) / sizeof(extraction_columns[0])),
+        extraction_values, 1, "json path extraction values");
+
     failures += prepare_sql(database,
                             "SELECT JSON_VALID('{\"a\":1}') AS jv, "
                             "JSON_TYPE('{\"a\":1}') AS jt, "
                             "JSON_QUOTE('x') AS jq, "
                             "JSON_UNQUOTE('\"x\"') AS ju, "
                             "JSON_ARRAY('a',1) AS ja, "
-                            "JSON_OBJECT('a',1) AS jo",
+                            "JSON_OBJECT('a',1) AS jo, "
+                            "JSON_EXTRACT('{\"a\":1}', '$.a') AS je, "
+                            "JSON_CONTAINS_PATH('{\"a\":1}', 'one', '$.a') AS jcp, "
+                            "JSON_KEYS('{\"a\":1}') AS jk, "
+                            "JSON_LENGTH('{\"a\":1}') AS jl",
                             MYLITE_OK, &stmt);
     failures += expect_result_metadata(
         stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "json metadata");
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "json metadata row");
-    for (int index = 0; index < 6; ++index) {
+    for (int index = 0; index < 10; ++index) {
         failures +=
             expect_string(mylite_column_text(stmt, index), metadata_values[index], "json value");
     }
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "json metadata done");
-    failures += expect_column_names(stmt, metadata_columns, 6, "json metadata columns");
+    failures += expect_column_names(stmt, metadata_columns, 10, "json metadata columns");
     mylite_finalize(stmt);
     stmt = NULL;
 
@@ -2769,6 +2860,33 @@ static int test_json_scalar_foundation_execution(void)
                             "(1,'{\"a\":1}',NULL), (2,'[1,2]',NULL), "
                             "(3,'hello',NULL), (4,NULL,NULL)",
                             MYLITE_DONE);
+    failures +=
+        execute_sql(database, "CREATE TABLE json_docs (id INT PRIMARY KEY, doc TEXT)", MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO json_docs VALUES "
+                            "(1,'{\"id\":\"3\",\"name\":\"Barney\",\"arr\":[10,20,30]}'), "
+                            "(2,'{\"id\":\"4\",\"name\":\"Betty\",\"arr\":[11,21,[31,\"y\",61]]}')",
+                            MYLITE_DONE);
+    failures +=
+        expect_select_rows(database,
+                           "SELECT id, doc->'$.id' AS id_json, "
+                           "doc->>'$.name' AS name_text, "
+                           "doc->'$.arr[2]' AS arr2, "
+                           "doc->>'$.arr[2][1]' AS nested "
+                           "FROM json_docs ORDER BY doc->>'$.name'",
+                           arrow_columns, 5, arrow_values, 2, "json arrow extraction values");
+    failures += prepare_sql(database,
+                            "SELECT doc->'$.id' AS id_json, doc->>'$.name' AS name_text "
+                            "FROM json_docs",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, arrow_metadata,
+                                       (int)(sizeof(arrow_metadata) / sizeof(arrow_metadata[0])),
+                                       "json arrow metadata");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_select_rows(database, "SELECT id FROM json_docs WHERE doc->>'$.id' = '4'",
+                           id_columns, 1, arrow_match_ids, 1, "json arrow predicate values");
     failures += expect_select_rows(database,
                                    "SELECT id FROM json_items "
                                    "WHERE JSON_VALID(doc) = 1 ORDER BY id",
@@ -2798,6 +2916,32 @@ static int test_json_scalar_foundation_execution(void)
     failures += expect_int(mylite_warning_count(database), 1, "json type invalid text count");
     failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_invalid_json_text,
                            "json type invalid text code");
+    failures +=
+        expect_prepare_error(database, "SELECT JSON_EXTRACT('hello', '$.a')", MYLITE_EXEC_ERROR,
+                             "Invalid JSON text in argument 1 to function json_extract",
+                             "json extract invalid text error");
+    failures += expect_int(mylite_warning_count(database), 1, "json extract invalid text count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_invalid_json_text,
+                           "json extract invalid text code");
+    failures +=
+        expect_prepare_error(database, "SELECT JSON_EXTRACT('{\"a\":1}', 'bad')", MYLITE_EXEC_ERROR,
+                             "Invalid JSON path expression", "json extract invalid path error");
+    failures += expect_int(mylite_warning_count(database), 1, "json extract invalid path count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_invalid_json_path,
+                           "json extract invalid path code");
+    failures += expect_prepare_error(
+        database, "SELECT JSON_CONTAINS_PATH('{\"a\":1}', 'bad', '$.a')", MYLITE_EXEC_ERROR,
+        "The oneOrAll argument to json_contains_path", "json contains invalid mode error");
+    failures += expect_int(mylite_warning_count(database), 1, "json contains invalid mode count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0), mysql_warning_invalid_json_one_or_all,
+                   "json contains invalid mode code");
+    failures += expect_prepare_error(
+        database, "SELECT JSON_KEYS('{\"a\":1}', '$.*')", MYLITE_EXEC_ERROR,
+        "path expressions may not contain the * and ** tokens", "json keys wildcard path error");
+    failures += expect_int(mylite_warning_count(database), 1, "json keys wildcard path count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_json_path_wildcard,
+                           "json keys wildcard path code");
     failures += expect_prepare_error(database, "SELECT JSON_QUOTE(1)", MYLITE_EXEC_ERROR,
                                      "Incorrect type for argument 1 in function json_quote",
                                      "json quote non-string error");

@@ -6575,8 +6575,13 @@ static bool map_operator_token(const struct mylite_sql_token *token, int *out_pa
         *out_parser_token = MYLITE_SQL_PARSE_LOGICAL_OR;
         return true;
     case MYLITE_SQL_OPERATOR_NONE:
+        return false;
     case MYLITE_SQL_OPERATOR_JSON_UNQUOTE_EXTRACT:
+        *out_parser_token = MYLITE_SQL_PARSE_JSON_UNQUOTE_EXTRACT;
+        return true;
     case MYLITE_SQL_OPERATOR_JSON_EXTRACT:
+        *out_parser_token = MYLITE_SQL_PARSE_JSON_EXTRACT;
+        return true;
     case MYLITE_SQL_OPERATOR_ASSIGN:
         return false;
     case MYLITE_SQL_OPERATOR_EQUAL:

@@ -53287,6 +53287,7 @@ static int test_update_single_table_execution(void) {
     static const char *const scalar_subquery_values[] = {"scalar"};
     static const char *const count_columns[] = {"COUNT(*)"};
     static const char *const one_count[] = {"1"};
+    static const char *const id_a_columns[] = {"id", "a"};
     static const char *const u_columns[] = {"id", "u"};
     static const char *const u_values[] = {
         "10",
@@ -53349,6 +53350,14 @@ static int test_update_single_table_execution(void) {
         "dup",
         "104",
         "none",
+    };
+    static const char *const joined_base_name_values[] = {
+        "1",
+        "100",
+        "2",
+        "200",
+        "3",
+        "30",
     };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
@@ -53745,6 +53754,49 @@ static int test_update_single_table_execution(void) {
         joined_left_values,
         3,
         "joined update left join values"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE joined_update_t1 (id INT PRIMARY KEY, a INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE joined_update_t2 (id INT PRIMARY KEY, t1_id INT, new_a INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO joined_update_t1 VALUES (1,10),(2,20),(3,30)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO joined_update_t2 VALUES (101,1,100),(102,2,200),(103,4,400)",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "UPDATE joined_update_t1 "
+        "JOIN joined_update_t2 ON joined_update_t1.id = joined_update_t2.t1_id "
+        "SET joined_update_t1.a = joined_update_t2.new_a",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "joined update base-name qualifiers");
+    failures +=
+        expect_int64(mylite_affected_rows(stmt), 2, "joined update base-name qualifier affected");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id, a FROM joined_update_t1 ORDER BY id",
+        id_a_columns,
+        2,
+        joined_base_name_values,
+        3,
+        "joined update base-name qualifier values"
     );
 
     failures += prepare_sql(

@@ -95,6 +95,8 @@ Coverage includes:
 - parser acceptance for explicit join, comma join, and outer join forms
 - parser rejection for joined `ORDER BY`
 - joined assignment from source table columns
+- base table-name qualifiers in `JOIN ... ON` and `SET` targets, such as
+  `UPDATE t1 JOIN t2 ON t1.id = t2.t1_id SET t1.a = t2.new_a`
 - no-op affected-row behavior
 - multi-target assignment in one statement
 - left-join unmatched target updates

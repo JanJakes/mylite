@@ -2,7 +2,9 @@
 
 #include "mylite_connection.h"
 #include "mylite_connection_statement.h"
+#include "mylite_diagnostics.h"
 #include "mylite_dml_statement.h"
+#include "mylite_error_codes.h"
 #include "mylite_prepared_statements.h"
 #include "mylite_runtime.h"
 #include "mylite_schema.h"
@@ -13,6 +15,9 @@
 #include "mylite_table_ddl_statement.h"
 #include "mylite_transactions.h"
 #include "mylite_user_variables.h"
+
+static int execute_parser_placeholder_statement(mylite_stmt *stmt);
+static const char *parser_placeholder_warning_message(enum mylite_stmt_kind kind);
 
 int mylite_statement_execute_custom(mylite_stmt *stmt)
 {
@@ -148,6 +153,18 @@ int mylite_statement_execute_custom_with_callbacks(
     case MYLITE_STMT_RELEASE_SAVEPOINT:
         status = mylite_transaction_execute_statement(stmt);
         break;
+    case MYLITE_STMT_CALL_PLACEHOLDER:
+    case MYLITE_STMT_CREATE_PROCEDURE_PLACEHOLDER:
+    case MYLITE_STMT_CREATE_FUNCTION_PLACEHOLDER:
+    case MYLITE_STMT_CREATE_TRIGGER_PLACEHOLDER:
+    case MYLITE_STMT_CREATE_EVENT_PLACEHOLDER:
+    case MYLITE_STMT_DROP_PROCEDURE_PLACEHOLDER:
+    case MYLITE_STMT_DROP_FUNCTION_PLACEHOLDER:
+    case MYLITE_STMT_DROP_TRIGGER_PLACEHOLDER:
+    case MYLITE_STMT_DROP_EVENT_PLACEHOLDER:
+    case MYLITE_STMT_SIGNAL_PLACEHOLDER:
+        status = execute_parser_placeholder_statement(stmt);
+        break;
     case MYLITE_STMT_SCALAR_SELECT:
         return callbacks->execute_scalar_select(stmt);
     case MYLITE_STMT_TABLE_SELECT:
@@ -162,4 +179,75 @@ int mylite_statement_execute_custom_with_callbacks(
     }
 
     return status == MYLITE_OK ? MYLITE_DONE : status;
+}
+
+static int execute_parser_placeholder_statement(mylite_stmt *stmt)
+{
+    return mylite_diagnostics_append_warning(
+        stmt->database, MYLITE_MYSQL_ER_NOT_SUPPORTED_YET,
+        parser_placeholder_warning_message(stmt->kind));
+}
+
+static const char *parser_placeholder_warning_message(enum mylite_stmt_kind kind)
+{
+    switch (kind) {
+    case MYLITE_STMT_CALL_PLACEHOLDER:
+        return "CALL statement is accepted as a MyLite parser placeholder and is not executed";
+    case MYLITE_STMT_CREATE_PROCEDURE_PLACEHOLDER:
+        return "CREATE PROCEDURE is accepted as a MyLite parser placeholder and is not executed";
+    case MYLITE_STMT_CREATE_FUNCTION_PLACEHOLDER:
+        return "CREATE FUNCTION is accepted as a MyLite parser placeholder and is not executed";
+    case MYLITE_STMT_CREATE_TRIGGER_PLACEHOLDER:
+        return "CREATE TRIGGER is accepted as a MyLite parser placeholder and is not executed";
+    case MYLITE_STMT_CREATE_EVENT_PLACEHOLDER:
+        return "CREATE EVENT is accepted as a MyLite parser placeholder and is not executed";
+    case MYLITE_STMT_DROP_PROCEDURE_PLACEHOLDER:
+        return "DROP PROCEDURE is accepted as a MyLite parser placeholder and is not executed";
+    case MYLITE_STMT_DROP_FUNCTION_PLACEHOLDER:
+        return "DROP FUNCTION is accepted as a MyLite parser placeholder and is not executed";
+    case MYLITE_STMT_DROP_TRIGGER_PLACEHOLDER:
+        return "DROP TRIGGER is accepted as a MyLite parser placeholder and is not executed";
+    case MYLITE_STMT_DROP_EVENT_PLACEHOLDER:
+        return "DROP EVENT is accepted as a MyLite parser placeholder and is not executed";
+    case MYLITE_STMT_SIGNAL_PLACEHOLDER:
+        return "SIGNAL statement is accepted as a MyLite parser placeholder and is not executed";
+    case MYLITE_STMT_SQLITE:
+    case MYLITE_STMT_CREATE_SCHEMA:
+    case MYLITE_STMT_ALTER_SCHEMA:
+    case MYLITE_STMT_DROP_SCHEMA:
+    case MYLITE_STMT_USE_SCHEMA:
+    case MYLITE_STMT_SET_NAMES:
+    case MYLITE_STMT_SET_CHARACTER_SET:
+    case MYLITE_STMT_CREATE_TABLE:
+    case MYLITE_STMT_DROP_TABLE:
+    case MYLITE_STMT_INSERT_VALUES:
+    case MYLITE_STMT_INSERT_SET:
+    case MYLITE_STMT_REPLACE_VALUES:
+    case MYLITE_STMT_REPLACE_SET:
+    case MYLITE_STMT_SCALAR_SELECT:
+    case MYLITE_STMT_TABLE_SELECT:
+    case MYLITE_STMT_UNION_QUERY:
+    case MYLITE_STMT_UPDATE:
+    case MYLITE_STMT_DELETE:
+    case MYLITE_STMT_START_TRANSACTION:
+    case MYLITE_STMT_BEGIN_TRANSACTION:
+    case MYLITE_STMT_COMMIT:
+    case MYLITE_STMT_ROLLBACK:
+    case MYLITE_STMT_SAVEPOINT:
+    case MYLITE_STMT_ROLLBACK_TO_SAVEPOINT:
+    case MYLITE_STMT_RELEASE_SAVEPOINT:
+    case MYLITE_STMT_CREATE_INDEX:
+    case MYLITE_STMT_DROP_INDEX:
+    case MYLITE_STMT_ALTER_TABLE:
+    case MYLITE_STMT_RENAME_TABLE:
+    case MYLITE_STMT_TRUNCATE_TABLE:
+    case MYLITE_STMT_SET_SYSTEM_VARIABLE:
+    case MYLITE_STMT_SET_USER_VARIABLE:
+    case MYLITE_STMT_PREPARE_STATEMENT:
+    case MYLITE_STMT_EXECUTE_PREPARED:
+    case MYLITE_STMT_DEALLOCATE_PREPARE:
+        break;
+    }
+
+    return "statement is accepted as a MyLite parser placeholder and is not executed";
 }

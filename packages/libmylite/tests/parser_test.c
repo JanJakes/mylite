@@ -44,6 +44,7 @@ static int test_delete_single_table_syntax(void);
 static int test_transaction_statement_syntax(void);
 static int test_savepoint_statement_syntax(void);
 static int test_user_variable_and_prepared_statement_syntax(void);
+static int test_stored_program_placeholder_syntax(void);
 static int test_select_expression_list(void);
 static int test_expression_operator_foundation_syntax(void);
 static int test_scalar_function_call_syntax(void);
@@ -75,6 +76,9 @@ static const struct mylite_sql_ast_node *child_at(const struct mylite_sql_ast_no
                                                   size_t index);
 static int expect_node(const struct mylite_sql_ast_node *node,
                        enum mylite_sql_ast_node_kind expected_kind, const char *context);
+static int expect_placeholder_statement(
+    const struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_placeholder_statement_kind expected_kind, const char *context);
 static int expect_child_count(const struct mylite_sql_ast_node *node, size_t expected,
                               const char *context);
 static int expect_bool(bool actual, bool expected, const char *context);
@@ -203,6 +207,7 @@ int main(void)
     failures += test_transaction_statement_syntax();
     failures += test_savepoint_statement_syntax();
     failures += test_user_variable_and_prepared_statement_syntax();
+    failures += test_stored_program_placeholder_syntax();
     failures += test_select_expression_list();
     failures += test_expression_operator_foundation_syntax();
     failures += test_scalar_function_call_syntax();
@@ -5245,6 +5250,109 @@ static int test_user_variable_and_prepared_statement_syntax(void)
     return failures;
 }
 
+static int test_stored_program_placeholder_syntax(void)
+{
+    enum {
+        call_bare_statement_index = 0,
+        call_args_statement_index = 1,
+        create_procedure_statement_index = 2,
+        create_function_statement_index = 3,
+        create_loadable_function_statement_index = 4,
+        create_aggregate_function_statement_index = 5,
+        create_trigger_statement_index = 6,
+        create_event_statement_index = 7,
+        drop_procedure_statement_index = 8,
+        drop_function_statement_index = 9,
+        drop_trigger_statement_index = 10,
+        drop_event_statement_index = 11,
+        signal_statement_index = 12,
+        statement_count = 13,
+    };
+    struct mylite_sql_parse_result result;
+    int failures = 0;
+
+    failures += parse_sql(
+        "CALL p; "
+        "CALL p(1, @out_arg); "
+        "CREATE PROCEDURE p(IN id BIGINT, OUT note VARCHAR(20), INOUT counter INT) "
+        "DETERMINISTIC BEGIN SET @probe_id = id; CALL q(@probe_id); "
+        "SIGNAL SQLSTATE '01000' SET MESSAGE_TEXT = 'note', MYSQL_ERRNO = 1000; END; "
+        "CREATE DEFINER = CURRENT_USER FUNCTION f(value BIGINT) "
+        "RETURNS BIGINT DETERMINISTIC READS SQL DATA "
+        "RETURN value; "
+        "CREATE FUNCTION loadable RETURNS STRING SONAME 'libudf.so'; "
+        "CREATE AGGREGATE FUNCTION loadable_sum RETURNS INTEGER SONAME 'libudf.so'; "
+        "CREATE TRIGGER tr_bi BEFORE INSERT ON t FOR EACH ROW SET NEW.id = NEW.id; "
+        "CREATE EVENT ev1 ON SCHEDULE EVERY 1 DAY STARTS CURRENT_TIMESTAMP "
+        "DO DELETE FROM t WHERE id < 0; "
+        "DROP PROCEDURE IF EXISTS p; "
+        "DROP FUNCTION IF EXISTS f; "
+        "DROP TRIGGER IF EXISTS tr_bi; "
+        "DROP EVENT IF EXISTS ev1; "
+        "SIGNAL SQLSTATE VALUE '45000' SET MESSAGE_TEXT = 'bad', SCHEMA_NAME = 'app';",
+        MYLITE_SQL_PARSE_OK, &result);
+
+    failures += expect_child_count(result.root, statement_count, "stored placeholder root count");
+    failures += expect_placeholder_statement(
+        child_at(result.root, call_bare_statement_index), MYLITE_SQL_AST_PLACEHOLDER_CALL,
+        "CALL placeholder");
+    failures += expect_placeholder_statement(
+        child_at(result.root, call_args_statement_index), MYLITE_SQL_AST_PLACEHOLDER_CALL,
+        "CALL args placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, create_procedure_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_CREATE_PROCEDURE,
+                                             "CREATE PROCEDURE placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, create_function_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_CREATE_FUNCTION,
+                                             "CREATE FUNCTION placeholder");
+    failures += expect_placeholder_statement(
+        child_at(result.root, create_loadable_function_statement_index),
+        MYLITE_SQL_AST_PLACEHOLDER_CREATE_FUNCTION, "CREATE loadable FUNCTION placeholder");
+    failures += expect_placeholder_statement(
+        child_at(result.root, create_aggregate_function_statement_index),
+        MYLITE_SQL_AST_PLACEHOLDER_CREATE_FUNCTION, "CREATE AGGREGATE FUNCTION placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, create_trigger_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_CREATE_TRIGGER,
+                                             "CREATE TRIGGER placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, create_event_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_CREATE_EVENT,
+                                             "CREATE EVENT placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, drop_procedure_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_DROP_PROCEDURE,
+                                             "DROP PROCEDURE placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, drop_function_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_DROP_FUNCTION,
+                                             "DROP FUNCTION placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, drop_trigger_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_DROP_TRIGGER,
+                                             "DROP TRIGGER placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, drop_event_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_DROP_EVENT,
+                                             "DROP EVENT placeholder");
+    failures += expect_placeholder_statement(child_at(result.root, signal_statement_index),
+                                             MYLITE_SQL_AST_PLACEHOLDER_SIGNAL,
+                                             "SIGNAL placeholder");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CALL p(,)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("CREATE PROCEDURE p(IN id) SELECT 1", MYLITE_SQL_PARSE_SYNTAX_ERROR,
+                          &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("CREATE FUNCTION f() RETURNS RETURN 1", MYLITE_SQL_PARSE_SYNTAX_ERROR,
+                          &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("CREATE TRIGGER tr BEFORE INSERT ON t SET @x = 1",
+                          MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("CREATE EVENT ev DO SELECT 1", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SIGNAL SQLSTATE", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_select_expression_list(void)
 {
     enum { expected_select_item_count = 5 };
@@ -8783,6 +8891,21 @@ static int expect_node(const struct mylite_sql_ast_node *node,
     }
 
     return 0;
+}
+
+static int expect_placeholder_statement(
+    const struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_placeholder_statement_kind expected_kind, const char *context)
+{
+    int failures = expect_node(node, MYLITE_SQL_AST_PLACEHOLDER_STATEMENT, context);
+
+    if (node != NULL && node->placeholder_statement_kind != expected_kind) {
+        fprintf(stderr, "%s: expected placeholder kind %d, got %d\n", context,
+                (int)expected_kind, (int)node->placeholder_statement_kind);
+        failures = 1;
+    }
+
+    return failures;
 }
 
 static int expect_child_count(const struct mylite_sql_ast_node *node, size_t expected,

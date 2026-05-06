@@ -154,6 +154,20 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_EXECUTE_STATEMENT = 143,
     MYLITE_SQL_AST_EXECUTE_USING_LIST = 144,
     MYLITE_SQL_AST_DEALLOCATE_PREPARE_STATEMENT = 145,
+    MYLITE_SQL_AST_PLACEHOLDER_STATEMENT = 146,
+};
+
+enum mylite_sql_ast_placeholder_statement_kind {
+    MYLITE_SQL_AST_PLACEHOLDER_CALL = 0,
+    MYLITE_SQL_AST_PLACEHOLDER_CREATE_PROCEDURE = 1,
+    MYLITE_SQL_AST_PLACEHOLDER_CREATE_FUNCTION = 2,
+    MYLITE_SQL_AST_PLACEHOLDER_CREATE_TRIGGER = 3,
+    MYLITE_SQL_AST_PLACEHOLDER_CREATE_EVENT = 4,
+    MYLITE_SQL_AST_PLACEHOLDER_DROP_PROCEDURE = 5,
+    MYLITE_SQL_AST_PLACEHOLDER_DROP_FUNCTION = 6,
+    MYLITE_SQL_AST_PLACEHOLDER_DROP_TRIGGER = 7,
+    MYLITE_SQL_AST_PLACEHOLDER_DROP_EVENT = 8,
+    MYLITE_SQL_AST_PLACEHOLDER_SIGNAL = 9,
 };
 
 enum mylite_sql_ast_delete_form {
@@ -572,6 +586,7 @@ struct mylite_sql_ast_node {
     enum mylite_sql_ast_subquery_quantifier subquery_quantifier;
     enum mylite_sql_ast_trim_direction trim_direction;
     enum mylite_sql_ast_interval_unit interval_unit;
+    enum mylite_sql_ast_placeholder_statement_kind placeholder_statement_kind;
     enum mylite_sql_ast_show_diagnostics_kind show_diagnostics_kind;
     enum mylite_sql_ast_show_variables_scope show_variables_scope;
     enum mylite_sql_ast_show_status_scope show_status_scope;
@@ -722,6 +737,8 @@ void mylite_sql_ast_node_set_trim_spec(struct mylite_sql_ast_node *node,
                                        enum mylite_sql_ast_trim_direction direction);
 void mylite_sql_ast_node_set_interval_spec(struct mylite_sql_ast_node *node,
                                            enum mylite_sql_ast_interval_unit unit);
+void mylite_sql_ast_node_set_placeholder_statement_kind(
+    struct mylite_sql_ast_node *node, enum mylite_sql_ast_placeholder_statement_kind kind);
 void mylite_sql_ast_node_set_show_tables_extended(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_show_tables_full(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_show_columns_extended(struct mylite_sql_ast_node *node);

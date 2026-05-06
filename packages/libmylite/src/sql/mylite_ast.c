@@ -620,6 +620,16 @@ void mylite_sql_ast_node_set_interval_spec(struct mylite_sql_ast_node *node,
     node->interval_unit = unit;
 }
 
+void mylite_sql_ast_node_set_placeholder_statement_kind(
+    struct mylite_sql_ast_node *node, enum mylite_sql_ast_placeholder_statement_kind kind)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    node->placeholder_statement_kind = kind;
+}
+
 void mylite_sql_ast_node_set_show_tables_extended(struct mylite_sql_ast_node *node)
 {
     if (node == NULL) {
@@ -819,6 +829,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
         return "execute_using_list";
     case MYLITE_SQL_AST_DEALLOCATE_PREPARE_STATEMENT:
         return "deallocate_prepare_statement";
+    case MYLITE_SQL_AST_PLACEHOLDER_STATEMENT:
+        return "placeholder_statement";
     case MYLITE_SQL_AST_DEFAULT:
         return "default";
     case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:

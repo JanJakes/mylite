@@ -62,6 +62,19 @@
 %type prepare_source { struct mylite_sql_ast_node * }
 %type opt_execute_using_list { struct mylite_sql_ast_node * }
 %type execute_using_list { struct mylite_sql_ast_node * }
+%type routine_body { struct mylite_sql_ast_node * }
+%type stored_program_statement { struct mylite_sql_ast_node * }
+%type stored_return_statement { struct mylite_sql_ast_node * }
+%type stored_set_statement { struct mylite_sql_ast_node * }
+%type stored_set_assignment_list { struct mylite_sql_ast_node * }
+%type stored_set_assignment { struct mylite_sql_ast_node * }
+%type stored_set_target { struct mylite_sql_ast_node * }
+%type create_function_tail { struct mylite_sql_ast_node * }
+%type signal_condition_value { struct mylite_sql_ast_node * }
+%type opt_signal_information_items { struct mylite_sql_ast_node * }
+%type signal_information_item_list { struct mylite_sql_ast_node * }
+%type signal_information_item { struct mylite_sql_ast_node * }
+%type signal_simple_value { struct mylite_sql_ast_node * }
 %type opt_show_tables_schema { struct mylite_sql_ast_node * }
 %type opt_show_tables_filter { struct mylite_sql_ast_node * }
 %type show_table_status_keyword { struct mylite_sql_token }
@@ -131,12 +144,16 @@ static void mylite_sql_parser_stack_free(void *pointer, void *context)
 %right UPLUS UMINUS BIT_NOT.
 %right LOGICAL_NOT.
 %right KEY.
-%fallback IDENTIFIER ADDDATE AFTER AUTO_INCREMENT BEGIN BOOL BOOLEAN BTREE CHAIN CHARSET COLLATION
-    COLUMN_FORMAT COMMENT COMMIT CONSISTENT COUNT DATE DATETIME DATE_ADD DATE_SUB DAY DISK DYNAMIC
-    ENGINE ENGINES ENGINE_ATTRIBUTE ENCRYPTION ERRORS EXTRACT FIRST FIXED HASH HOUR INSTANT INVISIBLE
-    KEY_BLOCK_SIZE MEMORY MINUTE MODIFY MONTH NCHAR NO NVARCHAR OFFSET ONLY POSITION ROLLBACK
-    SAVEPOINT SECOND SECONDARY_ENGINE_ATTRIBUTE SIGNED SNAPSHOT START STORAGE SUBDATE TEMPORARY TEXT
-    TIME TIMESTAMP TRANSACTION TYPE VISIBLE VALUE WARNINGS WEEK WORK YEAR.
+%fallback IDENTIFIER ADDDATE AFTER AGGREGATE AT AUTO_INCREMENT BEGIN BOOL BOOLEAN BTREE CATALOG_NAME
+    CHAIN CHARSET CLASS_ORIGIN COLLATION COLUMN_FORMAT COLUMN_NAME COMMENT COMMIT COMPLETION
+    CONSISTENT CONSTRAINT_CATALOG CONSTRAINT_NAME CONSTRAINT_SCHEMA CONTAINS COUNT CURSOR_NAME DATA
+    DATE DATETIME DATE_ADD DATE_SUB DAY DEFINER DISABLE DISK DO DYNAMIC ENABLE ENDS ENGINE ENGINES
+    ENGINE_ATTRIBUTE ENCRYPTION ERRORS EVENT EVERY EXTRACT FIRST FIXED FOLLOWS HASH HOUR INSTANT
+    INVISIBLE INVOKER KEY_BLOCK_SIZE LANGUAGE MEMORY MESSAGE_TEXT MINUTE MODIFY MONTH MYSQL_ERRNO
+    NCHAR NO NVARCHAR OFFSET ONLY POSITION PRECEDES PRESERVE QUARTER REPLICA RETURNS ROLLBACK
+    SAVEPOINT SCHEDULE SCHEMA_NAME SECOND SECONDARY_ENGINE_ATTRIBUTE SECURITY SIGNED SLAVE SNAPSHOT
+    SONAME START STARTS STORAGE STRINGKW SUBCLASS_ORIGIN SUBDATE TABLE_NAME TEMPORARY TEXT TIME
+    TIMESTAMP TRANSACTION TYPE VISIBLE VALUE WARNINGS WEEK WORK YEAR.
 
 input ::= statement_list(A). {
     mylite_sql_parser_state_set_root(state, A);
@@ -289,6 +306,36 @@ statement(A) ::= execute_statement(B). {
     A = B;
 }
 statement(A) ::= deallocate_prepare_statement(B). {
+    A = B;
+}
+statement(A) ::= call_statement(B). {
+    A = B;
+}
+statement(A) ::= create_procedure_statement(B). {
+    A = B;
+}
+statement(A) ::= create_function_statement(B). {
+    A = B;
+}
+statement(A) ::= create_trigger_statement(B). {
+    A = B;
+}
+statement(A) ::= create_event_statement(B). {
+    A = B;
+}
+statement(A) ::= drop_procedure_statement(B). {
+    A = B;
+}
+statement(A) ::= drop_function_statement(B). {
+    A = B;
+}
+statement(A) ::= drop_trigger_statement(B). {
+    A = B;
+}
+statement(A) ::= drop_event_statement(B). {
+    A = B;
+}
+statement(A) ::= signal_statement(B). {
     A = B;
 }
 statement(A) ::= create_table_statement(B). {
@@ -1576,6 +1623,345 @@ deallocate_prepare_statement(A) ::= DEALLOCATE(T) PREPARE identifier(B). {
 }
 deallocate_prepare_statement(A) ::= DROP(T) PREPARE identifier(B). {
     A = mylite_sql_parser_make_deallocate_prepare_statement(state, T, B);
+}
+
+call_statement(A) ::= CALL(T) table_name(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_CALL, T, B);
+}
+call_statement(A) ::= CALL(T) table_name LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_placeholder_statement_with_end_token(
+        state, MYLITE_SQL_AST_PLACEHOLDER_CALL, T, R);
+}
+call_statement(A) ::= CALL(T) table_name LPAREN expression_list RPAREN(R). {
+    A = mylite_sql_parser_make_placeholder_statement_with_end_token(
+        state, MYLITE_SQL_AST_PLACEHOLDER_CALL, T, R);
+}
+
+create_procedure_statement(A) ::= CREATE(T) opt_definer PROCEDURE opt_if_not_exists
+        table_name LPAREN opt_proc_parameter_list RPAREN routine_characteristic_list
+        routine_body(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_CREATE_PROCEDURE, T, B);
+}
+
+create_function_statement(A) ::= CREATE(T) FUNCTION opt_if_not_exists
+        table_name create_function_tail(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_CREATE_FUNCTION, T, B);
+}
+create_function_statement(A) ::= CREATE(T) DEFINER EQ definer_user FUNCTION opt_if_not_exists
+        table_name LPAREN opt_func_parameter_list RPAREN RETURNS column_type
+        routine_characteristic_list routine_body(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_CREATE_FUNCTION, T, B);
+}
+create_function_statement(A) ::= CREATE(T) AGGREGATE FUNCTION opt_if_not_exists
+        table_name RETURNS loadable_function_return_type SONAME STRING(S). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state,
+        MYLITE_SQL_AST_PLACEHOLDER_CREATE_FUNCTION,
+        T,
+        mylite_sql_parser_make_literal(state, S, MYLITE_SQL_AST_LITERAL_STRING));
+}
+
+create_function_tail(A) ::= LPAREN opt_func_parameter_list RPAREN RETURNS column_type
+        routine_characteristic_list routine_body(B). {
+    A = B;
+}
+create_function_tail(A) ::= RETURNS loadable_function_return_type SONAME STRING(S). {
+    A = mylite_sql_parser_make_literal(state, S, MYLITE_SQL_AST_LITERAL_STRING);
+}
+
+create_trigger_statement(A) ::= CREATE(T) opt_definer TRIGGER opt_if_not_exists table_name
+        trigger_time trigger_event ON table_name FOR EACH ROW opt_trigger_order routine_body(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_CREATE_TRIGGER, T, B);
+}
+
+create_event_statement(A) ::= CREATE(T) opt_definer EVENT opt_if_not_exists table_name
+        ON SCHEDULE event_schedule opt_event_completion opt_event_status opt_event_comment
+        DO routine_body(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_CREATE_EVENT, T, B);
+}
+
+drop_procedure_statement(A) ::= DROP(T) PROCEDURE opt_if_exists table_name(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_DROP_PROCEDURE, T, B);
+}
+
+drop_function_statement(A) ::= DROP(T) FUNCTION opt_if_exists table_name(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_DROP_FUNCTION, T, B);
+}
+
+drop_trigger_statement(A) ::= DROP(T) TRIGGER opt_if_exists table_name(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_DROP_TRIGGER, T, B);
+}
+
+drop_event_statement(A) ::= DROP(T) EVENT opt_if_exists table_name(B). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_DROP_EVENT, T, B);
+}
+
+signal_statement(A) ::= SIGNAL(T) signal_condition_value(B) opt_signal_information_items(C). {
+    A = mylite_sql_parser_make_placeholder_statement(
+        state, MYLITE_SQL_AST_PLACEHOLDER_SIGNAL, T, C == NULL ? B : C);
+}
+
+opt_definer ::= .
+opt_definer ::= DEFINER EQ definer_user.
+
+definer_user ::= CURRENT_USER.
+definer_user ::= CURRENT_USER LPAREN RPAREN.
+definer_user ::= identifier.
+definer_user ::= STRING.
+definer_user ::= STRING USER_VARIABLE.
+definer_user ::= identifier USER_VARIABLE.
+
+opt_proc_parameter_list ::= .
+opt_proc_parameter_list ::= proc_parameter_list.
+
+proc_parameter_list ::= proc_parameter.
+proc_parameter_list ::= proc_parameter_list COMMA proc_parameter.
+
+proc_parameter ::= opt_proc_parameter_mode identifier column_type.
+
+opt_proc_parameter_mode ::= .
+opt_proc_parameter_mode ::= IN.
+opt_proc_parameter_mode ::= OUT.
+opt_proc_parameter_mode ::= INOUT.
+
+opt_func_parameter_list ::= .
+opt_func_parameter_list ::= func_parameter_list.
+
+func_parameter_list ::= func_parameter.
+func_parameter_list ::= func_parameter_list COMMA func_parameter.
+
+func_parameter ::= identifier column_type.
+
+routine_characteristic_list ::= .
+routine_characteristic_list ::= routine_characteristic_list routine_characteristic.
+
+routine_characteristic ::= COMMENT STRING.
+routine_characteristic ::= LANGUAGE SQL.
+routine_characteristic ::= DETERMINISTIC.
+routine_characteristic ::= NOT DETERMINISTIC.
+routine_characteristic ::= CONTAINS SQL.
+routine_characteristic ::= NO SQL.
+routine_characteristic ::= READS SQL DATA.
+routine_characteristic ::= MODIFIES SQL DATA.
+routine_characteristic ::= SQL SECURITY DEFINER.
+routine_characteristic ::= SQL SECURITY INVOKER.
+
+routine_body(A) ::= stored_program_statement(B). {
+    A = B;
+}
+routine_body(A) ::= BEGIN(T) stored_statement_list END(E). {
+    A = mylite_sql_parser_make_stored_program_body_with_end_token(state, T, E);
+}
+
+stored_statement_list ::= .
+stored_statement_list ::= stored_statement_list stored_program_statement SEMICOLON.
+
+stored_program_statement(A) ::= select_statement(B). {
+    A = B;
+}
+stored_program_statement(A) ::= insert_values_statement(B). {
+    A = B;
+}
+stored_program_statement(A) ::= insert_set_statement(B). {
+    A = B;
+}
+stored_program_statement(A) ::= replace_values_statement(B). {
+    A = B;
+}
+stored_program_statement(A) ::= replace_set_statement(B). {
+    A = B;
+}
+stored_program_statement(A) ::= update_statement(B). {
+    A = B;
+}
+stored_program_statement(A) ::= delete_statement(B). {
+    A = B;
+}
+stored_program_statement(A) ::= call_statement(B). {
+    A = B;
+}
+stored_program_statement(A) ::= signal_statement(B). {
+    A = B;
+}
+stored_program_statement(A) ::= stored_return_statement(B). {
+    A = B;
+}
+stored_program_statement(A) ::= stored_set_statement(B). {
+    A = B;
+}
+
+stored_return_statement(A) ::= RETURN(T) expression(B). {
+    A = mylite_sql_parser_make_stored_program_body(state, T, B);
+}
+
+stored_set_statement(A) ::= SET(T) stored_set_assignment_list(B). {
+    A = mylite_sql_parser_make_stored_program_body(state, T, B);
+}
+
+stored_set_assignment_list(A) ::= stored_set_assignment(B). {
+    A = B;
+}
+stored_set_assignment_list(A) ::= stored_set_assignment_list COMMA stored_set_assignment(B). {
+    A = B;
+}
+
+stored_set_assignment(A) ::= stored_set_target EQ expression(B). {
+    A = B;
+}
+stored_set_assignment(A) ::= stored_set_target ASSIGN expression(B). {
+    A = B;
+}
+
+stored_set_target(A) ::= qualified_identifier(B). {
+    A = B;
+}
+stored_set_target(A) ::= USER_VARIABLE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+stored_set_target(A) ::= SYSTEM_VARIABLE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+
+loadable_function_return_type ::= STRINGKW.
+loadable_function_return_type ::= INTEGERKW.
+loadable_function_return_type ::= REAL.
+loadable_function_return_type ::= DECIMALKW.
+
+trigger_time ::= BEFORE.
+trigger_time ::= AFTER.
+
+trigger_event ::= INSERT.
+trigger_event ::= UPDATE.
+trigger_event ::= DELETE.
+
+opt_trigger_order ::= .
+opt_trigger_order ::= FOLLOWS table_name.
+opt_trigger_order ::= PRECEDES table_name.
+
+event_schedule ::= AT event_timestamp_expression.
+event_schedule ::= EVERY event_interval opt_event_starts opt_event_ends.
+
+event_timestamp_expression ::= expression.
+
+event_interval ::= expression event_interval_unit.
+
+event_interval_unit ::= YEAR.
+event_interval_unit ::= QUARTER.
+event_interval_unit ::= MONTH.
+event_interval_unit ::= DAY.
+event_interval_unit ::= HOUR.
+event_interval_unit ::= MINUTE.
+event_interval_unit ::= WEEK.
+event_interval_unit ::= SECOND.
+event_interval_unit ::= YEAR_MONTH.
+event_interval_unit ::= DAY_HOUR.
+event_interval_unit ::= DAY_MINUTE.
+event_interval_unit ::= DAY_SECOND.
+event_interval_unit ::= HOUR_MINUTE.
+event_interval_unit ::= HOUR_SECOND.
+event_interval_unit ::= MINUTE_SECOND.
+
+opt_event_starts ::= .
+opt_event_starts ::= STARTS event_timestamp_expression.
+
+opt_event_ends ::= .
+opt_event_ends ::= ENDS event_timestamp_expression.
+
+opt_event_completion ::= .
+opt_event_completion ::= ON COMPLETION PRESERVE.
+opt_event_completion ::= ON COMPLETION NOT PRESERVE.
+
+opt_event_status ::= .
+opt_event_status ::= ENABLE.
+opt_event_status ::= DISABLE.
+opt_event_status ::= DISABLE ON SLAVE.
+opt_event_status ::= DISABLE ON REPLICA.
+
+opt_event_comment ::= .
+opt_event_comment ::= COMMENT STRING.
+
+signal_condition_value(A) ::= SQLSTATE STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+signal_condition_value(A) ::= SQLSTATE VALUE STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+signal_condition_value(A) ::= identifier(B). {
+    A = B;
+}
+
+opt_signal_information_items(A) ::= . {
+    A = NULL;
+}
+opt_signal_information_items(A) ::= SET signal_information_item_list(B). {
+    A = B;
+}
+
+signal_information_item_list(A) ::= signal_information_item(B). {
+    A = B;
+}
+signal_information_item_list(A) ::= signal_information_item_list COMMA signal_information_item(B). {
+    A = B;
+}
+
+signal_information_item(A) ::= CLASS_ORIGIN EQ signal_simple_value(B). {
+    A = B;
+}
+signal_information_item(A) ::= SUBCLASS_ORIGIN EQ signal_simple_value(B). {
+    A = B;
+}
+signal_information_item(A) ::= MESSAGE_TEXT EQ signal_simple_value(B). {
+    A = B;
+}
+signal_information_item(A) ::= MYSQL_ERRNO EQ signal_simple_value(B). {
+    A = B;
+}
+signal_information_item(A) ::= CONSTRAINT_CATALOG EQ signal_simple_value(B). {
+    A = B;
+}
+signal_information_item(A) ::= CONSTRAINT_SCHEMA EQ signal_simple_value(B). {
+    A = B;
+}
+signal_information_item(A) ::= CONSTRAINT_NAME EQ signal_simple_value(B). {
+    A = B;
+}
+signal_information_item(A) ::= CATALOG_NAME EQ signal_simple_value(B). {
+    A = B;
+}
+signal_information_item(A) ::= SCHEMA_NAME EQ signal_simple_value(B). {
+    A = B;
+}
+signal_information_item(A) ::= TABLE_NAME EQ signal_simple_value(B). {
+    A = B;
+}
+signal_information_item(A) ::= COLUMN_NAME EQ signal_simple_value(B). {
+    A = B;
+}
+signal_information_item(A) ::= CURSOR_NAME EQ signal_simple_value(B). {
+    A = B;
+}
+
+signal_simple_value(A) ::= literal(B). {
+    A = B;
+}
+signal_simple_value(A) ::= qualified_identifier(B). {
+    A = B;
+}
+signal_simple_value(A) ::= USER_VARIABLE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+signal_simple_value(A) ::= SYSTEM_VARIABLE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
 }
 
 create_table_statement(A) ::= CREATE(T) TABLE opt_if_not_exists(B) table_name(C) LPAREN table_element_list(D) RPAREN table_option_list(E). {

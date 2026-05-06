@@ -345,6 +345,7 @@ static int test_information_schema_key_column_usage_execution(void);
 static int test_mylite_file_preamble_and_vfs_payload(void);
 static int test_mylite_open_rejects_plain_sqlite(void);
 static int test_unsupported_statement(void);
+static int test_stored_program_placeholder_execution(void);
 static int test_create_table_base_execution(void);
 static int test_create_table_prepare_has_no_side_effects(void);
 static int test_drop_table_base_execution(void);
@@ -397,6 +398,9 @@ static int expect_exec_error(mylite_stmt *stmt, mylite_db *database, const char 
                              const char *context);
 static int expect_savepoint_warning(mylite_db *database, const char *error_fragment,
                                     const char *context);
+static int expect_parser_placeholder_execution(mylite_db *database, const char *sql,
+                                               const char *warning_fragment,
+                                               const char *context);
 static int execute_sql_expect_done_affected(mylite_db *database, const char *sql,
                                             int64_t expected_affected_rows, const char *context);
 static int expect_select_rows(mylite_db *database, const char *sql, const char *const *columns,
@@ -570,6 +574,7 @@ int main(void)
     failures += test_mylite_file_preamble_and_vfs_payload();
     failures += test_mylite_open_rejects_plain_sqlite();
     failures += test_unsupported_statement();
+    failures += test_stored_program_placeholder_execution();
     failures += test_create_table_base_execution();
     failures += test_create_table_prepare_has_no_side_effects();
     failures += test_drop_table_base_execution();
@@ -18816,6 +18821,58 @@ static int test_unsupported_statement(void)
     return failures;
 }
 
+static int test_stored_program_placeholder_execution(void)
+{
+    static const char *const diagnostics_columns[] = {"Level", "Code", "Message"};
+    static const char *const call_warning[] = {
+        "Warning",
+        "1235",
+        "CALL statement is accepted as a MyLite parser placeholder and is not executed",
+    };
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK,
+                              "open stored program placeholder database");
+    failures += expect_parser_placeholder_execution(database, "CALL p(1)", "CALL statement",
+                                                    "CALL placeholder");
+    failures += expect_select_rows(database, "SHOW WARNINGS", diagnostics_columns, 3, call_warning,
+                                   1, "CALL placeholder show warnings");
+    failures += expect_parser_placeholder_execution(database, "CREATE PROCEDURE p() SELECT 1",
+                                                    "CREATE PROCEDURE",
+                                                    "CREATE PROCEDURE placeholder");
+    failures += expect_parser_placeholder_execution(
+        database, "CREATE FUNCTION f(v BIGINT) RETURNS BIGINT RETURN v", "CREATE FUNCTION",
+        "CREATE FUNCTION placeholder");
+    failures += expect_parser_placeholder_execution(
+        database, "CREATE FUNCTION udf RETURNS STRING SONAME 'libudf.so'", "CREATE FUNCTION",
+        "CREATE loadable FUNCTION placeholder");
+    failures += expect_parser_placeholder_execution(
+        database, "CREATE AGGREGATE FUNCTION udf_sum RETURNS INTEGER SONAME 'libudf.so'",
+        "CREATE FUNCTION", "CREATE AGGREGATE FUNCTION placeholder");
+    failures += expect_parser_placeholder_execution(
+        database, "CREATE TRIGGER tr BEFORE INSERT ON t FOR EACH ROW SET NEW.id = NEW.id",
+        "CREATE TRIGGER", "CREATE TRIGGER placeholder");
+    failures += expect_parser_placeholder_execution(
+        database, "CREATE EVENT ev ON SCHEDULE EVERY 1 DAY DO DELETE FROM t WHERE id < 0",
+        "CREATE EVENT", "CREATE EVENT placeholder");
+    failures += expect_parser_placeholder_execution(database, "DROP PROCEDURE IF EXISTS p",
+                                                    "DROP PROCEDURE",
+                                                    "DROP PROCEDURE placeholder");
+    failures += expect_parser_placeholder_execution(database, "DROP FUNCTION IF EXISTS f",
+                                                    "DROP FUNCTION", "DROP FUNCTION placeholder");
+    failures += expect_parser_placeholder_execution(database, "DROP TRIGGER IF EXISTS tr",
+                                                    "DROP TRIGGER", "DROP TRIGGER placeholder");
+    failures += expect_parser_placeholder_execution(database, "DROP EVENT IF EXISTS ev",
+                                                    "DROP EVENT", "DROP EVENT placeholder");
+    failures += expect_parser_placeholder_execution(
+        database, "SIGNAL SQLSTATE '01000' SET MESSAGE_TEXT = 'ignored'", "SIGNAL statement",
+        "SIGNAL placeholder");
+
+    mylite_close(database);
+    return failures;
+}
+
 static int test_create_table_base_execution(void)
 {
     const char *path = MYLITE_RUNTIME_TEST_FILE_PATH;
@@ -29679,6 +29736,26 @@ static int expect_savepoint_warning(mylite_db *database, const char *error_fragm
     failures += expect_int((int)mylite_warning_code(database, 0),
                            mysql_warning_savepoint_does_not_exist, context);
     failures += expect_contains(mylite_warning_message(database, 0), error_fragment, context);
+    return failures;
+}
+
+static int expect_parser_placeholder_execution(mylite_db *database, const char *sql,
+                                               const char *warning_fragment, const char *context)
+{
+    mylite_stmt *stmt = NULL;
+    int failures = prepare_sql(database, sql, MYLITE_OK, &stmt);
+
+    if (failures == 0) {
+        failures += expect_int(mylite_column_count(stmt), 0, context);
+        failures += expect_int(mylite_warning_count(database), 0, context);
+        failures += expect_status(mylite_step(stmt), MYLITE_DONE, context);
+        failures += expect_int64(mylite_affected_rows(stmt), 0, context);
+        failures += expect_int(mylite_warning_count(database), 1, context);
+        failures += expect_int((int)mylite_warning_code(database, 0),
+                               mysql_warning_not_supported_yet, context);
+        failures += expect_contains(mylite_warning_message(database, 0), warning_fragment, context);
+    }
+    mylite_finalize(stmt);
     return failures;
 }
 

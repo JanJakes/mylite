@@ -19,6 +19,8 @@
 static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql_ast_node *root,
                                     const char *sql, size_t sql_length, mylite_stmt **out_stmt,
                                     const struct mylite_statement_prepare_callbacks *callbacks);
+static enum mylite_stmt_kind
+placeholder_statement_kind(const struct mylite_sql_ast_node *statement);
 
 int mylite_prepare(mylite_db *database, const char *sql, size_t length, mylite_stmt **out_stmt)
 {
@@ -117,6 +119,9 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
         case MYLITE_SQL_AST_DEALLOCATE_PREPARE_STATEMENT:
             return mylite_prepared_statement_prepare_deallocate_statement(database, statement,
                                                                           out_stmt);
+        case MYLITE_SQL_AST_PLACEHOLDER_STATEMENT:
+            return mylite_statement_prepare_custom_statement(
+                database, placeholder_statement_kind(statement), statement, out_stmt, callbacks);
         case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
             return mylite_statement_prepare_custom_statement(database, MYLITE_STMT_CREATE_TABLE,
                                                              statement, out_stmt, callbacks);
@@ -315,4 +320,33 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
     status = mylite_statement_prepare_sqlite(database, translate_result.sql, out_stmt);
     mylite_sqlite_translate_result_deinit(&translate_result);
     return status;
+}
+
+static enum mylite_stmt_kind
+placeholder_statement_kind(const struct mylite_sql_ast_node *statement)
+{
+    switch (statement->placeholder_statement_kind) {
+    case MYLITE_SQL_AST_PLACEHOLDER_CALL:
+        return MYLITE_STMT_CALL_PLACEHOLDER;
+    case MYLITE_SQL_AST_PLACEHOLDER_CREATE_PROCEDURE:
+        return MYLITE_STMT_CREATE_PROCEDURE_PLACEHOLDER;
+    case MYLITE_SQL_AST_PLACEHOLDER_CREATE_FUNCTION:
+        return MYLITE_STMT_CREATE_FUNCTION_PLACEHOLDER;
+    case MYLITE_SQL_AST_PLACEHOLDER_CREATE_TRIGGER:
+        return MYLITE_STMT_CREATE_TRIGGER_PLACEHOLDER;
+    case MYLITE_SQL_AST_PLACEHOLDER_CREATE_EVENT:
+        return MYLITE_STMT_CREATE_EVENT_PLACEHOLDER;
+    case MYLITE_SQL_AST_PLACEHOLDER_DROP_PROCEDURE:
+        return MYLITE_STMT_DROP_PROCEDURE_PLACEHOLDER;
+    case MYLITE_SQL_AST_PLACEHOLDER_DROP_FUNCTION:
+        return MYLITE_STMT_DROP_FUNCTION_PLACEHOLDER;
+    case MYLITE_SQL_AST_PLACEHOLDER_DROP_TRIGGER:
+        return MYLITE_STMT_DROP_TRIGGER_PLACEHOLDER;
+    case MYLITE_SQL_AST_PLACEHOLDER_DROP_EVENT:
+        return MYLITE_STMT_DROP_EVENT_PLACEHOLDER;
+    case MYLITE_SQL_AST_PLACEHOLDER_SIGNAL:
+        return MYLITE_STMT_SIGNAL_PLACEHOLDER;
+    }
+
+    return MYLITE_STMT_SQLITE;
 }

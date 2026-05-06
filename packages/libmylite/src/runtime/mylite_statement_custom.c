@@ -50,6 +50,17 @@ int mylite_statement_prepare_custom(
     case MYLITE_STMT_DEALLOCATE_PREPARE:
         status = MYLITE_UNSUPPORTED;
         break;
+    case MYLITE_STMT_CALL_PLACEHOLDER:
+    case MYLITE_STMT_CREATE_PROCEDURE_PLACEHOLDER:
+    case MYLITE_STMT_CREATE_FUNCTION_PLACEHOLDER:
+    case MYLITE_STMT_CREATE_TRIGGER_PLACEHOLDER:
+    case MYLITE_STMT_CREATE_EVENT_PLACEHOLDER:
+    case MYLITE_STMT_DROP_PROCEDURE_PLACEHOLDER:
+    case MYLITE_STMT_DROP_FUNCTION_PLACEHOLDER:
+    case MYLITE_STMT_DROP_TRIGGER_PLACEHOLDER:
+    case MYLITE_STMT_DROP_EVENT_PLACEHOLDER:
+    case MYLITE_STMT_SIGNAL_PLACEHOLDER:
+        break;
     case MYLITE_STMT_CREATE_TABLE:
         status = mylite_table_ddl_copy_create_table_statement(statement, &stmt->create_table);
         break;

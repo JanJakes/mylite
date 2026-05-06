@@ -816,6 +816,18 @@ struct mylite_sql_ast_node *
 mylite_sql_parser_make_deallocate_prepare_statement(struct mylite_sql_parser_state *state,
                                                     struct mylite_sql_token keyword_token,
                                                     struct mylite_sql_ast_node *statement_name);
+struct mylite_sql_ast_node *mylite_sql_parser_make_placeholder_statement(
+    struct mylite_sql_parser_state *state, enum mylite_sql_ast_placeholder_statement_kind kind,
+    struct mylite_sql_token start_token, struct mylite_sql_ast_node *last_node);
+struct mylite_sql_ast_node *mylite_sql_parser_make_placeholder_statement_with_end_token(
+    struct mylite_sql_parser_state *state, enum mylite_sql_ast_placeholder_statement_kind kind,
+    struct mylite_sql_token start_token, struct mylite_sql_token end_token);
+struct mylite_sql_ast_node *mylite_sql_parser_make_stored_program_body(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token start_token,
+    struct mylite_sql_ast_node *last_node);
+struct mylite_sql_ast_node *mylite_sql_parser_make_stored_program_body_with_end_token(
+    struct mylite_sql_parser_state *state, struct mylite_sql_token start_token,
+    struct mylite_sql_token end_token);
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
     struct mylite_sql_parser_state *state, struct mylite_sql_token create_token,
     struct mylite_sql_ast_node *if_not_exists, struct mylite_sql_ast_node *table_name,

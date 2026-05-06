@@ -352,7 +352,10 @@ level application surfaces.
 48. [ ] Foreign keys: definition, validation, cascades, `RESTRICT`/`NO ACTION`,
        `SET NULL`, metadata, and enforcement.
 49. [ ] JSON type and functions: validation, extraction, paths, comparison,
-       mutation, generated-column interactions, and metadata.
+       mutation, generated-column interactions, and metadata. Started with the
+       scalar foundation for `JSON_VALID`, `JSON_TYPE`, `JSON_QUOTE`,
+       `JSON_UNQUOTE`, `JSON_ARRAY`, and `JSON_OBJECT`. Spec:
+       [JSON scalar foundation](../json-scalar-foundation/specs.md).
 50. [ ] Administrative compatibility placeholders: `LOCK TABLES`,
        `UNLOCK TABLES`, maintenance statements, account/privilege statements,
        replication-only statements, and embedded-compatible diagnostics.

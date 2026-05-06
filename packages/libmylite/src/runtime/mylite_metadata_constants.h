@@ -87,5 +87,6 @@ extern const uint64_t mylite_mysql_tiny_text_length;
 extern const uint64_t mylite_mysql_text_length;
 extern const uint64_t mylite_mysql_medium_text_length;
 extern const uint64_t mylite_mysql_long_text_length;
+extern const uint64_t mylite_mysql_json_document_length;
 
 #endif

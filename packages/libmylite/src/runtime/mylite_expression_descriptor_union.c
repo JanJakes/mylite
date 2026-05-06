@@ -102,6 +102,7 @@ static bool union_field_descriptor_has_text_result(const struct mylite_field_des
     case MYLITE_FIELD_TYPE_STRING:
     case MYLITE_FIELD_TYPE_VAR_STRING:
     case MYLITE_FIELD_TYPE_BLOB:
+    case MYLITE_FIELD_TYPE_JSON:
         return (descriptor->flags & MYLITE_FIELD_FLAG_NUM) == 0U;
     default:
         return mylite_expression_descriptor_has_text_result(descriptor);
@@ -118,6 +119,7 @@ union_field_descriptor_uses_binary_text(const struct mylite_field_descriptor *de
     case MYLITE_FIELD_TYPE_STRING:
     case MYLITE_FIELD_TYPE_VAR_STRING:
     case MYLITE_FIELD_TYPE_BLOB:
+    case MYLITE_FIELD_TYPE_JSON:
         return (descriptor->charset_id == mylite_mysql_binary_charset_id ||
                 descriptor->charset_id == mylite_mysql_utf8mb4_bin_charset_id ||
                 (descriptor->flags & MYLITE_FIELD_FLAG_BINARY) != 0U) != false;

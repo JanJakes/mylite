@@ -83,6 +83,7 @@ format_function_result_character_length(const struct mylite_sql_ast_node *argume
     case MYLITE_FIELD_TYPE_MEDIUM_BLOB:
     case MYLITE_FIELD_TYPE_LONG_BLOB:
     case MYLITE_FIELD_TYPE_BLOB:
+    case MYLITE_FIELD_TYPE_JSON:
         return argument_descriptor->length + mylite_format_string_descriptor_extra_length;
     case MYLITE_FIELD_TYPE_DECIMAL:
     case MYLITE_FIELD_TYPE_NULL:

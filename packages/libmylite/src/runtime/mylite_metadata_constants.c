@@ -84,3 +84,4 @@ const uint64_t mylite_mysql_tiny_text_length = 255U;
 const uint64_t mylite_mysql_text_length = 65535U;
 const uint64_t mylite_mysql_medium_text_length = 16777215U;
 const uint64_t mylite_mysql_long_text_length = UINT64_C(4294967295);
+const uint64_t mylite_mysql_json_document_length = UINT64_C(1073741823);

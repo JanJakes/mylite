@@ -28,6 +28,11 @@ bool mylite_function_name_is_regexp_like(const struct mylite_sql_ast_node *name)
 bool mylite_function_name_is_regexp_instr(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_regexp_substr(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_regexp_replace(const struct mylite_sql_ast_node *name);
+bool mylite_function_name_is_json_valid(const struct mylite_sql_ast_node *name);
+bool mylite_function_name_is_json_type(const struct mylite_sql_ast_node *name);
+bool mylite_function_name_is_json_quote(const struct mylite_sql_ast_node *name);
+bool mylite_function_name_is_json_unquote(const struct mylite_sql_ast_node *name);
+bool mylite_function_name_is_json_creation(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_date_extraction(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_datediff(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_last_day(const struct mylite_sql_ast_node *name);

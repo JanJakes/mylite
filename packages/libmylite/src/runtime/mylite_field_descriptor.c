@@ -66,6 +66,7 @@ mylite_field_descriptor_expression_temporal_type(const struct mylite_field_descr
     case MYLITE_FIELD_TYPE_NEWDATE:
     case MYLITE_FIELD_TYPE_VARCHAR:
     case MYLITE_FIELD_TYPE_BIT:
+    case MYLITE_FIELD_TYPE_JSON:
     case MYLITE_FIELD_TYPE_NEWDECIMAL:
     case MYLITE_FIELD_TYPE_ENUM:
     case MYLITE_FIELD_TYPE_SET:

@@ -129,6 +129,7 @@ enum {
     mysql_warning_division_by_zero = 1365,
     mysql_warning_incorrect_string_value = 1411,
     mysql_warning_datetime_function_overflow = 1441,
+    mysql_warning_wrong_paramcount_to_native_fct = 1582,
     mysql_warning_wrong_parameters_to_native_fct = 1583,
     mysql_warning_unknown_locale = 1649,
     mysql_warning_out_of_range = 1690,
@@ -136,7 +137,11 @@ enum {
     mysql_warning_legacy_syntax_converted = 3005,
     mysql_warning_invalid_argument_for_logarithm = 3020,
     mysql_warning_user_lock_wrong_name = 3057,
+    mysql_warning_incorrect_json_type = 3064,
     mysql_warning_field_in_order_not_select = 3065,
+    mysql_warning_invalid_json_text = 3141,
+    mysql_warning_invalid_json_data = 3146,
+    mysql_warning_json_document_null_key = 3158,
     mysql_warning_using_other_handler = 3502,
     mysql_warning_primary_invisible = 3522,
     mysql_warning_default_value_generated = 3773,
@@ -268,6 +273,7 @@ static int test_select_integer_literal_with_semicolon(void);
 static int test_expression_operator_foundation(void);
 static int test_regexp_predicates_execution(void);
 static int test_regexp_scalar_functions_execution(void);
+static int test_json_scalar_foundation_execution(void);
 static int test_scalar_builtin_functions_execution(void);
 static int test_current_temporal_functions_execution(void);
 static int test_date_and_datediff_functions_execution(void);
@@ -505,6 +511,7 @@ int main(void)
     failures += test_expression_operator_foundation();
     failures += test_regexp_predicates_execution();
     failures += test_regexp_scalar_functions_execution();
+    failures += test_json_scalar_foundation_execution();
     failures += test_scalar_builtin_functions_execution();
     failures += test_current_temporal_functions_execution();
     failures += test_date_and_datediff_functions_execution();
@@ -2609,6 +2616,221 @@ static int test_regexp_scalar_functions_execution(void)
     failures +=
         expect_int((int)mylite_warning_code(database, 0), mysql_warning_illegal_regexp_argument,
                    "regexp scalar empty pattern code");
+
+    mylite_close(database);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
+    return failures;
+}
+
+static int test_json_scalar_foundation_execution(void)
+{
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const scalar_columns[] = {
+        "valid_object", "invalid_word", "valid_string",  "valid_null", "valid_int",
+        "type_object",  "type_array",   "type_true",     "type_null",  "type_integer",
+        "type_double",  "type_string",  "type_sql_null",
+    };
+    static const char *const scalar_values[] = {
+        "1",       "0",    "1",       NULL,     "0",      "OBJECT", "ARRAY",
+        "BOOLEAN", "NULL", "INTEGER", "DOUBLE", "STRING", NULL,
+    };
+    static const char *const quote_columns[] = {
+        "quote_null_text", "quote_quoted",   "quote_array_text", "quote_null",
+        "unquote_string",  "unquote_number", "unquote_true",     "unquote_json_null",
+        "unquote_array",   "quote_escapes",  "unquote_unicode",
+    };
+    static const char *const quote_values[] = {
+        "\"null\"",      "\"\\\"null\\\"\"",
+        "\"[1, 2, 3]\"", NULL,
+        "abc",           "123",
+        "true",          "null",
+        "[1,2]",         "\"line\\nbreak\\ttab\\\\slash\\\"quote\"",
+        "unicode A",
+    };
+    static const char *const creation_columns[] = {
+        "empty_array",  "mixed_array",    "nested_array", "empty_object", "object_value",
+        "object_mixed", "duplicate_keys", "key_order",    "quote_nested",
+    };
+    static const char *const creation_values[] = {
+        "[]",
+        "[\"a\", 1, null, true, false]",
+        "[{\"x\": 1}, [2, 3]]",
+        "{}",
+        "{\"id\": 87, \"name\": \"carrot\"}",
+        "{\"a\": null, \"b\": true, \"c\": \"{\\\"x\\\":1}\"}",
+        "{\"a\": 2, \"b\": 3}",
+        "{\"\": 5, \"a\": 3, \"b\": 2, \"aa\": 1, \"ab\": 4}",
+        "[\"\\\"x\\\"\"]",
+    };
+    static const char *const metadata_columns[] = {"jv", "jt", "jq", "ju", "ja", "jo"};
+    static const char *const metadata_values[] = {"1", "OBJECT",     "\"x\"",
+                                                  "x", "[\"a\", 1]", "{\"a\": 1}"};
+    static const struct expected_result_metadata metadata[] = {
+        {"jv", NULL, NULL, NULL, NULL, NULL, 21U, MYLITE_FIELD_TYPE_LONGLONG, 0U, 63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM, 0U, 0},
+        {"jt", NULL, NULL, NULL, NULL, NULL, 65535U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         MYLITE_FIELD_FLAG_BINARY, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"jq", NULL, NULL, NULL, NULL, NULL, 65535U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         MYLITE_FIELD_FLAG_BINARY, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"ju", NULL, NULL, NULL, NULL, NULL, 65535U, MYLITE_FIELD_TYPE_VAR_STRING, 31U, 255U,
+         MYLITE_FIELD_FLAG_BINARY, MYLITE_FIELD_FLAG_NOT_NULL, 1},
+        {"ja", NULL, NULL, NULL, NULL, NULL, 1073741823U, MYLITE_FIELD_TYPE_JSON, 31U, 255U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, 0U, 0},
+        {"jo", NULL, NULL, NULL, NULL, NULL, 1073741823U, MYLITE_FIELD_TYPE_JSON, 31U, 255U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY, 0U, 0},
+    };
+    static const char *const id_columns[] = {"id"};
+    static const char *const valid_ids[] = {"1", "2"};
+    static const char *const remaining_ids[] = {"1", "2", "4"};
+    static const char *const note_columns[] = {"id", "note"};
+    static const char *const updated_notes[] = {"1", "OBJECT", "2", "ARRAY"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open json database");
+    failures += execute_sql(database, "CREATE DATABASE mylite_json_scalars", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_json_scalars", MYLITE_DONE);
+
+    failures += expect_select_rows(database,
+                                   "SELECT JSON_VALID('{\"a\":1}') AS valid_object, "
+                                   "JSON_VALID('hello') AS invalid_word, "
+                                   "JSON_VALID('\"hello\"') AS valid_string, "
+                                   "JSON_VALID(NULL) AS valid_null, "
+                                   "JSON_VALID(1) AS valid_int, "
+                                   "JSON_TYPE('{\"a\":[10,true]}') AS type_object, "
+                                   "JSON_TYPE('[1,2]') AS type_array, "
+                                   "JSON_TYPE('true') AS type_true, "
+                                   "JSON_TYPE('null') AS type_null, "
+                                   "JSON_TYPE('123') AS type_integer, "
+                                   "JSON_TYPE('123.45') AS type_double, "
+                                   "JSON_TYPE('\"x\"') AS type_string, "
+                                   "JSON_TYPE(NULL) AS type_sql_null",
+                                   scalar_columns,
+                                   (int)(sizeof(scalar_columns) / sizeof(scalar_columns[0])),
+                                   scalar_values, 1, "json scalar values");
+
+    failures +=
+        expect_select_rows(database,
+                           "SELECT JSON_QUOTE('null') AS quote_null_text, "
+                           "JSON_QUOTE('\"null\"') AS quote_quoted, "
+                           "JSON_QUOTE('[1, 2, 3]') AS quote_array_text, "
+                           "JSON_QUOTE(NULL) AS quote_null, "
+                           "JSON_UNQUOTE('\"abc\"') AS unquote_string, "
+                           "JSON_UNQUOTE('123') AS unquote_number, "
+                           "JSON_UNQUOTE('true') AS unquote_true, "
+                           "JSON_UNQUOTE('null') AS unquote_json_null, "
+                           "JSON_UNQUOTE('[1,2]') AS unquote_array, "
+                           "JSON_QUOTE('line\\nbreak\\ttab\\\\slash\"quote') AS quote_escapes, "
+                           "JSON_UNQUOTE('\"unicode \\\\u0041\"') AS unquote_unicode",
+                           quote_columns, (int)(sizeof(quote_columns) / sizeof(quote_columns[0])),
+                           quote_values, 1, "json quote and unquote values");
+
+    failures += expect_select_rows(
+        database,
+        "SELECT JSON_ARRAY() AS empty_array, "
+        "JSON_ARRAY('a', 1, NULL, TRUE, FALSE) AS mixed_array, "
+        "JSON_ARRAY(JSON_OBJECT('x',1), JSON_ARRAY(2,3)) AS nested_array, "
+        "JSON_OBJECT() AS empty_object, "
+        "JSON_OBJECT('id', 87, 'name', 'carrot') AS object_value, "
+        "JSON_OBJECT('a', NULL, 'b', TRUE, 'c', '{\"x\":1}') AS object_mixed, "
+        "JSON_OBJECT('b',1,'a',2,'b',3) AS duplicate_keys, "
+        "JSON_OBJECT('aa',1,'b',2,'a',3,'ab',4,'',5) AS key_order, "
+        "JSON_ARRAY(JSON_QUOTE('x')) AS quote_nested",
+        creation_columns, (int)(sizeof(creation_columns) / sizeof(creation_columns[0])),
+        creation_values, 1, "json creation values");
+
+    failures += prepare_sql(database,
+                            "SELECT JSON_VALID('{\"a\":1}') AS jv, "
+                            "JSON_TYPE('{\"a\":1}') AS jt, "
+                            "JSON_QUOTE('x') AS jq, "
+                            "JSON_UNQUOTE('\"x\"') AS ju, "
+                            "JSON_ARRAY('a',1) AS ja, "
+                            "JSON_OBJECT('a',1) AS jo",
+                            MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt, metadata, (int)(sizeof(metadata) / sizeof(metadata[0])), "json metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "json metadata row");
+    for (int index = 0; index < 6; ++index) {
+        failures +=
+            expect_string(mylite_column_text(stmt, index), metadata_values[index], "json value");
+    }
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "json metadata done");
+    failures += expect_column_names(stmt, metadata_columns, 6, "json metadata columns");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database,
+                            "CREATE TABLE json_items ("
+                            "id INT PRIMARY KEY, doc VARCHAR(64), note VARCHAR(16))",
+                            MYLITE_DONE);
+    failures += execute_sql(database,
+                            "INSERT INTO json_items VALUES "
+                            "(1,'{\"a\":1}',NULL), (2,'[1,2]',NULL), "
+                            "(3,'hello',NULL), (4,NULL,NULL)",
+                            MYLITE_DONE);
+    failures += expect_select_rows(database,
+                                   "SELECT id FROM json_items "
+                                   "WHERE JSON_VALID(doc) = 1 ORDER BY id",
+                                   id_columns, 1, valid_ids, 2, "json valid table predicate");
+    failures += execute_sql_expect_done_affected(
+        database, "UPDATE json_items SET note=JSON_TYPE(doc) WHERE JSON_VALID(doc) = 1", 2,
+        "json update affected rows");
+    failures += expect_select_rows(database,
+                                   "SELECT id, note FROM json_items WHERE note IS NOT NULL "
+                                   "ORDER BY JSON_TYPE(doc) DESC",
+                                   note_columns, 2, updated_notes, 2, "json update values");
+    failures += execute_sql_expect_done_affected(database,
+                                                 "DELETE FROM json_items WHERE JSON_VALID(doc) = 0",
+                                                 1, "json delete affected rows");
+    failures += expect_select_rows(database, "SELECT id FROM json_items ORDER BY id", id_columns, 1,
+                                   remaining_ids, 3, "json delete remaining rows");
+
+    failures +=
+        expect_prepare_error(database, "SELECT JSON_TYPE(1)", MYLITE_EXEC_ERROR,
+                             "Invalid data type for JSON data", "json type non-string error");
+    failures += expect_int(mylite_warning_count(database), 1, "json type non-string count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_invalid_json_data,
+                           "json type non-string code");
+    failures += expect_prepare_error(database, "SELECT JSON_TYPE('hello')", MYLITE_EXEC_ERROR,
+                                     "Invalid JSON text in argument 1 to function json_type",
+                                     "json type invalid text error");
+    failures += expect_int(mylite_warning_count(database), 1, "json type invalid text count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_invalid_json_text,
+                           "json type invalid text code");
+    failures += expect_prepare_error(database, "SELECT JSON_QUOTE(1)", MYLITE_EXEC_ERROR,
+                                     "Incorrect type for argument 1 in function json_quote",
+                                     "json quote non-string error");
+    failures += expect_int(mylite_warning_count(database), 1, "json quote non-string count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_incorrect_json_type,
+                           "json quote non-string code");
+    failures += expect_prepare_error(database, "SELECT JSON_UNQUOTE(1)", MYLITE_EXEC_ERROR,
+                                     "Incorrect type for argument 1 in function json_unquote",
+                                     "json unquote non-string error");
+    failures += expect_int(mylite_warning_count(database), 1, "json unquote non-string count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_incorrect_json_type,
+                           "json unquote non-string code");
+    failures +=
+        expect_prepare_error(database, "SELECT JSON_UNQUOTE('\"bad\\\\q\"')", MYLITE_EXEC_ERROR,
+                             "Invalid JSON text in argument 1 to function json_unquote",
+                             "json unquote invalid escape error");
+    failures += expect_int(mylite_warning_count(database), 1, "json unquote invalid escape count");
+    failures += expect_int((int)mylite_warning_code(database, 0), mysql_warning_invalid_json_text,
+                           "json unquote invalid escape code");
+    failures += expect_prepare_error(database, "SELECT JSON_OBJECT('a')", MYLITE_EXEC_ERROR,
+                                     "Incorrect parameter count in the call to native function "
+                                     "'JSON_OBJECT'",
+                                     "json object odd arity error");
+    failures += expect_int(mylite_warning_count(database), 1, "json object odd arity count");
+    failures +=
+        expect_int((int)mylite_warning_code(database, 0),
+                   mysql_warning_wrong_paramcount_to_native_fct, "json object odd arity code");
+    failures += expect_prepare_error(database, "SELECT JSON_OBJECT(NULL,1)", MYLITE_EXEC_ERROR,
+                                     "JSON documents may not contain NULL member names",
+                                     "json object null key error");
+    failures += expect_int(mylite_warning_count(database), 1, "json object null key count");
+    failures += expect_int((int)mylite_warning_code(database, 0),
+                           mysql_warning_json_document_null_key, "json object null key code");
 
     mylite_close(database);
     // NOLINTEND(readability-function-size,readability-magic-numbers)

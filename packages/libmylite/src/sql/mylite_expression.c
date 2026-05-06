@@ -1,6 +1,7 @@
 #include "mylite_expression.h"
 
 #include "mylite_digest.h"
+#include "mylite_json.h"
 #include "mylite_regexp.h"
 
 #include <mylite/mylite.h>
@@ -28,10 +29,15 @@ enum {
     MYLITE_WARNING_DIVISION_BY_ZERO = 1365,
     MYLITE_WARNING_INCORRECT_STRING_VALUE = 1411,
     MYLITE_WARNING_DATETIME_FUNCTION_OVERFLOW = 1441,
+    MYLITE_WARNING_WRONG_PARAMCOUNT_TO_NATIVE_FCT = 1582,
     MYLITE_WARNING_WRONG_PARAMETERS_TO_NATIVE_FCT = 1583,
     MYLITE_WARNING_UNKNOWN_LOCALE = 1649,
     MYLITE_WARNING_OUT_OF_RANGE = 1690,
+    MYLITE_WARNING_INCORRECT_JSON_TYPE = 3064,
     MYLITE_WARNING_INVALID_ARGUMENT_FOR_LOGARITHM = 3020,
+    MYLITE_WARNING_INVALID_JSON_TEXT = 3141,
+    MYLITE_WARNING_INVALID_JSON_DATA = 3146,
+    MYLITE_WARNING_JSON_DOCUMENT_NULL_KEY = 3158,
     MYLITE_WARNING_REGEXP_INDEX_OUT_OF_BOUNDS = 3686,
     MYLITE_WARNING_REGEXP_ERROR = 3691,
     MYLITE_EXPRESSION_TEXT_BUFFER_SIZE = 64,
@@ -666,6 +672,29 @@ enum mylite_scalar_function_id {
     MYLITE_SCALAR_FUNCTION_REGEXP_INSTR = 148,
     MYLITE_SCALAR_FUNCTION_REGEXP_SUBSTR = 149,
     MYLITE_SCALAR_FUNCTION_REGEXP_REPLACE = 150,
+    MYLITE_SCALAR_FUNCTION_JSON_VALID = 151,
+    MYLITE_SCALAR_FUNCTION_JSON_TYPE = 152,
+    MYLITE_SCALAR_FUNCTION_JSON_QUOTE = 153,
+    MYLITE_SCALAR_FUNCTION_JSON_UNQUOTE = 154,
+    MYLITE_SCALAR_FUNCTION_JSON_ARRAY = 155,
+    MYLITE_SCALAR_FUNCTION_JSON_OBJECT = 156,
+};
+
+enum json_expression_constant {
+    json_literal_null_length = 4U,
+    json_literal_true_length = 4U,
+    json_literal_false_length = 5U,
+};
+
+enum regexp_expression_constant {
+    regexp_like_min_arity = 2U,
+    regexp_like_max_arity = 3U,
+    regexp_instr_min_arity = 2U,
+    regexp_instr_max_arity = 6U,
+    regexp_substr_min_arity = 2U,
+    regexp_substr_max_arity = 5U,
+    regexp_replace_min_arity = 3U,
+    regexp_replace_max_arity = 6U,
 };
 
 struct angle_conversion_input {
@@ -681,6 +710,13 @@ struct inverse_trigonometric_input {
 struct atan_input {
     double y;
     double x;
+};
+
+struct json_object_member {
+    char *key;
+    size_t key_length;
+    char *value;
+    size_t value_length;
 };
 
 struct trigonometric_input {
@@ -1832,6 +1868,64 @@ static int eval_regexp_replace_function(const struct mylite_sql_ast_node *argume
                                         const struct mylite_expression_eval_context *context,
                                         struct mylite_expression_warnings *warnings,
                                         struct mylite_expression_value *out_value);
+static int eval_json_valid_function(const struct mylite_sql_ast_node *arguments,
+                                    const struct mylite_expression_eval_context *context,
+                                    struct mylite_expression_warnings *warnings,
+                                    struct mylite_expression_value *out_value);
+static int eval_json_type_function(const struct mylite_sql_ast_node *arguments,
+                                   const struct mylite_expression_eval_context *context,
+                                   struct mylite_expression_warnings *warnings,
+                                   struct mylite_expression_value *out_value);
+static int eval_json_quote_function(const struct mylite_sql_ast_node *arguments,
+                                    const struct mylite_expression_eval_context *context,
+                                    struct mylite_expression_warnings *warnings,
+                                    struct mylite_expression_value *out_value);
+static int eval_json_unquote_function(const struct mylite_sql_ast_node *arguments,
+                                      const struct mylite_expression_eval_context *context,
+                                      struct mylite_expression_warnings *warnings,
+                                      struct mylite_expression_value *out_value);
+static int eval_json_array_function(const struct mylite_sql_ast_node *arguments,
+                                    const struct mylite_expression_eval_context *context,
+                                    struct mylite_expression_warnings *warnings,
+                                    struct mylite_expression_value *out_value);
+static int eval_json_object_function(const struct mylite_sql_ast_node *arguments,
+                                     const struct mylite_expression_eval_context *context,
+                                     struct mylite_expression_warnings *warnings,
+                                     struct mylite_expression_value *out_value);
+static int eval_json_object_members(const struct mylite_sql_ast_node *arguments,
+                                    const struct mylite_expression_eval_context *context,
+                                    struct mylite_expression_warnings *warnings,
+                                    struct json_object_member **out_members,
+                                    size_t *out_member_count);
+static int eval_json_object_member(const struct mylite_sql_ast_node *key_node,
+                                   const struct mylite_sql_ast_node *value_node,
+                                   const struct mylite_expression_eval_context *context,
+                                   struct mylite_expression_warnings *warnings,
+                                   struct json_object_member **members, size_t *member_count);
+static int json_object_to_text(struct json_object_member *members, size_t member_count,
+                               char **out_json, size_t *out_json_length);
+static int append_json_object_member(char **json, size_t *json_length,
+                                     const struct json_object_member *member);
+static int json_append_argument(char **json, size_t *json_length,
+                                const struct mylite_sql_ast_node *argument,
+                                const struct mylite_expression_value *value);
+static int json_argument_to_text(const struct mylite_expression_value *value, char **out_text,
+                                 size_t *out_length);
+static bool json_argument_is_true_literal(const struct mylite_sql_ast_node *argument);
+static bool json_argument_is_false_literal(const struct mylite_sql_ast_node *argument);
+static bool json_argument_is_json_creation(const struct mylite_sql_ast_node *argument);
+static int json_object_append_member(struct json_object_member **members, size_t *count, char *key,
+                                     size_t key_length, char *value, size_t value_length);
+static int json_object_member_compare(const void *left, const void *right);
+static void json_object_members_deinit(struct json_object_member *members, size_t count);
+static int append_json_invalid_text_error(struct mylite_expression_warnings *warnings,
+                                          const char *function_name,
+                                          const struct mylite_json_error *error);
+static int append_json_incorrect_type_error(struct mylite_expression_warnings *warnings,
+                                            const char *function_name);
+static int append_json_invalid_data_error(struct mylite_expression_warnings *warnings,
+                                          const char *function_name);
+static int append_json_null_key_error(struct mylite_expression_warnings *warnings);
 static int eval_regexp_match_type(const struct mylite_expression_value *match_type,
                                   struct mylite_expression_warnings *warnings,
                                   const char *function_name, struct mylite_regexp_options *options);
@@ -2286,13 +2380,16 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_STRCMP:
         return arity == 2U;
     case MYLITE_SCALAR_FUNCTION_REGEXP_LIKE:
-        return arity == 2U || arity == 3U;
+        return arity == regexp_like_min_arity || arity == regexp_like_max_arity;
     case MYLITE_SCALAR_FUNCTION_REGEXP_INSTR:
-        return arity >= 2U && arity <= 6U;
+        return arity >= regexp_instr_min_arity && arity <= regexp_instr_max_arity;
     case MYLITE_SCALAR_FUNCTION_REGEXP_SUBSTR:
-        return arity >= 2U && arity <= 5U;
+        return arity >= regexp_substr_min_arity && arity <= regexp_substr_max_arity;
     case MYLITE_SCALAR_FUNCTION_REGEXP_REPLACE:
-        return arity >= 3U && arity <= 6U;
+        return arity >= regexp_replace_min_arity && arity <= regexp_replace_max_arity;
+    case MYLITE_SCALAR_FUNCTION_JSON_ARRAY:
+    case MYLITE_SCALAR_FUNCTION_JSON_OBJECT:
+        return true;
     case MYLITE_SCALAR_FUNCTION_UNIX_TIMESTAMP:
     case MYLITE_SCALAR_FUNCTION_RAND:
         return arity == 0U || arity == 1U;
@@ -2328,6 +2425,10 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     case MYLITE_SCALAR_FUNCTION_INET_ATON:
     case MYLITE_SCALAR_FUNCTION_INET_NTOA:
     case MYLITE_SCALAR_FUNCTION_IS_UUID:
+    case MYLITE_SCALAR_FUNCTION_JSON_VALID:
+    case MYLITE_SCALAR_FUNCTION_JSON_TYPE:
+    case MYLITE_SCALAR_FUNCTION_JSON_QUOTE:
+    case MYLITE_SCALAR_FUNCTION_JSON_UNQUOTE:
     case MYLITE_SCALAR_FUNCTION_ABS:
     case MYLITE_SCALAR_FUNCTION_SIGN:
     case MYLITE_SCALAR_FUNCTION_FLOOR:
@@ -3397,6 +3498,18 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         return eval_regexp_substr_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_REGEXP_REPLACE:
         return eval_regexp_replace_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_JSON_VALID:
+        return eval_json_valid_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_JSON_TYPE:
+        return eval_json_type_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_JSON_QUOTE:
+        return eval_json_quote_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_JSON_UNQUOTE:
+        return eval_json_unquote_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_JSON_ARRAY:
+        return eval_json_array_function(arguments, context, warnings, out_value);
+    case MYLITE_SCALAR_FUNCTION_JSON_OBJECT:
+        return eval_json_object_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_ISNULL:
         return eval_isnull_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_DATABASE:
@@ -3436,6 +3549,581 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
         break;
     }
     return -1;
+}
+
+static int eval_json_valid_function(const struct mylite_sql_ast_node *arguments,
+                                    const struct mylite_expression_eval_context *context,
+                                    struct mylite_expression_warnings *warnings,
+                                    struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value argument = {0};
+    int status = eval_node(child_at(arguments, 0U), context, warnings, &argument);
+
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&argument)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_INT64,
+        .int64_value =
+            argument.kind == MYLITE_EXPRESSION_VALUE_TEXT &&
+                    mylite_json_validate(argument.text_value, argument.text_length, NULL, NULL)
+                ? 1
+                : 0,
+    };
+
+cleanup:
+    mylite_expression_value_deinit(&argument);
+    return status;
+}
+
+static int eval_json_type_function(const struct mylite_sql_ast_node *arguments,
+                                   const struct mylite_expression_eval_context *context,
+                                   struct mylite_expression_warnings *warnings,
+                                   struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value argument = {0};
+    struct mylite_json_error error = {0};
+    enum mylite_json_type type = MYLITE_JSON_TYPE_INVALID;
+    const char *type_name = NULL;
+    int status = eval_node(child_at(arguments, 0U), context, warnings, &argument);
+
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&argument)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    if (argument.kind != MYLITE_EXPRESSION_VALUE_TEXT) {
+        status = append_json_invalid_data_error(warnings, "json_type");
+        status = status == 0 ? MYLITE_EXEC_ERROR : status;
+        goto cleanup;
+    }
+    if (!mylite_json_validate(argument.text_value, argument.text_length, &type, &error)) {
+        status = append_json_invalid_text_error(warnings, "json_type", &error);
+        status = status == 0 ? MYLITE_EXEC_ERROR : status;
+        goto cleanup;
+    }
+    type_name = mylite_json_type_name(type);
+    status = type_name == NULL ? -1 : set_text_value(type_name, strlen(type_name), out_value);
+
+cleanup:
+    mylite_expression_value_deinit(&argument);
+    return status;
+}
+
+static int eval_json_quote_function(const struct mylite_sql_ast_node *arguments,
+                                    const struct mylite_expression_eval_context *context,
+                                    struct mylite_expression_warnings *warnings,
+                                    struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value argument = {0};
+    char *quoted = NULL;
+    size_t quoted_length = 0U;
+    int status = eval_node(child_at(arguments, 0U), context, warnings, &argument);
+
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&argument)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    if (argument.kind != MYLITE_EXPRESSION_VALUE_TEXT) {
+        status = append_json_incorrect_type_error(warnings, "json_quote");
+        status = status == 0 ? MYLITE_EXEC_ERROR : status;
+        goto cleanup;
+    }
+    status = mylite_json_quote_string(argument.text_value, argument.text_length, &quoted,
+                                      &quoted_length);
+    if (status == 0) {
+        status = set_text_value(quoted, quoted_length, out_value);
+    }
+
+cleanup:
+    free(quoted);
+    mylite_expression_value_deinit(&argument);
+    return status;
+}
+
+static int eval_json_unquote_function(const struct mylite_sql_ast_node *arguments,
+                                      const struct mylite_expression_eval_context *context,
+                                      struct mylite_expression_warnings *warnings,
+                                      struct mylite_expression_value *out_value)
+{
+    struct mylite_expression_value argument = {0};
+    struct mylite_json_error error = {0};
+    char *unquoted = NULL;
+    size_t unquoted_length = 0U;
+    int status = eval_node(child_at(arguments, 0U), context, warnings, &argument);
+
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&argument)) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        goto cleanup;
+    }
+    if (argument.kind != MYLITE_EXPRESSION_VALUE_TEXT) {
+        status = append_json_incorrect_type_error(warnings, "json_unquote");
+        status = status == 0 ? MYLITE_EXEC_ERROR : status;
+        goto cleanup;
+    }
+    status = mylite_json_unquote_string(argument.text_value, argument.text_length, &unquoted,
+                                        &unquoted_length, &error);
+    if (status == 1) {
+        status = append_json_invalid_text_error(warnings, "json_unquote", &error);
+        status = status == 0 ? MYLITE_EXEC_ERROR : status;
+        goto cleanup;
+    }
+    if (status == 0) {
+        status = set_text_value(unquoted, unquoted_length, out_value);
+    }
+
+cleanup:
+    free(unquoted);
+    mylite_expression_value_deinit(&argument);
+    return status;
+}
+
+static int eval_json_array_function(const struct mylite_sql_ast_node *arguments,
+                                    const struct mylite_expression_eval_context *context,
+                                    struct mylite_expression_warnings *warnings,
+                                    struct mylite_expression_value *out_value)
+{
+    char *json = NULL;
+    size_t json_length = 0U;
+    bool first = true;
+    int status = append_text(&json, &json_length, "[", 1U);
+
+    if (status != 0) {
+        return status;
+    }
+    for (const struct mylite_sql_ast_node *argument = arguments == NULL ? NULL
+                                                                        : arguments->first_child;
+         argument != NULL; argument = argument->next_sibling) {
+        struct mylite_expression_value value = {0};
+
+        status = eval_node(argument, context, warnings, &value);
+        if (status != 0) {
+            mylite_expression_value_deinit(&value);
+            break;
+        }
+        if (!first) {
+            status = append_text(&json, &json_length, ", ", 2U);
+        }
+        if (status == 0) {
+            status = json_append_argument(&json, &json_length, argument, &value);
+        }
+        first = false;
+        mylite_expression_value_deinit(&value);
+        if (status != 0) {
+            break;
+        }
+    }
+    if (status == 0) {
+        status = append_text(&json, &json_length, "]", 1U);
+    }
+    if (status == 0) {
+        status = set_text_value(json, json_length, out_value);
+    }
+    free(json);
+    return status;
+}
+
+static int eval_json_object_function(const struct mylite_sql_ast_node *arguments,
+                                     const struct mylite_expression_eval_context *context,
+                                     struct mylite_expression_warnings *warnings,
+                                     struct mylite_expression_value *out_value)
+{
+    struct json_object_member *members = NULL;
+    size_t member_count = 0U;
+    char *json = NULL;
+    size_t json_length = 0U;
+    int status = eval_json_object_members(arguments, context, warnings, &members, &member_count);
+
+    if (status == 0) {
+        status = json_object_to_text(members, member_count, &json, &json_length);
+    }
+    if (status == 0) {
+        status = set_text_value(json, json_length, out_value);
+    }
+
+    free(json);
+    json_object_members_deinit(members, member_count);
+    return status;
+}
+
+static int eval_json_object_members(const struct mylite_sql_ast_node *arguments,
+                                    const struct mylite_expression_eval_context *context,
+                                    struct mylite_expression_warnings *warnings,
+                                    struct json_object_member **out_members,
+                                    size_t *out_member_count)
+{
+    int status = 0;
+
+    if (child_count(arguments) % 2U != 0U) {
+        status = mylite_expression_warnings_append_condition(
+            warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR,
+            MYLITE_WARNING_WRONG_PARAMCOUNT_TO_NATIVE_FCT,
+            "Incorrect parameter count in the call to native function 'JSON_OBJECT'");
+        return status == 0 ? MYLITE_EXEC_ERROR : status;
+    }
+
+    for (const struct mylite_sql_ast_node *key_node = arguments == NULL ? NULL
+                                                                        : arguments->first_child;
+         key_node != NULL;) {
+        const struct mylite_sql_ast_node *value_node = key_node->next_sibling;
+
+        status = eval_json_object_member(key_node, value_node, context, warnings, out_members,
+                                         out_member_count);
+        if (status != 0) {
+            return status;
+        }
+        key_node = value_node == NULL ? NULL : value_node->next_sibling;
+    }
+    return 0;
+}
+
+static int eval_json_object_member(const struct mylite_sql_ast_node *key_node,
+                                   const struct mylite_sql_ast_node *value_node,
+                                   const struct mylite_expression_eval_context *context,
+                                   struct mylite_expression_warnings *warnings,
+                                   struct json_object_member **members, size_t *member_count)
+{
+    struct mylite_expression_value key = {0};
+    struct mylite_expression_value value = {0};
+    char *key_text = NULL;
+    size_t key_length = 0U;
+    char *value_json = NULL;
+    size_t value_json_length = 0U;
+    int status = eval_node(key_node, context, warnings, &key);
+
+    if (status != 0) {
+        goto cleanup;
+    }
+    if (is_null(&key)) {
+        status = append_json_null_key_error(warnings);
+        status = status == 0 ? MYLITE_EXEC_ERROR : status;
+        goto cleanup;
+    }
+    status = json_argument_to_text(&key, &key_text, &key_length);
+    if (status != 0) {
+        goto cleanup;
+    }
+    status = eval_node(value_node, context, warnings, &value);
+    if (status == 0) {
+        status = json_append_argument(&value_json, &value_json_length, value_node, &value);
+    }
+    if (status != 0) {
+        goto cleanup;
+    }
+    status = json_object_append_member(members, member_count, key_text, key_length, value_json,
+                                       value_json_length);
+    if (status == 0) {
+        key_text = NULL;
+        value_json = NULL;
+    }
+
+cleanup:
+    mylite_expression_value_deinit(&key);
+    mylite_expression_value_deinit(&value);
+    free(key_text);
+    free(value_json);
+    return status;
+}
+
+static int json_object_to_text(struct json_object_member *members, size_t member_count,
+                               char **out_json, size_t *out_json_length)
+{
+    char *json = NULL;
+    size_t json_length = 0U;
+    int status = 0;
+
+    qsort(members, member_count, sizeof(*members), json_object_member_compare);
+    status = append_text(&json, &json_length, "{", 1U);
+    for (size_t index = 0U; status == 0 && index < member_count; ++index) {
+        if (index != 0U) {
+            status = append_text(&json, &json_length, ", ", 2U);
+        }
+        if (status == 0) {
+            status = append_json_object_member(&json, &json_length, &members[index]);
+        }
+    }
+    if (status == 0) {
+        status = append_text(&json, &json_length, "}", 1U);
+    }
+    if (status == 0) {
+        *out_json = json;
+        *out_json_length = json_length;
+        return 0;
+    }
+    free(json);
+    return status;
+}
+
+static int append_json_object_member(char **json, size_t *json_length,
+                                     const struct json_object_member *member)
+{
+    char *quoted_key = NULL;
+    size_t quoted_key_length = 0U;
+    int status =
+        mylite_json_quote_string(member->key, member->key_length, &quoted_key, &quoted_key_length);
+
+    if (status == 0) {
+        status = append_text(json, json_length, quoted_key, quoted_key_length);
+    }
+    if (status == 0) {
+        status = append_text(json, json_length, ": ", 2U);
+    }
+    if (status == 0) {
+        status = append_text(json, json_length, member->value, member->value_length);
+    }
+    free(quoted_key);
+    return status;
+}
+
+static int json_append_argument(char **json, size_t *json_length,
+                                const struct mylite_sql_ast_node *argument,
+                                const struct mylite_expression_value *value)
+{
+    char *text = NULL;
+    size_t text_length = 0U;
+    int status = 0;
+
+    if (is_null(value)) {
+        return append_text(json, json_length, "null", json_literal_null_length);
+    }
+    if (json_argument_is_true_literal(argument)) {
+        return append_text(json, json_length, "true", json_literal_true_length);
+    }
+    if (json_argument_is_false_literal(argument)) {
+        return append_text(json, json_length, "false", json_literal_false_length);
+    }
+    status = json_argument_to_text(value, &text, &text_length);
+    if (status != 0) {
+        return status;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT && !json_argument_is_json_creation(argument)) {
+        char *quoted = NULL;
+        size_t quoted_length = 0U;
+
+        status = mylite_json_quote_string(text, text_length, &quoted, &quoted_length);
+        if (status == 0) {
+            status = append_text(json, json_length, quoted, quoted_length);
+        }
+        free(quoted);
+    } else {
+        status = append_text(json, json_length, text, text_length);
+    }
+    free(text);
+    return status;
+}
+
+static int json_argument_to_text(const struct mylite_expression_value *value, char **out_text,
+                                 size_t *out_length)
+{
+    char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
+    char *text = NULL;
+    int length = 0;
+
+    if (value == NULL || value->kind == MYLITE_EXPRESSION_VALUE_NULL) {
+        *out_text = NULL;
+        *out_length = 0U;
+        return 0;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+        text = copy_span_text(value->text_value, value->text_length);
+        if (text == NULL) {
+            return -1;
+        }
+        *out_text = text;
+        *out_length = value->text_length;
+        return 0;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_REAL && value->text_value != NULL) {
+        text = copy_span_text(value->text_value, value->text_length);
+        if (text == NULL) {
+            return -1;
+        }
+        *out_text = text;
+        *out_length = value->text_length;
+        return 0;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_REAL) {
+        length = format_compact_real_text(value->real_value, buffer, sizeof(buffer));
+        if (length <= 0 || (size_t)length >= sizeof(buffer)) {
+            return -1;
+        }
+        text = copy_span_text(buffer, (size_t)length);
+        if (text == NULL) {
+            return -1;
+        }
+        *out_text = text;
+        *out_length = (size_t)length;
+        return 0;
+    }
+
+    text = mylite_expression_value_to_text(value);
+    if (text == NULL) {
+        return -1;
+    }
+    *out_text = text;
+    *out_length = strlen(text);
+    return 0;
+}
+
+static bool json_argument_is_true_literal(const struct mylite_sql_ast_node *argument)
+{
+    argument = unwrap_parenthesized_node(argument);
+    return argument != NULL && argument->kind == MYLITE_SQL_AST_LITERAL &&
+           argument->literal_kind == MYLITE_SQL_AST_LITERAL_TRUE;
+}
+
+static bool json_argument_is_false_literal(const struct mylite_sql_ast_node *argument)
+{
+    argument = unwrap_parenthesized_node(argument);
+    return argument != NULL && argument->kind == MYLITE_SQL_AST_LITERAL &&
+           argument->literal_kind == MYLITE_SQL_AST_LITERAL_FALSE;
+}
+
+static bool json_argument_is_json_creation(const struct mylite_sql_ast_node *argument)
+{
+    enum mylite_scalar_function_id function_id = MYLITE_SCALAR_FUNCTION_UNKNOWN;
+
+    argument = unwrap_parenthesized_node(argument);
+    if (argument == NULL || argument->kind != MYLITE_SQL_AST_FUNCTION_CALL) {
+        return false;
+    }
+    function_id = scalar_function_id(argument);
+    return function_id == MYLITE_SCALAR_FUNCTION_JSON_ARRAY ||
+           function_id == MYLITE_SCALAR_FUNCTION_JSON_OBJECT;
+}
+
+static int json_object_append_member(struct json_object_member **members, size_t *count, char *key,
+                                     size_t key_length, char *value, size_t value_length)
+{
+    struct json_object_member *updated = NULL;
+
+    for (size_t index = 0U; index < *count; ++index) {
+        if ((*members)[index].key_length == key_length &&
+            memcmp((*members)[index].key, key, key_length) == 0) {
+            free(key);
+            free((*members)[index].value);
+            (*members)[index].value = value;
+            (*members)[index].value_length = value_length;
+            return 0;
+        }
+    }
+
+    updated = realloc(*members, (*count + 1U) * sizeof(*updated));
+    if (updated == NULL) {
+        return -1;
+    }
+    *members = updated;
+    (*members)[*count] = (struct json_object_member){
+        .key = key,
+        .key_length = key_length,
+        .value = value,
+        .value_length = value_length,
+    };
+    ++*count;
+    return 0;
+}
+
+// qsort requires this two-pointer comparator shape.
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+static int json_object_member_compare(const void *left, const void *right)
+{
+    const struct json_object_member *left_member = left;
+    const struct json_object_member *right_member = right;
+    size_t min_length = left_member->key_length < right_member->key_length
+                            ? left_member->key_length
+                            : right_member->key_length;
+    int comparison = 0;
+
+    if (left_member->key_length != right_member->key_length) {
+        return left_member->key_length < right_member->key_length ? -1 : 1;
+    }
+    comparison = memcmp(left_member->key, right_member->key, min_length);
+    if (comparison < 0) {
+        return -1;
+    }
+    if (comparison > 0) {
+        return 1;
+    }
+    return 0;
+}
+
+static void json_object_members_deinit(struct json_object_member *members, size_t count)
+{
+    for (size_t index = 0U; index < count; ++index) {
+        free(members[index].key);
+        free(members[index].value);
+    }
+    free(members);
+}
+
+static int append_json_invalid_text_error(struct mylite_expression_warnings *warnings,
+                                          const char *function_name,
+                                          const struct mylite_json_error *error)
+{
+    char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
+    const char *detail =
+        error == NULL || error->message == NULL ? "Invalid value." : error->message;
+    size_t position = error == NULL ? 0U : error->position;
+    int length = snprintf(message, sizeof(message),
+                          "Invalid JSON text in argument 1 to function %s: \"%s\" at position %zu.",
+                          function_name == NULL ? "" : function_name, detail, position);
+
+    if (length <= 0 || (size_t)length >= sizeof(message)) {
+        return -1;
+    }
+    return mylite_expression_warnings_append_condition(
+        warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, MYLITE_WARNING_INVALID_JSON_TEXT, message);
+}
+
+static int append_json_incorrect_type_error(struct mylite_expression_warnings *warnings,
+                                            const char *function_name)
+{
+    char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
+    int length = snprintf(message, sizeof(message), "Incorrect type for argument 1 in function %s.",
+                          function_name == NULL ? "" : function_name);
+
+    if (length <= 0 || (size_t)length >= sizeof(message)) {
+        return -1;
+    }
+    return mylite_expression_warnings_append_condition(warnings,
+                                                       MYLITE_EXPRESSION_WARNING_LEVEL_ERROR,
+                                                       MYLITE_WARNING_INCORRECT_JSON_TYPE, message);
+}
+
+static int append_json_invalid_data_error(struct mylite_expression_warnings *warnings,
+                                          const char *function_name)
+{
+    char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
+    int length = snprintf(
+        message, sizeof(message),
+        "Invalid data type for JSON data in argument 1 to function %s; a JSON string or JSON type "
+        "is required.",
+        function_name == NULL ? "" : function_name);
+
+    if (length <= 0 || (size_t)length >= sizeof(message)) {
+        return -1;
+    }
+    return mylite_expression_warnings_append_condition(
+        warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, MYLITE_WARNING_INVALID_JSON_DATA, message);
+}
+
+static int append_json_null_key_error(struct mylite_expression_warnings *warnings)
+{
+    return mylite_expression_warnings_append_condition(
+        warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, MYLITE_WARNING_JSON_DOCUMENT_NULL_KEY,
+        "JSON documents may not contain NULL member names.");
 }
 
 static int eval_unix_timestamp_function(const struct mylite_sql_ast_node *node,
@@ -6938,6 +7626,12 @@ static bool temporal_part_from_function(enum mylite_scalar_function_id function_
     case MYLITE_SCALAR_FUNCTION_REGEXP_INSTR:
     case MYLITE_SCALAR_FUNCTION_REGEXP_SUBSTR:
     case MYLITE_SCALAR_FUNCTION_REGEXP_REPLACE:
+    case MYLITE_SCALAR_FUNCTION_JSON_VALID:
+    case MYLITE_SCALAR_FUNCTION_JSON_TYPE:
+    case MYLITE_SCALAR_FUNCTION_JSON_QUOTE:
+    case MYLITE_SCALAR_FUNCTION_JSON_UNQUOTE:
+    case MYLITE_SCALAR_FUNCTION_JSON_ARRAY:
+    case MYLITE_SCALAR_FUNCTION_JSON_OBJECT:
     case MYLITE_SCALAR_FUNCTION_STRCMP:
     case MYLITE_SCALAR_FUNCTION_FORMAT:
     case MYLITE_SCALAR_FUNCTION_NOW:
@@ -11426,6 +12120,12 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     case MYLITE_SCALAR_FUNCTION_REGEXP_INSTR:
     case MYLITE_SCALAR_FUNCTION_REGEXP_SUBSTR:
     case MYLITE_SCALAR_FUNCTION_REGEXP_REPLACE:
+    case MYLITE_SCALAR_FUNCTION_JSON_VALID:
+    case MYLITE_SCALAR_FUNCTION_JSON_TYPE:
+    case MYLITE_SCALAR_FUNCTION_JSON_QUOTE:
+    case MYLITE_SCALAR_FUNCTION_JSON_UNQUOTE:
+    case MYLITE_SCALAR_FUNCTION_JSON_ARRAY:
+    case MYLITE_SCALAR_FUNCTION_JSON_OBJECT:
     case MYLITE_SCALAR_FUNCTION_STRCMP:
     case MYLITE_SCALAR_FUNCTION_ISNULL:
     case MYLITE_SCALAR_FUNCTION_DATABASE:
@@ -13454,6 +14154,12 @@ static int trigonometric_function_result(struct trigonometric_input input,
     case MYLITE_SCALAR_FUNCTION_REGEXP_INSTR:
     case MYLITE_SCALAR_FUNCTION_REGEXP_SUBSTR:
     case MYLITE_SCALAR_FUNCTION_REGEXP_REPLACE:
+    case MYLITE_SCALAR_FUNCTION_JSON_VALID:
+    case MYLITE_SCALAR_FUNCTION_JSON_TYPE:
+    case MYLITE_SCALAR_FUNCTION_JSON_QUOTE:
+    case MYLITE_SCALAR_FUNCTION_JSON_UNQUOTE:
+    case MYLITE_SCALAR_FUNCTION_JSON_ARRAY:
+    case MYLITE_SCALAR_FUNCTION_JSON_OBJECT:
     case MYLITE_SCALAR_FUNCTION_STRCMP:
     case MYLITE_SCALAR_FUNCTION_ISNULL:
     case MYLITE_SCALAR_FUNCTION_DATABASE:
@@ -13794,6 +14500,12 @@ static int inverse_trigonometric_function_result(struct inverse_trigonometric_in
     case MYLITE_SCALAR_FUNCTION_REGEXP_INSTR:
     case MYLITE_SCALAR_FUNCTION_REGEXP_SUBSTR:
     case MYLITE_SCALAR_FUNCTION_REGEXP_REPLACE:
+    case MYLITE_SCALAR_FUNCTION_JSON_VALID:
+    case MYLITE_SCALAR_FUNCTION_JSON_TYPE:
+    case MYLITE_SCALAR_FUNCTION_JSON_QUOTE:
+    case MYLITE_SCALAR_FUNCTION_JSON_UNQUOTE:
+    case MYLITE_SCALAR_FUNCTION_JSON_ARRAY:
+    case MYLITE_SCALAR_FUNCTION_JSON_OBJECT:
     case MYLITE_SCALAR_FUNCTION_STRCMP:
     case MYLITE_SCALAR_FUNCTION_ISNULL:
     case MYLITE_SCALAR_FUNCTION_DATABASE:
@@ -14042,6 +14754,12 @@ static int angle_conversion_result(struct angle_conversion_input conversion, dou
     case MYLITE_SCALAR_FUNCTION_REGEXP_INSTR:
     case MYLITE_SCALAR_FUNCTION_REGEXP_SUBSTR:
     case MYLITE_SCALAR_FUNCTION_REGEXP_REPLACE:
+    case MYLITE_SCALAR_FUNCTION_JSON_VALID:
+    case MYLITE_SCALAR_FUNCTION_JSON_TYPE:
+    case MYLITE_SCALAR_FUNCTION_JSON_QUOTE:
+    case MYLITE_SCALAR_FUNCTION_JSON_UNQUOTE:
+    case MYLITE_SCALAR_FUNCTION_JSON_ARRAY:
+    case MYLITE_SCALAR_FUNCTION_JSON_OBJECT:
     case MYLITE_SCALAR_FUNCTION_STRCMP:
     case MYLITE_SCALAR_FUNCTION_ISNULL:
     case MYLITE_SCALAR_FUNCTION_DATABASE:
@@ -18417,6 +19135,12 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
         {"REGEXP_INSTR", MYLITE_SCALAR_FUNCTION_REGEXP_INSTR},
         {"REGEXP_SUBSTR", MYLITE_SCALAR_FUNCTION_REGEXP_SUBSTR},
         {"REGEXP_REPLACE", MYLITE_SCALAR_FUNCTION_REGEXP_REPLACE},
+        {"JSON_VALID", MYLITE_SCALAR_FUNCTION_JSON_VALID},
+        {"JSON_TYPE", MYLITE_SCALAR_FUNCTION_JSON_TYPE},
+        {"JSON_QUOTE", MYLITE_SCALAR_FUNCTION_JSON_QUOTE},
+        {"JSON_UNQUOTE", MYLITE_SCALAR_FUNCTION_JSON_UNQUOTE},
+        {"JSON_ARRAY", MYLITE_SCALAR_FUNCTION_JSON_ARRAY},
+        {"JSON_OBJECT", MYLITE_SCALAR_FUNCTION_JSON_OBJECT},
         {"ISNULL", MYLITE_SCALAR_FUNCTION_ISNULL},
         {"DATABASE", MYLITE_SCALAR_FUNCTION_DATABASE},
         {"SCHEMA", MYLITE_SCALAR_FUNCTION_SCHEMA},
@@ -18626,6 +19350,12 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     case MYLITE_SCALAR_FUNCTION_REGEXP_INSTR:
     case MYLITE_SCALAR_FUNCTION_REGEXP_SUBSTR:
     case MYLITE_SCALAR_FUNCTION_REGEXP_REPLACE:
+    case MYLITE_SCALAR_FUNCTION_JSON_VALID:
+    case MYLITE_SCALAR_FUNCTION_JSON_TYPE:
+    case MYLITE_SCALAR_FUNCTION_JSON_QUOTE:
+    case MYLITE_SCALAR_FUNCTION_JSON_UNQUOTE:
+    case MYLITE_SCALAR_FUNCTION_JSON_ARRAY:
+    case MYLITE_SCALAR_FUNCTION_JSON_OBJECT:
     case MYLITE_SCALAR_FUNCTION_ISNULL:
     case MYLITE_SCALAR_FUNCTION_DATE:
     case MYLITE_SCALAR_FUNCTION_DATEDIFF:

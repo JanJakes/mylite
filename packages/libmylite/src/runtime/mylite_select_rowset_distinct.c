@@ -90,6 +90,7 @@ static bool table_select_text_descriptor_is_binary(const struct mylite_field_des
     case MYLITE_FIELD_TYPE_STRING:
     case MYLITE_FIELD_TYPE_VAR_STRING:
     case MYLITE_FIELD_TYPE_BLOB:
+    case MYLITE_FIELD_TYPE_JSON:
         if ((descriptor->flags & MYLITE_FIELD_FLAG_BINARY) != 0U) {
             return true;
         }

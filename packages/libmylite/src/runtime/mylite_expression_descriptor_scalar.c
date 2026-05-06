@@ -12,6 +12,14 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+enum sha2_descriptor_constant {
+    sha2_length_parse_base = 10,
+    sha2_224_bits = 224U,
+    sha2_256_bits = 256U,
+    sha2_384_bits = 384U,
+    sha2_512_bits = 512U,
+};
+
 static bool infer_session_function_descriptor(mylite_db *database,
                                               const struct mylite_sql_ast_node *name,
                                               struct mylite_field_descriptor *out_descriptor);
@@ -152,10 +160,15 @@ bool mylite_expression_descriptor_infer_regexp_scalar_function(
     }
     if (mylite_function_name_is_regexp_substr(name) ||
         mylite_function_name_is_regexp_replace(name)) {
-        bool nullable = mylite_function_name_is_regexp_substr(name) ? true : result_nullable;
-        uint64_t length = mylite_function_name_is_regexp_replace(name)
-                              ? mylite_mysql_medium_text_length
-                              : mylite_mysql_text_length;
+        bool nullable = result_nullable;
+        uint64_t length = mylite_mysql_text_length;
+
+        if (mylite_function_name_is_regexp_substr(name)) {
+            nullable = true;
+        }
+        if (mylite_function_name_is_regexp_replace(name)) {
+            length = mylite_mysql_medium_text_length;
+        }
 
         *out_descriptor = (struct mylite_field_descriptor){
             .type = MYLITE_FIELD_TYPE_VAR_STRING,
@@ -166,6 +179,45 @@ bool mylite_expression_descriptor_infer_regexp_scalar_function(
             .nullable = nullable,
         };
         mylite_field_descriptor_set_nullable(out_descriptor, nullable);
+        return true;
+    }
+    return false;
+}
+
+bool mylite_expression_descriptor_infer_json_function(
+    mylite_db *database, const struct mylite_sql_ast_node *name, bool result_nullable,
+    struct mylite_field_descriptor *out_descriptor)
+{
+    unsigned int charset_id = mylite_expression_descriptor_connection_charset_id(database);
+
+    if (mylite_function_name_is_json_valid(name)) {
+        *out_descriptor = mylite_expression_descriptor_signed_longlong(result_nullable);
+        out_descriptor->length = mylite_mysql_signed_longlong_display_length;
+        return true;
+    }
+    if (mylite_function_name_is_json_type(name) || mylite_function_name_is_json_quote(name) ||
+        mylite_function_name_is_json_unquote(name)) {
+        *out_descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_VAR_STRING,
+            .flags = MYLITE_FIELD_FLAG_BINARY,
+            .length = mylite_mysql_text_length,
+            .decimals = mylite_mysql_not_fixed_decimals,
+            .charset_id = charset_id,
+            .nullable = true,
+        };
+        mylite_field_descriptor_set_nullable(out_descriptor, true);
+        return true;
+    }
+    if (mylite_function_name_is_json_creation(name)) {
+        *out_descriptor = (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_JSON,
+            .flags = MYLITE_FIELD_FLAG_BINARY,
+            .length = mylite_mysql_json_document_length,
+            .decimals = mylite_mysql_not_fixed_decimals,
+            .charset_id = charset_id,
+            .nullable = false,
+        };
+        mylite_field_descriptor_set_nullable(out_descriptor, false);
         return true;
     }
     return false;
@@ -306,7 +358,7 @@ static bool sha2_literal_hash_length(const struct mylite_sql_ast_node *argument,
         return false;
     }
     errno = 0;
-    bits = strtoull(text, &end, 10);
+    bits = strtoull(text, &end, sha2_length_parse_base);
     if (errno != 0 || end == text || (end != NULL && *end != '\0')) {
         free(text);
         return false;
@@ -319,14 +371,14 @@ static bool sha2_literal_hash_length(const struct mylite_sql_ast_node *argument,
 static uint64_t sha2_result_chars_from_bits(uint64_t bits)
 {
     switch (bits) {
-    case 224U:
+    case sha2_224_bits:
         return MYLITE_DIGEST_SHA2_224_HEX_LENGTH;
     case 0U:
-    case 256U:
+    case sha2_256_bits:
         return MYLITE_DIGEST_SHA2_256_HEX_LENGTH;
-    case 384U:
+    case sha2_384_bits:
         return MYLITE_DIGEST_SHA2_384_HEX_LENGTH;
-    case 512U:
+    case sha2_512_bits:
         return MYLITE_DIGEST_SHA2_512_HEX_LENGTH;
     default:
         return MYLITE_DIGEST_SHA2_256_HEX_LENGTH;

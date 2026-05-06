@@ -282,6 +282,7 @@ add_library(mylite STATIC
   src/sql/mylite_ast.c
   src/sql/mylite_digest.c
   src/sql/mylite_expression.c
+  src/sql/mylite_json.c
   src/sql/mylite_lexer.c
   src/sql/mylite_parser.c
   src/sql/mylite_regexp.c

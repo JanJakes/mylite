@@ -64,3 +64,38 @@ bool mylite_function_name_is_regexp_replace(const struct mylite_sql_ast_node *na
 
     return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }
+
+bool mylite_function_name_is_json_valid(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"JSON_VALID"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+bool mylite_function_name_is_json_type(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"JSON_TYPE"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+bool mylite_function_name_is_json_quote(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"JSON_QUOTE"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+bool mylite_function_name_is_json_unquote(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"JSON_UNQUOTE"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
+
+bool mylite_function_name_is_json_creation(const struct mylite_sql_ast_node *name)
+{
+    static const char *const names[] = {"JSON_ARRAY", "JSON_OBJECT"};
+
+    return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
+}
